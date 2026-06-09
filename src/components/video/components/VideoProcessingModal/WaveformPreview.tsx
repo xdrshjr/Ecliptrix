@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import type { SilenceSegment } from './SilenceSegmentList';
 import { useLocale } from '@/contexts/LocaleContext';
+import { fetchWaveform } from '@/components/video/lib/waveform/waveformClient';
 
 // wavesurfer.js v7+ imports
 import WaveSurfer from 'wavesurfer.js';
@@ -25,6 +26,12 @@ export interface WaveformPreviewProps {
   onSegmentUpdate: (id: string, start: number, end: number) => void;
   focusSegmentId: string | null;
   onFocusHandled: () => void;
+  /**
+   * spec 04 — when provided, the component first tries the persisted backend
+   * peaks for this material (no in-browser decode). On a miss it falls back to
+   * wavesurfer live decode of `audioUrl`, preserving prior behaviour.
+   */
+  materialId?: string;
 }
 
 /** Methods exposed to parent via ref */
@@ -61,6 +68,7 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
       onSegmentUpdate,
       focusSegmentId,
       onFocusHandled,
+      materialId,
     },
     ref
   ) => {
@@ -68,6 +76,17 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
     const wavesurferRef = useRef<WaveSurfer | null>(null);
     const regionsPluginRef = useRef<RegionsPlugin | null>(null);
     const { t } = useLocale();
+
+    // spec 04: persisted peaks (camelCase doc) loaded before wavesurfer init so
+    // the player can skip in-browser decode. null until resolved / on a miss.
+    const [persistedPeaks, setPersistedPeaks] = useState<{
+      peaks: number[];
+      durationSec: number;
+    } | null>(null);
+    // Gate wavesurfer init until the persisted-peaks probe settles, so we never
+    // double-render (once live, once with peaks). Skipped entirely when no
+    // materialId is supplied (legacy callers).
+    const [peaksProbeDone, setPeaksProbeDone] = useState(false);
 
     // Suppress region-updated callbacks during bulk region syncs
     const isSyncingRegionsRef = useRef(false);
@@ -102,20 +121,70 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
       return document.documentElement.classList.contains('dark');
     }, []);
 
+    // ---- Probe persisted peaks (spec 04) before init ----
+    useEffect(() => {
+      if (!materialId) {
+        // Legacy caller — go straight to live decode.
+        setPersistedPeaks(null);
+        setPeaksProbeDone(true);
+        return;
+      }
+      let cancelled = false;
+      setPeaksProbeDone(false);
+      setPersistedPeaks(null);
+      fetchWaveform(materialId)
+        .then((doc) => {
+          if (cancelled) return;
+          if (
+            doc.status === 'ready' &&
+            Array.isArray(doc.peaks) &&
+            doc.peaks.length > 0
+          ) {
+            setPersistedPeaks({
+              peaks: doc.peaks,
+              durationSec: doc.durationSec ?? 0,
+            });
+          }
+        })
+        .catch(() => {
+          // Miss / error → fall back to live decode below.
+        })
+        .finally(() => {
+          if (!cancelled) setPeaksProbeDone(true);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [materialId]);
+
     // ---- Initialize wavesurfer ----
     useEffect(() => {
       if (!containerRef.current || !audioUrl) return;
+      // Wait for the persisted-peaks probe to settle so we render once.
+      if (!peaksProbeDone) return;
 
       const regionsPlugin = RegionsPlugin.create();
       regionsPluginRef.current = regionsPlugin;
 
       const colors = isDarkMode ? COLORS.dark : COLORS.light;
 
+      // When persisted peaks are available, hand them to wavesurfer so it
+      // renders WITHOUT decoding the audio. We still pass `url` so seeking /
+      // playback works; wavesurfer skips the decode pass when `peaks` is set.
+      const usePersisted =
+        persistedPeaks !== null && persistedPeaks.durationSec > 0;
+
       const ws = WaveSurfer.create({
         container: containerRef.current,
         waveColor: colors.waveColor,
         progressColor: colors.progressColor,
         url: audioUrl,
+        ...(usePersisted
+          ? {
+              peaks: [persistedPeaks!.peaks],
+              duration: persistedPeaks!.durationSec,
+            }
+          : {}),
         height: 120,
         barWidth: 2,
         barGap: 1,
@@ -197,7 +266,7 @@ const WaveformPreview = forwardRef<WaveformPreviewHandle, WaveformPreviewProps>(
         setIsPreviewingOverall(false);
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [audioUrl, isDarkMode]);
+    }, [audioUrl, isDarkMode, peaksProbeDone, persistedPeaks]);
 
     // ---- Sync regions when segments or selectedIds change ----
     useEffect(() => {

@@ -60,29 +60,33 @@ export async function extractVideoThumbnail(videoUrl: string): Promise<string | 
   });
 }
 
+/** Options shared by the arbitrary-timestamp frame extractors. */
+export interface ExtractFrameOptions {
+  /** Optional cap on the output width (defaults to native). */
+  maxWidth?: number;
+  /** JPEG quality (0..1, default 0.92). */
+  quality?: number;
+}
+
 /**
- * Extract a frame at an arbitrary timestamp at full (or capped) resolution.
- *
- * Reuses the same cross-origin proxy pipeline as ``extractVideoThumbnail``,
- * but seeks to a caller-specified time and skips the 320 px width cap so the
- * result is suitable for cover-rendering at 1080p+. ``extractVideoThumbnail``
- * is preserved unchanged for existing callers.
+ * Seek a hidden <video> to ``timeSec`` and hand the decoded frame to
+ * ``onCanvas`` as a sized <canvas>. The single shared decode/seek core behind
+ * both the data-URL and blob frame extractors (DRY — keeps the seek timeout,
+ * cross-origin proxy and finish-once guard in one place).
  *
  * @param videoUrl  Source URL (any origin — cross-origin is auto-proxied)
  * @param timeSec   Target time in seconds (clamped to [0, duration])
- * @param opts.maxWidth  Optional cap on the output width (defaults to native)
- * @param opts.quality   JPEG quality (0..1, default 0.92)
- * @returns JPEG dataURL or ``null`` on failure
+ * @param maxWidth  Optional cap on the output width
+ * @param onCanvas  Receives the drawn canvas; its return resolves the promise
+ * @returns Whatever ``onCanvas`` resolves to, or ``null`` on any failure
  */
-export async function extractVideoFrameAt(
+function withSeekedFrame<T>(
   videoUrl: string,
   timeSec: number,
-  opts?: { maxWidth?: number; quality?: number },
-): Promise<string | null> {
+  maxWidth: number | undefined,
+  onCanvas: (canvas: HTMLCanvasElement) => T | Promise<T>,
+): Promise<T | null> {
   const src = proxiedVideoUrl(videoUrl);
-  const quality = opts?.quality ?? 0.92;
-  const maxWidth = opts?.maxWidth;
-
   return new Promise((resolve) => {
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous';
@@ -90,7 +94,7 @@ export async function extractVideoFrameAt(
     video.muted = true;
 
     let resolved = false;
-    const finish = (value: string | null) => {
+    const finish = (value: T | null) => {
       if (resolved) return;
       resolved = true;
       resolve(value);
@@ -119,7 +123,7 @@ export async function extractVideoFrameAt(
             return;
           }
           ctx.drawImage(video, 0, 0, targetW, targetH);
-          finish(canvas.toDataURL('image/jpeg', quality));
+          Promise.resolve(onCanvas(canvas)).then(finish).catch(() => finish(null));
         } catch {
           finish(null);
         }
@@ -132,6 +136,58 @@ export async function extractVideoFrameAt(
 
     video.src = src;
   });
+}
+
+/**
+ * Extract a frame at an arbitrary timestamp at full (or capped) resolution.
+ *
+ * Reuses the same cross-origin proxy pipeline as ``extractVideoThumbnail``,
+ * but seeks to a caller-specified time and skips the 320 px width cap so the
+ * result is suitable for cover-rendering at 1080p+. ``extractVideoThumbnail``
+ * is preserved unchanged for existing callers.
+ *
+ * @param videoUrl  Source URL (any origin — cross-origin is auto-proxied)
+ * @param timeSec   Target time in seconds (clamped to [0, duration])
+ * @param opts.maxWidth  Optional cap on the output width (defaults to native)
+ * @param opts.quality   JPEG quality (0..1, default 0.92)
+ * @returns JPEG dataURL or ``null`` on failure
+ */
+export async function extractVideoFrameAt(
+  videoUrl: string,
+  timeSec: number,
+  opts?: ExtractFrameOptions,
+): Promise<string | null> {
+  const quality = opts?.quality ?? 0.92;
+  return withSeekedFrame(videoUrl, timeSec, opts?.maxWidth, (canvas) =>
+    canvas.toDataURL('image/jpeg', quality),
+  );
+}
+
+/**
+ * Blob-producing variant of {@link extractVideoFrameAt}.
+ *
+ * Filmstrip persistence (spec 03) needs to upload extracted frames as
+ * multipart blobs rather than embed them as data URLs. This shares the exact
+ * decode/seek core with the data-URL variant so the two cannot diverge.
+ *
+ * @param videoUrl  Source URL (direct-local same-origin preferred; cross-origin
+ *                  legacy URLs are auto-proxied)
+ * @param timeSec   Target time in seconds (clamped to [0, duration])
+ * @param opts.maxWidth  Optional cap on the output width (defaults to native)
+ * @param opts.quality   JPEG quality (0..1, default 0.7 — strips favour size)
+ * @returns A JPEG Blob, or ``null`` on failure
+ */
+export async function extractVideoFrameBlobAt(
+  videoUrl: string,
+  timeSec: number,
+  opts?: ExtractFrameOptions,
+): Promise<Blob | null> {
+  const quality = opts?.quality ?? 0.7;
+  return withSeekedFrame(videoUrl, timeSec, opts?.maxWidth, (canvas) =>
+    new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+    }),
+  );
 }
 
 /**

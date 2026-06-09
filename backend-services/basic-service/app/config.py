@@ -219,12 +219,31 @@ class UploadRetryConfig(BaseModel):
 
 
 class ThumbnailConfig(BaseModel):
-    """Thumbnail configuration."""
+    """Thumbnail configuration.
+
+    The ``filmstrip_*`` fields configure the local-video-editing-refactor
+    (spec 03) timeline filmstrip: per-clip multi-frame strips extracted by the
+    frontend canvas and persisted under
+    ``static/video/thumbnails/{material_id}/``.
+    """
 
     auto_generate_video_thumbnail: bool = True
     thumbnail_quality: int = 2
     thumbnail_max_width: int = 320
     thumbnail_max_height: int = 180
+
+    # --- filmstrip (spec 03) ---
+    # Pixel width allotted to one filmstrip slot; drives the zoom-aware frame
+    # count N = clamp(round(clipWidthPx / slot), 1, max_frames).
+    filmstrip_slot_px: int = 80
+    # Hard cap on frames extracted per clip regardless of zoom width.
+    filmstrip_max_frames: int = 24
+    # JPEG quality (0..1) for canvas-extracted filmstrip frames.
+    filmstrip_quality: float = 0.7
+    # Per-material capacity: when exceeded, the least-recently-written zoom
+    # tier's frames are evicted (poster is never evicted). Caps storage growth
+    # across many zoom tiers (spec 03 §2.5 / R5).
+    filmstrip_max_frames_per_material: int = 240
 
 
 class TempFileManagementConfig(BaseModel):
@@ -287,6 +306,37 @@ class StoryboardConfig(BaseModel):
     )
     generation: StoryboardGenerationConfig = Field(
         default_factory=StoryboardGenerationConfig
+    )
+
+
+class WaveformConfig(BaseModel):
+    """Local audio waveform generation configuration (spec 04 — 本地音频波形).
+
+    Drives :class:`app.services.waveform_service.WaveformService`. Additive to
+    (and non-overlapping with) the spec-03 thumbnail/filmstrip knobs — the two
+    feature areas share this module but never the same fields.
+    """
+
+    peaks_per_second: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description=(
+            "Peaks extracted per second of audio. The persisted array length "
+            "is ~ durationSec * peaksPerSecond. 100 balances fidelity vs size; "
+            "the frontend may further downsample per zoom level."
+        ),
+    )
+    max_concurrent: int = Field(
+        default=2,
+        ge=1,
+        le=16,
+        description="Max concurrent ffmpeg peak-extraction jobs (QueueManager).",
+    )
+    timeout_seconds: int = Field(
+        default=120,
+        ge=5,
+        description="Per-job hard timeout for ffmpeg/ffprobe peak extraction.",
     )
 
 
@@ -554,6 +604,9 @@ class Settings(BaseModel):
 
     # Storage Configuration
     storage: StorageConfig = Field(default_factory=StorageConfig)
+
+    # Waveform Configuration (spec 04 — 本地音频波形)
+    waveform: WaveformConfig = Field(default_factory=WaveformConfig)
 
     # Storyboard Configuration (video-generation queue)
     storyboard: StoryboardConfig = Field(default_factory=StoryboardConfig)
@@ -898,6 +951,14 @@ def get_settings() -> Settings:
         max_file_size=int(os.getenv("STORAGE_MAX_FILE_SIZE", "524288000")),
     )
 
+    # Create Waveform configuration (spec 04 — 本地音频波形).
+    # Priority per field: env > default. No YAML file — these are simple knobs.
+    waveform_config = WaveformConfig(
+        peaks_per_second=int(os.getenv("WAVEFORM_PEAKS_PER_SECOND", "100")),
+        max_concurrent=int(os.getenv("WAVEFORM_MAX_CONCURRENT", "2")),
+        timeout_seconds=int(os.getenv("WAVEFORM_TIMEOUT_SECONDS", "120")),
+    )
+
     # Create Authentication configuration
     # ROOT_* takes priority over ADMIN_* for backward compatibility
     admin_username = os.getenv("ADMIN_USERNAME", "admin")
@@ -1042,6 +1103,7 @@ def get_settings() -> Settings:
         watermark_removal=watermark_removal_config,
         upload=upload_config,
         storage=storage_config,
+        waveform=waveform_config,
         storyboard=storyboard_config,
         media_proxy=media_proxy_config,
         preview_proxy=preview_proxy_config,

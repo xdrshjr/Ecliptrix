@@ -202,6 +202,13 @@ export interface VideoSequenceItem {
   originalDuration?: number;
   volume?: number;
   cacheState?: CacheState;
+  /**
+   * When true, this video sequence's embedded audio has been detached to an
+   * independent audio sequence. Preview (02) and export (05) MUST suppress
+   * this video sequence's audio so the derived audio sequence is the sole
+   * contributor (avoids double-audio). See spec 01 §2.4.
+   */
+  audioDetached?: boolean;
 }
 
 export interface AudioSequenceItem {
@@ -284,6 +291,8 @@ export interface VideoCompositionRequest {
     clip_end?: number;
     original_duration?: number;
     volume: number;
+    /** Suppress this video's audio in export (its audio was detached). */
+    audio_detached?: boolean;
   }>;
   audio_sequences: Array<{
     id: string;

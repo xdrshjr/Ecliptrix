@@ -367,12 +367,21 @@ class StorageService:
             name_lower.endswith(ext) for ext in (".mp4", ".mov", ".avi", ".webm")
         ):
             file_info["type"] = "video"
-            # Look for a co-located thumbnail
-            thumb_name = f"thumb_{file_path.stem}.jpg"
-            thumb_path = file_path.parent / thumb_name
-            if thumb_path.exists():
-                thumb_rel = str(thumb_path.relative_to(self.root)).replace("\\", "/")
-                file_info["thumbnail_url"] = self._get_file_url(thumb_rel)
+            # spec 03 §2.2: prefer the relocated per-material poster
+            # (static/video/thumbnails/{stem}/poster.jpg). Fall back to the
+            # legacy co-located ``thumb_{stem}.jpg`` for materials uploaded
+            # before the relocation; finally fall back to the video URL.
+            poster_path = (
+                self.root / "static" / "video" / "thumbnails"
+                / file_path.stem / "poster.jpg"
+            )
+            legacy_thumb = file_path.parent / f"thumb_{file_path.stem}.jpg"
+            if poster_path.exists():
+                rel = str(poster_path.relative_to(self.root)).replace("\\", "/")
+                file_info["thumbnail_url"] = self._get_file_url(rel)
+            elif legacy_thumb.exists():
+                rel = str(legacy_thumb.relative_to(self.root)).replace("\\", "/")
+                file_info["thumbnail_url"] = self._get_file_url(rel)
             else:
                 file_info["thumbnail_url"] = file_info["url"]
         elif content_type.startswith("audio/") or any(
@@ -462,6 +471,64 @@ class StorageService:
             })
             return {"success": False, "message": f"File write failed: {exc}"}
 
+    # ------------------------------------------------------------------
+    # Waveform pre-generation (spec 04 — 本地音频波形, trigger ①)
+    # ------------------------------------------------------------------
+
+    # Queue name shared with storage_router so the upload-time warm-up and the
+    # on-demand POST contend for the same WaveformConfig-bounded semaphore.
+    _WAVEFORM_QUEUE_NAME = "waveform_generation"
+
+    @staticmethod
+    def _waveform_material_id(relative_path: str) -> str:
+        """Derive a stable, filename-safe waveform key from a storage path.
+
+        The uploaded file's basename stem is unique within STORAGE_ROOT (the
+        router UUID-prefixes shared paths), so it is a safe pre-generation key.
+        Frontend on-demand triggers (②) are idempotent regardless, so a key
+        mismatch only loses the warm-up, never correctness.
+        """
+        return Path(relative_path).stem
+
+    async def _enqueue_waveform_generation(self, relative_path: str) -> None:
+        """Best-effort background enqueue of waveform peak extraction.
+
+        Runs the extraction under the shared waveform QueueManager semaphore so
+        a burst of uploads cannot spawn unbounded ffmpeg. Never raises — a
+        failed warm-up is logged and swallowed; the frontend on-demand path is
+        authoritative.
+        """
+        try:
+            # Imported lazily to keep the module import graph acyclic and to
+            # avoid pulling the queue stack into pure-storage unit tests.
+            from app.config import settings as _settings
+            from app.services.queue_manager import queue_manager
+            from app.services.waveform_service import waveform_service
+
+            material_id = self._waveform_material_id(relative_path)
+            audio_url = self._get_file_url(relative_path)
+
+            await queue_manager.create_queue(
+                self._WAVEFORM_QUEUE_NAME,
+                max_concurrent=_settings.waveform.max_concurrent,
+            )
+
+            async def _run() -> Dict[str, Any]:
+                return await waveform_service.generate(material_id, audio_url)
+
+            await queue_manager.enqueue_task(
+                queue_name=self._WAVEFORM_QUEUE_NAME,
+                task_func=_run,
+                metadata={"material_id": material_id, "trigger": "upload"},
+            )
+            logger.info("Waveform generation enqueued", {
+                "material_id": material_id, "path": relative_path,
+            })
+        except Exception as exc:  # noqa: BLE001 — warm-up must never break upload
+            logger.warning("Waveform enqueue skipped", {
+                "path": relative_path, "error": str(exc),
+            })
+
     async def upload_audio_file(
         self,
         file_data: bytes,
@@ -470,8 +537,13 @@ class StorageService:
         user_id: str = "anonymous",
         task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Upload an audio file (convenience wrapper setting folder='audio')."""
-        return await self.upload_file(
+        """Upload an audio file (convenience wrapper setting folder='audio').
+
+        On success, enqueues background waveform peak generation (spec 04
+        trigger ①) under the WaveformConfig-bounded queue — non-blocking and
+        best-effort.
+        """
+        result = await self.upload_file(
             file_data=file_data,
             filename=filename,
             content_type=content_type,
@@ -479,6 +551,9 @@ class StorageService:
             user_id=user_id,
             task_id=task_id,
         )
+        if result.get("success") and result.get("file_path"):
+            await self._enqueue_waveform_generation(result["file_path"])
+        return result
 
     async def upload_video_file(
         self,
@@ -514,6 +589,7 @@ class StorageService:
         width: Optional[int] = None
         height: Optional[int] = None
         thumbnail_url: Optional[str] = None
+        has_audio = False
 
         # --- Extract metadata via ffprobe ---
         try:
@@ -527,10 +603,12 @@ class StorageService:
             if probe_result.returncode == 0:
                 probe_data = json.loads(probe_result.stdout)
                 for stream in probe_data.get("streams", []):
-                    if stream.get("codec_type") == "video":
+                    codec_type = stream.get("codec_type")
+                    if codec_type == "video" and width is None:
                         width = stream.get("width")
                         height = stream.get("height")
-                        break
+                    elif codec_type == "audio":
+                        has_audio = True
                 duration_str = probe_data.get("format", {}).get("duration")
                 if duration_str:
                     duration = float(duration_str)
@@ -549,10 +627,17 @@ class StorageService:
         # --- Generate thumbnail via ffmpeg ---
         if generate_thumbnail and duration is not None:
             try:
-                thumb_name = f"thumb_{Path(filename).stem}.jpg"
-                thumb_relative = str(
-                    Path(relative_path).parent / thumb_name
-                ).replace("\\", "/")
+                # spec 03 §2.2: relocate the poster to the per-material
+                # thumbnails dir so spec 06 can clean it up by materialId.
+                # The material key is the stored file stem (UUID-prefixed,
+                # globally unique) — deterministic so the frontend filmstrip
+                # cache can address the same dir. Legacy callers that read the
+                # co-located ``thumb_{stem}.jpg`` still resolve via
+                # ``_create_file_info`` (compat read preserved below).
+                poster_key = Path(relative_path).stem
+                thumb_relative = (
+                    f"static/video/thumbnails/{poster_key}/poster.jpg"
+                )
                 thumb_absolute = self._validate_path(thumb_relative)
                 thumb_absolute.parent.mkdir(parents=True, exist_ok=True)
 
@@ -589,6 +674,14 @@ class StorageService:
             "width": width,
             "height": height,
         })
+
+        # spec 04 trigger ①: a video that carries an audio track gets its
+        # waveform pre-generated in the background (best-effort, queue-bounded).
+        # The detached-audio item (spec 01) reuses the same materialId, so the
+        # waveform is ready before the user splits audio off.
+        if has_audio:
+            await self._enqueue_waveform_generation(relative_path)
+
         return upload_result
 
     async def write_to_well_known_slot(

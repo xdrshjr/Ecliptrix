@@ -37,8 +37,18 @@ from app.models.storage_models import (
     StorageUploadErrorResponse,
     VideoUploadResponse,
     VideoUploadErrorResponse,
+    ThumbnailFrameResponse,
+    MaterialThumbnailsResponse,
+    WaveformGenerateRequest,
+    WaveformGenerateResponse,
+    WaveformDataResponse,
 )
 from app.services.storage_service import storage_service
+from app.services.thumbnail_service import thumbnail_service
+from app.services.waveform_service import waveform_service
+from app.services.queue_manager import queue_manager
+from app.services.simple_queue_decorator import _wait_for_simple_task_completion
+from app.config import settings
 from app.logger import get_logger
 
 logger = get_logger(__name__)
@@ -631,3 +641,240 @@ async def storage_health_check():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=error_info,
         )
+
+
+# ---------------------------------------------------------------------------
+# Local filmstrip thumbnails (local-video-editing-refactor spec 03)
+# ---------------------------------------------------------------------------
+
+# A single filmstrip frame is a small JPEG (slot-width, q≈0.7). Cap it well
+# below the general upload limit so a stray large body cannot fill the disk.
+_MAX_THUMBNAIL_FRAME_BYTES = 2 * 1024 * 1024  # 2 MiB
+
+
+@router.post(
+    "/thumbnail-frame",
+    response_model=ThumbnailFrameResponse,
+    summary="Persist a frontend-extracted filmstrip frame",
+    description=(
+        "Save one canvas-extracted timeline filmstrip frame to "
+        "static/video/thumbnails/{material_id}/strip_{zoom_tier}_{t_ms}.jpg "
+        "and return its same-origin /api/storage/files URL."
+    ),
+)
+async def save_thumbnail_frame(
+    material_id: str = Form(..., description="Material identifier"),
+    zoom_tier: str = Form(..., description="Quantized zoom tier label, e.g. '1x'"),
+    t_ms: int = Form(..., description="Source frame time in whole milliseconds"),
+    frame: UploadFile = File(..., description="JPEG frame blob"),
+    current_user: User = Depends(get_current_user),
+) -> ThumbnailFrameResponse:
+    """Persist one filmstrip frame extracted on the frontend canvas.
+
+    spec/04: enforces session auth. The frame bytes are written through the
+    storage service path validator, so the resolved target is guaranteed to
+    stay inside ``STORAGE_ROOT``. ``material_id`` / ``zoom_tier`` are reduced
+    to path-safe segments by the thumbnail service.
+    """
+    try:
+        if t_ms < 0:
+            return ThumbnailFrameResponse(
+                success=False, message="t_ms must be non-negative",
+            )
+
+        content_type = frame.content_type or "image/jpeg"
+        if not content_type.startswith("image/"):
+            return ThumbnailFrameResponse(
+                success=False,
+                message=f"Unsupported frame content-type: {content_type}",
+            )
+
+        data = await frame.read()
+        if not data:
+            return ThumbnailFrameResponse(
+                success=False, message="Frame payload is empty",
+            )
+        if len(data) > _MAX_THUMBNAIL_FRAME_BYTES:
+            return ThumbnailFrameResponse(
+                success=False,
+                message=(
+                    f"Frame exceeds maximum size "
+                    f"({_MAX_THUMBNAIL_FRAME_BYTES} bytes)"
+                ),
+            )
+
+        result = await thumbnail_service.save_frame(
+            material_id=material_id,
+            zoom_tier=zoom_tier,
+            t_ms=t_ms,
+            data=data,
+            content_type=content_type,
+        )
+        if not result.get("success"):
+            logger.error("Thumbnail frame persist failed", {
+                "material_id": material_id,
+                "error": result.get("message"),
+            })
+            return ThumbnailFrameResponse(
+                success=False,
+                message=result.get("message", "Frame persist failed"),
+            )
+
+        return ThumbnailFrameResponse(
+            success=True,
+            url=result["url"],
+            relative_path=result["relative_path"],
+        )
+
+    except Exception as e:
+        logger.error("Thumbnail frame exception", {
+            "material_id": material_id, "error": str(e),
+        })
+        return ThumbnailFrameResponse(
+            success=False, message=f"Frame persist failed: {str(e)}",
+        )
+
+
+@router.get(
+    "/thumbnails/{material_id}",
+    response_model=MaterialThumbnailsResponse,
+    summary="List persisted thumbnails for a material",
+    description=(
+        "List the persisted poster and filmstrip frames for a material so "
+        "the frontend cache can pre-warm and spec 06 can audit derived files."
+    ),
+)
+async def list_material_thumbnails(
+    material_id: str,
+    current_user: User = Depends(get_current_user),
+) -> MaterialThumbnailsResponse:
+    """List the poster and filmstrip frames persisted for ``material_id``.
+
+    spec/04: enforces session auth. Returns an empty listing (not an error)
+    for a material that has no thumbnails yet.
+    """
+    try:
+        listing = thumbnail_service.list_material(material_id)
+        return MaterialThumbnailsResponse(
+            success=True,
+            poster=listing.get("poster"),
+            frames=listing.get("frames", []),
+        )
+    except Exception as e:
+        logger.error("List material thumbnails exception", {
+            "material_id": material_id, "error": str(e),
+        })
+        return MaterialThumbnailsResponse(success=False, poster=None, frames=[])
+
+
+# ---------------------------------------------------------------------------
+# Local audio waveform (local-video-editing-refactor spec 04)
+#
+# Endpoints/models do NOT overlap the spec-03 thumbnail surface above. The
+# ``POST`` is idempotent — an existing peaks JSON is returned without
+# re-extraction. Extraction concurrency is bounded by the WaveformConfig-driven
+# queue created here so a burst of imports cannot spawn unbounded ffmpeg.
+# ---------------------------------------------------------------------------
+
+_WAVEFORM_QUEUE_NAME = "waveform_generation"
+
+
+@router.post(
+    "/waveform/generate",
+    response_model=WaveformGenerateResponse,
+    summary="Generate (or reuse) audio waveform peaks for a material",
+    description=(
+        "Extract amplitude peaks from a same-origin audio reference via the "
+        "bundled FFmpeg, persist them to "
+        "static/audio/waveforms/{material_id}.json, and return its URL. "
+        "Idempotent: an existing waveform is returned without re-extraction."
+    ),
+)
+async def generate_waveform(
+    request: WaveformGenerateRequest,
+    current_user: User = Depends(get_current_user),
+) -> WaveformGenerateResponse:
+    """Generate or reuse the waveform peaks for ``request.material_id``.
+
+    spec/04: enforces session auth. Extraction runs under a QueueManager
+    semaphore (``WaveformConfig.max_concurrent``) so concurrent imports do not
+    spawn unbounded ffmpeg subprocesses.
+    """
+    try:
+        await queue_manager.create_queue(
+            _WAVEFORM_QUEUE_NAME,
+            max_concurrent=settings.waveform.max_concurrent,
+        )
+
+        async def _run() -> dict:
+            return await waveform_service.generate(
+                material_id=request.material_id,
+                audio_url=request.audio_url,
+                force=request.force,
+            )
+
+        task_id = await queue_manager.enqueue_task(
+            queue_name=_WAVEFORM_QUEUE_NAME,
+            task_func=_run,
+            metadata={"material_id": request.material_id},
+        )
+        await _wait_for_simple_task_completion(task_id)
+        result = await queue_manager.get_task_result(task_id)
+        await queue_manager.cleanup_task_data(task_id)
+
+        return WaveformGenerateResponse(
+            status=result.get("status", "failed"),
+            url=result.get("url"),
+        )
+
+    except ValueError as exc:
+        # material_id not filename-safe — surface a real 400.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as e:
+        logger.error("Waveform generate exception", {
+            "material_id": request.material_id, "error": str(e),
+        })
+        return WaveformGenerateResponse(status="failed", url=None)
+
+
+@router.get(
+    "/waveform/{material_id}",
+    response_model=WaveformDataResponse,
+    summary="Fetch persisted waveform peaks for a material",
+    description=(
+        "Return the persisted amplitude peaks for a material when ready, else "
+        "a non-ready status. Peaks are inlined so the frontend renders in one "
+        "round-trip."
+    ),
+)
+async def get_waveform(
+    material_id: str,
+    current_user: User = Depends(get_current_user),
+) -> WaveformDataResponse:
+    """Fetch the persisted waveform peaks for ``material_id``.
+
+    spec/04: enforces session auth. Returns ``status='missing'`` (not an error)
+    when no waveform has been generated yet.
+    """
+    try:
+        result = await waveform_service.get_waveform(material_id)
+        return WaveformDataResponse(
+            status=result.get("status", "missing"),
+            duration_sec=result.get("duration_sec"),
+            peaks_per_second=result.get("peaks_per_second"),
+            peaks=result.get("peaks"),
+            url=result.get("url"),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as e:
+        logger.error("Waveform fetch exception", {
+            "material_id": material_id, "error": str(e),
+        })
+        return WaveformDataResponse(status="failed")

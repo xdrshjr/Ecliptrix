@@ -34,6 +34,10 @@ export { moveItemAction } from './actions/moveItem';
 export { resizeItemAction } from './actions/resizeItem';
 export { removeItemAction, removeItemsAction } from './actions/removeItem';
 export { swapItemsAction } from './actions/swapItems';
+export { splitAction } from './actions/splitItem';
+export type { SplitScope } from './actions/splitItem';
+export { detachAudioAction } from './actions/detachAudio';
+export type { DetachAudioMaterialInfo } from './actions/detachAudio';
 export {
   toggleTrackLockAction,
   toggleTrackMuteAction,

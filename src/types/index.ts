@@ -672,7 +672,12 @@ export interface TimelineItem {
   
   // 新增：原始素材类型，用于区分图片和视频素材
   originalMaterialType?: MaterialType;
-  
+
+  // 新增：音画分离标志——视频 item 的内嵌音轨是否已分离到独立 audio item。
+  // 为 true 时合成/导出对该视频 item 静音，由派生的 audio item 单独贡献音频，
+  // 避免重复出声（spec local-video-editing-refactor 01 §2.4）。
+  audioDetached?: boolean;
+
   // 新增：字幕样式属性
   subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）
   

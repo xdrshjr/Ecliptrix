@@ -66,6 +66,12 @@ export interface TimelineItemData {
   isSelected?: boolean;
   /** Original material type — used to distinguish image items on video tracks. */
   originalMaterialType?: MaterialType;
+  /**
+   * Whether this video item's embedded audio has been detached to an
+   * independent audio track item. When true, composition/export suppress this
+   * video item's audio so the derived audio item is the sole contributor.
+   */
+  audioDetached?: boolean;
 }
 
 /**
@@ -168,6 +174,7 @@ export interface CreateItemProps {
   volume?: number;
   opacity?: number;
   originalMaterialType?: MaterialType;
+  audioDetached?: boolean;
 }
 
 // ---------------------------------------------------------------------------

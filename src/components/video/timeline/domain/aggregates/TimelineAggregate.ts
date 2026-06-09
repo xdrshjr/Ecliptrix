@@ -16,12 +16,23 @@ import { TimePosition } from '../value-objects/TimePosition';
 import { Duration } from '../value-objects/Duration';
 import { Volume } from '../value-objects/Volume';
 import { ZoomLevel } from '../value-objects/ZoomLevel';
+import { SplitService, type SplitResult } from '../services/SplitService';
+import { TrackSelectionService } from '../services/TrackSelectionService';
 import type {
   TrackType,
   TimelineData,
   TimelineSnapshot,
   CreateTrackProps,
+  TimelineItemData,
 } from '../types';
+
+/** Result of a successful audio detach — see TimelineAggregate.detachAudio. */
+export interface DetachAudioResult {
+  /** The id of the newly created audio-track item. */
+  audioItemId: string;
+  /** The audio track the new item was placed on. */
+  targetTrackId: string;
+}
 
 // ---------------------------------------------------------------------------
 // TimelineAggregate
@@ -282,6 +293,71 @@ export class TimelineAggregate {
     foundB.item.moveTo(tmp);
     track.sortItems();
     this.recalculateTotalDuration();
+  }
+
+  /**
+   * Split the item identified by `itemId` into two halves at track-timeline
+   * time `tCut` (delegates to SplitService). Both halves are exact source
+   * sub-intervals (INV-1..INV-3); the left half keeps the original id.
+   *
+   * @returns The left/right ids, or null when the cut is at/outside the item
+   *   boundary (no-op).
+   * @throws Error if the item is not found.
+   * @throws TrackLockedError if the owning track is locked.
+   */
+  splitItemAtTime(itemId: string, tCut: number): SplitResult | null {
+    const found = this.findItem(itemId);
+    if (!found) {
+      throw new Error(`TimelineAggregate.splitItemAtTime: item "${itemId}" not found.`);
+    }
+    const { track } = found;
+    if (track.isLocked) {
+      throw new TrackLockedError(track.id, 'splitItemAtTime');
+    }
+
+    const result = SplitService.splitItemAtTime(track, itemId, tCut);
+    if (result) {
+      this.recalculateTotalDuration();
+    }
+    return result;
+  }
+
+  /**
+   * Detach the embedded audio of a video item into an independent audio-track
+   * item, preserving the same start/duration/clip interval and materialId.
+   * The original video item is flagged `audioDetached` so composition/export
+   * suppress its audio (the derived item is the sole contributor).
+   *
+   * Pure domain orchestration: the caller is responsible for confirming the
+   * source material actually has an audio stream (see detachAudioAction).
+   *
+   * @returns The new audio item id + its track, or null when the item is not
+   *   a video item or its audio is already detached (no-op).
+   * @throws Error if the item is not found.
+   * @throws TrackLockedError if the video item's track is locked.
+   */
+  detachAudio(itemId: string): DetachAudioResult | null {
+    const found = this.findItem(itemId);
+    if (!found) {
+      throw new Error(`TimelineAggregate.detachAudio: item "${itemId}" not found.`);
+    }
+    const { track: sourceTrack, item } = found;
+    if (item.type !== 'video' || item.audioDetached === true) {
+      return null;
+    }
+    if (sourceTrack.isLocked) {
+      throw new TrackLockedError(sourceTrack.id, 'detachAudio');
+    }
+
+    const targetTrack = this.resolveAudioTrack();
+    const audioData = this.buildDetachedAudioData(item, targetTrack.id);
+    const audioItem = TimelineItem.fromPlainObject(audioData);
+
+    targetTrack.addItem(audioItem);
+    item.audioDetached = true;
+    this.recalculateTotalDuration();
+
+    return { audioItemId: audioItem.id, targetTrackId: targetTrack.id };
   }
 
   // ------------------------------------------------------------------
@@ -570,5 +646,63 @@ export class TimelineAggregate {
    */
   private recalculateTotalDuration(): void {
     this._totalDuration = this.calculateTotalDuration();
+  }
+
+  /**
+   * Select an existing unlocked audio track for a detached audio item, or
+   * create one when none exists. Reuses TrackSelectionService so the choice
+   * matches the rest of the placement logic.
+   */
+  private resolveAudioTrack(): Track {
+    const selected = TrackSelectionService.selectTrackForMaterial(this._tracks, 'audio');
+    if (selected && !selected.isLocked) {
+      return selected;
+    }
+    // None available (or only locked ones) — append a fresh audio track after
+    // the current last order so it does not collide with existing ordering.
+    const nextOrder = this._tracks.reduce((max, t) => Math.max(max, t.order), -1) + 1;
+    return this.addTrackFromProps({
+      type: 'audio',
+      name: 'Audio',
+      order: nextOrder,
+    });
+  }
+
+  /**
+   * Build the plain data for a detached audio item: same timing/clip interval
+   * and materialId as the source video item, placed past any existing items on
+   * the target track to avoid overlap (autoOrganize repacks afterwards).
+   */
+  private buildDetachedAudioData(video: TimelineItem, targetTrackId: string): TimelineItemData {
+    const targetTrack = this.findTrackOrThrow(targetTrackId);
+    const lastEnd = targetTrack.items.reduce(
+      (max, it) => Math.max(max, it.endTime().value),
+      0,
+    );
+    // Keep the source timing when the track slot is free; otherwise park after
+    // the last item so addItem does not produce an overlap.
+    const startTime = video.startTime.value >= lastEnd ? video.startTime.value : lastEnd;
+
+    const data: TimelineItemData = {
+      id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      name: video.name,
+      type: 'audio',
+      startTime,
+      duration: video.duration.value,
+      trackId: targetTrackId,
+      color: '#10b981',
+      volume: video.volume.value,
+      opacity: 1,
+    };
+    if (video.materialId != null) data.materialId = video.materialId;
+    if (video.url != null) data.url = video.url;
+    if (video.serverUrl != null) data.serverUrl = video.serverUrl;
+    if (video.cacheUrl != null) data.cacheUrl = video.cacheUrl;
+    if (video.storageKey != null) data.storageKey = video.storageKey;
+    if (video.metadata != null) data.metadata = video.metadata;
+    if (video.clipStart != null) data.clipStart = video.clipStart.value;
+    if (video.clipEnd != null) data.clipEnd = video.clipEnd.value;
+    if (video.originalDuration != null) data.originalDuration = video.originalDuration.value;
+    return data;
   }
 }

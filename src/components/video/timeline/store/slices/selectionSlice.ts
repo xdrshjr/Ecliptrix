@@ -28,6 +28,9 @@ export interface SelectionSlice {
   selectedItems: string[];
   activeTool: TimelineToolType;
 
+  /** Switch the active editing tool (e.g. 'select' ↔ 'cut'). */
+  setActiveTool: (tool: TimelineToolType) => void;
+
   selectItem: (itemId: string) => void;
   toggleItemSelection: (itemId: string) => void;
   selectAllTrackItems: (trackId: string) => void;
@@ -52,6 +55,12 @@ export const createSelectionSlice: StateCreator<
 > = (set, get) => ({
   selectedItems: [],
   activeTool: 'select' as TimelineToolType,
+
+  // Tool state is transient UI state, not part of the timeline snapshot, so
+  // switching tools is never recorded in undo history.
+  setActiveTool: (tool: TimelineToolType) => {
+    set({ activeTool: tool });
+  },
 
   // Note: Selection changes are NOT recorded in undo history.
   // Selection state is not part of the timeline snapshot, so recording

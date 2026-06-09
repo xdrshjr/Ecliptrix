@@ -30,6 +30,7 @@ export { Track, TrackLockedError } from './entities/Track';
 // ---------------------------------------------------------------------------
 
 export { TimelineAggregate } from './aggregates/TimelineAggregate';
+export type { DetachAudioResult } from './aggregates/TimelineAggregate';
 
 // ---------------------------------------------------------------------------
 // Domain Services
@@ -40,10 +41,18 @@ export { ItemPlacementService } from './services/ItemPlacementService';
 export { DragCalculationService } from './services/DragCalculationService';
 export { HistoryService } from './services/HistoryService';
 export { DurationCalculationService } from './services/DurationCalculationService';
+export { SplitService } from './services/SplitService';
+export {
+  TIME_EPSILON,
+  mapTimelineTimeToSourceTime,
+  mapSourceTimeToTimelineTime,
+} from './services/ClipTimeMapping';
 
 // Service-related types
 export type { ResizeResult, InteractionType } from './services/DragCalculationService';
 export type { TimelineAction } from './services/HistoryService';
+export type { ClipTimeRef } from './services/ClipTimeMapping';
+export type { SplitResult } from './services/SplitService';
 
 // ---------------------------------------------------------------------------
 // State Machines

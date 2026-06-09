@@ -179,6 +179,9 @@ export class CompositionAdapter implements ICompositionPort {
           clipEnd,
           originalDuration,
           volume,
+          // Pass through the detach flag verbatim so 02/05 can suppress this
+          // video's audio. URL selection is intentionally unchanged (spec 01 §3).
+          audioDetached: item.audioDetached,
         };
 
         allVideoItems.push(videoSequence);
@@ -289,6 +292,7 @@ export class CompositionAdapter implements ICompositionPort {
         clip_end: seq.clipEnd,
         original_duration: seq.originalDuration,
         volume: seq.volume ?? 1,
+        audio_detached: seq.audioDetached,
       })),
       audio_sequences: audioSequences.map((seq) => ({
         id: seq.id,

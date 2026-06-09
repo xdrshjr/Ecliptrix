@@ -84,3 +84,91 @@ class UserMaterialsResponse(BaseModel):
     total_pages: int = 0
     materials: List[Dict[str, Any]] = []
     message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Local filmstrip thumbnails (local-video-editing-refactor spec 03)
+# ---------------------------------------------------------------------------
+
+class ThumbnailFrameResponse(BaseModel):
+    """Response for ``POST /storage/thumbnail-frame``.
+
+    Returned after persisting one frontend-extracted filmstrip frame under
+    ``static/video/thumbnails/{material_id}/strip_{zoom_tier}_{t_ms}.jpg``.
+    """
+    success: bool
+    url: str = Field("", description="Same-origin /api/storage/files URL of the frame")
+    relative_path: str = Field("", description="Storage-relative path of the frame")
+    message: str = Field("", description="Error message when success is false")
+
+
+class ThumbnailFrameItem(BaseModel):
+    """One persisted filmstrip frame in a material listing."""
+    zoom_tier: str = Field(..., description="Quantized zoom tier label, e.g. '1x'")
+    t_ms: int = Field(..., description="Source frame time in whole milliseconds")
+    url: str = Field(..., description="Same-origin /api/storage/files URL")
+
+
+class MaterialThumbnailsResponse(BaseModel):
+    """Response for ``GET /storage/thumbnails/{material_id}``.
+
+    Lists the persisted poster and filmstrip frames for a material so the
+    frontend cache can pre-warm and spec 06 can audit derived files.
+    """
+    success: bool = True
+    poster: Optional[str] = Field(None, description="Same-origin poster URL, if any")
+    frames: List[ThumbnailFrameItem] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Local audio waveform (local-video-editing-refactor spec 04)
+#
+# REST surface uses snake_case (project Pydantic convention), matching the
+# thumbnail endpoints above and never overlapping them. The PERSISTED peaks
+# JSON instead uses camelCase and is built by WaveformService directly — these
+# models never touch the on-disk schema.
+# ---------------------------------------------------------------------------
+
+class WaveformGenerateRequest(BaseModel):
+    """Request body for ``POST /storage/waveform/generate``."""
+    material_id: str = Field(..., description="Material identifier (filename-safe)")
+    audio_url: str = Field(
+        ...,
+        description=(
+            "Same-origin /api/storage/files reference (or storage-relative "
+            "path) to the source audio / audio-bearing video."
+        ),
+    )
+    force: bool = Field(
+        default=False,
+        description="When true, re-extract even if a waveform already exists.",
+    )
+
+
+class WaveformGenerateResponse(BaseModel):
+    """Response for ``POST /storage/waveform/generate`` (idempotent)."""
+    status: str = Field(..., description="'ready' | 'pending' | 'failed'")
+    url: Optional[str] = Field(
+        None, description="Same-origin URL of the persisted peaks JSON."
+    )
+
+
+class WaveformDataResponse(BaseModel):
+    """Response for ``GET /storage/waveform/{material_id}``.
+
+    Carries the peaks inline when ready so the frontend renders in a single
+    round-trip; ``status`` distinguishes ready / pending / missing / failed.
+    """
+    status: str = Field(..., description="'ready' | 'pending' | 'missing' | 'failed'")
+    duration_sec: Optional[float] = Field(
+        None, description="Source media duration in seconds."
+    )
+    peaks_per_second: Optional[int] = Field(
+        None, description="Peaks-per-second resolution of the array."
+    )
+    peaks: Optional[List[float]] = Field(
+        None, description="Normalized (0..1) amplitude peaks."
+    )
+    url: Optional[str] = Field(
+        None, description="Same-origin URL of the persisted peaks JSON."
+    )

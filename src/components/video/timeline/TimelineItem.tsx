@@ -1,12 +1,32 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useTimelineStore } from './store';
+import { useTimelineStore, splitAction } from './store';
 import type { TimelineItemData } from './domain/types';
 import type { LocalProxyStatus } from '@/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
+import AudioWaveformCanvas from './AudioWaveformCanvas';
 import { formatTimelineTime } from './timeFormat';
+import { ZoomLevel } from './domain/value-objects/ZoomLevel';
+import {
+  FilmstripCache,
+  type FilmstripItem,
+  type FilmstripSlot,
+} from '../lib/filmstrip/filmstripCache';
+import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
+
+// ---------------------------------------------------------------------------
+// Filmstrip: one process-wide cache so frames resolved for a clip persist
+// across re-renders / scroll / re-zoom to the same tier (spec 03 §2.3 hit
+// reuse). Defaults mirror the backend ThumbnailConfig filmstrip params.
+// ---------------------------------------------------------------------------
+
+const filmstripCache = new FilmstripCache({ slotPx: 80, maxFrames: 24, quality: 0.7 });
+
+// Throttle window (ms) between filmstrip ensure() passes for one clip so
+// dragging the zoom slider does not fire an extraction per frame.
+const FILMSTRIP_ENSURE_THROTTLE_MS = 250;
 
 // ---------------------------------------------------------------------------
 // Props — only data that cannot come from the store
@@ -34,6 +54,13 @@ interface TimelineItemProps {
   localPreviewEnabled?: boolean;
   /** Retry a failed / degraded local download (clears localProxy* → re-arms). */
   onRetryLocalDownload?: (materialId: string) => void;
+  /**
+   * Detach this video item's embedded audio to an independent audio track.
+   * Wired by the parent (which holds the live `materials` list) so the
+   * has-audio gate can read the source material; omitted → no detach entry.
+   * See spec local-video-editing-refactor 01 §2.4.
+   */
+  onDetachAudio?: (itemId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +74,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   localProxyStatusMap,
   localPreviewEnabled,
   onRetryLocalDownload,
+  onDetachAudio,
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
@@ -68,6 +96,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const hasActiveSwapTarget = useTimelineStore(s => s.swapTargetItemId !== null);
   const editingSubtitleId = useTimelineStore(s => s.editingSubtitleId);
   const zoomLevel = useTimelineStore(s => s.zoomLevel);
+  // Active editing tool — when 'cut', a click splits this clip at the cursor.
+  const activeTool = useTimelineStore(s => s.activeTool);
   // Parent track's lock state — cannot come via props (Track passes only item,
   // pixelsPerSecond, trackHeight); read through selector so lock toggles re-render.
   const isTrackLocked = useTimelineStore(s => {
@@ -103,6 +133,80 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const isThisItemResizing = isResizing && dragPreview !== null;
 
   // ---------------------------------------------------------------------------
+  // Filmstrip (spec 03 §2.4): zoom-aware multi-frame tiling for video clips.
+  // The extraction source is the clip's SAME-ORIGIN playback URL (direct-local
+  // → /api/storage/files); never /api/video-proxy. We render the cached slot
+  // URLs (or the poster as fallback) and run ensure() in a throttled effect so
+  // only the visible clip's frames are extracted, not on every render.
+  // ---------------------------------------------------------------------------
+
+  // Re-render this item whenever its filmstrip frames resolve.
+  const [filmstripVersion, setFilmstripVersion] = useState(0);
+
+  const filmstripItem = useMemo<FilmstripItem | null>(() => {
+    if (item.type !== 'video') return null;
+    // Prefer the same-origin local/cache URL; selectPlaybackUrl returns the
+    // direct-local /api/storage/files path for desktop uploads.
+    const src = selectPlaybackUrl(item, { purpose: 'preview' });
+    if (!item.materialId || !src) return null;
+    return {
+      materialId: item.materialId,
+      clipStart: item.clipStart,
+      clipEnd: item.clipEnd,
+      duration: item.duration,
+      url: src,
+    };
+  }, [
+    item.type,
+    item.materialId,
+    item.clipStart,
+    item.clipEnd,
+    item.duration,
+    item.url,
+    item.cacheUrl,
+    item.serverUrl,
+  ]);
+
+  const zoom = useMemo(() => ZoomLevel.create(zoomLevel), [zoomLevel]);
+
+  // Visible-range slot list (pure cache read). framesFor returns one slot per
+  // frame the clip needs at this zoom; url=null until ensure() resolves it.
+  const filmstripSlots: FilmstripSlot[] = useMemo(() => {
+    if (!filmstripItem) return [];
+    return filmstripCache.framesFor(filmstripItem, zoom);
+    // filmstripVersion forces a recompute after ensure() populates the cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filmstripItem, zoom, filmstripVersion]);
+
+  // Throttled extract/persist of missing frames for the visible clip only.
+  useEffect(() => {
+    if (!filmstripItem) return;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      filmstripCache.ensure(filmstripItem, zoom).then(() => {
+        if (!cancelled) setFilmstripVersion(v => v + 1);
+      });
+    }, FILMSTRIP_ENSURE_THROTTLE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [filmstripItem, zoom]);
+
+  // ---------------------------------------------------------------------------
+  // Waveform (spec 04): the same-origin audio source for an audio item. Uses
+  // selectPlaybackUrl('export') because that prefers a backend-resolvable local
+  // /api/storage/files reference — exactly what the waveform service can decode.
+  // Null when the item has no materialId or no local reference (e.g. legacy
+  // remote-only audio) → the track falls back to the static placeholder bars.
+  // ---------------------------------------------------------------------------
+  const waveformAudioUrl = useMemo<string | null>(() => {
+    if (item.type !== 'audio' || !item.materialId) return null;
+    const src = selectPlaybackUrl(item, { purpose: 'export' });
+    return src || null;
+  }, [item.type, item.materialId, item.url, item.cacheUrl, item.serverUrl]);
+
+  // ---------------------------------------------------------------------------
   // Event handlers — delegate to store
   // ---------------------------------------------------------------------------
 
@@ -114,6 +218,17 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     if (!rect) return;
 
     const relativeX = e.clientX - rect.left;
+
+    // Cut tool: split this clip at the click point instead of dragging. The cut
+    // time maps the pixel offset to a track-timeline time via clipStart-anchored
+    // arithmetic (pixelsPerSecond is the live zoom→px scale). Locked tracks and
+    // a click exactly on an edge are no-ops handled downstream (splitAction).
+    if (activeTool === 'cut' && !isTrackLocked) {
+      const tCut = item.startTime + relativeX / pixelsPerSecond;
+      selectItem(item.id);
+      splitAction(() => useTimelineStore.getState(), tCut, 'selected');
+      return;
+    }
 
     // Select the item (multi-select with Ctrl/Meta)
     if (e.ctrlKey || e.metaKey) {
@@ -148,6 +263,22 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       setEditingText(item.text || '');
       setEditingSubtitle(item.id);
     }
+  };
+
+  // Right-click on a not-yet-detached video clip triggers audio detach. The
+  // parent supplies onDetachAudio (it holds the live materials list for the
+  // has-audio gate); without it, the entry is inert and the native menu shows.
+  const canDetachAudio =
+    !!onDetachAudio &&
+    item.type === 'video' &&
+    item.audioDetached !== true &&
+    !isTrackLocked;
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!canDetachAudio) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onDetachAudio?.(item.id);
   };
 
   // ---------------------------------------------------------------------------
@@ -282,6 +413,49 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   };
 
   // ---------------------------------------------------------------------------
+  // Filmstrip render: tile the resolved frames across the clip bar. Each slot
+  // shows its cached frame URL, falling back to the poster (item.thumbnailUrl)
+  // when the frame has not resolved yet or extraction failed (degrade, spec
+  // §2.3). A single-slot (narrow) clip renders one tile — same as the prior
+  // single-thumbnail behaviour. Rendered as an absolutely-positioned layer
+  // BEHIND the label so the name/duration stay readable.
+  // ---------------------------------------------------------------------------
+
+  const renderFilmstrip = () => {
+    const slots = filmstripSlots;
+    if (slots.length === 0) return null;
+    const slotWidthPct = 100 / slots.length;
+    return (
+      <div
+        className="pointer-events-none absolute inset-0 flex overflow-hidden"
+        style={{ borderRadius: '3px', zIndex: 0 }}
+        aria-hidden="true"
+      >
+        {slots.map((slot, i) => {
+          const url = slot.url ?? item.thumbnailUrl ?? null;
+          return (
+            <div
+              key={`${slot.tMs}-${i}`}
+              className="h-full flex-shrink-0 bg-black/20"
+              style={{ width: `${slotWidthPct}%` }}
+            >
+              {url && (
+                <img
+                  src={url}
+                  alt=""
+                  className="h-full w-full object-cover opacity-80"
+                  draggable={false}
+                  loading="lazy"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // ---------------------------------------------------------------------------
   // Render item content — preserve all original visual rendering
   // ---------------------------------------------------------------------------
 
@@ -305,33 +479,50 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     switch (item.type) {
       case 'video':
         return (
-          <div style={contentStyle}>
-            <div className="flex items-center space-x-1 min-w-0">
-              {item.thumbnailUrl && (
-                <img
-                  src={item.thumbnailUrl}
-                  alt={item.name}
-                  className="rounded object-cover flex-shrink-0"
+          <>
+            {renderFilmstrip()}
+            {/* Label overlay sits ABOVE the filmstrip (relative z-index) with a
+                subtle scrim so the name/duration stay readable over frames. */}
+            <div
+              style={contentStyle}
+              className="relative z-[1]"
+            >
+              <div className="flex items-center space-x-1 min-w-0">
+                {/* Keep a small poster chip only when no filmstrip is present
+                    yet (single fallback for very early render); the filmstrip
+                    background covers the cover role once frames resolve. */}
+                {filmstripSlots.length === 0 && item.thumbnailUrl && (
+                  <img
+                    src={item.thumbnailUrl}
+                    alt={item.name}
+                    className="rounded object-cover flex-shrink-0"
+                    style={{
+                      width: `${thumbnailSize}px`,
+                      height: `${thumbnailSize}px`,
+                    }}
+                  />
+                )}
+                <span
+                  className="text-white font-medium truncate drop-shadow"
                   style={{
-                    width: `${thumbnailSize}px`,
-                    height: `${thumbnailSize}px`,
+                    fontSize: `${fontSize}px`,
+                    textShadow: '0 1px 2px rgba(0,0,0,0.7)',
                   }}
-                />
-              )}
+                >
+                  {item.name}
+                </span>
+              </div>
               <span
-                className="text-white font-medium truncate"
-                style={{ fontSize: `${fontSize}px` }}
+                className="text-white opacity-90 flex-shrink-0 ml-1"
+                style={{
+                  fontSize: `${Math.max(8, fontSize - 2)}px`,
+                  textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+                }}
               >
-                {item.name}
+                {item.duration.toFixed(1)}s
               </span>
             </div>
-            <span
-              className="text-white opacity-75 flex-shrink-0 ml-1"
-              style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
-            >
-              {item.duration.toFixed(1)}s
-            </span>
-          </div>
+          </>
         );
       case 'audio':
         return (
@@ -379,7 +570,20 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
               </>
             ) : (
               <>
-                <div className="flex items-center space-x-1 min-w-0">
+                {/* spec 04: persisted local waveform behind the label. Falls
+                    back to the static placeholder bars when no local audio
+                    reference is available (e.g. legacy remote-only audio). */}
+                {waveformAudioUrl && item.materialId && (
+                  <AudioWaveformCanvas
+                    materialId={item.materialId}
+                    audioUrl={waveformAudioUrl}
+                    width={width}
+                    height={trackHeight}
+                    clipStart={item.clipStart}
+                    clipEnd={item.clipEnd}
+                  />
+                )}
+                <div className="flex items-center space-x-1 min-w-0 relative z-[1]">
                   <div
                     className="flex-shrink-0"
                     style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
@@ -395,17 +599,21 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                     {item.name}
                   </span>
                 </div>
-                <div className="flex items-center space-x-0.5 flex-shrink-0">
-                  {[...Array(Math.max(3, Math.min(8, Math.floor(iconSize / 2))))].map((_, i) => (
-                    <div
-                      key={i}
-                      className="w-0.5 bg-white opacity-60"
-                      style={{
-                        height: `${Math.max(2, (((i * 7 + 3) % 11) / 11) * (iconSize * 0.6) + 2)}px`,
-                      }}
-                    />
-                  ))}
-                </div>
+                {/* Static placeholder bars only when there is no real waveform
+                    source — the persisted canvas replaces them otherwise. */}
+                {!waveformAudioUrl && (
+                  <div className="flex items-center space-x-0.5 flex-shrink-0">
+                    {[...Array(Math.max(3, Math.min(8, Math.floor(iconSize / 2))))].map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-0.5 bg-white opacity-60"
+                        style={{
+                          height: `${Math.max(2, (((i * 7 + 3) % 11) / 11) * (iconSize * 0.6) + 2)}px`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -605,6 +813,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       style={getItemStyles()}
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
       onKeyDown={handleItemKeyDown}
       className="timeline-item focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
       data-clip-id={item.id}

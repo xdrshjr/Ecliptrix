@@ -35,6 +35,8 @@ export interface TimelineAction {
     | 'UPDATE_ITEM'
     | 'MOVE_ITEM'
     | 'SWAP_ITEMS'
+    | 'SPLIT_ITEM'
+    | 'DETACH_AUDIO'
     | 'SELECT_ITEM'
     | 'DESELECT_ALL'
     | 'SELECT_ALL_TRACK_ITEMS'

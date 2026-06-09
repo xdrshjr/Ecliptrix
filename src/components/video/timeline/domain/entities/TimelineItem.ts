@@ -93,6 +93,12 @@ export class TimelineItem {
   // Original material type (for distinguishing image items on video tracks)
   private _originalMaterialType?: MaterialType;
 
+  // Whether this video item's embedded audio has been detached to an
+  // independent audio track item. When true, composition/export must NOT let
+  // this video item contribute audio (the derived audio item does instead),
+  // avoiding double-audio. See spec 01 §2.4.
+  private _audioDetached?: boolean;
+
   // ------------------------------------------------------------------
   // Construction (private — use factory methods)
   // ------------------------------------------------------------------
@@ -123,6 +129,7 @@ export class TimelineItem {
     volume: Volume;
     opacity: number;
     originalMaterialType?: MaterialType;
+    audioDetached?: boolean;
   }) {
     this.id = params.id;
     this._name = params.name;
@@ -149,6 +156,7 @@ export class TimelineItem {
     this._volume = params.volume;
     this._opacity = Math.min(1, Math.max(0, params.opacity));
     this._originalMaterialType = params.originalMaterialType;
+    this._audioDetached = params.audioDetached;
   }
 
   // ------------------------------------------------------------------
@@ -206,6 +214,9 @@ export class TimelineItem {
 
   get originalMaterialType(): MaterialType | undefined { return this._originalMaterialType; }
 
+  get audioDetached(): boolean | undefined { return this._audioDetached; }
+  set audioDetached(value: boolean | undefined) { this._audioDetached = value; }
+
   // ------------------------------------------------------------------
   // Static factory methods
   // ------------------------------------------------------------------
@@ -244,6 +255,7 @@ export class TimelineItem {
       volume: props.volume != null ? Volume.create(props.volume) : Volume.default(),
       opacity: props.opacity ?? 1.0,
       originalMaterialType: props.originalMaterialType,
+      audioDetached: props.audioDetached,
     });
   }
 
@@ -281,6 +293,7 @@ export class TimelineItem {
       volume: data.volume != null ? Volume.create(data.volume) : Volume.default(),
       opacity: data.opacity ?? 1.0,
       originalMaterialType: data.originalMaterialType,
+      audioDetached: data.audioDetached,
     });
   }
 
@@ -304,12 +317,20 @@ export class TimelineItem {
   }
 
   /**
-   * Resize this item by moving one of its edges.
+   * Resize this item by moving one of its edges. A resize is a TRIM of the
+   * underlying source interval, not a stretch — so the clip interval and the
+   * track duration are kept in exact lock-step (INV-3: duration ===
+   * clipEnd - clipStart). The opposite source edge stays pinned; only the
+   * dragged edge's source offset moves by the same delta as the track edge.
    *
-   * - 'start' edge: adjusts startTime forward/backward, shrinking/expanding
-   *   the duration accordingly. Clips clipStart if present.
-   * - 'end' edge: adjusts duration so the item ends at newPosition.
-   *   Clips clipEnd if present.
+   * - 'start' edge: shifts startTime + clipStart by the same delta, pinning
+   *   clipEnd. New duration = clipEnd - newClipStart.
+   * - 'end'   edge: shifts duration + clipEnd by the same delta, pinning
+   *   clipStart. New duration = newClipEnd - clipStart.
+   *
+   * The dragged source edge is clamped into [0, originalDuration] (when known)
+   * so the trim never reads past the media; the track duration is recomputed
+   * from the clamped clip interval to preserve INV-3.
    *
    * @throws if the resize would produce a non-positive duration.
    */
@@ -321,39 +342,65 @@ export class TimelineItem {
           `TimelineItem.resize: new start (${newPosition.value}) must be before current end (${currentEnd.value})`
         );
       }
-      const newDuration = Duration.fromRange(newPosition, currentEnd);
-
-      // Adjust clipStart proportionally if original clip info exists
-      if (this._clipStart != null && this._originalDuration != null) {
-        const timeDelta = newPosition.value - this._startTime.value;
-        const newClipStartValue = this._clipStart.value + timeDelta;
-        this._clipStart = TimePosition.create(Math.max(0, newClipStartValue));
-      }
-
-      this._startTime = newPosition;
-      this._duration = newDuration;
+      this.resizeStartEdge(newPosition, currentEnd);
     } else {
-      // edge === 'end'
       if (newPosition.value <= this._startTime.value) {
         throw new Error(
           `TimelineItem.resize: new end (${newPosition.value}) must be after start (${this._startTime.value})`
         );
       }
-      const newDuration = Duration.fromRange(this._startTime, newPosition);
-
-      // Adjust clipEnd proportionally if original clip info exists
-      if (this._clipEnd != null && this._originalDuration != null) {
-        const timeDelta = newPosition.value - this.endTime().value;
-        const newClipEndValue = this._clipEnd.value + timeDelta;
-        if (this._originalDuration) {
-          this._clipEnd = TimePosition.create(
-            Math.min(this._originalDuration.value, Math.max(0, newClipEndValue))
-          );
-        }
-      }
-
-      this._duration = newDuration;
+      this.resizeEndEdge(newPosition);
     }
+  }
+
+  /**
+   * Trim the start (in-point) edge. Keeps clipEnd pinned and slides clipStart
+   * by the same delta as startTime, then derives duration from the clip
+   * interval so INV-3 holds exactly.
+   */
+  private resizeStartEdge(newPosition: TimePosition, currentEnd: TimePosition): void {
+    const timeDelta = newPosition.value - this._startTime.value;
+
+    if (this._clipStart != null) {
+      const upperBound = this._clipEnd?.value ?? Number.POSITIVE_INFINITY;
+      const newClipStart = Math.min(
+        Math.max(0, this._clipStart.value + timeDelta),
+        upperBound,
+      );
+      this._clipStart = TimePosition.create(newClipStart);
+      const clipEndValue = this._clipEnd?.value ?? newClipStart + (currentEnd.value - newPosition.value);
+      this._startTime = newPosition;
+      this._duration = Duration.create(clipEndValue - newClipStart);
+      return;
+    }
+
+    // No clip info: duration follows the track edges directly.
+    this._startTime = newPosition;
+    this._duration = Duration.fromRange(newPosition, currentEnd);
+  }
+
+  /**
+   * Trim the end (out-point) edge. Keeps clipStart pinned and slides clipEnd
+   * by the same delta as the track end, then derives duration from the clip
+   * interval so INV-3 holds exactly.
+   */
+  private resizeEndEdge(newPosition: TimePosition): void {
+    const timeDelta = newPosition.value - this.endTime().value;
+
+    if (this._clipEnd != null) {
+      const clipStartValue = this._clipStart?.value ?? 0;
+      const upperBound = this._originalDuration?.value ?? Number.POSITIVE_INFINITY;
+      const newClipEnd = Math.min(
+        Math.max(clipStartValue, this._clipEnd.value + timeDelta),
+        upperBound,
+      );
+      this._clipEnd = TimePosition.create(newClipEnd);
+      this._duration = Duration.create(newClipEnd - clipStartValue);
+      return;
+    }
+
+    // No clip info: duration follows the track edges directly.
+    this._duration = Duration.fromRange(this._startTime, newPosition);
   }
 
   /**
@@ -423,6 +470,7 @@ export class TimelineItem {
     if (this._volume.value !== 1.0) data.volume = this._volume.value;
     if (this._opacity !== 1.0) data.opacity = this._opacity;
     if (this._originalMaterialType != null) data.originalMaterialType = this._originalMaterialType;
+    if (this._audioDetached != null) data.audioDetached = this._audioDetached;
 
     return data;
   }

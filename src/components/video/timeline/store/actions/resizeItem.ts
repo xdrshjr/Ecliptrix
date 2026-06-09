@@ -2,6 +2,12 @@
  * resizeItem — Orchestrated action for resizing a timeline item.
  *
  * Records history before and after the resize operation for undo/redo.
+ *
+ * Resize is a TRIM of the source interval, enforced at the entity layer
+ * (TimelineItem.resize): the track duration and the clip interval move in
+ * lock-step so INV-3 (duration === clipEnd - clipStart) always holds. This
+ * action therefore needs no extra clip math — it routes through the slice →
+ * aggregate → entity and lets the invariant live in one place (spec 01 §2.6).
  */
 
 import type { TimelineStore } from '../useTimelineStore';

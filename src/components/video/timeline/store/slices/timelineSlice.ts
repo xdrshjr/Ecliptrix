@@ -67,6 +67,17 @@ export interface TimelineSlice {
   autoOrganize: () => void;
   /** Swap the startTimes of two items on the same non-subtitle track. */
   swapItems: (aId: string, bId: string) => void;
+  /**
+   * Split an item into two halves at the given track-timeline cut time.
+   * Returns the left/right ids, or null on a boundary/out-of-range no-op.
+   */
+  splitItemAtTime: (itemId: string, tCut: number) => { leftId: string; rightId: string } | null;
+  /**
+   * Detach a video item's embedded audio into an independent audio-track item.
+   * Returns the new audio item id + track, or null on a no-op. The caller is
+   * responsible for confirming the source material has an audio stream.
+   */
+  detachAudio: (itemId: string) => { audioItemId: string; targetTrackId: string } | null;
 
   // Track operations
   toggleTrackLock: (trackId: string) => void;
@@ -287,6 +298,36 @@ export const createTimelineSlice: StateCreator<
         return;
       }
       state._syncDerivedState();
+    },
+
+    splitItemAtTime: (itemId: string, tCut: number) => {
+      const state = get();
+      let result: { leftId: string; rightId: string } | null = null;
+      try {
+        result = state._aggregate.splitItemAtTime(itemId, tCut);
+      } catch (err) {
+        console.error('[timelineSlice] splitItemAtTime failed:', err);
+        return null;
+      }
+      if (result) {
+        state._syncDerivedState();
+      }
+      return result;
+    },
+
+    detachAudio: (itemId: string) => {
+      const state = get();
+      let result: { audioItemId: string; targetTrackId: string } | null = null;
+      try {
+        result = state._aggregate.detachAudio(itemId);
+      } catch (err) {
+        console.error('[timelineSlice] detachAudio failed:', err);
+        return null;
+      }
+      if (result) {
+        state._syncDerivedState();
+      }
+      return result;
     },
 
     updateItemVolume: (itemId: string, volume: number) => {
