@@ -316,4 +316,49 @@ describe('resolveSequencePlaybackUrl', () => {
       window.location.origin + '/api/storage/files/preview-proxies/mat-1/480p.mp4',
     );
   });
+
+  // -- round-2 timeline preview fix (RC-1/RC-2 — stale sequence snapshot) -----
+
+  it('(rc1) empty/stale seq.url + live direct-local material → local storage URL wins', () => {
+    // The sequence snapshot was frozen before the upload completed, so its own
+    // url is empty; the live material now carries the same-origin local path.
+    const material = makeMaterial({
+      url: '/api/storage/files/video/local.mp4',
+      serverUrl: '/api/storage/files/video/local.mp4',
+      cacheUrl: '/api/storage/files/video/local.mp4',
+      storageKey: 'video/local.mp4',
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl: '/api/storage/files/video/local.mp4',
+      },
+    });
+    const staleSeq = makeSeq({ url: '' });
+    const result = resolveSequencePlaybackUrl(staleSeq, [material]);
+
+    expect(result).not.toBeNull();
+    expect(result!.source).toBe('localStorageUrl');
+    expect(result!.url).toBe(
+      `${window.location.origin}/api/storage/files/video/local.mp4`,
+    );
+  });
+
+  it('(rc1) old remote seq.url is never preferred over a live direct-local material URL', () => {
+    const material = makeMaterial({
+      url: '/api/storage/files/video/local.mp4',
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl: '/api/storage/files/video/local.mp4',
+      },
+    });
+    const staleSeq = makeSeq({ url: 'https://cdn.pexels.com/old-remote.mp4' });
+    const result = resolveSequencePlaybackUrl(staleSeq, [material]);
+
+    expect(result!.source).toBe('localStorageUrl');
+    expect(result!.url).toBe(
+      `${window.location.origin}/api/storage/files/video/local.mp4`,
+    );
+    expect(result!.url).not.toContain('pexels');
+  });
 });

@@ -1,10 +1,73 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
 import { UseTimelineCompositionReturn, VideoSequenceItem, AudioSequenceItem, CompositionPlayback, VideoSeekCallback } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { CompositionAdapter } from '../timeline/infrastructure';
 import type { TrackData, MaterialData } from '../timeline/domain/types';
 import { findSequenceAtCompositionTime } from '../utils/timelineMapping';
+
+/**
+ * 折叠一个素材的「播放相关字段」为一段稳定字符串。
+ *
+ * RC-1：占位上传素材完成本地保存后，会把 url/cacheUrl/serverUrl/
+ * metadata.localResolvedUrl 从空值翻转为 `/api/storage/files/...`，但素材 id
+ * 与时间轴 item id 都不变。仅凭 id/数量/时长做变化检测会漏掉这次翻转，导致
+ * 组合序列停留在空 URL 快照、`<video>.src` 永不赋值 → 加入轨道后无法预览。
+ * 把这些字段纳入签名后，素材播放字段一变化即触发组合播放状态刷新。
+ */
+function materialPlaybackFields(material: MaterialItem | undefined): string {
+  if (!material) return 'no-material';
+  return [
+    material.url,
+    material.cacheUrl,
+    material.serverUrl,
+    material.metadata?.localResolvedUrl,
+    material.previewProxyStatus,
+    material.previewProxyLocalUrl,
+    material.localProxyStatus,
+    material.localProxyUrl,
+  ]
+    .map(value => value ?? '')
+    .join('|');
+}
+
+/** 单个序列的播放签名：序列/item 字段取自 sequence，素材字段取自 live material。 */
+function sequencePlaybackSignature(
+  seq: VideoSequenceItem | AudioSequenceItem,
+  materialsById: Map<string, MaterialItem>,
+): string {
+  const material = seq.materialId ? materialsById.get(seq.materialId) : undefined;
+  return [
+    seq.id,
+    seq.materialId ?? '',
+    seq.trackId ?? '',
+    seq.clipStart ?? '',
+    seq.clipEnd ?? '',
+    seq.duration ?? '',
+    seq.startTime ?? '',
+    materialPlaybackFields(material),
+  ].join('~');
+}
+
+/**
+ * 组合播放签名：所有视频/音频序列签名的有界字符串拼接。
+ * 以「字符串相等」而非深比较作为提交判据，更新成本低，且避免深比较带来的
+ * 播放重置抖动（见 spec Risks 表）。
+ */
+function computeCompositionSignature(
+  videoSequences: VideoSequenceItem[],
+  audioSequences: AudioSequenceItem[],
+  materials: MaterialItem[],
+): string {
+  const materialsById = new Map(materials.map(m => [m.id, m] as const));
+  const videoPart = videoSequences
+    .map(seq => sequencePlaybackSignature(seq, materialsById))
+    .join('#');
+  const audioPart = audioSequences
+    .map(seq => sequencePlaybackSignature(seq, materialsById))
+    .join('#');
+  return `V:${videoPart}||A:${audioPart}`;
+}
 
 /**
  * useTimelineComposition Hook
@@ -67,33 +130,43 @@ export const useTimelineComposition = (
     return compositionAdapter.extractAudioSequences(tracks, materialData);
   }, [materials, compositionAdapter]);
 
-  // 处理时间轴状态变化
-  const handleTimelineStateChange = useCallback((timelineState: TimelineState) => {
+  // RC-1：保存最近一次的 TimelineState，供 materials 变化时重新提取序列使用。
+  const lastTimelineStateRef = useRef<TimelineState | null>(null);
+  // RC-1：已提交的组合播放签名，作为「是否需要 setState」的唯一判据。
+  const compositionSignatureRef = useRef<string>('');
+
+  // 依据给定的 TimelineState 重建组合播放状态。
+  // 提交判据从「id/数量/时长变化」升级为「播放签名变化」：占位素材完成本地
+  // 保存后 url 等字段翻转、id 不变，旧判据会漏更新，导致序列停留在空 URL 快照。
+  const rebuildCompositionPlayback = useCallback((timelineState: TimelineState) => {
     const videoSequences = getVideoSequencesFromTimeline(timelineState);
     const audioSequences = getAudioSequencesFromTimeline(timelineState);
     const totalDuration = videoSequences.reduce((total, seq) => total + seq.duration, 0);
 
+    // R-5：先比对（廉价的）字符串签名，签名未变则连 setState 都不触发，
+    // 避免 materials 频繁换引用时的播放重置抖动。
+    const nextSignature = computeCompositionSignature(videoSequences, audioSequences, materials);
+    if (nextSignature === compositionSignatureRef.current) {
+      return;
+    }
+    compositionSignatureRef.current = nextSignature;
+
+    logger.info('时间轴状态变化 - 更新组合播放状态', {
+      videoSequencesCount: videoSequences.length,
+      audioSequencesCount: audioSequences.length,
+      isCompositionMode: videoSequences.length > 0
+    });
+
     setCompositionPlayback(prev => {
-      // 检查视频和音频序列是否发生变化
-      const videoSequencesChanged =
-        prev.videoSequences.length !== videoSequences.length ||
-        JSON.stringify(prev.videoSequences.map(s => s.id)) !== JSON.stringify(videoSequences.map(s => s.id));
-
-      const audioSequencesChanged =
-        prev.audioSequences.length !== audioSequences.length ||
-        JSON.stringify(prev.audioSequences.map(s => s.id)) !== JSON.stringify(audioSequences.map(s => s.id));
-
-      const durationChanged = prev.totalCompositionDuration !== totalDuration;
-
-      if (!videoSequencesChanged && !audioSequencesChanged && !durationChanged) {
-        return prev; // 返回原状态，避免不必要的更新
-      }
-
-      logger.info('时间轴状态变化 - 更新组合播放状态', {
-        videoSequencesCount: videoSequences.length,
-        audioSequencesCount: audioSequences.length,
-        isCompositionMode: videoSequences.length > 0
-      });
+      // 保留 currentSequenceIndex：当前序列 id 仍存在时沿用它的新下标（避免在
+      // 加片段或素材刷新时把播放头跳回第一段）；不存在时有序列回 0，无序列保持原值。
+      const currentSequenceId = prev.videoSequences[prev.currentSequenceIndex]?.id;
+      const preservedIndex = currentSequenceId
+        ? videoSequences.findIndex(seq => seq.id === currentSequenceId)
+        : -1;
+      const nextSequenceIndex = preservedIndex >= 0
+        ? preservedIndex
+        : (videoSequences.length > 0 ? 0 : prev.currentSequenceIndex);
 
       return {
         ...prev,
@@ -101,10 +174,26 @@ export const useTimelineComposition = (
         audioSequences,
         totalCompositionDuration: totalDuration,
         isCompositionMode: videoSequences.length > 0,
-        currentSequenceIndex: videoSequencesChanged && videoSequences.length > 0 ? 0 : prev.currentSequenceIndex
+        currentSequenceIndex: nextSequenceIndex
       };
     });
-  }, [getVideoSequencesFromTimeline, getAudioSequencesFromTimeline, logger]);
+  }, [getVideoSequencesFromTimeline, getAudioSequencesFromTimeline, materials, logger]);
+
+  // 处理时间轴状态变化
+  const handleTimelineStateChange = useCallback((timelineState: TimelineState) => {
+    lastTimelineStateRef.current = timelineState;
+    rebuildCompositionPlayback(timelineState);
+  }, [rebuildCompositionPlayback]);
+
+  // RC-1：materials 变化（占位→完成本地素材、远端→缓存写回）时，时间轴状态本身
+  // 往往没变，父组件不会再次调用 handleTimelineStateChange。这里以最近一次
+  // TimelineState 重新提取序列，让刷新后的素材播放字段重新发布到组合播放状态，
+  // 否则序列会一直停留在加入轨道那一刻的空/旧 URL 快照。
+  useEffect(() => {
+    const timelineState = lastTimelineStateRef.current;
+    if (!timelineState) return;
+    rebuildCompositionPlayback(timelineState);
+  }, [materials, rebuildCompositionPlayback]);
 
   // 组合播放控制
   const handleCompositionPlay = useCallback(() => {

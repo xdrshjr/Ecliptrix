@@ -123,6 +123,50 @@ describe('VideoPlayerPanel — round-3 play-gate corrections (G1/G3/G3b)', () =>
   });
 });
 
+// ---------------------------------------------------------------------------
+// Round-2 timeline material preview fix
+// (docs/plans/timeline-material-preview-fix/spec.md).
+// RC-2: the composition-bootstrap "did the source change?" comparison key must
+//       be computed by the SAME live-material resolver wrapper that produces the
+//       value written to <video>.src (getSequencePreviewSrc), NOT by
+//       selectPlaybackUrl(sequenceSnapshot) — otherwise an empty/stale snapshot
+//       makes srcChanged=false and the source is never assigned.
+// RC-3: the two previously flag-less resolveSequencePlaybackUrl calls
+//       (resolvedFirstSrc + the cached-video fallback chain) must pass the same
+//       locked { preferPreviewProxy, preferLocalProxy } flags as the writes.
+// ---------------------------------------------------------------------------
+
+describe('VideoPlayerPanel — RC-2 bootstrap comparison key uses the live-material resolver', () => {
+  it('computes the bootstrap newSrc via getSequencePreviewSrc, not selectPlaybackUrl(snapshot)', () => {
+    expect(src).toMatch(/const\s+newSrc\s*=\s*getSequencePreviewSrc\(firstSequence\)/);
+    // The legacy stale-snapshot comparison key must be gone.
+    expect(src).not.toMatch(
+      /const\s+newSrc\s*=\s*selectPlaybackUrl\(firstSequence,\s*\{\s*purpose:\s*'preview'\s*\}\)/,
+    );
+  });
+});
+
+describe('VideoPlayerPanel — RC-3 unified resolver flags', () => {
+  it('resolvedFirstSrc resolves with the locked preferPreviewProxy/preferLocalProxy flags', () => {
+    const start = src.indexOf('const resolvedFirstSrc');
+    expect(start).toBeGreaterThan(-1);
+    const fn = src.slice(start, start + 500);
+    expect(fn).toMatch(/resolveSequencePlaybackUrl\(/);
+    expect(fn).toMatch(/preferPreviewProxy:\s*previewProxyEnabled/);
+    expect(fn).toMatch(/preferLocalProxy:\s*localPreviewEnabled/);
+  });
+
+  it('the cached-video fallback chain resolves with the same locked flags', () => {
+    // The fast path that builds a fallback chain from the cached <video> element.
+    const anchor = src.indexOf('首个视频缓存命中，快速加载');
+    expect(anchor).toBeGreaterThan(-1);
+    const fn = src.slice(anchor, anchor + 900);
+    expect(fn).toMatch(/resolveSequencePlaybackUrl\(firstSequence,\s*materials\s*\|\|\s*\[\]/);
+    expect(fn).toMatch(/preferPreviewProxy:\s*previewProxyEnabled/);
+    expect(fn).toMatch(/preferLocalProxy:\s*localPreviewEnabled/);
+  });
+});
+
 describe('VideoPlayerPanel — audio from local blob (C1)', () => {
   it('getOrCreateAudioElement resolves the materialId blob when ready', () => {
     const fn = src.slice(

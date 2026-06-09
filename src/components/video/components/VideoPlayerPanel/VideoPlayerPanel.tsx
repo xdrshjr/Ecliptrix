@@ -637,11 +637,19 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const resolvedFirstSrc = useMemo(() => {
     const firstSeq = compositionPlayback?.videoSequences?.[0];
     if (!firstSeq) return null;
-    return resolveSequencePlaybackUrl(firstSeq, materials || []);
+    // RC-3：补齐锁定 flags，使该 memo 的解析口径与 getSequencePreviewSrc /
+    // assignSequenceSrc 完全一致，bootstrap 比对键(newSrc) 与依赖项(resolvedFirstSrc.url)
+    // 才会同源变化，避免 preview-proxy 优先级漂移导致的反复 re-source。
+    return resolveSequencePlaybackUrl(firstSeq, materials || [], {
+      preferPreviewProxy: previewProxyEnabled,
+      preferLocalProxy: localPreviewEnabled,
+    });
   }, [
     compositionPlayback?.videoSequences?.[0]?.id,
     compositionPlayback?.videoSequences?.[0]?.materialId,
     materials,
+    previewProxyEnabled,
+    localPreviewEnabled,
   ]);
 
   // Whether any track in the timeline has at least one item — gates the export button.
@@ -1148,9 +1156,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
       // 检查是否需要更新视频源（避免重复设置相同的src）
       const currentSrc = videoRef.current.src;
-      // 预览路径优先消费同源 cacheUrl（远程素材已被预下载到 cached_materials）；
-      // 仅 cacheUrl 缺失时回落到 serverUrl||url。导出路径不会经过这里。
-      const newSrc = selectPlaybackUrl(firstSequence, { purpose: 'preview' }) || firstSequence.url;
+      // RC-2：比对键必须与 assignSequenceSrc 实际写入 <video>.src 的口径完全一致，
+      // 即统一走 getSequencePreviewSrc（resolveSequencePlaybackUrl + live materials
+      // + 锁定 flags），而非 selectPlaybackUrl(序列快照)。否则当素材是「加入轨道后才
+      // 完成本地保存」时，序列快照 url 仍为空 → newSrc==currentSrc=='' → srcChanged=false，
+      // <video>.src 永不被赋值，素材加入轨道后无法预览播放。
+      const newSrc = getSequencePreviewSrc(firstSequence);
       const currentVideoTime = videoRef.current.currentTime;
 
       // 修复 R3：若 timeline 游标已不在 0（用户已经拖动过播放头），
@@ -1226,7 +1237,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 sequenceName: firstSequence.name,
                 cacheHitRate: videoCache.cacheStats.cacheHitRate + '%'
               });
-              const resolved = resolveSequencePlaybackUrl(firstSequence, materials || []);
+              // RC-3：与 assignSequenceSrc / getSequencePreviewSrc 同口径传入锁定 flags，
+              // 否则缓存命中回退链与主候选解析口径不一致（远端 preview-proxy 优先级会漂移）。
+              const resolved = resolveSequencePlaybackUrl(firstSequence, materials || [], {
+                preferPreviewProxy: previewProxyEnabled,
+                preferLocalProxy: localPreviewEnabled,
+              });
               const fallbackChain = resolved
                 ? [resolved.url, ...resolved.fallbacks].filter(u => u !== cachedVideo!.src)
                 : [];
