@@ -15,7 +15,7 @@ function defaultConfig(appVersion) {
     schemaVersion: 1,
     frontendPort: DEFAULT_FRONTEND_PORT,
     backendPort: DEFAULT_BACKEND_PORT,
-    windowBounds: { width: 1440, height: 900 },
+    windowBounds: null,
     lastRunVersion: appVersion,
   }
 }

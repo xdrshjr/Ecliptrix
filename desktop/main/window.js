@@ -1,9 +1,13 @@
 'use strict'
 
 const path = require('path')
-const { BrowserWindow, shell } = require('electron')
+const { BrowserWindow, screen, shell } = require('electron')
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets')
+const DEFAULT_WINDOW_WIDTH = 1366
+const DEFAULT_WINDOW_HEIGHT = 768
+const LEGACY_DEFAULT_WIDTH = 1440
+const LEGACY_DEFAULT_HEIGHT = 900
 
 function createSplashWindow() {
   const splash = new BrowserWindow({
@@ -26,16 +30,74 @@ function setSplashStatus(splash, text) {
     .catch(() => {})
 }
 
+function isFinitePositiveNumber(value) {
+  return Number.isFinite(value) && value > 0
+}
+
+function isLegacySyntheticBounds(bounds) {
+  return (
+    bounds &&
+    bounds.width === LEGACY_DEFAULT_WIDTH &&
+    bounds.height === LEGACY_DEFAULT_HEIGHT &&
+    bounds.x === undefined &&
+    bounds.y === undefined
+  )
+}
+
+function normalizeSavedBounds(bounds, workAreaSize) {
+  if (!bounds || isLegacySyntheticBounds(bounds)) return null
+  if (!isFinitePositiveNumber(bounds.width) || !isFinitePositiveNumber(bounds.height)) return null
+  if (
+    workAreaSize &&
+    (bounds.width > workAreaSize.width || bounds.height > workAreaSize.height)
+  ) {
+    return null
+  }
+
+  return {
+    x: Number.isFinite(bounds.x) ? bounds.x : undefined,
+    y: Number.isFinite(bounds.y) ? bounds.y : undefined,
+    width: bounds.width,
+    height: bounds.height,
+    fullscreen: false,
+  }
+}
+
+function resolveInitialWindowState({ savedBounds, workAreaSize }) {
+  const normalizedBounds = normalizeSavedBounds(savedBounds, workAreaSize)
+  if (normalizedBounds) return normalizedBounds
+
+  if (
+    workAreaSize &&
+    workAreaSize.width >= DEFAULT_WINDOW_WIDTH &&
+    workAreaSize.height >= DEFAULT_WINDOW_HEIGHT
+  ) {
+    return {
+      width: DEFAULT_WINDOW_WIDTH,
+      height: DEFAULT_WINDOW_HEIGHT,
+      fullscreen: false,
+    }
+  }
+
+  return { fullscreen: true }
+}
+
 /**
  * Main application window pointed at the local Next.js server. Same-origin
  * URLs stay inside the window; everything else opens in the system browser.
  */
 function createMainWindow({ url, bounds, onBoundsChange, version, logsPath }) {
+  const workAreaSize = screen.getPrimaryDisplay().workAreaSize
+  const initialWindowState = resolveInitialWindowState({
+    savedBounds: bounds,
+    workAreaSize,
+  })
   const win = new BrowserWindow({
-    width: (bounds && bounds.width) || 1440,
-    height: (bounds && bounds.height) || 900,
-    x: bounds ? bounds.x : undefined,
-    y: bounds ? bounds.y : undefined,
+    width: initialWindowState.width,
+    height: initialWindowState.height,
+    x: initialWindowState.x,
+    y: initialWindowState.y,
+    fullscreen: initialWindowState.fullscreen,
     minWidth: 1024,
     minHeight: 640,
     show: false,
@@ -65,7 +127,12 @@ function createMainWindow({ url, bounds, onBoundsChange, version, logsPath }) {
   })
 
   win.on('close', () => {
-    if (onBoundsChange && !win.isMaximized() && !win.isMinimized()) {
+    if (
+      onBoundsChange &&
+      !win.isMaximized() &&
+      !win.isMinimized() &&
+      !win.isFullScreen()
+    ) {
       onBoundsChange(win.getBounds())
     }
   })
@@ -104,4 +171,10 @@ function showErrorWindow({ serviceName, logsPath, detail }) {
   return win
 }
 
-module.exports = { createSplashWindow, setSplashStatus, createMainWindow, showErrorWindow }
+module.exports = {
+  createSplashWindow,
+  setSplashStatus,
+  createMainWindow,
+  showErrorWindow,
+  resolveInitialWindowState,
+}
