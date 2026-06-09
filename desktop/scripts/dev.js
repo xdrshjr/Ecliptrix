@@ -19,6 +19,7 @@ const http = require('http')
 const net = require('net')
 const path = require('path')
 const { spawn, spawnSync } = require('child_process')
+const { withoutElectronRunAsNode } = require('./lib/electron-env')
 
 const DESKTOP_DIR = path.resolve(__dirname, '..')
 const REPO_ROOT = path.resolve(DESKTOP_DIR, '..')
@@ -242,10 +243,7 @@ function launchElectron() {
   // agent harnesses set it, which turns electron.exe into plain Node - index.js
   // then crashes on `app.requestSingleInstanceLock()`, no window appears, and
   // you are left with only the web frontend. Mirrors scripts/smoke-test.js.
-  const env = { ...process.env }
-  for (const key of Object.keys(env)) {
-    if (key.toUpperCase() === 'ELECTRON_RUN_AS_NODE') delete env[key]
-  }
+  const env = withoutElectronRunAsNode(process.env)
   // Bootstrap credentials for desktop silent auto-login (read by index.js).
   env.ROOT_USERNAME = ROOT_USERNAME
   env.ROOT_PASSWORD = ROOT_PASSWORD

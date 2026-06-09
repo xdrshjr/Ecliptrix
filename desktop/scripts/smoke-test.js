@@ -5,6 +5,7 @@ const http = require('http')
 const os = require('os')
 const path = require('path')
 const { spawn, spawnSync } = require('child_process')
+const { withoutElectronRunAsNode } = require('./lib/electron-env')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
@@ -119,8 +120,7 @@ async function main() {
   // Strip ELECTRON_RUN_AS_NODE: agent harnesses / Electron-spawned terminals
   // set it, which turns Ecliptrix.exe into plain Node — it then rejects
   // --user-data-dir with "bad option" and the smoke gate false-fails.
-  const childEnv = { ...process.env }
-  delete childEnv.ELECTRON_RUN_AS_NODE
+  const childEnv = withoutElectronRunAsNode(process.env)
   const child = spawn(exePath, [`--user-data-dir=${userDataDir}`], {
     stdio: 'ignore',
     detached: false,
