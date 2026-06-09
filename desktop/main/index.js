@@ -4,7 +4,7 @@ const path = require('path')
 const { app, dialog, ipcMain } = require('electron')
 
 const { initUserData, saveConfig } = require('./config')
-const { loadUserEnv } = require('./envCheck')
+const { loadUserEnv, backfillUserEnv } = require('./envCheck')
 const { pickPort } = require('./ports')
 const { ManagedService } = require('./processManager')
 const { createBackendDescriptor } = require('./backendService')
@@ -106,6 +106,16 @@ async function main() {
     state.logger.log('main', `dev mode — attaching to ${DEV_FRONTEND_URL}`)
     createMainWindow(DEV_FRONTEND_URL)
     return
+  }
+
+  // Self-heal an old placeholder .env left by a pre-round-1 install: rewrite
+  // any key still holding a placeholder with the bundled template's real
+  // default credential (config.js only copies the template on first run, so
+  // upgrade users never receive the keys otherwise). Must run BEFORE loadUserEnv
+  // so the injected child-process env carries the healed values.
+  const healed = backfillUserEnv(envPath, envTemplatePath)
+  if (healed.length > 0) {
+    state.logger.log('main', `self-healed ${healed.length} placeholder credential(s) from bundled template: ${healed.join(', ')}`)
   }
 
   const { env: userEnv, missing } = loadUserEnv(envPath)

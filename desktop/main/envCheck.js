@@ -7,8 +7,11 @@ const fs = require('fs')
 // the user through Settings → Model Settings instead. We still report them
 // via loadUserEnv().missing so index.js can log the first-run state.
 const REQUIRED_KEYS = ['LLM_API_KEY', 'LLM_API_URL']
-// env.template placeholders look like `your_llm_api_key_here`.
-const PLACEHOLDER_PATTERN = /^your_.*_here$/i
+// Placeholders are `your_*`. The old template suffixed `_here`
+// (your_llm_api_key_here) but pre-round-1 .env files shipped without it
+// (your_volcano_tts_api_key); both forms must be recognised so neither gets
+// injected as a fake credential nor mistaken for a real value during backfill.
+const PLACEHOLDER_PATTERN = /^your_[a-z0-9_]*$/i
 
 /** Minimal KEY=VALUE parser for userData/.env (comments + blank lines skipped). */
 function parseEnvFile(envPath) {
@@ -60,4 +63,67 @@ function loadUserEnv(envPath) {
   return { env, missing: missingRequiredKeys(env) }
 }
 
-module.exports = { parseEnvFile, missingRequiredKeys, loadUserEnv, REQUIRED_KEYS, PLACEHOLDER_PATTERN }
+/**
+ * Self-heal userData/.env against the bundled first-run template.
+ *
+ * The round-1 build ships real default credentials inside the template, but
+ * initUserData (config.js) only copies the template when the .env is ABSENT, so
+ * upgrade users keep an old placeholder .env and e.g. their Volcano TTS key
+ * stays `your_volcano_tts_api_key` → 401 at call time → TTS produces no audio.
+ * This rewrites, in place, any line whose value is still a placeholder with the
+ * template's real value.
+ *
+ * Rules (round-1 contract — user edits win, upgrades never overwrite):
+ *   - only a key already PRESENT in userData/.env whose value matches
+ *     PLACEHOLDER_PATTERN is rewritten — a real user value and a deliberately
+ *     empty value are left untouched, and a key the user removed is NOT
+ *     re-added (its absence is treated as an explicit choice);
+ *   - a key the template itself only carries as a placeholder/empty (zero-config
+ *     build) is skipped, so a placeholder is never written back;
+ *   - idempotent and structure-preserving: comments, grouping and key order are
+ *     kept, and the file is only rewritten when a value actually changed (after
+ *     one heal the placeholders are gone, so it never fires again).
+ *
+ * @param {string} envPath userData/.env path
+ * @param {string} templatePath bundled env.template.desktop path
+ * @returns {string[]} keys that were healed (empty when nothing changed)
+ */
+function backfillUserEnv(envPath, templatePath) {
+  if (!fs.existsSync(envPath) || !fs.existsSync(templatePath)) return []
+  const template = parseEnvFile(templatePath)
+
+  const original = fs.readFileSync(envPath, 'utf-8')
+  const eol = original.includes('\r\n') ? '\r\n' : '\n'
+  const healed = []
+  const lines = original.split(/\r?\n/).map((line) => {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) return line
+    const eq = trimmed.indexOf('=')
+    if (eq <= 0) return line
+    const key = trimmed.slice(0, eq).trim()
+    const currentValue = trimmed.slice(eq + 1).trim()
+    // Only heal a value that is still a placeholder; real and empty stay put.
+    if (!PLACEHOLDER_PATTERN.test(currentValue)) return line
+    const templateValue = template[key]
+    if (templateValue === undefined) return line
+    const tv = String(templateValue).trim()
+    // The template side must carry a real value; never write a placeholder or
+    // empty back (zero-config build → leave it for loadUserEnv to strip into
+    // graceful degradation).
+    if (tv === '' || PLACEHOLDER_PATTERN.test(tv)) return line
+    healed.push(key)
+    return `${key}=${templateValue}`
+  })
+  if (healed.length === 0) return []
+  fs.writeFileSync(envPath, lines.join(eol))
+  return healed
+}
+
+module.exports = {
+  parseEnvFile,
+  missingRequiredKeys,
+  loadUserEnv,
+  backfillUserEnv,
+  REQUIRED_KEYS,
+  PLACEHOLDER_PATTERN,
+}
