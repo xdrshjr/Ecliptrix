@@ -15,13 +15,22 @@ function winOf(e) {
  * Register the four window-control IPC handlers. Must be called exactly once,
  * before any `if (isDev) … return` early-exit in `main()` (spec §2.3b / R2),
  * otherwise the self-drawn buttons have no handler under `npm run dev`.
+ *
+ * @param {object} [logger] Optional main-process logger; IPC calls are traced at
+ *   DEBUG into ipc.log, so ipc.log is empty unless ECLIPTRIX_LOG_LEVEL=debug
+ *   (spec §2.4 / R3).
  */
-function registerWindowControlIpc() {
+function registerWindowControlIpc(logger) {
+  const trace = (channel) => {
+    if (logger) logger.debug('ipc', channel)
+  }
   ipcMain.handle('window:minimize', (e) => {
+    trace('window:minimize')
     const w = winOf(e)
     if (w) w.minimize()
   })
   ipcMain.handle('window:toggle-maximize', (e) => {
+    trace('window:toggle-maximize')
     const w = winOf(e)
     if (!w) return false
     if (w.isMaximized()) w.unmaximize()
@@ -29,10 +38,12 @@ function registerWindowControlIpc() {
     return w.isMaximized()
   })
   ipcMain.handle('window:close', (e) => {
+    trace('window:close')
     const w = winOf(e)
     if (w) w.close()
   })
   ipcMain.handle('window:is-maximized', (e) => {
+    trace('window:is-maximized')
     const w = winOf(e)
     return !!(w && w.isMaximized())
   })

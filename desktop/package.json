@@ -6,10 +6,12 @@
   "author": "Ecliptrix",
   "main": "main/index.js",
   "scripts": {
-    "dev": "electron . --dev",
+    "dev": "node scripts/dev.js",
+    "dev:attach": "electron . --dev",
     "build": "node scripts/build.js",
     "build:dir": "node scripts/build.js --dir",
     "smoke-test": "node scripts/smoke-test.js",
+    "test:logger": "node scripts/test-logger.js",
     "clean": "node scripts/build.js --clean"
   },
   "devDependencies": {

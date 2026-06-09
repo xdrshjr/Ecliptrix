@@ -187,6 +187,26 @@ async function main() {
       fail('SQLite database file was not created under userData/data/')
     }
     console.log('[smoke-test] sqlite file ok')
+
+    // 4.5. Categorised logs produced under userData/logs (spec §6.2): the four
+    //      core files exist and are non-empty, and process.log captured both
+    //      health transitions.
+    const logsDir = path.join(userDataDir, 'logs')
+    for (const file of ['main.log', 'process.log', 'backend.log', 'frontend.log']) {
+      const filePath = path.join(logsDir, file)
+      let size = 0
+      try {
+        size = fs.statSync(filePath).size
+      } catch {
+        size = -1
+      }
+      if (size <= 0) fail(`expected non-empty ${file} under ${logsDir} (size=${size})`)
+    }
+    const processLog = fs.readFileSync(path.join(logsDir, 'process.log'), 'utf-8')
+    if (!/backend healthy/.test(processLog) || !/frontend healthy/.test(processLog)) {
+      fail('process.log missing backend/frontend health lines')
+    }
+    console.log('[smoke-test] categorised logs ok')
   } finally {
     // 5. Graceful shutdown: WM_CLOSE to the main window (taskkill without /F),
     //    escalate to a tree kill if it hangs.

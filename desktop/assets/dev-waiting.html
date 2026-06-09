@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Ecliptrix — 等待开发服务器</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 32px;
+      background: linear-gradient(135deg, #0b1020 0%, #1a1033 60%, #0b1020 100%);
+      color: #e7e9ee;
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    .logo {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, #8ab4ff, #c084fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid rgba(138, 180, 255, 0.25);
+      border-top-color: #8ab4ff;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h1 { font-size: 16px; color: #ffd27a; font-weight: 600; }
+    p { font-size: 13px; line-height: 1.7; color: #9aa3b5; text-align: center; }
+    .cmd {
+      margin: 4px 0;
+      padding: 10px 14px;
+      background: #141a2e;
+      border: 1px solid #232c4a;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-family: Consolas, monospace;
+      color: #c9d2e4;
+    }
+    .hint { font-size: 11px; color: #5b6478; }
+  </style>
+</head>
+<body>
+  <div class="logo">Ecliptrix</div>
+  <div class="spinner"></div>
+  <h1>正在等待前端开发服务器…</h1>
+  <p>开发模式(<code>npm run dev</code>)只连接已启动的开发服务,不会自动拉起前端。<br />
+     请先在<strong>仓库根目录</strong>启动 Next.js 开发服务(默认 <strong>http://localhost:3000</strong>):</p>
+  <div class="cmd">npm run dev</div>
+  <p class="hint">服务就绪后本窗口会自动连接,无需手动刷新。后端请确保 uvicorn 运行在 :8000。</p>
+</body>
+</html>

@@ -54,7 +54,9 @@ class ManagedService {
   start() {
     const { name, command, args, cwd, env } = this.descriptor
     this.stopping = false
-    this.logger.log(name, `starting: ${command} ${args.join(' ')}`)
+    // Supervision events all belong to the `process` category (the name is in
+    // the message); `attachChild` keeps the child's raw output in its own sink.
+    this.logger.info('process', `starting ${name}: ${command} ${args.join(' ')}`)
     this.child = spawn(command, args, {
       cwd,
       env,
@@ -63,7 +65,8 @@ class ManagedService {
     })
     this.logger.attachChild(this.child, name)
     this.child.on('exit', (code, signal) => {
-      this.logger.log(name, `exited (code=${code}, signal=${signal})`)
+      // Unexpected exits are escalated to error() by the index.js callback.
+      this.logger.info('process', `${name} exited (code=${code}, signal=${signal})`)
       this.child = null
       if (!this.stopping && this.onUnexpectedExit) {
         this.onUnexpectedExit(name, code)
@@ -81,7 +84,7 @@ class ManagedService {
         throw new Error(`${name} exited before becoming healthy — see logs`)
       }
       if (await httpOk(healthUrl)) {
-        this.logger.log(name, `healthy at ${healthUrl}`)
+        this.logger.info('process', `${name} healthy at ${healthUrl}`)
         return
       }
       await sleep(1000)
@@ -96,7 +99,7 @@ class ManagedService {
     if (!child) return
     this.stopping = true
     const name = this.descriptor.name
-    this.logger.log(name, 'stopping...')
+    this.logger.info('process', `${name} stopping...`)
     const exited = new Promise((resolve) => child.once('exit', resolve))
 
     if (process.platform === 'win32') {
@@ -108,13 +111,13 @@ class ManagedService {
       child.kill('SIGTERM')
       const result = await Promise.race([exited, sleep(graceMs).then(() => 'timeout')])
       if (result === 'timeout') {
-        this.logger.log(name, `grace period elapsed — force killing tree ${child.pid}`)
+        this.logger.warn('process', `${name} grace period elapsed — force killing tree ${child.pid}`)
         killTree(child.pid)
       }
     }
     await exited
     this.child = null
-    this.logger.log(name, 'stopped')
+    this.logger.info('process', `${name} stopped`)
   }
 
   isRunning() {

@@ -9,7 +9,7 @@ const { pickPort } = require('./ports')
 const { ManagedService } = require('./processManager')
 const { createBackendDescriptor } = require('./backendService')
 const { createFrontendDescriptor } = require('./frontendService')
-const { Logger } = require('./logger')
+const { Logger, LogLevel } = require('./logger')
 const { registerWindowControlIpc } = require('./windowControls')
 const windows = require('./window')
 
@@ -17,6 +17,14 @@ const windows = require('./window')
 // packaged children (spec §4.1).
 const isDev = process.argv.includes('--dev')
 const DEV_FRONTEND_URL = 'http://localhost:3000'
+
+// Minimum structured-log level, overridable via ECLIPTRIX_LOG_LEVEL (spec §4).
+const LEVEL_BY_NAME = {
+  debug: LogLevel.DEBUG,
+  info: LogLevel.INFO,
+  warn: LogLevel.WARN,
+  error: LogLevel.ERROR,
+}
 
 // Smoke tests isolate their state via --user-data-dir (spec §6.2). Must be
 // set before any app.getPath('userData') consumer runs.
@@ -87,24 +95,35 @@ async function main() {
     envTemplatePath,
   })
   state.config = config
-  state.logsPath = path.join(state.userDataPath, 'logs')
-  state.logger = new Logger(state.logsPath)
-  state.logger.log('main', `Ecliptrix ${app.getVersion()} starting (userData=${state.userDataPath})`)
+  // Packaged builds log to userData/logs; `npm run dev` redirects into the repo
+  // via ECLIPTRIX_LOG_DIR so categorised files land in desktop/logs (spec §2.4).
+  state.logsPath = process.env.ECLIPTRIX_LOG_DIR || path.join(state.userDataPath, 'logs')
+  const minLevel = LEVEL_BY_NAME[(process.env.ECLIPTRIX_LOG_LEVEL || '').toLowerCase()] || LogLevel.INFO
+  state.logger = new Logger(state.logsPath, { minLevel })
+  state.logger.info('main', `Ecliptrix ${app.getVersion()} starting (userData=${state.userDataPath})`)
 
   // Register renderer-facing IPC BEFORE the `--dev` early-return (spec §2.3b /
   // R2). main() runs once via app.whenReady(), so these never double-register.
   // Window controls need no env; the bootstrap handler reads state.userEnv at
   // call time (set below in packaged mode) and falls back to the env-template
   // defaults so dev mode still resolves a usable credential pair.
-  registerWindowControlIpc()
+  registerWindowControlIpc(state.logger)
+  // Packaged mode: state.userEnv (the injected userData/.env) is the source of
+  // truth, and the SAME values seed the backend, so silent login matches. Dev
+  // mode never loads userEnv, so fall back to process.env.ROOT_* — the dev
+  // launcher (scripts/dev.js) injects the same pair into both the backend and
+  // this process so the credentials line up (otherwise silent login 401s and
+  // the login screen appears). The literal defaults are the last resort.
   ipcMain.handle('auth:bootstrap-credentials', () => ({
-    username: (state.userEnv && state.userEnv.ROOT_USERNAME) || 'admin',
-    password: (state.userEnv && state.userEnv.ROOT_PASSWORD) || 'change_me_on_first_run',
+    username: (state.userEnv && state.userEnv.ROOT_USERNAME) || process.env.ROOT_USERNAME || 'admin',
+    password: (state.userEnv && state.userEnv.ROOT_PASSWORD) || ***REMOVED*** || 'change_me_on_first_run',
   }))
 
   if (isDev) {
-    state.logger.log('main', `dev mode — attaching to ${DEV_FRONTEND_URL}`)
+    state.logger.info('main', `dev mode — attaching to ${DEV_FRONTEND_URL}`)
     createMainWindow(DEV_FRONTEND_URL)
+    openDevToolsIfRequested()
+    watchDevFrontend()
     return
   }
 
@@ -115,13 +134,13 @@ async function main() {
   // so the injected child-process env carries the healed values.
   const healed = backfillUserEnv(envPath, envTemplatePath)
   if (healed.length > 0) {
-    state.logger.log('main', `self-healed ${healed.length} placeholder credential(s) from bundled template: ${healed.join(', ')}`)
+    state.logger.info('config', `self-healed ${healed.length} placeholder credential(s) from bundled template: ${healed.join(', ')}`)
   }
 
   const { env: userEnv, missing } = loadUserEnv(envPath)
   if (missing.length > 0) {
     // Round 3: do NOT block — the renderer shows an in-app setup guide instead.
-    state.logger.log('main', `config incomplete (${missing.join(', ')}) — starting anyway; in-app setup guide will prompt`)
+    state.logger.warn('config', `config incomplete (${missing.join(', ')}) — starting anyway; in-app setup guide will prompt`)
   }
   state.userEnv = userEnv
 
@@ -133,7 +152,7 @@ async function main() {
     await startServices()
     createMainWindow(`http://127.0.0.1:${state.frontendPort}`)
   } catch (err) {
-    state.logger.log('main', `startup failed: ${(err && err.stack) || err}`)
+    state.logger.error('process', `startup failed: ${(err && err.stack) || err}`)
     closeSplash()
     await stopChildren()
     windows.showErrorWindow({
@@ -155,8 +174,8 @@ async function resolvePorts() {
   state.frontendPort = frontendPick.port
 
   if (backendPick.changed || frontendPick.changed) {
-    state.logger.log(
-      'main',
+    state.logger.info(
+      'config',
       `port fallback: frontend=${state.frontendPort} backend=${state.backendPort} ` +
         `(configured ${state.config.frontendPort}/${state.config.backendPort})`
     )
@@ -242,6 +261,48 @@ function createMainWindow(url) {
   })
 }
 
+// `npm run dev` attaches to a separately started Next.js server (spec §4.1); it
+// does NOT spawn one. If that server isn't up yet, loadURL fails and the window
+// would sit blank white. Show a waiting page that auto-retries until :3000
+// responds, so the developer sees what to do instead of a silent white screen.
+function openDevToolsIfRequested() {
+  if (process.env.ELECTRON_OPEN_DEVTOOLS !== '1') return
+  const win = state.mainWindow
+  if (!win || win.isDestroyed()) return
+  try {
+    win.webContents.openDevTools({ mode: 'right' })
+  } catch (err) {
+    state.logger.warn('main', `failed to open devtools: ${(err && err.message) || err}`)
+  }
+}
+
+function watchDevFrontend() {
+  const win = state.mainWindow
+  if (!win) return
+  const wc = win.webContents
+  const waitingPage = path.join(app.getAppPath(), 'assets', 'dev-waiting.html')
+  let retryTimer = null
+
+  wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    // -3 is ERR_ABORTED, fired by normal in-app navigation; the waiting page is
+    // a local file:// load that should never bounce back into the retry loop.
+    if (!isMainFrame || errorCode === -3) return
+    if (validatedURL && validatedURL.startsWith('file://')) return
+    state.logger.warn('process', `dev frontend unreachable (${errorCode} ${errorDescription}); waiting for ${DEV_FRONTEND_URL}`)
+    if (win.isDestroyed()) return
+    win.show()
+    wc.loadFile(waitingPage).catch(() => {})
+    if (retryTimer) clearTimeout(retryTimer)
+    retryTimer = setTimeout(() => {
+      if (!win.isDestroyed()) wc.loadURL(DEV_FRONTEND_URL)
+    }, 2000)
+  })
+
+  win.on('closed', () => {
+    if (retryTimer) clearTimeout(retryTimer)
+  })
+}
+
 function closeSplash() {
   if (state.splash && !state.splash.isDestroyed()) {
     state.splash.destroy()
@@ -251,7 +312,7 @@ function closeSplash() {
 
 function handleUnexpectedExit(name, code) {
   if (state.quitting) return
-  state.logger.log('main', `service ${name} exited unexpectedly (code=${code})`)
+  state.logger.error('process', `service ${name} exited unexpectedly (code=${code})`)
   const choice = dialog.showMessageBoxSync({
     type: 'error',
     title: 'Ecliptrix 服务异常退出',
@@ -278,7 +339,7 @@ async function restartServices() {
       createMainWindow(`http://127.0.0.1:${state.frontendPort}`)
     }
   } catch (err) {
-    state.logger.log('main', `service restart failed: ${(err && err.stack) || err}`)
+    state.logger.error('process', `service restart failed: ${(err && err.stack) || err}`)
     closeSplash()
     windows.showErrorWindow({
       serviceName: (err && err.serviceName) || '',
@@ -294,7 +355,7 @@ async function stopChildren() {
     children.map((service) =>
       service.stop().catch((err) => {
         if (state.logger) {
-          state.logger.log('main', `stop failed: ${(err && err.message) || err}`)
+          state.logger.warn('process', `stop failed: ${(err && err.message) || err}`)
         }
       })
     )

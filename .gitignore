@@ -71,3 +71,7 @@ desktop/node_modules/
 desktop/build/
 desktop/release/
 desktop/cache/
+# Dev-time categorised logs (docs/plans/desktop-logging-categorization). The
+# `*.log` rule above only matches the active file, NOT rotated `*.log.1/.2/.3`,
+# so the whole directory must be ignored.
+desktop/logs/

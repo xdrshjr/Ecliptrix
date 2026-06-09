@@ -119,10 +119,28 @@ node scripts/smoke-test.js [--unpacked <path>]   # 默认 release/win-unpacked
 
 ## 开发模式
 
+一条命令拉起前后端 + Electron(`scripts/dev.js` 编排):
+
 ```bash
-# 先手动启动开发服务:根目录 npm run dev(:3000)+ 后端 uvicorn(:8000)
 cd desktop
-npm run dev            # Electron 直连 http://localhost:3000,不拉起子进程
+npm run dev            # 自动启动后端(:8000)+ 前端(:3000),就绪后再开 Electron
+```
+
+`npm run dev` 会:检测端口 → 未占用则启动后端(`python -m uvicorn`,自动复用
+`backend-services/basic-service/venv`,否则用 PATH 上的 `python`)与前端
+(`next dev`,并注入 `BACKEND_URL`)→ 等前端就绪 → 启动 Electron(`--dev` 连
+`http://localhost:3000`)。关闭 Electron 窗口或 `Ctrl+C` 会一并停掉**本命令启动的**
+子进程;你事先已手动跑起来的服务会被自动识别并复用,不会被杀掉。
+
+可选环境变量:`ECLIPTRIX_PYTHON`(指定 python 可执行文件)、
+`ECLIPTRIX_DEV_BACKEND_PORT`(后端端口,默认 8000)、`BACKEND_URL`(前端代理目标)、
+`ECLIPTRIX_BACKEND_RELOAD=1`(给 uvicorn 加 `--reload`)。
+
+只想复用「手动起好开发服务、Electron 仅连接」的旧行为:
+
+```bash
+# 先各自起好:根目录 npm run dev(:3000)+ 后端 uvicorn(:8000)
+npm run dev:attach     # Electron 直连 http://localhost:3000,不拉起任何子进程
 ```
 
 ## 用户侧配置
@@ -143,10 +161,53 @@ npm run dev            # Electron 直连 http://localhost:3000,不拉起子进�
 - **安装包体积约 1–1.5GB**:包含 Electron、CPython site-packages(opencv/numpy)、
   FFmpeg 与 Next.js 产物,属预期(spec §7 风险 4)。
 - **启动失败**:错误页会给出日志目录(`%APPDATA%\Ecliptrix\logs`),
-  依次查看 `main.log` / `backend.log` / `frontend.log`。
+  先看 `error.log`(汇聚所有告警/错误)与 `process.log`(子进程监管时序),
+  再按需查看 `config.log` / `main.log` / `backend.log` / `frontend.log`。详见下方「日志」。
 - **杀毒软件拦截**:本地会启动 `python.exe` 子进程,部分杀软会拦截,需放行安装目录。
 - **数据库结构演进约束**:桌面端跳过 alembic,完全依赖启动时 `create_all` 建表
   (spec §7 风险 12)。后端模型变更必须保持「create_all 可直接建出完整 schema」。
+
+## 日志
+
+主进程日志按「来源 / 职责」分类落盘,每类一个文件,便于排查时直接定位:
+
+| 文件 | 内容 |
+|------|------|
+| `error.log` | 所有 ≥ WARN 的主进程行 + 子进程 stderr(排查问题的第一落脚点) |
+| `process.log` | 子进程监管时序(spawn / healthy / exit / stop / 强杀) |
+| `config.log` | 配置、环境自愈、端口回退决策 |
+| `main.log` | 应用生命周期(启动 / 版本 / userData 路径 / 退出) |
+| `backend.log` | 后端 python 子进程的**原始** stdout/stderr(透传,不二次加工) |
+| `frontend.log` | 前端 next 子进程的**原始** stdout/stderr |
+| `ipc.log` | 渲染进程窗口控制 IPC(**仅 `ECLIPTRIX_LOG_LEVEL=debug` 时产出**,默认为空) |
+
+日志目录按运行时归属:
+
+- **打包态**(双击 exe):`%APPDATA%\Ecliptrix\logs`(安装目录在 Program Files 下只读,
+  且应按用户隔离)。全套文件均由 Electron 主进程产出。
+- **开发态**(`npm run dev`):重定向到项目内的 `desktop/logs/`(由 `scripts/dev.js` 注入
+  `ECLIPTRIX_LOG_DIR`,并把 `backend`/`frontend`/`dev` 三类输出 tee 到该目录,已被 `.gitignore`
+  忽略)。注意开发态前后端由 `dev.js` 监管、Electron 不 `attachChild`,故不产出打包态那样
+  完整的 `process.log` 监管时序。
+
+行格式(结构化类别):`[ISO8601] [LEVEL] [category] message`,可直接用
+`findstr` / `Select-String` / `grep` 过滤;`backend.log` / `frontend.log` 保留子进程原始格式。
+
+环境变量:
+
+| 变量 | 取值 | 作用 | 默认 |
+|------|------|------|------|
+| `ECLIPTRIX_LOG_LEVEL` | `debug`/`info`/`warn`/`error` | 主进程结构化日志最小级别 | `info` |
+| `ECLIPTRIX_LOG_DIR` | 绝对路径 | 覆盖日志目录 | 打包态 `userData/logs`、开发态 `desktop/logs` |
+
+轮转与保留:单文件达 5MB 即多代轮转(`<file>.1/.2/.3`,默认保留 3 代),
+构造时按天清理 7 天前的轮转文件(含旧版遗留的 `*.log.old`);当前活动文件永不被清理。
+
+已知局限:`error.log` **仅镜像子进程 stderr**——uvicorn / Next 把错误打到 stdout 时
+不会进 `error.log`(刻意避免海量 stdout 污染汇聚文件,「按内容启发式镜像」列入后续迭代)。
+
+单测:`npm run test:logger`(纯 node、零新依赖,覆盖类别路由 / 级别过滤 / error.log 镜像 /
+多代轮转 / 保留清理 / 原始 sink 保护)。
 
 ## 目录结构
 
@@ -158,7 +219,8 @@ desktop/
 ├─ preload/                # contextBridge 只读元信息(零业务 IPC)
 ├─ assets/                 # splash.html / error.html
 ├─ resources/icons/        # 应用图标(v1 为脚本生成的占位图标)
-├─ scripts/                # build.js 及 prepare-* 打包脚本、smoke-test.js
+├─ scripts/                # build.js 及 prepare-* 打包脚本、smoke-test.js、test-logger.js
+├─ logs/                   # (生成,开发态)npm run dev 的分类日志,已 gitignore
 ├─ build/                  # (生成)打包前的工件组装区
 ├─ cache/                  # (生成)python/ffmpeg 下载缓存
 └─ release/                # (生成)NSIS 安装包与 win-unpacked/
