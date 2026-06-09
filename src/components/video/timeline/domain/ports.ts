@@ -179,20 +179,19 @@ export interface VideoSequenceItem {
   id: string;
   name: string;
   /**
-   * Export-safe URL for this sequence: `serverUrl || url`. The composition
-   * builder embeds this directly into the backend request, so it must
-   * resolve cross-session and outside the browser. Do NOT replace this with
-   * a same-origin cacheUrl — see R12 / Rev-7.
+   * Backend media reference for this sequence. In desktop local mode this is
+   * usually a same-origin storage/cache URL that the backend resolver maps to
+   * a validated local file. Legacy remote materials still fall back to
+   * `serverUrl || url`.
    */
   url: string;
   /**
    * Optional same-origin URL pointing at the locally pre-cached file
-   * (`/api/storage/files/cached_materials/...`). Populated when the
-   * material has been ingested via `useRemoteMaterialPrefetch`. Consumed
-   * ONLY on the playback / scrub preview path through `selectPlaybackUrl`,
-   * never on the export composition path.
+   * (`/api/storage/files/cached_materials/...`). Populated when the material
+   * has been ingested via `useRemoteMaterialPrefetch`.
    */
   cacheUrl?: string;
+  sourceRef?: string;
   startTime: number;
   duration: number;
   thumbnailUrl?: string;
@@ -227,7 +226,7 @@ export interface ICompositionPort {
   /**
    * Extract video sequences from tracks and materials.
    * Filters for visible, unlocked video tracks with video-type items.
-   * URL selection: prefer serverUrl, fallback url.
+   * URL selection: prefer local backend reference, fallback serverUrl/url.
    * Volume: item.volume * track.volume / 100, clamped to [0, 2].
    */
   extractVideoSequences(
@@ -238,7 +237,7 @@ export interface ICompositionPort {
   /**
    * Extract audio sequences from tracks and materials.
    * Filters for visible, unlocked, unmuted audio tracks.
-   * URL selection: prefer serverUrl, fallback url.
+   * URL selection: prefer local backend reference, fallback serverUrl/url.
    * Volume: item.volume * track.volume / 100, clamped to [0, 2].
    */
   extractAudioSequences(

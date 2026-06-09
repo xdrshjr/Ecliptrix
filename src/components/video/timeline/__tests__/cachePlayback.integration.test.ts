@@ -11,7 +11,7 @@
  *   2. adapter ingests → poll resolves with `local_url`
  *   3. that URL flows onto MaterialItem.cacheUrl → onto VideoSequenceItem.cacheUrl
  *   4. selectPlaybackUrl(preview) returns the same-origin URL
- *   5. selectPlaybackUrl(export) still returns serverUrl||url
+ *   5. selectPlaybackUrl(export) returns the local backend reference
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -109,15 +109,15 @@ describe('integration: ingest → cache → preview URL swap', () => {
     const preview = selectPlaybackUrl(seq, { purpose: 'preview' });
     expect(preview).toBe(`${window.location.origin}${result.local_url}`);
 
-    // 5. export URL is still the durable serverUrl — never the cacheUrl.
+    // 5. export URL is the backend-resolvable local reference.
     const exportUrl = selectPlaybackUrl(seq, { purpose: 'export' });
-    expect(exportUrl).toBe('https://cdn.example.com/v.mp4');
+    expect(exportUrl).toBe(`${window.location.origin}${result.local_url}`);
 
     // 6. The export request payload (composition request) carries
-    //    serverUrl as `url` and never references cacheUrl.
+    //    the local reference as `url` without helper fields.
     const req = comp.buildCompositionRequest([seq], [], {});
-    expect(req.video_sequences[0].url).toBe('https://cdn.example.com/v.mp4');
-    expect(JSON.stringify(req)).not.toContain(result.local_url);
+    expect(req.video_sequences[0].url).toBe(result.local_url);
+    expect(JSON.stringify(req.video_sequences[0])).not.toContain('cacheUrl');
   });
 
   it('failed cache leaves preview URL on origin (no regression)', async () => {

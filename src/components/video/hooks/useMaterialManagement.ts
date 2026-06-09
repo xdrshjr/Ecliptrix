@@ -341,11 +341,16 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           thumbnailUrl: result.thumbnail_url || undefined,
           url: result.video_url,
           serverUrl: result.video_url,
+          cacheUrl: result.video_url,
+          storageKey: result.metadata?.storage_key || result.metadata?.path || result.file_path,
           createdAt: new Date(),
           metadata: {
+            storageKind: 'local',
+            storageKey: result.metadata?.storage_key || result.metadata?.path || result.file_path,
+            localResolvedUrl: result.video_url,
             originalUrl: result.video_url,
             fileName: file.name,
-            isLocalFile: false,
+            isLocalFile: true,
             storageMetadata: result.metadata
           }
         };
@@ -396,12 +401,17 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           size: result.file_size,
           url: result.file_url,
           serverUrl: result.file_url,
+          cacheUrl: result.file_url,
+          storageKey: result.metadata?.storage_key || result.file_path,
           thumbnailUrl: materialType === 'image' ? result.file_url : undefined,
           createdAt: new Date(),
           metadata: {
+            storageKind: 'local',
+            storageKey: result.metadata?.storage_key || result.file_path,
+            localResolvedUrl: result.file_url,
             originalUrl: result.file_url,
             fileName: file.name,
-            isLocalFile: false
+            isLocalFile: true
           }
         };
 

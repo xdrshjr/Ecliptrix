@@ -526,8 +526,8 @@ export interface MaterialItem {
   width?: number; // 宽度（像素），仅用于视频和图片
   height?: number; // 高度（像素），仅用于视频和图片
   thumbnailUrl?: string; // 缩略图URL
-  url: string; // 文件URL（本地blob URL或远程URL）
-  serverUrl?: string; // 服务器上的文件URL，用于导出合成（主要用于TTS生成的音频文件）
+  url: string; // 文件URL；桌面本地模式优先为同源 /api/storage/files/... 引用
+  serverUrl?: string; // 兼容旧远程素材；本地素材可与 url/cacheUrl 相同
   createdAt: Date;
   tags?: string[]; // 标签
   description?: string; // 描述
@@ -540,6 +540,7 @@ export interface MaterialItem {
   // 字节进度复用 downloadProgress（不重复字段），见 phase2-development-plan-revised.md Rev-2
   cacheStatus?: MaterialCacheStatus;
   cacheUrl?: string; // 同源相对路径，例如 /api/storage/files/cached_materials/pexels/<file>.mp4
+  storageKey?: string; // 本地存储相对 key，不暴露 file:// 原始路径
   cacheError?: string; // 缓存失败时的简短错误信息
   // Phase 3 — backend preview-proxy + media-proxy mirror fields. Hydrated
   // from /api/material/{ingest,lookup} responses; consumed by selectPlaybackUrl
@@ -562,6 +563,9 @@ export interface MaterialItem {
   uploadStatus?: MaterialUploadStatus; // 上传状态
   uploadProgress?: number; // 上传进度 (0-100)
   metadata?: { // 额外元数据
+    storageKind?: 'local' | 'cached_remote' | 'legacy_remote';
+    storageKey?: string;
+    localResolvedUrl?: string;
     originalUrl?: string; // 原始远程URL
     fileName?: string; // 文件名
     isLocalFile?: boolean; // 是否为本地文件
@@ -733,7 +737,9 @@ export interface VideoCutClipRequest {
 
 export interface VideoCutRequest {
   task_id: string;
-  video_url: string;
+  video_url?: string;
+  source_ref?: string;
+  material_id?: string;
   clips: VideoCutClipRequest[];
   generate_thumbnails?: boolean;
 }

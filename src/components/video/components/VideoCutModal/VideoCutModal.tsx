@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
+import { resolveSequencePlaybackUrl } from '../../lib/resolveSequencePlaybackUrl';
 
 // 视频切片数据结构
 export interface VideoClip {
@@ -68,6 +69,24 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
   const { showSuccess, showError } = useNotification();
   const { t } = useLocale();
 
+  const resolvedPlayback = useMemo(() => {
+    if (!material) return null;
+    return resolveSequencePlaybackUrl(
+      {
+        url: material.url,
+        cacheUrl: material.cacheUrl,
+        materialId: material.id,
+      },
+      [material],
+      {
+        preferLocalProxy: true,
+        preferPreviewProxy: true,
+      },
+    );
+  }, [material]);
+
+  const videoSource = resolvedPlayback?.url || material?.url || '';
+
   // 重置状态当弹窗打开时
   useEffect(() => {
     if (isOpen && material) {
@@ -88,10 +107,12 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
       logger.info('视频剪切弹窗打开', {
         materialId: material.id,
         materialName: material.name,
-        materialUrl: material.url.substring(0, 100)
+        materialUrl: material.url.substring(0, 100),
+        resolvedSource: resolvedPlayback?.url.substring(0, 100),
+        resolvedSourceKind: resolvedPlayback?.source,
       });
     }
-  }, [isOpen, material?.id]);
+  }, [isOpen, material?.id, resolvedPlayback?.url, resolvedPlayback?.source]);
 
   // 处理键盘事件
   useEffect(() => {
@@ -272,11 +293,19 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
         duration: clip.duration
       })),
       originalMaterialId: material.id,
-      originalMaterialName: material.name
+      originalMaterialName: material.name,
+      resolvedSource: videoSource.substring(0, 100),
+      resolvedSourceKind: resolvedPlayback?.source,
     });
 
     if (onExportClips) {
-      onExportClips(clips, material);
+      onExportClips(clips, {
+        ...material,
+        metadata: {
+          ...material.metadata,
+          localResolvedUrl: videoSource,
+        },
+      });
       showSuccess(`${t.videoCut.clipsExported}${clips.length} ${t.videoCut.clipCount}`);
       
       // 自动关闭弹窗
@@ -288,7 +317,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
     } else {
       showError(t.videoCut.exportUnavailable);
     }
-  }, [clips, material, logger, showSuccess, showError, onExportClips, onClose]);
+  }, [clips, material, logger, showSuccess, showError, onExportClips, onClose, videoSource, resolvedPlayback?.source]);
 
   // 格式化时间显示
   const formatTime = useCallback((seconds: number) => {
@@ -437,7 +466,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
               <div className="w-full h-full rounded-md overflow-hidden bg-black">
                 <video
                   ref={originalVideoRef}
-                  src={material.url}
+                  src={videoSource}
                   className="w-full h-full object-contain"
                   onLoadedMetadata={handleLoadedMetadata}
                   onTimeUpdate={handleTimeUpdate}
@@ -618,7 +647,7 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
                   <div className="w-full h-full rounded-md overflow-hidden bg-black">
                     <video
                       ref={previewVideoRef}
-                      src={material.url}
+                      src={videoSource}
                       className="w-full h-full object-contain"
                       onTimeUpdate={handlePreviewTimeUpdate}
                       onPlay={() => setPreviewIsPlaying(true)}
@@ -767,4 +796,4 @@ const VideoCutModal: React.FC<VideoCutModalProps> = ({
   );
 };
 
-export default VideoCutModal; 
+export default VideoCutModal;

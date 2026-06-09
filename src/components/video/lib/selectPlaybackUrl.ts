@@ -12,10 +12,9 @@
  *   P5 — original CDN URL (`serverUrl || url`) — only when previewFallback='origin'
  *
  *   purpose='export':
- *     Skips P1/P4 entirely. The export pipeline runs server-side and uses
- *     `serverUrl || url` so it doesn't accidentally embed a same-origin
- *     /api/storage/files path that's only meaningful in the browser. See
- *     phase2-development-plan-revised.md Rev-7 / R12 + INV3.
+ *     Skips P1/P4 entirely. Desktop export uses the canonical backend media
+ *     reference: local storage/cache URL first, remote durable URL only as
+ *     legacy fallback. Preview-only blob/proxy URLs are never exported.
  *
  * Absolutisation:
  *   `cacheUrl` is delivered as a same-origin relative path
@@ -47,6 +46,7 @@ interface PlaybackInput {
   cacheUrl?: string | null;
   serverUrl?: string | null;
   url?: string | null;
+  localResolvedUrl?: string | null;
   previewProxyStatus?: string | null;
   previewProxyLocalUrl?: string | null;
 }
@@ -71,6 +71,30 @@ function _isHttp(u: string | null | undefined): boolean {
   return !!u && /^https?:\/\//i.test(u);
 }
 
+const LOCAL_MEDIA_PATH_PREFIXES = [
+  '/api/storage/files/',
+  '/api/audio/generated/',
+  '/api/audio/subtitles/',
+  '/static/timeline_exports/',
+  '/api/video/compose/',
+];
+
+export function isLocalMediaReference(u: string | null | undefined): boolean {
+  if (!u) return false;
+  if (LOCAL_MEDIA_PATH_PREFIXES.some(prefix => u.startsWith(prefix))) {
+    return true;
+  }
+  if (!/^https?:\/\//i.test(u)) return false;
+  try {
+    const parsed = new URL(u);
+    const host = parsed.hostname.toLowerCase();
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    return isLocalHost && LOCAL_MEDIA_PATH_PREFIXES.some(prefix => parsed.pathname.startsWith(prefix));
+  } catch {
+    return false;
+  }
+}
+
 /** Build a same-origin media-proxy URL for an arbitrary CDN reference. */
 function _buildMediaProxyUrl(remoteUrl: string): string {
   return `${MEDIA_PROXY_PREFIX}${encodeURIComponent(remoteUrl)}`;
@@ -85,8 +109,15 @@ export function selectPlaybackUrl(
   const m = material as PlaybackInput;
 
   if (purpose === 'export') {
-    // INV3 — export NEVER reads preview-proxy / media-proxy fields. Server-
-    // side composition needs the durable original reference.
+    const local = [m.localResolvedUrl, m.cacheUrl, m.url, m.serverUrl].find(
+      candidate => isLocalMediaReference(candidate),
+    );
+    if (local) {
+      return toAbsolutePlaybackUrl(local) ?? local;
+    }
+
+    // Export NEVER reads preview-proxy / media-proxy fields. Server-side
+    // composition needs a durable media reference.
     return m.serverUrl || m.url || '';
   }
 
@@ -107,6 +138,11 @@ export function selectPlaybackUrl(
   // P3 — same-origin original cache (already-downloaded full-quality file).
   const cache = toAbsolutePlaybackUrl(m.cacheUrl);
   if (cache) return cache;
+
+  const localUrl = isLocalMediaReference(m.url)
+    ? toAbsolutePlaybackUrl(m.url)
+    : undefined;
+  if (localUrl) return localUrl;
 
   // P4 — same-origin media-proxy for remote URLs (only when caller opted in).
   if (fallback === 'proxy') {

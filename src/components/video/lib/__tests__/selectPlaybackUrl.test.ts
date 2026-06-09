@@ -25,7 +25,7 @@ describe('selectPlaybackUrl', () => {
     expect(url).toBe('https://x.example.com/v.mp4');
   });
 
-  it('export ignores cacheUrl even when present', () => {
+  it('export prefers same-origin cacheUrl as desktop local reference', () => {
     const url = selectPlaybackUrl(
       {
         cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
@@ -34,7 +34,18 @@ describe('selectPlaybackUrl', () => {
       },
       { purpose: 'export' },
     );
-    expect(url).toBe('https://cdn.example.com/v.mp4');
+    expect(url).toBe(`${window.location.origin}/api/storage/files/cached_materials/pexels/1.mp4`);
+  });
+
+  it('export prefers a same-origin url before remote serverUrl', () => {
+    const url = selectPlaybackUrl(
+      {
+        serverUrl: 'https://cdn.example.com/v.mp4',
+        url: '/api/storage/files/video/local.mp4',
+      },
+      { purpose: 'export' },
+    );
+    expect(url).toBe(`${window.location.origin}/api/storage/files/video/local.mp4`);
   });
 
   it('passes through absolute http(s) cacheUrl unchanged', () => {

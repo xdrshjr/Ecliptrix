@@ -44,6 +44,10 @@ from app.models.youtube_models import YoutubeVideoDownloadRequest
 from app.services.subtitle_service import SubtitleService
 from app.services.youtube_service import YouTubeService
 from app.services.material_download_service import get_material_download_service
+from app.services.local_media_resolver import (
+    LocalMediaResolveError,
+    resolve_media_reference,
+)
 
 logger = get_logger(__name__)
 
@@ -951,7 +955,12 @@ class VideoCompositionService:
                     url_to_downloaded_path[url] = cached_path
                     logger.info(f"Cache hit for {url} -> {cached_path}")
                 else:
-                    urls_to_download.append(url)
+                    try:
+                        local_ref = resolve_media_reference(url, allow_remote=False)
+                        url_to_downloaded_path[url] = str(local_ref.path)
+                        logger.info(f"Local media reference hit for {url} -> {local_ref.path}")
+                    except LocalMediaResolveError:
+                        urls_to_download.append(url)
 
             cache_hits = len(unique_urls) - len(urls_to_download)
             logger.info(
@@ -1609,6 +1618,17 @@ class VideoCompositionService:
         process CWD, matching the static-file mounts in app/main.py.
         """
         logger.info(f"Converting URL to local path: {url}")
+
+        try:
+            resolved = resolve_media_reference(url, allow_remote=False)
+            logger.info("Resolved local media reference", {
+                "original_url": url,
+                "local_path": str(resolved.path),
+                "source_kind": resolved.source_kind,
+            })
+            return str(resolved.path)
+        except LocalMediaResolveError:
+            pass
 
         for prefix, rel_dir in self._URL_PREFIX_TO_REL_DIR.items():
             if url.startswith(prefix):
@@ -2737,4 +2757,4 @@ class VideoCompositionService:
             return {
                 "success": False,
                 "error": str(e)
-            } 
+            }

@@ -53,6 +53,16 @@ describe('VideoPlayerPanel — R6 赋值源 ≡ 比对键 (blob tier)', () => {
     expect(fn).toMatch(/resolveSequencePlaybackUrl\(/);
     expect(fn).toMatch(/preferLocalProxy:\s*localPreviewEnabled/);
   });
+
+  it('assignSequenceSrc goes through resolveSequencePlaybackUrl for same-origin storage material', () => {
+    const fn = src.slice(
+      src.indexOf('const assignSequenceSrc'),
+      src.indexOf('const assignSequenceSrc') + 900,
+    );
+    expect(fn).toMatch(/resolveSequencePlaybackUrl\(/);
+    expect(fn).toMatch(/resolved\?\.url/);
+    expect(fn).not.toMatch(/previewProxyLocalUrl\s*\|\|\s*sequence\.url/);
+  });
 });
 
 describe('VideoPlayerPanel — readiness gate (§3.3.6, C2/C3)', () => {

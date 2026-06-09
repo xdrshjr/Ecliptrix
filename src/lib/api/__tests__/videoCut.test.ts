@@ -34,9 +34,29 @@ describe('videoCut API client', () => {
     expect(spy.mock.calls[0][2]).toEqual({ timeoutMs: 300_000 });
   });
 
-  it('rewrites TimeoutError to a Chinese-localized message (legacy contract)', async () => {
+  it('passes local source_ref payloads through unchanged', async () => {
+    const spy = vi.spyOn(httpModule.http, 'post').mockResolvedValue({
+      success: true,
+      total_clips: 1,
+      processing_time: 1,
+      clips: [],
+    } as never);
+    const localRequest = {
+      ...baseRequest,
+      video_url: undefined,
+      source_ref: '/api/storage/files/video/source.mp4',
+    } as unknown as VideoCutRequest;
+
+    await api.cutVideoClips(localRequest);
+
+    expect(spy.mock.calls[0][1]).toMatchObject({
+      source_ref: '/api/storage/files/video/source.mp4',
+    });
+  });
+
+  it('rewrites TimeoutError to a Chinese-localized local save message', async () => {
     vi.spyOn(httpModule.http, 'post').mockRejectedValue(new TimeoutError());
-    await expect(api.cutVideoClips(baseRequest)).rejects.toThrow('视频切分请求超时，请稍后重试');
+    await expect(api.cutVideoClips(baseRequest)).rejects.toThrow('视频本地切分保存请求超时，请稍后重试');
   });
 
   it('lets ApiError propagate without wrapping', async () => {

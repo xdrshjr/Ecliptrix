@@ -134,7 +134,7 @@ YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 
 **Cached remote materials** (`cached_materials/<source>/<file>`): Remote video assets (Pexels, ARK, etc.) are pre-downloaded into `STORAGE_ROOT/cached_materials/<source>/<source_id>.<ext>` and tracked in the `cached_materials` table. They're served via the existing `/api/storage/files` mount — no separate static mount.
 
-The frontend reads `local_url` from `/api/material/{ingest,lookup}` responses; the rule is `"/api/storage/files/cached_materials/" + source + "/" + basename(local_path)`. Preview/scrub paths use `selectPlaybackUrl(material, { purpose: 'preview' })` to swap to the cacheUrl when available. Export paths read `serverUrl||url` directly via `selectPlaybackUrl(material, { purpose: 'export' })` so the composition request never embeds a same-origin path.
+The frontend reads `local_url` from `/api/material/{ingest,lookup}` responses; the rule is `"/api/storage/files/cached_materials/" + source + "/" + basename(local_path)`. Preview/scrub paths use `selectPlaybackUrl(material, { purpose: 'preview' })` to swap to the cacheUrl when available. Desktop export paths use `selectPlaybackUrl(material, { purpose: 'export' })` to prefer backend-resolvable same-origin local storage/cache references, falling back to `serverUrl || url` only for legacy remote materials. Preview-only blob URLs, media-proxy URLs, and preview-proxy URLs must not be embedded in composition requests.
 
 `MATERIAL_DOWNLOAD_MAX_CONCURRENT` (default 4) caps the background download semaphore. ARK / Storyboard generated videos write back via `material_svc.store_external_download_async(..., source='ark', source_id=<task_id>)` so the editor can preview them via the same-origin path immediately.
 

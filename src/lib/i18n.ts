@@ -4830,7 +4830,7 @@ export const translations: Record<string, Translations> = {
       clipList: 'Clip List',
       clip: 'Clip',
       clipCount: 'clips',
-      exportClips: 'Export Clips',
+      exportClips: 'Save Clips Locally',
       noClips: 'No clips created yet',
       startBeforeEnd: 'Start time must be before end time',
       minDuration: 'Clip duration must be at least 0.5 seconds',
@@ -4838,7 +4838,7 @@ export const translations: Record<string, Translations> = {
       clipDeleted: 'Clip deleted',
       noClipsToExport: 'No clips to export',
       noMaterial: 'Original material not found',
-      clipsExported: ' clips exported to material panel',
+      clipsExported: 'Saved ',
       exportUnavailable: 'Export function is not available',
       startTimeLabel: 'Start Time:',
       endTimeLabel: 'End Time:',
@@ -7295,7 +7295,7 @@ export const translations: Record<string, Translations> = {
       clipList: '切片列表',
       clip: '切片',
       clipCount: '个切片',
-      exportClips: '导出切片',
+      exportClips: '保存本地切片',
       noClips: '还没有创建任何切片',
       startBeforeEnd: '开始时间必须小于结束时间',
       minDuration: '切片时长至少需要0.5秒',
@@ -7303,7 +7303,7 @@ export const translations: Record<string, Translations> = {
       clipDeleted: '切片已删除',
       noClipsToExport: '没有可导出的切片',
       noMaterial: '原始素材不存在',
-      clipsExported: '已导出 ',
+      clipsExported: '已保存 ',
       exportUnavailable: '导出功能不可用',
       startTimeLabel: '开始时间:',
       endTimeLabel: '结束时间:',
@@ -7389,4 +7389,4 @@ export const defaultLocale: SupportedLocale = 'en';
 
 export function getTranslations(locale: SupportedLocale = defaultLocale): Translations {
   return translations[locale] || translations[defaultLocale];
-} 
+}

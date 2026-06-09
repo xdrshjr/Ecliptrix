@@ -31,7 +31,7 @@ function makeSeq(patch: Partial<VideoSequenceItem>): VideoSequenceItem {
 }
 
 describe('resolveSequencePlaybackUrl', () => {
-  it('(a) all three URLs present → cacheUrl primary, [serverUrl, url] fallbacks', () => {
+  it('(a) all three URLs present → localStorageUrl primary, [serverUrl, url] fallbacks', () => {
     const material = makeMaterial({
       cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
       serverUrl: 'https://cdn.example.com/v.mp4',
@@ -40,12 +40,29 @@ describe('resolveSequencePlaybackUrl', () => {
     const seq = makeSeq({ url: 'https://cdn.example.com/v.mp4' });
     const result = resolveSequencePlaybackUrl(seq, [material]);
     expect(result).not.toBeNull();
-    expect(result!.source).toBe('cacheUrl');
+    expect(result!.source).toBe('localStorageUrl');
     expect(result!.url.startsWith(window.location.origin)).toBe(true);
     expect(result!.url).toContain('cached_materials');
     expect(result!.fallbacks).toEqual([
       'https://cdn.example.com/v.mp4',
       'https://x.example.com/v.mp4',
+    ]);
+  });
+
+  it('prefers same-origin material.url before legacy remote serverUrl', () => {
+    const material = makeMaterial({
+      url: '/api/storage/files/video/local.mp4',
+      serverUrl: 'https://cdn.example.com/v.mp4',
+    });
+    const seq = makeSeq({ url: 'https://cdn.example.com/v.mp4' });
+    const result = resolveSequencePlaybackUrl(seq, [material]);
+
+    expect(result).not.toBeNull();
+    expect(result!.source).toBe('localStorageUrl');
+    expect(result!.url).toBe(`${window.location.origin}/api/storage/files/video/local.mp4`);
+    expect(result!.fallbacks).toEqual([
+      'https://cdn.example.com/v.mp4',
+      '/api/storage/files/video/local.mp4',
     ]);
   });
 
@@ -98,7 +115,7 @@ describe('resolveSequencePlaybackUrl', () => {
     const result = resolveSequencePlaybackUrl(seq, [material]);
     expect(result).not.toBeNull();
     expect(result!.url).toBe('https://other.example.com/cached/v.mp4');
-    expect(result!.source).toBe('cacheUrl');
+    expect(result!.source).toBe('localStorageUrl');
   });
 
   it('returns null for null seq', () => {
@@ -141,7 +158,7 @@ describe('resolveSequencePlaybackUrl', () => {
     ]);
   });
 
-  it('(pp2) cached but preferPreviewProxy=false → byte-identical to legacy (cacheUrl primary)', () => {
+  it('(pp2) cached but preferPreviewProxy=false → local storage primary', () => {
     const material = makeMaterial({
       previewProxyStatus: 'cached',
       previewProxyLocalUrl: '/api/storage/files/preview-proxies/mat-1/480p.mp4',
@@ -154,7 +171,7 @@ describe('resolveSequencePlaybackUrl', () => {
     });
     const noOpts = resolveSequencePlaybackUrl(seq, [material]);
     expect(withFlagOff).toEqual(noOpts);
-    expect(withFlagOff!.source).toBe('cacheUrl');
+    expect(withFlagOff!.source).toBe('localStorageUrl');
     expect(withFlagOff!.url).toContain('cached_materials');
   });
 
@@ -169,7 +186,7 @@ describe('resolveSequencePlaybackUrl', () => {
     const result = resolveSequencePlaybackUrl(seq, [material], {
       preferPreviewProxy: true,
     });
-    expect(result!.source).toBe('cacheUrl');
+    expect(result!.source).toBe('localStorageUrl');
     expect(result!.url).toContain('cached_materials');
   });
 
@@ -183,7 +200,7 @@ describe('resolveSequencePlaybackUrl', () => {
     const result = resolveSequencePlaybackUrl(seq, [material], {
       preferPreviewProxy: true,
     });
-    expect(result!.source).toBe('cacheUrl');
+    expect(result!.source).toBe('localStorageUrl');
     expect(result!.url).toContain('cached_materials');
   });
 
@@ -224,7 +241,7 @@ describe('resolveSequencePlaybackUrl', () => {
     });
     const noOpts = resolveSequencePlaybackUrl(seq, [material]);
     expect(withFlagOff).toEqual(noOpts);
-    expect(withFlagOff!.source).toBe('cacheUrl');
+    expect(withFlagOff!.source).toBe('localStorageUrl');
   });
 
   it('(lp3) not-yet-ready (downloading/degraded) + preferLocalProxy → unchanged legacy chain', () => {
@@ -241,10 +258,10 @@ describe('resolveSequencePlaybackUrl', () => {
     const seq = makeSeq({});
     expect(
       resolveSequencePlaybackUrl(seq, [downloading], { preferLocalProxy: true })!.source,
-    ).toBe('cacheUrl');
+    ).toBe('localStorageUrl');
     expect(
       resolveSequencePlaybackUrl(seq, [degraded], { preferLocalProxy: true })!.source,
-    ).toBe('cacheUrl');
+    ).toBe('localStorageUrl');
   });
 
   it('(lp4) blob ranks ABOVE preview-proxy: ready + cached proxy → blob primary, proxy demoted', () => {

@@ -1,12 +1,11 @@
 /**
  * CompositionAdapter — cacheUrl propagation regression
  *
- * The export pipeline reads `seq.url` directly. The preview pipeline opts
- * into the same-origin cached file via selectPlaybackUrl(seq, {purpose:'preview'}).
+ * The export pipeline reads `seq.url` directly. The extractor now populates
+ * `seq.url` with the canonical desktop-local media reference when available.
  *
- * These tests prove (a) cacheUrl is forwarded onto VideoSequenceItem, and
- * (b) the export-safe `url` field still reflects `serverUrl || url` so the
- * composition request never embeds a same-origin cached path. R12 / Rev-7.
+ * These tests prove cacheUrl is forwarded and desktop export uses it as the
+ * backend-resolvable local reference.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -53,11 +52,11 @@ const MAT: CompositionMaterialData = {
 };
 
 describe('CompositionAdapter cacheUrl propagation', () => {
-  it('export `url` reads serverUrl||url and never the cacheUrl', () => {
+  it('export `url` uses cacheUrl as the desktop local reference', () => {
     const adapter = new CompositionAdapter();
     const sequences = adapter.extractVideoSequences([VIDEO_TRACK], [MAT as any]);
     expect(sequences).toHaveLength(1);
-    expect(sequences[0].url).toBe('https://cdn.example.com/v.mp4');
+    expect(sequences[0].url).toBe('/api/storage/files/cached_materials/pexels/12345.mp4');
     expect(sequences[0].cacheUrl).toBe(MAT.cacheUrl);
   });
 
@@ -69,19 +68,19 @@ describe('CompositionAdapter cacheUrl propagation', () => {
     expect(previewUrl.startsWith(window.location.origin)).toBe(true);
   });
 
-  it('export path skips cacheUrl', () => {
+  it('export path returns the local backend reference', () => {
     const adapter = new CompositionAdapter();
     const [seq] = adapter.extractVideoSequences([VIDEO_TRACK], [MAT as any]);
     const exportUrl = selectPlaybackUrl(seq, { purpose: 'export' });
-    expect(exportUrl).toBe('https://cdn.example.com/v.mp4');
+    expect(exportUrl).toContain('/api/storage/files/cached_materials/pexels/12345.mp4');
   });
 
   it('buildCompositionRequest serialises export-safe url', () => {
     const adapter = new CompositionAdapter();
     const sequences = adapter.extractVideoSequences([VIDEO_TRACK], [MAT as any]);
     const req = adapter.buildCompositionRequest(sequences, [], {});
-    expect(req.video_sequences[0].url).toBe('https://cdn.example.com/v.mp4');
-    // The wire format MUST NOT carry cacheUrl into the backend payload.
+    expect(req.video_sequences[0].url).toBe('/api/storage/files/cached_materials/pexels/12345.mp4');
+    // The wire format carries the canonical url only, not helper fields.
     expect(JSON.stringify(req.video_sequences[0])).not.toContain('cacheUrl');
   });
 });

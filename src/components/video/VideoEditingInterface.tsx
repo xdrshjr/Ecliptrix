@@ -1203,7 +1203,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           serverUrl: '',
           createdAt: new Date(),
           description: `从"${originalMaterial.name}"剪切的片段，时间范围：${formatTime(clip.startTime)} - ${formatTime(clip.endTime)}`,
-          uploadStatus: 'uploading', // 设置为上传中状态
+          uploadStatus: 'uploading', // 复用素材进度状态，表示本地切分保存中
           uploadProgress: 0,
           metadata: {
             ...originalMaterial.metadata,
@@ -1233,9 +1233,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       const { videoCutAPI } = await import('@/lib/api/videoCut');
 
       // 准备视频切分请求
+      const sourceRef =
+        originalMaterial.metadata?.localResolvedUrl ||
+        originalMaterial.cacheUrl ||
+        originalMaterial.url ||
+        originalMaterial.serverUrl ||
+        '';
       const cutRequest = {
         task_id: taskId,
-        video_url: originalMaterial.serverUrl || originalMaterial.url,
+        source_ref: sourceRef,
+        video_url: sourceRef,
+        material_id: originalMaterial.id,
         clips: clips.map(clip => ({
           id: clip.id,
           name: clip.name,
@@ -1248,7 +1256,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       console.log(`[VideoEditingInterface] 开始视频切分处理`, {
         taskId,
-        videoUrl: cutRequest.video_url?.slice(0, 100) + '...',
+        sourceRef: cutRequest.source_ref?.slice(0, 100) + '...',
         clipsCount: cutRequest.clips.length
       });
 
@@ -1262,6 +1270,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             ...tempClipMaterials[index],
             url: cutClip.video_url,
             serverUrl: cutClip.video_url,
+            cacheUrl: cutClip.video_url,
             thumbnailUrl: cutClip.thumbnail_url || tempClipMaterials[index].thumbnailUrl,
             size: cutClip.file_size,
             width: cutClip.width,
@@ -1271,6 +1280,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             uploadProgress: 100,
             metadata: {
               ...tempClipMaterials[index].metadata,
+              storageKind: 'local',
+              localResolvedUrl: cutClip.video_url,
               cutClipResult: cutClip
             }
           };
@@ -1287,7 +1298,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           processingTime: cutResponse.processing_time
         });
 
-        showSuccess(`已成功处理 ${cutResponse.clips.length} 个视频切片并上传到素材库`);
+        showSuccess(`已成功处理 ${cutResponse.clips.length} 个视频切片并保存到本地素材库`);
       } else {
                  // 切分失败，移除临时素材并显示错误
          const tempMaterialIds = tempClipMaterials.map(m => m.id);
@@ -2797,4 +2808,4 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   );
 };
 
-export default VideoEditingInterface; 
+export default VideoEditingInterface;

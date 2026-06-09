@@ -1,52 +1,60 @@
-"""
-Video cutting service for extracting video clips and uploading to storage.
-"""
+"""Video cutting service for extracting clips into local storage."""
 
 import os
 import time
 import subprocess
+import shutil
 from typing import Dict, Any
 from pathlib import Path
+from datetime import datetime
 
 from app.logger import get_logger
 from app.config import settings
 from app.models import VideoCutRequest, VideoCutResponse, VideoCutClipResult, VideoCutClipRequest
-from app.services.storage_service import storage_service
+from app.services.local_media_resolver import resolve_media_reference
 
 logger = get_logger(__name__)
 
 
 class VideoCutService:
-    """Service for cutting video clips and uploading to storage."""
+    """Service for cutting video clips and saving them to local storage."""
 
     def __init__(self):
         self.temp_dir = Path(settings.temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
         
     async def cut_and_upload_video_clips(self, request: VideoCutRequest) -> VideoCutResponse:
+        """Backward-compatible wrapper for older router call sites."""
+        return await self.cut_video_clips_to_local_storage(request)
+
+    async def cut_video_clips_to_local_storage(self, request: VideoCutRequest) -> VideoCutResponse:
         """
-        Cut video clips from source video and upload to storage.
+        Cut video clips from source video and save them to local storage.
         
         Args:
             request: Video cutting request with clips information
             
         Returns:
-            VideoCutResponse: Response with uploaded clips information
+            VideoCutResponse: Response with locally saved clips information
         """
         start_time = time.time()
         
         logger.info(f"Starting video cutting process for task {request.task_id}")
-        logger.info(f"Source video: {request.video_url}")
+        logger.info(f"Source video reference: {request.normalized_source_ref}")
         logger.info(f"Number of clips to cut: {len(request.clips)}")
         
         try:
-            # Download source video if it's a remote URL
-            source_video_path = await self._download_video_if_needed(request.video_url)
+            resolved_source = resolve_media_reference(
+                request.normalized_source_ref,
+                material_id=request.material_id,
+                allow_remote=False,
+            )
+            source_video_path = str(resolved_source.path)
             
             # Get video information
             video_info = await self._get_video_info(source_video_path)
             
-            # Cut and upload each clip
+            # Cut and save each clip locally.
             clip_results = []
             failed_clips = []
             for i, clip in enumerate(request.clips):
@@ -55,7 +63,7 @@ class VideoCutService:
                 
                 try:
                     clip_start_time = time.time()
-                    clip_result = await self._cut_and_upload_clip(
+                    clip_result = await self._cut_and_save_clip_to_local_storage(
                         source_video_path, 
                         clip, 
                         video_info, 
@@ -90,7 +98,7 @@ class VideoCutService:
             
             return VideoCutResponse(
                 success=True,
-                message=f"Successfully cut and uploaded {len(clip_results)} video clips",
+                message=f"Successfully cut and saved {len(clip_results)} video clips locally",
                 clips=clip_results,
                 total_clips=len(clip_results),
                 processing_time=processing_time
@@ -164,7 +172,17 @@ class VideoCutService:
         logger.info(f"Video info: {video_info}")
         return video_info
     
-    async def _cut_and_upload_clip(
+    def _storage_root(self) -> Path:
+        root = Path(settings.storage.root)
+        if root.is_absolute():
+            return root
+        return Path(__file__).resolve().parents[2] / root
+
+    def _public_storage_url(self, path: Path) -> str:
+        rel = path.resolve().relative_to(self._storage_root().resolve())
+        return "/api/storage/files/" + str(rel).replace(os.sep, "/")
+
+    async def _cut_and_save_clip_to_local_storage(
         self, 
         source_video_path: str, 
         clip: VideoCutClipRequest, 
@@ -172,7 +190,7 @@ class VideoCutService:
         task_id: str,
         generate_thumbnails: bool
     ) -> VideoCutClipResult:
-        """Cut a single clip and upload to storage."""
+        """Cut a single clip and save it to local storage."""
         
         # Generate temporary file names
         clip_filename = f"{task_id}_{clip.id}.mp4"
@@ -221,11 +239,10 @@ class VideoCutService:
             
         logger.info(f"Successfully cut clip {clip.id}, file size: {clip_file_size / 1024 / 1024:.2f} MB")
         
-        # Generate bucket path for video clip
-        from datetime import datetime
         now = datetime.now()
         date_path = now.strftime("%Y/%m/%d")
-        bucket_path = f"video/clips/{date_path}/task-{task_id}/{clip_filename}"
+        output_dir = self._storage_root() / "video" / "clips" / date_path / f"task-{task_id}"
+        output_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate thumbnail if requested (before cleaning up the clip file)
         thumbnail_url = None
@@ -250,31 +267,11 @@ class VideoCutService:
                 
                 if thumbnail_result.returncode == 0:
                     logger.info(f"Thumbnail generated successfully for clip {clip.id}")
-                    # Upload thumbnail to storage
-                    with open(str(thumbnail_temp_path), "rb") as f:
-                        thumb_data = f.read()
+                    thumbnail_output_path = output_dir / thumbnail_filename
+                    shutil.move(str(thumbnail_temp_path), str(thumbnail_output_path))
+                    thumbnail_url = self._public_storage_url(thumbnail_output_path)
+                    logger.info(f"Thumbnail saved locally for clip {clip.id}: {thumbnail_url}")
 
-                    thumbnail_upload_result = await storage_service.upload_file(
-                        file_data=thumb_data,
-                        filename=thumbnail_filename,
-                        content_type="image/jpeg",
-                        folder="video",
-                        user_id="anonymous",
-                        task_id=task_id,
-                    )
-
-                    if thumbnail_upload_result.get('success'):
-                        thumbnail_url = thumbnail_upload_result.get('file_url')
-                        logger.info(f"Thumbnail uploaded successfully for clip {clip.id}: {thumbnail_url}")
-                    else:
-                        logger.warning(f"Failed to upload thumbnail for clip {clip.id}: {thumbnail_upload_result.get('message')}")
-
-                    # Clean up thumbnail temp file
-                    try:
-                        os.remove(thumbnail_temp_path)
-                        logger.debug(f"Cleaned up thumbnail temp file: {thumbnail_temp_path}")
-                    except Exception as e:
-                        logger.warning(f"Failed to remove thumbnail temp file {thumbnail_temp_path}: {e}")
                 else:
                     logger.warning(f"Failed to generate thumbnail for clip {clip.id}: {thumbnail_result.stderr}")
                         
@@ -282,41 +279,21 @@ class VideoCutService:
                 logger.warning(f"Failed to generate thumbnail for clip {clip.id}: {e}")
                 logger.debug(f"Thumbnail generation error details: {str(e)}", exc_info=True)
         
-        # Upload video clip to storage
-        logger.info(f"Uploading clip {clip.id} to storage")
+        # Move video clip to local storage without reading it into memory.
+        logger.info(f"Saving clip {clip.id} to local storage")
         logger.info(f"File size: {clip_file_size / 1024 / 1024:.2f} MB")
 
-        with open(str(clip_temp_path), "rb") as f:
-            clip_data = f.read()
+        clip_output_path = output_dir / clip_filename
+        shutil.move(str(clip_temp_path), str(clip_output_path))
+        clip_url = self._public_storage_url(clip_output_path)
 
-        upload_result = await storage_service.upload_file(
-            file_data=clip_data,
-            filename=clip_filename,
-            content_type="video/mp4",
-            folder="video",
-            user_id="anonymous",
-            task_id=task_id,
-        )
-
-        if not upload_result.get('success'):
-            logger.error(f"Failed to upload clip {clip.id} to storage")
-            logger.error(f"Upload error: {upload_result.get('message')}")
-            raise Exception(f"Failed to upload clip {clip.id} to storage: {upload_result.get('message')}")
-
-        logger.info(f"Successfully uploaded clip {clip.id} to: {upload_result.get('file_url')}")
-        
-        # Clean up temporary file
-        try:
-            os.remove(clip_temp_path)
-            logger.debug(f"Cleaned up temp file: {clip_temp_path}")
-        except Exception as e:
-            logger.warning(f"Failed to remove temp file {clip_temp_path}: {e}")
+        logger.info(f"Successfully saved clip {clip.id} to: {clip_url}")
 
         # Create clip result
         clip_result = VideoCutClipResult(
             id=clip.id,
             name=clip.name,
-            video_url=upload_result.get('file_url', ''),
+            video_url=clip_url,
             thumbnail_url=thumbnail_url,
             file_size=clip_file_size,
             duration=clip.duration,
@@ -325,4 +302,4 @@ class VideoCutService:
             format='mp4'
         )
         
-        return clip_result 
+        return clip_result

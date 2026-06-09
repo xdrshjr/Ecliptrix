@@ -3,7 +3,8 @@ Video search data models for PEXELS API integration.
 """
 
 from typing import List, Optional, Dict
-from pydantic import BaseModel, Field, ConfigDict, validator
+from urllib.parse import unquote, urlparse
+from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
 from enum import Enum
 
 from .base_models import BaseResponse
@@ -421,15 +422,44 @@ class VideoCutRequest(BaseModel):
     """Video cutting request model."""
     
     task_id: str = Field(description="Task ID for tracking and logging")
-    video_url: str = Field(description="URL of the original video to cut")
+    video_url: Optional[str] = Field(default=None, description="Legacy URL/source reference of the original video to cut")
+    source_ref: Optional[str] = Field(default=None, description="Backend media reference of the original video to cut")
+    material_id: Optional[str] = Field(default=None, description="Optional material identity for resolver lookup")
     clips: List[VideoCutClipRequest] = Field(description="List of clips to cut from the video")
     generate_thumbnails: bool = Field(default=True, description="Whether to generate thumbnails for cut clips")
+
+    @model_validator(mode="after")
+    def validate_source_fields(self):
+        if not self.video_url and not self.source_ref:
+            raise ValueError("Either video_url or source_ref must be provided")
+        if (
+            self.video_url
+            and self.source_ref
+            and self._canonical_source_ref(self.video_url) != self._canonical_source_ref(self.source_ref)
+        ):
+            raise ValueError("video_url and source_ref must match when both are provided")
+        return self
+
+    @property
+    def normalized_source_ref(self) -> str:
+        return self.source_ref or self.video_url or ""
+
+    @staticmethod
+    def _canonical_source_ref(reference: str) -> str:
+        """Normalize equivalent same-origin media references for migration checks."""
+        raw = reference.strip()
+        parsed = urlparse(raw)
+        if parsed.scheme.lower() in {"http", "https"}:
+            host = (parsed.hostname or "").lower()
+            if host in {"localhost", "127.0.0.1", "::1"}:
+                return unquote(parsed.path)
+        return unquote(raw)
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "task_id": "cut_task_123",
-                "video_url": "https://example.com/video.mp4",
+                "video_url": "/api/storage/files/video/source.mp4",
                 "clips": [
                     {
                         "id": "clip_1",
@@ -605,4 +635,4 @@ class WatermarkRemovalErrorResponse(BaseResponse):
                 "details": "Failed to process video frames"
             }
         }
-    ) 
+    )

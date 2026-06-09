@@ -1004,23 +1004,23 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
 @router.post("/cut", response_model=VideoCutResponse)
 async def cut_video_clips(request: VideoCutRequest) -> VideoCutResponse:
     """
-    Cut video clips from source video and upload to storage.
+    Cut video clips from source video and save them to local storage.
 
-    This endpoint takes a video URL and a list of clip specifications,
-    cuts the clips from the source video, and uploads them to storage
+    This endpoint takes a local media reference and clip specifications,
+    cuts the clips from the source video, and saves them to local storage
     with optional thumbnail generation.
     
     Args:
         request (VideoCutRequest): Video cutting parameters with clips info
     
     Returns:
-        VideoCutResponse: Results with uploaded clips information
+        VideoCutResponse: Results with locally saved clips information
     
     Raises:
         HTTPException: 400 for invalid request parameters, 500 for cutting errors
     """
     logger.info(f"Video cutting request received for task {request.task_id}")
-    logger.info(f"Source video: {request.video_url}")
+    logger.info(f"Source video reference: {request.normalized_source_ref}")
     logger.info(f"Number of clips to cut: {len(request.clips)}")
     
     try:
@@ -1049,7 +1049,7 @@ async def cut_video_clips(request: VideoCutRequest) -> VideoCutResponse:
         video_cut_service = VideoCutService()
         
         # Process video cutting
-        result = await video_cut_service.cut_and_upload_video_clips(request)
+        result = await video_cut_service.cut_video_clips_to_local_storage(request)
         
         if result.success:
             logger.info(f"Video cutting completed successfully for task {request.task_id}")
@@ -1337,4 +1337,4 @@ async def remove_watermark(request: WatermarkRemovalRequest) -> Union[WatermarkR
             task_id=request.task_id,
             error_code="INTERNAL_ERROR",
             details=str(e)
-        ) 
+        )

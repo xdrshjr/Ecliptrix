@@ -16,7 +16,7 @@
  */
 
 import type { MaterialItem } from '@/types';
-import { toAbsolutePlaybackUrl, effectivePreviewUrl } from './selectPlaybackUrl';
+import { toAbsolutePlaybackUrl, effectivePreviewUrl, isLocalMediaReference } from './selectPlaybackUrl';
 
 /**
  * Structural shape of a sequence — accepts both
@@ -33,6 +33,7 @@ export interface SequenceLike {
 
 export type ResolvedPlaybackUrlSource =
   | 'localProxy'
+  | 'localStorageUrl'
   | 'previewProxy'
   | 'cacheUrl'
   | 'serverUrl'
@@ -139,8 +140,14 @@ export function resolveSequencePlaybackUrl(
       }
     }
     pushIfNew(candidates, proxyPrimary);
-    // 1. cacheUrl (absolutised; SSR returns undefined and we skip).
-    pushIfNew(candidates, toAbsolutePlaybackUrl(material.cacheUrl));
+    const localStorageReference =
+      material.metadata?.localResolvedUrl ||
+      material.cacheUrl ||
+      (isLocalMediaReference(material.url) ? material.url : undefined) ||
+      (isLocalMediaReference(material.serverUrl) ? material.serverUrl : undefined);
+    const localStorageUrl = toAbsolutePlaybackUrl(localStorageReference);
+    // 1. local storage/cache URL (absolutised; SSR returns undefined and we skip).
+    pushIfNew(candidates, localStorageUrl);
     // 2. serverUrl (cross-session durable URL).
     pushIfNew(candidates, material.serverUrl ?? undefined);
     // 3. url (raw remote, e.g. CDN / blob).
@@ -165,11 +172,8 @@ export function resolveSequencePlaybackUrl(
       primarySource = 'localProxy';
     } else if (proxyPrimary && primary === proxyPrimary) {
       primarySource = 'previewProxy';
-    } else if (
-      material.cacheUrl &&
-      toAbsolutePlaybackUrl(material.cacheUrl) === primary
-    ) {
-      primarySource = 'cacheUrl';
+    } else if (localStorageUrl && localStorageUrl === primary) {
+      primarySource = 'localStorageUrl';
     } else if (material.serverUrl && material.serverUrl === primary) {
       primarySource = 'serverUrl';
     } else {

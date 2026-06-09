@@ -1,24 +1,22 @@
 /**
- * Export-path regression guard for the video re-entry fix (R5 / P2-4).
+ * Export-path regression guard for desktop local editing.
  *
- * `buildCompositionRequest` MUST use `seq.url` directly — never resolve
- * to a same-origin `cacheUrl` — because the export pipeline runs
- * server-side and embedding `/api/storage/files/...` would be meaningless
- * outside the browser. Documented in
- * docs/plans/video-reentry-play-no-source-fix/spec.md §8 R5.
+ * `seq.url` is now the canonical backend media reference selected by the
+ * extractor. Desktop local exports may carry same-origin `/api/storage/files`
+ * references; preview-only blob/proxy URLs must still stay out of payloads.
  */
 import { describe, it, expect } from 'vitest';
 import { CompositionAdapter } from '../CompositionAdapter';
 import type { VideoSequenceItem, AudioSequenceItem } from '../../domain/ports';
 
 describe('CompositionAdapter.buildCompositionRequest export-path safety', () => {
-  it('emits seq.url verbatim, ignoring any cacheUrl on the sequence', () => {
+  it('emits the chosen canonical local media reference', () => {
     const adapter = new CompositionAdapter();
     const videoSequences: VideoSequenceItem[] = [
       {
         id: 'seq-1',
         name: 'Video by Test',
-        url: 'https://cdn.pexels.com/v.mp4',
+        url: '/api/storage/files/cached_materials/pexels/1.mp4',
         cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
         startTime: 0,
         duration: 5,
@@ -38,10 +36,9 @@ describe('CompositionAdapter.buildCompositionRequest export-path safety', () => 
       totalDuration: 5,
     });
     expect(request.video_sequences).toHaveLength(1);
-    expect(request.video_sequences[0].url).toBe('https://cdn.pexels.com/v.mp4');
-    // Hard guard: must NOT leak the same-origin cacheUrl into the request.
-    expect(request.video_sequences[0].url).not.toContain('cached_materials');
-    expect(request.video_sequences[0].url).not.toContain('/api/storage/files');
+    expect(request.video_sequences[0].url).toBe('/api/storage/files/cached_materials/pexels/1.mp4');
+    expect(JSON.stringify(request.video_sequences[0])).not.toContain('localProxyUrl');
+    expect(JSON.stringify(request.video_sequences[0])).not.toContain('previewProxyLocalUrl');
   });
 
   it('preserves seq.url exactly even when only cacheUrl is set on the sequence', () => {

@@ -9,8 +9,9 @@
  *   - getVideoSequencesFromTimeline()
  *   - getAudioSequencesFromTimeline()
  *
- * The extraction preserves EXACT behavior:
- *   - URL selection: serverUrl preferred, fallback to url
+ * The extraction preserves timeline behavior while selecting desktop-local
+ * backend media references for export when available:
+ *   - URL selection: cacheUrl/local url preferred, remote serverUrl fallback
  *   - Volume calculation: (item.volume ?? 1) * (track.volume / 100), clamped [0, 2]
  *   - Track filtering: video tracks must be visible and not locked
  *   - Audio track filtering: must be visible, not locked, and not muted
@@ -45,11 +46,50 @@ export interface CompositionMaterialData extends MaterialData {
    * the export composition path.
    */
   cacheUrl?: string;
+  localResolvedUrl?: string;
+  previewProxyLocalUrl?: string;
+  localProxyUrl?: string;
   metadata?: {
     isWatermarkRemoved?: boolean;
     source?: string;
     [key: string]: unknown;
   };
+}
+
+const LOCAL_MEDIA_PATH_PREFIXES = [
+  '/api/storage/files/',
+  '/api/audio/generated/',
+  '/api/audio/subtitles/',
+  '/static/timeline_exports/',
+  '/api/video/compose/',
+];
+
+function isLocalMediaReference(url: string | undefined): boolean {
+  if (!url) return false;
+  if (LOCAL_MEDIA_PATH_PREFIXES.some(prefix => url.startsWith(prefix))) {
+    return true;
+  }
+  if (!/^https?:\/\//i.test(url)) return false;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      (host === 'localhost' || host === '127.0.0.1' || host === '::1') &&
+      LOCAL_MEDIA_PATH_PREFIXES.some(prefix => parsed.pathname.startsWith(prefix))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function selectCanonicalExportReference(material: CompositionMaterialData): string {
+  const local = [
+    material.localResolvedUrl,
+    material.cacheUrl,
+    material.url,
+    material.serverUrl,
+  ].find(isLocalMediaReference);
+  return local || material.serverUrl || material.url || '';
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +103,7 @@ export class CompositionAdapter implements ICompositionPort {
    * Logic extracted verbatim from useTimelineComposition.ts#getVideoSequencesFromTimeline:
    * 1. Filter tracks: type='video', isVisible=true, !isLocked
    * 2. For each item with type='video' and a materialId, find the matching material
-   * 3. Select URL: prefer material.serverUrl, fallback material.url
+   * 3. Select URL: prefer local backend reference, fallback serverUrl/url
    * 4. Compute volume: (item.volume ?? 1) * (track.volume / 100), clamped [0, 2]
    * 5. Include clip start/end/originalDuration
    */
@@ -99,10 +139,7 @@ export class CompositionAdapter implements ICompositionPort {
         const clipEnd = item.clipEnd ?? item.originalDuration ?? item.duration;
         const originalDuration = item.originalDuration ?? item.duration;
 
-        // URL selection: prefer serverUrl, fallback url
-        // This matches the exact logic in useTimelineComposition.ts:
-        //   const finalUrl = material.serverUrl || material.url;
-        const finalUrl = material.serverUrl || material.url || '';
+        const finalUrl = selectCanonicalExportReference(material);
 
         // Volume calculation — exact match with useTimelineComposition.ts:
         //   Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 2))
@@ -115,10 +152,9 @@ export class CompositionAdapter implements ICompositionPort {
           id: item.id,
           name: item.name,
           url: finalUrl,
-          // cacheUrl is an opt-in same-origin hint for the preview path.
-          // Down-stream consumers MUST gate it with selectPlaybackUrl(...,
-          // { purpose: 'preview' }) — the export builder reads `url`
-          // directly so it stays untouched here.
+          // Same-origin local storage hint retained for preview diagnostics.
+          // Export uses `url`, which is already the canonical local reference
+          // when one is available.
           cacheUrl: material.cacheUrl,
           startTime: item.startTime,
           duration: item.duration,
@@ -144,7 +180,7 @@ export class CompositionAdapter implements ICompositionPort {
    * Logic extracted verbatim from useTimelineComposition.ts#getAudioSequencesFromTimeline:
    * 1. Filter tracks: type='audio', isVisible=true, !isLocked, !isMuted
    * 2. For each item with type='audio' and a materialId, find the matching material
-   * 3. Select URL: prefer material.serverUrl, fallback material.url
+   * 3. Select URL: prefer local backend reference, fallback serverUrl/url
    * 4. Compute volume: (item.volume ?? 1) * (track.volume / 100), clamped [0, 2]
    * 5. Sort results by startTime ascending
    */
@@ -185,8 +221,7 @@ export class CompositionAdapter implements ICompositionPort {
         const clipEnd = item.clipEnd ?? item.originalDuration ?? item.duration;
         const originalDuration = item.originalDuration ?? item.duration;
 
-        // URL selection: prefer serverUrl, fallback url
-        const finalUrl = material.serverUrl || material.url || '';
+        const finalUrl = selectCanonicalExportReference(material);
 
         // Volume calculation — same formula as video
         const volume = Math.max(
