@@ -124,16 +124,13 @@ The backend integrates with numerous external services, each requiring its own A
 | Tavily | `TAVILY_API_KEYS` | Web search |
 | ByteDance ARK | `ARK_API_KEY` | AI video generation + AI image generation (Seedream) |
 | Volcano TTS | `VOLCANO_TTS_*` | Text-to-speech (100+ voices) |
-| Alibaba Cloud OSS | `OSS_*` | Optional cloud storage (enabled via `OSS_ENABLED=true`) |
 | Freesound | `FREESOUND_API_KEY` | Audio search |
 
 YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 
 ### Storage
 
-**Primary**: Local filesystem (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by `install.sh`: `static/uploads/{video,audio,images,files}`, `static/video/{composed,thumbnails}`, `static/audio/{generated,subtitles}`, `static/timeline_exports`, `temp/`, `logs/`.
-
-**Optional**: Alibaba Cloud OSS as secondary/CDN storage when `OSS_ENABLED=true`.
+**Primary**: Local filesystem (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by `install.sh`: `static/uploads/{video,audio,images,files}`, `static/video/{composed,thumbnails}`, `static/audio/{generated,subtitles}`, `static/timeline_exports`, `temp/`, `logs/`. As a self-contained local desktop app, all material uploads and generated artifacts are saved local-only — there is no "upload to server" / cloud-object-storage step.
 
 **Cached remote materials** (`cached_materials/<source>/<file>`): Remote video assets (Pexels, ARK, etc.) are pre-downloaded into `STORAGE_ROOT/cached_materials/<source>/<source_id>.<ext>` and tracked in the `cached_materials` table. They're served via the existing `/api/storage/files` mount — no separate static mount.
 

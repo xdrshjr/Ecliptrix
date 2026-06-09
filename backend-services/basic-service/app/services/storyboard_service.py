@@ -51,7 +51,6 @@ from app.services.grid_pack_service import (
     GRID_CROP_PADDING as _GRID_CROP_PADDING,
     PACK_TYPE_STORYBOARD,
 )
-from app.services.oss_client import get_oss_client
 from app.services.reference_compositor import (
     composite_references,
     position_labels,
@@ -1181,28 +1180,6 @@ async def _finalize_pack(
                 {"pack_id": pack_id, "error": str(exc)},
             )
 
-    # OSS upload (best-effort) — skip anything under _intermediate/ or
-    # _batch_*/ so private intermediates don't leak to the CDN.
-    oss_client = get_oss_client()
-    if oss_client:
-        try:
-            for filename in os.listdir(pack_directory):
-                local_file = os.path.join(pack_directory, filename)
-                if os.path.isdir(local_file):
-                    continue
-                if not filename.endswith((".png", ".json")):
-                    continue
-                rel = f"{STORYBOARD_STORAGE_DIR}/{today_str}/{pack_id}/{filename}"
-                content_type = (
-                    "image/png" if filename.endswith(".png") else "application/json"
-                )
-                await oss_client.upload_file(local_file, rel, content_type)
-            logger.info(f"Storyboard pack {pack_id} uploaded to OSS")
-        except Exception as oss_exc:
-            logger.warning(
-                f"OSS upload failed for storyboard pack {pack_id}: {oss_exc}"
-            )
-
     pack = StoryboardPack(
         pack_id=pack_id,
         project_id=request.project_id,
@@ -1726,22 +1703,6 @@ async def compose_storyboard_video(request: StoryboardComposeRequest) -> dict:
             thumbnail_url = _frame_url(date_str, request.pack_id, "composed_thumb.jpg")
             logger.info(f"Composed video thumbnail generated: {thumb_path}")
 
-        # Optional OSS upload
-        oss_client = get_oss_client()
-        if oss_client:
-            try:
-                rel_video = f"{STORYBOARD_STORAGE_DIR}/{date_str}/{request.pack_id}/composed.mp4"
-                video_url = await oss_client.upload_file(
-                    final_video, rel_video, "video/mp4"
-                )
-                if thumbnail_url and os.path.exists(thumb_path):
-                    rel_thumb = f"{STORYBOARD_STORAGE_DIR}/{date_str}/{request.pack_id}/composed_thumb.jpg"
-                    thumbnail_url = await oss_client.upload_file(
-                        thumb_path, rel_thumb, "image/jpeg"
-                    )
-            except Exception as oss_exc:
-                logger.warning(f"OSS upload failed for composed video: {oss_exc}")
-
         logger.info(
             f"Storyboard video composed for pack {request.pack_id}: {video_url}"
         )
@@ -2012,7 +1973,7 @@ async def _assert_pack_owned(
 
 
 async def cleanup_pack_storage(pack_ids: List[str]) -> None:
-    """Best-effort filesystem + OSS cleanup for a batch of pack ids.
+    """Best-effort filesystem cleanup for a batch of pack ids.
 
     Used by ``video_project_service.delete_project`` after the project-row
     delete has committed. Per-pack failures are logged but do not surface
@@ -2020,7 +1981,6 @@ async def cleanup_pack_storage(pack_ids: List[str]) -> None:
     """
     if not pack_ids:
         return
-    oss_client = get_oss_client()
     for pid in pack_ids:
         try:
             pack_directory = _pack_dir(pid)
@@ -2032,7 +1992,6 @@ async def cleanup_pack_storage(pack_ids: List[str]) -> None:
             continue
         if not pack_directory:
             continue
-        date_str = Path(pack_directory).parent.name
         try:
             shutil.rmtree(pack_directory, ignore_errors=True)
             logger.info(
@@ -2048,23 +2007,13 @@ async def cleanup_pack_storage(pack_ids: List[str]) -> None:
         # In-memory caches keyed by pack_id
         _pack_video_tasks.pop(pid, None)
 
-        if oss_client:
-            try:
-                prefix = f"{STORYBOARD_STORAGE_DIR}/{date_str}/{pid}/"
-                await asyncio.to_thread(_oss_delete_prefix, oss_client, prefix)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to delete OSS objects during cleanup",
-                    {"pack_id": pid, "error": str(exc)},
-                )
-
 
 async def delete_pack(
     pack_id: str,
     *,
     db: Optional[AsyncSession] = None,
 ) -> None:
-    """Delete a storyboard pack directory and optionally its OSS counterpart.
+    """Delete a storyboard pack directory.
 
     When ``db`` is supplied the matching ownership row is also dropped so
     the pack disappears from the per-project list immediately.
@@ -2072,8 +2021,6 @@ async def delete_pack(
     pack_directory = _pack_dir(pack_id)
     if not pack_directory:
         raise FileNotFoundError(f"Storyboard pack not found: {pack_id}")
-
-    date_str = Path(pack_directory).parent.name
 
     # Remove local directory
     shutil.rmtree(pack_directory, ignore_errors=True)
@@ -2095,17 +2042,6 @@ async def delete_pack(
                 "Failed to delete storyboard pack ownership row",
                 {"pack_id": pack_id, "error": str(exc)},
             )
-
-    # Remove from OSS if enabled
-    oss_client = get_oss_client()
-    if oss_client:
-        try:
-            prefix = f"{STORYBOARD_STORAGE_DIR}/{date_str}/{pack_id}/"
-            # oss2 does not provide async list — run in thread
-            await asyncio.to_thread(_oss_delete_prefix, oss_client, prefix)
-            logger.info(f"Deleted OSS objects for storyboard pack {pack_id}")
-        except Exception as exc:
-            logger.warning(f"Failed to delete OSS objects for pack {pack_id}: {exc}")
 
 
 async def _download_to_local(src_url: str, dest_path: str) -> None:
@@ -2271,16 +2207,3 @@ async def create_pack_from_shots(
         script_title=request.title,
         script_history=request.script_history,
     )
-
-
-def _oss_delete_prefix(oss_client, prefix: str) -> None:
-    """Delete all OSS objects under a given prefix (synchronous)."""
-    try:
-        import oss2
-
-        for obj in oss2.ObjectIterator(
-            oss_client.bucket, prefix=oss_client.cfg.key_prefix + prefix
-        ):
-            oss_client.bucket.delete_object(obj.key)
-    except Exception as exc:
-        logger.warning(f"OSS prefix deletion error: {exc}")

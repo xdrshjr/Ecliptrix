@@ -149,7 +149,6 @@ function _previewProxyPatchFromResult(
   };
   if (r.preview_proxy_profile) patch.previewProxyProfile = r.preview_proxy_profile;
   if (r.preview_proxy_local_url) patch.previewProxyLocalUrl = r.preview_proxy_local_url;
-  if (r.preview_proxy_oss_url) patch.previewProxyOssUrl = r.preview_proxy_oss_url;
   if (typeof r.preview_proxy_progress === 'number') {
     patch.previewProxyProgress = r.preview_proxy_progress;
   }

@@ -41,7 +41,3 @@ profiles:
     audio_bitrate: "96k"
     container: "mp4"
     movflags: "+faststart+frag_keyframe+empty_moov"
-
-oss:
-  enabled_via: "OSS_ENABLED"
-  bucket_subprefix: "preview-proxies/"

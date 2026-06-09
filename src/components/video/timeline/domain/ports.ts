@@ -137,7 +137,6 @@ export interface RemoteMaterialResult {
   preview_proxy_status?: string | null;
   preview_proxy_profile?: string | null;
   preview_proxy_local_url?: string | null;
-  preview_proxy_oss_url?: string | null;
   preview_proxy_progress?: number | null;
 }
 

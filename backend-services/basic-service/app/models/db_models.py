@@ -146,7 +146,6 @@ class CachedMaterial(Base):
     preview_proxy_status = Column(String(16), nullable=False, default="absent")
     preview_proxy_profile = Column(String(32), nullable=True)
     preview_proxy_local_url = Column(String(1024), nullable=True)
-    preview_proxy_oss_url = Column(String(1024), nullable=True)
     preview_proxy_progress = Column(Integer, nullable=False, default=0)
     preview_proxy_bytes = Column(BigInteger, nullable=True)
     preview_proxy_duration_sec = Column(Float, nullable=True)

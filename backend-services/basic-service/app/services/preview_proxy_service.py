@@ -21,7 +21,7 @@ Internals
   on top of :class:`QueueManager` (see storyboard_video_queue for the same
   idiom).
 * On exit code 0: output file is moved into the configured output dir,
-  optionally uploaded to OSS, the DB row is finalized (``status='cached'``).
+  the DB row is finalized (``status='cached'``).
 * On non-zero exit / timeout: best-effort delete of the partial file,
   retry once, then mark ``status='failed'`` with the captured stderr tail.
 
@@ -29,7 +29,7 @@ Spec invariants enforced
 ------------------------
 * INV6 — failed jobs leave no half-written output file.
 * §3.2.7 step 3 — exit-code-0 path writes
-  ``preview_proxy_local_url / preview_proxy_oss_url / status='cached' /
+  ``preview_proxy_local_url / status='cached' /
   transcoded_at / bytes / duration_sec``.
 """
 
@@ -54,7 +54,6 @@ from app.security.url_guard import (
     URLGuardError,
     validate_local_path_for_ffmpeg,
 )
-from app.services import oss_client as oss_module
 from app.services.material_download_service import get_material_download_service
 from app.services.preview_proxy_queue import preview_proxy_queue
 from app.services.storage_service import storage_service
@@ -511,17 +510,6 @@ class PreviewProxyService:
         size = output_path.stat().st_size if output_path.exists() else None
         # Same-origin URL via existing static mount.
         local_url = self._local_url_for(material_id, output_path.name)
-        oss_url: Optional[str] = None
-        oss_client = oss_module.get_oss_client()
-        if oss_client is not None:
-            rel = (
-                self._cfg.oss_bucket_subprefix.rstrip("/")
-                + f"/{material_id}/{output_path.name}"
-            )
-            try:
-                oss_url = await oss_client.upload_file(str(output_path), rel, "video/mp4")
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"preview_proxy OSS upload failed (kept local): {exc}")
 
         async with self._session_factory() as session:
             row = await self._get_row(session, material_id)
@@ -530,7 +518,6 @@ class PreviewProxyService:
             row.preview_proxy_status = "cached"
             row.preview_proxy_profile = profile
             row.preview_proxy_local_url = local_url
-            row.preview_proxy_oss_url = oss_url
             row.preview_proxy_progress = 100
             row.preview_proxy_bytes = size
             row.preview_proxy_last_error = None

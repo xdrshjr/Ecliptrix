@@ -132,9 +132,9 @@ export function resolveSequencePlaybackUrl(
       });
       const proxyLocal = toAbsolutePlaybackUrl(material.previewProxyLocalUrl);
       // effectivePreviewUrl(fallback:'origin') only returns a non-proxy URL
-      // when both proxy fields are empty; guard so a half-populated row can't
+      // when the proxy field is empty; guard so a half-populated row can't
       // mislabel the original chain as a proxy tier.
-      if (pp && (pp === proxyLocal || pp === material.previewProxyOssUrl)) {
+      if (pp && pp === proxyLocal) {
         proxyPrimary = pp;
       }
     }

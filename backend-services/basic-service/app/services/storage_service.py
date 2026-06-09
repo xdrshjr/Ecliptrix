@@ -19,7 +19,6 @@ import aiofiles
 
 from app.config import settings
 from app.logger import get_logger
-from app.services.oss_client import get_oss_client
 
 logger = get_logger(__name__)
 
@@ -446,18 +445,7 @@ class StorageService:
                 "content_type": content_type,
             })
 
-            # Try to upload to OSS; fall back to local URL on failure
             file_url = self._get_file_url(relative_path)
-            oss_client = get_oss_client()
-            if oss_client:
-                try:
-                    file_url = await oss_client.upload_file(str(target), relative_path, content_type)
-                    logger.info("File uploaded to OSS", {"oss_url": file_url})
-                except Exception as oss_exc:
-                    logger.warning("OSS upload failed, using local URL", {
-                        "path": relative_path,
-                        "error": str(oss_exc),
-                    })
 
             return {
                 "success": True,
@@ -585,17 +573,6 @@ class StorageService:
                 if ff_result.returncode == 0 and thumb_absolute.exists():
                     thumbnail_url = self._get_file_url(thumb_relative)
                     logger.info("Thumbnail generated", {"thumbnail": thumb_relative})
-                    # Upload thumbnail to OSS as well
-                    oss_client = get_oss_client()
-                    if oss_client:
-                        try:
-                            thumbnail_url = await oss_client.upload_file(
-                                str(thumb_absolute), thumb_relative, "image/jpeg"
-                            )
-                        except Exception as oss_exc:
-                            logger.warning("OSS thumbnail upload failed, using local URL", {
-                                "error": str(oss_exc),
-                            })
                 else:
                     logger.warning("ffmpeg thumbnail generation failed", {
                         "stderr": ff_result.stderr.decode(errors="replace")[:500]

@@ -14,8 +14,7 @@ CDN URLs directly:
 The service streams upstream → client while also writing to a hot cache
 directory. After a successful end-to-end transfer it hands the local path
 off to :class:`MaterialDownloadService.store_external_download_async` so the
-``cached_materials`` table reflects the new on-disk asset (and OSS upload
-follows when ``OSS_ENABLED=true``).
+``cached_materials`` table reflects the new on-disk asset.
 """
 
 from __future__ import annotations

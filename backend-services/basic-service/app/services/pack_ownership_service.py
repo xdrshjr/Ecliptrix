@@ -15,7 +15,7 @@ Public surface:
   - collect_pack_ids_for_project(...) /
     delete_rows_by_project(...): used by ``video_project_service.delete_project``
     to cascade ownership rows inside the project-delete transaction; the
-    actual filesystem + OSS cleanup is deferred until after commit.
+    actual filesystem cleanup is deferred until after commit.
 """
 
 from __future__ import annotations

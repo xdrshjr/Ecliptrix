@@ -40,7 +40,6 @@ from app.services.grid_pack_service import (
     build_scene_grid_prompt,
     resolve_reference_to_base64_or_url,
 )
-from app.services.oss_client import get_oss_client
 from app.services.reference_compositor import (
     composite_references,
     position_labels,
@@ -285,22 +284,6 @@ async def _generate_grid_pack(
     }
     await grid_pack_service.write_pack_metadata(pack_dir, metadata)
 
-    # Optional OSS upload of the whole pack directory.
-    oss_client = get_oss_client()
-    if oss_client:
-        try:
-            for filename in os.listdir(pack_dir):
-                if filename.endswith((".png", ".json")):
-                    local_file = os.path.join(pack_dir, filename)
-                    rel = f"{grid_pack_service.storage_dir_for(pack_type)}/{today_str}/{pack_id}/{filename}"
-                    content_type = (
-                        "image/png" if filename.endswith(".png") else "application/json"
-                    )
-                    await oss_client.upload_file(local_file, rel, content_type)
-            logger.info(f"Grid pack {pack_id} uploaded to OSS")
-        except Exception as oss_exc:
-            logger.warning(f"OSS upload failed for grid pack {pack_id}: {oss_exc}")
-
     pack = ArkImagePack(
         pack_id=pack_id,
         pack_type=pack_type,
@@ -376,7 +359,6 @@ async def _generate_legacy_images(
     local_dir = os.path.join(storage_root, "images", "ark", today_str)
     os.makedirs(local_dir, exist_ok=True)
 
-    oss_client = get_oss_client()
     results: List[ArkImageResult] = []
 
     for item in items:
@@ -410,19 +392,8 @@ async def _generate_legacy_images(
             continue
 
         local_url = f"/api/storage/files/images/ark/{today_str}/{local_filename}"
-        relative_path = f"images/ark/{today_str}/{local_filename}"
 
         final_url = local_url
-        if oss_client:
-            try:
-                final_url = await oss_client.upload_file(
-                    local_path, relative_path, "image/png"
-                )
-                logger.info(f"Ark image uploaded to OSS: {final_url}")
-            except Exception as oss_exc:
-                logger.warning(
-                    f"OSS upload failed for Ark image: {oss_exc}, falling back to local URL"
-                )
 
         results.append(
             ArkImageResult(

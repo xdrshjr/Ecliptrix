@@ -30,7 +30,3 @@ proxy:
   per_ip_rate_limit_per_min: 100
   # Stream chunk size for upstream → client passthrough.
   stream_chunk_size: 65536
-
-oss:
-  enabled_via: "OSS_ENABLED"
-  bucket_subprefix: "media-proxy-cache/"

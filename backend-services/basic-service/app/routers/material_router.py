@@ -54,7 +54,6 @@ class MaterialIngestResultEntry(BaseModel):
     preview_proxy_status: Optional[str] = None
     preview_proxy_profile: Optional[str] = None
     preview_proxy_local_url: Optional[str] = None
-    preview_proxy_oss_url: Optional[str] = None
     preview_proxy_progress: Optional[int] = None
 
 
@@ -186,7 +185,6 @@ def _proxy_fields_from_row(row) -> dict:
         "preview_proxy_status": getattr(row, "preview_proxy_status", None) or None,
         "preview_proxy_profile": getattr(row, "preview_proxy_profile", None),
         "preview_proxy_local_url": getattr(row, "preview_proxy_local_url", None),
-        "preview_proxy_oss_url": getattr(row, "preview_proxy_oss_url", None),
         "preview_proxy_progress": (
             int(getattr(row, "preview_proxy_progress", 0) or 0)
             if getattr(row, "preview_proxy_status", None) not in (None, "absent")

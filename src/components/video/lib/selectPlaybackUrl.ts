@@ -7,13 +7,12 @@
  * Phase 3 (spec §3.2.6 / §5.4) extends to a five-tier priority on the
  * preview path:
  *   P1 — same-origin preview-proxy (`previewProxyLocalUrl`) when status='cached'
- *   P2 — OSS preview-proxy (`previewProxyOssUrl`) when status='cached'
  *   P3 — same-origin original cache (`cacheUrl`)
  *   P4 — same-origin media-proxy (`/api/media/proxy?u=...`) when previewFallback='proxy'
  *   P5 — original CDN URL (`serverUrl || url`) — only when previewFallback='origin'
  *
  *   purpose='export':
- *     Skips P1/P2/P4 entirely. The export pipeline runs server-side and uses
+ *     Skips P1/P4 entirely. The export pipeline runs server-side and uses
  *     `serverUrl || url` so it doesn't accidentally embed a same-origin
  *     /api/storage/files path that's only meaningful in the browser. See
  *     phase2-development-plan-revised.md Rev-7 / R12 + INV3.
@@ -50,7 +49,6 @@ interface PlaybackInput {
   url?: string | null;
   previewProxyStatus?: string | null;
   previewProxyLocalUrl?: string | null;
-  previewProxyOssUrl?: string | null;
 }
 
 const MEDIA_PROXY_PREFIX = '/api/media/proxy?u=';
@@ -104,8 +102,6 @@ export function selectPlaybackUrl(
   if (preferPreview && ppCached) {
     const local = toAbsolutePlaybackUrl(m.previewProxyLocalUrl);
     if (local) return local;
-    // P2 — OSS preview-proxy when same-origin one missing for any reason.
-    if (m.previewProxyOssUrl) return m.previewProxyOssUrl;
   }
 
   // P3 — same-origin original cache (already-downloaded full-quality file).

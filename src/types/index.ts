@@ -547,7 +547,6 @@ export interface MaterialItem {
   previewProxyStatus?: 'absent' | 'queued' | 'running' | 'cached' | 'failed';
   previewProxyProfile?: string;
   previewProxyLocalUrl?: string;
-  previewProxyOssUrl?: string;
   previewProxyProgress?: number;
   proxyStatus?: 'absent' | 'partial' | 'cached' | 'error';
   bytes?: number;

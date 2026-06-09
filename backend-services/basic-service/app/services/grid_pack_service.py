@@ -547,7 +547,7 @@ async def get_pack(pack_type: str, pack_id: str) -> dict:
 
 
 async def delete_pack(pack_type: str, pack_id: str) -> None:
-    """Delete the pack directory from local disk (and OSS if configured)."""
+    """Delete the pack directory from local disk."""
     import shutil
 
     validate_pack_id(pack_id)
@@ -555,33 +555,8 @@ async def delete_pack(pack_type: str, pack_id: str) -> None:
     if not pack_dir:
         raise FileNotFoundError(f"{pack_type} pack not found: {pack_id}")
 
-    date_str = os.path.basename(os.path.dirname(pack_dir))
     shutil.rmtree(pack_dir, ignore_errors=True)
     logger.info(f"Deleted {pack_type} pack directory: {pack_dir}")
-
-    try:
-        from app.services.oss_client import get_oss_client
-
-        oss_client = get_oss_client()
-        if oss_client:
-            import asyncio
-            prefix = f"{storage_dir_for(pack_type)}/{date_str}/{pack_id}/"
-
-            def _delete():
-                try:
-                    import oss2
-                    for obj in oss2.ObjectIterator(
-                        oss_client.bucket,
-                        prefix=oss_client.cfg.key_prefix + prefix,
-                    ):
-                        oss_client.bucket.delete_object(obj.key)
-                except Exception as exc:
-                    logger.warning(f"OSS prefix deletion error: {exc}")
-
-            await asyncio.to_thread(_delete)
-            logger.info(f"Deleted OSS objects for {pack_type} pack {pack_id}")
-    except Exception as exc:
-        logger.warning(f"OSS cleanup failed for {pack_type} pack {pack_id}: {exc}")
 
 
 async def download_to(path: str, url: str, timeout: float = 60.0) -> None:

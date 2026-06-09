@@ -173,19 +173,18 @@ describe('resolveSequencePlaybackUrl', () => {
     expect(result!.url).toContain('cached_materials');
   });
 
-  it('(pp4) cached with only OSS proxy url → OSS primary', () => {
+  it('(pp4) cached but no local proxy url → falls through to cacheUrl (no OSS mirror)', () => {
     const material = makeMaterial({
       previewProxyStatus: 'cached',
       previewProxyLocalUrl: undefined,
-      previewProxyOssUrl: 'https://oss.example.com/preview/480p.mp4',
       cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
     });
     const seq = makeSeq({});
     const result = resolveSequencePlaybackUrl(seq, [material], {
       preferPreviewProxy: true,
     });
-    expect(result!.source).toBe('previewProxy');
-    expect(result!.url).toBe('https://oss.example.com/preview/480p.mp4');
+    expect(result!.source).toBe('cacheUrl');
+    expect(result!.url).toContain('cached_materials');
   });
 
   // -- local blob tier (round-2, C2/C3/R6) ------------------------------

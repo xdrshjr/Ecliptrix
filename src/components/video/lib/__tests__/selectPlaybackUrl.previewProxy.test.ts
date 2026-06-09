@@ -20,16 +20,18 @@ describe('selectPlaybackUrl phase-3 P1–P5', () => {
     expect(url.startsWith(window.location.origin)).toBe(true);
   });
 
-  it('P2: falls back to OSS previewProxyOssUrl when local missing', () => {
+  it('preview-proxy status=cached but local URL missing degrades to P3 (cache)', () => {
+    // With OSS removed, an empty previewProxyLocalUrl simply falls through to
+    // the same-origin cache tier — there is no remote mirror fallback.
     const url = selectPlaybackUrl(
       {
         previewProxyStatus: 'cached',
-        previewProxyOssUrl: 'https://oss/preview/abc.mp4',
+        cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
         url: 'https://cdn/v.mp4',
       },
       { preferPreviewProxy: true },
     );
-    expect(url).toBe('https://oss/preview/abc.mp4');
+    expect(url).toContain('cached_materials');
   });
 
   it('P3: same-origin cacheUrl wins when preview-proxy not cached', () => {
@@ -70,7 +72,6 @@ describe('selectPlaybackUrl phase-3 P1–P5', () => {
       {
         previewProxyStatus: 'cached',
         previewProxyLocalUrl: '/api/storage/files/preview-proxies/abc/480p.mp4',
-        previewProxyOssUrl: 'https://oss/preview/abc.mp4',
         cacheUrl: '/api/storage/files/cached_materials/pexels/1.mp4',
         serverUrl: 'https://cdn/v.mp4',
         url: 'https://x/v.mp4',

@@ -484,7 +484,7 @@ class VideoProjectService:
 
         # 1) Snapshot owned pack ids and 2) delete ownership rows — both
         # inside the same transaction as the project-row delete so DB-level
-        # consistency is unconditional. Filesystem + OSS cleanup runs after
+        # consistency is unconditional. Filesystem cleanup runs after
         # commit so a flaky storage backend can't roll back the project
         # delete (mirrors the storage-cleanup philosophy elsewhere).
         pack_ids = await pack_ownership_service.collect_pack_ids_for_project(

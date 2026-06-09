@@ -312,24 +312,6 @@ class StorageConfig(BaseModel):
     )
 
 
-class OSSConfig(BaseModel):
-    """Alibaba Cloud OSS configuration."""
-
-    enabled: bool = Field(default=False, description="Enable OSS storage")
-    access_key_id: str = Field(default="", description="OSS Access Key ID")
-    access_key_secret: str = Field(default="", description="OSS Access Key Secret")
-    endpoint: str = Field(
-        default="oss-cn-hangzhou.aliyuncs.com", description="OSS endpoint"
-    )
-    bucket_name: str = Field(default="", description="OSS bucket name")
-    cdn_domain: str = Field(
-        default="", description="Optional CDN domain, e.g. https://cdn.example.com"
-    )
-    key_prefix: str = Field(
-        default="", description="Optional key prefix, e.g. ecliptrix/"
-    )
-
-
 class DatabaseConfig(BaseModel):
     """Database configuration."""
 
@@ -576,9 +558,6 @@ class Settings(BaseModel):
     # Storyboard Configuration (video-generation queue)
     storyboard: StoryboardConfig = Field(default_factory=StoryboardConfig)
 
-    # OSS Configuration
-    oss: OSSConfig = Field(default_factory=OSSConfig)
-
     # Media Proxy Configuration (spec 05)
     media_proxy: "MediaProxyConfig" = Field(
         default_factory=lambda: MediaProxyConfig(),
@@ -729,7 +708,6 @@ class MediaProxyConfig(BaseModel):
     enable_http: bool = False
     per_ip_rate_limit_per_min: int = 100
     stream_chunk_size: int = 65536
-    oss_bucket_subprefix: str = "media-proxy-cache/"
 
 
 class PreviewProxyConfig(BaseModel):
@@ -748,7 +726,6 @@ class PreviewProxyConfig(BaseModel):
     progress_write_interval_ms: int = 1000
     retry_attempts: int = 1
     output_dir: str = "static/uploads/preview-proxies"
-    oss_bucket_subprefix: str = "preview-proxies/"
 
 
 def load_yaml_config(config_path: str) -> Dict[str, Any]:
@@ -939,7 +916,6 @@ def get_settings() -> Settings:
 
     # Create Media Proxy configuration (spec 05 §五)
     mp_yaml = (media_proxy_yaml_config.get("proxy", {}) or {})
-    mp_oss_yaml = (media_proxy_yaml_config.get("oss", {}) or {})
     media_proxy_config = MediaProxyConfig(
         allowed_domains=list(mp_yaml.get("allowed_domains") or []),
         signed_url_domains=list(mp_yaml.get("signed_url_domains") or []),
@@ -960,14 +936,10 @@ def get_settings() -> Settings:
         enable_http=bool(mp_yaml.get("enable_http", False)),
         per_ip_rate_limit_per_min=int(mp_yaml.get("per_ip_rate_limit_per_min", 100)),
         stream_chunk_size=int(mp_yaml.get("stream_chunk_size", 65536)),
-        oss_bucket_subprefix=str(
-            mp_oss_yaml.get("bucket_subprefix", "media-proxy-cache/")
-        ),
     )
 
     # Create Preview Proxy configuration (spec 06 / phase-3 §3.2.7)
     pp_yaml = (preview_proxy_yaml_config.get("preview_proxy", {}) or {})
-    pp_oss_yaml = (preview_proxy_yaml_config.get("oss", {}) or {})
     pp_enabled_env = os.getenv("PREVIEW_PROXY_ENABLED")
     if pp_enabled_env is not None and pp_enabled_env != "":
         pp_enabled = pp_enabled_env.lower() == "true"
@@ -991,20 +963,6 @@ def get_settings() -> Settings:
             os.getenv("PREVIEW_PROXY_OUTPUT_DIR")
             or pp_yaml.get("output_dir", "static/uploads/preview-proxies")
         ),
-        oss_bucket_subprefix=str(
-            pp_oss_yaml.get("bucket_subprefix", "preview-proxies/")
-        ),
-    )
-
-    # Create OSS configuration
-    oss_config = OSSConfig(
-        enabled=os.getenv("OSS_ENABLED", "false").lower() == "true",
-        access_key_id=os.getenv("OSS_ACCESS_KEY_ID", ""),
-        access_key_secret=os.getenv("OSS_ACCESS_KEY_SECRET", ""),
-        endpoint=os.getenv("OSS_ENDPOINT", "oss-cn-hangzhou.aliyuncs.com"),
-        bucket_name=os.getenv("OSS_BUCKET_NAME", ""),
-        cdn_domain=os.getenv("OSS_CDN_DOMAIN", ""),
-        key_prefix=os.getenv("OSS_KEY_PREFIX", ""),
     )
 
     # Playback v2 Phase 4 settings.
@@ -1085,7 +1043,6 @@ def get_settings() -> Settings:
         upload=upload_config,
         storage=storage_config,
         storyboard=storyboard_config,
-        oss=oss_config,
         media_proxy=media_proxy_config,
         preview_proxy=preview_proxy_config,
         log_level=os.getenv("LOG_LEVEL", "INFO"),

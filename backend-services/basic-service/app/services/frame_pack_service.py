@@ -35,7 +35,6 @@ from app.services.grid_pack_service import (
     PACK_TYPE_FRAME,
     validate_pack_id,
 )
-from app.services.oss_client import get_oss_client
 
 logger = get_logger(__name__)
 
@@ -350,7 +349,6 @@ async def delete_pack(
     if not pack_directory:
         raise FileNotFoundError(f"Frame pack not found: {pack_id}")
 
-    date_str = Path(pack_directory).parent.name
     shutil.rmtree(pack_directory, ignore_errors=True)
     logger.info(f"Deleted frame pack directory: {pack_directory}")
 
@@ -365,34 +363,6 @@ async def delete_pack(
                 {"pack_id": pack_id, "error": str(exc)},
             )
 
-    await _delete_pack_from_oss(date_str, pack_id)
-
-
-async def _delete_pack_from_oss(date_str: str, pack_id: str) -> None:
-    """Delete all OSS objects under a frame pack's prefix (best-effort)."""
-    oss_client = get_oss_client()
-    if not oss_client:
-        return
-    try:
-        prefix = f"{FRAME_STORAGE_DIR}/{date_str}/{pack_id}/"
-
-        def _delete_prefix() -> None:
-            try:
-                import oss2
-
-                for obj in oss2.ObjectIterator(
-                    oss_client.bucket,
-                    prefix=oss_client.cfg.key_prefix + prefix,
-                ):
-                    oss_client.bucket.delete_object(obj.key)
-            except Exception as inner_exc:
-                logger.warning(f"OSS prefix deletion error: {inner_exc}")
-
-        await asyncio.to_thread(_delete_prefix)
-        logger.info(f"Deleted OSS objects for frame pack {pack_id}")
-    except Exception as exc:
-        logger.warning(f"Failed to delete OSS objects for frame pack {pack_id}: {exc}")
-
 
 async def cleanup_pack_storage(pack_ids: List[str]) -> None:
     """Best-effort filesystem cleanup for the given pack ids.
@@ -403,7 +373,6 @@ async def cleanup_pack_storage(pack_ids: List[str]) -> None:
     """
     if not pack_ids:
         return
-    oss_client = get_oss_client()
     for pid in pack_ids:
         try:
             pack_directory = _pack_dir(pid)
@@ -412,7 +381,6 @@ async def cleanup_pack_storage(pack_ids: List[str]) -> None:
             continue
         if not pack_directory:
             continue
-        date_str = Path(pack_directory).parent.name
         try:
             shutil.rmtree(pack_directory, ignore_errors=True)
             logger.info(
@@ -424,28 +392,6 @@ async def cleanup_pack_storage(pack_ids: List[str]) -> None:
                 "Failed to remove frame pack directory during cleanup",
                 {"pack_id": pid, "error": str(exc)},
             )
-        if oss_client:
-            try:
-                prefix = f"{FRAME_STORAGE_DIR}/{date_str}/{pid}/"
-
-                def _delete_prefix() -> None:
-                    try:
-                        import oss2
-
-                        for obj in oss2.ObjectIterator(
-                            oss_client.bucket,
-                            prefix=oss_client.cfg.key_prefix + prefix,
-                        ):
-                            oss_client.bucket.delete_object(obj.key)
-                    except Exception as inner_exc:
-                        logger.warning(f"OSS prefix deletion error: {inner_exc}")
-
-                await asyncio.to_thread(_delete_prefix)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to delete OSS objects during frame-pack cleanup",
-                    {"pack_id": pid, "error": str(exc)},
-                )
 
 
 async def append_frames(
@@ -622,8 +568,7 @@ async def _delete_frame_inner(
         )
 
     if not frames_meta:
-        # Last frame removed → drop the whole pack (dir + ownership + OSS).
-        date_str = Path(pack_directory).parent.name
+        # Last frame removed → drop the whole pack (dir + ownership).
         try:
             shutil.rmtree(pack_directory, ignore_errors=True)
         except Exception as exc:
@@ -640,7 +585,6 @@ async def _delete_frame_inner(
                     "Failed to delete frame pack ownership row",
                     {"pack_id": pack_id, "error": str(exc)},
                 )
-        await _delete_pack_from_oss(date_str, pack_id)
         # Clean the per-pack lock entry — pack no longer exists.
         _pack_locks.pop(pack_id, None)
         return None

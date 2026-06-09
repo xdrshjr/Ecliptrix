@@ -7,8 +7,9 @@ source='ark' and source_id=<ark_task_id>. The frontend playback pipeline
 relies on this so the next /api/material/lookup poll resolves a same-origin
 local_url for the generated video, instead of falling back to the CDN URL.
 
-We bypass the real ARK / OSS / ffmpeg paths and assert only on the
-material_download_service.store_external_download_async call.
+We bypass the real ARK / ffmpeg paths and assert on the
+material_download_service.store_external_download_async call plus the
+local-only product URL.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -39,9 +40,14 @@ async def test_download_and_cache_writes_back_to_cached_materials(tmp_path, monk
     target_file = target_dir / f"{ark_task_id}.mp4"
     target_file.write_bytes(b"x" * 4096)
 
-    # Stub OSS, ffmpeg, and result cache so we don't hit real systems.
-    monkeypatch.setattr(ark_video_service, "get_oss_client", lambda: None)
-    monkeypatch.setattr(ark_video_service, "_cache_result", lambda *a, **kw: None)
+    # Stub ffmpeg and capture the result cache so we don't hit real systems
+    # and can assert the product URL is local-only.
+    captured: dict = {}
+    monkeypatch.setattr(
+        ark_video_service,
+        "_cache_result",
+        lambda task_id, result: captured.update(result),
+    )
 
     # Replace the material service with a stub that records the call.
     fake_svc = MagicMock()
@@ -83,3 +89,8 @@ async def test_download_and_cache_writes_back_to_cached_materials(tmp_path, monk
     assert kwargs["source_id"] == ark_task_id
     assert kwargs["url"] == "https://ark-cdn.example.com/v.mp4"
     assert kwargs["local_path"].endswith(f"{ark_task_id}.mp4")
+
+    # The product video URL is always the same-origin local path (no OSS).
+    assert captured["video_url"] == (
+        f"/api/storage/files/video/ark/{today_str}/{ark_task_id}.mp4"
+    )

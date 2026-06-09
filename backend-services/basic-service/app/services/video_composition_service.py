@@ -29,7 +29,6 @@ from app.security.url_guard import (
     validate_external_url,
     validate_local_path_for_ffmpeg,
 )
-from app.services.oss_client import get_oss_client
 from app.models import (
     VideoCompositionRequest,
     VideoCompositionResponse,
@@ -1426,19 +1425,6 @@ class VideoCompositionService:
             processing_time = time.time() - start_time
             file_size = output_path.stat().st_size
 
-            # Try uploading the composed video to OSS
-            oss_video_url = None
-            oss_client = get_oss_client()
-            if oss_client:
-                try:
-                    oss_relative = f"video/composed/{output_filename}"
-                    oss_video_url = oss_client.upload_file_sync(
-                        str(output_path), oss_relative, "video/mp4"
-                    )
-                    logger.info(f"Composed video uploaded to OSS: {oss_video_url}")
-                except Exception as oss_exc:
-                    logger.warning(f"OSS upload failed for composed video, using local: {oss_exc}")
-
             # Update composition info
             composition_update = {
                 "status": "completed",
@@ -1448,8 +1434,6 @@ class VideoCompositionService:
                 "processing_time": processing_time,
                 "completed_at": datetime.utcnow(),
             }
-            if oss_video_url:
-                composition_update["oss_url"] = oss_video_url
             self.compositions[composition_id].update(composition_update)
             
             logger.info(f"Video composition completed: {output_filename}")
@@ -1466,8 +1450,6 @@ class VideoCompositionService:
                     "processing_time": processing_time,
                     "completed_at": datetime.utcnow(),
                 }
-                if oss_video_url:
-                    final_update["oss_url"] = oss_video_url
                 self.compositions[composition_id].update(final_update)
             
             # Clean up temp directory

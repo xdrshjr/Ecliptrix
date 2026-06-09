@@ -15,7 +15,6 @@ import httpx
 
 from app.config import settings
 from app.models.ark_video_models import ArkVideoGenerateRequest, ArkVideoStatusResponse
-from app.services.oss_client import get_oss_client
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +157,9 @@ async def _download_and_cache(
     height: Optional[int],
 ) -> None:
     """
-    Background task: download video from ARK CDN to local storage, upload to OSS, and extract thumbnail.
+    Background task: download video from ARK CDN to local storage and extract thumbnail.
     Uses asyncio.create_subprocess_exec for non-blocking ffmpeg execution.
-    Uploads both video and thumbnail to OSS when OSS is enabled; falls back to local URLs otherwise.
+    Video and thumbnail are served via local URLs.
     Updates _task_results cache when complete so subsequent polls return the final URL.
     """
     try:
@@ -194,7 +193,6 @@ async def _download_and_cache(
             )
 
         local_url = f"/api/storage/files/video/ark/{today_str}/{local_filename}"
-        video_relative_path = f"video/ark/{today_str}/{local_filename}"
 
         # Write-through into the cached_materials table so the timeline preview
         # pipeline (selectPlaybackUrl in the frontend) can resolve a same-origin
@@ -224,22 +222,7 @@ async def _download_and_cache(
                 f"{cache_exc}"
             )
 
-        # Upload video to OSS (fall back to local URL on failure or when OSS is disabled)
         final_video_url = local_url
-        oss_client = get_oss_client()
-        if oss_client:
-            try:
-                final_video_url = await oss_client.upload_file(
-                    local_path, video_relative_path, "video/mp4"
-                )
-                logger.info(
-                    f"Background: Ark video {ark_task_id} uploaded to OSS: {final_video_url}"
-                )
-            except Exception as oss_exc:
-                logger.warning(
-                    f"Background: OSS upload failed for Ark video {ark_task_id}: {oss_exc}, "
-                    "falling back to local URL"
-                )
 
         # Generate thumbnail via ffmpeg — use asyncio subprocess to avoid blocking event loop
         thumbnail_url: Optional[str] = None
@@ -289,22 +272,6 @@ async def _download_and_cache(
                 logger.info(
                     f"Background: Ark video thumbnail already exists: {thumb_path}"
                 )
-
-            # Upload thumbnail to OSS if generated successfully
-            if thumbnail_url and oss_client:
-                try:
-                    thumb_relative_path = f"video/ark/{today_str}/{thumb_filename}"
-                    thumbnail_url = await oss_client.upload_file(
-                        thumb_path, thumb_relative_path, "image/jpeg"
-                    )
-                    logger.info(
-                        f"Background: Ark thumbnail {ark_task_id} uploaded to OSS: {thumbnail_url}"
-                    )
-                except Exception as oss_exc:
-                    logger.warning(
-                        f"Background: OSS thumbnail upload failed for {ark_task_id}: {oss_exc}, "
-                        "falling back to local URL"
-                    )
         except FileNotFoundError:
             logger.warning(
                 "Background: ffmpeg not found — skipping Ark video thumbnail generation"
