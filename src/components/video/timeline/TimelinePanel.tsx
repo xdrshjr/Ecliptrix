@@ -21,9 +21,11 @@ import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
 import type { LocalProxyMaskState } from './TimelineItem';
 import { isLocalPreviewEnabled } from '@/lib/playbackFlags';
+import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
 import { clampVolume, VOLUME_DEFAULT, getDefaultTrackHeight, type TrackKind } from './constants';
 import { http, ApiError } from '@/lib/api/http-client';
 import { TimelineRepository } from './infrastructure';
+import type { MaterialData } from './domain';
 
 // ---------------------------------------------------------------------------
 // Inline throttle (avoids lodash dependency)
@@ -98,6 +100,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     if (!localPreviewEnabled) return map;
     materials.forEach((m) => {
       if (m.type !== 'video' && m.type !== 'audio') return;
+      if (canPreviewDirectLocalMaterial(m)) return;
       if (m.localProxyStatus === undefined && m.localProxyProgress === undefined) return;
       map.set(m.id, { status: m.localProxyStatus, progress: m.localProxyProgress });
     });
@@ -464,19 +467,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
 
     // Convert MaterialItem to MaterialData for the store
-    const materialData = {
+    const materialData: MaterialData = {
       id: material.id,
       name: material.name,
       type: material.type,
       url: material.url,
       serverUrl: material.serverUrl,
+      cacheUrl: material.cacheUrl,
+      storageKey: material.storageKey,
       duration: material.duration || 5,
       thumbnailUrl: material.thumbnailUrl,
       metadata: material.metadata,
       sentenceSegments: material.sentenceSegments,
     };
 
-    addItemAction(() => useTimelineStore.getState(), targetTrackId, materialData as any);
+    addItemAction(() => useTimelineStore.getState(), targetTrackId, materialData);
 
     // Trigger video preload
     if (material.type === 'video') {

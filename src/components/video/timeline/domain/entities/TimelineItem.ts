@@ -67,6 +67,11 @@ export class TimelineItem {
 
   // Material association
   private _materialId?: string;
+  private _url?: string;
+  private _serverUrl?: string;
+  private _cacheUrl?: string;
+  private _storageKey?: string;
+  private _metadata?: TimelineItemData['metadata'];
 
   // Clip info
   private _clipStart?: TimePosition;
@@ -101,6 +106,11 @@ export class TimelineItem {
     trackId: string;
     color: string;
     materialId?: string;
+    url?: string;
+    serverUrl?: string;
+    cacheUrl?: string;
+    storageKey?: string;
+    metadata?: TimelineItemData['metadata'];
     clipStart?: TimePosition;
     clipEnd?: TimePosition;
     originalDuration?: Duration;
@@ -122,6 +132,11 @@ export class TimelineItem {
     this._trackId = params.trackId;
     this._color = params.color;
     this._materialId = params.materialId;
+    this._url = params.url;
+    this._serverUrl = params.serverUrl;
+    this._cacheUrl = params.cacheUrl;
+    this._storageKey = params.storageKey;
+    this._metadata = params.metadata;
     this._clipStart = params.clipStart;
     this._clipEnd = params.clipEnd;
     this._originalDuration = params.originalDuration;
@@ -156,6 +171,11 @@ export class TimelineItem {
   set color(value: string) { this._color = value; }
 
   get materialId(): string | undefined { return this._materialId; }
+  get url(): string | undefined { return this._url; }
+  get serverUrl(): string | undefined { return this._serverUrl; }
+  get cacheUrl(): string | undefined { return this._cacheUrl; }
+  get storageKey(): string | undefined { return this._storageKey; }
+  get metadata(): TimelineItemData['metadata'] | undefined { return this._metadata; }
 
   get clipStart(): TimePosition | undefined { return this._clipStart; }
   get clipEnd(): TimePosition | undefined { return this._clipEnd; }
@@ -205,6 +225,11 @@ export class TimelineItem {
       trackId: props.trackId,
       color: props.color ?? getDefaultColor(props.type),
       materialId: props.materialId,
+      url: props.url,
+      serverUrl: props.serverUrl,
+      cacheUrl: props.cacheUrl,
+      storageKey: props.storageKey,
+      metadata: props.metadata,
       clipStart: props.clipStart != null ? TimePosition.create(props.clipStart) : undefined,
       clipEnd: props.clipEnd != null ? TimePosition.create(props.clipEnd) : undefined,
       originalDuration: props.originalDuration != null && props.originalDuration > 0
@@ -237,6 +262,11 @@ export class TimelineItem {
       trackId: data.trackId,
       color: data.color,
       materialId: data.materialId,
+      url: data.url,
+      serverUrl: data.serverUrl,
+      cacheUrl: data.cacheUrl,
+      storageKey: data.storageKey,
+      metadata: data.metadata,
       clipStart: data.clipStart != null ? TimePosition.create(data.clipStart) : undefined,
       clipEnd: data.clipEnd != null ? TimePosition.create(data.clipEnd) : undefined,
       originalDuration: data.originalDuration != null && data.originalDuration > 0
@@ -376,6 +406,11 @@ export class TimelineItem {
 
     // Optional fields — only include when present
     if (this._materialId != null) data.materialId = this._materialId;
+    if (this._url != null) data.url = this._url;
+    if (this._serverUrl != null) data.serverUrl = this._serverUrl;
+    if (this._cacheUrl != null) data.cacheUrl = this._cacheUrl;
+    if (this._storageKey != null) data.storageKey = this._storageKey;
+    if (this._metadata != null) data.metadata = this._metadata;
     if (this._clipStart != null) data.clipStart = this._clipStart.value;
     if (this._clipEnd != null) data.clipEnd = this._clipEnd.value;
     if (this._originalDuration != null) data.originalDuration = this._originalDuration.value;

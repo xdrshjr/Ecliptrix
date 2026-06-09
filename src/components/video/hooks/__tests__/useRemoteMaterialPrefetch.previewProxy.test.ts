@@ -178,6 +178,42 @@ describe('useRemoteMaterialPrefetch — preview-proxy branch', () => {
     expect(requestSpy).toHaveBeenCalled();
   });
 
+  it('skips preview-proxy for direct local uploads even when large and unknown', async () => {
+    const onPatchPP = vi.fn();
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    const { rerender } = renderHook(
+      ({ refs }: { refs: Set<string> }) =>
+        useRemoteMaterialPrefetch(
+          [
+            makeMaterial({
+              id: 'local-1',
+              size: 0,
+              bytes: 100 * 1024 * 1024,
+              url: '/api/storage/files/video/local.mp4',
+              serverUrl: '/api/storage/files/video/local.mp4',
+              cacheUrl: '/api/storage/files/video/local.mp4',
+              storageKey: 'video/local.mp4',
+              metadata: {
+                storageKind: 'local',
+                isLocalFile: true,
+                localResolvedUrl: '/api/storage/files/video/local.mp4',
+              },
+            }),
+          ],
+          () => {},
+          {
+            mediaProxyClient: client,
+            onPatchPreviewProxy: onPatchPP,
+            timelineReferencedMaterialIds: refs,
+          },
+        ),
+      { initialProps: { refs: new Set<string>() } },
+    );
+    rerender({ refs: new Set<string>(['local-1']) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(requestSpy).not.toHaveBeenCalled();
+  });
+
   it('exempts a known-small file (< 8MB) even when resolvable', async () => {
     const onPatchPP = vi.fn();
     const requestSpy = vi.spyOn(client, 'requestPreviewProxy');

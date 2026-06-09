@@ -33,6 +33,7 @@ import { LocalMediaCache, type LocalMediaBudgetInfo } from '../timeline/infrastr
 import { MediaProxyClient } from '../timeline/infrastructure/MediaProxyClient';
 import { toAbsolutePlaybackUrl } from '../lib/selectPlaybackUrl';
 import { isLocalPreviewEnabled } from '@/lib/playbackFlags';
+import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
 
 // ---------------------------------------------------------------------------
 // Tunables (constants / env-configurable — spec review condition C6)
@@ -98,6 +99,16 @@ const _CLEAR_LOCAL_PROXY: Partial<MaterialItem> = {
   localProxyError: undefined,
   localProxyBytes: undefined,
 };
+
+function _hasLocalProxyFields(material: MaterialItem): boolean {
+  return (
+    material.localProxyStatus !== undefined ||
+    material.localProxyUrl !== undefined ||
+    material.localProxyProgress !== undefined ||
+    material.localProxyError !== undefined ||
+    material.localProxyBytes !== undefined
+  );
+}
 
 function _isSameOriginOrRelative(u: string): boolean {
   if (!/^https?:\/\//i.test(u)) return true; // relative / blob: / data:
@@ -387,6 +398,13 @@ export function useLocalMaterialDownload(
       if (!m) return;
       // C2 — only video/audio are downloaded + gated.
       if (m.type !== 'video' && m.type !== 'audio') return;
+      if (canPreviewDirectLocalMaterial(m)) {
+        cleanupMaterial(id, true);
+        if (_hasLocalProxyFields(m)) {
+          patchRef.current(id, _CLEAR_LOCAL_PROXY);
+        }
+        return;
+      }
 
       const status = m.localProxyStatus;
       if (status === 'ready' || status === 'degraded') return; // terminal/done

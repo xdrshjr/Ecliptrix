@@ -13,6 +13,7 @@ import { useVideoExport } from '../../hooks/useVideoExport';
 import { useVideoCache } from '../../hooks/useVideoCache';
 import { selectPlaybackUrl, effectivePreviewUrl } from '../../lib/selectPlaybackUrl';
 import { resolveSequencePlaybackUrl } from '../../lib/resolveSequencePlaybackUrl';
+import { canPreviewDirectLocalMaterial } from '../../lib/localMaterial';
 import {
   assignVideoSrcChecked,
   type AssignFailureReason,
@@ -674,6 +675,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         // downloaded/blob-played, so it must not block playback.
         if (m.type !== 'video' && m.type !== 'audio') return;
         total += 1;
+        if (canPreviewDirectLocalMaterial(m)) {
+          ready += 1;
+          return;
+        }
         const status = m.localProxyStatus;
         if (status === 'ready') {
           ready += 1;

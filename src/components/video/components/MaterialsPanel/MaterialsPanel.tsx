@@ -29,6 +29,7 @@ import { listFramePacks, deleteFramePack, deleteFrameFromPack } from '@/lib/api/
 import FramePackView from './FramePackView';
 import { http, ApiError } from '@/lib/api/http-client';
 import MaterialCacheBadge from '../MaterialCacheBadge';
+import { canPreviewDirectLocalMaterial } from '../../lib/localMaterial';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -2325,7 +2326,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                     </div>
                     
                     {/* 远程素材预缓存徽章（仅 video 远程资源；同源素材不显示）*/}
-                    {material.type === 'video' && (
+                    {material.type === 'video' && !canPreviewDirectLocalMaterial(material) && (
                       <div className="absolute bottom-1 left-1 z-10">
                         <MaterialCacheBadge
                           material={material}
@@ -3102,4 +3103,4 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   );
 };
 
-export default MaterialsPanel; 
+export default MaterialsPanel;

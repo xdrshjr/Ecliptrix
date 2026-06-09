@@ -147,6 +147,80 @@ describe('useLocalMaterialDownload', () => {
     expect(onPatch).not.toHaveBeenCalled();
   });
 
+  it('direct local video skips blob download and clears stale localProxy fields', async () => {
+    const onPatch = vi.fn();
+    const cache = makeCache();
+    const client = makeClient();
+    renderHook(() =>
+      useLocalMaterialDownload(
+        [
+          mat({
+            id: 'local-v1',
+            type: 'video',
+            url: '/api/storage/files/video/local.mp4',
+            serverUrl: '/api/storage/files/video/local.mp4',
+            cacheUrl: '/api/storage/files/video/local.mp4',
+            storageKey: 'video/local.mp4',
+            localProxyStatus: 'downloading',
+            localProxyUrl: 'blob:http://localhost/stale',
+            localProxyProgress: 30,
+            localProxyBytes: 100,
+            localProxyError: 'stale',
+            metadata: {
+              storageKind: 'local',
+              isLocalFile: true,
+              localResolvedUrl: '/api/storage/files/video/local.mp4',
+            },
+          }),
+        ],
+        opts({ ids: ['local-v1'], onPatch, cache, client }),
+      ),
+    );
+
+    await waitFor(() =>
+      expect(onPatch).toHaveBeenCalledWith(
+        'local-v1',
+        expect.objectContaining({
+          localProxyStatus: undefined,
+          localProxyUrl: undefined,
+          localProxyProgress: undefined,
+          localProxyBytes: undefined,
+          localProxyError: undefined,
+        }),
+      ),
+    );
+    expect((cache as any).getOrDownload).not.toHaveBeenCalled();
+    expect(onPatch).not.toHaveBeenCalledWith(
+      'local-v1',
+      expect.objectContaining({ localProxyStatus: 'degraded' }),
+    );
+  });
+
+  it('direct local audio skips media proxy and blob download', async () => {
+    const onPatch = vi.fn();
+    const cache = makeCache();
+    const client = makeClient();
+    renderHook(() =>
+      useLocalMaterialDownload(
+        [
+          mat({
+            id: 'local-a1',
+            type: 'audio',
+            url: '/api/storage/files/audio/local.mp3',
+            serverUrl: '/api/storage/files/audio/local.mp3',
+            cacheUrl: '/api/storage/files/audio/local.mp3',
+            metadata: { storageKind: 'local', isLocalFile: true },
+          }),
+        ],
+        opts({ ids: ['local-a1'], onPatch, cache, client }),
+      ),
+    );
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect((cache as any).getOrDownload).not.toHaveBeenCalled();
+    expect((client as any).buildProxyUrl).not.toHaveBeenCalled();
+  });
+
   it('disabled → no-op (no patch, no fetch)', async () => {
     const onPatch = vi.fn();
     const cache = makeCache();

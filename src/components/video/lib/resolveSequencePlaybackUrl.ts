@@ -17,6 +17,7 @@
 
 import type { MaterialItem } from '@/types';
 import { toAbsolutePlaybackUrl, effectivePreviewUrl, isLocalMediaReference } from './selectPlaybackUrl';
+import { canPreviewDirectLocalMaterial } from './localMaterial';
 
 /**
  * Structural shape of a sequence — accepts both
@@ -98,6 +99,7 @@ export function resolveSequencePlaybackUrl(
 
   if (material) {
     const candidates: string[] = [];
+    const directLocal = canPreviewDirectLocalMaterial(material);
 
     // -1. local blob (round-2, P0) — the whole low-bitrate file resident in
     //     browser memory as a `blob:` URL. Highest priority so playback is
@@ -107,6 +109,7 @@ export function resolveSequencePlaybackUrl(
     //     existing chain is byte-identical.
     let localPrimary: string | undefined;
     if (
+      !directLocal &&
       opts?.preferLocalProxy === true &&
       material.localProxyStatus === 'ready' &&
       material.localProxyUrl
@@ -124,6 +127,7 @@ export function resolveSequencePlaybackUrl(
     //    chain below is unchanged.
     let proxyPrimary: string | undefined;
     if (
+      !directLocal &&
       opts?.preferPreviewProxy === true &&
       (material.previewProxyStatus ?? '') === 'cached'
     ) {

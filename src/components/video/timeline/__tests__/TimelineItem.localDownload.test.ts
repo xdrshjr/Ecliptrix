@@ -22,6 +22,8 @@ import { resolve } from 'node:path';
 
 const FILE = resolve(__dirname, '..', 'TimelineItem.tsx');
 const src = readFileSync(FILE, 'utf-8');
+const PANEL_FILE = resolve(__dirname, '..', 'TimelinePanel.tsx');
+const panelSrc = readFileSync(PANEL_FILE, 'utf-8');
 
 describe('TimelineItem — local-download render guards (C2/C4)', () => {
   it('renders nothing when local preview is off', () => {
@@ -51,6 +53,22 @@ describe('TimelineItem — local-download render guards (C2/C4)', () => {
     expect(fn).toMatch(/status\s*!==\s*'error'/);
     expect(fn).toMatch(/status\s*!==\s*'degraded'/);
     expect(fn).toMatch(/return null/);
+  });
+});
+
+describe('TimelineItem direct-local materials', () => {
+  it('omits direct-local materials from the status map so normal blocks render', () => {
+    expect(panelSrc).toMatch(/canPreviewDirectLocalMaterial\(m\)/);
+    expect(panelSrc).toMatch(/if\s*\(\s*canPreviewDirectLocalMaterial\(m\)\s*\)\s*return/);
+  });
+
+  it('TimelinePanel preserves local playback fields in MaterialData snapshots', () => {
+    const start = panelSrc.indexOf('const materialData');
+    const block = panelSrc.slice(start, start + 500);
+    expect(block).toMatch(/cacheUrl:\s*material\.cacheUrl/);
+    expect(block).toMatch(/storageKey:\s*material\.storageKey/);
+    expect(block).toMatch(/metadata:\s*material\.metadata/);
+    expect(block).not.toMatch(/as any/);
   });
 });
 

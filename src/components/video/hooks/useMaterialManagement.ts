@@ -16,6 +16,7 @@ import {
   type RemoteMaterialPatch,
 } from './useRemoteMaterialPrefetch';
 import { useLocalMaterialDownload } from './useLocalMaterialDownload';
+import { createLocalMaterialFromUpload } from '../lib/localMaterial';
 
 /** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
 function generateUUID(): string {
@@ -329,31 +330,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
         });
 
         // 直接使用服务器URL（通过Next.js代理 /api/storage/files/ 可访问）
-        const videoMaterial: MaterialItem = {
-          id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          name: file.name,
-          type: 'video',
-          format: file.name.split('.').pop() || 'mp4',
-          size: result.file_size,
-          duration: result.duration,
-          width: result.width,
-          height: result.height,
-          thumbnailUrl: result.thumbnail_url || undefined,
-          url: result.video_url,
-          serverUrl: result.video_url,
-          cacheUrl: result.video_url,
-          storageKey: result.metadata?.storage_key || result.metadata?.path || result.file_path,
-          createdAt: new Date(),
-          metadata: {
-            storageKind: 'local',
-            storageKey: result.metadata?.storage_key || result.metadata?.path || result.file_path,
-            localResolvedUrl: result.video_url,
-            originalUrl: result.video_url,
-            fileName: file.name,
-            isLocalFile: true,
-            storageMetadata: result.metadata
-          }
-        };
+        const videoMaterial = createLocalMaterialFromUpload(material, file, result);
 
         logger.info('视频素材项创建完成', {
           materialId: videoMaterial.id,
@@ -393,27 +370,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
         });
 
         // 直接使用服务器URL（通过Next.js代理 /api/storage/files/ 可访问）
-        const fileMaterial: MaterialItem = {
-          id: `${materialType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          name: file.name,
-          type: materialType,
-          format: file.name.split('.').pop() || '',
-          size: result.file_size,
-          url: result.file_url,
-          serverUrl: result.file_url,
-          cacheUrl: result.file_url,
-          storageKey: result.metadata?.storage_key || result.file_path,
-          thumbnailUrl: materialType === 'image' ? result.file_url : undefined,
-          createdAt: new Date(),
-          metadata: {
-            storageKind: 'local',
-            storageKey: result.metadata?.storage_key || result.file_path,
-            localResolvedUrl: result.file_url,
-            originalUrl: result.file_url,
-            fileName: file.name,
-            isLocalFile: true
-          }
-        };
+        const fileMaterial = createLocalMaterialFromUpload(material, file, result);
 
         logger.info('素材项创建完成', {
           materialId: fileMaterial.id,
@@ -602,7 +559,16 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           // 停止进度条
           stopProgressAnimation(material.id);
 
-          if (uploadedMaterial) {
+          if (!uploadedMaterial) {
+            setMaterials(prev => prev.filter(m => m.id !== material.id));
+
+            logger.error('文件上传失败，已移除', {
+              materialId: material.id,
+              fileName: file.name,
+              position: taskIndex + 1,
+              error: 'upload failed',
+            });
+          } else {
             // 上传成功，替换素材
             setMaterials(prev => prev.map(m =>
               m.id === material.id
@@ -617,15 +583,6 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
 
             logger.info('文件上传成功', {
               materialId: uploadedMaterial.id,
-              fileName: file.name,
-              position: taskIndex + 1
-            });
-          } else {
-            // 上传失败，移除素材
-            setMaterials(prev => prev.filter(m => m.id !== material.id));
-
-            logger.error('文件上传失败，已移除', {
-              materialId: material.id,
               fileName: file.name,
               position: taskIndex + 1
             });

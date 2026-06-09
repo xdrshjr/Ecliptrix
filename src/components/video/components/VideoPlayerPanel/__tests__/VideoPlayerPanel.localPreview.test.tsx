@@ -70,6 +70,7 @@ describe('VideoPlayerPanel — readiness gate (§3.3.6, C2/C3)', () => {
     expect(src).toMatch(/allTimelineMediaReady/);
     // C2 — gated on the MATERIAL type (image-on-video-track must not block).
     expect(src).toMatch(/m\.type\s*!==\s*'video'\s*&&\s*m\.type\s*!==\s*'audio'/);
+    expect(src).toMatch(/canPreviewDirectLocalMaterial\(m\)/);
     // C3 — degraded is treated as resolved (non-blocking).
     expect(src).toMatch(/status\s*===\s*'degraded'/);
   });

@@ -287,4 +287,33 @@ describe('resolveSequencePlaybackUrl', () => {
       window.location.origin + '/api/storage/files/cached_materials/pexels/1.mp4',
     );
   });
+  it('direct local material prefers local storage before stale preview-proxy fields', () => {
+    const material = makeMaterial({
+      url: '/api/storage/files/video/local.mp4',
+      serverUrl: '/api/storage/files/video/local.mp4',
+      cacheUrl: '/api/storage/files/video/local.mp4',
+      storageKey: 'video/local.mp4',
+      previewProxyStatus: 'cached',
+      previewProxyLocalUrl: '/api/storage/files/preview-proxies/mat-1/480p.mp4',
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl: '/api/storage/files/video/local.mp4',
+      },
+    });
+    const seq = makeSeq({});
+    const result = resolveSequencePlaybackUrl(seq, [material], {
+      preferPreviewProxy: true,
+      preferLocalProxy: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.source).toBe('localStorageUrl');
+    expect(result!.url).toBe(
+      window.location.origin + '/api/storage/files/video/local.mp4',
+    );
+    expect(result!.fallbacks).not.toContain(
+      window.location.origin + '/api/storage/files/preview-proxies/mat-1/480p.mp4',
+    );
+  });
 });

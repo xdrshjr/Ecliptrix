@@ -67,7 +67,7 @@ describe('selectPlaybackUrl phase-3 P1–P5', () => {
     expect(url).toBe('https://cdn/v.mp4');
   });
 
-  it('export ALWAYS ignores preview-proxy fields (INV3)', () => {
+  it('export uses durable cacheUrl and ignores preview-proxy fields (INV3)', () => {
     const url = selectPlaybackUrl(
       {
         previewProxyStatus: 'cached',
@@ -78,7 +78,8 @@ describe('selectPlaybackUrl phase-3 P1–P5', () => {
       },
       { purpose: 'export', preferPreviewProxy: true },
     );
-    expect(url).toBe('https://cdn/v.mp4');
+    expect(url).toBe(`${window.location.origin}/api/storage/files/cached_materials/pexels/1.mp4`);
+    expect(url).not.toContain('preview-proxies');
   });
 
   it('preview_proxy_status=failed degrades to P3 (cache) automatically', () => {

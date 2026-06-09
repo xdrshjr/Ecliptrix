@@ -42,6 +42,7 @@ import type { PreviewProxyStatus } from '../timeline/infrastructure/MediaProxyCl
 import type { VideoCacheAdapter } from '../timeline/infrastructure/VideoCacheAdapter';
 import { isPlaybackV2Enabled, isPreviewProxyEnabled } from '@/lib/playbackFlags';
 import { materialCompositeKey } from '../lib/materialKey';
+import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
 
 // ---------------------------------------------------------------------------
 // Phase-3 heuristics (spec §3.2.1 H1/H2/H3) + v2 eligibility convergence
@@ -89,6 +90,7 @@ function _matchesPreviewProxyHeuristic(material: MaterialItem): boolean {
  * `cacheUrl` is populated.
  */
 function _previewProxyInputResolvable(material: MaterialItem): boolean {
+  if (canPreviewDirectLocalMaterial(material)) return false;
   if (material.cacheUrl) return true;
   const u = material.serverUrl || material.url || '';
   if (!u) return false;
@@ -106,6 +108,7 @@ function _previewProxySourceUrl(material: MaterialItem): string | undefined {
 
 function _previewProxyEligible(material: MaterialItem): boolean {
   if (material.type !== 'video') return false;
+  if (canPreviewDirectLocalMaterial(material)) return false;
   const status = material.previewProxyStatus;
   if (status === 'cached' || status === 'queued' || status === 'running') return false;
   // Must have a resolvable transcode input (C3) — otherwise POST is doomed.
@@ -243,6 +246,7 @@ function keyFor(material: MaterialItem): RemoteMaterialKey {
 }
 
 function shouldPrefetch(material: MaterialItem, isRemote: (u: string) => boolean): boolean {
+  if (canPreviewDirectLocalMaterial(material)) return false;
   if (material.type !== 'video') return false;
   if (!material.url) return false;
   // Already finished / in-flight on a previous render — skip.

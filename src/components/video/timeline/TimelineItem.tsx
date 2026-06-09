@@ -16,6 +16,8 @@ import { formatTimelineTime } from './timeFormat';
  * Round-2 local-download state for a material, fed down from the authoritative
  * `materials` list (same source as the readiness gate — C4, no dual data
  * source). See docs/plans/video-editor-client-preview-download/spec.md §3.3.7.
+ * Direct-local desktop uploads are omitted from this map by TimelinePanel, so
+ * they render as normal clips without download overlays.
  */
 export interface LocalProxyMaskState {
   status?: LocalProxyStatus;

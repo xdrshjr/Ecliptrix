@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { selectPlaybackUrl, toAbsolutePlaybackUrl } from '../selectPlaybackUrl';
+import type { MaterialItem } from '@/types';
 
 describe('selectPlaybackUrl', () => {
   it('preview prefers cacheUrl and absolutises it', () => {
@@ -71,6 +72,60 @@ describe('selectPlaybackUrl', () => {
 
   it('returns "" rather than throw when nothing usable', () => {
     expect(selectPlaybackUrl({})).toBe('');
+  });
+
+  it('preview prefers nested metadata.localResolvedUrl for direct local material', () => {
+    const material = {
+      id: 'local-1',
+      name: 'local.mp4',
+      type: 'video',
+      format: 'mp4',
+      size: 1,
+      url: 'https://stale.example.com/local.mp4',
+      serverUrl: 'https://stale.example.com/local.mp4',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/stale.mp4',
+      previewProxyStatus: 'cached',
+      previewProxyLocalUrl: '/api/storage/files/preview-proxies/local-1/480p.mp4',
+      createdAt: new Date(),
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl: '/api/storage/files/video/local.mp4',
+      },
+    } as MaterialItem;
+
+    expect(selectPlaybackUrl(material, {
+      purpose: 'preview',
+      preferPreviewProxy: true,
+    })).toBe(`${window.location.origin}/api/storage/files/video/local.mp4`);
+  });
+
+  it('export uses direct local storage URL and excludes preview-only URLs', () => {
+    const material = {
+      id: 'local-1',
+      name: 'local.mp4',
+      type: 'video',
+      format: 'mp4',
+      size: 1,
+      url: 'blob:http://localhost/stale',
+      serverUrl: '/api/media/proxy?u=https%3A%2F%2Fcdn.example.com%2Fv.mp4',
+      cacheUrl: '/api/storage/files/video/local.mp4',
+      previewProxyStatus: 'cached',
+      previewProxyLocalUrl: '/api/storage/files/preview-proxies/local-1/480p.mp4',
+      createdAt: new Date(),
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl: '/api/storage/files/video/local.mp4',
+      },
+    } as MaterialItem;
+
+    const url = selectPlaybackUrl(material, { purpose: 'export' });
+
+    expect(url).toBe(`${window.location.origin}/api/storage/files/video/local.mp4`);
+    expect(url).not.toContain('blob:');
+    expect(url).not.toContain('/api/media/proxy');
+    expect(url).not.toContain('preview-proxies');
   });
 });
 

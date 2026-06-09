@@ -15,6 +15,7 @@ import type {
   ImagePosition,
   AudioSentenceSegment,
   MaterialType,
+  MaterialItem,
 } from '@/types';
 
 export type { SubtitleStyle, ImagePosition, AudioSentenceSegment, MaterialType };
@@ -45,6 +46,11 @@ export interface TimelineItemData {
   trackId: string;
   color: string;
   materialId?: string;
+  url?: string;
+  serverUrl?: string;
+  cacheUrl?: string;
+  storageKey?: string;
+  metadata?: MaterialItem['metadata'];
   clipStart?: number;
   clipEnd?: number;
   originalDuration?: number;
@@ -123,6 +129,10 @@ export interface MaterialData {
   duration?: number;
   thumbnailUrl?: string;
   url?: string;
+  serverUrl?: string;
+  cacheUrl?: string;
+  storageKey?: string;
+  metadata?: MaterialItem['metadata'];
   /** For TTS audio materials. */
   sentenceSegments?: AudioSentenceSegment;
 }
@@ -141,6 +151,11 @@ export interface CreateItemProps {
   trackId: string;
   color?: string;
   materialId?: string;
+  url?: string;
+  serverUrl?: string;
+  cacheUrl?: string;
+  storageKey?: string;
+  metadata?: MaterialItem['metadata'];
   clipStart?: number;
   clipEnd?: number;
   originalDuration?: number;

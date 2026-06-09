@@ -49,9 +49,23 @@ interface PlaybackInput {
   localResolvedUrl?: string | null;
   previewProxyStatus?: string | null;
   previewProxyLocalUrl?: string | null;
+  localProxyUrl?: string | null;
+  metadata?: {
+    storageKind?: string | null;
+    isLocalFile?: boolean | null;
+    localResolvedUrl?: string | null;
+    [key: string]: unknown;
+  } | null;
 }
 
 const MEDIA_PROXY_PREFIX = '/api/media/proxy?u=';
+const CACHED_MATERIALS_PATH = '/api/storage/files/cached_materials/';
+const DIRECT_UPLOAD_PREFIXES = [
+  '/api/storage/files/video/',
+  '/api/storage/files/audio/',
+  '/api/storage/files/images/',
+  '/api/storage/files/image/',
+];
 
 /** Convert a (possibly-relative) URL to an absolute URL when possible. */
 export function toAbsolutePlaybackUrl(u?: string | null): string | undefined {
@@ -100,6 +114,44 @@ function _buildMediaProxyUrl(remoteUrl: string): string {
   return `${MEDIA_PROXY_PREFIX}${encodeURIComponent(remoteUrl)}`;
 }
 
+function _pathname(u: string | null | undefined): string {
+  if (!u) return '';
+  if (!/^https?:\/\//i.test(u)) return u;
+  try {
+    return new URL(u).pathname;
+  } catch {
+    return u;
+  }
+}
+
+function _isDirectUploadStorageReference(u: string | null | undefined): boolean {
+  const path = _pathname(u);
+  if (!path || path.startsWith(CACHED_MATERIALS_PATH)) return false;
+  return DIRECT_UPLOAD_PREFIXES.some(prefix => path.startsWith(prefix));
+}
+
+function _directLocalStorageCandidate(m: PlaybackInput): string | undefined {
+  const candidates = [
+    m.metadata?.localResolvedUrl,
+    m.localResolvedUrl,
+    m.cacheUrl,
+    m.url,
+    m.serverUrl,
+  ];
+  return candidates.find(_isDirectUploadStorageReference) ?? undefined;
+}
+
+function _isPreviewOnlyReference(u: string | null | undefined): boolean {
+  if (!u) return false;
+  if (/^blob:/i.test(u)) return true;
+  const path = _pathname(u);
+  return (
+    path.startsWith(MEDIA_PROXY_PREFIX) ||
+    path.includes('/api/media/proxy') ||
+    path.includes('/api/storage/files/preview-proxies/')
+  );
+}
+
 export function selectPlaybackUrl(
   material: PlaybackInput | MaterialItem | undefined | null,
   options: SelectPlaybackUrlOptions = {},
@@ -107,8 +159,13 @@ export function selectPlaybackUrl(
   if (!material) return '';
   const purpose = options.purpose ?? 'preview';
   const m = material as PlaybackInput;
+  const directLocal = _directLocalStorageCandidate(m);
 
   if (purpose === 'export') {
+    if (directLocal) {
+      return toAbsolutePlaybackUrl(directLocal) ?? directLocal;
+    }
+
     const local = [m.localResolvedUrl, m.cacheUrl, m.url, m.serverUrl].find(
       candidate => isLocalMediaReference(candidate),
     );
@@ -118,7 +175,13 @@ export function selectPlaybackUrl(
 
     // Export NEVER reads preview-proxy / media-proxy fields. Server-side
     // composition needs a durable media reference.
-    return m.serverUrl || m.url || '';
+    return [m.serverUrl, m.url].find(
+      candidate => !_isPreviewOnlyReference(candidate),
+    ) || '';
+  }
+
+  if (directLocal) {
+    return toAbsolutePlaybackUrl(directLocal) ?? directLocal;
   }
 
   // Defaults preserve pre-phase-3 behavior (spec §4.1 row: "签名向后兼容

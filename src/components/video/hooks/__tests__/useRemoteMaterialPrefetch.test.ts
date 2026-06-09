@@ -89,6 +89,68 @@ describe('useRemoteMaterialPrefetch', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it('skips direct-local materials before deriving a remote prefetch key', () => {
+    const adapter = makeAdapter({
+      source: 'url',
+      source_id: 'unused',
+      material_id: '',
+      status: 'ready',
+      local_url: '',
+    });
+    const spy = vi.spyOn(adapter, 'pollUntilReady');
+    const onPatch = vi.fn();
+    renderHook(() =>
+      useRemoteMaterialPrefetch(
+        [
+          makeMaterial({
+            url: '/api/storage/files/video/local.mp4',
+            serverUrl: '/api/storage/files/video/local.mp4',
+            cacheUrl: '/api/storage/files/video/local.mp4',
+            storageKey: 'video/local.mp4',
+            metadata: { storageKind: 'local', isLocalFile: true },
+          }),
+        ],
+        onPatch,
+        { adapter },
+      ),
+    );
+    expect(spy).not.toHaveBeenCalled();
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('does not skip malformed local-provenance remote material', async () => {
+    const adapter = makeAdapter({
+      source: 'url',
+      source_id: 'x',
+      material_id: 'mid-1',
+      status: 'ready',
+      local_url: '/api/storage/files/cached_materials/url/x.mp4',
+    });
+    const spy = vi.spyOn(adapter, 'pollUntilReady');
+    const onPatch = vi.fn();
+    renderHook(() =>
+      useRemoteMaterialPrefetch(
+        [
+          makeMaterial({
+            url: 'https://cdn.example.com/stale.mp4',
+            serverUrl: 'https://cdn.example.com/stale.mp4',
+            cacheUrl: undefined,
+            storageKey: undefined,
+            metadata: {
+              storageKind: 'local',
+              isLocalFile: true,
+              localResolvedUrl: '',
+            },
+          }),
+        ],
+        onPatch,
+        { adapter },
+      ),
+    );
+
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+  });
+
   it('patches pending then ready as the poll resolves', async () => {
     const adapter = makeAdapter(
       {

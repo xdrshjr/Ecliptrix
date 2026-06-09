@@ -656,6 +656,11 @@ export interface TimelineItem {
   waveformData?: number[]; // 波形数据（音频用）
   text?: string;     // 文本内容（字幕用）
   materialId?: string; // 关联的素材ID
+  url?: string; // Timeline snapshot playback URL fallback.
+  serverUrl?: string; // Durable original/local server URL snapshot.
+  cacheUrl?: string; // Same-origin local/cache URL snapshot.
+  storageKey?: string; // Local storage key snapshot.
+  metadata?: MaterialItem['metadata']; // Local playback provenance snapshot.
   volume?: number;   // 音量 (0-1)
   opacity?: number;  // 透明度 (0-1)
   isSelected?: boolean; // 是否选中

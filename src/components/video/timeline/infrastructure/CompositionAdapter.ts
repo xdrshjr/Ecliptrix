@@ -52,6 +52,7 @@ export interface CompositionMaterialData extends MaterialData {
   metadata?: {
     isWatermarkRemoved?: boolean;
     source?: string;
+    localResolvedUrl?: string;
     [key: string]: unknown;
   };
 }
@@ -82,14 +83,27 @@ function isLocalMediaReference(url: string | undefined): boolean {
   }
 }
 
+function isPreviewOnlyReference(url: string | undefined): boolean {
+  if (!url) return false;
+  if (/^blob:/i.test(url)) return true;
+  return (
+    url.includes('/api/media/proxy') ||
+    url.includes('/api/storage/files/preview-proxies/')
+  );
+}
+
 function selectCanonicalExportReference(material: CompositionMaterialData): string {
   const local = [
+    material.metadata?.localResolvedUrl,
     material.localResolvedUrl,
     material.cacheUrl,
     material.url,
     material.serverUrl,
   ].find(isLocalMediaReference);
-  return local || material.serverUrl || material.url || '';
+  if (local) return local;
+  return [material.serverUrl, material.url].find(
+    candidate => !isPreviewOnlyReference(candidate),
+  ) || '';
 }
 
 // ---------------------------------------------------------------------------
