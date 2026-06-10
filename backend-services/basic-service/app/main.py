@@ -155,6 +155,39 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to pre-warm rate-limit config: {str(e)}", exc_info=True)
 
+    # Schedule a background derived-file orphan-reclaim DIAGNOSTIC pass
+    # (local-video-editing-refactor spec 06 §2.4). This is rate-limited and
+    # non-blocking, and runs in DRY-RUN mode at startup: the backend alone
+    # cannot enumerate the *complete* referenced set (local project references
+    # live client-side), so a destructive sweep here would risk deleting
+    # still-referenced thumbnails/waveforms. The authoritative destructive
+    # reclaim is driven by the frontend via POST /api/storage/reclaim-orphans,
+    # which supplies the full referenced set (material library ∪ project refs).
+    # The startup pass only LOGS what looks orphaned so operators have a signal
+    # without any risk of mass deletion (safety threshold).
+    try:
+        from app.services.derived_gc_service import derived_gc_service
+
+        async def _reclaim_diagnostic() -> None:
+            try:
+                # An empty referenced set makes reclaim SKIP (never mass-delete);
+                # combined with dry_run this pass is doubly safe — it cannot
+                # remove a file even if the threshold were misread.
+                await derived_gc_service.run_startup_reclaim(
+                    referenced_provider=set, dry_run=True
+                )
+            except Exception as inner:  # never let the background task crash
+                logger.warning(
+                    f"Derived-file reclaim diagnostic failed: {str(inner)}"
+                )
+
+        asyncio.create_task(_reclaim_diagnostic())
+        logger.info("Derived-file orphan-reclaim diagnostic scheduled (dry-run)")
+    except Exception as e:
+        logger.error(
+            f"Failed to schedule derived-file reclaim: {str(e)}", exc_info=True
+        )
+
     # Playback v2 Phase 4 — flag multi-worker deployments because the
     # in-memory metrics aggregator is process-local. Spec §3.2.7.
     if getattr(settings, "playback_v2_aggregator_requires_single_worker", True):

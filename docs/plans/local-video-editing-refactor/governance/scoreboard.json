@@ -4,8 +4,8 @@
   "agents": {
     "google-dev-01": {
       "role": "DEV",
-      "tokens": 300,
-      "tokens_confirmed": 300,
+      "tokens": 335,
+      "tokens_confirmed": 335,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -279,6 +279,86 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 2)",
           "timestamp": "2026-06-10T08:56:46.193638+00:00"
+        },
+        {
+          "event": "penalize",
+          "delta": -10,
+          "status": "confirmed",
+          "balance_after": 290,
+          "confirmed_after": 290,
+          "provisional_after": 0,
+          "reason": "D9(reduced): todo-05 shipped unwired audio_mix module (incomplete D10); non-blocking, fixed on rework",
+          "timestamp": "2026-06-10T12:54:14.437920+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 295,
+          "confirmed_after": 290,
+          "provisional_after": 5,
+          "reason": "D2: todo-05 review PASS WITH FIXES",
+          "timestamp": "2026-06-10T12:54:14.637455+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 305,
+          "confirmed_after": 290,
+          "provisional_after": 15,
+          "reason": "D3: todo-05 tester PASS (after audio_mix rework)",
+          "timestamp": "2026-06-10T12:54:14.834437+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 310,
+          "confirmed_after": 290,
+          "provisional_after": 20,
+          "reason": "D4: todo-05 full spec traceability (cases 1-7)",
+          "timestamp": "2026-06-10T12:54:15.016657+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 320,
+          "confirmed_after": 290,
+          "provisional_after": 30,
+          "reason": "D10: excellence - mutation-proven parity oracle; rework caught latent volume-double-apply divergence",
+          "timestamp": "2026-06-10T12:54:15.225619+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 320,
+          "confirmed_after": 320,
+          "provisional_after": 0,
+          "reason": "Escrow release: 30 provisional tokens confirmed (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 330,
+          "confirmed_after": 330,
+          "provisional_after": 0,
+          "reason": "D12: Phase3 integration pass (todo-05 export; type-check + 1240 vitest + 78 backend green, parity proven)",
+          "timestamp": "2026-06-10T12:56:38.562249+00:00"
+        },
+        {
+          "event": "collective",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 335,
+          "confirmed_after": 335,
+          "provisional_after": 0,
+          "reason": "C1: Clean integration (zero failures) (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.962753+00:00"
         }
       ],
       "escrow_history": [
@@ -295,13 +375,20 @@
           "delta": 150,
           "reason": "Phase 2 integration tests passed",
           "timestamp": "2026-06-10T08:56:45.819400+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 3,
+          "delta": 30,
+          "reason": "Phase 3 integration tests passed",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
         }
       ]
     },
     "google-dev-02": {
       "role": "DEV",
-      "tokens": 112,
-      "tokens_confirmed": 112,
+      "tokens": 167,
+      "tokens_confirmed": 167,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -375,6 +462,76 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 1)",
           "timestamp": "2026-06-09T15:59:34.037165+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 127,
+          "confirmed_after": 112,
+          "provisional_after": 15,
+          "reason": "D1: todo-06 review PASS",
+          "timestamp": "2026-06-10T12:48:21.225311+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 137,
+          "confirmed_after": 112,
+          "provisional_after": 25,
+          "reason": "D3: todo-06 tester ALL PASS",
+          "timestamp": "2026-06-10T12:48:21.424319+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "provisional",
+          "balance_after": 142,
+          "confirmed_after": 112,
+          "provisional_after": 30,
+          "reason": "D4: todo-06 full spec traceability (cases 1-9)",
+          "timestamp": "2026-06-10T12:48:21.612356+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 152,
+          "confirmed_after": 112,
+          "provisional_after": 40,
+          "reason": "D10: excellence - triple-layer reclaim safety, end-to-end delete cascade closing Phase-1 footgun, black-screen guard",
+          "timestamp": "2026-06-10T12:48:21.805725+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 152,
+          "confirmed_after": 152,
+          "provisional_after": 0,
+          "reason": "Escrow release: 40 provisional tokens confirmed (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 162,
+          "confirmed_after": 162,
+          "provisional_after": 0,
+          "reason": "D12: Phase3 integration pass (todo-06 persistence/GC; reclaim-safety proven)",
+          "timestamp": "2026-06-10T12:56:38.759093+00:00"
+        },
+        {
+          "event": "collective",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 167,
+          "confirmed_after": 167,
+          "provisional_after": 0,
+          "reason": "C1: Clean integration (zero failures) (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.962753+00:00"
         }
       ],
       "escrow_history": [
@@ -384,6 +541,13 @@
           "delta": 17,
           "reason": "Phase 1 integration tests passed",
           "timestamp": "2026-06-09T15:59:33.383134+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 3,
+          "delta": 40,
+          "reason": "Phase 3 integration tests passed",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
         }
       ]
     },
@@ -478,8 +642,8 @@
     },
     "google-reviewer-01": {
       "role": "REV",
-      "tokens": 170,
-      "tokens_confirmed": 170,
+      "tokens": 215,
+      "tokens_confirmed": 215,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -643,6 +807,66 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 2)",
           "timestamp": "2026-06-10T08:56:46.193638+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 180,
+          "confirmed_after": 170,
+          "provisional_after": 10,
+          "reason": "R1: todo-06 no issues leaked to tester",
+          "timestamp": "2026-06-10T12:48:21.995965+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 190,
+          "confirmed_after": 180,
+          "provisional_after": 10,
+          "reason": "R10: traced reclaim-safety guards + poster-stem key + contract verification",
+          "timestamp": "2026-06-10T12:48:22.175130+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 200,
+          "confirmed_after": 180,
+          "provisional_after": 20,
+          "reason": "R1: todo-05 no issues leaked",
+          "timestamp": "2026-06-10T12:54:15.413798+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 210,
+          "confirmed_after": 190,
+          "provisional_after": 20,
+          "reason": "R10: term-by-term parity-oracle verification + caught audio_mix gap + contract verification",
+          "timestamp": "2026-06-10T12:54:15.593121+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 210,
+          "confirmed_after": 210,
+          "provisional_after": 0,
+          "reason": "Escrow release: 20 provisional tokens confirmed (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "event": "collective",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 215,
+          "confirmed_after": 215,
+          "provisional_after": 0,
+          "reason": "C1: Clean integration (zero failures) (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.962753+00:00"
         }
       ],
       "escrow_history": [
@@ -659,13 +883,20 @@
           "delta": 30,
           "reason": "Phase 2 integration tests passed",
           "timestamp": "2026-06-10T08:56:45.819400+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 3,
+          "delta": 20,
+          "reason": "Phase 3 integration tests passed",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
         }
       ]
     },
     "google-tester-01": {
       "role": "TEST",
-      "tokens": 215,
-      "tokens_confirmed": 215,
+      "tokens": 260,
+      "tokens_confirmed": 260,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -829,6 +1060,66 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 2)",
           "timestamp": "2026-06-10T08:56:46.193638+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 225,
+          "confirmed_after": 215,
+          "provisional_after": 10,
+          "reason": "T1: todo-06 full traceability",
+          "timestamp": "2026-06-10T12:48:22.387277+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 235,
+          "confirmed_after": 225,
+          "provisional_after": 10,
+          "reason": "T8: mutation-proven reclaim-safety guard + added poster-stem boundary test",
+          "timestamp": "2026-06-10T12:48:22.569315+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 245,
+          "confirmed_after": 225,
+          "provisional_after": 20,
+          "reason": "T1: todo-05 full traceability",
+          "timestamp": "2026-06-10T12:54:15.778930+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "confirmed",
+          "balance_after": 255,
+          "confirmed_after": 235,
+          "provisional_after": 20,
+          "reason": "T8: mutation-proven parity oracle load-bearing",
+          "timestamp": "2026-06-10T12:54:15.966239+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 255,
+          "confirmed_after": 255,
+          "provisional_after": 0,
+          "reason": "Escrow release: 20 provisional tokens confirmed (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "event": "collective",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 260,
+          "confirmed_after": 260,
+          "provisional_after": 0,
+          "reason": "C1: Clean integration (zero failures) (Phase 3)",
+          "timestamp": "2026-06-10T12:56:38.962753+00:00"
         }
       ],
       "escrow_history": [
@@ -845,6 +1136,13 @@
           "delta": 40,
           "reason": "Phase 2 integration tests passed",
           "timestamp": "2026-06-10T08:56:45.819400+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 3,
+          "delta": 20,
+          "reason": "Phase 3 integration tests passed",
+          "timestamp": "2026-06-10T12:56:38.368358+00:00"
         }
       ]
     }

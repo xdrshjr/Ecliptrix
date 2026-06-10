@@ -160,6 +160,20 @@ export class LocalMediaCache {
     this._entries.delete(materialId);
   }
 
+  /**
+   * Spec 06 §2.3 delete-联动 cache eviction. Drops the in-memory blob AND any
+   * in-flight download for a material so a deleted asset leaves no stale
+   * blob/URL resident. Idempotent — a missing material is a safe no-op.
+   *
+   * @param materialId The material whose cached blob to evict.
+   */
+  evict(materialId: string): void {
+    this.revoke(materialId);
+    // Forget any in-flight download promise too; the asset is gone, so its
+    // eventual result must not repopulate the cache.
+    this._inflight.delete(materialId);
+  }
+
   /** Release every object URL (hook unmount). */
   clear(): void {
     this._entries.forEach((e) => this._safeRevoke(e.blobUrl));

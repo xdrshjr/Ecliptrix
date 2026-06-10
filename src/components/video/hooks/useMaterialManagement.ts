@@ -17,6 +17,38 @@ import {
 } from './useRemoteMaterialPrefetch';
 import { useLocalMaterialDownload } from './useLocalMaterialDownload';
 import { createLocalMaterialFromUpload } from '../lib/localMaterial';
+import { deleteMaterialDerived } from '../lib/api/materialCacheClient';
+import { filmstripCache } from '../lib/filmstrip/filmstripCache';
+import { waveformCache } from '../lib/waveform/waveformCache';
+import { dropVideoCacheMaterial } from './useVideoCache';
+
+/**
+ * Derive the STORAGE_ROOT-relative source path of a directly-uploaded local
+ * material for the spec-06 delete cascade. Only direct uploads carry a
+ * removable `storageKey`; cached_materials / remote assets return undefined so
+ * the cascade does NOT delete a shared source file.
+ */
+function sourcePathForDelete(material: MaterialItem | undefined): string | undefined {
+  if (!material) return undefined;
+  const kind = material.metadata?.storageKind;
+  if (kind === 'cached_remote' || kind === 'legacy_remote') return undefined;
+  const key = material.storageKey || material.metadata?.storageKey;
+  return typeof key === 'string' && key.length > 0 ? key : undefined;
+}
+
+/**
+ * Derive extra thumbnail-dir keys to cascade. The backend poster is keyed by
+ * the stored-file STEM (basename without extension), which differs from the
+ * frontend `materialId` used for filmstrip frames; pass the stem so both
+ * thumbnail dirs are cleaned (see spec 06 / TODO 03 key-space note).
+ */
+function extraThumbnailKeysForDelete(material: MaterialItem | undefined): string[] {
+  const src = sourcePathForDelete(material);
+  if (!src) return [];
+  const base = src.split(/[\\/]/).pop() || '';
+  const stem = base.replace(/\.[^.]+$/, '');
+  return stem && stem !== material?.id ? [stem] : [];
+}
 
 /** Generate a UUID v4 string, with fallback for non-secure contexts (HTTP). */
 function generateUUID(): string {
@@ -70,6 +102,14 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   // 素材管理状态
   const [materials, setMaterials] = useState<MaterialItem[]>(initialMaterials);
 
+  // Spec 06 §2.3 — holds the LocalMediaCache eviction fn from
+  // useLocalMaterialDownload (called below, AFTER executeDelete is defined).
+  // A ref lets the earlier-declared executeDelete reach it at call time.
+  const evictLocalMaterialRef = useRef<((materialId: string) => void) | null>(null);
+  // Latest materials snapshot for the delete cascade (so executeDelete can read
+  // source path / poster stem without re-creating on every materials change).
+  const materialsSnapshotRef = useRef<MaterialItem[]>(initialMaterials);
+
   // Sync: merge Zustand store materials into local state.
   // Agent tools add materials via SSE → AgentEventRouter → Zustand store.
   // This effect bridges the store → local useState so MaterialsPanel re-renders.
@@ -82,6 +122,11 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       return [...prev, ...newFromStore];
     });
   }, [storeMaterials]);
+
+  // Keep the snapshot ref current so the delete cascade reads live metadata.
+  useEffect(() => {
+    materialsSnapshotRef.current = materials;
+  }, [materials]);
 
   const [selectedMaterialType, setSelectedMaterialType] = useState<MaterialType | 'all'>('all');
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set());
@@ -169,6 +214,35 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     });
   }, [selectedMaterials, logger]);
 
+  // Spec 06 §2.3 — evict a deleted material from all four frontend caches so
+  // no stale blob / video element / filmstrip key / waveform peaks remain.
+  const evictMaterialCaches = useCallback((materialId: string) => {
+    try { filmstripCache.evict(materialId); } catch { /* best-effort */ }
+    try { waveformCache.evict(materialId); } catch { /* best-effort */ }
+    try { dropVideoCacheMaterial(materialId); } catch { /* best-effort */ }
+    try { evictLocalMaterialRef.current?.(materialId); } catch { /* best-effort */ }
+  }, []);
+
+  // Spec 06 §2.3 — cascade-delete a material's source + derived files on the
+  // backend (fire-and-forget; never blocks the local state removal). The
+  // delete client never throws, so a backend error degrades to a log line.
+  const cascadeDeleteMaterial = useCallback((materialId: string) => {
+    const material = materialsSnapshotRef.current.find(m => m.id === materialId);
+    const sourcePath = sourcePathForDelete(material);
+    const extraKeys = extraThumbnailKeysForDelete(material);
+    void deleteMaterialDerived({ materialId, sourcePath, extraKeys }).then(result => {
+      if (!result.success) {
+        logger.warn('素材派生文件后端清理未成功（已本地移除）', {
+          materialId, message: result.message,
+        });
+      } else {
+        logger.info('素材派生文件后端联动清理完成', {
+          materialId, deleted: result.deleted,
+        });
+      }
+    });
+  }, [logger]);
+
   // 实际执行删除操作的函数
   const executeDelete = useCallback((materialIds: string[]) => {
     logger.info('开始执行素材删除', {
@@ -176,15 +250,23 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       materialCount: materialIds.length
     });
 
+    // Spec 06 §2.3 delete-联动: evict frontend caches + cascade-delete derived
+    // files on the backend BEFORE state removal so the asset leaves nothing
+    // stale behind (caches keyed by materialId; backend keyed by id + stem).
+    materialIds.forEach(id => {
+      evictMaterialCaches(id);
+      cascadeDeleteMaterial(id);
+    });
+
     setMaterials(prev => {
       const filteredMaterials = prev.filter(material => !materialIds.includes(material.id));
-      
+
       logger.info('素材删除完成', {
         deletedIds: materialIds,
         remainingCount: filteredMaterials.length,
         deletedCount: materialIds.length
       });
-      
+
       return filteredMaterials;
     });
 
@@ -194,7 +276,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       materialIds.forEach(id => newSet.delete(id));
       return newSet;
     });
-  }, [logger]);
+  }, [logger, evictMaterialCaches, cascadeDeleteMaterial]);
 
   // 处理素材删除（单个或批量）
   const handleMaterialDelete = useCallback((materialIds: string[]) => {
@@ -1159,7 +1241,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     );
     return ids;
   }, [timelineState]);
-  const { retryLocalDownload } = useLocalMaterialDownload(materials, {
+  const { retryLocalDownload, evictLocalMaterial } = useLocalMaterialDownload(materials, {
     timelineReferencedMaterialIds: timelineMediaMaterialIds,
     // Reuse the same patch sink so localProxy* fields share the authoritative
     // React-state list the readiness gate + track masks read (C4 same-source).
@@ -1174,6 +1256,10 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       }
     },
   });
+
+  // Bridge the LocalMediaCache eviction fn into the ref the earlier-declared
+  // executeDelete reaches at call time (spec 06 §2.3).
+  evictLocalMaterialRef.current = evictLocalMaterial;
 
   return {
     materials: filteredMaterials,

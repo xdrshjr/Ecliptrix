@@ -301,6 +301,18 @@ export class VideoCacheAdapter implements IVideoCachePort {
   }
 
   /**
+   * Spec 06 §2.3 delete-联动 cache eviction. Alias of {@link evict} that names
+   * the delete-flow contract explicitly (`drop(materialId)`): tear down the
+   * cached `<video>` element and release its decode buffers / Range sockets so
+   * a deleted material leaves no stale element behind. Idempotent.
+   *
+   * @param materialId The material whose cached video element to drop.
+   */
+  drop(materialId: string): void {
+    this.evict(materialId);
+  }
+
+  /**
    * Clear all cached videos and release resources.
    */
   clearAll(): void {

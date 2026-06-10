@@ -72,6 +72,24 @@ export interface TimelineItemData {
    * video item's audio so the derived audio item is the sole contributor.
    */
   audioDetached?: boolean;
+  /**
+   * Fade-in / cross-dissolve on this clip's leading edge (spec 02 §2.4).
+   * Persisted by spec 06 and transferred to the preview/export sequence;
+   * preview (02) and export (05) share the transition semantics.
+   */
+  transitionIn?: SequenceTransitionData;
+  /** Fade-out / cross-dissolve on this clip's trailing edge (spec 02 §2.4). */
+  transitionOut?: SequenceTransitionData;
+}
+
+/**
+ * Transition metadata carried on a timeline item (preview + export share it).
+ * Structurally identical to `playback/types.SequenceTransition`; redeclared
+ * here so the domain DTO layer has no dependency on the playback module.
+ */
+export interface SequenceTransitionData {
+  type: 'fade' | 'dissolve';
+  duration: number;
 }
 
 /**
@@ -175,6 +193,8 @@ export interface CreateItemProps {
   opacity?: number;
   originalMaterialType?: MaterialType;
   audioDetached?: boolean;
+  transitionIn?: SequenceTransitionData;
+  transitionOut?: SequenceTransitionData;
 }
 
 // ---------------------------------------------------------------------------

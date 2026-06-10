@@ -10,19 +10,19 @@ import AudioWaveformCanvas from './AudioWaveformCanvas';
 import { formatTimelineTime } from './timeFormat';
 import { ZoomLevel } from './domain/value-objects/ZoomLevel';
 import {
-  FilmstripCache,
+  filmstripCache,
   type FilmstripItem,
   type FilmstripSlot,
 } from '../lib/filmstrip/filmstripCache';
 import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
 
 // ---------------------------------------------------------------------------
-// Filmstrip: one process-wide cache so frames resolved for a clip persist
-// across re-renders / scroll / re-zoom to the same tier (spec 03 §2.3 hit
-// reuse). Defaults mirror the backend ThumbnailConfig filmstrip params.
+// Filmstrip: one process-wide cache (the shared `filmstripCache` singleton) so
+// frames resolved for a clip persist across re-renders / scroll / re-zoom to
+// the same tier (spec 03 §2.3 hit reuse) AND so the spec-06 delete-联动 flow
+// evicts the very keys this renderer reads. Defaults mirror the backend
+// ThumbnailConfig filmstrip params.
 // ---------------------------------------------------------------------------
-
-const filmstripCache = new FilmstripCache({ slotPx: 80, maxFrames: 24, quality: 0.7 });
 
 // Throttle window (ms) between filmstrip ensure() passes for one clip so
 // dragging the zoom slider does not fire an extraction per frame.

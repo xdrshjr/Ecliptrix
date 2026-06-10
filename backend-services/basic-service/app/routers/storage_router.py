@@ -23,10 +23,12 @@ All upload endpoints in this module enforce:
 
 import os
 import uuid
-from typing import Optional, Union
+from typing import List, Optional, Union
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
+from fastapi import (
+    APIRouter, Depends, UploadFile, File, Form, HTTPException, Query, status,
+)
 from fastapi.responses import JSONResponse
 
 from app.dependencies.auth import get_current_user
@@ -42,10 +44,16 @@ from app.models.storage_models import (
     WaveformGenerateRequest,
     WaveformGenerateResponse,
     WaveformDataResponse,
+    MaterialDeleteResponse,
+    MaterialDeleteDeleted,
+    ReclaimOrphansRequest,
+    ReclaimOrphansResponse,
+    ReclaimOrphansReport,
 )
 from app.services.storage_service import storage_service
 from app.services.thumbnail_service import thumbnail_service
 from app.services.waveform_service import waveform_service
+from app.services.derived_gc_service import derived_gc_service
 from app.services.queue_manager import queue_manager
 from app.services.simple_queue_decorator import _wait_for_simple_task_completion
 from app.config import settings
@@ -878,3 +886,99 @@ async def get_waveform(
             "material_id": material_id, "error": str(e),
         })
         return WaveformDataResponse(status="failed")
+
+
+# ---------------------------------------------------------------------------
+# Material delete-联动 + orphan reclaim (local-video-editing-refactor spec 06)
+#
+# These endpoints did NOT exist before spec 06 (verified: storage_router had
+# only upload/list/health + the spec-03/04 thumbnail/waveform endpoints). They
+# reuse the directory convention (method A) — no DB migration.
+# ---------------------------------------------------------------------------
+
+
+@router.delete(
+    "/material/{material_id}",
+    response_model=MaterialDeleteResponse,
+    summary="Delete a material's source file + cascade its derived files",
+    description=(
+        "Delete a material's source file (when a source_path is supplied) and "
+        "cascade-delete its derived thumbnails (static/video/thumbnails/{id}/*) "
+        "and waveform (static/audio/waveforms/{id}.json). The optional body may "
+        "carry extra_keys to also cascade the stored-file poster stem dir, "
+        "which is keyed differently from the frontend materialId."
+    ),
+)
+async def delete_material(
+    material_id: str,
+    source_path: Optional[str] = None,
+    extra_keys: Optional[List[str]] = Query(default=None),
+    current_user: User = Depends(get_current_user),
+) -> MaterialDeleteResponse:
+    """Delete a material and cascade-clean its derived files (spec 06).
+
+    spec/04: enforces session auth. A missing derived file is a safe no-op so
+    a double-delete cannot error. ``source_path`` is OPTIONAL (query param) —
+    shared cached_materials are deleted without removing their source.
+    ``extra_keys`` (repeatable query param) cascades additional thumbnail dir
+    keys such as the stored-file poster stem.
+    """
+    try:
+        result = await derived_gc_service.delete_material(
+            material_id=material_id,
+            source_path=source_path,
+            extra_keys=extra_keys,
+        )
+        deleted = result["deleted"]
+        return MaterialDeleteResponse(
+            success=True,
+            deleted=MaterialDeleteDeleted(
+                source=deleted["source"],
+                thumbnails=deleted["thumbnails"],
+                waveform=deleted["waveform"],
+            ),
+        )
+    except Exception as e:
+        logger.error("Material delete cascade exception", {
+            "material_id": material_id, "error": str(e),
+        })
+        return MaterialDeleteResponse(
+            success=False,
+            message=f"Material delete failed: {str(e)}",
+        )
+
+
+@router.post(
+    "/reclaim-orphans",
+    response_model=ReclaimOrphansResponse,
+    summary="Reclaim orphaned derived thumbnail dirs / waveform files",
+    description=(
+        "Given the referenced material key set (live library ∪ project refs), "
+        "delete derived thumbnail dirs / waveform files whose key is NOT in "
+        "the set. SAFETY: an EMPTY referenced set SKIPS reclaim and deletes "
+        "nothing — never mass-delete on an incomplete reference set."
+    ),
+)
+async def reclaim_orphans(
+    request: ReclaimOrphansRequest,
+    current_user: User = Depends(get_current_user),
+) -> ReclaimOrphansResponse:
+    """Reclaim orphaned derived files for the supplied reference set (spec 06).
+
+    spec/04: enforces session auth. The reclaim itself enforces the empty-set
+    safety threshold (skip), so a frontend bug that sends an empty list cannot
+    wipe derived files.
+    """
+    try:
+        referenced = set(request.referenced_material_ids or [])
+        report = derived_gc_service.reclaim(referenced, dry_run=request.dry_run)
+        return ReclaimOrphansResponse(
+            success=True,
+            reclaimed=ReclaimOrphansReport(**report),
+        )
+    except Exception as e:
+        logger.error("Reclaim orphans exception", {"error": str(e)})
+        return ReclaimOrphansResponse(
+            success=False,
+            reclaimed=ReclaimOrphansReport(skipped=True),
+        )

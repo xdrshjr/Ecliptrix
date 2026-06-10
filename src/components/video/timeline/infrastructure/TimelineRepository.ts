@@ -14,7 +14,13 @@
  */
 
 import type { ITimelineRepository, ExportMetadata } from '../domain/ports';
-import type { TimelineData, TrackData, TimelineItemData, MaterialData } from '../domain/types';
+import type {
+  TimelineData,
+  TrackData,
+  TimelineItemData,
+  MaterialData,
+  SequenceTransitionData,
+} from '../domain/types';
 import { TimelineExportError, TimelineImportError } from './errors';
 
 /**
@@ -32,6 +38,56 @@ function normalizeTrackName(name: string, id: string): string {
   const match = id.match(/-(\d+)$/);
   if (!match) return name;
   return `${name} ${match[1]}`;
+}
+
+/**
+ * Tolerance for the INV-3 clip-consistency check (matches the domain's
+ * `TIME_EPSILON`, spec 01 §2.2). Differences below this are floating-point
+ * noise, not a genuine violation worth regularizing.
+ */
+const INV3_EPSILON = 0.001;
+
+/**
+ * Regularize a legacy item that violates spec 01 INV-3
+ * (`duration == clipEnd - clipStart`). Older projects could persist a
+ * `duration` that disagrees with the clip interval after a buggy resize. On
+ * load we correct it ONCE, conservatively: `duration` is recomputed from
+ * `clipEnd - clipStart` (the source-of-truth clip interval), `startTime` is
+ * left untouched (per spec 06 §7 "不动 startTime"), and the change is logged.
+ *
+ * Items without a clip interval (no `clipStart`/`clipEnd`) are returned
+ * unchanged — there is nothing to reconcile against. Returns the same object
+ * reference when no change is needed so callers can cheaply detect a fix.
+ *
+ * @param item The imported item DTO to validate.
+ * @returns The item, with `duration` corrected when it violated INV-3.
+ */
+function regularizeClipInvariant(item: TimelineItemData): TimelineItemData {
+  const { clipStart, clipEnd } = item;
+  if (typeof clipStart !== 'number' || typeof clipEnd !== 'number') {
+    return item;
+  }
+  const clipSpan = clipEnd - clipStart;
+  if (!(clipSpan > 0)) {
+    // A non-positive clip span is itself malformed; don't manufacture a
+    // duration from it — keep the persisted duration as the safer value.
+    return item;
+  }
+  if (Math.abs((item.duration ?? 0) - clipSpan) <= INV3_EPSILON) {
+    return item;
+  }
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[TimelineRepository] regularized INV-3 violation on import',
+    {
+      id: item.id,
+      persistedDuration: item.duration,
+      clipStart,
+      clipEnd,
+      correctedDuration: clipSpan,
+    },
+  );
+  return { ...item, duration: clipSpan };
 }
 
 export type SerializedTrackKind = 'video' | 'image' | 'audio' | 'subtitle';
@@ -89,6 +145,12 @@ export interface TimelineExportData {
       trackId: string;
       color: string;
       thumbnailUrl?: string;
+      /**
+       * @deprecated spec 06 §2.1 — items NO LONGER inline waveform peaks on
+       * export (large array bloated the project JSON; peaks re-resolve by
+       * materialId via spec 04). Still READ on import as a first-paint
+       * fallback for legacy projects that carry it.
+       */
       waveformData?: number[];
       text?: string;
       materialId?: string;
@@ -101,6 +163,12 @@ export interface TimelineExportData {
       originalMaterialType?: string;
       subtitleStyle?: unknown;
       imagePosition?: unknown;
+      /** spec 01 §2.4 — embedded audio detached to its own audio track item. */
+      audioDetached?: boolean;
+      /** spec 02 §2.4 — fade/dissolve transition on the leading edge. */
+      transitionIn?: SequenceTransitionData;
+      /** spec 02 §2.4 — fade/dissolve transition on the trailing edge. */
+      transitionOut?: SequenceTransitionData;
     }>;
   }>;
   materials: Array<{
@@ -193,7 +261,10 @@ export class TimelineRepository implements ITimelineRepository {
               trackId: item.trackId,
               color: item.color,
               thumbnailUrl: item.thumbnailUrl,
-              waveformData: item.waveformData,
+              // spec 06 §2.1: STOP inlining waveform peaks. The large
+              // `waveformData` array is intentionally NOT written — peaks are
+              // re-resolved by materialId via spec 04 on load. (Legacy inline
+              // values are still TOLERATED on import as a first-paint fallback.)
               text: item.text,
               materialId: item.materialId,
               volume: item.volume,
@@ -205,6 +276,11 @@ export class TimelineRepository implements ITimelineRepository {
               originalMaterialType: item.originalMaterialType,
               subtitleStyle: item.subtitleStyle,
               imagePosition: item.imagePosition,
+              // spec 01/02 §2.4: persist split products carry these via the
+              // items array; the detach flag + transition metadata are explicit.
+              audioDetached: item.audioDetached,
+              transitionIn: item.transitionIn,
+              transitionOut: item.transitionOut,
             })),
           };
           // image- and subtitle-tracks do not carry a volume at rest
@@ -300,7 +376,7 @@ export class TimelineRepository implements ITimelineRepository {
         isVisible: track.isVisible ?? true,
         volume: track.volume ?? 100,
         order: track.order ?? 0,
-        items: track.items.map((item): TimelineItemData => ({
+        items: track.items.map((item): TimelineItemData => regularizeClipInvariant({
           id: item.id,
           name: item.name,
           type: item.type,
@@ -309,6 +385,8 @@ export class TimelineRepository implements ITimelineRepository {
           trackId: item.trackId,
           color: item.color,
           thumbnailUrl: item.thumbnailUrl,
+          // Legacy inline peaks are tolerated as a first-paint fallback only
+          // (spec 06 §2.1); fresh exports no longer write this field.
           waveformData: item.waveformData,
           text: item.text,
           materialId: item.materialId,
@@ -321,6 +399,9 @@ export class TimelineRepository implements ITimelineRepository {
           originalMaterialType: item.originalMaterialType as TimelineItemData['originalMaterialType'],
           subtitleStyle: item.subtitleStyle as TimelineItemData['subtitleStyle'],
           imagePosition: item.imagePosition as TimelineItemData['imagePosition'],
+          audioDetached: item.audioDetached,
+          transitionIn: item.transitionIn as SequenceTransitionData | undefined,
+          transitionOut: item.transitionOut as SequenceTransitionData | undefined,
         })),
       })),
     };

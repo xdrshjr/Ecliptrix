@@ -66,3 +66,28 @@ Phase2 {TODO02 统一预览合成器} → Phase3 {TODO05 导出对齐, TODO06 �
 - latent bug 仍在：`TimelineAggregate.moveItem` 跨轨非原子（item 丢失）。
 - **KEEP（勿删）**：`proxyHitMeter.ts`、`PREVIEW_PROXY_FLAG_KEY`/`LOCAL_PREVIEW_FLAG_KEY`、
   `resolveSequencePlaybackUrl`/`selectPlaybackUrl`/`useTimelineComposition`/`CompositionAdapter`。
+
+---
+
+## Phase 3 — completed (todo-05 导出对齐 + todo-06 持久化+缓存GC) — 项目代码层收尾
+
+05、06 并行（disjoint 文件），均过三权审/测。集成验证通过：type-check clean；全量 `vitest run src`
+**1240/2**（2 = `backend-proxy.test.ts` BFF query-string，先于本期、零关联）；后端 touched-area pytest
+**78/0**。无淘汰。详见 `summaries/phase-3/phase-digest.md`。Token 终榜：dev-01 335 / tester-01 260 /
+reviewer-01 215 / dev-02 167 / dev-03 135。
+
+**本期建立的契约/能力**：
+- 导出：`VideoCompositionRequest.video_items` 增 `track_z/transition_in/transition_out/audio_detached`；
+  后端 `composition/filtergraph_builder` 多轨叠加+转场（z-order/opacity/xfade 对齐 spec-02 预览，
+  parity oracle mutation-proven）；去云下载（`NonLocalMediaError`）；`audio_mix` 已 wired（等价证明）。
+- 持久化：`TimelineRepository` 存 split/trim/转场/audioDetached/轨序，停内联 waveformData；
+  `projectHydration` 按 materialId 解 live 素材（黑屏守卫）；INV-3 加载规整。
+- 清理：`DELETE /api/storage/material/{id}` 联动删派生 + `derived_gc_service.reclaim`（三层安全：空集→删0、
+  启动 dry-run、POST 端点 dormant 无调用方）+ 4-cache eviction。
+
+**⚠️ 强制门（无回退）**：预览 canvas、真实 ffmpeg 导出像素、关闭重开恢复、删除联动磁盘消失、重启无孤儿——
+**只能桌面走查**；单测钉的是接线/参数语义。05/06 桌面清单见各自 dev summary。
+
+**仍待清理（非阻断）**：`video_composition_service.py`(2744) 与 `useMaterialManagement.ts`(1295) D10 服务级拆分；
+Phase 2 `playback/internal/constants.ts` 死常量；后端 `test_video_composition*`/`_sanitize_filename` 先验失败
++ anaconda `cv2` 二进制损坏致 `app.main` 整体 boot 不能（pytest 直 import service 不受影响）。

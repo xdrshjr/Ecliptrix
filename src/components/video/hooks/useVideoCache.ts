@@ -49,6 +49,18 @@ const cacheAdapter = new VideoCacheAdapter();
 export const __testGetCacheAdapter = (): VideoCacheAdapter => cacheAdapter;
 
 /**
+ * Spec 06 §2.3 delete-联动: drop a deleted material's cached `<video>` element
+ * from the shared adapter so it releases its decode buffers / Range sockets.
+ * Module-level (not hook-bound) so the material-delete flow can call it without
+ * a `useVideoCache` instance. Idempotent.
+ *
+ * @param materialId The material whose cached video element to drop.
+ */
+export function dropVideoCacheMaterial(materialId: string): void {
+  cacheAdapter.drop(materialId);
+}
+
+/**
  * useVideoCache Hook
  * 管理视频缓存和预加载，提供 React 友好的 API
  *

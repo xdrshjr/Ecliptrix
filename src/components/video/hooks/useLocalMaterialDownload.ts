@@ -86,6 +86,12 @@ export interface UseLocalMaterialDownloadResult {
   /** Manual retry for an `error` / `degraded` material — clears localProxy*
    *  state which re-arms the state machine on the next tick. */
   retryLocalDownload: (materialId: string) => void;
+  /**
+   * Spec 06 §2.3 delete-联动: abort any in-flight download and evict the
+   * material's local blob from the LocalMediaCache so a deleted asset leaves
+   * no stale blob URL resident. Idempotent.
+   */
+  evictLocalMaterial: (materialId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +380,16 @@ export function useLocalMaterialDownload(
     [cleanupMaterial],
   );
 
+  const evictLocalMaterial = useCallback(
+    (id: string) => {
+      // Abort in-flight + revoke the blob, then drop any cached entry /
+      // in-flight promise so a deleted material cannot repopulate the cache.
+      cleanupMaterial(id, true);
+      cacheRef.current?.evict(id);
+    },
+    [cleanupMaterial],
+  );
+
   // ------------------------------------------------------------------
   // Driver effect — advance each referenced material's state machine.
   // ------------------------------------------------------------------
@@ -475,5 +491,5 @@ export function useLocalMaterialDownload(
     };
   }, []);
 
-  return { retryLocalDownload };
+  return { retryLocalDownload, evictLocalMaterial };
 }

@@ -172,3 +172,57 @@ class WaveformDataResponse(BaseModel):
     url: Optional[str] = Field(
         None, description="Same-origin URL of the persisted peaks JSON."
     )
+
+
+# ---------------------------------------------------------------------------
+# Material delete-联动 + orphan reclaim (local-video-editing-refactor spec 06)
+# ---------------------------------------------------------------------------
+
+
+class MaterialDeleteDeleted(BaseModel):
+    """The per-target outcome of a material delete cascade."""
+    source: bool = Field(False, description="Whether the source file was removed")
+    thumbnails: int = Field(
+        0, description="Number of thumbnail frames removed across all keys"
+    )
+    waveform: bool = Field(False, description="Whether the waveform JSON was removed")
+
+
+class MaterialDeleteResponse(BaseModel):
+    """Response for ``DELETE /storage/material/{material_id}`` (spec 06)."""
+    success: bool = True
+    deleted: MaterialDeleteDeleted = Field(default_factory=MaterialDeleteDeleted)
+    message: str = Field("", description="Error message when success is false")
+
+
+class ReclaimOrphansRequest(BaseModel):
+    """Body for ``POST /storage/reclaim-orphans`` (spec 06).
+
+    The frontend supplies the referenced key set (material library ∪ every
+    key referenced by a local project). An EMPTY set makes the backend SKIP
+    reclaim entirely (safety threshold) rather than mass-delete.
+    """
+    referenced_material_ids: List[str] = Field(
+        default_factory=list,
+        description="Material keys still in use (live library ∪ project refs).",
+    )
+    dry_run: bool = Field(
+        False, description="When true, log intended deletions without deleting."
+    )
+
+
+class ReclaimOrphansReport(BaseModel):
+    """The counts returned by an orphan-reclaim pass."""
+    dirs: int = Field(0, description="Thumbnail directories reclaimed")
+    files: int = Field(0, description="Waveform files reclaimed")
+    bytes: int = Field(0, description="Total bytes reclaimed")
+    skipped: bool = Field(
+        False, description="True when skipped due to an empty/abnormal ref set"
+    )
+    dry_run: bool = Field(False, description="True when no files were actually removed")
+
+
+class ReclaimOrphansResponse(BaseModel):
+    """Response for ``POST /storage/reclaim-orphans`` (spec 06)."""
+    success: bool = True
+    reclaimed: ReclaimOrphansReport = Field(default_factory=ReclaimOrphansReport)

@@ -164,6 +164,18 @@ export class WaveformCache {
   invalidate(materialId: string): void {
     this.entries.delete(materialId);
   }
+
+  /**
+   * Spec 06 §2.3 delete-联动 cache eviction. Alias of {@link invalidate} that
+   * names the delete-flow contract explicitly (`evict(materialId)`) so callers
+   * can drop a deleted material's peaks uniformly across the four caches.
+   * Idempotent.
+   *
+   * @param materialId The material whose cached peaks to evict.
+   */
+  evict(materialId: string): void {
+    this.invalidate(materialId);
+  }
 }
 
 /** Shared singleton — the timeline renders many items against one cache. */

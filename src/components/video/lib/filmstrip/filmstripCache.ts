@@ -179,6 +179,26 @@ export class FilmstripCache {
   }
 
   /**
+   * Spec 06 §2.3 delete-联动 cache eviction. Drop every cached frame URL for a
+   * material plus its one-shot pre-warm record so a deleted material leaves no
+   * stale filmstrip keys behind and a later re-add re-lists from the backend.
+   * Idempotent — a material with no cached frames is a safe no-op.
+   *
+   * @param materialId The material whose filmstrip cache entries to evict.
+   */
+  evict(materialId: string): void {
+    if (!materialId) return;
+    const prefix = `${materialId}::`;
+    for (const key of Array.from(this.urls.keys())) {
+      if (key.startsWith(prefix)) this.urls.delete(key);
+    }
+    for (const key of Array.from(this.inflight.keys())) {
+      if (key.startsWith(prefix)) this.inflight.delete(key);
+    }
+    this.prewarmed.delete(materialId);
+  }
+
+  /**
    * Hydrate the in-memory cache from the material's already-persisted backend
    * frames so a project/material reload reuses them instead of re-extracting
    * (spec 03 §6 "重载项目后 filmstrip 仍在（持久化命中，不重抽)"). Runs at most
@@ -258,6 +278,13 @@ export class FilmstripCache {
     );
   }
 
+  /** Drop every cached frame URL (e.g. full editor reset). */
+  clear(): void {
+    this.urls.clear();
+    this.inflight.clear();
+    this.prewarmed.clear();
+  }
+
   /** Extract one frame, persist it, and cache its URL. Swallows per-frame
    *  failures so a bad seek never blocks the rest of the strip. */
   private async extractOne(
@@ -282,3 +309,15 @@ export class FilmstripCache {
     }
   }
 }
+
+/**
+ * Shared filmstrip cache singleton (spec 03 §2.3 default density). The timeline
+ * renderer and the spec-06 delete-联动 flow share ONE instance so an eviction
+ * actually clears the keys the renderer reads. Mirrors the `waveformCache`
+ * singleton pattern.
+ */
+export const filmstripCache = new FilmstripCache({
+  slotPx: 80,
+  maxFrames: 24,
+  quality: 0.7,
+});
