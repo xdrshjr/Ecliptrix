@@ -343,6 +343,31 @@ describe('resolveSequencePlaybackUrl', () => {
     );
   });
 
+  it('(rc1) direct-local material with NO proxy/download state still resolves (not blocked by readiness)', () => {
+    // spec 02 §6 case 1: an empty seq.url + a direct-local material that has
+    // none of the proxy / local-download fields populated must NOT be gated on
+    // missing readiness — same-origin local URL is immediately playable.
+    const material = makeMaterial({
+      url: '/api/storage/files/video/x.mp4',
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl: '/api/storage/files/video/x.mp4',
+      },
+      // explicitly no previewProxyStatus / localProxyStatus / localProxyUrl
+    });
+    const seq = makeSeq({ url: '' });
+    const result = resolveSequencePlaybackUrl(seq, [material], {
+      // even when the caller opts into both proxy tiers, the direct-local path wins.
+      preferPreviewProxy: true,
+      preferLocalProxy: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.source).toBe('localStorageUrl');
+    expect(result!.url).toBe(`${window.location.origin}/api/storage/files/video/x.mp4`);
+  });
+
   it('(rc1) old remote seq.url is never preferred over a live direct-local material URL', () => {
     const material = makeMaterial({
       url: '/api/storage/files/video/local.mp4',

@@ -17,11 +17,13 @@ import {
 } from './internal/constants';
 import { fitContain, type FitRect } from './internal/fitContain';
 import type {
+  CompositorLayer,
   CompositorStats,
   ICanvasCompositor,
   ICanvasViewport,
   OverlayPayload,
   PreviewFrame,
+  SubtitleStyle,
 } from './types';
 
 const DEFAULT_LETTERBOX_COLOR = '#000';
@@ -165,6 +167,150 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._stats.lastDrawMs = drawMs;
     this._updateAdaptiveFps(drawMs);
     this._maybeEmitDroppedRate();
+  }
+
+  /**
+   * Multi-track per-frame compositing entry (spec 02 §2.2 / §4). Draws an
+   * ordered list of layers bottom→top:
+   *   - `video`    — decoded source, fit-contain, at the layer's effective
+   *                  opacity (item.opacity × transition alpha, supplied by the
+   *                  caller). An upper video with opacity<1 lets a lower video
+   *                  show through (§6 case 8).
+   *   - `image`    — normalized-bounds image at its opacity (reuses the same
+   *                  image draw as {@link _drawOverlays}).
+   *   - `subtitle` — pre-wrapped lines drawn over everything (§6 case 9).
+   *
+   * Layers are sorted by `z` ascending here so callers need not pre-sort. The
+   * letterbox fill is painted once from the FIRST video layer's fit-rect (or
+   * full canvas when there is no video). Adaptive-fps stats + the dropped-rate
+   * gauge are updated exactly as in {@link drawFrame} so the single-frame and
+   * multi-track paths share one performance model.
+   */
+  renderFrame(layers: CompositorLayer[]): void {
+    if (!this._ctx || !this._canvas) return;
+    const start = this._now();
+    const ctx = this._ctx;
+    const canvas = this._canvas;
+    const sorted = [...layers].sort((a, b) => a.z - b.z);
+
+    const fit = this._baseFit(sorted, canvas);
+    ctx.fillStyle = this._viewport?.letterboxColor ?? DEFAULT_LETTERBOX_COLOR;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    let drewAny = false;
+    for (const layer of sorted) {
+      drewAny = this._drawLayer(ctx, canvas, fit, layer) || drewAny;
+    }
+
+    if (drewAny) {
+      this._stats.drawnFrames += 1;
+    } else {
+      this._stats.droppedFrames += 1;
+    }
+    const drawMs = this._now() - start;
+    this._stats.lastDrawMs = drawMs;
+    this._updateAdaptiveFps(drawMs);
+    this._maybeEmitDroppedRate();
+  }
+
+  /** Fit-rect for the lowest ready video layer, or full-canvas fallback. */
+  private _baseFit(layers: readonly CompositorLayer[], canvas: HTMLCanvasElement): FitRect {
+    for (const layer of layers) {
+      if (layer.kind !== 'video') continue;
+      const source = layer.source;
+      if (!source || source.readyState < 2) continue;
+      const intrinsicW = source.videoWidth || canvas.width;
+      const intrinsicH = source.videoHeight || canvas.height;
+      return fitContain({
+        sourceWidth: intrinsicW,
+        sourceHeight: intrinsicH,
+        destWidth: canvas.width,
+        destHeight: canvas.height,
+        targetAspectRatio: this._viewport?.aspectRatio,
+      });
+    }
+    return { x: 0, y: 0, width: canvas.width, height: canvas.height };
+  }
+
+  /** Draw one layer. Returns true when it actually painted pixels. */
+  private _drawLayer(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    fit: FitRect,
+    layer: CompositorLayer,
+  ): boolean {
+    switch (layer.kind) {
+      case 'video':
+        return this._drawVideoLayer(ctx, canvas, layer);
+      case 'image':
+        return this._drawImageLayer(ctx, fit, layer);
+      case 'subtitle':
+        return this._drawSubtitleLayer(ctx, canvas, fit, layer);
+    }
+  }
+
+  private _drawVideoLayer(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    layer: Extract<CompositorLayer, { kind: 'video' }>,
+  ): boolean {
+    const source = layer.source;
+    if (!source || source.readyState < 2) return false;
+    if (layer.opacity <= 0) return false;
+    const intrinsicW = source.videoWidth || canvas.width;
+    const intrinsicH = source.videoHeight || canvas.height;
+    const fit = fitContain({
+      sourceWidth: intrinsicW,
+      sourceHeight: intrinsicH,
+      destWidth: canvas.width,
+      destHeight: canvas.height,
+      targetAspectRatio: this._viewport?.aspectRatio,
+    });
+    if (fit.width <= 0 || fit.height <= 0) return false;
+    ctx.save();
+    ctx.globalAlpha = clamp01(layer.opacity);
+    try {
+      ctx.drawImage(source, fit.x, fit.y, fit.width, fit.height);
+      ctx.restore();
+      return true;
+    } catch {
+      ctx.restore();
+      return false;
+    }
+  }
+
+  private _drawImageLayer(
+    ctx: CanvasRenderingContext2D,
+    fit: FitRect,
+    layer: Extract<CompositorLayer, { kind: 'image' }>,
+  ): boolean {
+    const img = this._loadImage(layer.src);
+    if (!img || !img.complete || img.naturalWidth === 0) return false;
+    ctx.save();
+    ctx.globalAlpha = clamp01(layer.opacity);
+    const x = fit.x + layer.bounds.x * fit.width;
+    const y = fit.y + layer.bounds.y * fit.height;
+    const w = layer.bounds.w * fit.width;
+    const h = layer.bounds.h * fit.height;
+    try {
+      ctx.drawImage(img, x, y, w, h);
+      ctx.restore();
+      return true;
+    } catch {
+      ctx.restore();
+      return false;
+    }
+  }
+
+  private _drawSubtitleLayer(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    fit: FitRect,
+    layer: Extract<CompositorLayer, { kind: 'subtitle' }>,
+  ): boolean {
+    if (layer.lines.length === 0) return false;
+    this._drawSubtitleLines(ctx, canvas, fit, layer.lines, layer.style);
+    return true;
   }
 
   private _maybeEmitDroppedRate(): void {
@@ -331,6 +477,51 @@ export class CanvasCompositor implements ICanvasCompositor {
     }
     ctx.fillStyle = style.color;
     ctx.fillText(text, xCenter, y);
+    ctx.restore();
+  }
+
+  /**
+   * Draw pre-wrapped subtitle lines (multi-track path — SubtitleLayer owns the
+   * wrap). Lines are stacked upward from the vertical anchor so the block is
+   * bottom-anchored, matching the single-line {@link _drawSubtitle} baseline.
+   */
+  private _drawSubtitleLines(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    fit: FitRect,
+    lines: string[],
+    style: SubtitleStyle,
+  ): void {
+    if (lines.length === 0) return;
+    ctx.save();
+    const fontStyle = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize}px sans-serif`;
+    ctx.font = fontStyle;
+    ctx.textAlign = style.align ?? 'center';
+    ctx.textBaseline = 'middle';
+    const vAnchor = style.vAnchor ?? 0.9;
+    const xCenter = fit.x + fit.width / 2;
+    const lineHeight = style.fontSize * 1.25;
+    const anchorY = fit.y + fit.height * vAnchor;
+    const blockHeight = lineHeight * lines.length;
+    // Top line so the whole block ends at the anchor (bottom-anchored stack).
+    const firstLineY = anchorY - blockHeight + lineHeight / 2;
+    lines.forEach((line, index) => {
+      const y = firstLineY + index * lineHeight;
+      if (style.background) {
+        ctx.fillStyle = style.background;
+        const metrics = ctx.measureText(line);
+        const padX = style.fontSize * 0.4;
+        const padY = style.fontSize * 0.3;
+        ctx.fillRect(
+          xCenter - metrics.width / 2 - padX,
+          y - style.fontSize / 2 - padY,
+          metrics.width + padX * 2,
+          style.fontSize + padY * 2,
+        );
+      }
+      ctx.fillStyle = style.color;
+      ctx.fillText(line, xCenter, y);
+    });
     ctx.restore();
   }
 

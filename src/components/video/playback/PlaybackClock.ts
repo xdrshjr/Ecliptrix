@@ -8,6 +8,14 @@
  * frame immediately; `stop` cancels any pending rAF in the same tick to
  * satisfy INV3 (no rAF survives a transition out of `playing`). Subscribers
  * receive `(compositionTime, deltaMs)` on every tick.
+ *
+ * local-video-editing-refactor (spec 02 §2.1 / §3): this is the SOLE
+ * composition clock — `compositionTime` is the single time truth. One tick
+ * drives BOTH the multi-track video render AND the audio tick
+ * ({@link ../AudioSyncPool}); the multi-track engine subscribes once and fans
+ * out to compositor + audio inside that handler so the two never drift on
+ * separate clocks. `subscribeTick` is a named alias of `subscribe` documenting
+ * that intent for the new engine path.
  */
 
 import type { IPlaybackClock } from './types';
@@ -107,6 +115,16 @@ export class PlaybackClock implements IPlaybackClock {
     return () => {
       this._handlers.delete(handler);
     };
+  }
+
+  /**
+   * Subscribe to the single composition tick (spec 02 §2.1). Named alias of
+   * {@link subscribe} used by the multi-track engine; the handler receives
+   * `(compositionTime, deltaMs)` and is expected to drive BOTH the video render
+   * and the audio tick so they share one time truth. Returns an unsubscribe fn.
+   */
+  subscribeTick(handler: TickHandler): () => void {
+    return this.subscribe(handler);
   }
 
   /** Internal: emit a tick to subscribers. Exposed for unit tests. */

@@ -225,6 +225,22 @@ export interface AudioSequenceItem {
   originalDuration?: number;
 }
 
+/**
+ * Subtitle sequence item for the compositor subtitle layer (spec 02 §5).
+ * Times are seconds on the composition timeline. `style` is the timeline's
+ * `SubtitleStyle` (font family / color / position) which the SubtitleLayer
+ * resolves to draw-oriented defaults. Structurally compatible with the
+ * `SubtitleSequenceItem` re-declared in `types/videoEditingTypes.ts`.
+ */
+export interface SubtitleSequenceItem {
+  id: string;
+  text: string;
+  startTime: number;
+  duration: number;
+  trackId: string;
+  style?: import('@/types').SubtitleStyle;
+}
+
 // ---------------------------------------------------------------------------
 // ICompositionPort — Timeline to composition sequence conversion
 // ---------------------------------------------------------------------------
@@ -251,6 +267,13 @@ export interface ICompositionPort {
     tracks: TrackData[],
     materials: MaterialData[]
   ): AudioSequenceItem[];
+
+  /**
+   * Extract subtitle sequences from tracks (spec 02 §2.3 / §5).
+   * Filters for visible subtitle tracks with non-empty subtitle items.
+   * Materials are NOT required — subtitle text/style live on the item.
+   */
+  extractSubtitleSequences(tracks: TrackData[]): SubtitleSequenceItem[];
 
   /**
    * Build a composition request from extracted sequences.

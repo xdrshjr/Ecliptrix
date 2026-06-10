@@ -84,6 +84,42 @@ function makeTimelineState(
   } as unknown as TimelineState;
 }
 
+/**
+ * One video track + one subtitle track. `subtitle` lets the caller vary the
+ * subtitle text to exercise the signature gate; an empty array yields no
+ * subtitle track.
+ */
+function makeTimelineStateWithSubtitles(
+  videoItems: Array<{ itemId: string; materialId: string }>,
+  subtitles: Array<{ id: string; text: string; start: number; duration: number }>,
+): TimelineState {
+  const base = makeTimelineState(videoItems) as unknown as {
+    tracks: unknown[];
+  };
+  const subtitleTrack = {
+    id: 'subtitle-track-1',
+    name: 'Subtitle 1',
+    type: 'subtitle',
+    height: 40,
+    isLocked: false,
+    isMuted: false,
+    isVisible: true,
+    volume: 100,
+    order: 1,
+    items: subtitles.map(s => ({
+      id: s.id,
+      name: s.text,
+      type: 'subtitle',
+      startTime: s.start,
+      duration: s.duration,
+      trackId: 'subtitle-track-1',
+      color: '#000000',
+      text: s.text,
+    })),
+  };
+  return { ...base, tracks: [...base.tracks, subtitleTrack] } as unknown as TimelineState;
+}
+
 describe('useTimelineComposition — RC-1 timeline local preview', () => {
   it('republishes the sequence URL when a tracked material finalizes its local URL without an id change', () => {
     const { result, rerender } = renderHook(
@@ -187,5 +223,61 @@ describe('useTimelineComposition — RC-1 timeline local preview', () => {
     rerender({ materials: [{ ...material }] });
 
     expect(result.current.compositionPlayback).toBe(committed);
+  });
+
+  it('extracts subtitle items from the timeline subtitle track into subtitleSequences', () => {
+    const { result } = renderHook(
+      ({ materials }) => useTimelineComposition('task-1', materials),
+      { initialProps: { materials: [completedLocalMaterial('mat-1', LOCAL_URL)] as MaterialItem[] } },
+    );
+
+    act(() => {
+      result.current.handleTimelineStateChange(
+        makeTimelineStateWithSubtitles(
+          [{ itemId: 'item-1', materialId: 'mat-1' }],
+          [{ id: 'sub-1', text: 'hello world', start: 0, duration: 2 }],
+        ),
+      );
+    });
+
+    const subs = result.current.compositionPlayback.subtitleSequences;
+    expect(subs).toHaveLength(1);
+    expect(subs[0]).toMatchObject({
+      id: 'sub-1',
+      text: 'hello world',
+      startTime: 0,
+      duration: 2,
+      trackId: 'subtitle-track-1',
+    });
+  });
+
+  it('skips blank subtitle items but rebuilds when subtitle text changes (signature folds subtitles)', () => {
+    const { result } = renderHook(
+      ({ materials }) => useTimelineComposition('task-1', materials),
+      { initialProps: { materials: [completedLocalMaterial('mat-1', LOCAL_URL)] as MaterialItem[] } },
+    );
+
+    act(() => {
+      result.current.handleTimelineStateChange(
+        makeTimelineStateWithSubtitles(
+          [{ itemId: 'item-1', materialId: 'mat-1' }],
+          [{ id: 'sub-1', text: '   ', start: 0, duration: 2 }],
+        ),
+      );
+    });
+    // Whitespace-only subtitle is not a renderable sequence.
+    expect(result.current.compositionPlayback.subtitleSequences).toHaveLength(0);
+
+    // Author types real text — the composition must rebuild (signature change).
+    act(() => {
+      result.current.handleTimelineStateChange(
+        makeTimelineStateWithSubtitles(
+          [{ itemId: 'item-1', materialId: 'mat-1' }],
+          [{ id: 'sub-1', text: 'now visible', start: 0, duration: 2 }],
+        ),
+      );
+    });
+    expect(result.current.compositionPlayback.subtitleSequences).toHaveLength(1);
+    expect(result.current.compositionPlayback.subtitleSequences[0].text).toBe('now visible');
   });
 });

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { TimelineState, MaterialItem } from '@/types';
-import { UseTimelineCompositionReturn, VideoSequenceItem, AudioSequenceItem, CompositionPlayback, VideoSeekCallback } from '../types';
+import { UseTimelineCompositionReturn, VideoSequenceItem, AudioSequenceItem, SubtitleSequenceItem, CompositionPlayback, VideoSeekCallback } from '../types';
 import { VideoEditingLogger } from '../utils';
 import { CompositionAdapter } from '../timeline/infrastructure';
 import type { TrackData, MaterialData } from '../timeline/domain/types';
@@ -31,6 +31,31 @@ function materialPlaybackFields(material: MaterialItem | undefined): string {
     .join('|');
 }
 
+/**
+ * 折叠视频序列上「合成相关」的透传字段（spec 02 §5）。
+ *
+ * 加入轨道后由 timeline item 翻转的 audioDetached / opacity / 转场 / 轨道
+ * z-order，会改变合成器的叠加与转场表现，但不属于 url/clip/timing。把它们纳入
+ * 签名，确保 patch-after-insert 翻转这些字段时也触发组合状态刷新。音频序列没有
+ * 这些字段，返回空串。
+ */
+function compositorPassthroughFields(
+  seq: VideoSequenceItem | AudioSequenceItem,
+): string {
+  const v = seq as VideoSequenceItem;
+  if (v.audioDetached === undefined && v.opacity === undefined &&
+      v.trackZ === undefined && !v.transitionIn && !v.transitionOut) {
+    return '';
+  }
+  return [
+    v.audioDetached ? 'd' : '',
+    v.opacity ?? '',
+    v.trackZ ?? '',
+    v.transitionIn ? `${v.transitionIn.type}:${v.transitionIn.duration}` : '',
+    v.transitionOut ? `${v.transitionOut.type}:${v.transitionOut.duration}` : '',
+  ].join(',');
+}
+
 /** 单个序列的播放签名：序列/item 字段取自 sequence，素材字段取自 live material。 */
 function sequencePlaybackSignature(
   seq: VideoSequenceItem | AudioSequenceItem,
@@ -41,22 +66,40 @@ function sequencePlaybackSignature(
     seq.id,
     seq.materialId ?? '',
     seq.trackId ?? '',
+    seq.url ?? '',
+    (seq as VideoSequenceItem).cacheUrl ?? '',
     seq.clipStart ?? '',
     seq.clipEnd ?? '',
     seq.duration ?? '',
     seq.startTime ?? '',
+    seq.volume ?? '',
+    compositorPassthroughFields(seq),
     materialPlaybackFields(material),
   ].join('~');
 }
 
+/** 字幕序列签名：文本/时序/样式变化即触发刷新（无 live material 依赖）。 */
+function subtitlePlaybackSignature(sub: SubtitleSequenceItem): string {
+  const style = sub.style;
+  return [
+    sub.id,
+    sub.trackId ?? '',
+    sub.startTime ?? '',
+    sub.duration ?? '',
+    sub.text ?? '',
+    style ? `${style.fontFamily}:${style.fontSize}:${style.fontColor}:${style.backgroundColor ?? ''}:${style.position}` : '',
+  ].join('~');
+}
+
 /**
- * 组合播放签名：所有视频/音频序列签名的有界字符串拼接。
+ * 组合播放签名：所有视频/音频/字幕序列签名的有界字符串拼接。
  * 以「字符串相等」而非深比较作为提交判据，更新成本低，且避免深比较带来的
  * 播放重置抖动（见 spec Risks 表）。
  */
 function computeCompositionSignature(
   videoSequences: VideoSequenceItem[],
   audioSequences: AudioSequenceItem[],
+  subtitleSequences: SubtitleSequenceItem[],
   materials: MaterialItem[],
 ): string {
   const materialsById = new Map(materials.map(m => [m.id, m] as const));
@@ -66,7 +109,10 @@ function computeCompositionSignature(
   const audioPart = audioSequences
     .map(seq => sequencePlaybackSignature(seq, materialsById))
     .join('#');
-  return `V:${videoPart}||A:${audioPart}`;
+  const subtitlePart = subtitleSequences
+    .map(subtitlePlaybackSignature)
+    .join('#');
+  return `V:${videoPart}||A:${audioPart}||S:${subtitlePart}`;
 }
 
 /**
@@ -101,6 +147,7 @@ export const useTimelineComposition = (
     isCompositionMode: false,
     videoSequences: [],
     audioSequences: [],
+    subtitleSequences: [],
     currentSequenceIndex: 0,
     totalCompositionDuration: 0,
     compositionCurrentTime: 0
@@ -130,6 +177,13 @@ export const useTimelineComposition = (
     return compositionAdapter.extractAudioSequences(tracks, materialData);
   }, [materials, compositionAdapter]);
 
+  // 从时间轴状态提取字幕序列 — delegates to CompositionAdapter（不依赖 materials，
+  // 字幕文本/样式直接挂在 item 上）。
+  const getSubtitleSequencesFromTimeline = useCallback((timelineState: TimelineState): SubtitleSequenceItem[] => {
+    const tracks = timelineState.tracks as unknown as TrackData[];
+    return compositionAdapter.extractSubtitleSequences(tracks) as unknown as SubtitleSequenceItem[];
+  }, [compositionAdapter]);
+
   // RC-1：保存最近一次的 TimelineState，供 materials 变化时重新提取序列使用。
   const lastTimelineStateRef = useRef<TimelineState | null>(null);
   // RC-1：已提交的组合播放签名，作为「是否需要 setState」的唯一判据。
@@ -141,11 +195,15 @@ export const useTimelineComposition = (
   const rebuildCompositionPlayback = useCallback((timelineState: TimelineState) => {
     const videoSequences = getVideoSequencesFromTimeline(timelineState);
     const audioSequences = getAudioSequencesFromTimeline(timelineState);
+    const subtitleSequences = getSubtitleSequencesFromTimeline(timelineState);
     const totalDuration = videoSequences.reduce((total, seq) => total + seq.duration, 0);
 
     // R-5：先比对（廉价的）字符串签名，签名未变则连 setState 都不触发，
-    // 避免 materials 频繁换引用时的播放重置抖动。
-    const nextSignature = computeCompositionSignature(videoSequences, audioSequences, materials);
+    // 避免 materials 频繁换引用时的播放重置抖动。签名纳入字幕序列，字幕新增/
+    // 改文本/改样式同样触发刷新。
+    const nextSignature = computeCompositionSignature(
+      videoSequences, audioSequences, subtitleSequences, materials,
+    );
     if (nextSignature === compositionSignatureRef.current) {
       return;
     }
@@ -154,6 +212,7 @@ export const useTimelineComposition = (
     logger.info('时间轴状态变化 - 更新组合播放状态', {
       videoSequencesCount: videoSequences.length,
       audioSequencesCount: audioSequences.length,
+      subtitleSequencesCount: subtitleSequences.length,
       isCompositionMode: videoSequences.length > 0
     });
 
@@ -172,12 +231,13 @@ export const useTimelineComposition = (
         ...prev,
         videoSequences,
         audioSequences,
+        subtitleSequences,
         totalCompositionDuration: totalDuration,
         isCompositionMode: videoSequences.length > 0,
         currentSequenceIndex: nextSequenceIndex
       };
     });
-  }, [getVideoSequencesFromTimeline, getAudioSequencesFromTimeline, materials, logger]);
+  }, [getVideoSequencesFromTimeline, getAudioSequencesFromTimeline, getSubtitleSequencesFromTimeline, materials, logger]);
 
   // 处理时间轴状态变化
   const handleTimelineStateChange = useCallback((timelineState: TimelineState) => {

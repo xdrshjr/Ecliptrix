@@ -33,6 +33,36 @@ export interface VideoSequenceItem {
   
   // 新增：缓存相关属性
   cacheState?: 'loading' | 'loaded' | 'error' | 'not-found'; // 预加载状态
+
+  // Stage 2a (spec 02 §5) — multi-track compositor passthrough fields.
+  // 透传自 timeline item / track，供合成器叠加与转场使用。
+  /** Track z-order index — lower draws first (bottom). */
+  trackZ?: number;
+  /** Item-level opacity [0,1]; combined with transition alpha at draw time. */
+  opacity?: number;
+  /** Fade-in / cross-dissolve on this clip's leading edge. */
+  transitionIn?: import('../playback/types').SequenceTransition;
+  /** Fade-out / cross-dissolve on this clip's trailing edge. */
+  transitionOut?: import('../playback/types').SequenceTransition;
+  /**
+   * When true this video sequence's embedded audio has been detached to an
+   * independent audio sequence; preview (02) and export (05) suppress this
+   * video's audio (spec 01 §2.4).
+   */
+  audioDetached?: boolean;
+}
+
+/**
+ * Subtitle sequence item — supplied to the compositor's subtitle layer.
+ * Stage 2a (spec 02 §5). Times are seconds on the composition timeline.
+ */
+export interface SubtitleSequenceItem {
+  id: string;
+  text: string;
+  startTime: number;
+  duration: number;
+  trackId: string;
+  style?: import('@/types').SubtitleStyle;
 }
 
 // 新增：音频序列项目接口，用于组合播放时的音频同步
@@ -56,6 +86,8 @@ export interface CompositionPlayback {
   isCompositionMode: boolean;
   videoSequences: VideoSequenceItem[];
   audioSequences: AudioSequenceItem[]; // 新增：音频序列数据
+  /** Stage 2a (spec 02 §5): subtitle items for the compositor subtitle layer. */
+  subtitleSequences: SubtitleSequenceItem[];
   currentSequenceIndex: number;
   totalCompositionDuration: number;
   compositionCurrentTime: number;

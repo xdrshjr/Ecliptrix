@@ -109,6 +109,83 @@ export interface SubtitlePayload {
   endMs: number;
 }
 
+// ---------------------------------------------------------------------------
+// Stage 2a — multi-track compositor Layer contract (spec 02 §4).
+//
+// The compositor's per-frame entry point composites an ordered list of layers
+// bottom→top. Spec 05 (ffmpeg export) mirrors this z-order / opacity / fade
+// semantics, so keep the contract stable.
+// ---------------------------------------------------------------------------
+
+/**
+ * One renderable layer the multi-track compositor draws per frame.
+ *
+ * - `video`   — a decoded `<video>` source drawn fit-contain with `opacity`.
+ * - `subtitle`— pre-laid-out subtitle (lines + style) drawn over the video.
+ * - `image`   — an image item rasterised at normalized `bounds` with `opacity`.
+ *
+ * `z` orders layers within their kind family and across kinds (lower draws
+ * first). Layers are sorted by `z` ascending before drawing.
+ */
+export type CompositorLayer =
+  | {
+      kind: 'video';
+      /** Stable id (track id) so the compositor can skip un-ready repaints. */
+      id: string;
+      source: HTMLVideoElement | null;
+      /** Effective opacity = item.opacity * transition alpha, in [0,1]. */
+      opacity: number;
+      z: number;
+    }
+  | {
+      kind: 'subtitle';
+      id: string;
+      /** Pre-wrapped lines (SubtitleLayer owns layout). */
+      lines: string[];
+      style: SubtitleStyle;
+      opacity: number;
+      z: number;
+    }
+  | {
+      kind: 'image';
+      id: string;
+      src: string;
+      /** Normalized [0,1] bounds against the canvas fit-rect. */
+      bounds: { x: number; y: number; w: number; h: number };
+      opacity: number;
+      z: number;
+    };
+
+/**
+ * Transition metadata carried on a sequence (preview + export share it).
+ * `type` is the visual family; `duration` is seconds.
+ */
+export interface SequenceTransition {
+  type: 'fade' | 'dissolve';
+  duration: number;
+}
+
+/**
+ * Track-grouped video sequences for the multi-track compositor. Each entry is
+ * one visible video track with its clip items (already carrying trackZ /
+ * opacity / transition / audioDetached transferred from the timeline item).
+ */
+export interface VideoTrackGroup {
+  trackId: string;
+  /** Z-order index — lower draws first (bottom). */
+  z: number;
+  items: import('../types').VideoSequenceItem[];
+}
+
+/** Track-grouped audio sequences for the audio sync pool. */
+export interface AudioTrackGroup {
+  trackId: string;
+  muted: boolean;
+  /** Track-level volume scalar (0..2), already normalized from 0..200. */
+  volume: number;
+  items: import('../types').AudioSequenceItem[];
+}
+
 export interface CompositorStats {
   drawnFrames: number;
   droppedFrames: number;
@@ -180,6 +257,12 @@ export interface ICanvasCompositor {
   attach(canvas: HTMLCanvasElement, viewport?: ICanvasViewport): void;
   detach(): void;
   drawFrame(frame: PreviewFrame): void;
+  /**
+   * Multi-track per-frame compositing (spec 02 §2.2 / §4). Draws an ordered
+   * list of layers bottom→top (sorted by `z`). Coexists with the single-source
+   * {@link drawFrame}; the multi-track engine uses this entry.
+   */
+  renderFrame(layers: CompositorLayer[]): void;
   setActiveSource(source: HTMLVideoElement | null): void;
   setLetterbox(viewport: ICanvasViewport | null): void;
   setOverlays(overlays: OverlayPayload[]): void;

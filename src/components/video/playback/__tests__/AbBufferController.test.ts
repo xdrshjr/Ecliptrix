@@ -77,6 +77,7 @@ beforeEach(() => {
     attach: vi.fn(),
     detach: vi.fn(),
     drawFrame: vi.fn(),
+    renderFrame: vi.fn(),
     setActiveSource: vi.fn(),
     setLetterbox: vi.fn(),
     setOverlays: vi.fn(),

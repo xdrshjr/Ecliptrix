@@ -23,6 +23,7 @@ import type {
   ICompositionPort,
   VideoSequenceItem,
   AudioSequenceItem,
+  SubtitleSequenceItem,
   CompositionConfig,
   VideoCompositionRequest,
 } from '../domain/ports';
@@ -268,6 +269,43 @@ export class CompositionAdapter implements ICompositionPort {
     allAudioItems.sort((a, b) => a.startTime - b.startTime);
 
     return allAudioItems;
+  }
+
+  /**
+   * Extract subtitle sequences from timeline tracks (spec 02 §2.3 / §5).
+   *
+   * Filters for visible subtitle tracks and subtitle items carrying text.
+   * Materials are not consulted — subtitle text/style live on the item. The
+   * SubtitleLayer resolves `style` (timeline `SubtitleStyle`) to draw defaults.
+   * Sorted by startTime ascending for stable signature ordering.
+   */
+  extractSubtitleSequences(tracks: TrackData[]): SubtitleSequenceItem[] {
+    const subtitles: SubtitleSequenceItem[] = [];
+
+    for (const track of tracks) {
+      if (track.type !== 'subtitle' || !track.isVisible) {
+        continue;
+      }
+
+      for (const item of track.items) {
+        const text = item.text?.trim();
+        if (item.type !== 'subtitle' || !text) {
+          continue;
+        }
+
+        subtitles.push({
+          id: item.id,
+          text: item.text ?? '',
+          startTime: item.startTime,
+          duration: item.duration,
+          trackId: item.trackId,
+          style: item.subtitleStyle,
+        });
+      }
+    }
+
+    subtitles.sort((a, b) => a.startTime - b.startTime);
+    return subtitles;
   }
 
   /**

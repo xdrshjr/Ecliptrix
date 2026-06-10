@@ -1,0 +1,151 @@
+/**
+ * assembleLayers tests (spec 02 §2.2 / §2.4 / §6).
+ *
+ * Pure — no canvas. Verifies the layer list the multi-track engine hands to
+ * CanvasCompositor.renderFrame:
+ *   - z-order: video by track z, image + subtitle lifted above all video;
+ *   - effective video opacity = item.opacity × transition alpha;
+ *   - transition fade-in/out folded at the composition time;
+ *   - idle / unready tracks contribute no layer.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  assembleLayers,
+  buildVideoLayers,
+  buildSubtitleLayers,
+  type ActiveVideoEntry,
+} from '../internal/assembleLayers';
+import type { TextMeasurer } from '../SubtitleLayer';
+import type { ImageOverlayInput } from '../ImageOverlayLayer';
+import type { VideoSequenceItem, SubtitleSequenceItem } from '../../types';
+
+const measure: TextMeasurer = (text, style) => text.length * style.fontSize * 0.5;
+
+function clip(over: Partial<VideoSequenceItem> & { id: string }): VideoSequenceItem {
+  return {
+    name: over.id,
+    url: '',
+    startTime: 0,
+    duration: 10,
+    trackId: 't',
+    clipStart: 0,
+    clipEnd: 10,
+    ...over,
+  } as VideoSequenceItem;
+}
+
+function readySource() {
+  return { readyState: 4 };
+}
+
+describe('buildVideoLayers — opacity × transition alpha', () => {
+  it('full opacity body → effective opacity 1', () => {
+    const entries: ActiveVideoEntry[] = [
+      { trackId: 't1', z: 0, source: readySource(), clip: clip({ id: 'a' }) },
+    ];
+    const layers = buildVideoLayers(entries, 5);
+    expect(layers[0].opacity).toBeCloseTo(1, 6);
+  });
+
+  it('item opacity multiplies the transition alpha (fade-in midpoint)', () => {
+    const c = clip({
+      id: 'a',
+      startTime: 0,
+      duration: 10,
+      opacity: 0.5,
+      transitionIn: { type: 'fade', duration: 4 },
+    });
+    const entries: ActiveVideoEntry[] = [{ trackId: 't1', z: 0, source: readySource(), clip: c }];
+    // At t=2, fade-in alpha = 2/4 = 0.5; × item opacity 0.5 → 0.25.
+    const layers = buildVideoLayers(entries, 2);
+    expect(layers[0].opacity).toBeCloseTo(0.25, 6);
+  });
+
+  it('fade-out ramp is applied at the trailing edge', () => {
+    const c = clip({
+      id: 'a',
+      startTime: 0,
+      duration: 10,
+      transitionOut: { type: 'fade', duration: 4 },
+    });
+    const entries: ActiveVideoEntry[] = [{ trackId: 't1', z: 0, source: readySource(), clip: c }];
+    // At t=8, untilEnd=2, fadeOut=4 → 2/4 = 0.5.
+    const layers = buildVideoLayers(entries, 8);
+    expect(layers[0].opacity).toBeCloseTo(0.5, 6);
+  });
+
+  it('drops an entry with no source or no clip', () => {
+    const entries: ActiveVideoEntry[] = [
+      { trackId: 't1', z: 0, source: null, clip: clip({ id: 'a' }) },
+      { trackId: 't2', z: 1, source: readySource(), clip: null },
+    ];
+    expect(buildVideoLayers(entries, 1)).toHaveLength(0);
+  });
+});
+
+describe('assembleLayers — z-order across kinds', () => {
+  it('orders bottom video < top video < image < subtitle by z ascending', () => {
+    const videoEntries: ActiveVideoEntry[] = [
+      { trackId: 'bottom', z: 0, source: readySource(), clip: clip({ id: 'a' }) },
+      { trackId: 'top', z: 1, source: readySource(), clip: clip({ id: 'b' }) },
+    ];
+    const imageItems: ImageOverlayInput[] = [
+      { id: 'img', src: '/x.png', startTime: 0, duration: 10, position: { x: 0, y: 0, width: 0.3, height: 0.3 } },
+    ];
+    const subtitleItems: SubtitleSequenceItem[] = [
+      { id: 'sub', text: 'caption', startTime: 0, duration: 10, trackId: 'st' },
+    ];
+    const layers = assembleLayers({
+      videoEntries,
+      subtitleItems,
+      imageItems,
+      t: 5,
+      subtitleMaxWidthPx: 800,
+      measureSubtitle: measure,
+    });
+    const kinds = layers.map((l) => l.kind);
+    // video, video, image, subtitle in ascending z.
+    expect(kinds[0]).toBe('video');
+    expect(kinds[1]).toBe('video');
+    expect(kinds[kinds.length - 1]).toBe('subtitle');
+    expect(kinds.includes('image')).toBe(true);
+    // strictly ascending z
+    for (let i = 1; i < layers.length; i++) {
+      expect(layers[i].z).toBeGreaterThanOrEqual(layers[i - 1].z);
+    }
+    // image sits above both video layers
+    const imageZ = layers.find((l) => l.kind === 'image')!.z;
+    const videoZMax = Math.max(...layers.filter((l) => l.kind === 'video').map((l) => l.z));
+    expect(imageZ).toBeGreaterThan(videoZMax);
+  });
+
+  it('omits subtitle/image layers that are not active at t', () => {
+    const videoEntries: ActiveVideoEntry[] = [
+      { trackId: 'v', z: 0, source: readySource(), clip: clip({ id: 'a' }) },
+    ];
+    const layers = assembleLayers({
+      videoEntries,
+      subtitleItems: [{ id: 's', text: 'x', startTime: 100, duration: 5, trackId: 'st' }],
+      imageItems: [{ id: 'i', src: '/x.png', startTime: 100, duration: 5 }],
+      t: 5,
+      subtitleMaxWidthPx: 800,
+      measureSubtitle: measure,
+    });
+    expect(layers.every((l) => l.kind === 'video')).toBe(true);
+    expect(layers).toHaveLength(1);
+  });
+});
+
+describe('buildSubtitleLayers — wrapping + style', () => {
+  it('wraps long text into multiple lines and drops empty layouts', () => {
+    const items: SubtitleSequenceItem[] = [
+      { id: 's', text: 'one two three four five', startTime: 0, duration: 10, trackId: 'st' },
+      { id: 'empty', text: '', startTime: 0, duration: 10, trackId: 'st' },
+    ];
+    // Narrow width so wrapping happens with the test measurer.
+    const layers = buildSubtitleLayers(items, 5, 60, measure, 1_000_000);
+    expect(layers).toHaveLength(1); // empty dropped
+    expect(layers[0].lines.length).toBeGreaterThan(1);
+  });
+});
