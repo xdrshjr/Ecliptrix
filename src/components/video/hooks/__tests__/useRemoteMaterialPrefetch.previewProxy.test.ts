@@ -14,10 +14,9 @@ import { useRemoteMaterialPrefetch } from '../useRemoteMaterialPrefetch';
 import type { MaterialItem } from '@/types';
 import { MediaProxyClient } from '../../timeline/infrastructure/MediaProxyClient';
 
-// Both flags on: v2 drives the (unused here) window prefetch, preview-proxy
-// drives the trigger. The two are deliberately independent (spec §3.2.1).
+// Preview-proxy flag on drives the trigger. (S4: the v2 flag that once drove
+// the now-removed window prefetch is gone — the compositor is the sole path.)
 vi.mock('@/lib/playbackFlags', () => ({
-  isPlaybackV2Enabled: () => true,
   isPreviewProxyEnabled: () => true,
 }));
 
@@ -352,17 +351,7 @@ describe('useRemoteMaterialPrefetch — preview-proxy branch', () => {
     expect(lastCall[1].previewProxyStatus).toBe('cached');
   });
 
-  it('preloadSequenceWindow runs when videoCache + playbackWindow supplied', async () => {
-    const cacheStub: any = {
-      preloadSequenceWindow: vi.fn().mockResolvedValue(undefined),
-    };
-    renderHook(() =>
-      useRemoteMaterialPrefetch([makeMaterial()], () => {}, {
-        videoCache: cacheStub,
-        playbackWindow: [{ materialId: 'mid-1', url: '/api/storage/x' }],
-      }),
-    );
-    await new Promise((r) => setTimeout(r, 0));
-    expect(cacheStub.preloadSequenceWindow).toHaveBeenCalled();
-  });
+  // S4: the v2-flag-gated `preloadSequenceWindow` canvas-cache window prefetch
+  // was removed with v1 (the compositor's VideoSourcePool owns A/B prewarm),
+  // so the corresponding test was dropped here.
 });

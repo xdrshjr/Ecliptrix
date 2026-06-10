@@ -268,11 +268,13 @@ const readSrc = (...parts: string[]): string =>
 describe('timeline store mirror — production wiring (source level)', () => {
   const interfaceSrc = readSrc('..', 'VideoEditingInterface.tsx');
   const materialMgmtSrc = readSrc('..', 'hooks', 'useMaterialManagement.ts');
-  const playerPanelSrc = readSrc(
+  // S4 / D10: the readiness gate (computeMediaReadiness) was extracted out of
+  // VideoPlayerPanel into the transport hook.
+  const transportSrc = readSrc(
     '..',
     'components',
     'VideoPlayerPanel',
-    'VideoPlayerPanel.tsx',
+    'useCompositionTransport.ts',
   );
 
   it('VideoEditingInterface selects the store setTimelineState action', () => {
@@ -311,8 +313,9 @@ describe('timeline store mirror — production wiring (source level)', () => {
     );
   });
 
-  it('VideoPlayerPanel gate filters by material.type — matching deriveGateMediaIds', () => {
-    expect(playerPanelSrc).toMatch(
+  it('the readiness gate filters by material.type — matching deriveGateMediaIds', () => {
+    // S4 / D10: computeMediaReadiness lives in useCompositionTransport now.
+    expect(transportSrc).toMatch(
       /m\.type\s*!==\s*'video'\s*&&\s*m\.type\s*!==\s*'audio'/,
     );
   });

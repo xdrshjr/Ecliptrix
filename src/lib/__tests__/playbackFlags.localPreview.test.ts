@@ -3,17 +3,16 @@
  * (docs/plans/video-editor-client-preview-download/spec.md §3.3.1 / G6).
  *
  * Invariants: default ON, localStorage/env override, and full independence
- * from both the preview-proxy flag and the playback-v2 kill-switch (C7).
+ * from the preview-proxy flag (C7). The playback-v2 kill-switch this flag was
+ * once asserted independent from was removed in S4 (the compositor is the sole
+ * preview path), so that case is gone with it.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   isLocalPreviewEnabled,
   isPreviewProxyEnabled,
-  isPlaybackV2Enabled,
   PLAYBACK_FLAG_KEYS,
-  tripPlaybackV2KillSwitch,
-  clearPlaybackV2KillSwitch,
 } from '../playbackFlags';
 
 describe('playbackFlags.isLocalPreviewEnabled', () => {
@@ -60,16 +59,6 @@ describe('playbackFlags.isLocalPreviewEnabled', () => {
     window.localStorage.setItem(PLAYBACK_FLAG_KEYS.localPreview, 'false');
     expect(isLocalPreviewEnabled()).toBe(false);
     expect(isPreviewProxyEnabled()).toBe(true);
-  });
-
-  it('is independent of the playback-v2 kill-switch', () => {
-    tripPlaybackV2KillSwitch('test');
-    try {
-      expect(isPlaybackV2Enabled()).toBe(false);
-      expect(isLocalPreviewEnabled()).toBe(true);
-    } finally {
-      clearPlaybackV2KillSwitch();
-    }
   });
 
   it('exposes its storage key constant', () => {

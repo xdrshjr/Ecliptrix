@@ -39,8 +39,7 @@ import type {
 } from '../timeline/domain/ports';
 import { MediaProxyClient } from '../timeline/infrastructure/MediaProxyClient';
 import type { PreviewProxyStatus } from '../timeline/infrastructure/MediaProxyClient';
-import type { VideoCacheAdapter } from '../timeline/infrastructure/VideoCacheAdapter';
-import { isPlaybackV2Enabled, isPreviewProxyEnabled } from '@/lib/playbackFlags';
+import { isPreviewProxyEnabled } from '@/lib/playbackFlags';
 import { materialCompositeKey } from '../lib/materialKey';
 import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
 
@@ -198,14 +197,7 @@ export interface UseRemoteMaterialPrefetchOptions {
   onPatchPreviewProxy?: (id: string, patch: Partial<MaterialItem>) => void;
   /** Inject the MediaProxyClient (test seam). Defaults to a module singleton. */
   mediaProxyClient?: MediaProxyClient;
-  /** When provided, drives `videoCache.preloadSequenceWindow` on window changes. */
-  videoCache?: VideoCacheAdapter;
-  /**
-   * The current playback window — list of (materialId, url) pairs the
-   * playback engine expects to consume soon. Re-evaluated on change.
-   */
-  playbackWindow?: Array<{ materialId: string; url: string }>;
-  /** Force-disable phase-3 paths regardless of feature flag (tests / SSR). */
+  /** Force-disable the preview-proxy trigger regardless of feature flag (tests / SSR). */
   disablePhase3?: boolean;
 }
 
@@ -426,22 +418,10 @@ export function useRemoteMaterialPrefetch(
   // Memoise default client so concurrent hooks share dedup state.
   const defaultClient = useMemo(() => new MediaProxyClient(), []);
   const phase3Disabled = options.disablePhase3 ?? false;
-  // Lock the v2-flag check at mount so we don't suddenly start enqueuing
-  // mid-session (CLAUDE.md note: flag is locked at mount, requires reload).
-  // `phase3Enabled` still gates the canvas-engine window prefetch below.
-  const phase3Enabled = useMemo(() => {
-    if (phase3Disabled) return false;
-    try {
-      return isPlaybackV2Enabled();
-    } catch {
-      return false;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  // Spec §3.2.2(a) — the preview-proxy TRIGGER is decoupled from playback-v2
-  // and gated by its own default-on flag, so the 480p ladder is generated for
-  // every user. (`preloadSequenceWindow` stays on `phase3Enabled` — it is a
-  // canvas-engine enhancement, out of this scope.) Locked at mount like v2.
+  // Spec §3.2.2(a) — the preview-proxy TRIGGER is gated by its own default-on
+  // flag, so the 480p ladder is generated for every user. Locked at mount.
+  // (S4: the v2-flag-gated `preloadSequenceWindow` canvas-cache prefetch was
+  // removed with v1 — the compositor's VideoSourcePool owns A/B prewarm now.)
   const previewProxyEnabled = useMemo(() => {
     if (phase3Disabled) return false;
     try {
@@ -553,16 +533,4 @@ export function useRemoteMaterialPrefetch(
       ppInflightRef.current.clear();
     };
   }, []);
-
-  // ------------------------------------------------------------------
-  // Phase-3 — preloadSequenceWindow (spec §4.3 G7)
-  // ------------------------------------------------------------------
-
-  const videoCache = options.videoCache;
-  const window = options.playbackWindow;
-  useEffect(() => {
-    if (!phase3Enabled) return;
-    if (!videoCache || !window || window.length === 0) return;
-    void videoCache.preloadSequenceWindow(window);
-  }, [phase3Enabled, videoCache, window]);
 }

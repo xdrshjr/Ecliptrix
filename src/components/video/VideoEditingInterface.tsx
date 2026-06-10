@@ -11,7 +11,7 @@ import { shouldRestrictVideoEditing, getDeviceType, getDeviceInfo } from '@/lib/
 import { MobileWarningDialog } from '@/components/ui';
 import { 
   useDocumentState,
-  useVideoPlayback,
+  usePreviewTransport,
   useAIAssistant,
   useScriptGeneration,
   useMaterialManagement,
@@ -512,7 +512,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 使用自定义钩子管理各个功能域的状态
   const documentState = useDocumentState(content, onUpdateContent, taskId);
-  const videoPlayback = useVideoPlayback(taskId, handleVideoTimeUpdate, timelineCurrentTime, currentEffectiveVolume);
+  const videoPlayback = usePreviewTransport(taskId, handleVideoTimeUpdate, timelineCurrentTime, currentEffectiveVolume);
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
   const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent, content);
   const materialManagement = useMaterialManagement(taskId, content?.materials || []);

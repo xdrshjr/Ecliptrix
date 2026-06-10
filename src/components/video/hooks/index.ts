@@ -1,5 +1,5 @@
 export { useDocumentState } from './useDocumentState';
-export { useVideoPlayback } from './useVideoPlayback';
+export { usePreviewTransport } from './usePreviewTransport';
 export { useAIAssistant } from './useAIAssistant';
 export { useScriptGeneration } from './useScriptGeneration';
 export { useMaterialManagement } from './useMaterialManagement';
