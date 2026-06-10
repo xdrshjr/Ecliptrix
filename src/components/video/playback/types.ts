@@ -13,36 +13,6 @@
 import type { VideoSequenceItem } from '../types';
 
 /**
- * Phase of the playback state machine.
- *
- * Spec 02 §4.2 defines the full transition table.
- */
-export type PlaybackPhase =
-  | 'idle'
-  | 'preparing'
-  | 'playing'
-  | 'seeking'
-  | 'paused'
-  | 'stalled'
-  | 'ended'
-  | 'disposed';
-
-/**
- * Intent submitted to {@link IPlaybackEngine.dispatch}.
- *
- * Why a discriminated union: spec 02 §4.3 requires the engine to fan-out on
- * `kind` inside its reducer.
- */
-export type PlaybackIntent =
-  | { kind: 'play' }
-  | { kind: 'pause' }
-  | { kind: 'seek'; compositionTime: number; source?: 'ruler' | 'controls' | 'video_end' }
-  | { kind: 'setRate'; rate: number }
-  | { kind: 'setVolume'; volume: number }
-  | { kind: 'enterBackground' }
-  | { kind: 'returnToForeground' };
-
-/**
  * One composited preview frame emitted by {@link IPlaybackClock} on each tick.
  *
  * `compositionTime` is the single source of truth for the timeline cursor
@@ -100,13 +70,6 @@ export interface SubtitleStyle {
   align?: 'left' | 'center' | 'right';
   /** Vertical anchor as fraction of canvas height (0=top, 1=bottom). Default 0.9. */
   vAnchor?: number;
-}
-
-export interface SubtitlePayload {
-  text: string;
-  style: SubtitleStyle;
-  startMs: number;
-  endMs: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,16 +157,6 @@ export interface CompositorStats {
   targetFps: number;
 }
 
-export interface IPlaybackEngine {
-  /** Wire to render targets + timeline facade. Spec §5.1. */
-  attach(deps: PlaybackEngineAttachDeps): void;
-  dispatch(intent: PlaybackIntent): void;
-  getPhase(): PlaybackPhase;
-  subscribe(listener: (phase: PlaybackPhase) => void): () => void;
-  /** Release rAF + listeners; subsequent dispatches are no-ops. Spec §5.1. */
-  dispose(): void;
-}
-
 export interface IPlaybackClock {
   start(baseCompositionTime: number, baseWallTime: number, rate?: number): void;
   stop(): void;
@@ -279,26 +232,6 @@ export interface IPlayheadController {
   reset(): void;
 }
 
-/** Sequence descriptor passed to {@link IAbBufferController.bindActive}. */
-export interface SequenceTarget {
-  sequence: VideoSequenceItem;
-  localTime: number;
-}
-
-/**
- * Timeline-store façade injected into PlaybackEngine.attach.
- * Spec §5.1.
- */
-export interface PlaybackTimelineFacade {
-  getCurrentTime: () => number;
-  setCurrentTime: (t: number) => void;
-  getTotalDuration: () => number;
-  findSequenceAtCompositionTime: (
-    t: number,
-  ) => { sequence: VideoSequenceItem; index: number; offset: number; startTime: number } | null;
-  getSequences: () => VideoSequenceItem[];
-}
-
 /** Resolves the playable URL + media-time for a given sequence + offset. */
 export interface PlaybackSequenceResolver {
   resolveSrc: (sequence: VideoSequenceItem) => string | null;
@@ -311,62 +244,4 @@ export interface PlaybackSequenceResolver {
    * engine wires this from ``timeline.getSequences()``.
    */
   getSequenceById?: (sequenceId: string) => VideoSequenceItem | null;
-}
-
-export interface PlaybackEngineAttachDeps {
-  canvas: HTMLCanvasElement;
-  /** Equivalent to buffer A (the buffer-controller wires it up internally). */
-  activeVideo: HTMLVideoElement;
-  /**
-   * Equivalent to buffer B (phase-3). Optional during rollback so single-video
-   * mounts still attach; when null the buffer degrades to one element and
-   * spec 04 prewarm/swap fast-paths cannot trigger.
-   */
-  prewarmVideo?: HTMLVideoElement | null;
-  timeline: PlaybackTimelineFacade;
-  resolver: PlaybackSequenceResolver;
-  overlaysProvider: () => OverlayPayload[];
-  viewport?: ICanvasViewport | null;
-  /**
-   * Optional kill-switch sink. Engine calls this with a reason string when it
-   * has decided v2 cannot continue; PreviewSurface uses it to write the
-   * killswitch flag and remount.
-   */
-  onKillSwitch?: (reason: string) => void;
-  /**
-   * Phase 4 (§3.2.4 / §4.2.1): client-side rolling counter for regression /
-   * stalled events. Engine drives noteRegression / noteStalled; the
-   * monitor decides when to call ``tripPlaybackV2KillSwitch``.
-   */
-  killSwitchMonitor?: IKillSwitchMonitor | null;
-  /**
-   * Phase 4 (§3.2.1 / §4.2.2): hit-rate meter for proxy URL tiers. Engine
-   * drives `recordTier` once per `attachActiveMaterial` so the recorded
-   * frequency equals actual playback starts (R-P1-6).
-   */
-  proxyHitMeter?: IProxyHitMeter | null;
-}
-
-/**
- * Phase 4 (§3.2.4 / F12). The engine surface remains the same; the monitor
- * lives entirely in PreviewSurface so the engine can be unit-tested without
- * a real localStorage write.
- */
-export interface IKillSwitchMonitor {
-  noteRegression(): void;
-  noteStalled(): void;
-  isTripped(): boolean;
-  getCounts(): { regression: number; stalled: number };
-  dispose(): void;
-}
-
-/**
- * Phase 4 (§3.2.1 / F12). Mirrors the runtime ProxyHitMeter shape.
- */
-export type ProxyTier = 'P1' | 'P2' | 'P3' | 'P4' | 'P5';
-
-export interface IProxyHitMeter {
-  recordTier(tier: ProxyTier): void;
-  snapshotHitRate(): number;
-  reset(): void;
 }

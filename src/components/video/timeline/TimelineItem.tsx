@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore, splitAction } from './store';
 import type { TimelineItemData } from './domain/types';
-import type { LocalProxyStatus } from '@/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
 import AudioWaveformCanvas from './AudioWaveformCanvas';
 import { formatTimelineTime } from './timeFormat';
@@ -15,6 +14,15 @@ import {
   type FilmstripSlot,
 } from '../lib/filmstrip/filmstripCache';
 import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
+import { computeItemStyles } from './timelineItemStyles';
+import TimelineItemFilmstrip from './TimelineItemFilmstrip';
+import TimelineItemDownloadOverlay, {
+  type LocalProxyMaskState,
+} from './TimelineItemDownloadOverlay';
+
+// Re-export so existing consumers (TimelinePanel / Track / TrackContainer)
+// keep importing the type from './TimelineItem' unchanged.
+export type { LocalProxyMaskState };
 
 // ---------------------------------------------------------------------------
 // Filmstrip: one process-wide cache (the shared `filmstripCache` singleton) so
@@ -31,18 +39,6 @@ const FILMSTRIP_ENSURE_THROTTLE_MS = 250;
 // ---------------------------------------------------------------------------
 // Props — only data that cannot come from the store
 // ---------------------------------------------------------------------------
-
-/**
- * Round-2 local-download state for a material, fed down from the authoritative
- * `materials` list (same source as the readiness gate — C4, no dual data
- * source). See docs/plans/video-editor-client-preview-download/spec.md §3.3.7.
- * Direct-local desktop uploads are omitted from this map by TimelinePanel, so
- * they render as normal clips without download overlays.
- */
-export interface LocalProxyMaskState {
-  status?: LocalProxyStatus;
-  progress?: number;
-}
 
 interface TimelineItemProps {
   item: TimelineItemData;
@@ -349,111 +345,26 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // Styles — preserve all original visual logic
+  // Styles + filmstrip render — delegated to sibling modules (computeItemStyles
+  // / TimelineItemFilmstrip) so this renderer stays lean; visuals unchanged.
   // ---------------------------------------------------------------------------
 
-  const getItemStyles = () => {
-    const padding = Math.max(2, Math.floor(trackHeight * 0.125));
-    const itemHeight = trackHeight - padding * 2;
+  const getItemStyles = () =>
+    computeItemStyles({
+      item,
+      trackHeight,
+      left,
+      width,
+      isSelected,
+      isThisItemDragging,
+      isThisItemResizing,
+      isSwapTarget,
+      hasActiveSwapTarget,
+    });
 
-    // When a swap target is under the dragged item's center, fade the
-    // dragged item more heavily so the highlighted target is clearly read.
-    const draggedOpacity = hasActiveSwapTarget ? 0.65 : 0.8;
-
-    const baseStyles = {
-      position: 'absolute' as const,
-      left: `${left}px`,
-      width: `${Math.max(width, 20)}px`,
-      height: `${Math.max(itemHeight, 16)}px`,
-      top: `${padding}px`,
-      borderRadius: '3px',
-      cursor: isThisItemDragging ? 'grabbing' : 'grab',
-      userSelect: 'none' as const,
-      transition: isThisItemDragging || isThisItemResizing ? 'none' : 'all 0.2s ease',
-      zIndex: isSwapTarget ? 9 : (isSelected ? 10 : 1),
-      opacity: isThisItemDragging ? draggedOpacity : 1,
-    };
-
-    // Swap-target overlay: dashed cyan outline + glow.
-    const swapTargetStyles = isSwapTarget
-      ? {
-          outline: '2px dashed #22d3ee',
-          outlineOffset: '1px',
-          boxShadow: '0 0 0 4px rgba(34, 211, 238, 0.25)',
-        }
-      : null;
-
-    switch (item.type) {
-      case 'video':
-        return {
-          ...baseStyles,
-          background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-          border: isSelected ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.2)',
-          boxShadow: isSelected ? '0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)' : 'none',
-          ...(swapTargetStyles ?? {}),
-        };
-      case 'audio':
-        return {
-          ...baseStyles,
-          background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-          border: isSelected ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.2)',
-          boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : 'none',
-          ...(swapTargetStyles ?? {}),
-        };
-      case 'subtitle':
-        return {
-          ...baseStyles,
-          background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-          border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.2)',
-          boxShadow: isSelected ? '0 0 0 2px rgba(245, 158, 11, 0.3)' : 'none',
-        };
-      default:
-        return baseStyles;
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Filmstrip render: tile the resolved frames across the clip bar. Each slot
-  // shows its cached frame URL, falling back to the poster (item.thumbnailUrl)
-  // when the frame has not resolved yet or extraction failed (degrade, spec
-  // §2.3). A single-slot (narrow) clip renders one tile — same as the prior
-  // single-thumbnail behaviour. Rendered as an absolutely-positioned layer
-  // BEHIND the label so the name/duration stay readable.
-  // ---------------------------------------------------------------------------
-
-  const renderFilmstrip = () => {
-    const slots = filmstripSlots;
-    if (slots.length === 0) return null;
-    const slotWidthPct = 100 / slots.length;
-    return (
-      <div
-        className="pointer-events-none absolute inset-0 flex overflow-hidden"
-        style={{ borderRadius: '3px', zIndex: 0 }}
-        aria-hidden="true"
-      >
-        {slots.map((slot, i) => {
-          const url = slot.url ?? item.thumbnailUrl ?? null;
-          return (
-            <div
-              key={`${slot.tMs}-${i}`}
-              className="h-full flex-shrink-0 bg-black/20"
-              style={{ width: `${slotWidthPct}%` }}
-            >
-              {url && (
-                <img
-                  src={url}
-                  alt=""
-                  className="h-full w-full object-cover opacity-80"
-                  draggable={false}
-                  loading="lazy"
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  const renderFilmstrip = () => (
+    <TimelineItemFilmstrip slots={filmstripSlots} posterUrl={item.thumbnailUrl} />
+  );
 
   // ---------------------------------------------------------------------------
   // Render item content — preserve all original visual rendering
@@ -664,135 +575,6 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // Round-3 local-download visualization (spec docs/plans/
-  // video-editor-track-download-progress/spec.md §3.3.3, G2). The CLIP BAR ITSELF
-  // acts as the progress bar: while downloading, the already-downloaded portion
-  // (0→progress%) keeps the bar's own colour and the not-yet-downloaded portion
-  // (progress%→100%) is dimmed, with a thin highlight line at the boundary and a
-  // small unobtrusive badge. transcoding → indeterminate pulse; error → red +
-  // retry; degraded → amber + retry; ready/idle/undefined → no overlay.
-  //
-  // Only for video/audio clips (C2: image/subtitle excluded). Status comes from
-  // the authoritative `materials`-derived map (same source as the readiness gate
-  // — no dual data source, C4). NOTE: the guard below reads `item.type`, but the
-  // map is already filtered to video/audio MATERIALS upstream (TimelinePanel
-  // localProxyStatusMap), so an image dropped on a video track has no entry →
-  // status === undefined → returns null (P2-3).
-  // ---------------------------------------------------------------------------
-
-  const renderLocalDownloadOverlay = () => {
-    if (!localPreviewEnabled) return null;
-    if (item.type !== 'video' && item.type !== 'audio') return null;
-    if (!item.materialId) return null;
-    const local = localProxyStatusMap?.get(item.materialId);
-    const status = local?.status;
-    if (
-      status !== 'transcoding' &&
-      status !== 'downloading' &&
-      status !== 'error' &&
-      status !== 'degraded'
-    ) {
-      return null; // idle / ready / undefined → no overlay (plain bar)
-    }
-
-    const stopDrag = (e: React.PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    const retry = (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (item.materialId && onRetryLocalDownload) onRetryLocalDownload(item.materialId);
-    };
-
-    const spinner = (
-      <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin flex-shrink-0" />
-    );
-
-    // downloading — the bar itself is the progress bar: dim only the portion to
-    // the RIGHT of pct% (the not-yet-downloaded part), leaving the left "already
-    // downloaded" segment showing the clip's own colour. A thin boundary line
-    // marks the read-out, plus a small badge ("下载中 NN%"). All layers are
-    // pointer-events-none so dragging / resize handles keep working (R2).
-    if (status === 'downloading') {
-      const pct = Math.max(0, Math.min(100, Math.round(local?.progress ?? 0)));
-      return (
-        <div
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-          style={{ borderRadius: '3px', zIndex: 8 }}
-          role="progressbar"
-          aria-valuenow={pct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          {/* not-yet-downloaded region (right of pct%) dimmed */}
-          <div
-            className="absolute top-0 bottom-0"
-            style={{ left: `${pct}%`, right: 0, background: 'rgba(0,0,0,0.45)' }}
-          />
-          {/* progress boundary highlight line */}
-          <div
-            className="absolute top-0 bottom-0"
-            style={{ left: `${pct}%`, width: '2px', background: 'rgba(255,255,255,0.9)' }}
-          />
-          {/* small badge — never tall enough to grow the bar; truncates on narrow clips */}
-          <span
-            className="absolute left-1 bottom-0.5 max-w-[calc(100%-8px)] px-1 rounded bg-black/55 text-white truncate"
-            style={{ fontSize: '9px', lineHeight: '14px' }}
-          >
-            {t.timeline.track.localDownloading} {pct}%
-          </span>
-        </div>
-      );
-    }
-
-    // transcoding — no byte progress yet: indeterminate pulse + spinner.
-    if (status === 'transcoding') {
-      return (
-        <div
-          className="pointer-events-none absolute inset-0 flex items-center justify-center animate-pulse"
-          style={{ background: 'rgba(0,0,0,0.45)', borderRadius: '3px', fontSize: '10px', zIndex: 8 }}
-        >
-          <span className="flex items-center gap-1 text-white">
-            {spinner}
-            <span className="truncate">{t.timeline.track.localTranscoding}</span>
-          </span>
-        </div>
-      );
-    }
-
-    // error / degraded — colour the bar + show a clickable retry. Only the button
-    // is pointer-events-auto, and onPointerDown stops propagation so the click is
-    // not mistaken for a drag start (R2).
-    const isError = status === 'error';
-    return (
-      <div
-        className="absolute inset-0 flex items-center justify-center pointer-events-none"
-        style={{
-          background: isError ? 'rgba(220,38,38,0.35)' : 'rgba(245,158,11,0.30)',
-          borderRadius: '3px',
-          fontSize: '10px',
-          zIndex: 8,
-        }}
-      >
-        <button
-          type="button"
-          className={
-            isError
-              ? 'pointer-events-auto px-1.5 py-0.5 rounded bg-red-600/90 text-white hover:bg-red-600 truncate'
-              : 'pointer-events-auto px-1.5 py-0.5 rounded bg-amber-500/90 text-white hover:bg-amber-500 truncate'
-          }
-          onPointerDown={stopDrag}
-          onClick={retry}
-          title={isError ? t.timeline.track.localDownloadFailed : t.timeline.track.localWillStream}
-        >
-          {isError ? t.timeline.track.localDownloadFailed : t.timeline.track.localWillStream}
-        </button>
-      </div>
-    );
-  };
-
-  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -825,7 +607,18 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     >
       {renderItemContent()}
 
-      {renderLocalDownloadOverlay()}
+      <TimelineItemDownloadOverlay
+        item={item}
+        localPreviewEnabled={localPreviewEnabled}
+        localProxyStatusMap={localProxyStatusMap}
+        onRetryLocalDownload={onRetryLocalDownload}
+        labels={{
+          localDownloading: t.timeline.track.localDownloading,
+          localTranscoding: t.timeline.track.localTranscoding,
+          localDownloadFailed: t.timeline.track.localDownloadFailed,
+          localWillStream: t.timeline.track.localWillStream,
+        }}
+      />
 
       {/* Swap-target hint label: shown on the peer item that the drag preview
           center is hovering over. Hidden on subtitle items (subtitle tracks

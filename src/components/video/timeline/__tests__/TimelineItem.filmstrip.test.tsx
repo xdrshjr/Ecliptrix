@@ -24,6 +24,11 @@ import { resolve } from 'node:path';
 
 const FILE = resolve(__dirname, '..', 'TimelineItem.tsx');
 const src = readFileSync(FILE, 'utf-8');
+// The per-slot tiling + poster fallback was extracted into the
+// TimelineItemFilmstrip component (Phase-4 cleanup); the slot-level assertions
+// read that module, where the `slot.url ?? poster` logic lives verbatim.
+const FILMSTRIP_FILE = resolve(__dirname, '..', 'TimelineItemFilmstrip.tsx');
+const filmstripSrc = readFileSync(FILMSTRIP_FILE, 'utf-8');
 
 describe('TimelineItem — filmstrip wiring', () => {
   it('imports the filmstrip cache + ZoomLevel for zoom-aware density', () => {
@@ -35,7 +40,7 @@ describe('TimelineItem — filmstrip wiring', () => {
   it('renders a multi-frame filmstrip strip (more than one tile) for wide clips', () => {
     // The render function must map over slots, not render a single static img.
     expect(src).toMatch(/renderFilmstrip|renderClipThumbnails/);
-    expect(src).toMatch(/\.map\(/);
+    expect(filmstripSrc).toMatch(/slots\.map\(/);
   });
 
   it('only extracts the visible range and throttles (ensure is gated)', () => {
@@ -46,9 +51,10 @@ describe('TimelineItem — filmstrip wiring', () => {
   });
 
   it('falls back to the poster (item.thumbnailUrl) when a frame is missing', () => {
-    expect(src).toMatch(/thumbnailUrl/);
-    // The slot URL OR the poster — a `?? item.thumbnailUrl` / `|| ` fallback.
-    expect(src).toMatch(/slot\.url\s*\?\?|slot\.url\s*\|\||\?\?\s*item\.thumbnailUrl/);
+    // TimelineItem passes the poster down; the filmstrip component does the
+    // per-slot `slot.url ?? poster` fallback.
+    expect(src).toMatch(/posterUrl=\{item\.thumbnailUrl\}/);
+    expect(filmstripSrc).toMatch(/slot\.url\s*\?\?|slot\.url\s*\|\|/);
   });
 
   it('extracts via same-origin /api/storage/files, never /api/video-proxy', () => {

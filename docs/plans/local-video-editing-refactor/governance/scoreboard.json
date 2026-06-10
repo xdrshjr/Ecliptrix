@@ -4,8 +4,8 @@
   "agents": {
     "google-dev-01": {
       "role": "DEV",
-      "tokens": 335,
-      "tokens_confirmed": 335,
+      "tokens": 370,
+      "tokens_confirmed": 370,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -359,6 +359,46 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 3)",
           "timestamp": "2026-06-10T12:56:38.962753+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 350,
+          "confirmed_after": 335,
+          "provisional_after": 15,
+          "reason": "D1: cleanup-backend review PASS",
+          "timestamp": "2026-06-10T14:35:05.518186+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 360,
+          "confirmed_after": 335,
+          "provisional_after": 25,
+          "reason": "D3: cleanup-backend tester ALL PASS (drift-proven)",
+          "timestamp": "2026-06-10T14:35:05.742792+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 370,
+          "confirmed_after": 335,
+          "provisional_after": 35,
+          "reason": "D10: excellence - baseline-comparison drift proof, patch-contract-preserving wrappers, honest stop at safe residual",
+          "timestamp": "2026-06-10T14:35:05.953812+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 370,
+          "confirmed_after": 370,
+          "provisional_after": 0,
+          "reason": "Escrow release: 35 provisional tokens confirmed (Phase 4)",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ],
       "escrow_history": [
@@ -382,13 +422,20 @@
           "delta": 30,
           "reason": "Phase 3 integration tests passed",
           "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 4,
+          "delta": 35,
+          "reason": "Phase 4 integration tests passed",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ]
     },
     "google-dev-02": {
       "role": "DEV",
-      "tokens": 167,
-      "tokens_confirmed": 167,
+      "tokens": 202,
+      "tokens_confirmed": 202,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -532,6 +579,46 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 3)",
           "timestamp": "2026-06-10T12:56:38.962753+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 15,
+          "status": "provisional",
+          "balance_after": 182,
+          "confirmed_after": 167,
+          "provisional_after": 15,
+          "reason": "D1: cleanup-frontend review PASS",
+          "timestamp": "2026-06-10T14:35:06.173305+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 192,
+          "confirmed_after": 167,
+          "provisional_after": 25,
+          "reason": "D3: cleanup-frontend tester ALL PASS",
+          "timestamp": "2026-06-10T14:35:06.387533+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 202,
+          "confirmed_after": 167,
+          "provisional_after": 35,
+          "reason": "D10: excellence - all targets <=800 met, grep-proven dead-code removal, verbatim extractions + 21 new tests",
+          "timestamp": "2026-06-10T14:35:06.589634+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 202,
+          "confirmed_after": 202,
+          "provisional_after": 0,
+          "reason": "Escrow release: 35 provisional tokens confirmed (Phase 4)",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ],
       "escrow_history": [
@@ -548,6 +635,13 @@
           "delta": 40,
           "reason": "Phase 3 integration tests passed",
           "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 4,
+          "delta": 35,
+          "reason": "Phase 4 integration tests passed",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ]
     },
@@ -642,8 +736,8 @@
     },
     "google-reviewer-01": {
       "role": "REV",
-      "tokens": 215,
-      "tokens_confirmed": 215,
+      "tokens": 230,
+      "tokens_confirmed": 230,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -867,6 +961,36 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 3)",
           "timestamp": "2026-06-10T12:56:38.962753+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 225,
+          "confirmed_after": 215,
+          "provisional_after": 10,
+          "reason": "R1: cleanup no issues leaked to tester",
+          "timestamp": "2026-06-10T14:35:06.816546+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 230,
+          "confirmed_after": 220,
+          "provisional_after": 10,
+          "reason": "R3: thorough drift verification incl. dead-pad equivalence + baseline comparison",
+          "timestamp": "2026-06-10T14:35:07.028356+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 230,
+          "confirmed_after": 230,
+          "provisional_after": 0,
+          "reason": "Escrow release: 10 provisional tokens confirmed (Phase 4)",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ],
       "escrow_history": [
@@ -890,13 +1014,20 @@
           "delta": 20,
           "reason": "Phase 3 integration tests passed",
           "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 4,
+          "delta": 10,
+          "reason": "Phase 4 integration tests passed",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ]
     },
     "google-tester-01": {
       "role": "TEST",
-      "tokens": 260,
-      "tokens_confirmed": 260,
+      "tokens": 275,
+      "tokens_confirmed": 275,
       "tokens_provisional": 0,
       "status": "active",
       "replaced_by": null,
@@ -1120,6 +1251,36 @@
           "provisional_after": 0,
           "reason": "C1: Clean integration (zero failures) (Phase 3)",
           "timestamp": "2026-06-10T12:56:38.962753+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 10,
+          "status": "provisional",
+          "balance_after": 270,
+          "confirmed_after": 260,
+          "provisional_after": 10,
+          "reason": "T1: cleanup full verification",
+          "timestamp": "2026-06-10T14:35:07.246459+00:00"
+        },
+        {
+          "event": "reward",
+          "delta": 5,
+          "status": "confirmed",
+          "balance_after": 275,
+          "confirmed_after": 265,
+          "provisional_after": 10,
+          "reason": "T3: high-quality drift-proof (stash/baseline byte-identical restore)",
+          "timestamp": "2026-06-10T14:35:07.457261+00:00"
+        },
+        {
+          "event": "escrow_confirm",
+          "delta": 0,
+          "status": "confirmed",
+          "balance_after": 275,
+          "confirmed_after": 275,
+          "provisional_after": 0,
+          "reason": "Escrow release: 10 provisional tokens confirmed (Phase 4)",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ],
       "escrow_history": [
@@ -1143,6 +1304,13 @@
           "delta": 20,
           "reason": "Phase 3 integration tests passed",
           "timestamp": "2026-06-10T12:56:38.368358+00:00"
+        },
+        {
+          "action": "confirm",
+          "phase": 4,
+          "delta": 10,
+          "reason": "Phase 4 integration tests passed",
+          "timestamp": "2026-06-10T14:35:07.674165+00:00"
         }
       ]
     }

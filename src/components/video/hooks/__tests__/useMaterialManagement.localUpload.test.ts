@@ -8,7 +8,10 @@ import { resolve } from 'node:path';
 import type { MaterialItem } from '@/types';
 import { createLocalMaterialFromUpload } from '../../lib/localMaterial';
 
-const FILE = resolve(__dirname, '..', 'useMaterialManagement.ts');
+// Upload normalization was extracted from useMaterialManagement into the
+// sibling useMaterialUpload hook (Phase-4 cleanup); the assertions below still
+// guard the same call-site behaviour, now in that module.
+const FILE = resolve(__dirname, '..', 'materialManagement', 'useMaterialUpload.ts');
 const src = readFileSync(FILE, 'utf-8');
 
 describe('useMaterialManagement local upload normalization', () => {

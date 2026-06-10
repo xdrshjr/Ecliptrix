@@ -58,6 +58,21 @@ from app.services.composition.media_resolution import (
 )
 from app.services.composition.filtergraph_builder import build_filtergraph
 from app.services.composition.audio_mix import AudioSource, build_audio_mix
+from app.services.composition.video_scaling import (
+    build_video_filter,
+    calculate_video_scaling,
+    ensure_even_dimensions,
+    get_aspect_ratio_info,
+)
+from app.services.composition.subtitle_prep import (
+    create_srt_from_subtitle_items,
+    seconds_to_srt_time,
+)
+from app.services.composition.media_download import (
+    download_image,
+    is_pexels_url,
+    is_youtube_url,
+)
 
 logger = get_logger(__name__)
 
@@ -217,10 +232,7 @@ class VideoCompositionService:
 
     def _ensure_even_dimensions(self, width: int, height: int) -> Tuple[int, int]:
         """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
-        # Round up to next even number if odd
-        even_width = width if width % 2 == 0 else width + 1
-        even_height = height if height % 2 == 0 else height + 1
-        return even_width, even_height
+        return ensure_even_dimensions(width, height)
     
     def _load_video_download_config(self):
         """Load video download configuration from YAML file."""
@@ -267,11 +279,11 @@ class VideoCompositionService:
     
     def _is_youtube_url(self, url: str) -> bool:
         """Check if the URL is a YouTube URL."""
-        return "youtube.com" in url or "youtu.be" in url
-    
+        return is_youtube_url(url)
+
     def _is_pexels_url(self, url: str) -> bool:
         """Check if URL is a Pexels video URL."""
-        return "pexels.com" in url.lower()
+        return is_pexels_url(url)
     
     def _get_video_properties(self, video_path: str) -> tuple:
         """Get video properties (width, height, fps)."""
@@ -2105,120 +2117,22 @@ class VideoCompositionService:
 
     def _get_aspect_ratio_info(self, aspect_ratio: AspectRatio) -> Dict[str, Any]:
         """Get aspect ratio information including resolution and ratio value."""
-        aspect_ratio_map = {
-            AspectRatio.RATIO_16_9: {
-                "width": 1920, "height": 1080, "ratio": 16/9, "name": "16:9"
-            },
-            AspectRatio.RATIO_9_16: {
-                "width": 1080, "height": 1920, "ratio": 9/16, "name": "9:16"
-            },
-            AspectRatio.RATIO_4_3: {
-                "width": 1440, "height": 1080, "ratio": 4/3, "name": "4:3"
-            },
-            AspectRatio.RATIO_1_1: {
-                "width": 1080, "height": 1080, "ratio": 1/1, "name": "1:1"
-            },
-            AspectRatio.RATIO_21_9: {
-                "width": 2560, "height": 1080, "ratio": 21/9, "name": "21:9"
-            }
-        }
-        return aspect_ratio_map.get(aspect_ratio, aspect_ratio_map[AspectRatio.RATIO_16_9])
-    
-    def _calculate_video_scaling(self, 
-                                source_width: int, 
-                                source_height: int, 
-                                target_width: int, 
+        return get_aspect_ratio_info(aspect_ratio)
+
+    def _calculate_video_scaling(self,
+                                source_width: int,
+                                source_height: int,
+                                target_width: int,
                                 target_height: int) -> Dict[str, Any]:
-        """
-        Calculate video scaling parameters to maintain aspect ratio with letterboxing/pillarboxing.
-        
-        Args:
-            source_width: Original video width
-            source_height: Original video height  
-            target_width: Target output width
-            target_height: Target output height
-            
-        Returns:
-            Dict containing scaling parameters for FFmpeg
-        """
-        source_ratio = source_width / source_height
-        target_ratio = target_width / target_height
-        
-        logger.info(f"Calculating scaling: source={source_width}x{source_height} (ratio={source_ratio:.3f}), "
-                   f"target={target_width}x{target_height} (ratio={target_ratio:.3f})")
-        
-        if abs(source_ratio - target_ratio) < 0.01:  # Same aspect ratio
-            # Direct scaling - ensure dimensions are even
-            even_target_width, even_target_height = self._ensure_even_dimensions(target_width, target_height)
-            return {
-                "scale_width": even_target_width,
-                "scale_height": even_target_height,
-                "pad_width": even_target_width,
-                "pad_height": even_target_height,
-                "pad_x": 0,
-                "pad_y": 0,
-                "needs_padding": False
-            }
-        
-        if source_ratio > target_ratio:
-            # Source is wider - need horizontal letterboxing (black bars top/bottom)
-            scale_width = target_width
-            scale_height = int(target_width / source_ratio)
-            pad_x = 0
-            pad_y = (target_height - scale_height) // 2
-        else:
-            # Source is taller - need vertical pillarboxing (black bars left/right)
-            scale_height = target_height
-            scale_width = int(target_height * source_ratio)
-            pad_x = (target_width - scale_width) // 2
-            pad_y = 0
-        
-        # Ensure all dimensions are even for H.264 encoding
-        even_scale_width, even_scale_height = self._ensure_even_dimensions(scale_width, scale_height)
-        even_target_width, even_target_height = self._ensure_even_dimensions(target_width, target_height)
-        
-        # Recalculate padding with even dimensions
-        if source_ratio > target_ratio:
-            pad_x = 0
-            pad_y = (even_target_height - even_scale_height) // 2
-        else:
-            pad_x = (even_target_width - even_scale_width) // 2
-            pad_y = 0
-        
-        logger.info(f"Scaling result: scale={even_scale_width}x{even_scale_height}, "
-                   f"pad=({pad_x},{pad_y}), final={even_target_width}x{even_target_height}")
-        
-        return {
-            "scale_width": even_scale_width,
-            "scale_height": even_scale_height,
-            "pad_width": even_target_width,
-            "pad_height": even_target_height,
-            "pad_x": pad_x,
-            "pad_y": pad_y,
-            "needs_padding": True
-        }
-    
+        """Calculate scale/pad parameters maintaining aspect ratio (letter/pillarbox)."""
+        return calculate_video_scaling(
+            source_width, source_height, target_width, target_height
+        )
+
     def _build_video_filter(self, scaling_params: Dict[str, Any]) -> str:
-        """
-        Build FFmpeg video filter string for aspect ratio conversion.
-        
-        Args:
-            scaling_params: Scaling parameters from _calculate_video_scaling
-            
-        Returns:
-            FFmpeg video filter string
-        """
-        if not scaling_params["needs_padding"]:
-            # Simple scaling
-            return f'scale={scaling_params["scale_width"]}:{scaling_params["scale_height"]},setsar=1:1'
-        
-        # Scale + pad for letterboxing/pillarboxing
-        scale_filter = f'scale={scaling_params["scale_width"]}:{scaling_params["scale_height"]}'
-        pad_filter = (f'pad={scaling_params["pad_width"]}:{scaling_params["pad_height"]}:'
-                     f'{scaling_params["pad_x"]}:{scaling_params["pad_y"]}:black')
-        
-        return f'{scale_filter},{pad_filter},setsar=1:1'
-    
+        """Build FFmpeg video filter string for aspect ratio conversion."""
+        return build_video_filter(scaling_params)
+
     def _process_subtitle_tracks(self, subtitle_items: List[SubtitleCompositionItem], 
                                video_path: str, temp_dir: str) -> Optional[str]:
         """
@@ -2343,66 +2257,15 @@ class VideoCompositionService:
             logger.error(f"Error processing subtitle tracks: {str(e)}", exc_info=True)
             return None
     
-    def _create_srt_from_subtitle_items(self, subtitle_items: List[SubtitleCompositionItem], 
+    def _create_srt_from_subtitle_items(self, subtitle_items: List[SubtitleCompositionItem],
                                       temp_dir: str) -> Optional[str]:
-        """
-        Create an SRT file from subtitle items.
-        
-        Args:
-            subtitle_items: List of subtitle items from the timeline
-            temp_dir: Temporary directory to create the SRT file in
-            
-        Returns:
-            Path to the created SRT file, or None if failed
-        """
-        try:
-            srt_path = os.path.join(temp_dir, "subtitles.srt")
-            
-            # Sort subtitle items by start time to ensure proper order
-            sorted_subtitles = sorted(subtitle_items, key=lambda x: x.start_time)
-            
-            logger.info(f"Creating SRT file with {len(sorted_subtitles)} subtitle entries")
-            
-            with open(srt_path, 'w', encoding='utf-8') as f:
-                for i, subtitle in enumerate(sorted_subtitles, 1):
-                    # Convert start_time and duration to SRT time format
-                    start_time_srt = self._seconds_to_srt_time(subtitle.start_time)
-                    end_time_srt = self._seconds_to_srt_time(subtitle.start_time + subtitle.duration)
-                    
-                    # Write SRT entry
-                    f.write(f"{i}\n")
-                    f.write(f"{start_time_srt} --> {end_time_srt}\n")
-                    f.write(f"{subtitle.text}\n")
-                    f.write("\n")
-                    
-                    logger.debug(f"SRT entry {i}: {start_time_srt} --> {end_time_srt} | {subtitle.text}")
-            
-            logger.info(f"SRT file created successfully: {srt_path}")
-            logger.info(f"SRT file uses standard format (HH:MM:SS,mmm) compatible with SubtitleService")
-            return srt_path
-            
-        except Exception as e:
-            logger.error(f"Error creating SRT file: {str(e)}", exc_info=True)
-            return None
-    
+        """Create an SRT file from subtitle items."""
+        return create_srt_from_subtitle_items(subtitle_items, temp_dir)
+
     def _seconds_to_srt_time(self, seconds: float) -> str:
-        """
-        Convert seconds to standard SRT time format (HH:MM:SS,mmm).
-        
-        Args:
-            seconds: Time in seconds
-            
-        Returns:
-            Time in standard SRT format (HH:MM:SS,mmm)
-        """
-        # Convert to standard SRT format: HH:MM:SS,mmm
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        milliseconds = int((seconds % 1) * 1000)  # Convert to milliseconds
-        
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
-    
+        """Convert seconds to standard SRT time format (HH:MM:SS,mmm)."""
+        return seconds_to_srt_time(seconds)
+
     def _process_overlays_sequential(self, all_image_items: List, request, output_path, temp_dir: str):
         """Fallback: process image overlays and subtitles sequentially (two encoding passes)."""
         try:
@@ -2690,55 +2553,5 @@ class VideoCompositionService:
             return False
     
     def _download_image(self, image_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
-        """
-        Download an image file from URL.
-        
-        Args:
-            image_url: URL of the image to download
-            temp_dir: Temporary directory to save the image
-            index: Index for naming the downloaded file
-            
-        Returns:
-            Dictionary with success status and output path
-        """
-        try:
-            import requests
-            from urllib.parse import urlparse, unquote
-            
-            # Parse URL to get file extension
-            parsed_url = urlparse(image_url)
-            path = unquote(parsed_url.path)
-            
-            # Try to get file extension from URL
-            file_ext = os.path.splitext(path)[1].lower()
-            if not file_ext or file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
-                file_ext = '.jpg'  # Default to jpg
-            
-            output_filename = f"image_{index}{file_ext}"
-            output_path = os.path.join(temp_dir, output_filename)
-            
-            logger.info(f"Downloading image from {image_url} to {output_path}")
-            
-            # Download the image
-            response = requests.get(image_url, stream=True, timeout=30)
-            response.raise_for_status()
-            
-            with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            file_size = os.path.getsize(output_path)
-            logger.info(f"Image downloaded successfully: {file_size} bytes")
-            
-            return {
-                "success": True,
-                "output_path": output_path,
-                "file_size": file_size
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to download image {image_url}: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+        """Download an image file from URL into temp_dir."""
+        return download_image(image_url, temp_dir, index)

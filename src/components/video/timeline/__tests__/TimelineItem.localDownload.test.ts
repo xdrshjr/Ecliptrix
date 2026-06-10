@@ -20,7 +20,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const FILE = resolve(__dirname, '..', 'TimelineItem.tsx');
+// The download-overlay render was extracted from TimelineItem into the
+// TimelineItemDownloadOverlay component (Phase-4 cleanup); the source-level
+// assertions below now read that module, where the branches live verbatim.
+const FILE = resolve(__dirname, '..', 'TimelineItemDownloadOverlay.tsx');
 const src = readFileSync(FILE, 'utf-8');
 const PANEL_FILE = resolve(__dirname, '..', 'TimelinePanel.tsx');
 const panelSrc = readFileSync(PANEL_FILE, 'utf-8');
@@ -28,16 +31,16 @@ const panelSrc = readFileSync(PANEL_FILE, 'utf-8');
 describe('TimelineItem — local-download render guards (C2/C4)', () => {
   it('renders nothing when local preview is off', () => {
     const fn = src.slice(
-      src.indexOf('const renderLocalDownloadOverlay'),
-      src.indexOf('const renderLocalDownloadOverlay') + 2600,
+      src.indexOf('const TimelineItemDownloadOverlay'),
+      src.indexOf('const TimelineItemDownloadOverlay') + 2600,
     );
     expect(fn).toMatch(/if\s*\(\s*!localPreviewEnabled\s*\)\s*return null/);
   });
 
   it('only video/audio clips with a materialId are eligible', () => {
     const fn = src.slice(
-      src.indexOf('const renderLocalDownloadOverlay'),
-      src.indexOf('const renderLocalDownloadOverlay') + 2600,
+      src.indexOf('const TimelineItemDownloadOverlay'),
+      src.indexOf('const TimelineItemDownloadOverlay') + 2600,
     );
     expect(fn).toMatch(/item\.type\s*!==\s*'video'\s*&&\s*item\.type\s*!==\s*'audio'/);
     expect(fn).toMatch(/if\s*\(\s*!item\.materialId\s*\)\s*return null/);
@@ -45,8 +48,8 @@ describe('TimelineItem — local-download render guards (C2/C4)', () => {
 
   it('only transcoding/downloading/error/degraded render (ready/idle/undefined → null)', () => {
     const fn = src.slice(
-      src.indexOf('const renderLocalDownloadOverlay'),
-      src.indexOf('const renderLocalDownloadOverlay') + 2600,
+      src.indexOf('const TimelineItemDownloadOverlay'),
+      src.indexOf('const TimelineItemDownloadOverlay') + 2600,
     );
     expect(fn).toMatch(/status\s*!==\s*'transcoding'/);
     expect(fn).toMatch(/status\s*!==\s*'downloading'/);
