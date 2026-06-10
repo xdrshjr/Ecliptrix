@@ -6,6 +6,15 @@ import { http, ApiError } from '@/lib/api/http-client';
 import { VideoEditingLogger } from '../utils/logger';
 import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 import { materialCompositeKey } from '../lib/materialKey';
+import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
+
+/**
+ * Resolve the z-order (track_z) for a timeline track. Lower draws first
+ * (bottom). Uses the track's `order` field — the SAME rule the preview
+ * compositor's `buildVideoTrackGroups` uses (spec 02) so export and preview
+ * agree on which track is on top.
+ */
+const resolveTrackZ = (track: TimelineState['tracks'][number]): number => track.order;
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -216,9 +225,10 @@ export const useVideoExport = ({
                   trackId: track.id,
                 });
 
-                // 优先使用服务器URL，如果没有则使用本地URL
-                const imageUrl = material.serverUrl || material.url;
-                
+                // Desktop local export: pick the backend-resolvable same-origin
+                // local reference (spec 05 §2.2). Never blob/proxy/preview-proxy.
+                const imageUrl = selectPlaybackUrl(material, { purpose: 'export' });
+
                 // 获取图片位置信息，如果没有则使用默认位置
                 const imagePosition = item.imagePosition || {
                   x: 0.1,
@@ -262,10 +272,11 @@ export const useVideoExport = ({
               }
 
               // 正常视频处理逻辑
-              // 优先使用服务器URL（存储服务URL），如果没有则使用本地URL
-              // 这样确保视频合成时后端能够正确下载文件
-              const videoUrl = material.serverUrl || material.url;
-              
+              // Desktop local export (spec 05 §2.2): pick the backend-resolvable
+              // same-origin local reference via selectPlaybackUrl(export) — local
+              // /api/storage/files/... only; NEVER blob/media-proxy/preview-proxy.
+              const videoUrl = selectPlaybackUrl(material, { purpose: 'export' });
+
               // Calculate clipped duration for this video item
               const clipStart = item.clipStart || 0;
               const clipEnd = item.clipEnd || (item.originalDuration || item.duration);
@@ -307,12 +318,20 @@ export const useVideoExport = ({
                 duration: item.duration, // Keep timeline duration for positioning
                 track_id: track.id,
                 volume: (item.volume ?? 1) * ((track.volume || 100) / 100), // 结合项目音量和轨道音量
-                opacity: item.opacity || 1.0,
+                opacity: item.opacity ?? 1.0,
                 // 新增：剪辑信息，用于后端视频裁剪
                 clip_start: clipStart,
                 clip_end: clipEnd,
                 // Add clipped duration for backend reference
                 clipped_duration: clippedDuration,
+                // Multi-track / transition composition metadata (spec 05 §2.2).
+                // These carry the preview compositor's z-order / transition /
+                // detach semantics into the export filtergraph so export is
+                // what-you-see-is-what-you-get. All optional + backward-compatible.
+                track_z: resolveTrackZ(track),
+                transition_in: item.transitionIn,
+                transition_out: item.transitionOut,
+                audio_detached: item.audioDetached,
                 // 缓存复用标识（命中则跳过下载，未命中回退原下载逻辑）
                 source: cacheSource,
                 source_id: cacheSourceId,

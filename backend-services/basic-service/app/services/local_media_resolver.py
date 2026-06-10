@@ -64,6 +64,10 @@ def _allowed_roots() -> list[Path]:
         _absolute_root(Path("static/audio/subtitles")),
         _absolute_root(Path("static/timeline_exports")),
         _absolute_root(Path("static/video/composed")),
+        # Spec 05 §2.3 (R7): export may reference frame thumbnails (filmstrip
+        # posters). Whitelist the thumbnails dir so they resolve, while the path
+        # guard still rejects traversal outside it.
+        _absolute_root(Path("static/video/thumbnails")),
         _absolute_root(Path(settings.temp_dir)),
         Path(tempfile.gettempdir()),
     ]

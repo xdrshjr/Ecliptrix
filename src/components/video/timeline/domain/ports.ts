@@ -209,6 +209,24 @@ export interface VideoSequenceItem {
    * contributor (avoids double-audio). See spec 01 §2.4.
    */
   audioDetached?: boolean;
+  /** Z-order index — lower draws first (bottom). From the timeline track order. */
+  trackZ?: number;
+  /** Item-level opacity [0,1]; combined with transition alpha at draw/export time. */
+  opacity?: number;
+  /** Fade-in / cross-dissolve on this clip's leading edge (preview + export). */
+  transitionIn?: SequenceTransition;
+  /** Fade-out / cross-dissolve on this clip's trailing edge (preview + export). */
+  transitionOut?: SequenceTransition;
+}
+
+/**
+ * Transition metadata carried on a sequence — preview (02 `TransitionLayer`)
+ * and export (05 ffmpeg `fade`/`xfade`) share this contract. `type` is the
+ * visual family; `duration` is seconds.
+ */
+export interface SequenceTransition {
+  type: 'fade' | 'dissolve';
+  duration: number;
 }
 
 export interface AudioSequenceItem {
@@ -316,6 +334,14 @@ export interface VideoCompositionRequest {
     volume: number;
     /** Suppress this video's audio in export (its audio was detached). */
     audio_detached?: boolean;
+    /** Z-order index — lower draws first (bottom). Spec 05 §2.2. */
+    track_z?: number;
+    /** Item-level opacity [0,1] consumed by the export filtergraph overlay. */
+    opacity?: number;
+    /** Leading-edge transition (fade-in / dissolve). Spec 05 §2.4. */
+    transition_in?: SequenceTransition;
+    /** Trailing-edge transition (fade-out / dissolve). Spec 05 §2.4. */
+    transition_out?: SequenceTransition;
   }>;
   audio_sequences: Array<{
     id: string;

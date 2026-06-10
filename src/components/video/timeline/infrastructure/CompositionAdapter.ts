@@ -28,6 +28,7 @@ import type {
   VideoCompositionRequest,
 } from '../domain/ports';
 import type { TrackData, MaterialData } from '../domain/types';
+import { isLocalMediaReference } from '../../lib/selectPlaybackUrl';
 
 // ---------------------------------------------------------------------------
 // Expanded MaterialData for composition (extends domain MaterialData)
@@ -58,32 +59,6 @@ export interface CompositionMaterialData extends MaterialData {
   };
 }
 
-const LOCAL_MEDIA_PATH_PREFIXES = [
-  '/api/storage/files/',
-  '/api/audio/generated/',
-  '/api/audio/subtitles/',
-  '/static/timeline_exports/',
-  '/api/video/compose/',
-];
-
-function isLocalMediaReference(url: string | undefined): boolean {
-  if (!url) return false;
-  if (LOCAL_MEDIA_PATH_PREFIXES.some(prefix => url.startsWith(prefix))) {
-    return true;
-  }
-  if (!/^https?:\/\//i.test(url)) return false;
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-    return (
-      (host === 'localhost' || host === '127.0.0.1' || host === '::1') &&
-      LOCAL_MEDIA_PATH_PREFIXES.some(prefix => parsed.pathname.startsWith(prefix))
-    );
-  } catch {
-    return false;
-  }
-}
-
 function isPreviewOnlyReference(url: string | undefined): boolean {
   if (!url) return false;
   if (/^blob:/i.test(url)) return true;
@@ -93,6 +68,22 @@ function isPreviewOnlyReference(url: string | undefined): boolean {
   );
 }
 
+/**
+ * Pick the canonical backend media reference for export/preview extraction.
+ *
+ * Selection contract is IDENTICAL to `selectPlaybackUrl(material, { purpose:
+ * 'export' })` (spec 05 §2.2) — same candidate priority (localResolvedUrl →
+ * cacheUrl → url → serverUrl), local same-origin reference first via the shared
+ * `isLocalMediaReference` predicate, durable remote URL only as a legacy
+ * fallback, and preview-only blob/media-proxy/preview-proxy URLs never emitted.
+ *
+ * It deliberately returns the reference AS-IS (relative same-origin paths kept
+ * relative) rather than absolutising against `window.location.origin`, because
+ * this extractor also feeds the preview signature/cache pipeline which keys on
+ * the relative path. The actual export REQUEST builder (`useVideoExport`) calls
+ * `selectPlaybackUrl(export)` directly, which absolutises for desktop-shell
+ * safety — both share this single selection priority.
+ */
 function selectCanonicalExportReference(material: CompositionMaterialData): string {
   const local = [
     material.metadata?.localResolvedUrl,
@@ -103,7 +94,7 @@ function selectCanonicalExportReference(material: CompositionMaterialData): stri
   ].find(isLocalMediaReference);
   if (local) return local;
   return [material.serverUrl, material.url].find(
-    candidate => !isPreviewOnlyReference(candidate),
+    (candidate) => !isPreviewOnlyReference(candidate),
   ) || '';
 }
 
@@ -183,6 +174,13 @@ export class CompositionAdapter implements ICompositionPort {
           // Pass through the detach flag verbatim so 02/05 can suppress this
           // video's audio. URL selection is intentionally unchanged (spec 01 §3).
           audioDetached: item.audioDetached,
+          // Multi-track / transition metadata (spec 05 §2.2). z-order from the
+          // track order (lower draws first), opacity + transitions verbatim so
+          // the export filtergraph reproduces the preview compositor.
+          trackZ: track.order,
+          opacity: item.opacity,
+          transitionIn: item.transitionIn,
+          transitionOut: item.transitionOut,
         };
 
         allVideoItems.push(videoSequence);
@@ -331,6 +329,12 @@ export class CompositionAdapter implements ICompositionPort {
         original_duration: seq.originalDuration,
         volume: seq.volume ?? 1,
         audio_detached: seq.audioDetached,
+        // Multi-track / transition pass-through (spec 05 §2.2): z-order,
+        // opacity, and fade/dissolve transitions reproduce the preview.
+        track_z: seq.trackZ,
+        opacity: seq.opacity,
+        transition_in: seq.transitionIn,
+        transition_out: seq.transitionOut,
       })),
       audio_sequences: audioSequences.map((seq) => ({
         id: seq.id,

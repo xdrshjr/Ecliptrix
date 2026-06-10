@@ -2,7 +2,7 @@
 Video search data models for PEXELS API integration.
 """
 
-from typing import List, Optional, Dict
+from typing import List, Literal, Optional, Dict
 from urllib.parse import unquote, urlparse
 from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
 from enum import Enum
@@ -101,6 +101,21 @@ class ImagePosition(BaseModel):
     z_index: Optional[int] = Field(10, description="Layer order for multiple image overlays")
 
 
+class ClipTransition(BaseModel):
+    """Transition applied to a clip edge.
+
+    Shared visual-semantics contract with the preview compositor
+    (`TransitionLayer`, spec 02 §2.4): `fade` ramps this clip's own alpha;
+    `dissolve` cross-fades with the temporally-adjacent clip on the same track
+    over `duration` seconds. Export (spec 05) reproduces these same curves with
+    FFmpeg `fade` / `xfade` so the rendered video matches the preview.
+    """
+    type: Literal["fade", "dissolve"] = Field(
+        ..., description="Transition family: fade (self alpha ramp) or dissolve (cross-fade)"
+    )
+    duration: float = Field(..., gt=0, description="Transition duration in seconds")
+
+
 class VideoCompositionItem(BaseModel):
     """
     Individual video item in the composition timeline.
@@ -121,6 +136,28 @@ class VideoCompositionItem(BaseModel):
     volume: Optional[float] = Field(1.0, ge=0, le=2, description="Volume level (0.0 to 2.0)")
     opacity: Optional[float] = Field(1.0, ge=0, le=1, description="Opacity level (0.0 to 1.0)")
     image_position: Optional[ImagePosition] = Field(None, description="Position for image overlay (only for image materials)")
+
+    # Multi-track compositing properties (optional, backward compatible). These
+    # carry the preview compositor's z-order / transition / detach semantics into
+    # the export filtergraph so export is what-you-see-is-what-you-get (spec 05
+    # §2.4). Omitting them yields the legacy single-track concat behaviour:
+    # z by request order, no transitions, embedded audio kept.
+    track_z: Optional[int] = Field(
+        None, description="Z-order index; lower draws first (bottom). None → by track order"
+    )
+    transition_in: Optional[ClipTransition] = Field(
+        None, description="Transition on this clip's leading edge (fade-in / dissolve)"
+    )
+    transition_out: Optional[ClipTransition] = Field(
+        None, description="Transition on this clip's trailing edge (fade-out / dissolve)"
+    )
+    audio_detached: Optional[bool] = Field(
+        None,
+        description=(
+            "When true the embedded audio of this video clip is suppressed; the "
+            "detached audio plays from an independent audio item (spec 01 §2.4)."
+        ),
+    )
 
     # Cache-reuse identity (optional, backward compatible). Lets the composition
     # pipeline reuse an already-downloaded cached_materials row via the

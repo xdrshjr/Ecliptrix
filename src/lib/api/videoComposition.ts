@@ -14,6 +14,18 @@
 
 import { http } from '@/lib/api/http-client';
 
+/**
+ * Transition applied to a clip edge — wire shape (snake_case-agnostic; the
+ * field itself is snake_case on VideoCompositionItem). Mirrors the backend
+ * pydantic `ClipTransition` and the frontend `ClipTransition` / domain
+ * `SequenceTransition` (spec 05 §2.4). `fade` ramps this clip's own alpha;
+ * `dissolve` cross-fades with the adjacent same-track clip over `duration`.
+ */
+export interface ClipTransitionWire {
+  type: 'fade' | 'dissolve';
+  duration: number;
+}
+
 export interface VideoCompositionItem {
   id: string;
   name: string;
@@ -23,6 +35,20 @@ export interface VideoCompositionItem {
   track_id: string;
   volume?: number;
   opacity?: number;
+  // Clip trimming window (spec 01 clip contract). The backend trims the source
+  // media to [clip_start, clip_end] before composition.
+  clip_start?: number;
+  clip_end?: number;
+  clipped_duration?: number;
+  // Multi-track / transition composition metadata (spec 05 §2.2 / §2.4).
+  // Optional + backward-compatible: omitting them yields the legacy single-
+  // track concat behaviour (z by request order, no transitions, embedded audio
+  // kept). These carry the preview compositor's z-order / opacity / transition /
+  // detach semantics into the export filtergraph (what-you-see-is-what-you-get).
+  track_z?: number;
+  transition_in?: ClipTransitionWire;
+  transition_out?: ClipTransitionWire;
+  audio_detached?: boolean;
   // Cache-reuse identity (optional, backward compatible). The backend uses
   // (source, source_id) to find an already-downloaded cached_materials row and
   // skip re-downloading; cache_url is a same-origin disk hint resolved to a

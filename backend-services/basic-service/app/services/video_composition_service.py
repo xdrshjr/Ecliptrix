@@ -48,6 +48,16 @@ from app.services.local_media_resolver import (
     LocalMediaResolveError,
     resolve_media_reference,
 )
+from app.services.composition.encode import (
+    detect_gpu_encoder,
+    get_encoding_params,
+)
+from app.services.composition.media_resolution import (
+    NonLocalMediaError,
+    resolve_local_media,
+)
+from app.services.composition.filtergraph_builder import build_filtergraph
+from app.services.composition.audio_mix import AudioSource, build_audio_mix
 
 logger = get_logger(__name__)
 
@@ -105,64 +115,105 @@ class VideoCompositionService:
             return None
     
     def _detect_gpu_encoder(self) -> Optional[str]:
-        """Detect available GPU hardware encoder via ffmpeg."""
-        try:
-            result = subprocess.run(
-                ['ffmpeg', '-hide_banner', '-encoders'],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                output = result.stdout
-                # Check NVIDIA NVENC first (most common)
-                if 'h264_nvenc' in output:
-                    # Verify the encoder actually works with a quick test
-                    # Use 256x256 — NVENC requires minimum ~128x128 resolution
-                    test_result = subprocess.run(
-                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=0.1',
-                         '-c:v', 'h264_nvenc', '-f', 'null', '-'],
-                        capture_output=True, text=True, timeout=10
-                    )
-                    if test_result.returncode == 0:
-                        logger.info("GPU encoder detected: h264_nvenc (NVIDIA)")
-                        return 'h264_nvenc'
-                # Check Intel Quick Sync
-                if 'h264_qsv' in output:
-                    test_result = subprocess.run(
-                        ['ffmpeg', '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=0.1',
-                         '-c:v', 'h264_qsv', '-f', 'null', '-'],
-                        capture_output=True, text=True, timeout=10
-                    )
-                    if test_result.returncode == 0:
-                        logger.info("GPU encoder detected: h264_qsv (Intel)")
-                        return 'h264_qsv'
-        except Exception as e:
-            logger.debug(f"GPU encoder detection failed: {e}")
-        logger.info("No GPU encoder detected, using CPU libx264")
-        return None
+        """Detect available GPU hardware encoder via ffmpeg (spec 05 §2.5)."""
+        return detect_gpu_encoder(self._get_ffmpeg_path() or "ffmpeg")
 
     def _get_encoding_params(self, quality: str = "fast") -> List[str]:
-        """
-        Get FFmpeg encoding parameters based on GPU availability and quality level.
+        """Get FFmpeg encoding parameters for the detected encoder + quality."""
+        return get_encoding_params(self._gpu_encoder, quality)
 
-        Args:
-            quality: "ultrafast" for intermediate files, "fast" for final output, "high" for quality output
+    def _compose_videos_filtergraph(
+        self,
+        request: VideoCompositionRequest,
+        normalized_videos: List[str],
+        output_path: Path,
+        ffmpeg_path: str,
+        output_resolution: Dict[str, int],
+    ) -> bool:
+        """Compose normalized clips via the multi-track + transition filtergraph.
 
-        Returns:
-            List of FFmpeg arguments for video encoding
+        Returns True when the filtergraph path was taken AND succeeded; False
+        when the timeline is degenerate (caller falls back to concat) OR the
+        filtergraph encode failed (caller falls back to concat). This mirrors
+        the preview compositor's z-order / opacity / transition semantics
+        (spec 05 §2.4). The normalized inputs are already clip-trimmed + scaled,
+        so the builder runs with ``pre_trimmed=True``.
         """
-        if self._gpu_encoder == 'h264_nvenc':
-            preset_map = {"ultrafast": "p1", "fast": "p4", "high": "p6"}
-            preset = preset_map.get(quality, "p4")
-            return ['-c:v', 'h264_nvenc', '-preset', preset, '-pix_fmt', 'yuv420p']
-        elif self._gpu_encoder == 'h264_qsv':
-            preset_map = {"ultrafast": "veryfast", "fast": "faster", "high": "medium"}
-            preset = preset_map.get(quality, "faster")
-            return ['-c:v', 'h264_qsv', '-preset', preset]
-        else:
-            # CPU libx264 fallback
-            preset_map = {"ultrafast": "ultrafast", "fast": "veryfast", "high": "medium"}
-            preset = preset_map.get(quality, "veryfast")
-            return ['-c:v', 'libx264', '-preset', preset, '-pix_fmt', 'yuv420p']
+        plan = build_filtergraph(
+            list(request.video_items),
+            int(output_resolution["width"]),
+            int(output_resolution["height"]),
+            pre_trimmed=True,
+        )
+        if plan.can_use_concat:
+            logger.info("Filtergraph not needed (single track, no transitions); using concat")
+            return False
+
+        # Map the planned input order (clip ids) back to normalized file paths.
+        id_to_path = {
+            item.id: normalized_videos[i]
+            for i, item in enumerate(request.video_items)
+            if i < len(normalized_videos)
+        }
+        cmd = [ffmpeg_path, '-y']
+        for clip_id in plan.video_inputs:
+            path = id_to_path.get(clip_id)
+            if not path:
+                logger.warning(f"Filtergraph input '{clip_id}' has no normalized path; using concat")
+                return False
+            cmd.extend(['-i', path])
+        cmd.extend([
+            '-filter_complex', plan.filter_complex,
+            '-map', plan.output_label,
+        ])
+        cmd.extend(self._get_encoding_params("fast"))
+        cmd.append(str(output_path))
+
+        logger.info("Running multi-track filtergraph composition")
+        logger.info(f"Filtergraph: {plan.filter_complex}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(
+                f"Filtergraph composition failed, falling back to concat: {result.stderr}"
+            )
+            return False
+        logger.info("Multi-track filtergraph composition succeeded")
+        return True
+
+    def _concat_videos(
+        self,
+        normalized_videos: List[str],
+        output_path: Path,
+        temp_dir: str,
+        ffmpeg_path: str,
+    ) -> None:
+        """Concatenate normalized clips (legacy single-track path / fallback)."""
+        concat_list_path = os.path.join(temp_dir, "concat_list.txt")
+        with open(concat_list_path, 'w', encoding='utf-8') as f:
+            for video in normalized_videos:
+                video_path_for_concat = video.replace('\\', '/')
+                f.write(f"file '{video_path_for_concat}'\n")
+        logger.info(f"Created concat list with {len(normalized_videos)} videos")
+
+        logger.info("Combining videos...")
+        concat_cmd = [
+            ffmpeg_path, '-y',
+            '-f', 'concat', '-safe', '0',
+            '-i', concat_list_path,
+            '-c', 'copy',
+            str(output_path),
+        ]
+        result = subprocess.run(concat_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.warning("Direct copy failed, trying re-encoding...")
+            concat_cmd = [
+                ffmpeg_path, '-y',
+                '-f', 'concat', '-safe', '0',
+                '-i', concat_list_path,
+            ] + self._get_encoding_params("fast") + [str(output_path)]
+            result = subprocess.run(concat_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"Video concatenation failed: {result.stderr}")
 
     def _ensure_even_dimensions(self, width: int, height: int) -> Tuple[int, int]:
         """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
@@ -935,99 +986,53 @@ class VideoCompositionService:
             # url_to_downloaded_path BEFORE submitting downloads so we don't
             # re-fetch already-cached assets.
             material_svc = get_material_download_service()
-            urls_to_download: List[str] = []
-            for url in unique_urls:
+            # Spec 05 §2.3: the export pipeline is LOCAL-ONLY. Each unique URL
+            # must resolve to a local file via the persistent cache OR the local
+            # media resolver. There is NO silent download fallback — a URL that
+            # is neither cached nor locally resolvable is a hard error telling
+            # the user to localize the material first. `resolve_local_media`
+            # encapsulates the cache-hit / local-resolver / explicit-error order
+            # and reuses local_media_resolver's whitelist (no reimplementation).
+            def _cache_lookup(url: str) -> Optional[str]:
                 src, sid, cache_url = url_to_meta.get(url, (None, None, None))
-                cached_path = None
-                try:
-                    # Three-tier reuse: cache_url disk hint (F2) → composite-key
-                    # lookup (F1) → in-flight wait (F4). Falls back to the legacy
-                    # exact-URL lookup, then to a fresh download. A miss never
-                    # changes correctness — only the happy path gets faster.
-                    cached_path = material_svc.resolve_cached_path(
-                        url=url, source=src, source_id=sid, cache_url=cache_url
-                    )
-                    if not (cached_path and os.path.exists(cached_path)):
-                        cached_path = material_svc.lookup_by_url(url)
-                except Exception as lookup_exc:
-                    logger.warning(f"Cache lookup failed for {url}: {lookup_exc}")
+                cached_path = material_svc.resolve_cached_path(
+                    url=url, source=src, source_id=sid, cache_url=cache_url
+                )
                 if cached_path and os.path.exists(cached_path):
-                    url_to_downloaded_path[url] = cached_path
-                    logger.info(f"Cache hit for {url} -> {cached_path}")
-                else:
-                    try:
-                        local_ref = resolve_media_reference(url, allow_remote=False)
-                        url_to_downloaded_path[url] = str(local_ref.path)
-                        logger.info(f"Local media reference hit for {url} -> {local_ref.path}")
-                    except LocalMediaResolveError:
-                        urls_to_download.append(url)
+                    return cached_path
+                return material_svc.lookup_by_url(url)
 
-            cache_hits = len(unique_urls) - len(urls_to_download)
+            for url in unique_urls:
+                try:
+                    resolved = resolve_local_media(url, cache_lookup=_cache_lookup)
+                    url_to_downloaded_path[url] = resolved.local_path
+                    logger.info(
+                        f"Resolved local media for {url} -> {resolved.local_path} "
+                        f"(origin={resolved.origin})"
+                    )
+                except NonLocalMediaError as resolve_exc:
+                    logger.error(f"Non-local media reference in export: {resolve_exc}")
+                    for video_index in url_to_indices[url]:
+                        video_item = request.video_items[video_index]
+                        failed_downloads.append(VideoProcessingError(
+                            video_index=video_index,
+                            video_id=video_item.id,
+                            video_name=video_item.name,
+                            video_url=video_item.url,
+                            stage=VideoProcessingStage.DOWNLOAD,
+                            attempts=1,
+                            max_retries=1,
+                            error_message=str(resolve_exc),
+                            last_error=str(resolve_exc),
+                            timeline_position=video_item.start_time,
+                            duration=video_item.duration,
+                        ))
+
+            cache_hits = len(unique_urls) - len(failed_downloads)
             logger.info(
-                f"Material cache: {cache_hits}/{len(unique_urls)} URLs served from cache, "
-                f"{len(urls_to_download)} require download"
+                f"Local media resolution: {cache_hits}/{len(unique_urls)} URLs "
+                f"resolved locally, {len(failed_downloads)} unresolved (no download)"
             )
-
-            # Download remaining unique URLs only
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                # Create futures for URLs that still need downloading
-                futures = {
-                    executor.submit(self._download_video_with_retry, url, temp_dir, unique_urls.index(url), request.video_items[url_to_indices[url][0]]): url
-                    for url in urls_to_download
-                }
-                
-                # Collect download results
-                for future in as_completed(futures):
-                    url = futures[future]
-                    result = future.result()
-                    url_index = unique_urls.index(url)
-                    
-                    if result['success']:
-                        downloaded_path = result['output_path']
-                        url_to_downloaded_path[url] = downloaded_path
-                        logger.info(f"Downloaded unique URL {len(url_to_downloaded_path)}/{unique_count}: {url}")
-                        # Write-through to persistent cache so future exports
-                        # of the same URL can skip the download. Carry the
-                        # request's (source, source_id) when present so the
-                        # write-back key matches the editor's ingest key —
-                        # otherwise the same asset accumulates duplicate rows
-                        # (analysis §A3) and the editor still can't reuse it.
-                        try:
-                            req_source, req_source_id, _req_cache_url = url_to_meta.get(
-                                url, (None, None, None)
-                            )
-                            inferred_source = req_source or (
-                                "pexels" if self._is_pexels_url(url) else (
-                                    "youtube" if self._is_youtube_url(url) else "url"
-                                )
-                            )
-                            material_svc.store_external_download(
-                                url=url,
-                                local_path=downloaded_path,
-                                source=inferred_source,
-                                source_id=req_source_id,
-                            )
-                        except Exception as cache_exc:
-                            logger.warning(f"Cache write-through failed for {url}: {cache_exc}")
-                    else:
-                        # Record failure for all video items using this URL
-                        for video_index in url_to_indices[url]:
-                            video_item = request.video_items[video_index]
-                            failed_download = VideoProcessingError(
-                                video_index=video_index,
-                                video_id=video_item.id,
-                                video_name=video_item.name,
-                                video_url=video_item.url,
-                                stage=VideoProcessingStage.DOWNLOAD,
-                                attempts=result.get('attempts', 1),
-                                max_retries=3,
-                                error_message=result.get('error', 'Unknown download error'),
-                                last_error=result.get('last_error', 'Unknown error'),
-                                timeline_position=video_item.start_time,
-                                duration=video_item.duration
-                            )
-                            failed_downloads.append(failed_download)
-                        logger.error(f"URL download failed permanently: {url}, affecting {len(url_to_indices[url])} videos")
             
             # Check if any downloads failed
             if failed_downloads:
@@ -1035,18 +1040,17 @@ class VideoCompositionService:
                     failed_videos=failed_downloads,
                     total_videos=len(request.video_items),
                     successful_videos=total_videos - len(failed_downloads),
-                    composition_stage="video_download",
-                    error_summary=f"{len(failed_downloads)} out of {len(request.video_items)} videos failed to download after 3 retry attempts",
+                    composition_stage="media_resolution",
+                    error_summary=f"{len(failed_downloads)} out of {len(request.video_items)} videos could not be resolved to a local file",
                     recovery_suggestions=[
-                        "Check if the video URLs are accessible",
-                        "Verify your internet connection",
-                        "Try using different video sources",
+                        "Localize the material first (re-import or download it into the editor)",
+                        "Remove materials that reference remote-only URLs from the timeline",
                         "Contact support if the issue persists"
                     ]
                 )
-                
+
                 # Return detailed error response
-                logger.error(f"Video composition failed: {len(failed_downloads)} videos failed to download")
+                logger.error(f"Video composition failed: {len(failed_downloads)} videos could not be resolved locally")
                 self.compositions[composition_id] = {
                     "status": "failed", 
                     "progress": 0.3,
@@ -1225,47 +1229,21 @@ class VideoCompositionService:
             
             # Update progress
             self.compositions[composition_id]["progress"] = 0.7
-            
-            # Create concat file
-            concat_list_path = os.path.join(temp_dir, "concat_list.txt")
-            with open(concat_list_path, 'w', encoding='utf-8') as f:
-                for video in normalized_videos:
-                    video_path_for_concat = video.replace('\\', '/')
-                    f.write(f"file '{video_path_for_concat}'\n")
-            
-            logger.info(f"Created concat list with {len(normalized_videos)} videos")
-            
-            # Combine videos
-            logger.info("Combining videos...")
-            concat_cmd = [
-                ffmpeg_path,
-                '-y',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', concat_list_path,
-                '-c', 'copy',
-                str(output_path)
-            ]
-            
-            result = subprocess.run(concat_cmd, capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                # Try with re-encoding if direct copy fails
-                logger.warning("Direct copy failed, trying re-encoding...")
-                concat_cmd = [
-                    ffmpeg_path,
-                    '-y',
-                    '-f', 'concat',
-                    '-safe', '0',
-                    '-i', concat_list_path,
-                ] + self._get_encoding_params("fast") + [
-                    str(output_path)
-                ]
-                
-                result = subprocess.run(concat_cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    raise Exception(f"Video concatenation failed: {result.stderr}")
+
+            # Spec 05 §2.4: decide between the multi-track / transition
+            # filtergraph (overlay + fade/xfade + per-clip opacity, mirroring the
+            # preview compositor) and the lightweight concat path. The normalized
+            # clips are already trimmed + scaled to the canvas, so the composite
+            # runs with pre_trimmed=True. On any filtergraph failure we fall back
+            # to concat (spec 05 §2.4 "filter_complex failure → concat").
+            output_resolution = request.output_resolution or self._get_aspect_ratio_info(
+                request.aspect_ratio
+            )
+            composited = self._compose_videos_filtergraph(
+                request, normalized_videos, output_path, ffmpeg_path, output_resolution
+            )
+            if not composited:
+                self._concat_videos(normalized_videos, output_path, temp_dir, ffmpeg_path)
             
             # Update progress
             self.compositions[composition_id]["progress"] = 0.9
@@ -1728,6 +1706,16 @@ class VideoCompositionService:
 
         for i, video_item in enumerate(request.video_items):
             try:
+                # Spec 01 §2.4 / spec 05 §2.4: a detached video clip contributes
+                # NO embedded audio — its audio plays from the derived
+                # independent audio item, so extracting here would double it.
+                if getattr(video_item, 'audio_detached', None):
+                    logger.info(
+                        f"Video {i+1} ({video_item.name}) audio is detached; "
+                        f"skipping embedded-audio extraction"
+                    )
+                    continue
+
                 local_path = self._convert_url_to_local_path(video_item.url)
 
                 # Use ffprobe to check if the video has an audio stream
@@ -2055,21 +2043,17 @@ class VideoCompositionService:
                 for audio_info in processed_audio_paths:
                     mix_cmd.extend(['-i', audio_info['path']])
                 
-                # Build the filter complex for proper mixing with timing
-                filter_parts = []
-                for i, audio_info in enumerate(processed_audio_paths):
-                    delay_ms = int(audio_info['start_time'] * 1000)
-                    if delay_ms > 0:
-                        # Use adelay to position audio at correct time, and apad to ensure it doesn't get cut off
-                        filter_parts.append(f'[{i}:a]adelay={delay_ms}|{delay_ms},apad=pad_dur={actual_total_duration}[delayed{i}]')
-                    else:
-                        # For audio starting at 0, still add padding to ensure full duration
-                        filter_parts.append(f'[{i}:a]apad=pad_dur={actual_total_duration}[delayed{i}]')
-                
-                # Create the mix filter with longest duration to ensure all audio is preserved
-                input_labels = [f'[delayed{i}]' for i in range(len(processed_audio_paths))]
-                mix_filter = f"{';'.join(filter_parts)};{' '.join(input_labels)}amix=inputs={len(processed_audio_paths)}:duration=longest:dropout_transition=3:normalize=0,atrim=duration={actual_total_duration}[out]"
-                
+                # Build the mixing filtergraph via the shared composition module.
+                # Volume and routing (mute / audio_detached drop) are already
+                # applied upstream — the pre-processing pass bakes volume into
+                # each file and muted/detached sources never reach this list —
+                # so the builder only positions (adelay) + pads + mixes + trims.
+                mix_sources = [
+                    AudioSource(start_time=audio_info['start_time'])
+                    for audio_info in processed_audio_paths
+                ]
+                mix_filter = build_audio_mix(mix_sources, actual_total_duration).filter_complex
+
                 mix_cmd.extend([
                     '-filter_complex', mix_filter,
                     '-map', '[out]',

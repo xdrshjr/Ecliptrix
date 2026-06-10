@@ -644,6 +644,13 @@ export interface ImagePosition {
   zIndex?: number; // 层级，用于多图片叠加时的前后顺序
 }
 
+// 转场元数据——预览(02 TransitionLayer)与导出(05 ffmpeg fade/xfade)共用契约。
+// 'fade' 自身淡入/淡出；'dissolve' 与相邻 clip 交叉溶解，重叠时长=duration（秒）。
+export interface ClipTransition {
+  type: 'fade' | 'dissolve';
+  duration: number; // 转场时长（秒）
+}
+
 export interface TimelineItem {
   id: string;
   name: string;
@@ -677,6 +684,11 @@ export interface TimelineItem {
   // 为 true 时合成/导出对该视频 item 静音，由派生的 audio item 单独贡献音频，
   // 避免重复出声（spec local-video-editing-refactor 01 §2.4）。
   audioDetached?: boolean;
+
+  // 新增：转场元数据——预览(02)与导出(05)共用契约，均可选、向后兼容（缺省=无转场）。
+  // type:'fade' 自身淡入/淡出；'dissolve' 与相邻 clip 交叉溶解，重叠时长=duration。
+  transitionIn?: ClipTransition;
+  transitionOut?: ClipTransition;
 
   // 新增：字幕样式属性
   subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）
