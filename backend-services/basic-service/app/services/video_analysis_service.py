@@ -710,22 +710,43 @@ class VideoAnalysisService:
             # Cleanup
             try:
                 if self.config['temp_files']['auto_cleanup']:
+                    # Safety guardrail: only delete paths inside the system temp directory.
+                    # Quick mode (use_thumbnail) resolves a same-origin /api/storage/files
+                    # URL to the REAL storage path (not a temp copy), so frames_dir ends up
+                    # being the user's upload directory. An unguarded rmtree/os.remove here
+                    # would delete the uploaded material and its poster -> 404. Whitelisting
+                    # the system temp dir lets legitimate temp artefacts (professional-mode
+                    # frame dirs / downloaded videos / downloaded thumbnails, all created
+                    # under tempfile.gettempdir()) be cleaned while any borrowed real path is
+                    # skipped. See docs/diagnoses/local-upload-video-404-and-filmstrip-segments/analysis.md
+                    temp_root = os.path.realpath(tempfile.gettempdir())
+
+                    def _is_under_temp(path: str) -> bool:
+                        resolved = os.path.realpath(path)
+                        return resolved == temp_root or resolved.startswith(temp_root + os.sep)
+
                     # Clean up frames directory
                     if frames_dir and os.path.exists(frames_dir):
-                        import shutil
-                        shutil.rmtree(frames_dir)
-                        logger.info(f"Cleaned up frames directory: {frames_dir}")
-                    
+                        if _is_under_temp(frames_dir):
+                            import shutil
+                            shutil.rmtree(frames_dir)
+                            logger.info(f"Cleaned up frames directory: {frames_dir}")
+                        else:
+                            logger.warning(f"Skipped delete (outside temp): {frames_dir}")
+
                     # Clean up downloaded video if it was downloaded
                     if video_path and video_path != video_url and os.path.exists(video_path):
                         os.remove(video_path)
                         logger.info(f"Cleaned up downloaded video: {video_path}")
-                    
+
                     # Clean up downloaded thumbnail if it was downloaded
                     if thumbnail_path and os.path.exists(thumbnail_path):
-                        os.remove(thumbnail_path)
-                        logger.info(f"Cleaned up downloaded thumbnail: {thumbnail_path}")
-                        
+                        if _is_under_temp(thumbnail_path):
+                            os.remove(thumbnail_path)
+                            logger.info(f"Cleaned up downloaded thumbnail: {thumbnail_path}")
+                        else:
+                            logger.warning(f"Skipped delete (outside temp): {thumbnail_path}")
+
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup temporary files: {str(cleanup_error)}")
     
