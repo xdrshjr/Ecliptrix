@@ -268,24 +268,3 @@ export function buildAllAgentTools(registry: ToolRegistry): AgentTool<any>[] {
   const exploreTool = createExploreToolsTool(registry);
   return [...allTools, exploreTool];
 }
-
-// --- Legacy API (kept for backward compatibility) ---
-
-/**
- * @deprecated Use createToolRegistry() + buildAllAgentTools() instead.
- * This function builds only the 8 core tools without registry support.
- * Retained during the transition period for any code that still calls it directly.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function buildVideoEditingTools(context: ToolContext): AgentTool<any>[] {
-  return [
-    createGetTimelineTool(context),
-    createListMaterialsTool(context),
-    createSearchMaterialsTool(context),
-    createAddToTrackTool(context),
-    createTrimClipTool(context),
-    createDeleteClipTool(context),
-    createMoveClipTool(context),
-    createResizeClipTool(context),
-  ];
-}

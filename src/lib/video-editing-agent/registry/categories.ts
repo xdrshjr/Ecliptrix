@@ -5,7 +5,7 @@ import type { ToolCategory } from './ToolRegistry';
  *
  * Categories are split into two groups:
  * - Always available: query_tools and editing_tools — their tools are populated
- *   by buildVideoEditingTools() in tools/index.ts at agent creation time.
+ *   by createToolRegistry() in tools/index.ts at agent creation time.
  * - On-demand: the remaining 6 categories start with empty tools arrays.
  *   Other agents (Phase 2+) populate them via registry.registerToolsForCategory().
  *

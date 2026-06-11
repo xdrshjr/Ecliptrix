@@ -5,12 +5,12 @@
  * Implements ITimelineRepository from the domain ports.
  *
  * Extracted from:
- * - src/components/video/services/timelineExportService.ts (prepareExportData, downloadJSONFile)
+ * - the former timelineExportService (prepareExportData, downloadJSONFile) — now removed, see git history
  * - src/components/video/hooks/useTimelineExport.ts (validation, error handling)
  * - src/components/video/timeline/TimelinePanel.tsx (import logic)
  *
- * The export format is backward-compatible with TimelineExportData from
- * the original timelineExportService.ts.
+ * The export format is backward-compatible with the JSON shape produced by
+ * the now-removed timelineExportService.
  */
 
 import type { ITimelineRepository, ExportMetadata } from '../domain/ports';
@@ -107,8 +107,9 @@ export function getSerializedTrackKind(track: { id: string; type: string }): Ser
 
 /**
  * The full structure of a timeline export file.
- * This matches the shape from services/timelineExportService.ts so that
- * files exported by the old system can be imported by this adapter.
+ * This matches the shape produced by the now-removed timelineExportService
+ * (logic preserved here; see git history) so that files exported by the old
+ * system can be imported by this adapter.
  */
 export interface TimelineExportData {
   metadata: ExportMetadata & {
@@ -205,8 +206,8 @@ export class TimelineRepository implements ITimelineRepository {
   /**
    * Export timeline data and materials to a JSON Blob.
    *
-   * Logic extracted from timelineExportService.ts#prepareExportData and
-   * timelineExportService.ts#downloadJSONFile.
+   * Logic originated from the now-removed timelineExportService
+   * (prepareExportData / downloadJSONFile); see git history.
    */
   async exportToJSON(
     data: TimelineData,
