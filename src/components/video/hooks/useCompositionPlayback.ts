@@ -444,5 +444,24 @@ export function useCompositionPlayback(
     engine.seek(currentTime);
   }, [currentTime, enabled, hostVersion]);
 
+  // §5.3 (H5) — viewport (canvas size) changes while paused do NOT repaint by
+  // themselves (the rAF loop is stopped). Subscribe to the host's viewport
+  // signal and, when NOT playing, re-seek the engine to the current comp time so
+  // it repaints one frame at the new size (re-letterbox the last frame). The
+  // engine's seek() preserves the paused/idle phase; the playing path is left to
+  // the rAF loop. Guarded with typeof so a host without the method is a no-op.
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const host = hostHandleRef.current;
+    if (!host || typeof host.subscribeViewportChange !== 'function') return undefined;
+    const unsubscribe = host.subscribeViewportChange(() => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      if (engine.getPhase() === 'playing') return;
+      engine.seek(currentTimeRef.current ?? 0);
+    });
+    return unsubscribe;
+  }, [enabled, hostVersion]);
+
   return { hostRef, play, pause, seek, getPhase, isReady };
 }

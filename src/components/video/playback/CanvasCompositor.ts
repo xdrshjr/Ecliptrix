@@ -38,6 +38,19 @@ export interface DroppedFrameRateEmit {
   windowMs: number;
 }
 
+/**
+ * Per-layer (per video track) draw accounting for the §5.4 preview-debug
+ * overlay. `drawn` / `dropped` count how often the track's layer painted vs was
+ * skipped (not ready / opacity 0 / draw error); `lastReadyState` is the source
+ * readyState observed on the most recent renderFrame. Diagnostics only — never
+ * read by the draw path.
+ */
+export interface LayerDrawStat {
+  drawn: number;
+  dropped: number;
+  lastReadyState: number;
+}
+
 export class CanvasCompositor implements ICanvasCompositor {
   private _canvas: HTMLCanvasElement | null = null;
   private _ctx: CanvasRenderingContext2D | null = null;
@@ -54,6 +67,10 @@ export class CanvasCompositor implements ICanvasCompositor {
   private _drawWindow: number[] = [];
   private _belowRecoverHold = 0;
   private _now: () => number;
+
+  // §5.4 per-track draw accounting (diagnostics only; default empty / cleared on
+  // detach). Keyed by the video layer id (== track id).
+  private _layerStats = new Map<string, LayerDrawStat>();
 
   // Phase 4 (§3.2.1 / F7) — last wall time we emitted the dropped-rate
   // gauge. Seeded on first call regardless of monotonic time origin so
@@ -107,6 +124,7 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._lastEmitMs = 0;
     this._drawnAtLastEmit = 0;
     this._droppedAtLastEmit = 0;
+    this._layerStats.clear();
   }
 
   setLetterbox(viewport: ICanvasViewport | null): void {
@@ -199,7 +217,11 @@ export class CanvasCompositor implements ICanvasCompositor {
 
     let drewAny = false;
     for (const layer of sorted) {
-      drewAny = this._drawLayer(ctx, canvas, fit, layer) || drewAny;
+      const painted = this._drawLayer(ctx, canvas, fit, layer);
+      drewAny = painted || drewAny;
+      if (layer.kind === 'video') {
+        this._recordLayerStat(layer.id, painted, layer.source?.readyState ?? 0);
+      }
     }
 
     if (drewAny) {
@@ -350,6 +372,30 @@ export class CanvasCompositor implements ICanvasCompositor {
 
   getStats(): CompositorStats {
     return { ...this._stats };
+  }
+
+  /**
+   * §5.4 diagnostics: a copy of the per-video-track draw accounting, keyed by
+   * track id. Empty until the first {@link renderFrame}; cleared on
+   * {@link detach}. Read by the preview-debug overlay only.
+   */
+  getLayerStats(): Record<string, LayerDrawStat> {
+    const out: Record<string, LayerDrawStat> = {};
+    this._layerStats.forEach((stat, id) => {
+      out[id] = { ...stat };
+    });
+    return out;
+  }
+
+  private _recordLayerStat(id: string, drawn: boolean, readyState: number): void {
+    let stat = this._layerStats.get(id);
+    if (!stat) {
+      stat = { drawn: 0, dropped: 0, lastReadyState: 0 };
+      this._layerStats.set(id, stat);
+    }
+    if (drawn) stat.drawn += 1;
+    else stat.dropped += 1;
+    stat.lastReadyState = readyState;
   }
 
   /** Test-only: read current rolling window mean. */

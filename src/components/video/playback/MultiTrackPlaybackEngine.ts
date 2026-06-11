@@ -27,9 +27,15 @@
 import { CanvasCompositor } from './CanvasCompositor';
 import { PlaybackClock } from './PlaybackClock';
 import { PlayheadController } from './PlayheadController';
-import { VideoSourcePool, type VideoElementLike } from './VideoSourcePool';
+import { VideoSourcePool, type VideoElementLike, type TrackSourcePlan } from './VideoSourcePool';
 import { AudioSyncPool, type AudioSyncGroup, type AudioElementLike } from './AudioSyncPool';
 import { assembleLayers, type ActiveVideoEntry } from './internal/assembleLayers';
+import {
+  isPreviewDebugEnabled,
+  formatTrackDiagnostics,
+  PREVIEW_DEBUG_INTERVAL_MS,
+  type TrackDiagnosticRow,
+} from './internal/previewDebug';
 import { activeClipAt } from './TrackScheduler';
 import type { TextMeasurer } from './SubtitleLayer';
 import type { ImageOverlayInput } from './ImageOverlayLayer';
@@ -102,6 +108,19 @@ export class MultiTrackPlaybackEngine {
   private _disposed = false;
   private _measure: TextMeasurer = fallbackMeasure;
 
+  // §5.3 — readiness-repaint listeners bound to decode elements on first
+  // resolution; unbound on dispose to avoid leaking listeners.
+  private readonly _readinessBound: ReadinessListenerBinding[] = [];
+  // Last composition time actually rendered. The readiness repaint re-paints
+  // THIS frame; `clock.getCompositionTime()` is stale after a paused seek (the
+  // clock base is only re-anchored on play / seek-while-playing), so we track
+  // the real last-rendered time instead. See spec "实施过程发现的方案缺陷".
+  private _lastRenderComp = 0;
+  // §5.4 runtime diagnostics — resolved once at attach so a production preview
+  // (flag off) pays nothing per frame.
+  private _debugEnabled = false;
+  private _lastDebugMs = 0;
+
   constructor(deps: { clock?: PlaybackClock; compositor?: CanvasCompositor; playhead?: PlayheadController; now?: () => number } = {}) {
     this.clock = deps.clock ?? new PlaybackClock();
     this.compositor = deps.compositor ?? new CanvasCompositor();
@@ -120,6 +139,7 @@ export class MultiTrackPlaybackEngine {
     }
     this._deps = deps;
     this._measure = deps.measureSubtitle ?? fallbackMeasure;
+    this._debugEnabled = isPreviewDebugEnabled();
     this.compositor.attach(deps.canvas, deps.viewport ?? undefined);
     this._buildPools(deps);
 
@@ -141,7 +161,13 @@ export class MultiTrackPlaybackEngine {
     this._videoPool = new VideoSourcePool(
       (trackId) => {
         const els = deps.resolveTrackElements(trackId);
-        return els ? { active: els.active, prewarm: els.prewarm } : null;
+        if (!els) return null;
+        // §5.3: subscribe a readiness repaint on the FIRST resolution of each
+        // decode element (the host creates them lazily). Idempotent + guarded +
+        // unbound on dispose inside _bindReadinessRepaint.
+        this._bindReadinessRepaint(els.active);
+        this._bindReadinessRepaint(els.prewarm);
+        return { active: els.active, prewarm: els.prewarm };
       },
       deps.resolveSource,
     );
@@ -205,6 +231,7 @@ export class MultiTrackPlaybackEngine {
     this.clock.stop();
     this._clockUnsub?.();
     this._clockUnsub = null;
+    this._unbindReadinessRepaint();
     try {
       this.compositor.detach();
     } catch {
@@ -250,6 +277,7 @@ export class MultiTrackPlaybackEngine {
    */
   private _renderAt(comp: number, isPlaying: boolean): void {
     if (!this._deps || !this._videoPool || !this._audioPool) return;
+    this._lastRenderComp = comp;
     const tl = this._deps.timeline;
     const groups = tl.getVideoTrackGroups();
 
@@ -259,6 +287,8 @@ export class MultiTrackPlaybackEngine {
     this.compositor.renderFrame(layers);
 
     this._audioPool.tick(tl.getAudioSyncGroups(), comp, isPlaying);
+
+    if (this._debugEnabled) this._emitDebug(synced);
   }
 
   /** Pair each track's synced element with its active clip for layer assembly. */
@@ -301,6 +331,116 @@ export class MultiTrackPlaybackEngine {
     this._phase = next;
     this._listeners.forEach((l) => l(next));
   }
+
+  // ------------------------------------------------------------------
+  // §5.3 — readiness-driven single repaint (paused first frame / scrub / late
+  // metadata). Bound on first element resolution, unbound on dispose.
+  // ------------------------------------------------------------------
+
+  /**
+   * Subscribe `loadeddata` / `seeked` / `canplay` on a decode element so a
+   * non-playing preview repaints one frame the moment the source becomes
+   * drawable. Hard constraints (R-5):
+   *   - skip when the element is not a real EventTarget (the structural fake has
+   *     no addEventListener) — never throw on a plain object stub;
+   *   - de-dupe with `__ecliptrixReadinessBound` so a re-resolved element is not
+   *     bound twice;
+   *   - record every (element, type, handler) so {@link dispose} can unbind.
+   * Repaint runs ONLY when not playing (the rAF loop owns the playing path).
+   */
+  private _bindReadinessRepaint(el: VideoElementLike | null): void {
+    if (!el) return;
+    const target = el as ReadinessBindable;
+    if (typeof target.addEventListener !== 'function' || target.__ecliptrixReadinessBound) {
+      return;
+    }
+    target.__ecliptrixReadinessBound = true;
+    const handler = () => {
+      if (this._disposed) return;
+      if (this.getPhase() === 'playing') return;
+      this._renderAt(this._lastRenderComp, false);
+    };
+    for (const type of READINESS_EVENTS) {
+      target.addEventListener(type, handler);
+      this._readinessBound.push({ el: target, type, handler });
+    }
+  }
+
+  private _unbindReadinessRepaint(): void {
+    for (const { el, type, handler } of this._readinessBound) {
+      try {
+        el.removeEventListener?.(type, handler);
+        el.__ecliptrixReadinessBound = false;
+      } catch {
+        // ignore — element may already be gone
+      }
+    }
+    this._readinessBound.length = 0;
+  }
+
+  // ------------------------------------------------------------------
+  // §5.4 — runtime diagnostics (default OFF). Throttled ~1/s per-track dump.
+  // ------------------------------------------------------------------
+
+  private _emitDebug(
+    synced: { plan: TrackSourcePlan; element: VideoElementLike | null }[],
+  ): void {
+    const now = this._now();
+    if (this._lastDebugMs !== 0 && now - this._lastDebugMs < PREVIEW_DEBUG_INTERVAL_MS) {
+      return;
+    }
+    this._lastDebugMs = now;
+    const layerStats =
+      typeof this.compositor.getLayerStats === 'function'
+        ? this.compositor.getLayerStats()
+        : {};
+    const rows: TrackDiagnosticRow[] = synced.map(({ plan, element }) => {
+      const media = element as
+        | (VideoElementLike & { networkState?: number; error?: { code?: number } | null })
+        | null;
+      const stat = layerStats[plan.trackId];
+      return {
+        trackId: plan.trackId,
+        resolvedSrc: plan.desiredUrl,
+        readyState: element?.readyState ?? 0,
+        networkState: media?.networkState,
+        paused: element?.paused,
+        muted: element?.muted,
+        errorCode: media?.error?.code ?? null,
+        currentTime: element?.currentTime,
+        desiredSourceTime: plan.desiredSourceTime,
+        drawn: stat?.drawn,
+        dropped: stat?.dropped,
+      };
+    });
+    try {
+      // eslint-disable-next-line no-console
+      console.debug(formatTrackDiagnostics(rows));
+    } catch {
+      // diagnostics must never break the render loop
+    }
+  }
+}
+
+/** Readiness events that drive a single non-playing repaint (§5.3). */
+const READINESS_EVENTS = ['loadeddata', 'seeked', 'canplay'] as const;
+
+/**
+ * Minimal EventTarget surface for readiness binding (R-5 guards). The structural
+ * {@link VideoElementLike} has no `addEventListener`; a real HTMLVideoElement
+ * does. `__ecliptrixReadinessBound` de-dupes per element across re-resolution.
+ */
+type ReadinessBindable = VideoElementLike & {
+  addEventListener?: (type: string, listener: () => void) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+  __ecliptrixReadinessBound?: boolean;
+};
+
+/** One bound readiness listener, tracked for unbind on dispose. */
+interface ReadinessListenerBinding {
+  el: ReadinessBindable;
+  type: string;
+  handler: () => void;
 }
 
 /** End-of-timeline snap epsilon (seconds) — replay-from-start guard. */

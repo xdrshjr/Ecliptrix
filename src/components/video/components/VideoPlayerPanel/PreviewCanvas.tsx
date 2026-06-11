@@ -72,6 +72,14 @@ export interface PreviewCanvasHandle {
   resolveAudioElement(trackId: string): VideoElementLike | null;
   /** A real 2d-context subtitle text measurer using the compositor's font. */
   measureSubtitle: TextMeasurer;
+  /**
+   * Subscribe to viewport (canvas) size changes. The compositor's rAF loop is
+   * stopped while paused, so a resize would not repaint by itself; the
+   * orchestration hook subscribes here to request a single non-playing repaint
+   * (re-letterbox the last frame — H5). Returns an unsubscribe fn. Stable across
+   * renders (ref-backed).
+   */
+  subscribeViewportChange(cb: () => void): () => void;
 }
 
 export interface PreviewCanvasProps {
@@ -105,6 +113,9 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
     // A single offscreen 2d context dedicated to text measurement so it never
     // contends with the compositor's draw context.
     const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+    // Viewport-change subscribers (the orchestration hook requests a non-playing
+    // repaint on resize). Ref-backed so the handle method stays stable.
+    const viewportListenersRef = useRef<Set<() => void>>(new Set());
 
     const createHiddenVideo = useCallback((): HTMLVideoElement => {
       const el = document.createElement('video');
@@ -162,6 +173,14 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
       [createHiddenAudio],
     );
 
+    const subscribeViewportChange = useCallback((cb: () => void): (() => void) => {
+      const listeners = viewportListenersRef.current;
+      listeners.add(cb);
+      return () => {
+        listeners.delete(cb);
+      };
+    }, []);
+
     const measureSubtitle = useCallback<TextMeasurer>((text, style) => {
       let ctx = measureCtxRef.current;
       if (!ctx) {
@@ -182,8 +201,9 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
         resolveTrackElements,
         resolveAudioElement,
         measureSubtitle,
+        subscribeViewportChange,
       }),
-      [resolveTrackElements, resolveAudioElement, measureSubtitle],
+      [resolveTrackElements, resolveAudioElement, measureSubtitle, subscribeViewportChange],
     );
 
     useImperativeHandle(ref, () => handle, [handle]);
@@ -208,7 +228,18 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
 
       let observer: ResizeObserver | null = null;
       if (typeof ResizeObserver !== 'undefined') {
-        observer = new ResizeObserver(() => sync());
+        observer = new ResizeObserver(() => {
+          sync();
+          // The paused compositor will not repaint on its own; notify the hook so
+          // it can request a single non-playing repaint at the current time.
+          viewportListenersRef.current.forEach((cb) => {
+            try {
+              cb();
+            } catch {
+              // a listener throwing must not break sizing
+            }
+          });
+        });
         observer.observe(wrapper);
       }
       return () => observer?.disconnect();
@@ -219,9 +250,11 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
     useEffect(() => {
       const videoPool = videoPoolRef.current;
       const audioPool = audioPoolRef.current;
+      const viewportListeners = viewportListenersRef.current;
       return () => {
         videoPool.clear();
         audioPool.clear();
+        viewportListeners.clear();
         measureCtxRef.current = null;
       };
     }, []);

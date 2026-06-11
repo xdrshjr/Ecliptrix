@@ -67,6 +67,25 @@ const DIRECT_UPLOAD_PREFIXES = [
   '/api/storage/files/image/',
 ];
 
+/**
+ * §5.5 (composition-preview-playback-fix, CONDITIONAL / DEFAULT OFF): the
+ * configured local backend origin used only when the shell hosts the frontend on
+ * a NON-http(s) origin (e.g. `file:` / `app:`), where `window.location.origin`
+ * would absolutise same-origin media into an unreachable `<video>.src`. Unset by
+ * default, so this never engages in the real desktop build (which runs on
+ * `http://127.0.0.1:PORT`).
+ */
+function _localMediaOrigin(): string | undefined {
+  if (
+    typeof process !== 'undefined' &&
+    process.env &&
+    process.env.NEXT_PUBLIC_LOCAL_MEDIA_ORIGIN
+  ) {
+    return process.env.NEXT_PUBLIC_LOCAL_MEDIA_ORIGIN;
+  }
+  return undefined;
+}
+
 /** Convert a (possibly-relative) URL to an absolute URL when possible. */
 export function toAbsolutePlaybackUrl(u?: string | null): string | undefined {
   if (!u) return undefined;
@@ -77,8 +96,18 @@ export function toAbsolutePlaybackUrl(u?: string | null): string | undefined {
     // SSR: caller should fall back to serverUrl since we can't resolve here.
     return undefined;
   }
-  const origin = window.location.origin;
-  return origin + (u.startsWith('/') ? u : '/' + u);
+  const path = u.startsWith('/') ? u : '/' + u;
+  // §5.5 (conditional, default OFF): on a non-http(s) origin, prefer a configured
+  // local backend origin so the media stays loadable. No-op when the origin is
+  // already http(s) (the real desktop case) or the env var is unset.
+  const protocol = window.location.protocol;
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    const fallback = _localMediaOrigin();
+    if (fallback) {
+      return fallback.replace(/\/+$/, '') + path;
+    }
+  }
+  return window.location.origin + path;
 }
 
 function _isHttp(u: string | null | undefined): boolean {

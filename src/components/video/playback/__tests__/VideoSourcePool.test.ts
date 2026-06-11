@@ -350,7 +350,9 @@ describe('VideoSourcePool applier (fake elements)', () => {
     expect(active.paused).toBe(true);
   });
 
-  it('UNMUTES the decode element for a non-detached active clip (RISK 2 — embedded audio audible)', () => {
+  it('UNMUTES the decode element for a non-detached active clip ONCE it is playing (RISK 2 — embedded audio audible)', () => {
+    // §5.2 two-frame routing: frame 1 (el.paused) starts MUTED for paint; frame 2
+    // (el.paused===false, confirmed playing) restores the embedded-audio route.
     const active = fakeEl({ muted: true });
     const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
     const pool = new VideoSourcePool(
@@ -358,6 +360,11 @@ describe('VideoSourcePool applier (fake elements)', () => {
       resolverFrom({ a: '/a.mp4' }),
     );
     const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])];
+    // Frame 1 — not yet confirmed playing → muted for paint, play() kicked.
+    pool.sync(groups, 1, true);
+    expect(active.muted).toBe(true);
+    expect(active.paused).toBe(false); // fake play() flipped it to playing
+    // Frame 2 — now playing → restore embedded audio (non-detached → unmuted).
     pool.sync(groups, 1, true);
     expect(active.muted).toBe(false);
   });
@@ -398,5 +405,166 @@ describe('VideoSourcePool applier (fake elements)', () => {
     );
     const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])];
     expect(() => pool.sync(groups, 1, true)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §5.1 / §5.2 — paused-state-machine: muted-first paint, audio restored once
+// playing, and the play()-rejection canplay retry (R-4 guards).
+// ---------------------------------------------------------------------------
+
+describe('VideoSourcePool applier — §5.2 paused-state machine (decode/audio decoupling)', () => {
+  it('starts_muted_when_paused: a not-yet-playing element is muted + play()-kicked (paint first)', () => {
+    const active = fakeEl({ paused: true, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])];
+    pool.sync(groups, 1, true);
+    // Muted autoplay is allowed under every policy → started muted for paint.
+    expect(active.muted).toBe(true);
+    expect(active.playCalls).toBe(1);
+  });
+
+  it('restores_embedded_audio_once_playing: non-detached → unmuted, detached → muted (by THIS frame plan)', () => {
+    // Non-detached, already playing → embedded audio restored (unmuted).
+    const nonDetached = fakeEl({ paused: false, muted: true });
+    const e1 = new Map<string, TrackElements>([['t1', { active: nonDetached, prewarm: null }]]);
+    const p1 = new VideoSourcePool((id) => e1.get(id) ?? null, resolverFrom({ a: '/a.mp4' }));
+    p1.sync([group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])], 1, true);
+    expect(nonDetached.muted).toBe(false);
+
+    // Detached, already playing → muted (paired audio track owns the sound).
+    const detached = fakeEl({ paused: false, muted: false });
+    const e2 = new Map<string, TrackElements>([['t1', { active: detached, prewarm: null }]]);
+    const p2 = new VideoSourcePool((id) => e2.get(id) ?? null, resolverFrom({ a: '/a.mp4' }));
+    p2.sync(
+      [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, audioDetached: true })])],
+      1,
+      true,
+    );
+    expect(detached.muted).toBe(true);
+  });
+
+  it('no stale closure: switching a playing track from non-detached to detached mutes next frame', () => {
+    const active = fakeEl({ paused: false, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    // Frame with a non-detached clip → unmuted.
+    pool.sync([group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])], 1, true);
+    expect(active.muted).toBe(false);
+    // Next frame the active clip is detached → muted is read from THIS frame's
+    // plan (per-frame el.paused machine, no captured-plan closure).
+    pool.sync(
+      [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, audioDetached: true })])],
+      1,
+      true,
+    );
+    expect(active.muted).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Eventful fake (real-ish EventTarget) for the canplay-retry path.
+// ---------------------------------------------------------------------------
+
+type EventfulEl = VideoElementLike & {
+  paused: boolean;
+  muted: boolean;
+  playCalls: number;
+  rejectPlay: boolean;
+  addEventListener(type: string, cb: () => void, opts?: { once?: boolean }): void;
+  removeEventListener(type: string, cb: () => void): void;
+  dispatchEvent(type: string): void;
+  listenerCount(type: string): number;
+};
+
+function eventfulEl(over: Partial<EventfulEl> = {}): EventfulEl {
+  const handlers: Array<{ type: string; cb: () => void; once: boolean }> = [];
+  const el = {
+    src: '',
+    currentTime: 0,
+    readyState: 0,
+    paused: true,
+    muted: false,
+    playCalls: 0,
+    rejectPlay: true,
+    play(): Promise<void> {
+      el.playCalls += 1;
+      return el.rejectPlay
+        ? Promise.reject(new Error('NotAllowedError'))
+        : Promise.resolve();
+    },
+    pause() {
+      el.paused = true;
+    },
+    addEventListener(type: string, cb: () => void, opts?: { once?: boolean }) {
+      handlers.push({ type, cb, once: !!(opts && opts.once) });
+    },
+    removeEventListener(type: string, cb: () => void) {
+      for (let i = handlers.length - 1; i >= 0; i--) {
+        if (handlers[i].type === type && handlers[i].cb === cb) handlers.splice(i, 1);
+      }
+    },
+    dispatchEvent(type: string) {
+      const matched = handlers.filter((h) => h.type === type);
+      for (const h of matched) {
+        if (h.once) {
+          const idx = handlers.indexOf(h);
+          if (idx >= 0) handlers.splice(idx, 1);
+        }
+        h.cb();
+      }
+    },
+    listenerCount(type: string) {
+      return handlers.filter((h) => h.type === type).length;
+    },
+    ...over,
+  };
+  return el as unknown as EventfulEl;
+}
+
+describe('VideoSourcePool applier — §5.1 canplay retry on play() rejection (R-4 guard)', () => {
+  const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])];
+
+  it('retry_on_canplay: a rejected play() arms ONE canplay retry; idempotent; re-plays on event', async () => {
+    const el = eventfulEl({ rejectPlay: true });
+    const elements = new Map<string, TrackElements>([['t1', { active: el, prewarm: null }]]);
+    const pool = new VideoSourcePool((id) => elements.get(id) ?? null, resolverFrom({ a: '/a.mp4' }));
+
+    pool.sync(groups, 1, true); // play() #1 rejects → schedules a canplay retry
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(el.playCalls).toBe(1);
+    expect(el.listenerCount('canplay')).toBe(1);
+
+    // Still rejecting + paused → frame 2 kicks play() #2 but must NOT stack a
+    // second canplay listener (__ecliptrixPlayKick de-dupe).
+    pool.sync(groups, 1, true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(el.playCalls).toBe(2);
+    expect(el.listenerCount('canplay')).toBe(1);
+
+    // canplay fires → the once-listener re-plays (#3) and unbinds itself.
+    el.rejectPlay = false;
+    el.dispatchEvent('canplay');
+    expect(el.playCalls).toBe(3);
+    expect(el.listenerCount('canplay')).toBe(0);
+  });
+
+  it('plain object stub (no addEventListener) whose play() rejects does NOT throw and binds nothing', () => {
+    const plain = fakeEl();
+    plain.play = () => Promise.reject(new Error('interrupted'));
+    const elements = new Map<string, TrackElements>([['t1', { active: plain, prewarm: null }]]);
+    const pool = new VideoSourcePool((id) => elements.get(id) ?? null, resolverFrom({ a: '/a.mp4' }));
+    expect(() => pool.sync(groups, 1, true)).not.toThrow();
+    // No addEventListener on the stub → no marker was attached.
+    expect((plain as unknown as { __ecliptrixPlayKick?: boolean }).__ecliptrixPlayKick).toBeUndefined();
   });
 });

@@ -40,7 +40,7 @@ export type { PlayheadControllerOptions } from './PlayheadController';
 export { AbBufferController, BufferError } from './AbBufferController';
 export type { AbBufferElements, AbBufferOptions, LastSwapResult } from './AbBufferController';
 export { CanvasCompositor } from './CanvasCompositor';
-export type { DroppedFrameRateEmit } from './CanvasCompositor';
+export type { DroppedFrameRateEmit, LayerDrawStat } from './CanvasCompositor';
 export { PlaybackTelemetry, PLAYBACK_EVENTS, PLAYBACK_EVENT_NAMES } from './telemetry';
 export type {
   PlaybackTelemetryOptions,

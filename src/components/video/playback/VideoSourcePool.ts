@@ -55,6 +55,16 @@ export interface VideoElementLike {
    * need not declare it.
    */
   muted?: boolean;
+  /**
+   * Whether the element is currently paused (not advancing). Read by the §5.2
+   * per-frame state machine to decouple "make it paint" (start MUTED so muted
+   * autoplay — allowed by every policy — gets it decoding) from "restore its
+   * audio route" (only once it is CONFIRMED playing, by THIS frame's plan, so
+   * there is no stale-closure mis-route). Real `HTMLVideoElement` exposes it;
+   * test fakes already declare it. Optional + read-only so a bare structural
+   * fake still satisfies the interface.
+   */
+  readonly paused?: boolean;
   play(): Promise<void> | void;
   pause(): void;
 }
@@ -305,15 +315,28 @@ export class VideoSourcePool {
       // RC-B: assign exactly the planned URL (== the compare key).
       el.src = plan.desiredUrl;
     }
-    // Route embedded audio: a non-detached track's decode element carries its
-    // own audio (unmuted); a detached track is muted so its paired audio
-    // sequence is the sole source (no double audio). RISK 2.
-    el.muted = plan.muteAudio;
     this._ensureSeeked(el, plan.desiredSourceTime, plan.needsSrcSwap);
 
     if (isPlaying) {
-      this._ensurePlaying(el);
+      // §5.1 / §5.2: decouple "make the element decode/paint" from "should it be
+      // heard". An element not yet confirmed playing is (re)started MUTED — muted
+      // autoplay is allowed under every autoplay policy, so this guarantees it
+      // decodes and paints. Only once it is CONFIRMED playing do we restore this
+      // frame's audio route, reading the CURRENT plan.muteAudio (never a captured
+      // closure) so switching to a detached clip mutes on the very next frame.
+      if (el.paused === true) {
+        el.muted = true;
+        this._kickPlay(el);
+      } else {
+        // Confirmed playing — route embedded audio: a non-detached track's
+        // decode element carries its own audio (unmuted); a detached track is
+        // muted so its paired audio sequence is the sole source (no double
+        // audio). RISK 2.
+        el.muted = plan.muteAudio;
+      }
     } else {
+      // Paused: hold the final audio route but make no sound.
+      el.muted = plan.muteAudio;
       this._pauseQuietly(el);
     }
 
@@ -352,13 +375,56 @@ export class VideoSourcePool {
     this._pauseQuietly(prewarm);
   }
 
-  private _ensurePlaying(el: VideoElementLike): void {
+  /**
+   * Ensure the element is decoding/painting (§5.1). Starts it MUTED — muted
+   * autoplay is allowed by every autoplay policy — so the canvas can `drawImage`
+   * it; the audio route is restored by {@link _apply} once `el.paused === false`.
+   *
+   * If `play()` rejects (autoplay gate / interrupted by a near-simultaneous
+   * seek), retry ONCE when the element next fires `canplay` — but ONLY when it is
+   * a real `EventTarget`. The structural {@link VideoElementLike} stub has no
+   * `addEventListener` (R-4), so a plain fake keeps the old swallow-the-rejection
+   * behavior and never throws. `__ecliptrixPlayKick` de-dupes the listener so a
+   * rejection every frame does not stack listeners (idempotent).
+   */
+  private _kickPlay(el: VideoElementLike): void {
+    el.muted = true;
     const result = el.play();
-    if (result && typeof (result as Promise<void>).catch === 'function') {
-      // play() rejects when interrupted by a near-simultaneous seek/pause;
-      // benign and self-heals next tick. Swallow only the promise rejection.
-      (result as Promise<void>).catch(() => undefined);
+    if (!result || typeof (result as Promise<void>).catch !== 'function') {
+      return;
     }
+    (result as Promise<void>).catch(() => {
+      this._scheduleCanplayRetry(el);
+    });
+  }
+
+  private _scheduleCanplayRetry(el: VideoElementLike): void {
+    const target = el as VideoElementLike & {
+      addEventListener?: (
+        type: string,
+        listener: () => void,
+        opts?: { once?: boolean },
+      ) => void;
+      __ecliptrixPlayKick?: boolean;
+    };
+    if (typeof target.addEventListener !== 'function' || target.__ecliptrixPlayKick) {
+      // Plain object stub (no EventTarget) → mirror the old behavior: the
+      // rejection is already swallowed by the .catch above. Already-armed → skip.
+      return;
+    }
+    target.__ecliptrixPlayKick = true;
+    target.addEventListener(
+      'canplay',
+      () => {
+        target.__ecliptrixPlayKick = false;
+        target.muted = true;
+        const retry = el.play();
+        if (retry && typeof (retry as Promise<void>).catch === 'function') {
+          (retry as Promise<void>).catch(() => undefined);
+        }
+      },
+      { once: true },
+    );
   }
 
   private _pauseQuietly(el: VideoElementLike): void {

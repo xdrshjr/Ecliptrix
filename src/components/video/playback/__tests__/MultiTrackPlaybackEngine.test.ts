@@ -369,6 +369,126 @@ describe('MultiTrackPlaybackEngine — multi-track + audioDetached', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// §5.3 — readiness-driven single repaint (paused first frame / scrub / late
+// metadata). Needs an EventTarget-like decode element.
+// ---------------------------------------------------------------------------
+
+type EventfulVideo = FakeVideo & {
+  addEventListener(type: string, cb: () => void): void;
+  removeEventListener(type: string, cb: () => void): void;
+  dispatchEvent(type: string): void;
+  listenerCount(type: string): number;
+};
+
+function fakeEventfulVideoEl(): EventfulVideo {
+  const handlers: Array<{ type: string; cb: () => void }> = [];
+  const el = {
+    src: '',
+    currentTime: 0,
+    readyState: 4,
+    videoWidth: 1920,
+    videoHeight: 1080,
+    paused: true,
+    muted: false,
+    play() {
+      el.paused = false;
+    },
+    pause() {
+      el.paused = true;
+    },
+    addEventListener(type: string, cb: () => void) {
+      handlers.push({ type, cb });
+    },
+    removeEventListener(type: string, cb: () => void) {
+      for (let i = handlers.length - 1; i >= 0; i--) {
+        if (handlers[i].type === type && handlers[i].cb === cb) handlers.splice(i, 1);
+      }
+    },
+    dispatchEvent(type: string) {
+      handlers.filter((h) => h.type === type).forEach((h) => h.cb());
+    },
+    listenerCount(type: string) {
+      return handlers.filter((h) => h.type === type).length;
+    },
+  };
+  return el as unknown as EventfulVideo;
+}
+
+function buildReadinessHarness(videoEl: VideoElementLike) {
+  const control = makeControlledClock();
+  const { canvas } = makeMockCanvas();
+  const compositor = new CanvasCompositor(() => 0);
+  const renderSpy = vi.spyOn(compositor, 'renderFrame');
+  const engine = new MultiTrackPlaybackEngine({
+    clock: control.clock,
+    compositor,
+    playhead: new PlayheadController({ throttleMs: 0, now: () => 0 }),
+    now: () => 0,
+  });
+  engine.attach({
+    canvas,
+    resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
+    resolveAudioElement: () => null,
+    resolveSource: (s) => `/${s.id}.mp4`,
+    timeline: {
+      getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
+      getAudioSyncGroups: () => [],
+      getSubtitleItems: () => [],
+      getImageItems: () => [],
+      getTotalDuration: () => 10,
+      getCurrentTime: () => 0,
+      setCurrentTime: () => undefined,
+    },
+  });
+  return { engine, renderSpy, control };
+}
+
+describe('MultiTrackPlaybackEngine — §5.3 readiness repaint', () => {
+  it('loadeddata_triggers_single_paused_repaint: one extra repaint, phase stays non-playing', () => {
+    const videoEl = fakeEventfulVideoEl();
+    const { engine, renderSpy } = buildReadinessHarness(videoEl);
+    // attach already painted the first frame; readiness listeners are bound.
+    expect(videoEl.listenerCount('loadeddata')).toBe(1);
+    expect(engine.getPhase()).not.toBe('playing');
+    const before = renderSpy.mock.calls.length;
+    videoEl.dispatchEvent('loadeddata');
+    expect(renderSpy.mock.calls.length).toBe(before + 1);
+    expect(engine.getPhase()).not.toBe('playing');
+  });
+
+  it('does NOT repaint on a readiness event while playing (rAF owns the playing path)', () => {
+    const videoEl = fakeEventfulVideoEl();
+    const { engine, renderSpy } = buildReadinessHarness(videoEl);
+    engine.play();
+    expect(engine.getPhase()).toBe('playing');
+    const before = renderSpy.mock.calls.length;
+    videoEl.dispatchEvent('seeked');
+    expect(renderSpy.mock.calls.length).toBe(before);
+  });
+
+  it('dispose_unbinds_readiness_listeners: a later loadeddata does not repaint', () => {
+    const videoEl = fakeEventfulVideoEl();
+    const { engine, renderSpy } = buildReadinessHarness(videoEl);
+    engine.dispose();
+    expect(videoEl.listenerCount('loadeddata')).toBe(0);
+    expect(videoEl.listenerCount('seeked')).toBe(0);
+    expect(videoEl.listenerCount('canplay')).toBe(0);
+    const after = renderSpy.mock.calls.length;
+    videoEl.dispatchEvent('loadeddata');
+    expect(renderSpy.mock.calls.length).toBe(after);
+  });
+
+  it('readiness_bind_skips_plain_fake: a fake without addEventListener is skipped (no throw)', () => {
+    expect(() =>
+      buildHarness({
+        videoGroups: [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
+        total: 10,
+      }),
+    ).not.toThrow();
+  });
+});
+
 describe('MultiTrackPlaybackEngine — dispose', () => {
   it('dispose stops the clock, detaches the compositor, and blocks re-attach', () => {
     const h = buildHarness({
