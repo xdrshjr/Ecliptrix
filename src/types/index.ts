@@ -570,6 +570,9 @@ export interface MaterialItem {
     fileName?: string; // 文件名
     isLocalFile?: boolean; // 是否为本地文件
     downloadError?: string; // 下载错误信息
+    // 缩略图来源：`undefined`（不写）＝后端落盘海报（默认，可持久、重载仍在）；
+    // 'client'＝客户端 canvas 抽帧 dataURL（内存态，不持久化，见 (E) 持久化剥离）。
+    thumbnailSource?: 'backend' | 'client';
     [key: string]: any; // 允许其他自定义属性
   };
   

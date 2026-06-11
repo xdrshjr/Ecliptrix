@@ -149,3 +149,15 @@ export function createLocalMaterialFromUpload(
 export function isLocalStorageReference(value: string | null | undefined): boolean {
   return isLocalMediaReference(value) && !isCachedRemoteStoragePath(value);
 }
+
+/**
+ * True when ``value`` is an inline ``data:`` URL (e.g. a client-side canvas
+ * thumbnail). Such inline payloads are memory-only: they must never be PUT in
+ * the autosave loop or written into an exported project (spec 06 §2.1 — keep
+ * large derived data out of the project JSON). Shared by the upload fallback,
+ * the autosave normaliser and the timeline export guard so the predicate
+ * cannot diverge across the three persistence boundaries.
+ */
+export function isDataUrl(value: string | null | undefined): boolean {
+  return typeof value === 'string' && value.startsWith('data:');
+}

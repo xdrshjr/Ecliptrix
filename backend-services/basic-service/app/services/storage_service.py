@@ -593,8 +593,11 @@ class StorageService:
 
         # --- Extract metadata via ffprobe ---
         try:
+            # Resolve the binary explicitly (mirrors material_download_service):
+            # "installed but not on the subprocess PATH" otherwise fails silently.
+            ffprobe_bin = shutil.which("ffprobe") or "ffprobe"
             probe_cmd = [
-                "ffprobe", "-v", "quiet", "-print_format", "json",
+                ffprobe_bin, "-v", "quiet", "-print_format", "json",
                 "-show_format", "-show_streams", str(absolute_path),
             ]
             probe_result = subprocess.run(
@@ -625,7 +628,13 @@ class StorageService:
             logger.warning("Video metadata extraction failed", {"error": str(exc)})
 
         # --- Generate thumbnail via ffmpeg ---
-        if generate_thumbnail and duration is not None:
+        # Decoupled from ``duration is not None`` (RV-4): some containers
+        # (fragmented MP4/MOV/WebM) report no ``format.duration``, only a
+        # per-stream one, which used to skip thumbnail generation entirely and
+        # leave the upload-video path with no poster at all. We now attempt the
+        # poster whenever the caller asked for one and degrade the seek offset
+        # safely when the duration is unknown or very short.
+        if generate_thumbnail:
             try:
                 # spec 03 §2.2: relocate the poster to the per-material
                 # thumbnails dir so spec 06 can clean it up by materialId.
@@ -641,11 +650,18 @@ class StorageService:
                 thumb_absolute = self._validate_path(thumb_relative)
                 thumb_absolute.parent.mkdir(parents=True, exist_ok=True)
 
-                midpoint = duration / 2 if duration > 2 else min(duration, 1)
+                # >2s: midpoint. Known-but-short (≤2s, incl. <1s): clamp to
+                # min(duration, 1.0) so we never seek past the last frame
+                # (RV-4 keeps the original <1s guard). Unknown (None/0): 1.0s.
+                midpoint = (
+                    duration / 2 if (duration and duration > 2)
+                    else (min(duration, 1.0) if duration else 1.0)
+                )
                 max_width = settings.upload.thumbnail.thumbnail_max_width
 
+                ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
                 ffmpeg_cmd = [
-                    "ffmpeg", "-ss", str(midpoint),
+                    ffmpeg_bin, "-ss", str(midpoint),
                     "-i", str(absolute_path),
                     "-vframes", "1",
                     "-q:v", str(settings.upload.thumbnail.thumbnail_quality),

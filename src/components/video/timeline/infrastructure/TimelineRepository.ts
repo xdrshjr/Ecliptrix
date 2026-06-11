@@ -22,6 +22,7 @@ import type {
   SequenceTransitionData,
 } from '../domain/types';
 import { TimelineExportError, TimelineImportError } from './errors';
+import { isDataUrl } from '@/components/video/lib/localMaterial';
 
 /**
  * Ensure legacy track names carry a numeric suffix. Older exports stored names
@@ -260,7 +261,9 @@ export class TimelineRepository implements ITimelineRepository {
               duration: item.duration,
               trackId: item.trackId,
               color: item.color,
-              thumbnailUrl: item.thumbnailUrl,
+              // local-upload-video-thumbnail-fix §3.2(E2): never write an inline
+              // `data:` poster into the export (memory-only, re-derived on load).
+              thumbnailUrl: isDataUrl(item.thumbnailUrl) ? undefined : item.thumbnailUrl,
               // spec 06 §2.1: STOP inlining waveform peaks. The large
               // `waveformData` array is intentionally NOT written — peaks are
               // re-resolved by materialId via spec 04 on load. (Legacy inline
@@ -293,7 +296,8 @@ export class TimelineRepository implements ITimelineRepository {
           name: material.name,
           type: material.type,
           duration: material.duration,
-          thumbnailUrl: material.thumbnailUrl,
+          // §3.2(E2): strip inline `data:` posters from the exported JSON.
+          thumbnailUrl: isDataUrl(material.thumbnailUrl) ? undefined : material.thumbnailUrl,
           url: material.url,
         })),
       };

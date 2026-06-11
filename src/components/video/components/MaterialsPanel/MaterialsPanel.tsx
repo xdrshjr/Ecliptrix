@@ -27,6 +27,7 @@ import { listPacks, deletePack } from '@/lib/api/storyboard';
 import { listImagePacks, deleteImagePack, ImagePack } from '@/lib/api/imagePack';
 import { listFramePacks, deleteFramePack, deleteFrameFromPack } from '@/lib/api/framePack';
 import FramePackView from './FramePackView';
+import MaterialThumbnail from './MaterialThumbnail';
 import { http, ApiError } from '@/lib/api/http-client';
 import MaterialCacheBadge from '../MaterialCacheBadge';
 import { canPreviewDirectLocalMaterial } from '../../lib/localMaterial';
@@ -2100,48 +2101,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 >
                   {/* 缩略图区域 */}
                   <div className="aspect-video bg-muted relative">
-                    {material.thumbnailUrl ? (
-                      <img 
-                        src={material.thumbnailUrl} 
-                        alt={material.name}
-                        className="w-full h-full object-cover pointer-events-none"
-                        onLoad={() => {
-                          logger.debug('thumb-loaded', {
-                            materialId: material.id,
-                            thumbnailUrl: material.thumbnailUrl,
-                            materialType: material.type,
-                          });
-                        }}
-                        onError={(e) => {
-                          console.error(`[MaterialsPanel] 缩略图加载失败: ${material.name}`, {
-                            materialId: material.id,
-                            thumbnailUrl: material.thumbnailUrl,
-                            materialType: material.type,
-                            error: e
-                          });
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        {material.type === 'audio' ? (
-                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6z" />
-                          </svg>
-                        ) : material.type === 'image' ? (
-                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        ) : material.type === 'subtitle' ? (
-                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v12a1 1 0 01-1 1H8a1 1 0 01-1-1V4m0 0H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V5a1 1 0 00-1-1h-2M9 7h6m-6 4h6m-2 4h2" />
-                          </svg>
-                        ) : (
-                          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                        )}
-                      </div>
-                    )}
+                    <MaterialThumbnail material={material} />
 
                     {/* 音频播放控制覆盖层 */}
                     {material.type === 'audio' && (

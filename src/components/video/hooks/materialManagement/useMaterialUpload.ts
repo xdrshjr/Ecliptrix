@@ -2,7 +2,8 @@ import { Dispatch, MutableRefObject, SetStateAction, useCallback, useState } fro
 import { MaterialItem, MaterialType } from '@/types';
 import { VideoEditingLogger } from '../../utils';
 import { http, ApiError } from '@/lib/api/http-client';
-import { createLocalMaterialFromUpload } from '../../lib/localMaterial';
+import { createLocalMaterialFromUpload, isDataUrl } from '../../lib/localMaterial';
+import { extractVideoThumbnail } from '../../utils/extractVideoThumbnail';
 
 // 上传任务接口
 interface UploadTask {
@@ -92,6 +93,22 @@ export function useMaterialUpload(params: UseMaterialUploadParams): UseMaterialU
         // 直接使用服务器URL（通过Next.js代理 /api/storage/files/ 可访问）
         const videoMaterial = createLocalMaterialFromUpload(material, file, result);
 
+        // 后端 ffmpeg 海报是首选（落盘、可持久）；若缺失（ffprobe 取不到时长、
+        // ffmpeg 失败或被跳过），回退到与 AI/故事板路径一致的客户端 canvas 抽帧。
+        // extractVideoThumbnail 内部自带 10s 超时与跨域代理，返回 dataURL 或 null。
+        // 仅在 thumbnailSource==='client' 时显式标注；后端海报（默认来源）不写该键，
+        // 「undefined === 后端来源」是约定（见 §6）。该标注是 (E) 持久化剥离的判定键。
+        if (!videoMaterial.thumbnailUrl && videoMaterial.url) {
+          const dataUrl = await extractVideoThumbnail(videoMaterial.url);
+          if (dataUrl) {
+            videoMaterial.thumbnailUrl = dataUrl;
+            videoMaterial.metadata = {
+              ...videoMaterial.metadata,
+              thumbnailSource: 'client', // 标注为内存态客户端缩略图（不持久化，见 (E)）
+            };
+          }
+        }
+
         logger.info('视频素材项创建完成', {
           materialId: videoMaterial.id,
           fileName: file.name
@@ -159,12 +176,16 @@ export function useMaterialUpload(params: UseMaterialUploadParams): UseMaterialU
     ));
 
     try {
+      // 客户端兜底产出的 `data:` 缩略图不能被后端按 URL 拉取；此时改为不传
+      // thumbnail_url、置 use_thumbnail:false，让后端从 video_url 自行抽帧分析。
+      // 仅后端海报（http(s)/相对路径）才作为 analyze 的 thumbnail_url 透传。
+      const useBackendThumbnail = !!material.thumbnailUrl && !isDataUrl(material.thumbnailUrl);
       let data: any;
       try {
         data = await http.post<any>('/api/video/analyze', {
           video_url: material.url || material.serverUrl,
-          use_thumbnail: true,
-          thumbnail_url: material.thumbnailUrl,
+          use_thumbnail: useBackendThumbnail,
+          ...(useBackendThumbnail ? { thumbnail_url: material.thumbnailUrl } : {}),
         }, { timeoutMs: 600_000 });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
