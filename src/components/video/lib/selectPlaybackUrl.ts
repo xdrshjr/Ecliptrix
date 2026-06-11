@@ -191,15 +191,23 @@ export function selectPlaybackUrl(
   const directLocal = _directLocalStorageCandidate(m);
 
   if (purpose === 'export') {
+    // Export references are DATA consumed by the backend compositor (not a
+    // browser <video>.src). The backend resolves same-origin paths against its
+    // own filesystem root, so we must keep them relative. Absolutising against
+    // `window.location.origin` would inject the loopback host
+    // (http://localhost:PORT/...) and trip the backend SSRF guard
+    // (_guard_request_urls → url_guard `_BLOCKED_HOSTS`). This mirrors
+    // CompositionAdapter.selectCanonicalExportReference, which also keeps
+    // same-origin references relative. See docs/diagnoses/video-export-localhost-ssrf-block.
     if (directLocal) {
-      return toAbsolutePlaybackUrl(directLocal) ?? directLocal;
+      return directLocal;
     }
 
     const local = [m.localResolvedUrl, m.cacheUrl, m.url, m.serverUrl].find(
       candidate => isLocalMediaReference(candidate),
     );
     if (local) {
-      return toAbsolutePlaybackUrl(local) ?? local;
+      return local;
     }
 
     // Export NEVER reads preview-proxy / media-proxy fields. Server-side

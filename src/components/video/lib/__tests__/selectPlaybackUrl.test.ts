@@ -35,7 +35,7 @@ describe('selectPlaybackUrl', () => {
       },
       { purpose: 'export' },
     );
-    expect(url).toBe(`${window.location.origin}/api/storage/files/cached_materials/pexels/1.mp4`);
+    expect(url).toBe('/api/storage/files/cached_materials/pexels/1.mp4');
   });
 
   it('export prefers a same-origin url before remote serverUrl', () => {
@@ -46,7 +46,7 @@ describe('selectPlaybackUrl', () => {
       },
       { purpose: 'export' },
     );
-    expect(url).toBe(`${window.location.origin}/api/storage/files/video/local.mp4`);
+    expect(url).toBe('/api/storage/files/video/local.mp4');
   });
 
   it('passes through absolute http(s) cacheUrl unchanged', () => {
@@ -122,7 +122,7 @@ describe('selectPlaybackUrl', () => {
 
     const url = selectPlaybackUrl(material, { purpose: 'export' });
 
-    expect(url).toBe(`${window.location.origin}/api/storage/files/video/local.mp4`);
+    expect(url).toBe('/api/storage/files/video/local.mp4');
     expect(url).not.toContain('blob:');
     expect(url).not.toContain('/api/media/proxy');
     expect(url).not.toContain('preview-proxies');
