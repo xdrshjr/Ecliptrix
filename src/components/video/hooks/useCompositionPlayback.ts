@@ -53,6 +53,10 @@ import {
   type ResolveSequencePlaybackUrlOptions,
 } from '../lib/resolveSequencePlaybackUrl';
 import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
+import {
+  REACT_PLAYHEAD_THROTTLE_MS,
+  PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC,
+} from '../playback/internal/constants';
 import type { PreviewCanvasHandle } from '../components/VideoPlayerPanel/PreviewCanvas';
 
 // ---------------------------------------------------------------------------
@@ -307,6 +311,31 @@ export function useCompositionPlayback(
   currentTimeRef.current = currentTime;
   onTimeUpdateRef.current = onTimeUpdate;
 
+  // timeline-preview-playback-stutter fix (A): throttle the engine→React clock
+  // push. The engine reports composition time at ~60Hz; pushing every tick into
+  // the parent's `timelineCurrentTime` re-rendered (and formerly re-serialised)
+  // the whole editing tree per frame, starving the compositor's rAF loop. We
+  // push to React at most every REACT_PLAYHEAD_THROTTLE_MS (~10Hz); pass
+  // `force` on discrete events (pause flush) that must bypass the throttle.
+  const lastReactPushMsRef = useRef(0);
+  const pushReactTime = useCallback((t: number, force: boolean) => {
+    const now =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+    if (!force && now - lastReactPushMsRef.current < REACT_PLAYHEAD_THROTTLE_MS) {
+      return;
+    }
+    lastReactPushMsRef.current = now;
+    onTimeUpdateRef.current?.(t);
+  }, []);
+
+  // Tracks whether the engine was playing, so the prop-driven transport effect
+  // only flushes the precise stop position on a real playing→pause transition
+  // (not on an initial paused mount, where the restored position is owned by the
+  // scrub effect and the idle clock has no meaningful advanced time).
+  const wasPlayingRef = useRef(false);
+
   const isReady = useMemo(
     () =>
       isCompositionReady(
@@ -333,16 +362,20 @@ export function useCompositionPlayback(
         compositionRef.current?.totalCompositionDuration ?? 0,
       getCurrentTime: () => currentTimeRef.current ?? 0,
       setCurrentTime: (t: number) => {
+        // Keep the engine-rate refs PRECISE (full ~60Hz): the prop-driven scrub
+        // effect's echo detection and the next play()/seek() must read the
+        // freshest position. `lastSeekedTimeRef` also marks this as a self-
+        // originated update so the scrub effect does NOT fight the clock.
         currentTimeRef.current = t;
-        // The engine's OWN clock advance flows back to the parent as the
-        // `currentTime` prop; mark it seeked so the scrub effect does NOT
-        // re-seek (fight the clock) on a self-originated time update.
         lastSeekedTimeRef.current = t;
-        onTimeUpdateRef.current?.(t);
+        // …but THROTTLE the React-state mirror (fix A): a ~60Hz push re-rendered
+        // the whole editing tree every frame and starved the compositor rAF.
+        pushReactTime(t, false);
       },
     };
-    // resolverOpts is locked; the facade closures read refs, so this is stable.
-  }, []);
+    // resolverOpts is locked; the facade closures read refs + the stable
+    // throttled pushReactTime, so this stays stable across renders.
+  }, [pushReactTime]);
 
   // Attach / dispose the engine for the lifetime of the enabled mount. We
   // attach once (deps = [enabled]) and read live data through refs, so changing
@@ -420,11 +453,31 @@ export function useCompositionPlayback(
     const engine = engineRef.current;
     if (!engine) return;
     if (isPlaying) {
+      wasPlayingRef.current = true;
       engine.play();
     } else {
+      // fix A-c: on a real playing→pause, capture the exact displayed-frame
+      // time BEFORE pausing (engine.pause() stops the clock) and flush it to
+      // React bypassing the throttle, so the timecode/playhead snap to where
+      // playback stopped instead of lagging up to one throttle window. Skip on
+      // an initial paused mount (wasPlayingRef false) — there the restored
+      // position is owned by the scrub effect below.
+      let stoppedAt = NaN;
+      if (
+        wasPlayingRef.current &&
+        typeof engine.getCompositionTime === 'function'
+      ) {
+        stoppedAt = engine.getCompositionTime();
+      }
       engine.pause();
+      if (Number.isFinite(stoppedAt)) {
+        currentTimeRef.current = stoppedAt;
+        lastSeekedTimeRef.current = stoppedAt;
+        pushReactTime(stoppedAt, true);
+      }
+      wasPlayingRef.current = false;
     }
-  }, [isPlaying, enabled, hostVersion]);
+  }, [isPlaying, enabled, hostVersion, pushReactTime]);
 
   // BUG 1 fix — prop-driven SCRUB. When the parent moves the timeline cursor,
   // re-seek the engine so the preview repaints at the new time. The guard reads
@@ -439,6 +492,29 @@ export function useCompositionPlayback(
     if (!engine) return;
     const last = lastSeekedTimeRef.current;
     if (last !== null && Math.abs(last - currentTime) < 1e-6) return;
+
+    // fix D: while the engine drives its OWN clock (playing), a `currentTime`
+    // prop change is almost always the throttled echo of the engine's own
+    // advance — NOT a user scrub. Re-seeking to that (slightly stale) echo
+    // yanks the playhead backward and re-anchors the clock (§3.5 jitter, made
+    // unavoidable once fix A throttles the prop). Treat it as a real scrub only
+    // when it diverges from the engine's LIVE composition time by more than the
+    // throttle+render lag tolerance; a genuine ruler drag lands well outside it.
+    // Paused scrubs (phase !== 'playing') keep the immediate-seek behaviour so
+    // a paused user scrub still repaints the new frame at once.
+    if (
+      engine.getPhase() === 'playing' &&
+      typeof engine.getCompositionTime === 'function'
+    ) {
+      const live = engine.getCompositionTime();
+      if (
+        Number.isFinite(live) &&
+        Math.abs(live - currentTime) <= PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC
+      ) {
+        return;
+      }
+    }
+
     lastSeekedTimeRef.current = currentTime;
     currentTimeRef.current = currentTime;
     engine.seek(currentTime);

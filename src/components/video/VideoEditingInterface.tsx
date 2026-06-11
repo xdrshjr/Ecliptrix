@@ -94,6 +94,15 @@ function parseAgentScriptToSegments(text: string): ScriptSegment[] {
   });
 }
 
+/**
+ * timeline-preview-playback-stutter fix (B-b). Debounce (ms) after the last
+ * playhead change before the settled position is persisted into `content`.
+ * Must exceed the playhead push cadence (~one REACT_PLAYHEAD_THROTTLE_MS window)
+ * so it never fires mid-playback, yet stay short enough that a pause/scrub is
+ * saved almost immediately.
+ */
+const PLAYHEAD_PERSIST_SETTLE_MS = 500;
+
 interface VideoEditingInterfaceProps {
   taskId: string;
   /** Owning project id when the editor is mounted from VideoEditorContainer.
@@ -249,7 +258,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     const updatedContent: VideoEditingTaskContent = {
       ...content,
       uiState: {
-        timelineCurrentTime,
+        // timeline-preview-playback-stutter fix (B): read the playhead time from
+        // a ref (latest committed value) instead of the state var, so it is NOT
+        // a dependency / change-trigger of THIS effect. The 60Hz→React playhead
+        // must not churn `content` (→ setContent → per-frame whole-project
+        // JSON.stringify in autosave); it rides along here only when the effect
+        // already runs for some OTHER reason, and is otherwise persisted by the
+        // settle-debounce effect below when playback/scrub stops.
+        timelineCurrentTime: timelineCurrentTimeRef.current,
         currentTimelineState,
         isPolishModalOpen,
         isScriptGenerationModalOpen,
@@ -266,9 +282,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       },
     };
 
-    // Only update if state actually changed to avoid infinite loops
+    // Only update if state actually changed to avoid infinite loops.
+    // NB (fix B): `timelineCurrentTime` is intentionally NOT compared here — the
+    // high-frequency playhead must not trigger per-frame persistence. It is
+    // persisted by the settle-debounce effect once motion stops.
     const hasStateChanged =
-      content.uiState?.timelineCurrentTime !== timelineCurrentTime ||
       content.uiState?.isPolishModalOpen !== isPolishModalOpen ||
       content.uiState?.isScriptGenerationModalOpen !== isScriptGenerationModalOpen ||
       content.uiState?.scriptGenerationStartTime !== scriptGenerationStartTime ||
@@ -285,7 +303,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     if (hasStateChanged) {
       logger.debug('Persisting UI state', {
         taskId,
-        timelineCurrentTime,
+        timelineCurrentTime: timelineCurrentTimeRef.current,
         hasTimelineState: !!currentTimelineState,
         isPolishModalOpen,
         isScriptGenerationModalOpen,
@@ -298,8 +316,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       });
       onUpdateContent(updatedContent);
     }
+    // fix B: `timelineCurrentTime` is deliberately absent from these deps — the
+    // playhead time is read via `timelineCurrentTimeRef` above so a 60Hz/10Hz
+    // playhead tick does not re-run this serialising effect every frame.
   }, [
-    timelineCurrentTime,
     currentTimelineState,
     isPolishModalOpen,
     isScriptGenerationModalOpen,
@@ -314,6 +334,29 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     content,
     logger
   ]);
+
+  // timeline-preview-playback-stutter fix (B-b): persist the live playhead
+  // position only when it SETTLES — i.e. playback paused / a scrub ended — never
+  // per-frame. Each playhead change re-arms a short debounce; during continuous
+  // playback (ticks arrive every ~one throttle window) the timer is reset before
+  // it can fire, so `content`/autosave stay quiet. When motion stops, the timer
+  // fires once and writes the settled position into `content`, so reopening the
+  // project restores where the user left off (the boundary B-b requires) without
+  // the 60Hz whole-project serialization storm.
+  useEffect(() => {
+    if (!content) return undefined;
+    if (content.uiState?.timelineCurrentTime === timelineCurrentTime) return undefined;
+    const settleTimer = setTimeout(() => {
+      onUpdateContent({
+        ...content,
+        uiState: {
+          ...(content.uiState ?? {}),
+          timelineCurrentTime,
+        },
+      });
+    }, PLAYHEAD_PERSIST_SETTLE_MS);
+    return () => clearTimeout(settleTimer);
+  }, [timelineCurrentTime, content, onUpdateContent]);
 
   // 组件挂载时清理残留的 isStreaming 状态
   // 持久化的消息可能带有 isStreaming: true（如果上次会话在流式传输中中断），

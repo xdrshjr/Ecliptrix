@@ -181,6 +181,19 @@ export class MultiTrackPlaybackEngine {
     return this._phase;
   }
 
+  /**
+   * Composition time of the LAST rendered frame — i.e. what the canvas is
+   * currently showing. The orchestration hook reads this to (a) flush the
+   * precise stop position into React on pause and (b) distinguish engine echo
+   * from a real user scrub while playing
+   * (timeline-preview-playback-stutter A-c / D). Uses `_lastRenderComp` (not
+   * `clock.getCompositionTime()`) because the clock base is stale after a
+   * paused seek; the last-rendered comp is always the displayed truth.
+   */
+  getCompositionTime(): number {
+    return this._lastRenderComp;
+  }
+
   subscribe(listener: (phase: MultiTrackPhase) => void): () => void {
     this._listeners.add(listener);
     return () => {

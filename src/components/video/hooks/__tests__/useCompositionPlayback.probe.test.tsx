@@ -31,6 +31,9 @@ const ctorSpy = vi.fn();
 let lastDeps: MultiTrackAttachDeps | null = null;
 let phase = 'idle';
 let attachShouldThrow = false;
+// Controllable "live composition time" the mock engine reports — drives the
+// fix A-c pause flush and the fix D playing-echo discrimination.
+let compTime = 0;
 
 vi.mock('../../playback', async () => {
   const actual = await vi.importActual<typeof import('../../playback')>(
@@ -56,6 +59,9 @@ vi.mock('../../playback', async () => {
     }
     getPhase() {
       return phase;
+    }
+    getCompositionTime() {
+      return compTime;
     }
     dispose() {
       disposeSpy();
@@ -132,6 +138,7 @@ beforeEach(() => {
   lastDeps = null;
   phase = 'idle';
   attachShouldThrow = false;
+  compTime = 0;
 });
 
 describe('useCompositionPlayback — attach-once invariant (no re-attach on data churn)', () => {
@@ -338,6 +345,75 @@ describe('useCompositionPlayback — prop-driven transport (BUG 1b fix)', () => 
     expect(phase).toBe('playing');
     act(() => rerender({ isPlaying: false }));
     expect(phase).toBe('paused');
+  });
+});
+
+describe('useCompositionPlayback — timeline-preview-playback-stutter (A / A-c / D)', () => {
+  function renderWithTime(initialPlaying: boolean, onTimeUpdate?: (t: number) => void) {
+    const host = fakeHost();
+    const harness = renderHook(
+      (props: { isPlaying: boolean; currentTime: number }) =>
+        useCompositionPlayback({
+          compositionPlayback: composition({
+            videoSequences: [vseq({ id: 'a', materialId: 'mat-1' })],
+          }),
+          materials: [directLocalMaterial('mat-1')],
+          timelineState: undefined,
+          preferPreviewProxy: true,
+          preferLocalProxy: true,
+          currentTime: props.currentTime,
+          isPlaying: props.isPlaying,
+          onTimeUpdate,
+          aspectRatio: 16 / 9,
+          enabled: true,
+        }),
+      { initialProps: { isPlaying: initialPlaying, currentTime: 0 } },
+    );
+    act(() => harness.result.current.hostRef(host as never));
+    return harness;
+  }
+
+  it('A — throttles the engine→React push: rapid clock advances coalesce into one push', () => {
+    const onTimeUpdate = vi.fn();
+    renderWithTime(false, onTimeUpdate);
+    onTimeUpdate.mockClear();
+    // Simulate the engine clock advancing many times within one throttle window.
+    act(() => {
+      for (let i = 1; i <= 5; i += 1) lastDeps!.timeline.setCurrentTime(i);
+    });
+    // Only the first push escapes the throttle window; the rest are dropped.
+    expect(onTimeUpdate).toHaveBeenCalledTimes(1);
+    expect(onTimeUpdate).toHaveBeenCalledWith(1);
+  });
+
+  it('A-c — flushes the EXACT stop position to React on a real playing→pause', () => {
+    const onTimeUpdate = vi.fn();
+    const { rerender } = renderWithTime(false, onTimeUpdate);
+    // Enter playback (wasPlaying becomes true) then advance the engine clock.
+    act(() => rerender({ isPlaying: true, currentTime: 0 }));
+    compTime = 4.237; // engine's live/last-rendered composition time
+    onTimeUpdate.mockClear();
+    // Pause: the flush must bypass the throttle and push the precise comp.
+    act(() => rerender({ isPlaying: false, currentTime: 0 }));
+    expect(onTimeUpdate).toHaveBeenCalledWith(4.237);
+  });
+
+  it('D — a playing-time prop change WITHIN tolerance of the live clock does NOT re-seek (echo)', () => {
+    const { rerender } = renderWithTime(true);
+    compTime = 5; // engine live composition time
+    seekSpy.mockClear();
+    // The throttled prop lags the engine by < tolerance → engine echo, not a scrub.
+    act(() => rerender({ isPlaying: true, currentTime: 4.9 }));
+    expect(seekSpy).not.toHaveBeenCalled();
+  });
+
+  it('D — a playing-time prop change FAR from the live clock DOES seek (real user scrub)', () => {
+    const { rerender } = renderWithTime(true);
+    compTime = 5;
+    seekSpy.mockClear();
+    // A ruler drag lands far outside the echo tolerance → must seek.
+    act(() => rerender({ isPlaying: true, currentTime: 30 }));
+    expect(seekSpy).toHaveBeenCalledWith(30);
   });
 });
 

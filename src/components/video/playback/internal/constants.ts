@@ -22,6 +22,28 @@ export const ADAPTIVE_RECOVER_HOLD_FRAMES = 120;
 /** Spec §3.2. PlayheadController throttle window. */
 export const PLAYHEAD_THROTTLE_MS = 16;
 
+/**
+ * timeline-preview-playback-stutter fix (A). Throttle window (ms) for pushing
+ * the engine clock into REACT state (the parent tree's `timelineCurrentTime`).
+ * The engine clock, Canvas compositing and audio sync stay at full frame rate;
+ * only the React-state mirror is throttled here so the whole editing tree
+ * re-renders at ~10Hz instead of ~60Hz. SEPARATE from {@link PLAYHEAD_THROTTLE_MS}
+ * (the engine's single-writer cadence into the facade), which is intentionally
+ * kept at one rAF tick so the scrub-guard refs stay frame-precise.
+ */
+export const REACT_PLAYHEAD_THROTTLE_MS = 100;
+
+/**
+ * timeline-preview-playback-stutter fix (D). Tolerance (seconds) for treating a
+ * prop-driven `currentTime` change as engine echo rather than a real user scrub
+ * WHILE PLAYING. The React playhead lags the engine clock by up to one
+ * {@link REACT_PLAYHEAD_THROTTLE_MS} window plus render time; a value within
+ * this band of the engine's live composition time is its own throttled echo and
+ * must NOT re-seek (which would yank the clock backward — §3.5). A genuine ruler
+ * drag lands far outside this band and still seeks.
+ */
+export const PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC = 0.35;
+
 // ---------------------------------------------------------------------------
 // Phase 3 — A/B Buffer + Preview Proxy
 // ---------------------------------------------------------------------------
