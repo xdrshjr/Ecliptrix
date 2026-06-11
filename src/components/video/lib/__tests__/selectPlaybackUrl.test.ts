@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { selectPlaybackUrl, toAbsolutePlaybackUrl } from '../selectPlaybackUrl';
+import {
+  selectPlaybackUrl,
+  toAbsolutePlaybackUrl,
+  stripLocalOrigin,
+} from '../selectPlaybackUrl';
 import type { MaterialItem } from '@/types';
 
 describe('selectPlaybackUrl', () => {
@@ -126,6 +130,89 @@ describe('selectPlaybackUrl', () => {
     expect(url).not.toContain('blob:');
     expect(url).not.toContain('/api/media/proxy');
     expect(url).not.toContain('preview-proxies');
+  });
+});
+
+describe('stripLocalOrigin (export invariant: no loopback absolute URL)', () => {
+  it('relativises an absolute 127.0.0.1 loopback storage URL', () => {
+    expect(
+      stripLocalOrigin('http://127.0.0.1:18320/api/storage/files/video/local.mp4'),
+    ).toBe('/api/storage/files/video/local.mp4');
+  });
+
+  it('relativises an absolute localhost loopback storage URL', () => {
+    expect(
+      stripLocalOrigin('http://localhost:3000/api/audio/generated/seg.mp3'),
+    ).toBe('/api/audio/generated/seg.mp3');
+  });
+
+  it('relativises an IPv6 [::1] loopback storage URL', () => {
+    expect(
+      stripLocalOrigin('http://[::1]:18320/api/storage/files/video/local.mp4'),
+    ).toBe('/api/storage/files/video/local.mp4');
+  });
+
+  it('preserves the query string when relativising', () => {
+    expect(
+      stripLocalOrigin('http://127.0.0.1:18320/api/storage/files/video/local.mp4?v=2'),
+    ).toBe('/api/storage/files/video/local.mp4?v=2');
+  });
+
+  it('relativises a same-origin absolute URL', () => {
+    expect(
+      stripLocalOrigin(`${window.location.origin}/api/storage/files/video/local.mp4`),
+    ).toBe('/api/storage/files/video/local.mp4');
+  });
+
+  it('passes through a remote CDN URL unchanged', () => {
+    expect(stripLocalOrigin('https://cdn.example.com/v.mp4')).toBe(
+      'https://cdn.example.com/v.mp4',
+    );
+  });
+
+  it('passes through a loopback URL on a non-media route unchanged', () => {
+    // Narrow exemption: only known local-media prefixes are relativised.
+    expect(stripLocalOrigin('http://127.0.0.1:18320/admin/secret')).toBe(
+      'http://127.0.0.1:18320/admin/secret',
+    );
+  });
+
+  it('passes through an already-relative path unchanged', () => {
+    expect(stripLocalOrigin('/api/storage/files/video/local.mp4')).toBe(
+      '/api/storage/files/video/local.mp4',
+    );
+  });
+
+  it('passes through blob: / empty unchanged', () => {
+    expect(stripLocalOrigin('blob:http://localhost/abc')).toBe(
+      'blob:http://localhost/abc',
+    );
+    expect(stripLocalOrigin('')).toBe('');
+    expect(stripLocalOrigin(undefined)).toBe('');
+  });
+
+  it('regression: export field already absolute loopback → export returns relative', () => {
+    // §3.4-a/b: a clip export / persisted project can leave an ABSOLUTE
+    // loopback URL in metadata.localResolvedUrl. selectPlaybackUrl(export)
+    // returns it as-is; stripLocalOrigin (applied at the export convergence
+    // point) must reduce it to a relative path so the backend SSRF guard is
+    // not tripped on the packaged 127.0.0.1 origin.
+    const material = {
+      id: 'local-1',
+      name: 'local.mp4',
+      type: 'video',
+      format: 'mp4',
+      size: 1,
+      url: 'blob:http://localhost/stale',
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl: 'http://127.0.0.1:18320/api/storage/files/video/local.mp4',
+      },
+    } as MaterialItem;
+
+    const exported = selectPlaybackUrl(material, { purpose: 'export' });
+    expect(stripLocalOrigin(exported)).toBe('/api/storage/files/video/local.mp4');
   });
 });
 

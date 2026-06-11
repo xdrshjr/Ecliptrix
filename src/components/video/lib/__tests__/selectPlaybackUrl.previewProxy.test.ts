@@ -78,7 +78,12 @@ describe('selectPlaybackUrl phase-3 P1–P5', () => {
       },
       { purpose: 'export', preferPreviewProxy: true },
     );
-    expect(url).toBe(`${window.location.origin}/api/storage/files/cached_materials/pexels/1.mp4`);
+    // Export references stay RELATIVE (round-1 video-export-localhost-ssrf-block):
+    // absolutising against window.location.origin would inject the loopback host
+    // and trip the backend SSRF guard. This assertion was left stale when round-1
+    // dropped the export-branch absolutisation; round-2 (loopback-ssrf) hardens
+    // the same invariant.
+    expect(url).toBe('/api/storage/files/cached_materials/pexels/1.mp4');
     expect(url).not.toContain('preview-proxies');
   });
 

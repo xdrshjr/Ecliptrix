@@ -1,4 +1,108 @@
-from app.services.video_composition_service import VideoCompositionService
+import pytest
+
+from app.models import VideoCompositionRequest
+from app.security.url_guard import URLGuardError
+from app.services.local_media_resolver import (
+    LocalMediaResolveError,
+    resolve_media_reference,
+)
+from app.services.video_composition_service import (
+    VideoCompositionService,
+    _is_loopback_local_reference,
+    validate_external_url,
+)
+
+
+def _audio_item(url: str) -> dict:
+    return {
+        "id": "a1",
+        "name": "loopback.mp3",
+        "url": url,
+        "start_time": 0.0,
+        "duration": 5.0,
+        "track_id": "t-audio",
+    }
+
+
+def _video_item(url: str) -> dict:
+    return {
+        "id": "v1",
+        "name": "loopback.mp4",
+        "url": url,
+        "start_time": 0.0,
+        "duration": 5.0,
+        "track_id": "t-video",
+    }
+
+
+def _request(*, video_url: str, audio_url: str | None = None) -> VideoCompositionRequest:
+    audio_items = [_audio_item(audio_url)] if audio_url else []
+    return VideoCompositionRequest(
+        task_id="repro",
+        video_items=[_video_item(video_url)],
+        audio_items=audio_items,
+        total_duration=5.0,
+        output_fps=30,
+        output_format="mp4",
+    )
+
+
+def test_loopback_local_reference_is_detected_for_known_prefixes():
+    assert _is_loopback_local_reference(
+        "http://127.0.0.1:18320/api/storage/files/video/local.mp4"
+    )
+    assert _is_loopback_local_reference(
+        "http://localhost:3000/api/audio/generated/seg.mp3"
+    )
+    # Non-loopback host → not exempt.
+    assert not _is_loopback_local_reference(
+        "https://cdn.example.com/api/storage/files/video/local.mp4"
+    )
+    # Loopback host but a non-media route → not exempt.
+    assert not _is_loopback_local_reference("http://127.0.0.1:18320/admin")
+
+
+def test_external_guard_rejects_loopback_url_without_exemption():
+    """Pins the bug: without the exemption a loopback same-origin URL is
+    rejected by the SSRF guard (round-2 path ②, ``_is_unsafe_ip`` loopback)."""
+    with pytest.raises(URLGuardError):
+        validate_external_url(
+            "http://127.0.0.1:18320/api/storage/files/audio/local.mp3"
+        )
+
+
+def test_guard_request_urls_allows_loopback_local_refs_in_video_and_audio():
+    """With the exemption, a request whose video AND audio items carry absolute
+    loopback same-origin URLs passes the request-time guard (deferred to the
+    per-clip resolver). This is the packaged-desktop reproduction."""
+    service = VideoCompositionService()
+    request = _request(
+        video_url="http://127.0.0.1:18320/api/storage/files/video/local.mp4",
+        audio_url="http://127.0.0.1:18320/api/storage/files/audio/local.mp3",
+    )
+    # Must not raise.
+    service._guard_request_urls(request)
+
+
+def test_guard_request_urls_still_rejects_non_local_loopback_path():
+    """The exemption is narrow: a loopback URL to a non-media route is still
+    treated as external and rejected."""
+    service = VideoCompositionService()
+    request = _request(
+        video_url="http://127.0.0.1:18320/admin/secret",
+    )
+    with pytest.raises(URLGuardError):
+        service._guard_request_urls(request)
+
+
+def test_loopback_traversal_is_still_rejected_by_resolver():
+    """Defence in depth: even though the guard exempts loopback local refs, the
+    per-clip resolver still containerises, so traversal escapes are rejected."""
+    with pytest.raises(LocalMediaResolveError):
+        resolve_media_reference(
+            "http://127.0.0.1:18320/api/storage/files/../../../etc/passwd",
+            allow_remote=False,
+        )
 
 
 def test_composition_resolves_local_reference_before_remote_download(monkeypatch, tmp_path):

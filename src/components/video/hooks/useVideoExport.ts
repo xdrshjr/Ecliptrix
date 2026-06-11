@@ -6,7 +6,7 @@ import { http, ApiError } from '@/lib/api/http-client';
 import { VideoEditingLogger } from '../utils/logger';
 import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 import { materialCompositeKey } from '../lib/materialKey';
-import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
+import { selectPlaybackUrl, stripLocalOrigin } from '../lib/selectPlaybackUrl';
 
 /**
  * Resolve the z-order (track_z) for a timeline track. Lower draws first
@@ -227,7 +227,13 @@ export const useVideoExport = ({
 
                 // Desktop local export: pick the backend-resolvable same-origin
                 // local reference (spec 05 §2.2). Never blob/proxy/preview-proxy.
-                const imageUrl = selectPlaybackUrl(material, { purpose: 'export' });
+                // stripLocalOrigin keeps it relative so a material field that is
+                // already an absolute loopback URL (http://127.0.0.1:PORT/...)
+                // doesn't trip the backend SSRF guard. See
+                // docs/diagnoses/video-export-packaged-desktop-loopback-ssrf.
+                const imageUrl = stripLocalOrigin(
+                  selectPlaybackUrl(material, { purpose: 'export' }),
+                );
 
                 // 获取图片位置信息，如果没有则使用默认位置
                 const imagePosition = item.imagePosition || {
@@ -275,7 +281,13 @@ export const useVideoExport = ({
               // Desktop local export (spec 05 §2.2): pick the backend-resolvable
               // same-origin local reference via selectPlaybackUrl(export) — local
               // /api/storage/files/... only; NEVER blob/media-proxy/preview-proxy.
-              const videoUrl = selectPlaybackUrl(material, { purpose: 'export' });
+              // stripLocalOrigin keeps it relative so a material field that is
+              // already an absolute loopback URL (http://127.0.0.1:PORT/...)
+              // doesn't trip the backend SSRF guard. See
+              // docs/diagnoses/video-export-packaged-desktop-loopback-ssrf.
+              const videoUrl = stripLocalOrigin(
+                selectPlaybackUrl(material, { purpose: 'export' }),
+              );
 
               // Calculate clipped duration for this video item
               const clipStart = item.clipStart || 0;
@@ -352,9 +364,16 @@ export const useVideoExport = ({
               // returns serverUrl / originalUrl in preference; falls through to
               // material.url only when it is not a blob.
               const resolved = selectAudioPlaybackUrl(material);
-              const audioUrl = resolved && !resolved.startsWith('blob:')
-                ? resolved
-                : (material.serverUrl || '');
+              // stripLocalOrigin closes the audio leg of the same invariant
+              // (audio_items is guarded by the backend too, but is built by a
+              // different constructor that never absolutised — so an absolute
+              // loopback serverUrl/originalUrl would otherwise reach the guard).
+              // See docs/diagnoses/video-export-packaged-desktop-loopback-ssrf.
+              const audioUrl = stripLocalOrigin(
+                resolved && !resolved.startsWith('blob:')
+                  ? resolved
+                  : (material.serverUrl || ''),
+              );
 
               logger.debug('处理音频项目', {
                 itemId: item.id,

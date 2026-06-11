@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from urllib.parse import urlparse
 
 import cv2
 
@@ -45,6 +46,8 @@ from app.services.subtitle_service import SubtitleService
 from app.services.youtube_service import YouTubeService
 from app.services.material_download_service import get_material_download_service
 from app.services.local_media_resolver import (
+    LOCAL_HOSTS,
+    ROUTE_PREFIXES,
     LocalMediaResolveError,
     resolve_media_reference,
 )
@@ -75,6 +78,38 @@ from app.services.composition.media_download import (
 )
 
 logger = get_logger(__name__)
+
+
+def _is_loopback_local_reference(url: str) -> bool:
+    """True when ``url`` is a loopback same-origin reference to a known local
+    media route (e.g. ``http://127.0.0.1:PORT/api/storage/files/...``).
+
+    The packaged desktop shell serves the frontend on ``http://127.0.0.1:PORT``,
+    so a material field that already holds an absolute same-origin URL reaches
+    the compositor as a loopback http(s) URL. Those are NOT SSRF targets: the
+    per-clip resolver (``local_media_resolver._normalize_reference``) already
+    strips the loopback host and re-validates the path with
+    ``validate_local_path_for_ffmpeg`` (containerised against the storage roots).
+    Treating them as external would reject a legitimate local file on the
+    ``url_guard._is_unsafe_ip`` loopback branch. We exempt them here — and only
+    here — so the request-time guard agrees with the resolver it delegates to.
+
+    The exemption is deliberately narrow: host must be a loopback literal and
+    the path must start with a known local-media prefix. Traversal (``..``) is
+    still caught downstream by ``validate_local_path_for_ffmpeg``; any other
+    loopback path (e.g. ``/admin``) falls through to ``validate_external_url``.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+    host = (parsed.hostname or "").lower()
+    if host not in LOCAL_HOSTS:
+        return False
+    path = parsed.path or ""
+    return any(path.startswith(prefix) for prefix, _root, _kind in ROUTE_PREFIXES)
 
 
 class VideoCompositionService:
@@ -1564,6 +1599,16 @@ class VideoCompositionService:
                     continue
                 lower = url.lower().strip()
                 if lower.startswith("http://") or lower.startswith("https://"):
+                    # Loopback same-origin references to local media routes are
+                    # NOT external SSRF targets — the packaged desktop shell
+                    # emits http://127.0.0.1:PORT/api/storage/files/... when a
+                    # material field already holds an absolute same-origin URL.
+                    # Defer them to per-clip resolution (which strips the host
+                    # and still containerises via validate_local_path_for_ffmpeg)
+                    # so the front door agrees with the resolver. See
+                    # docs/diagnoses/video-export-packaged-desktop-loopback-ssrf.
+                    if _is_loopback_local_reference(url):
+                        continue
                     validate_external_url(url)
                     continue
                 # Explicitly reject sketchy schemes inline so the error

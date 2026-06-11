@@ -168,6 +168,113 @@ describe('useVideoExport local export request', () => {
     expect(serialized).not.toContain('preview-proxies');
   });
 
+  it('relativises an absolute loopback video URL so the export body has no loopback host', async () => {
+    // §3.4: a clip export / persisted project can leave an ABSOLUTE
+    // http://127.0.0.1:PORT/api/storage/files/... in metadata.localResolvedUrl.
+    // The packaged desktop origin is 127.0.0.1, so the export must strip it to
+    // a relative path or the backend SSRF guard rejects the whole request.
+    const material = mat({
+      id: 'mat-loopback',
+      type: 'video',
+      metadata: {
+        storageKind: 'local',
+        isLocalFile: true,
+        localResolvedUrl:
+          'http://127.0.0.1:18320/api/storage/files/video/local.mp4',
+      },
+    });
+    const state = baseState([
+      videoTrack(0, [
+        {
+          id: 'item-1',
+          name: 'Clip',
+          type: 'video',
+          materialId: 'mat-loopback',
+          trackId: 'track-0',
+          startTime: 0,
+          duration: 5,
+          color: '#2563eb',
+          clipStart: 0,
+          clipEnd: 5,
+          originalDuration: 5,
+        },
+      ]),
+    ]);
+
+    const request = await runExport(state, [material]);
+
+    expect(request).toBeTruthy();
+    expect(request.video_items[0].url).toBe('/api/storage/files/video/local.mp4');
+    expect(JSON.stringify(request)).not.toContain('127.0.0.1');
+  });
+
+  it('relativises an absolute loopback audio serverUrl (audio_items leg of the invariant)', async () => {
+    // audio_items is built by selectAudioPlaybackUrl, NOT selectPlaybackUrl, so
+    // it never absolutised — but the backend guard still inspects it. An
+    // absolute loopback serverUrl must be relativised at the export point too.
+    const audio = mat({
+      id: 'mat-audio',
+      type: 'audio',
+      serverUrl: 'http://127.0.0.1:18320/api/storage/files/audio/local.mp3',
+    });
+    const state = baseState([
+      {
+        id: 'track-audio',
+        name: 'Audio',
+        type: 'audio' as const,
+        height: 60,
+        isLocked: false,
+        isMuted: false,
+        isVisible: true,
+        volume: 100,
+        order: 0,
+        items: [
+          {
+            id: 'item-audio',
+            name: 'Audio clip',
+            type: 'audio',
+            materialId: 'mat-audio',
+            trackId: 'track-audio',
+            startTime: 0,
+            duration: 5,
+            color: '#16a34a',
+            clipStart: 0,
+            clipEnd: 5,
+            originalDuration: 5,
+          },
+        ],
+      },
+      // A video track at least as long as the audio so export validation passes.
+      videoTrack(1, [
+        {
+          id: 'item-video',
+          name: 'Clip',
+          type: 'video',
+          materialId: 'mat-video',
+          trackId: 'track-1',
+          startTime: 0,
+          duration: 5,
+          color: '#2563eb',
+          clipStart: 0,
+          clipEnd: 5,
+          originalDuration: 5,
+        },
+      ]),
+    ]);
+    const video = mat({
+      id: 'mat-video',
+      type: 'video',
+      url: '/api/storage/files/video/v.mp4',
+    });
+
+    const request = await runExport(state, [audio, video]);
+
+    expect(request).toBeTruthy();
+    expect(request.audio_items).toHaveLength(1);
+    expect(request.audio_items[0].url).toBe('/api/storage/files/audio/local.mp3');
+    expect(JSON.stringify(request)).not.toContain('127.0.0.1');
+  });
+
   it('forwards track_z, opacity, transition_in/out and audio_detached', async () => {
     const bottom = mat({
       id: 'mat-bottom',

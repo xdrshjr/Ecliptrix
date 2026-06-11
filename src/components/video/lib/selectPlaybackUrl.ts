@@ -138,6 +138,52 @@ export function isLocalMediaReference(u: string | null | undefined): boolean {
   }
 }
 
+/**
+ * stripLocalOrigin — reduce an EXPORT media reference to a same-origin path.
+ *
+ * The export request body is DATA the backend compositor resolves against its
+ * OWN filesystem root; it must never carry a loopback / same-origin ABSOLUTE
+ * URL. The packaged desktop shell serves the frontend on
+ * `http://127.0.0.1:PORT`, so a material field that already holds an absolute
+ * same-origin URL (e.g. a clip export wrote `metadata.localResolvedUrl` as an
+ * absolute preview URL, or a saved project persisted one) would otherwise reach
+ * the backend as `http://127.0.0.1:PORT/api/storage/files/...` and trip the SSRF
+ * guard's loopback-IP branch (url_guard `_is_unsafe_ip`). Stripping the origin
+ * keeps the invariant "the export body holds no loopback absolute URL", closing
+ * the bug for both `localhost` (dev) and `127.0.0.1` (packaged) origins. See
+ * docs/diagnoses/video-export-packaged-desktop-loopback-ssrf.
+ *
+ * Relativises (returns `pathname + search`):
+ *   - `http(s)://{localhost,127.0.0.1,::1}/<known local media prefix>`
+ *   - any absolute URL whose origin matches the current `window.location.origin`
+ * Everything else (remote CDN URLs, blob:, data:, already-relative paths) is
+ * returned unchanged.
+ */
+export function stripLocalOrigin(u: string | null | undefined): string {
+  if (!u) return '';
+  if (!/^https?:\/\//i.test(u)) return u;
+  let parsed: URL;
+  try {
+    parsed = new URL(u);
+  } catch {
+    return u;
+  }
+  // URL.hostname keeps brackets around IPv6 literals ([::1]); strip them so the
+  // loopback comparison matches the bare `::1` used elsewhere.
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const isLoopbackLocal =
+    (host === 'localhost' || host === '127.0.0.1' || host === '::1') &&
+    LOCAL_MEDIA_PATH_PREFIXES.some(prefix => parsed.pathname.startsWith(prefix));
+  const isSameOrigin =
+    typeof window !== 'undefined' &&
+    !!window.location?.origin &&
+    parsed.origin === window.location.origin;
+  if (isLoopbackLocal || isSameOrigin) {
+    return parsed.pathname + parsed.search;
+  }
+  return u;
+}
+
 /** Build a same-origin media-proxy URL for an arbitrary CDN reference. */
 function _buildMediaProxyUrl(remoteUrl: string): string {
   return `${MEDIA_PROXY_PREFIX}${encodeURIComponent(remoteUrl)}`;
