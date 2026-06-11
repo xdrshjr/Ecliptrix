@@ -75,3 +75,18 @@ desktop/cache/
 # `*.log` rule above only matches the active file, NOT rotated `*.log.1/.2/.3`,
 # so the whole directory must be ignored.
 desktop/logs/
+
+# === Generated media (docs/plans/dead-code-cleanup spec/02) ===
+# Runtime artifacts (TTS audio, composed video, thumbnails, uploaded media) —
+# regenerated on demand, were mistakenly tracked. The root `static/uploads/`
+# rule (line 2) is anchored and does NOT cover these backend subtrees.
+backend-services/basic-service/static/audio/generated/
+backend-services/basic-service/static/video/composed/
+backend-services/basic-service/static/video/thumbnails/
+backend-services/basic-service/static/uploads/
+
+# Deploy tarballs (ops/*.tgz) — large build packages, never source.
+*.tgz
+
+# Windows null-device / noise file accidentally created by redirects.
+nul
