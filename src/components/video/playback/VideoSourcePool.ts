@@ -65,6 +65,19 @@ export interface VideoElementLike {
    * fake still satisfies the interface.
    */
   readonly paused?: boolean;
+  /**
+   * Whether a seek is currently in flight (a `currentTime` assignment that has
+   * not yet settled to a `seeked`). Read by the in-flight seek guard in
+   * {@link VideoSourcePool._ensureSeeked} so the per-frame planner never
+   * re-assigns `currentTime` while a seek is still running — repeatedly
+   * interrupting a mid-clip seek while the free-running composition clock raced
+   * ahead is exactly what kept the element stuck below `readyState 2`, i.e. the
+   * play-from-middle black screen
+   * (timeline-preview-midclip-play-black-screen 方案 B). Real `HTMLVideoElement`
+   * exposes it; plain test fakes may omit it (treated as "not seeking"). Optional
+   * + read-only.
+   */
+  readonly seeking?: boolean;
   play(): Promise<void> | void;
   pause(): void;
 }
@@ -350,21 +363,38 @@ export class VideoSourcePool {
    * Seek the element to `targetSourceTime` only when outside tolerance (or when
    * the src was just swapped, which always needs the initial seek). De-bounced
    * so steady playback never re-seeks every frame.
+   *
+   * In-flight seek guard (timeline-preview-midclip-play-black-screen 方案 B):
+   * once a seek is already running (`el.seeking === true`) or the element has
+   * dropped below `HAVE_CURRENT_DATA` (`readyState < 2`, i.e. mid seek/buffer),
+   * do NOT re-assign `currentTime`. Re-assigning it every frame while the
+   * free-running composition clock raced ahead is what kept restarting the
+   * mid-clip seek, so the element never reached a drawable state and the
+   * compositor only ever painted the black letterbox. A fresh src swap bypasses
+   * the guard because the new element genuinely needs its initial seek to the
+   * target; once it settles the readiness path picks the seek back up.
    */
   private _ensureSeeked(
     el: VideoElementLike,
     targetSourceTime: number,
     srcJustSwapped: boolean,
   ): void {
-    if (
-      srcJustSwapped ||
-      Math.abs(el.currentTime - targetSourceTime) > this._seekTolerance
-    ) {
-      try {
-        el.currentTime = targetSourceTime;
-      } catch {
-        // jsdom / unsupported element — drift loop reconciles.
-      }
+    if (srcJustSwapped) {
+      this._assignCurrentTime(el, targetSourceTime);
+      return;
+    }
+    // Never interrupt an in-flight / mid-buffer seek (方案 B).
+    if (el.seeking === true || el.readyState < 2) return;
+    if (Math.abs(el.currentTime - targetSourceTime) > this._seekTolerance) {
+      this._assignCurrentTime(el, targetSourceTime);
+    }
+  }
+
+  private _assignCurrentTime(el: VideoElementLike, targetSourceTime: number): void {
+    try {
+      el.currentTime = targetSourceTime;
+    } catch {
+      // jsdom / unsupported element — the next ready tick reconciles.
     }
   }
 

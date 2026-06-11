@@ -15,6 +15,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MultiTrackPlaybackEngine, type MultiTrackAttachDeps } from '../MultiTrackPlaybackEngine';
 import { PlaybackClock } from '../PlaybackClock';
+import { BIND_SEEK_TIMEOUT_MS } from '../internal/constants';
 import { CanvasCompositor } from '../CanvasCompositor';
 import { PlayheadController } from '../PlayheadController';
 import type { VideoElementLike } from '../VideoSourcePool';
@@ -486,6 +487,105 @@ describe('MultiTrackPlaybackEngine — §5.3 readiness repaint', () => {
         total: 10,
       }),
     ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 方案 A — start-from-non-zero re-anchor handshake
+// (timeline-preview-midclip-play-black-screen). Starting playback from the
+// middle of a clip lets the wall-clock composition time race ahead of a still
+// seeking <video>; once the element confirms it reached the target (seeked) or
+// began advancing (playing), the clock is re-anchored back to the start comp so
+// clock and decode line up (no black letterbox).
+// ---------------------------------------------------------------------------
+
+describe('MultiTrackPlaybackEngine — 方案 A start re-anchor (mid-clip play)', () => {
+  function buildStartHarness(videoEl: VideoElementLike, startComp: number) {
+    const nowRef = { ms: 0 };
+    const queue: FrameRequestCallback[] = [];
+    const clock = new PlaybackClock({
+      raf: (cb) => {
+        queue.push(cb);
+        return queue.length;
+      },
+      caf: () => {
+        queue.length = 0;
+      },
+      now: () => nowRef.ms,
+    });
+    const { canvas } = makeMockCanvas();
+    const engine = new MultiTrackPlaybackEngine({
+      clock,
+      compositor: new CanvasCompositor(() => 0),
+      playhead: new PlayheadController({ throttleMs: 0, now: () => 0 }),
+      now: () => nowRef.ms,
+    });
+    engine.attach({
+      canvas,
+      resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
+      resolveAudioElement: () => null,
+      resolveSource: (s) => `/${s.id}.mp4`,
+      timeline: {
+        getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
+        getAudioSyncGroups: () => [],
+        getSubtitleItems: () => [],
+        getImageItems: () => [],
+        getTotalDuration: () => 10,
+        getCurrentTime: () => startComp,
+        setCurrentTime: () => undefined,
+      },
+    });
+    return {
+      engine,
+      clock,
+      advance(ms: number) {
+        nowRef.ms += ms;
+      },
+      tick() {
+        const cb = queue.shift();
+        if (cb) cb(nowRef.ms);
+      },
+    };
+  }
+
+  it('re-anchors the clock to the start comp when the lead element fires seeked', () => {
+    const videoEl = fakeEventfulVideoEl();
+    const h = buildStartHarness(videoEl, 5);
+    h.engine.play();
+    h.advance(1000); // wall time races ahead while the element is still seeking
+    // Without the handshake the live comp would have raced to 6.
+    expect(h.clock.getCompositionTime()).toBeCloseTo(6, 6);
+    videoEl.dispatchEvent('seeked'); // element reached source 5 → re-anchor onto it
+    expect(h.clock.getCompositionTime()).toBeCloseTo(5, 6);
+  });
+
+  it('re-anchors on playing (already-buffered startup window)', () => {
+    const videoEl = fakeEventfulVideoEl();
+    const h = buildStartHarness(videoEl, 5);
+    h.engine.play();
+    h.advance(800);
+    videoEl.dispatchEvent('playing');
+    expect(h.clock.getCompositionTime()).toBeCloseTo(5, 6);
+  });
+
+  it('drops the handshake after the bind-seek budget so a stuck source frees the clock', () => {
+    const videoEl = fakeEventfulVideoEl();
+    const h = buildStartHarness(videoEl, 5);
+    h.engine.play();
+    h.advance(BIND_SEEK_TIMEOUT_MS + 50); // exceed the budget with no readiness event
+    h.tick(); // the budget is dropped on tick
+    const compBefore = h.clock.getCompositionTime();
+    videoEl.dispatchEvent('seeked'); // a late event must NOT re-anchor anymore
+    expect(h.clock.getCompositionTime()).toBeCloseTo(compBefore, 6);
+  });
+
+  it('a plain (non-EventTarget) lead element never arms the handshake (no throw)', () => {
+    const videoEl = fakeVideoEl(); // no addEventListener
+    const h = buildStartHarness(videoEl, 5);
+    expect(() => h.engine.play()).not.toThrow();
+    h.advance(1000);
+    // No handshake → clock keeps free-running (comp ≈ 6, no re-anchor).
+    expect(h.clock.getCompositionTime()).toBeCloseTo(6, 6);
   });
 });
 

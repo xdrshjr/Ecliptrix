@@ -37,6 +37,7 @@ import {
   type TrackDiagnosticRow,
 } from './internal/previewDebug';
 import { activeClipAt } from './TrackScheduler';
+import { BIND_SEEK_TIMEOUT_MS } from './internal/constants';
 import type { TextMeasurer } from './SubtitleLayer';
 import type { ImageOverlayInput } from './ImageOverlayLayer';
 import type {
@@ -116,6 +117,17 @@ export class MultiTrackPlaybackEngine {
   // clock base is only re-anchored on play / seek-while-playing), so we track
   // the real last-rendered time instead. See spec "实施过程发现的方案缺陷".
   private _lastRenderComp = 0;
+  // timeline-preview-midclip-play-black-screen 方案 A — start-from-non-zero
+  // readiness handshake. When play()/seek(while playing) starts, the wall-clock
+  // composition time free-runs from the start position, but the lead decode
+  // <video> may still be seeking/buffering to that position. Left alone the
+  // clock races ahead of the decode and the compositor paints only the black
+  // letterbox. We arm a one-shot listener on the lead element and, the moment it
+  // confirms it reached the target (`seeked`) or began advancing (`playing`),
+  // re-anchor the clock back to the start comp so clock and decode line up. A
+  // BIND_SEEK_TIMEOUT_MS budget (checked on tick) drops a handshake a bad source
+  // never resolves. Null when no handshake is pending.
+  private _startReanchor: StartReanchorHandshake | null = null;
   // §5.4 runtime diagnostics — resolved once at attach so a production preview
   // (flag off) pays nothing per frame.
   private _debugEnabled = false;
@@ -212,11 +224,13 @@ export class MultiTrackPlaybackEngine {
     }
     this.clock.start(comp, this._now(), 1);
     this._setPhase('playing');
+    this._armStartReanchor(comp);
   }
 
   pause(): void {
     if (this._disposed || !this._deps) return;
     this.clock.stop();
+    this._disarmStartReanchor();
     this._renderAt(this.clock.getCompositionTime(), false);
     if (this._phase !== 'ended') this._setPhase('paused');
   }
@@ -232,7 +246,9 @@ export class MultiTrackPlaybackEngine {
       this.clock.start(target, this._now(), 1);
       this._setPhase('playing');
       this._renderAt(target, true);
+      this._armStartReanchor(target);
     } else {
+      this._disarmStartReanchor();
       this._renderAt(target, false);
       this._setPhase('paused');
     }
@@ -244,6 +260,7 @@ export class MultiTrackPlaybackEngine {
     this.clock.stop();
     this._clockUnsub?.();
     this._clockUnsub = null;
+    this._disarmStartReanchor();
     this._unbindReadinessRepaint();
     try {
       this.compositor.detach();
@@ -272,6 +289,15 @@ export class MultiTrackPlaybackEngine {
 
   private _onTick(comp: number): void {
     if (this._disposed || !this._deps) return;
+    // 方案 A budget: drop a startup handshake the lead source never resolved
+    // (no `seeked`/`playing` within BIND_SEEK_TIMEOUT_MS) so it cannot pin the
+    // clock-alignment intent forever — the clock just keeps free-running.
+    if (
+      this._startReanchor &&
+      this._now() - this._startReanchor.armWall > BIND_SEEK_TIMEOUT_MS
+    ) {
+      this._disarmStartReanchor();
+    }
     const total = this._deps.timeline.getTotalDuration();
     if (total > 0 && comp >= total) {
       this.clock.stop();
@@ -392,6 +418,77 @@ export class MultiTrackPlaybackEngine {
   }
 
   // ------------------------------------------------------------------
+  // 方案 A — start-from-non-zero readiness handshake
+  // (timeline-preview-midclip-play-black-screen).
+  // ------------------------------------------------------------------
+
+  /**
+   * Arm a one-shot handshake so the free-running composition clock is re-anchored
+   * to `targetComp` once the lead decode element confirms it reached that
+   * position. Without this, starting playback from the middle of a clip lets the
+   * clock race ahead of a still-seeking <video>; {@link VideoSourcePool}'s
+   * in-flight seek guard keeps the seek from being interrupted, and this
+   * re-anchor pulls the clock back onto the element the instant it is drawable —
+   * together they remove the play-from-middle black screen.
+   *
+   * Listens for `seeked` (the element reached the seek target — the cold-seek
+   * path) and `playing` (the element began advancing — the already-buffered
+   * startup window). We re-anchor only (no forced repaint): the running rAF loop
+   * paints the corrected frame on its next tick, and `clock.getCompositionTime()`
+   * stays the single time truth. Skips silently when the lead element is a plain
+   * structural stub (no `addEventListener`, as in tests) or when there is no lead
+   * video to wait on (pure-audio timeline / no active clip).
+   */
+  private _armStartReanchor(targetComp: number): void {
+    this._disarmStartReanchor();
+    if (this._disposed || !this._deps) return;
+    const lead = this._findLeadVideoElement(targetComp) as StartReanchorBindable | null;
+    if (!lead || typeof lead.addEventListener !== 'function') return;
+    const handler = () => {
+      if (this._disposed) return;
+      // Only meaningful while playing; a stray late event just disarms.
+      if (this.getPhase() === 'playing') this.clock.reanchor(targetComp);
+      this._disarmStartReanchor();
+    };
+    for (const type of START_REANCHOR_EVENTS) {
+      lead.addEventListener(type, handler);
+    }
+    this._startReanchor = { el: lead, handler, armWall: this._now() };
+  }
+
+  private _disarmStartReanchor(): void {
+    const hs = this._startReanchor;
+    if (!hs) return;
+    this._startReanchor = null;
+    for (const type of START_REANCHOR_EVENTS) {
+      try {
+        hs.el.removeEventListener?.(type, hs.handler);
+      } catch {
+        // ignore — element may already be gone
+      }
+    }
+  }
+
+  /**
+   * The lead (top-most drawable) active video element at composition time
+   * `comp`, or null when no visible video track has an active clip with a
+   * resolvable source. Highest z wins so the handshake waits on the element the
+   * viewer actually sees first.
+   */
+  private _findLeadVideoElement(comp: number): VideoElementLike | null {
+    if (!this._deps) return null;
+    let lead: { z: number; el: VideoElementLike } | null = null;
+    for (const group of this._deps.timeline.getVideoTrackGroups()) {
+      const hit = activeClipAt(group.items, comp);
+      if (!hit || !this._deps.resolveSource(hit.clip)) continue;
+      const els = this._deps.resolveTrackElements(group.trackId);
+      if (!els || !els.active) continue;
+      if (!lead || group.z >= lead.z) lead = { z: group.z, el: els.active };
+    }
+    return lead ? lead.el : null;
+  }
+
+  // ------------------------------------------------------------------
   // §5.4 — runtime diagnostics (default OFF). Throttled ~1/s per-track dump.
   // ------------------------------------------------------------------
 
@@ -454,6 +551,27 @@ interface ReadinessListenerBinding {
   el: ReadinessBindable;
   type: string;
   handler: () => void;
+}
+
+/**
+ * Events that resolve the start-from-non-zero re-anchor handshake (方案 A):
+ * `seeked` = the element reached the seek target (cold mid-clip start);
+ * `playing` = the element began advancing (already-buffered startup window).
+ */
+const START_REANCHOR_EVENTS = ['seeked', 'playing'] as const;
+
+/** EventTarget surface the start-reanchor handshake binds to. */
+type StartReanchorBindable = VideoElementLike & {
+  addEventListener?: (type: string, listener: () => void) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+};
+
+/** Pending start-reanchor handshake, tracked so it can be disarmed exactly once. */
+interface StartReanchorHandshake {
+  el: StartReanchorBindable;
+  handler: () => void;
+  /** Wall time the handshake was armed — for the BIND_SEEK_TIMEOUT_MS budget. */
+  armWall: number;
 }
 
 /** End-of-timeline snap epsilon (seconds) — replay-from-start guard. */

@@ -409,6 +409,53 @@ describe('VideoSourcePool applier (fake elements)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 方案 B — in-flight seek guard (timeline-preview-midclip-play-black-screen).
+// Re-assigning currentTime every frame while the free-running composition clock
+// raced ahead kept restarting a mid-clip seek, so the element never reached a
+// drawable state → permanent black. The guard skips re-assigns while a seek is
+// in flight / the element is buffering, but a fresh src still gets its initial
+// seek.
+// ---------------------------------------------------------------------------
+
+describe('VideoSourcePool applier — 方案 B in-flight seek guard', () => {
+  // Single 10s clip; the free clock at t=5 wants source time 5 (clipStart 0).
+  const guardGroups = [
+    group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 10, clipStart: 0, clipEnd: 10 })]),
+  ];
+  const resolve = resolverFrom({ a: '/a.mp4' });
+  const poolWith = (active: FakeEl) => {
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    return new VideoSourcePool((id) => elements.get(id) ?? null, resolve);
+  };
+
+  it('does NOT re-assign currentTime while a seek is in flight (el.seeking === true)', () => {
+    // Element already holds the src and is mid-seek far from the target → the old
+    // code would have yanked currentTime to 5 and restarted the seek every frame.
+    const active = fakeEl({ src: abs('/a.mp4'), currentTime: 0, readyState: 1, seeking: true });
+    poolWith(active).sync(guardGroups, 5, true);
+    expect(active.currentTime).toBe(0);
+  });
+
+  it('does NOT re-assign currentTime while buffering below HAVE_CURRENT_DATA (readyState < 2)', () => {
+    const active = fakeEl({ src: abs('/a.mp4'), currentTime: 0, readyState: 1, seeking: false });
+    poolWith(active).sync(guardGroups, 5, true);
+    expect(active.currentTime).toBe(0);
+  });
+
+  it('STILL issues the initial seek on a fresh src at readyState 0 (srcJustSwapped bypasses the guard)', () => {
+    const active = fakeEl({ src: '', currentTime: 0, readyState: 0, seeking: false });
+    poolWith(active).sync(guardGroups, 5, true);
+    expect(active.currentTime).toBeCloseTo(5, 6);
+  });
+
+  it('resumes the de-bounced seek once the element settles (readyState >= 2, not seeking)', () => {
+    const active = fakeEl({ src: abs('/a.mp4'), currentTime: 0, readyState: 4, seeking: false });
+    poolWith(active).sync(guardGroups, 5, true);
+    expect(active.currentTime).toBeCloseTo(5, 6);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // §5.1 / §5.2 — paused-state-machine: muted-first paint, audio restored once
 // playing, and the play()-rejection canplay retry (R-4 guards).
 // ---------------------------------------------------------------------------
