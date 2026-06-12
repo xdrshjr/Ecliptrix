@@ -29,13 +29,17 @@ See ``tests/security/test_01_auth.py`` for the access-matrix coverage.
 
 from __future__ import annotations
 
+import hashlib
+import mimetypes
 import os
 import re
+from email.utils import formatdate
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
+import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from app.dependencies.auth import get_current_user
 from app.logger import get_logger
@@ -108,22 +112,214 @@ def _is_public_path(relative_path: str) -> bool:
     return any(relative_path.startswith(prefix) for prefix in _PUBLIC_PREFIXES)
 
 
+# ---------------------------------------------------------------------------
+# HTTP Range (RFC 7233) support for media seeking.
+#
+# Starlette 0.27.0 (pinned in requirements.txt) ships a ``FileResponse`` that
+# ignores the ``Range`` request header — it always returns ``200`` whole-file
+# with no ``Accept-Ranges``. Browser ``<video>`` elements then treat the
+# resource as non-seekable: any seek restarts a from-byte-0 whole-file
+# download and the element stalls below ``readyState>=2``, so the preview
+# compositor (which only draws video layers at ``readyState>=2``) renders
+# pure black. We implement single-range ``206`` here so seeking works
+# regardless of the pinned Starlette version — the frontend / Next proxy are
+# already Range-ready. See
+# docs/diagnoses/preview-blackscreen-no-http-range-seeking/analysis.md.
+# ---------------------------------------------------------------------------
+
+_RANGE_CHUNK_SIZE = 64 * 1024
+
+# Sentinel returned by ``_parse_single_byte_range`` when the requested range
+# is syntactically valid but unsatisfiable (start past EOF → RFC 7233 ``416``).
+_RANGE_NOT_SATISFIABLE = object()
+
+
+def _stat_validator_headers(stat_result: os.stat_result) -> dict:
+    """Build ``ETag`` / ``Last-Modified`` headers from a stat result.
+
+    Mirrors Starlette's ``FileResponse.set_stat_headers`` so cache validators
+    stay byte-for-byte consistent between the ``200`` and ``206`` branches.
+    """
+    last_modified = formatdate(stat_result.st_mtime, usegmt=True)
+    etag_base = f"{stat_result.st_mtime}-{stat_result.st_size}"
+    etag = '"' + hashlib.md5(
+        etag_base.encode(), usedforsecurity=False
+    ).hexdigest() + '"'
+    return {"last-modified": last_modified, "etag": etag}
+
+
+def _parse_single_byte_range(
+    range_header: str, file_size: int
+) -> Union[tuple, object, None]:
+    """Parse a single-segment ``bytes=`` Range header.
+
+    Returns:
+        ``(start, end_inclusive)`` for a satisfiable single byte range;
+        ``_RANGE_NOT_SATISFIABLE`` when the range is well-formed but ``start``
+        is at/after EOF (the caller emits ``416``);
+        ``None`` when the header is absent / malformed / multi-range — the
+        caller then falls back to a normal ``200`` response (RFC 7233: an
+        unparsable ``Range`` is ignored, not rejected). Media elements only
+        ever request a single byte range, so we deliberately do not emit
+        ``multipart/byteranges``.
+    """
+    if not range_header or "=" not in range_header:
+        return None
+    units, _sep, spec = range_header.partition("=")
+    if units.strip().lower() != "bytes":
+        return None
+    # Multi-range request → ignore and serve the whole file (200).
+    if "," in spec:
+        return None
+    spec = spec.strip()
+    if "-" not in spec:
+        return None
+    start_str, _dash, end_str = spec.partition("-")
+    start_str, end_str = start_str.strip(), end_str.strip()
+    try:
+        if start_str == "":
+            # Suffix range ``bytes=-N`` → final N bytes.
+            if end_str == "":
+                return None
+            suffix = int(end_str)
+            if suffix <= 0:
+                return None
+            start = max(0, file_size - suffix)
+            end = file_size - 1
+        else:
+            start = int(start_str)
+            end = int(end_str) if end_str != "" else file_size - 1
+            if end >= file_size:
+                end = file_size - 1
+    except ValueError:
+        return None
+    if start < 0 or end < 0:
+        return None
+    # ``start`` past EOF is unsatisfiable (416). Check this BEFORE the
+    # reversed-range guard below, because clamping ``end`` to ``file_size-1``
+    # would otherwise make an unsatisfiable range look like ``start > end``.
+    if start >= file_size:
+        return _RANGE_NOT_SATISFIABLE
+    if start > end:
+        return None
+    return (start, end)
+
+
+async def _iter_file_range(path: str, start: int, length: int):
+    """Stream ``length`` bytes from ``path`` starting at offset ``start``.
+
+    Uses ``aiofiles`` so the seek+read loop never blocks the event loop
+    (CLAUDE.md: async file I/O everywhere). Streaming a slice trades kernel
+    ``sendfile`` for correctness (seekable media), which is the accepted cost.
+    """
+    remaining = length
+    async with aiofiles.open(path, "rb") as handle:
+        await handle.seek(start)
+        while remaining > 0:
+            chunk = await handle.read(min(_RANGE_CHUNK_SIZE, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def _serve_safe_media(
+    absolute_path: Path,
+    basename: str,
+    request: Request,
+    base_headers: dict,
+) -> Response:
+    """Serve a non-dangerous media file inline, honouring HTTP Range.
+
+    Behaviour (RFC 7233):
+      * no ``Range`` header → ``200`` whole file via ``FileResponse`` (keeps
+        kernel sendfile) plus ``Accept-Ranges: bytes``;
+      * satisfiable single range → ``206`` streamed slice;
+      * unsatisfiable range → ``416`` with ``Content-Range: bytes */size``;
+      * malformed / multi-range → ignored, ``200`` whole file (streamed so the
+        result is identical regardless of the installed Starlette version).
+
+    Whenever a ``Range`` header is present we take full control of the
+    response and never hand it to ``FileResponse`` — newer Starlette versions
+    re-parse ``Range`` internally, which would diverge from the pinned 0.27.0.
+    """
+    stat_result = absolute_path.stat()
+    file_size = stat_result.st_size
+    media_type = mimetypes.guess_type(basename)[0] or "application/octet-stream"
+    disposition = f'inline; filename="{basename}"'
+
+    range_header = request.headers.get("range")
+    if range_header:
+        parsed_range = _parse_single_byte_range(range_header, file_size)
+
+        if parsed_range is _RANGE_NOT_SATISFIABLE:
+            return Response(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                headers={
+                    **base_headers,
+                    "Accept-Ranges": "bytes",
+                    "Content-Range": f"bytes */{file_size}",
+                },
+            )
+
+        if parsed_range is not None:
+            start, end = parsed_range
+            content_length = end - start + 1
+            return StreamingResponse(
+                _iter_file_range(str(absolute_path), start, content_length),
+                status_code=status.HTTP_206_PARTIAL_CONTENT,
+                media_type=media_type,
+                headers={
+                    **base_headers,
+                    **_stat_validator_headers(stat_result),
+                    "Accept-Ranges": "bytes",
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Content-Length": str(content_length),
+                    "Content-Disposition": disposition,
+                },
+            )
+
+        # Malformed / multi-range header → ignore it and stream the whole file.
+        return StreamingResponse(
+            _iter_file_range(str(absolute_path), 0, file_size),
+            status_code=status.HTTP_200_OK,
+            media_type=media_type,
+            headers={
+                **base_headers,
+                **_stat_validator_headers(stat_result),
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+                "Content-Disposition": disposition,
+            },
+        )
+
+    return FileResponse(
+        path=str(absolute_path),
+        headers={**base_headers, "Accept-Ranges": "bytes"},
+        filename=basename,
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/files/{file_path:path}")
 async def serve_storage_file(
     file_path: str,
     request: Request,
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     """Serve a file from the storage root with ownership enforcement.
 
     Args:
         file_path: relative path under ``STORAGE_ROOT`` (e.g.
             ``video/2026/05/20/user_abc/task1/clip.mp4``).
-        request: starlette request (unused but required for dependency).
+        request: starlette request; its ``Range`` header drives ``206``
+            partial-content responses for seekable media.
         current_user: injected by ``get_current_user``.
 
     Returns:
-        ``FileResponse`` streaming the file via sendfile.
+        ``FileResponse`` (200, whole file) for non-range requests, a
+        ``StreamingResponse`` (206, byte slice) when a satisfiable ``Range``
+        header is present, or a 416 ``Response`` for an unsatisfiable range.
 
     Raises:
         HTTPException 400: malformed path / traversal attempt.
@@ -215,12 +411,8 @@ async def serve_storage_file(
         )
 
     # For safe media (mp4/jpg/etc.) we want INLINE rendering so
-    # ``<video src=...>`` / ``<img src=...>`` work. Starlette's
-    # ``FileResponse`` defaults to ``attachment`` when ``filename`` is
-    # supplied — pass ``content_disposition_type='inline'`` explicitly.
-    return FileResponse(
-        path=str(absolute_path),
-        headers=headers,
-        filename=basename,
-        content_disposition_type="inline",
-    )
+    # ``<video src=...>`` / ``<img src=...>`` work, AND we honour HTTP Range so
+    # media elements can seek without re-downloading the whole file. The pinned
+    # Starlette 0.27.0 ``FileResponse`` supports neither Range nor
+    # ``Accept-Ranges`` (see analysis.md), so ``_serve_safe_media`` handles it.
+    return _serve_safe_media(absolute_path, basename, request, headers)
