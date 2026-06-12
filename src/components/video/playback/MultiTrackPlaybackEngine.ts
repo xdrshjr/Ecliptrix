@@ -312,7 +312,22 @@ export class MultiTrackPlaybackEngine {
       return;
     }
     this._renderAt(comp, true);
-    this.playhead.reportCompositionTime(comp);
+    // Round-3 fix 方案 A (midclip-play-reanchor-scrub-echo-blackscreen): while a
+    // start-reanchor handshake is pending the composition clock free-runs ahead of
+    // the still-seeking lead element. Mirroring that free-running comp to React lets
+    // the React playhead lead the engine by the cold-seek duration; after the settle
+    // reanchor pulls the engine clock back to targetComp the two diverge by more than
+    // PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC, so useCompositionPlayback mistakes the stale
+    // mirror for a user scrub and fires engine.seek(stale) — re-pulling the just-
+    // settled element into a fresh cold seek (a cross-layer black-screen spiral).
+    // Report the seek target instead so React stays pinned to targetComp until the
+    // element settles; both sides then resume from the same point. The free-running
+    // comp still drives _renderAt above (and the in-flight seek guard protects the
+    // decode), so only the React echo is suppressed, and only for this sub-second
+    // window — normal reporting resumes the instant the handshake disarms.
+    this.playhead.reportCompositionTime(
+      this._startReanchor ? this._startReanchor.targetComp : comp,
+    );
   }
 
   /**
@@ -486,7 +501,7 @@ export class MultiTrackPlaybackEngine {
     for (const type of START_REANCHOR_EVENTS) {
       lead.addEventListener(type, handler);
     }
-    this._startReanchor = { el: lead, handler };
+    this._startReanchor = { el: lead, handler, targetComp };
   }
 
   private _disarmStartReanchor(): void {
@@ -603,6 +618,13 @@ type StartReanchorBindable = VideoElementLike & {
 interface StartReanchorHandshake {
   el: StartReanchorBindable;
   handler: () => void;
+  /**
+   * The seek target the clock will be re-anchored to once the lead element
+   * settles. While the handshake is pending, `_onTick` reports THIS to React
+   * instead of the free-running comp (round-3 fix 方案 A) so the React mirror
+   * cannot lead the engine and misfire a scrub-echo `engine.seek` after reanchor.
+   */
+  targetComp: number;
 }
 
 /** End-of-timeline snap epsilon (seconds) — replay-from-start guard. */

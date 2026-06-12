@@ -15,7 +15,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MultiTrackPlaybackEngine, type MultiTrackAttachDeps } from '../MultiTrackPlaybackEngine';
 import { PlaybackClock } from '../PlaybackClock';
-import { BIND_SEEK_TIMEOUT_MS } from '../internal/constants';
+import { BIND_SEEK_TIMEOUT_MS, PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC } from '../internal/constants';
 import { CanvasCompositor } from '../CanvasCompositor';
 import { PlayheadController } from '../PlayheadController';
 import type { VideoElementLike } from '../VideoSourcePool';
@@ -766,6 +766,139 @@ describe('MultiTrackPlaybackEngine — mid-clip cold-seek black-screen (Bug A ro
     videoEl.readyState = 4;
     videoEl.dispatchEvent('canplay');
     expect(h.compositor.getStats().drawnFrames).toBeGreaterThan(drawnBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round-3 cross-layer scrub-echo spiral regression (方案 A,
+// midclip-play-reanchor-scrub-echo-blackscreen). The round-1 cold-seek harness
+// stubbed the facade with `setCurrentTime: () => undefined`, so it could NOT
+// observe what the engine mirrors to React — exactly why this bug survived. The
+// spiral: during a slow mid-clip cold seek the wall-clock comp free-runs ahead;
+// the engine kept mirroring that free-running comp to React; once the settle
+// reanchor pulled the engine clock BACK to the target, React led the engine by
+// the cold-seek duration (> PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC), so
+// useCompositionPlayback mistook the stale mirror for a user scrub and fired
+// engine.seek(stale), re-pulling the just-settled element into a fresh cold seek.
+// 方案 A: while the handshake is pending, report the seek TARGET (not the free-
+// running comp) to React. This harness RECORDS the pushed comp sequence so we can
+// assert the React mirror never leads the engine.
+// ---------------------------------------------------------------------------
+
+describe('MultiTrackPlaybackEngine — round-3 cross-layer scrub-echo spiral (方案 A)', () => {
+  function buildRecordingHarness(videoEl: VideoElementLike, startComp: number) {
+    const nowRef = { ms: 0 };
+    const queue: FrameRequestCallback[] = [];
+    const clock = new PlaybackClock({
+      raf: (cb) => {
+        queue.push(cb);
+        return queue.length;
+      },
+      caf: () => {
+        queue.length = 0;
+      },
+      now: () => nowRef.ms,
+    });
+    const { canvas } = makeMockCanvas();
+    const compositor = new CanvasCompositor(() => nowRef.ms);
+    // Real (non-stub) facade: collect every comp the engine mirrors to React.
+    const pushed: number[] = [];
+    const engine = new MultiTrackPlaybackEngine({
+      clock,
+      compositor,
+      playhead: new PlayheadController({ throttleMs: 0, now: () => 0 }),
+      now: () => nowRef.ms,
+    });
+    engine.attach({
+      canvas,
+      resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
+      resolveAudioElement: () => null,
+      resolveSource: (s) => `/${s.id}.mp4`,
+      timeline: {
+        getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a', duration: 30 })] }],
+        getAudioSyncGroups: () => [],
+        getSubtitleItems: () => [],
+        getImageItems: () => [],
+        getTotalDuration: () => 30,
+        getCurrentTime: () => startComp,
+        setCurrentTime: (t) => {
+          pushed.push(t);
+        },
+      },
+    });
+    return {
+      engine,
+      clock,
+      compositor,
+      pushed,
+      advance(ms: number) {
+        nowRef.ms += ms;
+      },
+      tick() {
+        const cb = queue.shift();
+        if (cb) cb(nowRef.ms);
+      },
+    };
+  }
+
+  it('pins the React mirror to the seek target during the cold seek so it never leads the engine (DoD #1 + #2 + #3)', () => {
+    const videoEl = fakeColdSeekVideoEl();
+    const h = buildRecordingHarness(videoEl, 10);
+    h.engine.play();
+    expect(videoEl.seeking).toBe(true); // cold seek to source 10 in flight
+
+    // Several ticks while the cold seek is in flight: the wall clock free-runs the
+    // comp toward 10.6 → 11.2 → 11.8, but 方案 A must NOT mirror those to React.
+    h.advance(600);
+    h.tick();
+    h.advance(600);
+    h.tick();
+    h.advance(600);
+    h.tick();
+    expect(h.clock.getCompositionTime()).toBeGreaterThan(10); // engine clock free-ran
+
+    // DoD #1: every value pushed to React while the handshake is pending equals
+    // the seek target (10) — no free-running 10.6 → 11.2 → … staircase (§2.2 finger-
+    // print). Pre-fix this array would be [10.6, 11.2, 11.8].
+    expect(h.pushed.length).toBeGreaterThan(0);
+    for (const t of h.pushed) expect(t).toBeCloseTo(10, 6);
+
+    // The cold seek settles → the handshake re-anchors the engine clock back to 10.
+    videoEl.settle();
+
+    // DoD #2: after settle the React mirror and the engine live comp agree within
+    // the scrub-echo tolerance, so useCompositionPlayback would treat the prop as
+    // engine echo and NOT misfire engine.seek (the spiral seed is gone).
+    const reactMirror = h.pushed[h.pushed.length - 1];
+    expect(Math.abs(h.engine.getCompositionTime() - reactMirror)).toBeLessThanOrEqual(
+      PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC,
+    );
+
+    // DoD #3: the settled element is not yanked forward into a fresh cold seek.
+    h.advance(50);
+    h.tick();
+    expect(videoEl.seeking).toBe(false);
+    expect(videoEl.readyState).toBe(4);
+    expect(videoEl.currentTime).toBeCloseTo(10, 6);
+  });
+
+  it('resumes mirroring the advancing live comp to React once the handshake disarms', () => {
+    const videoEl = fakeColdSeekVideoEl();
+    const h = buildRecordingHarness(videoEl, 10);
+    h.engine.play();
+    h.advance(600);
+    h.tick();
+    videoEl.settle(); // handshake fires + disarms, clock re-anchored to 10
+    const beforeLen = h.pushed.length;
+
+    // Post-handshake ticks must push the advancing live comp again (> 10), proving
+    // the suppression was scoped to the sub-second handshake window only.
+    h.advance(500);
+    h.tick();
+    h.advance(500);
+    h.tick();
+    const after = h.pushed.slice(beforeLen);
+    expect(after.some((t) => t > 10)).toBe(true);
   });
 });
 
