@@ -18,6 +18,7 @@ import yaml
 from app.config import settings
 from app.logger import get_logger
 from app.models.tts_models import VoiceType, VoiceTypeInfo
+from app.services.local_media_resolver import audio_generated_dir
 from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
@@ -328,7 +329,10 @@ class TTSService:
         # 保留只为旧的 ASR / 声音克隆调用链兜底，本服务不再使用。
         self.api_key = ***REMOVED***
         self.resource_id = settings.volcano_tts_resource_id
-        self.audio_dir = "static/audio/generated"
+        # Generated audio lives under the persistent, writable STORAGE_ROOT so it
+        # survives packaged-desktop installs (the service install dir is volatile/
+        # read-only). Bug B / B1 — see local_media_resolver.audio_generated_dir.
+        self.audio_dir = str(audio_generated_dir())
 
         # 启动时记录 key 状态，方便排查 403 问题
         key_preview = (

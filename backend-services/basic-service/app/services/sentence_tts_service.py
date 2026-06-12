@@ -17,6 +17,7 @@ from app.models import (
     SentenceTTSResult,
     SentenceTTSRequest
 )
+from app.services.local_media_resolver import audio_generated_dir
 from app.services.tts_service import TTSService
 
 logger = get_logger(__name__)
@@ -36,7 +37,9 @@ class SentenceTTSService:
     def __init__(self):
         self.tts_service = TTSService()
         self.config = settings.batch_tts
-        self.audio_dir = Path("static/audio/generated")
+        # Generated audio lives under the persistent, writable STORAGE_ROOT (Bug B
+        # / B1) — see local_media_resolver.audio_generated_dir.
+        self.audio_dir = audio_generated_dir()
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         
         logger.info("SentenceTTSService初始化", {

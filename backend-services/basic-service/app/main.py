@@ -661,8 +661,17 @@ from app.routers import admin_playback_router
 
 app.include_router(admin_playback_router.router, prefix="/api")
 
-# Mount static files for generated audio
-audio_static_dir = "static/audio/generated"
+# Mount generated audio + subtitles under the persistent, writable STORAGE_ROOT
+# (Bug B / B1). The write side (tts_service / sentence_tts_service) and the
+# composition/ASR resolvers anchor to the same dirs so "write == mount == resolve"
+# holds in dev, packaged desktop, and a read-only Program Files install alike.
+# See docs/diagnoses/preview-seek-blackscreen-and-packaged-export-r3.
+from app.services.local_media_resolver import (  # noqa: E402
+    audio_generated_dir,
+    audio_subtitle_dir,
+)
+
+audio_static_dir = str(audio_generated_dir())
 os.makedirs(audio_static_dir, exist_ok=True)
 app.mount(
     "/api/audio/generated",
@@ -671,7 +680,7 @@ app.mount(
 )
 
 # Mount static files for subtitle files
-subtitle_static_dir = "static/audio/subtitles"
+subtitle_static_dir = str(audio_subtitle_dir())
 os.makedirs(subtitle_static_dir, exist_ok=True)
 app.mount(
     "/api/audio/subtitles",

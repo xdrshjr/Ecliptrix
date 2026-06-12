@@ -458,13 +458,16 @@ describe('MultiTrackPlaybackEngine — §5.3 readiness repaint', () => {
     expect(engine.getPhase()).not.toBe('playing');
   });
 
-  it('does NOT repaint on a readiness event while playing (rAF owns the playing path)', () => {
+  it('A2 stands down on a readiness event while playing when a start handshake is pending (A1 owns it)', () => {
+    // canplay is a readiness event but NOT a start-reanchor event, so only the
+    // A2 path can react. While the handshake is pending it must stand down — the
+    // handshake re-anchors first; repainting here would re-pull the element.
     const videoEl = fakeEventfulVideoEl();
     const { engine, renderSpy } = buildReadinessHarness(videoEl);
     engine.play();
     expect(engine.getPhase()).toBe('playing');
     const before = renderSpy.mock.calls.length;
-    videoEl.dispatchEvent('seeked');
+    videoEl.dispatchEvent('canplay');
     expect(renderSpy.mock.calls.length).toBe(before);
   });
 
@@ -568,15 +571,20 @@ describe('MultiTrackPlaybackEngine — 方案 A start re-anchor (mid-clip play)'
     expect(h.clock.getCompositionTime()).toBeCloseTo(5, 6);
   });
 
-  it('drops the handshake after the bind-seek budget so a stuck source frees the clock', () => {
+  it('keeps the handshake alive across a slow cold seek so a late seeked still re-anchors (A3-a)', () => {
+    // Round-3 fix: a real cold seek to an unbuffered mid-clip position routinely
+    // outruns the old 500ms budget. The handshake must survive so its late
+    // `seeked` still re-anchors the clock onto the settled element — that
+    // reanchor-on-settle is what stops _ensureSeeked re-pulling the element into
+    // a fresh cold seek (the death spiral).
     const videoEl = fakeEventfulVideoEl();
     const h = buildStartHarness(videoEl, 5);
     h.engine.play();
-    h.advance(BIND_SEEK_TIMEOUT_MS + 50); // exceed the budget with no readiness event
-    h.tick(); // the budget is dropped on tick
-    const compBefore = h.clock.getCompositionTime();
-    videoEl.dispatchEvent('seeked'); // a late event must NOT re-anchor anymore
-    expect(h.clock.getCompositionTime()).toBeCloseTo(compBefore, 6);
+    h.advance(BIND_SEEK_TIMEOUT_MS + 200); // outrun the OLD budget with no readiness event
+    h.tick(); // ticks no longer drop the handshake
+    expect(h.clock.getCompositionTime()).toBeGreaterThan(5); // clock free-ran while seeking
+    videoEl.dispatchEvent('seeked'); // the element finally settled at the target
+    expect(h.clock.getCompositionTime()).toBeCloseTo(5, 6); // late seeked STILL re-anchors
   });
 
   it('a plain (non-EventTarget) lead element never arms the handshake (no throw)', () => {
@@ -586,6 +594,178 @@ describe('MultiTrackPlaybackEngine — 方案 A start re-anchor (mid-clip play)'
     h.advance(1000);
     // No handshake → clock keeps free-running (comp ≈ 6, no re-anchor).
     expect(h.clock.getCompositionTime()).toBeCloseTo(6, 6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug A round-3 regression (preview-seek-blackscreen-and-packaged-export-r3):
+// clicking the cursor to a mid-clip position then playing left the canvas black.
+// A cold seek to an unbuffered position keeps the element below readyState 2
+// (seeking) far longer than the old 500ms budget; the free-running clock raced
+// ahead, the handshake was dropped before the element settled, and once it did
+// settle _ensureSeeked yanked it forward into a fresh cold seek → death spiral.
+// These tests use an eventful fake whose `seeked` ACTUALLY flips readiness, so
+// the real failure path (readyState<2 → black) is exercised — the existing
+// readyState-always-4 fakes never reached it.
+// ---------------------------------------------------------------------------
+
+type ColdSeekVideo = VideoElementLike & {
+  paused: boolean;
+  muted: boolean;
+  readyState: number;
+  seeking: boolean;
+  videoWidth: number;
+  videoHeight: number;
+  addEventListener(type: string, cb: () => void): void;
+  removeEventListener(type: string, cb: () => void): void;
+  dispatchEvent(type: string): void;
+  /** Simulate the in-flight cold seek completing: drawable again + fire `seeked`. */
+  settle(): void;
+};
+
+function fakeColdSeekVideoEl(): ColdSeekVideo {
+  const handlers: Array<{ type: string; cb: () => void }> = [];
+  let _currentTime = 0;
+  const el = {
+    src: '',
+    get currentTime() {
+      return _currentTime;
+    },
+    set currentTime(v: number) {
+      // Assigning currentTime starts a cold seek: drop below drawable + seeking.
+      _currentTime = v;
+      el.readyState = 1;
+      el.seeking = true;
+    },
+    readyState: 4,
+    seeking: false,
+    videoWidth: 1920,
+    videoHeight: 1080,
+    paused: true,
+    muted: false,
+    play() {
+      el.paused = false;
+    },
+    pause() {
+      el.paused = true;
+    },
+    addEventListener(type: string, cb: () => void) {
+      handlers.push({ type, cb });
+    },
+    removeEventListener(type: string, cb: () => void) {
+      for (let i = handlers.length - 1; i >= 0; i--) {
+        if (handlers[i].type === type && handlers[i].cb === cb) handlers.splice(i, 1);
+      }
+    },
+    dispatchEvent(type: string) {
+      handlers.filter((h) => h.type === type).forEach((h) => h.cb());
+    },
+    settle() {
+      el.seeking = false;
+      el.readyState = 4;
+      el.dispatchEvent('seeked');
+    },
+  };
+  return el as unknown as ColdSeekVideo;
+}
+
+describe('MultiTrackPlaybackEngine — mid-clip cold-seek black-screen (Bug A round-3)', () => {
+  function buildColdSeekHarness(videoEl: VideoElementLike, startComp: number) {
+    const nowRef = { ms: 0 };
+    const queue: FrameRequestCallback[] = [];
+    const clock = new PlaybackClock({
+      raf: (cb) => {
+        queue.push(cb);
+        return queue.length;
+      },
+      caf: () => {
+        queue.length = 0;
+      },
+      now: () => nowRef.ms,
+    });
+    const { canvas, ctx } = makeMockCanvas();
+    const compositor = new CanvasCompositor(() => nowRef.ms);
+    const engine = new MultiTrackPlaybackEngine({
+      clock,
+      compositor,
+      playhead: new PlayheadController({ throttleMs: 0, now: () => 0 }),
+      now: () => nowRef.ms,
+    });
+    engine.attach({
+      canvas,
+      resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
+      resolveAudioElement: () => null,
+      resolveSource: (s) => `/${s.id}.mp4`,
+      timeline: {
+        getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
+        getAudioSyncGroups: () => [],
+        getSubtitleItems: () => [],
+        getImageItems: () => [],
+        getTotalDuration: () => 10,
+        getCurrentTime: () => startComp,
+        setCurrentTime: () => undefined,
+      },
+    });
+    return {
+      engine,
+      clock,
+      compositor,
+      ctx,
+      advance(ms: number) {
+        nowRef.ms += ms;
+      },
+      tick() {
+        const cb = queue.shift();
+        if (cb) cb(nowRef.ms);
+      },
+    };
+  }
+
+  it('stays black during the cold seek, draws the first frame on settle, and does NOT re-pull the element (spiral broken)', () => {
+    const videoEl = fakeColdSeekVideoEl();
+    const h = buildColdSeekHarness(videoEl, 5);
+    h.engine.play();
+    expect(videoEl.seeking).toBe(true); // cold seek to source 5 in flight
+
+    // Wall time outruns the old 500ms budget while the element is below readyState 2.
+    h.advance(700);
+    h.tick();
+    expect(h.compositor.getStats().drawnFrames).toBe(0); // nothing drawn — black
+    expect(h.compositor.lastFrameDrewAny()).toBe(false);
+    const target = videoEl.currentTime; // 5
+
+    // The cold seek completes: A1 re-anchors the clock onto the element AND paints.
+    videoEl.settle();
+    expect(h.compositor.getStats().drawnFrames).toBeGreaterThan(0); // first real frame
+    expect(h.clock.getCompositionTime()).toBeCloseTo(5, 1); // clock pulled back onto decode
+
+    // The settled element must NOT be yanked forward into a fresh cold seek.
+    h.advance(50);
+    h.tick();
+    expect(videoEl.seeking).toBe(false);
+    expect(videoEl.readyState).toBe(4);
+    expect(videoEl.currentTime).toBeCloseTo(target, 6);
+  });
+
+  it('A2: once the handshake disarmed, a readiness event repaints a residual black frame while playing', () => {
+    const videoEl = fakeColdSeekVideoEl();
+    const h = buildColdSeekHarness(videoEl, 5);
+    h.engine.play();
+    videoEl.settle(); // handshake fires + disarms; a real frame is drawn
+    expect(h.compositor.lastFrameDrewAny()).toBe(true);
+
+    // The element re-buffers mid-playback (drops below readyState 2) → black tick.
+    videoEl.readyState = 1;
+    h.advance(50);
+    h.tick();
+    expect(h.compositor.lastFrameDrewAny()).toBe(false);
+    const drawnBefore = h.compositor.getStats().drawnFrames;
+
+    // It becomes drawable again and fires canplay → A2 paints one corrected frame
+    // (no handshake pending now, so the defensive補画 is free to act).
+    videoEl.readyState = 4;
+    videoEl.dispatchEvent('canplay');
+    expect(h.compositor.getStats().drawnFrames).toBeGreaterThan(drawnBefore);
   });
 });
 

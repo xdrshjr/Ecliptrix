@@ -23,6 +23,10 @@ from app.models.voice_clone_models import AIAudioSynthesizeRequest
 from app.services.tts_service import tts_service
 from app.services.batch_tts_service import BatchTTSService
 from app.services.sentence_tts_service import SentenceTTSService
+from app.services.local_media_resolver import (
+    audio_generated_dir,
+    legacy_audio_generated_dir,
+)
 from app.logger import get_logger
 from app.config import settings
 
@@ -414,9 +418,13 @@ async def download_audio_file(file_name: str):
             "收到音频文件下载请求", {"file_name": file_name, "request_type": "download"}
         )
 
-        # 构建文件路径
-        audio_dir = "static/audio/generated"
-        file_path = os.path.join(audio_dir, file_name)
+        # 构建文件路径：generated audio 现落在持久 STORAGE_ROOT 下（Bug B / B1），
+        # 先查规范目录，未命中再回退旧的服务安装目录（B2 兼容历史文件）。
+        file_path = os.path.join(str(audio_generated_dir()), file_name)
+        if not os.path.exists(file_path):
+            legacy_path = os.path.join(str(legacy_audio_generated_dir()), file_name)
+            if os.path.exists(legacy_path):
+                file_path = legacy_path
 
         # 检查文件是否存在
         if not os.path.exists(file_path):

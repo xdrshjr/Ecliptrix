@@ -45,6 +45,12 @@ import websockets
 from app.config import settings
 from app.logger import get_logger
 from app.models.audio_models import SubtitleItem
+from app.services.local_media_resolver import (
+    audio_generated_dir,
+    audio_subtitle_dir,
+    legacy_audio_generated_dir,
+    legacy_audio_subtitle_dir,
+)
 from app.services.volcano_ws_protocol import (
     build_audio_packet,
     build_full_client_request,
@@ -52,14 +58,6 @@ from app.services.volcano_ws_protocol import (
 )
 
 logger = get_logger(__name__)
-
-
-# URL prefix → on-disk directory mapping. Aligned with `app/main.py`'s static
-# mounts so callers can hand us either a local path or the proxy URL.
-_URL_TO_DIR: Dict[str, str] = {
-    "/api/audio/generated/": "static/audio/generated",
-    "/api/audio/subtitles/": "static/audio/subtitles",
-}
 
 
 _ASR_WS_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
@@ -152,13 +150,29 @@ class AudioTranscriptionService:
         return f"{secret[:2]}****{secret[-2:]}"
 
     def _resolve_local_path(self, url: str) -> Optional[str]:
-        """将 /api/... URL 解析为本地文件系统路径。"""
-        url_map = dict(_URL_TO_DIR)
-        url_map["/api/storage/files/"] = settings.storage.root
-        for prefix, directory in url_map.items():
+        """将 /api/... URL 解析为本地文件系统路径。
+
+        generated/subtitles audio 现统一落在持久可写的 STORAGE_ROOT 下（Bug B / B1）。
+        解析时先查 STORAGE_ROOT 规范目录，未命中再回退旧的服务安装目录（B2），以兼容
+        迁移前生成的引用；都未命中则返回规范路径，由调用方按文件缺失处理。
+        """
+        audio_dirs = {
+            "/api/audio/generated/": (audio_generated_dir(), legacy_audio_generated_dir()),
+            "/api/audio/subtitles/": (audio_subtitle_dir(), legacy_audio_subtitle_dir()),
+        }
+        for prefix, dirs in audio_dirs.items():
             if url.startswith(prefix):
                 filename = url[len(prefix):]
-                return os.path.join(directory, filename)
+                for base in dirs:
+                    candidate = os.path.join(str(base), filename)
+                    if os.path.exists(candidate):
+                        return candidate
+                return os.path.join(str(dirs[0]), filename)
+
+        storage_prefix = "/api/storage/files/"
+        if url.startswith(storage_prefix):
+            filename = url[len(storage_prefix):]
+            return os.path.join(settings.storage.root, filename)
         return None
 
     def _missing_credentials(self) -> Optional[str]:

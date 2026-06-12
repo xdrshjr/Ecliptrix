@@ -49,6 +49,10 @@ from app.services.local_media_resolver import (
     LOCAL_HOSTS,
     ROUTE_PREFIXES,
     LocalMediaResolveError,
+    audio_generated_dir,
+    audio_subtitle_dir,
+    legacy_audio_generated_dir,
+    legacy_audio_subtitle_dir,
     resolve_media_reference,
 )
 from app.services.composition.encode import (
@@ -1574,12 +1578,20 @@ class VideoCompositionService:
     # from repo root, the basic-service directory, or anywhere else.
     _SERVICE_ROOT = Path(__file__).resolve().parents[2]
 
-    # Mirrors the static-file mounts in app/main.py. Keys are URL prefixes
-    # (with trailing slash); values are paths relative to _SERVICE_ROOT.
-    _URL_PREFIX_TO_REL_DIR = {
-        '/api/audio/generated/': os.path.join('static', 'audio', 'generated'),
-        '/api/audio/subtitles/': os.path.join('static', 'audio', 'subtitles'),
-    }
+    def _audio_prefix_dirs(self) -> dict[str, list[Path]]:
+        """generated/subtitles audio URL prefix → candidate on-disk dirs.
+
+        Canonical (persistent, writable STORAGE_ROOT) first, then the legacy
+        service-install dir (B2 fallback). This is the same anchor the static
+        mounts (app/main.py) and the shared resolver use, so a packaged-desktop
+        install no longer writes audio to a volatile/read-only dir that export
+        then fails to find. See
+        docs/diagnoses/preview-seek-blackscreen-and-packaged-export-r3 (Bug B).
+        """
+        return {
+            '/api/audio/generated/': [audio_generated_dir(), legacy_audio_generated_dir()],
+            '/api/audio/subtitles/': [audio_subtitle_dir(), legacy_audio_subtitle_dir()],
+        }
 
     def _guard_request_urls(self, request: VideoCompositionRequest) -> None:
         """Validate every user-controlled URL in a composition request.
@@ -1665,22 +1677,24 @@ class VideoCompositionService:
         except LocalMediaResolveError:
             pass
 
-        for prefix, rel_dir in self._URL_PREFIX_TO_REL_DIR.items():
+        for prefix, candidate_dirs in self._audio_prefix_dirs().items():
             if url.startswith(prefix):
                 filename = url[len(prefix):]
-                local_path = str(self._SERVICE_ROOT / rel_dir / filename)
+                for base in candidate_dirs:
+                    local_path = str(base / filename)
+                    if os.path.exists(local_path):
+                        logger.info(f"Converted server URL to local path", {
+                            'original_url': url,
+                            'local_path': local_path,
+                            'exists': True,
+                        })
+                        return local_path
 
-                logger.info(f"Converted server URL to local path", {
-                    'original_url': url,
-                    'local_path': local_path,
-                    'exists': os.path.exists(local_path)
-                })
-
-                if not os.path.exists(local_path):
-                    logger.error(f"Local file does not exist: {local_path}")
-                    raise FileNotFoundError(f"Audio file not found: {local_path}")
-
-                return local_path
+                # None of the candidate roots held the file — point the error at
+                # the canonical (STORAGE_ROOT) location.
+                canonical_path = str(candidate_dirs[0] / filename)
+                logger.error(f"Local file does not exist: {canonical_path}")
+                raise FileNotFoundError(f"Audio file not found: {canonical_path}")
 
         # /api/storage/files/ is mounted at settings.storage.root (configurable via STORAGE_ROOT)
         storage_prefix = '/api/storage/files/'

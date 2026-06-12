@@ -88,6 +88,81 @@ def test_resolves_thumbnail_storage_url(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Bug B (preview-seek-blackscreen-and-packaged-export-r3): generated/subtitles
+# audio now resolve under the persistent STORAGE_ROOT (B1) with a legacy
+# service-install-dir fallback (B2). Pre-migration these were anchored only to
+# the volatile/read-only install dir, so packaged-desktop export 404'd the audio.
+# ---------------------------------------------------------------------------
+
+
+def test_resolves_generated_audio_under_storage_root(tmp_path, monkeypatch):
+    # B1: a generated-audio file under STORAGE_ROOT/static/audio/generated resolves.
+    storage_root = tmp_path / "storage"
+    audio = storage_root / "static" / "audio" / "generated" / "seg.mp3"
+    audio.parent.mkdir(parents=True)
+    audio.write_bytes(b"mp3")
+    monkeypatch.setattr(
+        "app.services.local_media_resolver.settings.storage.root", str(storage_root)
+    )
+
+    resolved = resolve_media_reference("/api/audio/generated/seg.mp3")
+    assert resolved.path == audio.resolve()
+    assert resolved.source_kind == "audio_generated"
+
+
+def test_resolves_generated_audio_via_loopback_url(tmp_path, monkeypatch):
+    # The packaged desktop shell emits an absolute loopback URL; the host is
+    # stripped and it resolves the same as the bare route (this is the exact
+    # shape that 404'd in the packaged backend.log).
+    storage_root = tmp_path / "storage"
+    audio = storage_root / "static" / "audio" / "generated" / "seg.mp3"
+    audio.parent.mkdir(parents=True)
+    audio.write_bytes(b"mp3")
+    monkeypatch.setattr(
+        "app.services.local_media_resolver.settings.storage.root", str(storage_root)
+    )
+
+    resolved = resolve_media_reference(
+        "http://127.0.0.1:18321/api/audio/generated/seg.mp3"
+    )
+    assert resolved.path == audio.resolve()
+
+
+def test_generated_audio_falls_back_to_legacy_service_dir(tmp_path, monkeypatch):
+    # B2: a project saved before the migration references generated audio that
+    # only exists under the legacy service-install dir; resolution falls back to
+    # it when STORAGE_ROOT has no copy.
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()  # canonical generated dir is absent / empty
+    legacy_root = tmp_path / "service"
+    legacy_audio = legacy_root / "static" / "audio" / "generated" / "old.mp3"
+    legacy_audio.parent.mkdir(parents=True)
+    legacy_audio.write_bytes(b"mp3")
+    monkeypatch.setattr(
+        "app.services.local_media_resolver.settings.storage.root", str(storage_root)
+    )
+    monkeypatch.setattr("app.services.local_media_resolver.SERVICE_ROOT", legacy_root)
+
+    resolved = resolve_media_reference("/api/audio/generated/old.mp3")
+    assert resolved.path == legacy_audio.resolve()
+    assert resolved.source_kind == "audio_generated"
+
+
+def test_generated_audio_missing_everywhere_raises(tmp_path, monkeypatch):
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    legacy_root = tmp_path / "service"
+    legacy_root.mkdir()
+    monkeypatch.setattr(
+        "app.services.local_media_resolver.settings.storage.root", str(storage_root)
+    )
+    monkeypatch.setattr("app.services.local_media_resolver.SERVICE_ROOT", legacy_root)
+
+    with pytest.raises(LocalMediaResolveError):
+        resolve_media_reference("/api/audio/generated/nope.mp3")
+
+
+# ---------------------------------------------------------------------------
 # Composition-side resolution orchestration (media_resolution.resolve_local_media)
 # ---------------------------------------------------------------------------
 

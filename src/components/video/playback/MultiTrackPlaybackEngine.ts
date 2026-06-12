@@ -37,7 +37,6 @@ import {
   type TrackDiagnosticRow,
 } from './internal/previewDebug';
 import { activeClipAt } from './TrackScheduler';
-import { BIND_SEEK_TIMEOUT_MS } from './internal/constants';
 import type { TextMeasurer } from './SubtitleLayer';
 import type { ImageOverlayInput } from './ImageOverlayLayer';
 import type {
@@ -124,9 +123,19 @@ export class MultiTrackPlaybackEngine {
   // clock races ahead of the decode and the compositor paints only the black
   // letterbox. We arm a one-shot listener on the lead element and, the moment it
   // confirms it reached the target (`seeked`) or began advancing (`playing`),
-  // re-anchor the clock back to the start comp so clock and decode line up. A
-  // BIND_SEEK_TIMEOUT_MS budget (checked on tick) drops a handshake a bad source
-  // never resolves. Null when no handshake is pending.
+  // re-anchor the clock back to the start comp AND force a repaint so clock and
+  // decode line up and the corrected frame is painted at once (Bug A / A1).
+  //
+  // The handshake is NOT dropped on a wall-clock budget (round-3 fix A3-a): a
+  // real cold seek to an unbuffered mid-clip position routinely takes longer
+  // than the old 500ms budget, and dropping the handshake before the element
+  // settles let the free-running clock keep leading the decode, so the next
+  // _ensureSeeked yanked the element forward into a fresh cold seek — the
+  // death-spiral that kept the canvas black. Keeping it alive until the element
+  // actually settles guarantees reanchor-on-settle, which breaks the spiral. A
+  // still-armed handshake is harmless (the clock already free-runs); it is
+  // released the moment a `seeked`/`playing` fires, or on the next
+  // play/seek/pause/dispose. Null when no handshake is pending.
   private _startReanchor: StartReanchorHandshake | null = null;
   // §5.4 runtime diagnostics — resolved once at attach so a production preview
   // (flag off) pays nothing per frame.
@@ -289,15 +298,11 @@ export class MultiTrackPlaybackEngine {
 
   private _onTick(comp: number): void {
     if (this._disposed || !this._deps) return;
-    // 方案 A budget: drop a startup handshake the lead source never resolved
-    // (no `seeked`/`playing` within BIND_SEEK_TIMEOUT_MS) so it cannot pin the
-    // clock-alignment intent forever — the clock just keeps free-running.
-    if (
-      this._startReanchor &&
-      this._now() - this._startReanchor.armWall > BIND_SEEK_TIMEOUT_MS
-    ) {
-      this._disarmStartReanchor();
-    }
+    // Round-3 fix A3-a: the start-reanchor handshake is deliberately NOT dropped
+    // on a wall-clock budget here. A slow cold seek must be able to outlive the
+    // tick loop so its late `seeked`/`playing` still re-anchors the clock onto
+    // the settled element (see _startReanchor field doc). The handshake releases
+    // itself the moment it fires, or on the next play/seek/pause/dispose.
     const total = this._deps.timeline.getTotalDuration();
     if (total > 0 && comp >= total) {
       this.clock.stop();
@@ -385,7 +390,15 @@ export class MultiTrackPlaybackEngine {
    *   - de-dupe with `__ecliptrixReadinessBound` so a re-resolved element is not
    *     bound twice;
    *   - record every (element, type, handler) so {@link dispose} can unbind.
-   * Repaint runs ONLY when not playing (the rAF loop owns the playing path).
+   * When NOT playing, the rAF loop is idle so this is the only thing that can
+   * paint a freshly-drawable source — it always repaints. When playing, the rAF
+   * loop owns the path, so we normally stand down; the ONE exception (Bug A /
+   * A2 defensive补画) is when the last composed frame came up empty (every video
+   * source was below readyState 2, e.g. during a cold mid-clip seek) — then we
+   * paint a single corrected frame the instant a source becomes drawable instead
+   * of waiting for the rAF loop to land on a ready source. This is a one-shot per
+   * readiness event and re-uses the same per-frame pipeline (`_renderAt`), so it
+   * does not break the "playing is owned by rAF" invariant.
    */
   private _bindReadinessRepaint(el: VideoElementLike | null): void {
     if (!el) return;
@@ -396,7 +409,19 @@ export class MultiTrackPlaybackEngine {
     target.__ecliptrixReadinessBound = true;
     const handler = () => {
       if (this._disposed) return;
-      if (this.getPhase() === 'playing') return;
+      if (this.getPhase() === 'playing') {
+        // A2: only補画 when the rAF loop's last frame came up black AND no
+        // start-reanchor handshake is pending. The handshake (A1) owns the
+        // settle repaint and re-anchors the clock FIRST; repainting here before
+        // it re-anchors would feed _ensureSeeked a still-leading clock target
+        // and yank the just-settled element into a fresh cold seek — the very
+        // spiral this fix closes. Once the handshake has fired/disarmed and the
+        // clock tracks the element, this safely covers any residual black frame.
+        if (!this._startReanchor && !this.compositor.lastFrameDrewAny()) {
+          this._renderAt(this.clock.getCompositionTime(), true);
+        }
+        return;
+      }
       this._renderAt(this._lastRenderComp, false);
     };
     for (const type of READINESS_EVENTS) {
@@ -433,11 +458,13 @@ export class MultiTrackPlaybackEngine {
    *
    * Listens for `seeked` (the element reached the seek target — the cold-seek
    * path) and `playing` (the element began advancing — the already-buffered
-   * startup window). We re-anchor only (no forced repaint): the running rAF loop
-   * paints the corrected frame on its next tick, and `clock.getCompositionTime()`
-   * stays the single time truth. Skips silently when the lead element is a plain
-   * structural stub (no `addEventListener`, as in tests) or when there is no lead
-   * video to wait on (pure-audio timeline / no active clip).
+   * startup window). On the first such event while playing we re-anchor the clock
+   * to `targetComp` AND immediately repaint that frame (Bug A / A1): the lead
+   * element is now drawable at the target, so painting at once avoids the
+   * "wait for the next rAF to land on a ready source" window that left the canvas
+   * black. Skips silently when the lead element is a plain structural stub (no
+   * `addEventListener`, as in tests) or when there is no lead video to wait on
+   * (pure-audio timeline / no active clip).
    */
   private _armStartReanchor(targetComp: number): void {
     this._disarmStartReanchor();
@@ -447,13 +474,19 @@ export class MultiTrackPlaybackEngine {
     const handler = () => {
       if (this._disposed) return;
       // Only meaningful while playing; a stray late event just disarms.
-      if (this.getPhase() === 'playing') this.clock.reanchor(targetComp);
+      if (this.getPhase() === 'playing') {
+        this.clock.reanchor(targetComp);
+        // A1: paint the corrected frame now — the lead element just became
+        // drawable at the target. Without this the running rAF loop might paint
+        // one more black frame before its next tick.
+        this._renderAt(targetComp, true);
+      }
       this._disarmStartReanchor();
     };
     for (const type of START_REANCHOR_EVENTS) {
       lead.addEventListener(type, handler);
     }
-    this._startReanchor = { el: lead, handler, armWall: this._now() };
+    this._startReanchor = { el: lead, handler };
   }
 
   private _disarmStartReanchor(): void {
@@ -570,8 +603,6 @@ type StartReanchorBindable = VideoElementLike & {
 interface StartReanchorHandshake {
   el: StartReanchorBindable;
   handler: () => void;
-  /** Wall time the handshake was armed — for the BIND_SEEK_TIMEOUT_MS budget. */
-  armWall: number;
 }
 
 /** End-of-timeline snap epsilon (seconds) — replay-from-start guard. */

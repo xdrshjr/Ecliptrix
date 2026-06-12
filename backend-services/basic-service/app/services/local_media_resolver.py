@@ -57,6 +57,58 @@ def _absolute_root(root: Path) -> Path:
     return SERVICE_ROOT / root
 
 
+# generated / subtitles audio relative subpaths. Preserved across the
+# STORAGE_ROOT migration (docs/diagnoses/preview-seek-blackscreen-and-packaged-export-r3
+# Bug B / B1): the canonical anchor is the persistent, writable STORAGE_ROOT —
+# packaged desktop installs the service into a volatile/read-only dir, so audio
+# written/served/resolved relative to that dir vanished and broke export. The
+# legacy anchor (the service install dir) is kept ONLY as a resolve-side fallback
+# (B2) so projects saved before the migration still resolve their old references.
+_AUDIO_GENERATED_REL = Path("static/audio/generated")
+_AUDIO_SUBTITLE_REL = Path("static/audio/subtitles")
+
+
+def _storage_root() -> Path:
+    """Absolute STORAGE_ROOT (anchored to SERVICE_ROOT when configured relative)."""
+    return _absolute_root(Path(settings.storage.root))
+
+
+def audio_generated_dir() -> Path:
+    """Canonical on-disk dir for generated (TTS) audio, under STORAGE_ROOT."""
+    return _storage_root() / _AUDIO_GENERATED_REL
+
+
+def audio_subtitle_dir() -> Path:
+    """Canonical on-disk dir for subtitle audio/SRT, under STORAGE_ROOT."""
+    return _storage_root() / _AUDIO_SUBTITLE_REL
+
+
+def legacy_audio_generated_dir() -> Path:
+    """Pre-migration generated-audio dir under the service install root (B2)."""
+    return SERVICE_ROOT / _AUDIO_GENERATED_REL
+
+
+def legacy_audio_subtitle_dir() -> Path:
+    """Pre-migration subtitle dir under the service install root (B2)."""
+    return SERVICE_ROOT / _AUDIO_SUBTITLE_REL
+
+
+def _candidate_roots(source_kind: SourceKind, root: Path | None) -> list[Path]:
+    """Ordered on-disk roots to try for a matched route prefix.
+
+    generated / subtitles audio resolve against the canonical STORAGE_ROOT first,
+    then the legacy service-install dir (B2 fallback). Every other route keeps its
+    single historical anchor.
+    """
+    if source_kind == "audio_generated":
+        return [audio_generated_dir(), legacy_audio_generated_dir()]
+    if source_kind == "audio_subtitle":
+        return [audio_subtitle_dir(), legacy_audio_subtitle_dir()]
+    if root is None:
+        return [_absolute_root(Path(settings.storage.root))]
+    return [_absolute_root(root)]
+
+
 def _allowed_roots() -> list[Path]:
     roots = [
         _absolute_root(Path(settings.storage.root)),
@@ -103,22 +155,29 @@ def _resolve_route_path(pathname: str, input_ref: str) -> ResolvedMediaPath:
             continue
 
         relative = unquote(pathname[len(prefix):])
-        raw_root = Path(settings.storage.root) if root is None else root
-        candidate_root = _absolute_root(raw_root)
-        candidate = candidate_root / relative
-        try:
-            resolved = validate_local_path_for_ffmpeg(
-                str(candidate),
-                [candidate_root],
-            )
-        except URLGuardError as exc:
-            raise LocalMediaResolveError(str(exc)) from exc
+        last_error: LocalMediaResolveError | None = None
+        for candidate_root in _candidate_roots(source_kind, root):
+            candidate = candidate_root / relative
+            try:
+                resolved = validate_local_path_for_ffmpeg(
+                    str(candidate),
+                    [candidate_root],
+                )
+            except URLGuardError as exc:
+                # Not under this candidate (typically: file absent). Try the next
+                # candidate root (B2 legacy fallback) before giving up.
+                last_error = LocalMediaResolveError(str(exc))
+                continue
 
-        return ResolvedMediaPath(
-            input_ref=input_ref,
-            path=resolved,
-            public_url=pathname,
-            source_kind=source_kind,
+            return ResolvedMediaPath(
+                input_ref=input_ref,
+                path=resolved,
+                public_url=pathname,
+                source_kind=source_kind,
+            )
+
+        raise last_error or LocalMediaResolveError(
+            f"media route resolved to no existing file: {pathname}"
         )
 
     raise LocalMediaResolveError(f"unknown local media route: {pathname}")

@@ -68,6 +68,14 @@ export class CanvasCompositor implements ICanvasCompositor {
   private _belowRecoverHold = 0;
   private _now: () => number;
 
+  // Whether the most recent renderFrame painted at least one layer (vs a fully
+  // black frame because every video layer was below readyState 2). Read by
+  // MultiTrackPlaybackEngine's readiness repaint (Bug A / A2 defensive补画): a
+  // playing frame that came up empty gets one re-paint the instant a source
+  // becomes drawable, instead of waiting for the rAF loop to land on a ready
+  // frame. See docs/diagnoses/preview-seek-blackscreen-and-packaged-export-r3.
+  private _lastFrameDrewAny = false;
+
   // §5.4 per-track draw accounting (diagnostics only; default empty / cleared on
   // detach). Keyed by the video layer id (== track id).
   private _layerStats = new Map<string, LayerDrawStat>();
@@ -125,6 +133,7 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._drawnAtLastEmit = 0;
     this._droppedAtLastEmit = 0;
     this._layerStats.clear();
+    this._lastFrameDrewAny = false;
   }
 
   setLetterbox(viewport: ICanvasViewport | null): void {
@@ -224,6 +233,7 @@ export class CanvasCompositor implements ICanvasCompositor {
       }
     }
 
+    this._lastFrameDrewAny = drewAny;
     if (drewAny) {
       this._stats.drawnFrames += 1;
     } else {
@@ -372,6 +382,16 @@ export class CanvasCompositor implements ICanvasCompositor {
 
   getStats(): CompositorStats {
     return { ...this._stats };
+  }
+
+  /**
+   * Whether the most recent {@link renderFrame} painted at least one layer (vs
+   * a fully black frame because every video layer was below readyState 2). Read
+   * by MultiTrackPlaybackEngine's readiness repaint (Bug A / A2 defensive补画).
+   * False before the first renderFrame and after {@link detach}.
+   */
+  lastFrameDrewAny(): boolean {
+    return this._lastFrameDrewAny;
   }
 
   /**
