@@ -2447,6 +2447,48 @@ export interface Translations {
     later: string;
     settingsAttentionHint: string;
   };
+  narrationDirectScript: {
+    modeNarrationDirect: string;
+    modeNarrationDirectDesc: string;
+    modeVideoUnderstanding: string;
+    modeVideoUnderstandingDesc: string;
+    title: string;
+    stepComposeLabel: string;
+    stepSplitLabel: string;
+    draftLabel: string;
+    draftPlaceholder: string;
+    streamingHint: string;
+    chatPanelTitle: string;
+    chatPlaceholder: string;
+    chatEmptyHint: string;
+    roleUser: string;
+    roleAssistant: string;
+    assistantThinking: string;
+    reasoningLabel: string;
+    send: string;
+    cancel: string;
+    splitting: string;
+    splitSentencesLabel: string;
+    sentenceCount: string;
+    sentencePlaceholder: string;
+    emptySplitHint: string;
+    addSentence: string;
+    deleteSentence: string;
+    next: string;
+    back: string;
+    complete: string;
+    close: string;
+    composeReadyHint: string;
+    emptyDraftHint: string;
+    splitFooterHint: string;
+    defaultSegmentTitle: string;
+  };
+  videoUnderstandingPlaceholder: {
+    title: string;
+    comingSoon: string;
+    description: string;
+    close: string;
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -4915,6 +4957,48 @@ export const translations: Record<string, Translations> = {
       later: 'Maybe later',
       settingsAttentionHint: 'Model credentials need configuration',
     },
+    narrationDirectScript: {
+      modeNarrationDirect: 'Narration — direct',
+      modeNarrationDirectDesc: 'Chat with AI to write & split the narration',
+      modeVideoUnderstanding: 'Narration — from video',
+      modeVideoUnderstandingDesc: 'Generate narration from video understanding',
+      title: 'Narration — direct generate',
+      stepComposeLabel: 'Write',
+      stepSplitLabel: 'Split & refine',
+      draftLabel: 'Narration draft',
+      draftPlaceholder: 'Write your narration here, or ask the AI on the right to draft it for you…',
+      streamingHint: 'Rewriting — editing locked',
+      chatPanelTitle: 'AI assistant',
+      chatPlaceholder: 'Describe what you want, e.g. "Write a 30s coffee shop tour narration"',
+      chatEmptyHint: 'Tell the AI what narration you need; it rewrites the draft on the left.',
+      roleUser: 'You',
+      roleAssistant: 'AI',
+      assistantThinking: 'Rewriting…',
+      reasoningLabel: 'Reasoning',
+      send: 'Send',
+      cancel: 'Stop',
+      splitting: 'Splitting into sentences…',
+      splitSentencesLabel: 'Narration sentences',
+      sentenceCount: '{count} sentences',
+      sentencePlaceholder: 'Sentence text',
+      emptySplitHint: 'No sentences yet. Add one below, or go back to rewrite the draft.',
+      addSentence: 'Add sentence',
+      deleteSentence: 'Delete sentence',
+      next: 'Next',
+      back: 'Back',
+      complete: 'Done',
+      close: 'Close',
+      composeReadyHint: 'Ready — click Next to split the narration into sentences.',
+      emptyDraftHint: 'Write the narration first, then click Next.',
+      splitFooterHint: 'Edit, add or delete sentences, then click Done to append them below.',
+      defaultSegmentTitle: 'Narration segment',
+    },
+    videoUnderstandingPlaceholder: {
+      title: 'Narration — from video',
+      comingSoon: 'Coming soon',
+      description: 'Narration generation from video understanding is under development and will arrive in a future update.',
+      close: 'Close',
+    },
   },
   'zh-CN': {
     common: {
@@ -7379,6 +7463,48 @@ export const translations: Record<string, Translations> = {
       goToSettings: '前往设置',
       later: '稍后再说',
       settingsAttentionHint: '模型凭证待配置',
+    },
+    narrationDirectScript: {
+      modeNarrationDirect: '解说直接生成',
+      modeNarrationDirectDesc: '与 AI 对话撰写并拆分解说文案',
+      modeVideoUnderstanding: '视频理解生成',
+      modeVideoUnderstandingDesc: '基于视频理解生成解说（开发中）',
+      title: '解说直接生成',
+      stepComposeLabel: '撰写文案',
+      stepSplitLabel: '拆分精修',
+      draftLabel: '解说文案',
+      draftPlaceholder: '在此撰写解说文案，或在右侧让 AI 帮你撰写…',
+      streamingHint: '正在改写文案 · 编辑已锁定',
+      chatPanelTitle: 'AI 助手',
+      chatPlaceholder: '描述你的需求，例如「写一段 30 秒咖啡探店解说」',
+      chatEmptyHint: '告诉 AI 你想要的解说，它会改写左侧文案。',
+      roleUser: '用户',
+      roleAssistant: 'AI',
+      assistantThinking: '正在改写文案…',
+      reasoningLabel: '思考过程',
+      send: '发送',
+      cancel: '中止',
+      splitting: '正在逐句拆分…',
+      splitSentencesLabel: '解说句子',
+      sentenceCount: '{count} 句',
+      sentencePlaceholder: '句子内容',
+      emptySplitHint: '暂无句子，可在下方新增，或返回上一步重新撰写文案。',
+      addSentence: '新增句子',
+      deleteSentence: '删除句子',
+      next: '下一步',
+      back: '上一步',
+      complete: '完成',
+      close: '关闭',
+      composeReadyHint: '文案就绪 — 点击「下一步」逐句拆分。',
+      emptyDraftHint: '请先撰写解说文案，再点击「下一步」。',
+      splitFooterHint: '可编辑 / 新增 / 删除句子，点击「完成」追加到下方解说脚本。',
+      defaultSegmentTitle: '解说段落',
+    },
+    videoUnderstandingPlaceholder: {
+      title: '视频理解生成',
+      comingSoon: '功能开发中',
+      description: '基于视频理解的解说生成正在开发中，后续版本将上线，敬请期待。',
+      close: '关闭',
     },
   },
 };

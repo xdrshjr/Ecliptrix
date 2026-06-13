@@ -21,6 +21,7 @@ import {
   AudioTranscriptionResponse
 } from '@/lib/api/audioTranscription';
 import VoiceSelector from './components/VoiceSelector';
+import { AiGenerateMenu } from './components/AiGenerateMenu';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
@@ -45,7 +46,10 @@ import {
 interface ScriptPanelProps {
   segments: ScriptSegment[];
   className?: string;
-  onGenerateScript?: () => void;
+  /** 解说 tab「AI 生成」下拉菜单：解说直接生成入口（spec ai-generate-script-modes）。 */
+  onSelectNarrationDirect?: () => void;
+  /** 解说 tab「AI 生成」下拉菜单：视频理解生成入口（本期占位）。 */
+  onSelectVideoUnderstanding?: () => void;
   isGenerating?: boolean;
   onUpdateSegments?: (segments: ScriptSegment[]) => void;
   onAddMaterial?: (material: MaterialItem) => void; // 添加素材到材料面板
@@ -71,7 +75,8 @@ interface ScriptPanelProps {
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
   segments,
   className = '',
-  onGenerateScript,
+  onSelectNarrationDirect,
+  onSelectVideoUnderstanding,
   isGenerating = false,
   onUpdateSegments,
   onAddMaterial,
@@ -683,15 +688,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       }
       return next;
     });
-  };
-
-  const handleGenerateScript = () => {
-    if (onGenerateScript && !isGenerating) {
-      logger.info('用户点击生成脚本按钮', {
-        timestamp: new Date().toISOString()
-      });
-      onGenerateScript();
-    }
   };
 
   // 获取段落索引号（从1开始）
@@ -1816,26 +1812,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               null
             ) : activeTab === 'narration' ? (
               <>
-                {/* 生成脚本按钮 */}
-                {onGenerateScript && (
-                  <button
-                    onClick={handleGenerateScript}
-                    disabled={isGenerating}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/30 rounded-md hover:bg-primary/20 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title={t.scriptPanel.header.generateScript}
-                  >
-                    {isGenerating ? (
-                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                      </svg>
-                    )}
-                    <span>{isGenerating ? t.scriptPanel.header.generating : t.scriptPanel.header.aiGenerate}</span>
-                  </button>
+                {/* AI 生成下拉菜单：解说直接生成 / 视频理解生成（spec ai-generate-script-modes） */}
+                {onSelectNarrationDirect && onSelectVideoUnderstanding && (
+                  <AiGenerateMenu
+                    onSelectNarrationDirect={onSelectNarrationDirect}
+                    onSelectVideoUnderstanding={onSelectVideoUnderstanding}
+                    isBusy={isGenerating}
+                  />
                 )}
                 {/* 统一转换所有语音按钮 */}
                 <button

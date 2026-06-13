@@ -19,7 +19,8 @@ import {
   useAudioSearch,
   useImageSearch,
   useTimelineComposition,
-  useVideoAnalysis
+  useVideoAnalysis,
+  useNarrationDirectScript
 } from './hooks';
 import { useAgentExecution } from './hooks/useAgentExecution';
 import { useConvertToScript } from './hooks/useConvertToScript';
@@ -47,7 +48,9 @@ import {
   VideoAnalysisModal,
   AIMixingProgressModal,
   AIMixingModeSelectionModal,
-  BatchAnalysisModeSelectionModal
+  BatchAnalysisModeSelectionModal,
+  NarrationDirectScriptModal,
+  VideoUnderstandingModePlaceholderModal
 } from './components';
 import ConvertToScriptModal from './components/ConvertToScriptModal';
 import { createAIVideoSegment } from './components/AIVideoScriptTab';
@@ -857,28 +860,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setIsPolishModalOpen(false);
   }, [taskId, documentState.markdownValue.length, documentState.setMarkdownValue, content, onUpdateContent]);
 
-  // 处理脚本生成弹窗
-  const handleScriptGenerationClick = useCallback(() => {
-    // 获取当前活动对话
-    const activeConversation = content?.conversations?.find(
-      conv => conv.id === content?.activeConversationId
-    );
-
-    // 将所有聊天消息内容合并为一个字符串
-    const chatContent = activeConversation?.messages
-      .map(msg => `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`)
-      .join('\n\n') || '';
-
-    console.log(`[VideoEditingInterface] 用户点击生成脚本按钮`, {
-      taskId,
-      messageCount: activeConversation?.messages.length || 0,
-      chatContentLength: chatContent.length,
-      timestamp: new Date().toISOString()
-    });
-
-    convertToScript.openModal(chatContent);
-  }, [taskId, content, convertToScript]);
-
   // 处理将消息内容转换为视频脚本
   const handleConvertMessageToScript = useCallback((content: string) => {
     console.log(`[VideoEditingInterface] 用户点击转换消息为视频脚本`, {
@@ -1033,6 +1014,23 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   useEffect(() => {
     scriptSegmentsRef.current = content?.scriptSegments || [];
   }, [content?.scriptSegments]);
+
+  // 解说「AI 生成」下拉双模式（spec ai-generate-script-modes v2）。
+  // 视频理解生成本期仅占位弹窗。
+  const [isVideoUnderstandingPlaceholderOpen, setIsVideoUnderstandingPlaceholderOpen] = useState(false);
+
+  // 「解说直接生成」完成时把新解说 segment 追加（而非替换）到 content.scriptSegments，
+  // 复用面板既有的 handleUpdateSegments 单一写入路径（评审决议 R3）。
+  const handleAppendNarrationSegments = useCallback((segment: ScriptSegment) => {
+    const existing = scriptSegmentsRef.current ?? [];
+    scriptGeneration.handleUpdateSegments([...existing, segment]);
+  }, [scriptGeneration]);
+
+  const narrationDirectScript = useNarrationDirectScript({
+    locale: locale === 'en' ? 'en' : 'zh',
+    onComplete: handleAppendNarrationSegments,
+    defaultSegmentTitle: t.narrationDirectScript.defaultSegmentTitle,
+  });
 
   // 句子级 AI 视频生成桥接：接收 ScriptPanel 的 onConfirm，连通 useMaterialManagement + sentence 状态回写
   const handleGenerateAiVideoForSentence = useCallback((
@@ -2630,7 +2628,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             <ScriptPanel
               segments={content?.scriptSegments || getMockScriptSegments(locale)}
               className="h-full"
-              onGenerateScript={handleScriptGenerationClick}
+              onSelectNarrationDirect={() => narrationDirectScript.open()}
+              onSelectVideoUnderstanding={() => setIsVideoUnderstandingPlaceholderOpen(true)}
               isGenerating={scriptGeneration.isGeneratingScript}
               onUpdateSegments={scriptGeneration.handleUpdateSegments}
               onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
@@ -2762,6 +2761,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isOpen={scriptGeneration.isGeneratingScript}
         progress={scriptGeneration.generationProgress}
         startTime={scriptGenerationStartTime}
+      />
+
+      {/* 解说直接生成两步式弹窗（spec ai-generate-script-modes） */}
+      <NarrationDirectScriptModal controller={narrationDirectScript} />
+
+      {/* 视频理解生成占位弹窗（本期仅外壳） */}
+      <VideoUnderstandingModePlaceholderModal
+        isOpen={isVideoUnderstandingPlaceholderOpen}
+        onClose={() => setIsVideoUnderstandingPlaceholderOpen(false)}
       />
 
       {/* 转换视频脚本弹窗 */}

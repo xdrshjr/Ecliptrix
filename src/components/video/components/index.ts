@@ -14,3 +14,6 @@ export { VideoAnalysisModal } from './VideoAnalysisModal';
 export { AIMixingProgressModal } from './AIMixingProgressModal';
 export { default as AIMixingModeSelectionModal } from './AIMixingModeSelectionModal';
 export { default as BatchAnalysisModeSelectionModal } from './BatchAnalysisModeSelectionModal';
+export { AiGenerateMenu } from './AiGenerateMenu';
+export { NarrationDirectScriptModal } from './NarrationDirectScriptModal';
+export { VideoUnderstandingModePlaceholderModal } from './VideoUnderstandingModePlaceholderModal';

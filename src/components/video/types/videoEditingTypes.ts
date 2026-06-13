@@ -469,6 +469,54 @@ export interface UseAudioSearchReturn {
   taskId: string;
 }
 
+// ── 解说「AI 生成」下拉双模式：解说直接生成（spec ai-generate-script-modes v2） ──
+
+/** 解说直接生成两步式弹窗的步骤标识。 */
+export type NarrationDirectStep = 'compose' | 'split';
+
+/** 第 2 步拆分后的单条解说句子（带稳定 id，供增删改编辑）。 */
+export interface NarrationSplitSentence {
+  id: string;
+  text: string;
+}
+
+/**
+ * 右侧对话面板的消息结构。沿用 useStoryboardChat 的 StoryboardChatMessage
+ * 同款字段（spec 决议 R8），不与 /api/chat 路由内部的 ChatMessage 混用。
+ */
+export interface NarrationChatMessage extends ChatMessage {
+  reasoningContent?: string;
+  summaryText?: string;
+}
+
+/** 解说直接生成编排 hook 的返回类型。 */
+export interface UseNarrationDirectScriptReturn {
+  isOpen: boolean;
+  step: NarrationDirectStep;
+  draftText: string;
+  /** 第 1 步对话改写流式进行中（此时左侧 textarea 只读、「下一步」禁用）。 */
+  isStreaming: boolean;
+  /** 第 1→2 步拆分调用进行中。 */
+  isSplitting: boolean;
+  splitSentences: NarrationSplitSentence[];
+  error: string | null;
+  /** 右侧对话面板消息列表（已过滤 system 由 UI 决定）。 */
+  chatMessages: NarrationChatMessage[];
+  open: (initialText?: string) => void;
+  close: () => void;
+  setDraftText: (text: string) => void;
+  /** 在用户最新需求基础上改写左侧文案（流结束后一次性回写 draftText）。 */
+  sendChatMessage: (content: string) => Promise<void>;
+  /** 中止进行中的对话改写流。 */
+  abortChat: () => void;
+  /** 触发 AI 逐句拆分并切到第 2 步（共用同一 AbortController）。 */
+  goToSplitStep: () => Promise<void>;
+  backToCompose: () => void;
+  updateSplitSentences: (next: NarrationSplitSentence[]) => void;
+  /** 组装新解说 segment 并经 onComplete 上抛父级（追加写入）。 */
+  complete: () => void;
+}
+
 // 新增：视频理解脚本生成模式类型
 export interface VideoUnderstandingScriptMode {
   type: 'quick' | 'professional';

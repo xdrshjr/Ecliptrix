@@ -8,3 +8,5 @@ export { useAudioSearch } from './useAudioSearch';
 export { useImageSearch } from './useImageSearch';
 export { useTimelineComposition } from './useTimelineComposition';
 export { useVideoAnalysis } from './useVideoAnalysis';
+export { useNarrationDirectScript } from './useNarrationDirectScript';
+export { useNarrationChat } from './useNarrationChat';
