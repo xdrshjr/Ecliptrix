@@ -203,7 +203,7 @@ describe('MultiTrackPlaybackEngine — play tick pipeline', () => {
     const h = buildHarness({
       videoGroups: [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
       audioGroups: [
-        { trackId: 'aud', muted: false, volume: 1, kind: 'audio', items: [{ id: 'c', startTime: 0, duration: 10, clipStart: 0, clipEnd: 10 }] },
+        { trackId: 'aud', muted: false, volume: 1, kind: 'audio', items: [{ id: 'c', startTime: 0, duration: 10, clipStart: 0, clipEnd: 10, url: '/api/storage/files/audio/c.mp3' }] },
       ],
       total: 10,
     });
@@ -350,7 +350,7 @@ describe('MultiTrackPlaybackEngine — multi-track + audioDetached', () => {
             muted: false,
             volume: 1,
             kind: 'audio',
-            items: [{ id: 'aud', startTime: 0, duration: 10, clipStart: 0, clipEnd: 10 }],
+            items: [{ id: 'aud', startTime: 0, duration: 10, clipStart: 0, clipEnd: 10, url: '/api/storage/files/audio/aud.mp3' }],
           },
         ],
         getSubtitleItems: () => [],

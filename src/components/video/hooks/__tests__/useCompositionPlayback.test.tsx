@@ -211,6 +211,20 @@ describe('buildAudioSyncGroups (RISK 2 routing)', () => {
     expect(groups[0].items.map((i) => i.id)).toEqual(['m1', 'm2']);
     expect(groups[1].trackId).toBe('at-2');
   });
+
+  // timeline-preview-audio-track-silent fix: the source url MUST be carried onto
+  // each sync clip so the AudioSyncPool can assign it to the element's `src`
+  // before play. Dropping it here is what left the audio track silent.
+  it('carries each sequence url onto its sync clip', () => {
+    const groups = buildAudioSyncGroups([
+      aseq({ id: 'm1', trackId: 'at-1', url: '/api/storage/files/audio/a.mp3' }),
+      aseq({ id: 'm2', trackId: 'at-1', url: '/api/storage/files/audio/b.mp3' }),
+    ]);
+    expect(groups[0].items.map((i) => i.url)).toEqual([
+      '/api/storage/files/audio/a.mp3',
+      '/api/storage/files/audio/b.mp3',
+    ]);
+  });
 });
 
 describe('buildImageOverlayInputs', () => {

@@ -140,6 +140,9 @@ export function buildAudioSyncGroups(
         clipStart: seq.clipStart,
         clipEnd: seq.clipEnd,
         volume: seq.volume,
+        // Carry the source URL so the AudioSyncPool can assign it to the audio
+        // element's `src` before play (the missing link that left audio silent).
+        url: seq.url,
       })),
     });
   }

@@ -633,13 +633,22 @@ const TICK_END_EPSILON = 1e-3;
 /**
  * Adapt a {@link VideoElementLike} (the host's audio `<audio>`/`<video>` handle)
  * into the {@link AudioElementLike} surface the AudioSyncPool writes. The pool
- * reads `currentTime` / `volume` / `paused` and calls `play` / `pause`; a real
- * HTMLAudioElement carries `volume`/`paused` already — the casts only satisfy the
- * structural minimum so a bare fake works in tests too.
+ * reads `src` / `currentTime` / `volume` / `paused` and assigns `src` /
+ * `currentTime` / `volume` then calls `play` / `pause`; `src` is passed straight
+ * through to the underlying element (the missing link that left audio silent —
+ * without it the pool's `el.src = url` would write nowhere). A real
+ * HTMLMediaElement carries `src`/`volume`/`paused` already — the casts only
+ * satisfy the structural minimum so a bare fake works in tests too.
  */
 function toAudioElement(el: VideoElementLike): AudioElementLike {
   const withMedia = el as unknown as { volume?: number; paused?: boolean };
   return {
+    get src() {
+      return el.src;
+    },
+    set src(v: string) {
+      el.src = v;
+    },
     get currentTime() {
       return el.currentTime;
     },

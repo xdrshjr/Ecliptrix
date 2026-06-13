@@ -20,6 +20,9 @@ import {
 } from '../AudioSyncPool';
 import { AUDIO_DRIFT_EPSILON_SEC } from '../internal/constants';
 
+/** Default clip source url. Clips carry a url so the pool can assign `src`. */
+const AUDIO_URL = 'audio.mp3';
+
 function audioGroup(
   trackId: string,
   items: AudioSyncGroup['items'],
@@ -34,7 +37,7 @@ function clip(
   duration: number,
   over: Partial<AudioSyncGroup['items'][number]> = {},
 ) {
-  return { id, startTime, duration, clipStart: 0, clipEnd: duration, ...over };
+  return { id, startTime, duration, clipStart: 0, clipEnd: duration, url: AUDIO_URL, ...over };
 }
 
 describe('computeEffectiveVolume', () => {
@@ -102,10 +105,12 @@ describe('computeAudioSyncActions', () => {
   it('does NOT seek when drift is within the epsilon (de-bounce)', () => {
     const groups = [audioGroup('t1', [clip('a', 0, 5)])];
     // target source at t=2 is 2; current 2 + half-epsilon → within tolerance.
+    // currentSrc matches the clip url so no source swap is forced.
     const actions = computeAudioSyncActions(groups, 2, {
       isPlaying: true,
       currentSourceTimeByTrack: { t1: 2 + AUDIO_DRIFT_EPSILON_SEC / 2 },
       isElementPlayingByTrack: { t1: true },
+      currentSrcByTrack: { t1: AUDIO_URL },
     });
     expect(actions[0].action).toBe('hold');
     expect(actions[0].targetSourceTime).toBeUndefined();
@@ -117,6 +122,7 @@ describe('computeAudioSyncActions', () => {
       isPlaying: true,
       currentSourceTimeByTrack: { t1: 2 },
       isElementPlayingByTrack: { t1: false },
+      currentSrcByTrack: { t1: AUDIO_URL },
     });
     expect(actions[0].action).toBe('play');
     expect(actions[0].volume).toBe(1);
@@ -133,6 +139,7 @@ describe('computeAudioSyncActions', () => {
       isPlaying: true,
       currentSourceTimeByTrack: { 'audio-1': 2 },
       isElementPlayingByTrack: { 'audio-1': false },
+      currentSrcByTrack: { 'audio-1': AUDIO_URL },
     });
     expect(actions[0].action).toBe('play');
   });
@@ -147,6 +154,7 @@ describe('computeAudioSyncActions', () => {
       isPlaying: true,
       currentSourceTimeByTrack: { t1: 2 },
       isElementPlayingByTrack: { t1: false },
+      currentSrcByTrack: { t1: AUDIO_URL },
     });
     expect(actions[0].action).toBe('play');
     expect(actions[0].volume).toBe(0);
@@ -158,9 +166,59 @@ describe('computeAudioSyncActions', () => {
       isPlaying: true,
       currentSourceTimeByTrack: { t1: 2 },
       isElementPlayingByTrack: { t1: true },
+      currentSrcByTrack: { t1: AUDIO_URL },
     });
     expect(actions[0].action).toBe('hold');
     expect(actions[0].volume).toBe(1); // 1 * 2 → clamped to 1
+  });
+
+  // --- timeline-preview-audio-track-silent fix: source url carriage ---------
+
+  it('carries the active clip url on play/seek so the pool can assign src', () => {
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'song.mp3' })])];
+    // No currentSrc → forces a seek that carries the url to assign.
+    const seekActions = computeAudioSyncActions(groups, 2, {
+      isPlaying: true,
+      currentSourceTimeByTrack: { t1: 2 },
+      isElementPlayingByTrack: { t1: true },
+    });
+    expect(seekActions[0].action).toBe('seek');
+    expect(seekActions[0].url).toBe('song.mp3');
+
+    // Once the src matches, a within-drift paused element plays carrying the url.
+    const playActions = computeAudioSyncActions(groups, 2, {
+      isPlaying: true,
+      currentSourceTimeByTrack: { t1: 2 },
+      isElementPlayingByTrack: { t1: false },
+      currentSrcByTrack: { t1: 'song.mp3' },
+    });
+    expect(playActions[0].action).toBe('play');
+    expect(playActions[0].url).toBe('song.mp3');
+  });
+
+  it('forces a seek (re-assign src) when the active clip url differs from the current src', () => {
+    // Element playing, within drift — would normally HOLD — but the active
+    // clip's url changed (e.g. crossed into an adjacent clip of a different
+    // file), so a seek is forced to swap the source.
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'next.mp3' })])];
+    const actions = computeAudioSyncActions(groups, 2, {
+      isPlaying: true,
+      currentSourceTimeByTrack: { t1: 2 },
+      isElementPlayingByTrack: { t1: true },
+      currentSrcByTrack: { t1: 'previous.mp3' },
+    });
+    expect(actions[0].action).toBe('seek');
+    expect(actions[0].url).toBe('next.mp3');
+  });
+
+  it('pauses an active clip that has no resolvable url (never plays a source-less element)', () => {
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: undefined })])];
+    const actions = computeAudioSyncActions(groups, 2, {
+      isPlaying: true,
+      currentSourceTimeByTrack: { t1: 2 },
+      isElementPlayingByTrack: { t1: false },
+    });
+    expect(actions[0]).toEqual({ trackId: 't1', action: 'pause' });
   });
 });
 
@@ -174,6 +232,16 @@ class FakeAudio implements AudioElementLike {
   paused = true;
   playCalls = 0;
   pauseCalls = 0;
+  /** Counts every `src =` write so tests can assert no per-frame churn. */
+  srcAssignments = 0;
+  private _src = '';
+  get src(): string {
+    return this._src;
+  }
+  set src(v: string) {
+    this._src = v;
+    this.srcAssignments += 1;
+  }
   play(): Promise<void> {
     this.paused = false;
     this.playCalls += 1;
@@ -243,5 +311,92 @@ describe('AudioSyncPool.tick', () => {
     expect(activeEl.paused).toBe(false); // active track plays
     expect(activeEl.playCalls).toBe(1);
     expect(idleEl.paused).toBe(true); // idle track parked (no leftover audio)
+  });
+
+  // --- timeline-preview-audio-track-silent fix: the missing src assignment ---
+
+  it('assigns the active clip src before playing (the core fix)', () => {
+    const el = new FakeAudio();
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'song.mp3' })])];
+
+    pool.tick(groups, 2, true);
+
+    expect(el.src).toBe('song.mp3'); // source assigned → audio can play
+    expect(el.paused).toBe(false);
+    expect(el.playCalls).toBe(1);
+  });
+
+  it('does NOT re-assign src every tick once it matches (no AbortError churn)', () => {
+    const el = new FakeAudio();
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'song.mp3' })])];
+
+    pool.tick(groups, 2, true); // assigns src once
+    el.currentTime = 2; // settled at target → next tick holds
+    pool.tick(groups, 2, true);
+    pool.tick(groups, 2, true);
+
+    expect(el.srcAssignments).toBe(1); // assigned exactly once
+  });
+
+  it('swaps src when the playhead crosses into a clip of a different file', () => {
+    const el = new FakeAudio();
+    const pool = new AudioSyncPool(() => el);
+    const groups = [
+      audioGroup('t1', [
+        clip('a', 0, 5, { url: 'first.mp3' }),
+        clip('b', 5, 5, { url: 'second.mp3' }),
+      ]),
+    ];
+
+    pool.tick(groups, 2, true); // inside clip a
+    expect(el.src).toBe('first.mp3');
+
+    el.currentTime = 2; // settled
+    pool.tick(groups, 7, true); // inside clip b → must swap source
+    expect(el.src).toBe('second.mp3');
+    expect(el.paused).toBe(false);
+  });
+
+  it('does NOT clear src when a track falls into a gap (pause keeps the source)', () => {
+    const el = new FakeAudio();
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 2, { url: 'song.mp3' }), clip('b', 5, 2, { url: 'song.mp3' })])];
+
+    pool.tick(groups, 1, true); // active → src assigned
+    expect(el.src).toBe('song.mp3');
+    pool.tick(groups, 3, true); // gap → pause, but src untouched
+
+    expect(el.paused).toBe(true);
+    expect(el.src).toBe('song.mp3'); // not cleared (avoids reload churn)
+  });
+
+  it('applies a live volume change to the playing element on the next tick (real-time volume)', () => {
+    const el = new FakeAudio();
+    const pool = new AudioSyncPool(() => el);
+    const louder = [audioGroup('t1', [clip('a', 0, 5, { volume: 0.8 })])];
+
+    pool.tick(louder, 2, true); // assigns src + plays at 0.8
+    expect(el.volume).toBe(0.8);
+
+    el.currentTime = 2; // settled → next tick holds, but still re-applies volume
+    const quieter = [audioGroup('t1', [clip('a', 0, 5, { volume: 0.3 })])];
+    pool.tick(quieter, 2, true);
+
+    expect(el.volume).toBe(0.3); // volume tracked the change without re-seeking
+    expect(el.srcAssignments).toBe(1); // no source churn
+  });
+
+  it('plays a source-less clip as a no-op pause (never calls play on empty src)', () => {
+    const el = new FakeAudio();
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: undefined })])];
+
+    pool.tick(groups, 2, true);
+
+    expect(el.src).toBe(''); // never assigned
+    expect(el.playCalls).toBe(0); // never tried to play a source-less element
+    expect(el.paused).toBe(true);
   });
 });

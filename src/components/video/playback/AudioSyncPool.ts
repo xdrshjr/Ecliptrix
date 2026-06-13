@@ -33,6 +33,13 @@ import { AUDIO_DRIFT_EPSILON_SEC } from './internal/constants';
 export interface AudioSyncClip extends SchedulableClip {
   /** Item-level volume (0..1, may exceed via track gain), defaults to 1. */
   volume?: number;
+  /**
+   * Playable source URL for this clip. The pool assigns it to the element's
+   * `src` before play/seek (mirroring the VideoSourcePool RC-B "比对键==赋值").
+   * Absent → the clip has no resolvable source and the track is paused (the
+   * pool never calls play() on a source-less element — the original silent bug).
+   */
+  url?: string;
 }
 
 /** One sync-able independent audio-sequence track. */
@@ -64,6 +71,12 @@ export interface AudioSyncAction {
   targetSourceTime?: number;
   /** Effective volume to apply (clamped [0,1]) when not pausing. */
   volume?: number;
+  /**
+   * Source URL the element must hold before play/seek. Carried on 'play'/'seek'
+   * actions; `_apply` assigns it to `el.src` only when it differs from the
+   * element's current src (normalized), then plays. Absent on pause/hold.
+   */
+  url?: string;
 }
 
 export interface ComputeAudioSyncOptions {
@@ -76,6 +89,12 @@ export interface ComputeAudioSyncOptions {
   currentSourceTimeByTrack?: Readonly<Record<string, number>>;
   /** Whether each track's element is currently playing, to choose play/hold. */
   isElementPlayingByTrack?: Readonly<Record<string, boolean>>;
+  /**
+   * Current `src` assigned to each track's element, to detect a source swap.
+   * Missing → treated as '' (forces a seek so the new src is assigned). Mirrors
+   * the VideoSourcePool `needsSrcSwap` decision on the audio side.
+   */
+  currentSrcByTrack?: Readonly<Record<string, string>>;
   /** Drift threshold override (seconds); defaults to {@link AUDIO_DRIFT_EPSILON_SEC}. */
   driftEpsilonSec?: number;
 }
@@ -85,6 +104,27 @@ function clampVolume(value: number): number {
   if (value <= 0) return 0;
   if (value >= 1) return 1;
   return value;
+}
+
+/**
+ * Absolutise a src for stable equality. Identical to the VideoSourcePool helper
+ * (kept local to avoid coupling the audio path to the video module): the
+ * `<media>.src` IDL getter always reads back an ABSOLUTE url, while a local
+ * material `seq.url` is usually relative (`/api/storage/files/audio/...`). Both
+ * sides go through this so "did the source change?" compares equal and we never
+ * re-assign `src` every frame (which would interrupt play() → AbortError churn).
+ */
+function normalizeSrc(src: string | null | undefined): string {
+  if (!src) return '';
+  try {
+    const base =
+      typeof window !== 'undefined' && window.location
+        ? window.location.href
+        : 'http://localhost/';
+    return new URL(src, base).href;
+  } catch {
+    return src;
+  }
 }
 
 /**
@@ -104,12 +144,16 @@ export function computeEffectiveVolume(
  * no DOM, no timers. One action per group, in group order.
  *
  * Rules (per spec 02 §2.5 / spec 01 §2.4):
- *   - Not playing            → 'pause'.
- *   - Track muted            → 'pause'.
- *   - No active clip at `t`  → 'pause' (gap).
- *   - Active clip, |current - target| > drift → 'seek' to target (+ volume).
+ *   - Not playing             → 'pause'.
+ *   - Track muted             → 'pause'.
+ *   - No active clip at `t`   → 'pause' (gap).
+ *   - Active clip with no url  → 'pause' (cannot play a source-less element).
+ *   - Active clip whose url ≠ element's current src → 'seek' (re-assigns src +
+ *     currentTime; mirrors VideoSourcePool needsSrcSwap, since a fresh src
+ *     starts at 0 and must be re-positioned).
+ *   - Active clip, |current - target| > drift → 'seek' to target (+ volume + url).
  *   - Active clip, within drift, element already playing → 'hold' (+ volume).
- *   - Active clip, within drift, element paused → 'play' (+ volume).
+ *   - Active clip, within drift, element paused → 'play' (+ volume + url).
  */
 export function computeAudioSyncActions(
   groups: readonly AudioSyncGroup[],
@@ -119,6 +163,7 @@ export function computeAudioSyncActions(
   const drift = opts.driftEpsilonSec ?? AUDIO_DRIFT_EPSILON_SEC;
   const currentByTrack = opts.currentSourceTimeByTrack ?? {};
   const playingByTrack = opts.isElementPlayingByTrack ?? {};
+  const currentSrcByTrack = opts.currentSrcByTrack ?? {};
 
   return groups.map((group) => {
     if (!opts.isPlaying || group.muted) {
@@ -130,18 +175,31 @@ export function computeAudioSyncActions(
       return { trackId: group.trackId, action: 'pause' };
     }
 
+    const url = hit.clip.url;
+    if (!url) {
+      // No resolvable source → pause. Calling play() on a source-less element is
+      // exactly the original silent-audio bug; never do it.
+      return { trackId: group.trackId, action: 'pause' };
+    }
+
     const targetSourceTime = mapTimelineTimeToSourceTime(hit.clip, compositionTime);
     const volume = computeEffectiveVolume(hit.clip.volume, group.volume);
     const current = currentByTrack[group.trackId] ?? 0;
+    const srcChanged =
+      normalizeSrc(currentSrcByTrack[group.trackId]) !== normalizeSrc(url);
 
-    if (Math.abs(current - targetSourceTime) > drift) {
-      return { trackId: group.trackId, action: 'seek', targetSourceTime, volume };
+    // A source swap MUST be expressed as a seek: assigning a new src resets the
+    // element to time 0, so we always re-position it (only 'seek' carries the
+    // target time). Otherwise fall back to the drift de-bounce.
+    if (srcChanged || Math.abs(current - targetSourceTime) > drift) {
+      return { trackId: group.trackId, action: 'seek', targetSourceTime, volume, url };
     }
     const isPlaying = playingByTrack[group.trackId] === true;
     return {
       trackId: group.trackId,
       action: isPlaying ? 'hold' : 'play',
       volume,
+      url,
     };
   });
 }
@@ -151,6 +209,13 @@ export function computeAudioSyncActions(
  * `HTMLAudioElement` satisfies it; tests pass a fake object.
  */
 export interface AudioElementLike {
+  /**
+   * The element's media source. The pool assigns it before play/seek when the
+   * active clip's url changes (RC-B). Real `HTMLMediaElement` exposes it; the
+   * engine adapter (`toAudioElement`) passes it through to the underlying
+   * `<video>`/`<audio>`.
+   */
+  src: string;
   currentTime: number;
   volume: number;
   readonly paused: boolean;
@@ -184,17 +249,20 @@ export class AudioSyncPool {
   ): AudioSyncAction[] {
     const currentSourceTimeByTrack: Record<string, number> = {};
     const isElementPlayingByTrack: Record<string, boolean> = {};
+    const currentSrcByTrack: Record<string, string> = {};
     for (const group of groups) {
       const el = this._resolve(group.trackId);
       if (!el) continue;
       currentSourceTimeByTrack[group.trackId] = el.currentTime;
       isElementPlayingByTrack[group.trackId] = !el.paused;
+      currentSrcByTrack[group.trackId] = el.src;
     }
 
     const actions = computeAudioSyncActions(groups, compositionTime, {
       isPlaying,
       currentSourceTimeByTrack,
       isElementPlayingByTrack,
+      currentSrcByTrack,
     });
 
     for (const action of actions) {
@@ -211,6 +279,10 @@ export class AudioSyncPool {
         if (!el.paused) el.pause();
         return;
       case 'seek':
+        // Assign src BEFORE currentTime: a new src resets the element to time 0,
+        // so the seek must follow it. No-op (normalized compare) when unchanged,
+        // so a pure drift seek never churns src → no AbortError.
+        this._ensureSrc(el, action.url);
         if (action.targetSourceTime !== undefined) {
           el.currentTime = action.targetSourceTime;
         }
@@ -218,6 +290,7 @@ export class AudioSyncPool {
         this._ensurePlaying(el);
         return;
       case 'play':
+        this._ensureSrc(el, action.url);
         if (action.volume !== undefined) el.volume = action.volume;
         this._ensurePlaying(el);
         return;
@@ -225,6 +298,18 @@ export class AudioSyncPool {
         if (action.volume !== undefined) el.volume = action.volume;
         return;
     }
+  }
+
+  /**
+   * Assign `el.src` only when the desired url differs from the element's current
+   * src (both normalized to absolute). Mirrors VideoSourcePool RC-B so the
+   * compare key equals the assigned value and src is never re-written every
+   * frame (which would interrupt play() and raise AbortError).
+   */
+  private _ensureSrc(el: AudioElementLike, url: string | undefined): void {
+    if (!url) return;
+    if (normalizeSrc(el.src) === normalizeSrc(url)) return;
+    el.src = url;
   }
 
   private _ensurePlaying(el: AudioElementLike): void {

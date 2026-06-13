@@ -103,11 +103,12 @@ describe('audio at the exact end of the last clip (one-frame play, by convention
   }
 
   it('a single audio clip is STILL a play candidate at its exact end (not paused)', () => {
-    const groups = [audioGroup([{ id: 'a', startTime: 0, duration: 5, clipStart: 0, clipEnd: 5 }])];
+    const groups = [audioGroup([{ id: 'a', startTime: 0, duration: 5, clipStart: 0, clipEnd: 5, url: 'a.mp3' }])];
     const actions = computeAudioSyncActions(groups, 5, {
       isPlaying: true,
       currentSourceTimeByTrack: { t1: 5 },
       isElementPlayingByTrack: { t1: true },
+      currentSrcByTrack: { t1: 'a.mp3' }, // src already assigned → no swap seek
     });
     // Because activeClipAt is last-clip-inclusive, the action is 'hold'/'play',
     // NOT 'pause'. Cosmetically negligible — it self-heals when the clock stops
@@ -116,20 +117,23 @@ describe('audio at the exact end of the last clip (one-frame play, by convention
   });
 
   it('just PAST the end of the last clip → pause (no audio leak beyond the timeline)', () => {
-    const groups = [audioGroup([{ id: 'a', startTime: 0, duration: 5, clipStart: 0, clipEnd: 5 }])];
+    const groups = [audioGroup([{ id: 'a', startTime: 0, duration: 5, clipStart: 0, clipEnd: 5, url: 'a.mp3' }])];
     const actions = computeAudioSyncActions(groups, 5 + TIME_EPSILON * 2, {
       isPlaying: true,
       currentSourceTimeByTrack: { t1: 5 },
       isElementPlayingByTrack: { t1: true },
+      currentSrcByTrack: { t1: 'a.mp3' },
     });
     expect(actions[0].action).toBe('pause');
   });
 
   it('at the seam between two audio clips the FIRST is half-open → the next clip owns the boundary', () => {
+    // Two trimmed segments of the SAME file (same url) so the seam seek is driven
+    // purely by drift, isolating the boundary logic under test.
     const groups = [
       audioGroup([
-        { id: 'a', startTime: 0, duration: 5, clipStart: 0, clipEnd: 5 },
-        { id: 'b', startTime: 5, duration: 5, clipStart: 0, clipEnd: 5 },
+        { id: 'a', startTime: 0, duration: 5, clipStart: 0, clipEnd: 5, url: 'seam.mp3' },
+        { id: 'b', startTime: 5, duration: 5, clipStart: 0, clipEnd: 5, url: 'seam.mp3' },
       ]),
     ];
     // Element is sitting near a's end (5); the boundary now belongs to clip b,
@@ -138,6 +142,7 @@ describe('audio at the exact end of the last clip (one-frame play, by convention
       isPlaying: true,
       currentSourceTimeByTrack: { t1: 5 }, // far from b's source-0 → seek
       isElementPlayingByTrack: { t1: true },
+      currentSrcByTrack: { t1: 'seam.mp3' },
     });
     // The boundary maps to clip b's source time (0), not a's end (5).
     expect(actions[0].action).toBe('seek');
