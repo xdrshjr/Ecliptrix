@@ -15,6 +15,9 @@ import TimelineItem, { type LocalProxyMaskState } from './TimelineItem';
 import VolumeSlider from './VolumeSlider';
 import { useNotification } from '@/contexts/NotificationContext';
 import { deriveTrackDisplayName } from './trackDisplayName';
+import { pickTickIntervals } from './lib/rulerTicks';
+import { buildGridBackground } from './lib/timelineGrid';
+import { CLIP } from './theme/timelineTheme';
 
 // ---------------------------------------------------------------------------
 // Props — only data that cannot be read from the store
@@ -270,6 +273,28 @@ const Track: React.FC<TrackProps> = ({
     }
   };
 
+  // Per-type accent (token color) for the track-header left strip — the DaVinci
+  // cue that ties a header to its lane content color.
+  const getTrackAccent = (): string => {
+    if (track.type === 'video' && track.id.startsWith('image-track')) {
+      return CLIP.accentImage;
+    }
+    switch (track.type) {
+      case 'video':
+        return CLIP.accentVideo;
+      case 'audio':
+        return CLIP.accentAudio;
+      case 'subtitle':
+        return CLIP.accentSubtitle;
+      default:
+        return 'transparent';
+    }
+  };
+
+  // Shared interval picker — identical to the ruler's, so the lane grid lines
+  // coincide with the ruler ticks at every zoom/scroll offset.
+  const gridIntervals = pickTickIntervals(pixelsPerSecond);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -280,11 +305,12 @@ const Track: React.FC<TrackProps> = ({
       data-track-id={track.id}
       style={{ minWidth: '100%' }}
     >
-      {/* Track controls panel */}
+      {/* Track controls panel — left accent strip cues the per-type color. */}
       <div
         className={`track-controls w-48 bg-muted border-r border-border transition-opacity ${
           track.isVisible ? '' : 'opacity-60'
         }`}
+        style={{ boxShadow: `inset 3px 0 0 0 ${getTrackAccent()}` }}
       >
         <div
           className="flex items-center justify-between p-2"
@@ -313,7 +339,7 @@ const Track: React.FC<TrackProps> = ({
                   ref={volumeButtonRef}
                   onClick={handleVolumeClick}
                   disabled={track.isLocked}
-                  className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                  className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                     track.isLocked
                       ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
                       : volumeSliderOpen
@@ -375,7 +401,7 @@ const Track: React.FC<TrackProps> = ({
                     track.isLocked ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.trackLocked}` :
                     `${t.timeline.track.editSubtitles} - ${trackDisplayName}`
                   }
-                  className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                  className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                     (track.items.length === 0 || track.isLocked)
                       ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
                       : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/30'
@@ -413,7 +439,7 @@ const Track: React.FC<TrackProps> = ({
                       ? `${t.timeline.track.selectAll} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
                       : `${t.timeline.track.selectAll} - ${trackDisplayName}`
                 }
-                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                   (track.items.length === 0 || track.isLocked)
                     ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
                     : allItemsSelected
@@ -451,7 +477,7 @@ const Track: React.FC<TrackProps> = ({
             <div className="relative group">
               <button
                 onClick={handleLockClick}
-                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                   track.isLocked
                     ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-200 dark:hover:bg-yellow-500/30'
                     : 'bg-muted text-muted-foreground hover:bg-accent'
@@ -491,7 +517,7 @@ const Track: React.FC<TrackProps> = ({
                 title={track.isLocked
                   ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
                   : `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName}`}
-                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
                     : track.isVisible
@@ -531,7 +557,7 @@ const Track: React.FC<TrackProps> = ({
                 title={track.isLocked
                   ? `${t.timeline.track.removeTrack} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
                   : `${t.timeline.track.removeTrack} - ${trackDisplayName}`}
-                className={`p-1 rounded transition-colors w-5 h-5 flex items-center justify-center ${
+                className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
                     : 'bg-muted text-muted-foreground hover:bg-red-100 hover:text-red-600'
@@ -572,13 +598,12 @@ const Track: React.FC<TrackProps> = ({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* Background grid */}
+        {/* Background grid — shared zero-DOM two-tier builder fed the SAME
+            intervals as the ruler, so the (now subtle) lines coincide with the
+            ruler ticks instead of painting a hard line every second. */}
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: `repeating-linear-gradient(to right, var(--border) 0px, var(--border) 1px, transparent 1px, transparent ${pixelsPerSecond}px)`,
-            backgroundSize: `${pixelsPerSecond}px 100%`,
-          }}
+          style={buildGridBackground(pixelsPerSecond, gridIntervals)}
         />
 
         {/* Render all items on this track */}

@@ -1560,54 +1560,11 @@
   background: rgba(255, 255, 255, 0.4);
 }
 
-/* Playhead Styles */
-.timeline-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--destructive);
-  z-index: 100;
-  pointer-events: none;
-}
-
-.timeline-playhead::before {
-  content: '';
-  position: absolute;
-  top: -6px;
-  left: -6px;
-  width: 14px;
-  height: 14px;
-  background: var(--destructive);
-  border-radius: 50%;
-  border: 2px solid var(--card);
-}
-
-.timeline-playhead::after {
-  content: '';
-  position: absolute;
-  bottom: -6px;
-  left: -6px;
-  width: 14px;
-  height: 14px;
-  background: var(--destructive);
-  border-radius: 50%;
-  border: 2px solid var(--card);
-}
-
-/* Grid Lines */
-.timeline-grid-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: linear-gradient(180deg, transparent 0%, var(--border) 20%, var(--border) 80%, transparent 100%);
-  pointer-events: none;
-}
-
-.timeline-grid-line.major {
-  background: linear-gradient(180deg, transparent 0%, var(--border) 20%, var(--border) 80%, transparent 100%);
-}
+/* Playhead & grid lines: the legacy v1-inline-player `.timeline-playhead`
+ * (incl. ::before/::after) and `.timeline-grid-line` rules were removed in the
+ * timeline-panel-davinci-redesign — they had zero className references (the
+ * live playhead is the <TimelinePlayhead> component keyed by
+ * data-testid="timeline-playhead", and the grid is a zero-DOM CSS gradient). */
 
 /* Zoom Controls */
 .timeline-zoom-control {
@@ -1756,11 +1713,6 @@
 @media (prefers-contrast: high) {
   .timeline-item {
     border: 2px solid #000000;
-  }
-  
-  .timeline-playhead {
-    background: #000000;
-    box-shadow: 0 0 0 2px #ffffff;
   }
 }
 

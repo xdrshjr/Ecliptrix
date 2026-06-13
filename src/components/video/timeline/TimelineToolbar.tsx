@@ -257,11 +257,12 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         }}
         className={`
           relative p-2 rounded-md transition-all duration-200 flex items-center justify-center w-8 h-8
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
           ${button.disabled
             ? 'text-muted-foreground cursor-not-allowed bg-muted'
             : isActive
-              ? 'text-primary bg-primary/10 border border-primary'
-              : button.className || 'text-foreground hover:text-foreground hover:bg-muted border border-transparent'
+              ? 'text-primary bg-primary/15 border border-primary shadow-inner'
+              : button.className || 'text-foreground hover:text-foreground hover:bg-muted active:bg-accent border border-transparent'
           }
         `}
         disabled={button.disabled}

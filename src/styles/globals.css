@@ -51,6 +51,30 @@
     --shadow-2xl: 0 8px 24px rgba(0,0,0,0.25);
     --tracking-normal: 0em;
     --spacing: 0.25rem;
+
+    /* -------------------------------------------------------------------
+     * Timeline panel (DaVinci-grade redesign) — dark baseline.
+     * Defined on :root (the app's dark default) and re-derived in .light
+     * below; .dark inherits these (no duplication, per spec review C2).
+     * Colors are derived from existing theme vars via color-mix (already
+     * used at timelineItemStyles.ts:76); the listed solid hexes are the
+     * documented fallbacks. The playhead red is intentionally theme-stable.
+     * ------------------------------------------------------------------- */
+    --timeline-ruler-bg:      var(--muted);
+    --timeline-lane-bg:       var(--card);
+    --timeline-grid-minor:    color-mix(in srgb, var(--border) 38%, transparent); /* fallback: rgba(58,58,58,0.38) */
+    --timeline-grid-major:    color-mix(in srgb, var(--border) 80%, transparent); /* fallback: rgba(58,58,58,0.80) */
+    --timeline-tick-minor:    color-mix(in srgb, var(--muted-foreground) 45%, transparent);
+    --timeline-tick-major:    var(--muted-foreground);
+    --timeline-tick-label:    var(--muted-foreground);
+    --timeline-playhead:      #FF4D4F;                 /* crisp NLE red; theme-stable */
+    --timeline-playhead-glow: rgba(255, 77, 79, 0.30);
+    --timeline-clip-border:   rgba(0, 0, 0, 0.28);     /* idle 1px definition border */
+    --timeline-clip-sheen:    rgba(255, 255, 255, 0.10);
+    --timeline-accent-video:    #0D99FF;  /* matches --primary / text-blue-600 family */
+    --timeline-accent-image:    #8B5CF6;  /* purple */
+    --timeline-accent-audio:    #14B8A6;  /* teal/green */
+    --timeline-accent-subtitle: #F59E0B;  /* amber */
   }
 
   .dark {
@@ -139,6 +163,23 @@
     --shadow-lg: 0 2px 8px rgba(0,0,0,0.08);
     --shadow-xl: 0 4px 16px rgba(0,0,0,0.1);
     --shadow-2xl: 0 8px 24px rgba(0,0,0,0.12);
+
+    /* -------------------------------------------------------------------
+     * Timeline panel — light overrides. Re-declared here (not just on
+     * :root) so the color-mix tokens re-derive against the light --border /
+     * --muted-foreground and the grid stays legible on a bright lane: a
+     * slightly higher alpha (55/90) than dark. Theme-stable hexes
+     * (playhead, per-type accents) are inherited from :root unchanged.
+     * ------------------------------------------------------------------- */
+    --timeline-ruler-bg:      var(--muted);
+    --timeline-lane-bg:       var(--card);
+    --timeline-grid-minor:    color-mix(in srgb, var(--border) 55%, transparent);
+    --timeline-grid-major:    color-mix(in srgb, var(--border) 90%, transparent);
+    --timeline-tick-minor:    color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+    --timeline-tick-major:    var(--muted-foreground);
+    --timeline-tick-label:    var(--muted-foreground);
+    --timeline-clip-border:   rgba(0, 0, 0, 0.18);
+    --timeline-clip-sheen:    rgba(255, 255, 255, 0.18);
   }
 }
 

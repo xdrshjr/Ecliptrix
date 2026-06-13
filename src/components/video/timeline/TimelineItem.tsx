@@ -632,16 +632,17 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         </div>
       )}
 
-      {/* Resize handles */}
+      {/* Resize handles — DaVinci-style trim brackets. Hit area (w-1.5,
+          left/right, cursor-ew-resize) is unchanged; only the look is crisper. */}
       {isSelected && (
         <>
           <div
-            className="absolute left-0 top-0 w-1.5 h-full cursor-ew-resize bg-white bg-opacity-30 hover:bg-opacity-50"
-            style={{ borderRadius: '3px 0 0 3px' }}
+            className="absolute left-0 top-0 w-1.5 h-full cursor-ew-resize bg-white/70 hover:bg-white transition-colors"
+            style={{ borderRadius: '4px 0 0 4px' }}
           />
           <div
-            className="absolute right-0 top-0 w-1.5 h-full cursor-ew-resize bg-white bg-opacity-30 hover:bg-opacity-50"
-            style={{ borderRadius: '0 3px 3px 0' }}
+            className="absolute right-0 top-0 w-1.5 h-full cursor-ew-resize bg-white/70 hover:bg-white transition-colors"
+            style={{ borderRadius: '0 4px 4px 0' }}
           />
         </>
       )}

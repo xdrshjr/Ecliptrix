@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useCallback, RefObject } from 'react';
+import React, { useRef, useState, useCallback, useEffect, RefObject } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
 import {
@@ -9,6 +9,12 @@ import {
 } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 import { formatTimelineTime } from './timeFormat';
+import { pickTickIntervals, computeRulerTicks } from './lib/rulerTicks';
+import {
+  TIMELINE_COLORS,
+  TICK_MAJOR_H, TICK_MINOR_H, TICK_SUBMINOR_H, TICK_LABEL_FONT_PX,
+} from './theme/timelineTheme';
+import TimelinePlayhead from './TimelinePlayhead';
 
 const ZOOM_LADDER = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0] as const;
 
@@ -27,6 +33,9 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const isDragging = useRef(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showZoomHint, setShowZoomHint] = useState(false);
+  // Width of the scrollable tick area, tracked for viewport-culling the ticks.
+  // 0 until measured (SSR/first paint) → ticks fall back to the full duration.
+  const [viewportWidth, setViewportWidth] = useState(0);
 
   // Read from store
   const { currentTime, totalDuration, zoomLevel, scrollLeft, isPlaying } = useTimelineStore(
@@ -65,6 +74,18 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   pixelsPerSecondRef.current = pixelsPerSecond;
   totalDurationRef.current = totalDuration;
   hasItemsRef.current = hasItems;
+
+  // Track the scroll viewport width so ticks can be viewport-culled. The
+  // observer is registered on mount and torn down on unmount (spec §2.3).
+  useEffect(() => {
+    const el = scrollRef?.current || rulerRef.current;
+    if (!el) return;
+    const update = () => setViewportWidth(el.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [scrollRef]);
 
   // 格式化时间显示
   const formatTime = (seconds: number): string =>
@@ -132,69 +153,99 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // 生成时间刻度
-  const generateTimeMarks = () => {
-    const marks = [];
-    const interval = zoomLevel < 0.5 ? 10 : zoomLevel < 1 ? 5 : zoomLevel < 2 ? 1 : 0.5;
+  // Adaptive interval picker — the SAME function the lane grid (Track.tsx)
+  // calls, so the ruler ticks and the grid lines coincide by construction.
+  const intervals = pickTickIntervals(pixelsPerSecond);
 
+  // 生成时间刻度 — three-tier (major/minor/sub-minor) ticks via the shared pure
+  // tick model, anchored to the ruler's bottom edge, labels only on majors.
+  // Viewport-culled to the visible window padded one screen on each side.
+  const generateTimeMarks = () => {
     // Empty project: only render a single 0:00 mark so the ruler does not
     // suggest a seekable range the timeline does not actually have.
-    // paddedDuration is always ≥ ~10 because totalDuration is floored at 0.001
-    // by the Duration invariant in TimelineAggregate; hasItems is the
-    // authoritative "nothing to scrub" signal.
+    // paddedDuration is ≈10 here (totalDuration floored at 0.001 by the
+    // Duration invariant), so `hasItems` — not paddedDuration — is the
+    // authoritative "nothing to scrub" signal (spec §2.7-1).
     if (!hasItems) {
-      marks.push(
-        <div key={0} className="absolute flex flex-col items-center">
+      return [
+        <React.Fragment key="empty">
           <div
-            className="border-l border-border h-4"
-            style={{ left: '0px' }}
-          />
-          <span
-            className="text-xs text-muted-foreground mt-1 font-mono whitespace-nowrap"
+            className="absolute bottom-0"
             style={{
               left: '0px',
-              transform: 'translateX(0)',
+              width: '1px',
+              height: `${TICK_MAJOR_H}px`,
+              backgroundColor: TIMELINE_COLORS.tickMajor,
+            }}
+          />
+          <span
+            className="absolute font-mono whitespace-nowrap"
+            style={{
+              left: '0px',
+              top: '2px',
               textAlign: 'left',
-              position: 'absolute',
-              top: '16px',
+              fontSize: `${TICK_LABEL_FONT_PX}px`,
+              color: TIMELINE_COLORS.tickLabel,
             }}
           >
-            {formatTime(0)}
+            {formatTimelineTime(0)}
           </span>
-        </div>
-      );
-      return marks;
+        </React.Fragment>,
+      ];
     }
 
-    for (let time = 0; time <= paddedDuration; time += interval) {
-      const left = time * pixelsPerSecond;
-      const isMajor = time % (interval * 5) === 0;
+    // Visible window from scrollLeft + measured viewport width, padded one
+    // screen each side; fall back to the full duration before first measure.
+    const startSec = viewportWidth > 0
+      ? Math.max(0, (scrollLeft - viewportWidth) / pixelsPerSecond)
+      : 0;
+    const endSec = viewportWidth > 0
+      ? (scrollLeft + viewportWidth * 2) / pixelsPerSecond
+      : paddedDuration;
 
-      marks.push(
-        <div key={time} className="absolute flex flex-col items-center">
+    const ticks = computeRulerTicks({
+      pixelsPerSecond,
+      paddedDuration,
+      startSec,
+      endSec,
+      intervals,
+    });
+
+    return ticks.map((tk) => {
+      const tierHeight =
+        tk.tier === 'major' ? TICK_MAJOR_H : tk.tier === 'minor' ? TICK_MINOR_H : TICK_SUBMINOR_H;
+      const tickColor =
+        tk.tier === 'major' ? TIMELINE_COLORS.tickMajor : TIMELINE_COLORS.tickMinor;
+
+      return (
+        <React.Fragment key={tk.time}>
           <div
-            className={`border-l ${isMajor ? 'border-border h-4' : 'border-border h-2'}`}
-            style={{ left: `${left}px` }}
+            className="absolute bottom-0"
+            style={{
+              left: `${tk.left}px`,
+              width: '1px',
+              height: `${tierHeight}px`,
+              backgroundColor: tickColor,
+            }}
           />
-          {isMajor && (
+          {tk.label !== undefined && (
             <span
-              className="text-xs text-muted-foreground mt-1 font-mono whitespace-nowrap"
+              className="absolute font-mono whitespace-nowrap"
               style={{
-                left: `${left}px`,
-                transform: time === 0 ? 'translateX(0)' : 'translateX(-50%)',
-                textAlign: time === 0 ? 'left' : 'center',
-                position: 'absolute',
-                top: '16px',
+                left: `${tk.left}px`,
+                top: '2px',
+                transform: tk.time === 0 ? 'translateX(0)' : 'translateX(-50%)',
+                textAlign: tk.time === 0 ? 'left' : 'center',
+                fontSize: `${TICK_LABEL_FONT_PX}px`,
+                color: TIMELINE_COLORS.tickLabel,
               }}
             >
-              {formatTime(time)}
+              {tk.label}
             </span>
           )}
-        </div>
+        </React.Fragment>
       );
-    }
-
-    return marks;
+    });
   };
 
   // Derived boundary flags used by both handlers (defensive early-return)
@@ -270,7 +321,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             )}
           </div>
 
-          <span className="text-xs text-muted-foreground font-mono">
+          <span className="text-xs font-mono tabular-nums tracking-tight text-foreground/90">
             {formatTime(currentTime)}
           </span>
         </div>
@@ -382,33 +433,15 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             {generateTimeMarks()}
           </div>
 
-          {/* 播放头 */}
-          <div
-            data-testid="timeline-playhead"
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
-            style={{
-              left: `${currentTime * pixelsPerSecond}px`,
-              boxShadow: '0 0 4px rgba(239, 68, 68, 0.5)'
-            }}
-          >
-            {/* 播放头顶部手柄 — disabled on empty timeline to match ruler scroll */}
-            <div
-              className={`absolute -top-1 -left-1.5 w-3 h-2 bg-red-500 rounded-t ${
-                hasItems ? 'cursor-col-resize' : 'cursor-not-allowed'
-              }`}
-              style={{ pointerEvents: hasItems ? 'auto' : 'none' }}
-              aria-hidden="true"
-            />
-
-            {/* 播放头底部手柄 — same gate */}
-            <div
-              className={`absolute -bottom-1 -left-1.5 w-3 h-2 bg-red-500 rounded-b ${
-                hasItems ? 'cursor-col-resize' : 'cursor-not-allowed'
-              }`}
-              style={{ pointerEvents: hasItems ? 'auto' : 'none' }}
-              aria-hidden="true"
-            />
-          </div>
+          {/* 播放头 — single shared component; the ruler instance carries the
+              data-testid and the only interactive (draggable) handle. The
+              redundant per-second grid block was removed: the ticks above and
+              the lane grid (Track.tsx) are the single, aligned grid now. */}
+          <TimelinePlayhead
+            variant="ruler"
+            left={currentTime * pixelsPerSecond}
+            hasItems={hasItems}
+          />
 
           {/* 播放状态指示器 */}
           {isPlaying && (
@@ -419,22 +452,6 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               <span>{t.timeline.ruler.playing}</span>
             </div>
           )}
-
-          {/* 时间网格线延伸到刻度尺 */}
-          <div className="absolute inset-0 pointer-events-none">
-            {(() => {
-              const containerWidth = Math.max(paddedDuration * pixelsPerSecond, 800);
-              const maxTimeForGrid = Math.ceil(containerWidth / pixelsPerSecond);
-
-              return [...Array(maxTimeForGrid)].map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute top-0 bottom-0 border-l border-border"
-                  style={{ left: `${i * pixelsPerSecond}px` }}
-                />
-              ));
-            })()}
-          </div>
         </div>
       </div>
     </div>

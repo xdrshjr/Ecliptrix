@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { TimelineItemData } from './domain/types';
+import { CLIP } from './theme/timelineTheme';
 
 /**
  * Inputs for {@link computeItemStyles}. Grouped into a config object so the
@@ -50,7 +51,7 @@ export function computeItemStyles(inputs: ItemStyleInputs): CSSProperties {
     width: `${Math.max(width, 20)}px`,
     height: `${Math.max(itemHeight, 16)}px`,
     top: `${padding}px`,
-    borderRadius: '3px',
+    borderRadius: `${CLIP.radius}px`,
     cursor: isThisItemDragging ? 'grabbing' : 'grab',
     userSelect: 'none' as const,
     transition: isThisItemDragging || isThisItemResizing ? 'none' : 'all 0.2s ease',
@@ -67,29 +68,38 @@ export function computeItemStyles(inputs: ItemStyleInputs): CSSProperties {
       }
     : null;
 
+  // Visual refinements (non-asserted props only, per spec §2.6): a subtle top
+  // sheen over the per-type color gradient, a dark 1px definition border so
+  // adjacent clips separate cleanly, and a soft depth shadow on idle bars.
+  const clipBackground =
+    `linear-gradient(180deg, ${CLIP.sheen} 0%, transparent 42%), ` +
+    `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`;
+  const idleBorder = `1px solid ${CLIP.border}`;
+  const depthShadow = '0 1px 3px rgba(0, 0, 0, 0.30)';
+
   switch (item.type) {
     case 'video':
       return {
         ...baseStyles,
-        background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-        border: isSelected ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.2)',
-        boxShadow: isSelected ? '0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)' : 'none',
+        background: clipBackground,
+        border: isSelected ? '2px solid var(--primary)' : idleBorder,
+        boxShadow: isSelected ? '0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)' : depthShadow,
         ...(swapTargetStyles ?? {}),
       };
     case 'audio':
       return {
         ...baseStyles,
-        background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-        border: isSelected ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.2)',
-        boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : 'none',
+        background: clipBackground,
+        border: isSelected ? '2px solid #10b981' : idleBorder,
+        boxShadow: isSelected ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : depthShadow,
         ...(swapTargetStyles ?? {}),
       };
     case 'subtitle':
       return {
         ...baseStyles,
-        background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-        border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.2)',
-        boxShadow: isSelected ? '0 0 0 2px rgba(245, 158, 11, 0.3)' : 'none',
+        background: clipBackground,
+        border: isSelected ? '2px solid #f59e0b' : idleBorder,
+        boxShadow: isSelected ? '0 0 0 2px rgba(245, 158, 11, 0.3)' : depthShadow,
       };
     default:
       return baseStyles;

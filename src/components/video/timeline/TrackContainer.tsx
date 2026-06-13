@@ -8,6 +8,8 @@ import { useShallow } from 'zustand/react/shallow';
 import Track from './Track';
 import type { LocalProxyMaskState } from './TimelineItem';
 import { formatTimelineTime } from './timeFormat';
+import TimelinePlayhead from './TimelinePlayhead';
+import { TRACK_HEADER_WIDTH } from './theme/timelineTheme';
 
 // 拖拽滚动状态接口
 interface DragScrollState {
@@ -61,7 +63,8 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   const setZoomLevel = useTimelineStore((state) => state.setZoomLevel);
 
   const pixelsPerSecond = zoomLevel * 50;
-  const TRACK_HEADER_WIDTH = 192;
+  // TRACK_HEADER_WIDTH is imported from timelineTheme (single source for the
+  // 192px header origin shared with the ruler control panel — review R5).
 
   // Refs and local UI state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -314,21 +317,11 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
               )}px`,
             }}
           >
-            {/* 垂直对齐线 */}
+            {/* 播放头(轨道段) — single continuous line, collinear with the
+                ruler playhead. The +TRACK_HEADER_WIDTH origin keeps it aligned
+                with the ruler at every scrollLeft. No dashed line, no circles. */}
             {sortedTracks.length > 0 && (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-red-400 pointer-events-none"
-                style={{
-                  left: `${alignmentLinePosition}px`,
-                  height: '100%',
-                  opacity: 0.7,
-                  zIndex: 5,
-                  boxShadow: '0 0 2px rgba(239, 68, 68, 0.3)'
-                }}
-              >
-                <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white" style={{ opacity: 0.9 }} />
-                <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-red-400 rounded-full border border-white" style={{ opacity: 0.9 }} />
-              </div>
+              <TimelinePlayhead variant="track" left={alignmentLinePosition} />
             )}
 
             {sortedTracks.length > 0 ? (
@@ -429,7 +422,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
         <div className="flex items-center space-x-3 text-xs text-muted-foreground">
           <span>{t.timeline.trackBar.tracks}: {tracks.length}</span>
           <span>{t.timeline.trackBar.materials}: {tracks.reduce((total, track) => total + track.items.length, 0)}</span>
-          <span>{t.timeline.trackBar.duration}: {formatTimelineTime(totalDuration, { showMs: true })}</span>
+          <span className="tabular-nums">{t.timeline.trackBar.duration}: {formatTimelineTime(totalDuration, { showMs: true })}</span>
         </div>
 
         {/* 右侧添加轨道按钮 */}
