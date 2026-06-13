@@ -49,6 +49,41 @@ describe('local material classification', () => {
     expect(canPreviewDirectLocalMaterial(cachedRemote)).toBe(false);
   });
 
+  it('previews a ready cached remote material as direct local', () => {
+    const readyCached = material({
+      url: 'https://videos.pexels.com/clip.mp4',
+      serverUrl: 'https://videos.pexels.com/clip.mp4',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/123.mp4',
+      cacheStatus: 'ready',
+      metadata: { storageKind: 'cached_remote', source: 'pexels' },
+    });
+
+    // The asset is on disk → it must behave like an uploaded local video.
+    expect(canPreviewDirectLocalMaterial(readyCached)).toBe(true);
+    // Provenance classifier stays untouched: it is still a remote material.
+    expect(isDirectLocalMaterial(readyCached)).toBe(false);
+  });
+
+  it('keeps an in-progress cached remote download non-local until ready', () => {
+    const downloading = material({
+      url: 'https://videos.pexels.com/clip.mp4',
+      serverUrl: 'https://videos.pexels.com/clip.mp4',
+      cacheUrl: '/api/storage/files/cached_materials/pexels/123.mp4',
+      cacheStatus: 'downloading',
+      metadata: { storageKind: 'cached_remote', source: 'pexels' },
+    });
+
+    expect(canPreviewDirectLocalMaterial(downloading)).toBe(false);
+    expect(canPreviewDirectLocalMaterial(material({
+      ...downloading,
+      cacheStatus: 'pending',
+    }))).toBe(false);
+    expect(canPreviewDirectLocalMaterial(material({
+      ...downloading,
+      cacheStatus: 'failed',
+    }))).toBe(false);
+  });
+
   it('does not classify legacy remote, blob-only, or empty placeholders', () => {
     expect(isDirectLocalMaterial(material({
       url: 'https://cdn.example.com/clip.mp4',

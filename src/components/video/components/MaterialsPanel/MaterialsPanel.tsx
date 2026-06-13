@@ -2087,12 +2087,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
                 .map((material) => (
                 <div
                   key={material.id}
-                  draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating' && material.uploadStatus !== 'uploading' && material.uploadStatus !== 'waiting'}
+                  draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating' && material.uploadStatus !== 'uploading' && material.uploadStatus !== 'waiting' && material.cacheStatus !== 'pending' && material.cacheStatus !== 'downloading'}
                   onDragStart={(e) => handleDragStart(e, material)}
                   onDragEnd={(e) => handleDragEnd(e, material)}
                   className={`group bg-card border border-border rounded-md overflow-hidden transition-all ${
-                    material.downloadStatus === 'downloading' || material.downloadStatus === 'generating' || material.uploadStatus === 'uploading' || material.uploadStatus === 'waiting'
-                      ? 'opacity-60 cursor-not-allowed' 
+                    material.downloadStatus === 'downloading' || material.downloadStatus === 'generating' || material.uploadStatus === 'uploading' || material.uploadStatus === 'waiting' || material.cacheStatus === 'pending' || material.cacheStatus === 'downloading'
+                      ? 'opacity-60 cursor-not-allowed'
                       : 'cursor-grab active:cursor-grabbing'
                   } ${
                     draggedMaterial?.id === material.id ? 'opacity-50 scale-95' : ''

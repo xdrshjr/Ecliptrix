@@ -75,10 +75,26 @@ export function isDirectLocalMaterial(
   return false;
 }
 
+/**
+ * True once a remote material has finished downloading into the same-origin
+ * ``cached_materials/`` store. At that point the asset is a local file on disk
+ * (served with HTTP Range), so it must be treated exactly like an uploaded
+ * video rather than re-routed through the server-side 480p transcode + blob
+ * download path. Gated strictly on ``cacheStatus === 'ready'``: while the
+ * download is still pending/downloading/failed the material must stay non-local
+ * so the progress indicator and readiness gating keep working.
+ */
+function isReadyCachedLocalMaterial(material: MaterialItem): boolean {
+  return material.cacheStatus === 'ready'
+    && isCachedRemoteStoragePath(material.cacheUrl);
+}
+
 export function canPreviewDirectLocalMaterial(
   material: MaterialItem | null | undefined,
 ): boolean {
-  if (!material || !isDirectLocalMaterial(material)) return false;
+  if (!material) return false;
+  if (isReadyCachedLocalMaterial(material)) return true;
+  if (!isDirectLocalMaterial(material)) return false;
   return hasDirectLocalPlaybackUrl(material);
 }
 
