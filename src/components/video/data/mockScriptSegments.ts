@@ -104,4 +104,20 @@ export const getMockScriptSegments = (locale: SupportedLocale = 'zh-CN'): Script
 };
 
 // 保持向后兼容性的默认导出
-export const mockScriptSegments: ScriptSegment[] = getMockScriptSegments(); 
+export const mockScriptSegments: ScriptSegment[] = getMockScriptSegments();
+
+// 系统「示意 / 模板」脚本的固定 segment id 集合。
+// 这组 id 由 getMockScriptSegments 产出且与 locale 无关（id 是字面量，仅文案随 i18n 变化），
+// 真实脚本生成路径使用互斥前缀（agent-segment-* / seg-<uuid> / ai-video-seg-* / storyboard-seg-*），
+// 永远不会落到 segment-1/2/3。故按段 id 判定「占位」不会误删真实内容（依据见 analysis.md §3.6）。
+export const PLACEHOLDER_SEGMENT_IDS: ReadonlySet<string> = new Set(
+  getMockScriptSegments().map(segment => segment.id),
+);
+
+// 判断一组 segments 是否仍是「系统示意占位」：非空且每个 segment id 都属于占位 id 集合。
+// 用「子集（every）」而非严格相等，对「占位内文案/句子被编辑」鲁棒（段 id 不变），
+// 也能覆盖「用户先删掉部分占位段再首次生成」的子场景。
+export function isPlaceholderScript(segments: ScriptSegment[]): boolean {
+  return segments.length > 0
+    && segments.every(segment => PLACEHOLDER_SEGMENT_IDS.has(segment.id));
+}

@@ -26,7 +26,7 @@ import { useAgentExecution } from './hooks/useAgentExecution';
 import { useConvertToScript } from './hooks/useConvertToScript';
 import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript';
 import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
-import { getMockScriptSegments, mockVideoPreview } from './data';
+import { getMockScriptSegments, isPlaceholderScript, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1019,11 +1019,16 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 视频理解生成本期仅占位弹窗。
   const [isVideoUnderstandingPlaceholderOpen, setIsVideoUnderstandingPlaceholderOpen] = useState(false);
 
-  // 「解说直接生成」完成时把逐句新解说 segments 追加（而非替换）到 content.scriptSegments，
+  // 「解说直接生成」完成时把逐句新解说 segments 写入 content.scriptSegments：
+  // 首次生成（面板为空，或仍是系统示意占位 segment-1/2/3）→ 替换掉示意脚本；
+  // 后续生成 → 追加到已有真实解说之后。
   // 复用面板既有的 handleUpdateSegments 单一写入路径，单次批量写入（评审决议 R3）。
   const handleAppendNarrationSegments = useCallback((segments: ScriptSegment[]) => {
     const existing = scriptSegmentsRef.current ?? [];
-    scriptGeneration.handleUpdateSegments([...existing, ...segments]);
+    const replaceExisting = existing.length === 0 || isPlaceholderScript(existing);
+    scriptGeneration.handleUpdateSegments(
+      replaceExisting ? segments : [...existing, ...segments]
+    );
   }, [scriptGeneration]);
 
   const narrationDirectScript = useNarrationDirectScript({

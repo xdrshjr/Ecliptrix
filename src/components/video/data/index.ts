@@ -1,2 +1,2 @@
 export { mockVideoPreview } from './mockVideoPreview';
-export { mockScriptSegments, getMockScriptSegments } from './mockScriptSegments';
+export { mockScriptSegments, getMockScriptSegments, isPlaceholderScript, PLACEHOLDER_SEGMENT_IDS } from './mockScriptSegments';

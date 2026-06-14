@@ -88,14 +88,23 @@
 
 现有 `scriptGeneration.handleScriptGenerated` 是 **整体替换** `scriptSegments`（用于旧视频理解流程），不可复用。本需求是「**添加** 到下方面板」。评审决议（R3）：**复用面板既有的 `scriptGeneration.handleUpdateSegments` 单一写入路径**（该 setter 已被 `ScriptPanel` 的句子增删改 `onUpdateSegments` 使用，持久化与 `lastModified` 等副作用一致），不另起裸 `onUpdateContent` 旁路：
 
+写入语义为 **首次替换、后续追加** 的显式契约（修订，见
+`docs/diagnoses/narration-direct-script-first-gen-append-instead-of-replace/analysis.md`）：
+首次生成（面板为空，或面板里仍是系统示意占位 `segment-1/2/3`）→ 用新解说 **替换** 示意脚本；
+后续生成 → **追加** 到已有真实解说之后。占位识别为纯函数 `isPlaceholderScript`（按 `getMockScriptSegments`
+派生的固定 segment id 集合做子集判定，与 locale 无关；真实脚本 id 前缀互斥，故不会误删真实内容）。
+
 ```
 handleAppendNarrationSegments(newSegments: ScriptSegment[]) => {
   const existing = content?.scriptSegments ?? [];          // 调用时读取最新值，避免闭包陈旧
-  scriptGeneration.handleUpdateSegments([...existing, ...newSegments]);
+  const replaceExisting = existing.length === 0 || isPlaceholderScript(existing);
+  scriptGeneration.handleUpdateSegments(
+    replaceExisting ? newSegments : [...existing, ...newSegments]
+  );
 }
 ```
 
-注意：面板空态下渲染的是 `getMockScriptSegments`（占位 mock），但回写读取的是真实 `content.scriptSegments`，因此首次「完成」会以真实 segment 取代 mock 占位，符合预期。
+历史背景：早期实现依赖「`content.scriptSegments` 恰好为空时 `[...[], ...new] == [new]`」这一**空态巧合**完成首次替换；一旦示意占位被任意交互物化进 `content`，巧合失效退化为追加（即上述 bug）。现已改为显式判定。
 
 ---
 
@@ -257,7 +266,7 @@ const segment: ScriptSegment = {
 > 以下决议已回灌正文（§1 / §2.2 / §2.3 / §2.4），开发节点须严格遵循，不得再次发散。
 
 1. **菜单语义** → 单选动作菜单（multiple options，非复选框）；点击即进入对应流程并关闭菜单。（正文 §1 / §2.2 A）
-2. **完成写入语义** → **追加一个新 segment** 到 `content.scriptSegments`，经 `scriptGeneration.handleUpdateSegments([...existing, ...new])` 合并写入；不替换、不按句拆成多 segment。（§2.4）
+2. **完成写入语义** → **首次（空态或仅系统示意占位）替换、后续追加**：经 `scriptGeneration.handleUpdateSegments` 单一写入路径合并写入；首次生成用新解说替换示意占位（`isPlaceholderScript` 按占位 segment id 子集判定），后续生成追加。（§2.4；修订自原「始终追加靠空态巧合替换」，见 `docs/diagnoses/narration-direct-script-first-gen-append-instead-of-replace/analysis.md`）
 3. **第 1 步初始文案** → **默认空串**；禁止用「现有解说脚本聚合文本」预填（否则与「追加」叠加成重复内容）。如需种子文本仅可取自本次 AI 对话，不取既有 segments。（§2.2 B-1）
 4. **拆分路径** → **AI 主 + 本地确定性兜底** 保持不变（满足需求「调用 AI 拆分」字面要求）；因句子切分本质为确定性操作，要求 AI 结果与原文做字符一致性校验，一旦发现字义被改写即自动回退 `localSplitNarration`，确保「不增删字义」。（§2.3）
 
