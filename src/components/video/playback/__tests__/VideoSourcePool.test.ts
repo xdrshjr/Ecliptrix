@@ -615,3 +615,115 @@ describe('VideoSourcePool applier — §5.1 canplay retry on play() rejection (R
     expect((plain as unknown as { __ecliptrixPlayKick?: boolean }).__ecliptrixPlayKick).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// V1 (timeline-preview-track-volume-not-live) — per-clip preview loudness. The
+// video path used to write only el.muted and never el.volume, so a video
+// track's embedded-audio preview always played at native 1.0 and ignored live
+// volume drags. The planner now carries a clamped desiredVolume and the applier
+// writes el.volume on the "confirmed playing" / "paused hold" branches. The
+// §3.C minimal-repro assertions are REVERSED here into a regression test.
+// ---------------------------------------------------------------------------
+
+describe('computeSourcePlan — per-clip desiredVolume (V1)', () => {
+  it('carries the active clip volume clamped to [0,1]', () => {
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 0.2 })])];
+    const plans = computeSourcePlan(groups, 1, {}, resolverFrom({ a: '/a.mp4' }));
+    expect(plans[0].desiredVolume).toBeCloseTo(0.2, 6);
+  });
+
+  it('defaults desiredVolume to 1 when the clip has no volume', () => {
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])];
+    const plans = computeSourcePlan(groups, 1, {}, resolverFrom({ a: '/a.mp4' }));
+    expect(plans[0].desiredVolume).toBe(1);
+  });
+
+  it('clamps an effective volume above 1 down to 1.0 (preview ceiling)', () => {
+    // seq.volume is already item × track (CompositionAdapter clamps to [0,2]); a
+    // >100% setting must NOT be re-multiplied — just clamped to the element max.
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 1.5 })])];
+    const plans = computeSourcePlan(groups, 1, {}, resolverFrom({ a: '/a.mp4' }));
+    expect(plans[0].desiredVolume).toBe(1);
+  });
+});
+
+describe('VideoSourcePool applier — per-clip preview volume (V1, §3.C reversed)', () => {
+  it('writes el.volume = the clip volume for a non-detached, confirmed-playing clip', () => {
+    // Reversal of §3.C: the video pool now DOES apply the track/clip volume.
+    const active = fakeEl({ paused: false, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 0.2 })])];
+    pool.sync(groups, 1, true);
+    expect(active.muted).toBe(false); // non-detached → audible
+    expect(active.volume).toBeCloseTo(0.2, 6);
+  });
+
+  it('follows a live track/clip volume change on the next frame', () => {
+    const active = fakeEl({ paused: false, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    pool.sync([group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 1 })])], 1, true);
+    expect(active.volume).toBe(1);
+    // User drags the volume down → next composition frame carries the new value.
+    pool.sync([group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 0.3 })])], 1, true);
+    expect(active.volume).toBeCloseTo(0.3, 6);
+  });
+
+  it('applies el.volume on the paused (hold) branch too', () => {
+    const active = fakeEl({ paused: false, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 0.4 })])];
+    pool.sync(groups, 1, false); // not playing → hold branch
+    expect(active.volume).toBeCloseTo(0.4, 6);
+    expect(active.paused).toBe(true);
+  });
+
+  it('clamps a >100% effective volume to 1.0 at the element (no re-multiply, no gain)', () => {
+    const active = fakeEl({ paused: false, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 1.5 })])];
+    pool.sync(groups, 1, true);
+    expect(active.volume).toBe(1);
+  });
+
+  it('keeps a detached clip muted regardless of its volume (no double audio)', () => {
+    const active = fakeEl({ paused: false, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    const groups = [
+      group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 0.5, audioDetached: true })]),
+    ];
+    pool.sync(groups, 1, true);
+    expect(active.muted).toBe(true); // muted route dominates → not heard
+  });
+
+  it('keeps an idle track muted (volume never makes it sound)', () => {
+    const active = fakeEl({ paused: false, muted: false });
+    const elements = new Map<string, TrackElements>([['t1', { active, prewarm: null }]]);
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: '/a.mp4' }),
+    );
+    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 100, duration: 5, volume: 1 })])];
+    pool.sync(groups, 1, true);
+    expect(active.muted).toBe(true);
+  });
+});

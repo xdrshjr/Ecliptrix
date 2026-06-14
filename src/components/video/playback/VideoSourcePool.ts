@@ -56,6 +56,16 @@ export interface VideoElementLike {
    */
   muted?: boolean;
   /**
+   * Output loudness of this decode element's OWN (embedded) audio, in [0,1].
+   * Carries the active clip's effective per-clip volume (item × track, already
+   * composited upstream by `CompositionAdapter.extractVideoSequences`) so a
+   * non-detached video track's preview loudness follows live track/clip volume
+   * drags — mirroring `AudioSyncPool` for independent audio tracks. Real
+   * `HTMLVideoElement` exposes it; optional so plain structural test fakes that
+   * predate volume need not declare it.
+   */
+  volume?: number;
+  /**
    * Whether the element is currently paused (not advancing). Read by the §5.2
    * per-frame state machine to decouple "make it paint" (start MUTED so muted
    * autoplay — allowed by every policy — gets it decoding) from "restore its
@@ -135,6 +145,29 @@ export interface TrackSourcePlan {
    * its decode element (RISK 2 routing). Idle tracks are muted.
    */
   muteAudio: boolean;
+  /**
+   * Output loudness [0,1] to apply to the active element's OWN audio this frame.
+   * The active clip's effective volume (`seq.volume`, already item × track and
+   * clamped upstream) re-clamped to [0,1]; defaults to 1 when absent. Written by
+   * {@link VideoSourcePool._apply} on the "confirmed playing" / "paused hold"
+   * branches so preview loudness tracks live volume changes. Idle/detached
+   * tracks carry 1 here but never sound (the `muteAudio` route silences them).
+   */
+  desiredVolume: number;
+}
+
+/**
+ * Clamp a raw volume to the [0,1] range a media element accepts. Mirrors
+ * `AudioSyncPool.clampVolume` semantics (kept local to avoid coupling the video
+ * module to the audio one): NaN/±∞ → 0, ≤0 → 0, ≥1 → 1. `seq.volume` is already
+ * the item × track composite (clamped to [0,2] upstream), so this is a single
+ * final clamp — never re-multiply by track volume here (that would double-apply).
+ */
+function clampVolume(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
 }
 
 function normalizeSrc(src: string | null | undefined): string {
@@ -202,6 +235,9 @@ export function computeSourcePlan(
       prewarmUrl: computePrewarmUrl(group.items, t, resolveSource, state),
       // Embedded audio plays from this element unless the clip is detached.
       muteAudio: hit.clip.audioDetached === true,
+      // Per-clip effective loudness (item × track, already composited into
+      // `seq.volume` upstream); single final clamp to the element's [0,1].
+      desiredVolume: clampVolume(hit.clip.volume ?? 1),
     };
   });
 }
@@ -218,6 +254,8 @@ function idlePlan(trackId: string, z: number, clipId: string | null = null): Tra
     prewarmUrl: null,
     // An idle track contributes no audio — keep its decode element muted.
     muteAudio: true,
+    // Idle tracks are silenced via `muteAudio`; the value here is inert.
+    desiredVolume: 1,
   };
 }
 
@@ -346,10 +384,14 @@ export class VideoSourcePool {
         // muted so its paired audio sequence is the sole source (no double
         // audio). RISK 2.
         el.muted = plan.muteAudio;
+        // Apply this frame's per-clip loudness so live track/clip volume drags
+        // are heard immediately (mirrors AudioSyncPool for audio tracks).
+        el.volume = plan.desiredVolume;
       }
     } else {
       // Paused: hold the final audio route but make no sound.
       el.muted = plan.muteAudio;
+      el.volume = plan.desiredVolume;
       this._pauseQuietly(el);
     }
 

@@ -123,8 +123,9 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
       el.preload = 'auto';
       // muted is OWNED by the VideoSourcePool per frame (RISK 2 routing): a
       // non-detached track's decode element carries its own audio (unmuted), a
-      // detached / idle one is muted. Start muted so nothing plays before the
-      // first sync decides.
+      // detached / idle one is muted. el.volume is likewise applied by the pool
+      // each frame (the active clip's effective loudness) so preview follows live
+      // track/clip volume. Start muted so nothing plays before the first sync.
       el.muted = true;
       Object.assign(el.style, HIDDEN_MEDIA_STYLE);
       sourceHostRef.current?.appendChild(el);
