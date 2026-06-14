@@ -65,8 +65,15 @@ export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationCha
   const systemPrompt = isZh ? SYSTEM_PROMPT_ZH : SYSTEM_PROMPT_EN;
 
   const formatUpdated = () => (isZh ? '已更新左侧文案' : 'Left draft updated.');
-  const formatStreaming = () => (isZh ? '正在改写文案…' : 'Rewriting…');
   const formatCancelled = () => (isZh ? '[已取消]' : '[cancelled]');
+  // 流末内容空守卫（R-B / E2）：模型只产 reasoning、或正文与思考皆空时，给出明确的
+  // 终态反馈，而非把进行中的「正在改写…」误当终态摘要。任何分支都不把 reasoning 写入左侧 draft。
+  const formatReasoningOnly = () =>
+    isZh
+      ? '模型仅返回思考内容、未生成解说正文，请更换模型或重试'
+      : 'The model returned only reasoning, no narration body — switch models or retry.';
+  const formatEmptyResult = () =>
+    isZh ? '模型未返回任何内容，请重试' : 'The model returned nothing — please retry.';
 
   const makeSystemMessage = useCallback(
     (): NarrationChatMessage => ({
@@ -231,8 +238,12 @@ export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationCha
           summary = `${isZh ? '改写失败：' : 'Rewrite failed: '}${errorMessage}`;
         } else if (rewritten) {
           summary = formatUpdated();
+        } else if (accumulatedReasoning.trim()) {
+          // 仅产 reasoning、无正文 content：流已结束，给出明确空结果反馈（修掉 E2 的误导性「正在改写…」）。
+          summary = formatReasoningOnly();
         } else {
-          summary = formatStreaming();
+          // 正文与思考皆空：模型什么都没返回。
+          summary = formatEmptyResult();
         }
         next[idx] = {
           ...next[idx],
