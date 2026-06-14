@@ -17,7 +17,7 @@
 // source and the constant is the *shared* source for JS-side math — they must
 // stay in lock-step (review R5):
 //   RULER_HEIGHT (32)        ⇄ `h-8` on the ruler / bottom bars
-//   TRACK_HEADER_WIDTH (192) ⇄ `w-48` on the ruler control panel + track header
+//   TRACK_HEADER_WIDTH (224) ⇄ `w-56` on the ruler control panel + track header
 // ---------------------------------------------------------------------------
 
 /** Ruler row height. Mirrors the `h-8` (32px) utility on `.timeline-ruler`. */
@@ -25,11 +25,13 @@ export const RULER_HEIGHT = 32;
 
 /**
  * Width of the non-scrolling left control column shared by the ruler and every
- * track header. Mirrors the `w-48` (192px) utility on those panels and is the
+ * track header. Mirrors the `w-56` (224px) utility on those panels and is the
  * `time=0` origin offset for the track-variant playhead (the proven
- * `+ TRACK_HEADER_WIDTH` collinearity term).
+ * `+ TRACK_HEADER_WIDTH` collinearity term). Widened from 192 → 224 (round 2)
+ * so CJK track names (`视频轨道 1` …) are no longer truncated; all three
+ * sources must stay in lock-step or the ruler/playhead will drift.
  */
-export const TRACK_HEADER_WIDTH = 192;
+export const TRACK_HEADER_WIDTH = 224;
 
 /** Tick mark heights by tier, anchored to the ruler's bottom edge. */
 export const TICK_MAJOR_H = 14;

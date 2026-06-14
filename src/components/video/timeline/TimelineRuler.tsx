@@ -292,7 +292,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
       {/* 左侧控制区域 */}
       <div
         ref={controlPanelRef}
-        className="w-48 bg-muted border-r border-border flex items-center justify-between px-3"
+        className="w-56 bg-muted border-r border-border flex items-center justify-between px-3"
       >
         <div className="flex items-center space-x-2">
           {/* 时间轴图标 */}

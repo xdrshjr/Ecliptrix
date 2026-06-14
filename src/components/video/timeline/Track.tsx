@@ -13,6 +13,7 @@ import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
 import TimelineItem, { type LocalProxyMaskState } from './TimelineItem';
 import VolumeSlider from './VolumeSlider';
+import PortalTooltip from './PortalTooltip';
 import { useNotification } from '@/contexts/NotificationContext';
 import { deriveTrackDisplayName } from './trackDisplayName';
 import { pickTickIntervals } from './lib/rulerTicks';
@@ -307,7 +308,7 @@ const Track: React.FC<TrackProps> = ({
     >
       {/* Track controls panel — left accent strip cues the per-type color. */}
       <div
-        className={`track-controls w-48 bg-muted border-r border-border transition-opacity ${
+        className={`track-controls w-56 bg-muted border-r border-border transition-opacity ${
           track.isVisible ? '' : 'opacity-60'
         }`}
         style={{ boxShadow: `inset 3px 0 0 0 ${getTrackAccent()}` }}
@@ -317,7 +318,7 @@ const Track: React.FC<TrackProps> = ({
           style={{ height: trackHeight }}
         >
           {/* Left: icon + name */}
-          <div className="flex items-center space-x-2 flex-1 min-w-0">
+          <div className="flex items-center space-x-1.5 flex-1 min-w-0">
             <div className={`${getTrackColor()}`}>
               {getTrackIcon()}
             </div>
@@ -326,15 +327,17 @@ const Track: React.FC<TrackProps> = ({
             </span>
           </div>
 
-          {/* Right: control buttons */}
-          <div className="flex items-center space-x-1">
+          {/* Right: control buttons — tightened gap (space-x-0.5) so the widened
+              header still leaves the track name enough room without exceeding
+              the "not too long" budget (see analysis 缺陷 1 / 1A). */}
+          <div className="flex items-center space-x-0.5">
             {/* Volume button (audio + video tracks) */}
             {(track.type === 'audio' || (track.type === 'video' && !track.id.startsWith('image-track'))) && (() => {
               const volumeBase = track.isLocked
                 ? `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} - ${t.timeline.track.trackLocked}`
                 : `${t.timeline.toolbar.volumeControl} - ${trackDisplayName} (${track.volume}%)`;
               return (
-              <div className="relative group">
+              <PortalTooltip className="relative" label={volumeBase}>
                 <button
                   ref={volumeButtonRef}
                   onClick={handleVolumeClick}
@@ -363,27 +366,26 @@ const Track: React.FC<TrackProps> = ({
                       <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
                     )}
                   </svg>
-
-                  {/* Hover tooltip */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
-                    <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                      {volumeBase}
-                      <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-                      </div>
-                    </div>
-                  </div>
                 </button>
 
                 {/* Volume slider popover — rendered once globally, controlled by store */}
                 {volumeSliderOpen && <VolumeSlider />}
-              </div>
+              </PortalTooltip>
               );
             })()}
 
             {/* Edit subtitles button (subtitle track only) */}
             {track.type === 'subtitle' && (
-              <div className="relative group">
+              <PortalTooltip
+                className="relative"
+                label={
+                  track.items.length === 0
+                    ? t.timeline.track.editSubtitlesHint
+                    : track.isLocked
+                      ? t.timeline.track.trackLocked
+                      : t.timeline.track.editSubtitles
+                }
+              >
                 <button
                   onClick={() => {
                     if (onEditSubtitles) {
@@ -410,25 +412,21 @@ const Track: React.FC<TrackProps> = ({
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
                   </svg>
-
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
-                    <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                      {track.items.length === 0
-                        ? t.timeline.track.editSubtitlesHint
-                        : track.isLocked
-                          ? t.timeline.track.trackLocked
-                          : t.timeline.track.editSubtitles}
-                      <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-                      </div>
-                    </div>
-                  </div>
                 </button>
-              </div>
+              </PortalTooltip>
             )}
 
             {/* Select all button */}
-            <div className="relative group">
+            <PortalTooltip
+              className="relative"
+              label={
+                track.items.length === 0
+                  ? t.timeline.track.selectAllEmptyHint
+                  : track.isLocked
+                    ? `${t.timeline.track.selectAll} — ${t.timeline.track.trackLocked}`
+                    : t.timeline.track.selectAll
+              }
+            >
               <button
                 onClick={handleSelectAllClick}
                 disabled={track.items.length === 0 || track.isLocked}
@@ -457,24 +455,14 @@ const Track: React.FC<TrackProps> = ({
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M3 5H1v16c0 1.1.9 2 2 2h16v-2H3V5zm18-4H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm0 16H7V3h14v14zm-10-7l1.41 1.41L16 8.83 20.59 13.41 22 12l-6-6-4 4z"/>
                 </svg>
-
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
-                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                    {track.items.length === 0
-                      ? t.timeline.track.selectAllEmptyHint
-                      : track.isLocked
-                        ? `${t.timeline.track.selectAll} — ${t.timeline.track.trackLocked}`
-                        : t.timeline.track.selectAll}
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-                    </div>
-                  </div>
-                </div>
               </button>
-            </div>
+            </PortalTooltip>
 
             {/* Lock button */}
-            <div className="relative group">
+            <PortalTooltip
+              className="relative"
+              label={track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
+            >
               <button
                 onClick={handleLockClick}
                 className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
@@ -492,20 +480,18 @@ const Track: React.FC<TrackProps> = ({
                     <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z"/>
                   )}
                 </svg>
-
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
-                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                    {track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock}
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-                    </div>
-                  </div>
-                </div>
               </button>
-            </div>
+            </PortalTooltip>
 
             {/* Visibility button */}
-            <div className="relative group">
+            <PortalTooltip
+              className="relative"
+              label={
+                track.isLocked
+                  ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
+                  : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)
+              }
+            >
               <button
                 onClick={handleVisibilityClick}
                 disabled={track.isLocked}
@@ -532,22 +518,18 @@ const Track: React.FC<TrackProps> = ({
                     <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
                   )}
                 </svg>
-
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
-                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                    {track.isLocked
-                      ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} — ${t.timeline.track.trackLocked}`
-                      : (track.isVisible ? t.timeline.track.hide : t.timeline.track.show)}
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-                    </div>
-                  </div>
-                </div>
               </button>
-            </div>
+            </PortalTooltip>
 
             {/* Delete track button */}
-            <div className="relative group">
+            <PortalTooltip
+              className="relative"
+              label={
+                track.isLocked
+                  ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
+                  : t.timeline.track.removeTrack
+              }
+            >
               <button
                 onClick={handleRemoveTrackClick}
                 disabled={track.isLocked}
@@ -566,19 +548,8 @@ const Track: React.FC<TrackProps> = ({
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                 </svg>
-
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
-                  <div className="bg-background text-foreground text-xs px-2 py-1 rounded-md whitespace-nowrap border border-border">
-                    {track.isLocked
-                      ? `${t.timeline.track.removeTrack} — ${t.timeline.track.trackLocked}`
-                      : t.timeline.track.removeTrack}
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-                    </div>
-                  </div>
-                </div>
               </button>
-            </div>
+            </PortalTooltip>
           </div>
         </div>
       </div>
