@@ -24,7 +24,7 @@ import AgentBusyBar from './AgentBusyBar';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 
-interface VideoChatWindowProps {
+export interface VideoChatWindowProps {
   conversation: Conversation | undefined;
   onSendMessage: (message: string) => Promise<void>;
   onClearMessages: () => void;

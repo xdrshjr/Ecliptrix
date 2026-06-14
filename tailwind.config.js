@@ -124,6 +124,8 @@ module.exports = {
         base: '0',         // normal flow
         sidebar: '10',     // left chat sidebar, sticky toolbars; must stay below modals
         dropdown: '20',    // inline dropdowns / tooltips attached to flow elements
+        dock: '850',       // closed-state floating Agent FAB; above the timeline lock overlay (50)
+        'dock-panel': '860', // open-state Agent floating panel; still below overlay:900 / modal:1000
         overlay: '900',    // full-screen backdrops shown on their own
         modal: '1000',     // every fixed-positioned modal dialog root
         popover: '1100',   // popovers/menus rendered above modals (e.g. modal-on-modal progress, preview)

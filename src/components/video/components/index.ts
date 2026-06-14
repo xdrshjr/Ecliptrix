@@ -17,3 +17,4 @@ export { default as BatchAnalysisModeSelectionModal } from './BatchAnalysisModeS
 export { AiGenerateMenu } from './AiGenerateMenu';
 export { NarrationDirectScriptModal } from './NarrationDirectScriptModal';
 export { VideoUnderstandingModePlaceholderModal } from './VideoUnderstandingModePlaceholderModal';
+export { AgentChatDock } from './AgentChatDock';

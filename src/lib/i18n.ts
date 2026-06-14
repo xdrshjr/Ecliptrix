@@ -1385,6 +1385,12 @@ export interface Translations {
       noMaterials: string;
       noScriptMaterials: string;
     };
+    agentDock: {
+      fabLabel: string;
+      panelTitle: string;
+      close: string;
+      busy: string;
+    };
   };
   videoScript: {
     tab: {
@@ -3884,6 +3890,12 @@ export const translations: Record<string, Translations> = {
      autoMix: {
        noMaterials: 'Add video, audio, or image materials before running auto-mix.',
        noScriptMaterials: 'Auto-mix needs audio and video generated from the text-script panel — run TTS and AI video matching first.',
+     },
+     agentDock: {
+       fabLabel: 'AI editing assistant',
+       panelTitle: 'AI Editing Assistant',
+       close: 'Close',
+       busy: 'Agent running…',
      },
    },
    videoScript: {
@@ -6392,6 +6404,12 @@ export const translations: Record<string, Translations> = {
      autoMix: {
        noMaterials: '请先添加视频、音频或图片素材后再使用自动混剪。',
        noScriptMaterials: '自动混剪需要由文本脚本生成的音频和视频素材，请先在「文本脚本」面板完成 TTS 与 AI 视频匹配。',
+     },
+     agentDock: {
+       fabLabel: 'AI 剪辑助手',
+       panelTitle: 'AI 剪辑助手',
+       close: '收起',
+       busy: 'Agent 执行中…',
      },
    },
    videoScript: {

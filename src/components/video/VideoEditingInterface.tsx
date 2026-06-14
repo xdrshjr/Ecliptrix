@@ -50,13 +50,13 @@ import {
   AIMixingModeSelectionModal,
   BatchAnalysisModeSelectionModal,
   NarrationDirectScriptModal,
-  VideoUnderstandingModePlaceholderModal
+  VideoUnderstandingModePlaceholderModal,
+  AgentChatDock
 } from './components';
 import ConvertToScriptModal from './components/ConvertToScriptModal';
 import { createAIVideoSegment } from './components/AIVideoScriptTab';
 import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
 import { AsyncTaskPoller } from './components/AsyncTaskPoller';
-import { VideoChatWindow } from './components/VideoChatWindow';
 import { Conversation, ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
@@ -213,6 +213,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
   const [agentMode, setAgentMode] = useState<boolean>(content?.uiState?.agentMode ?? true);
   const hasAutoChatInitialized = useRef(content?.uiState?.hasAutoChatInitialized ?? false);
+
+  // 浮动 Agent 对话 Dock 的开合（内存态，默认关闭，不入 content 持久化）
+  const [isAgentDockOpen, setIsAgentDockOpen] = useState<boolean>(false);
 
   // Keep a ref to the latest content so callbacks always read the current value
   const contentRef = useRef(content);
@@ -2601,30 +2604,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   );
 
   return (
-    <div className="flex-1 flex min-h-0 overflow-hidden">
-      {/* 左侧区域 - AI Chat 面板贯穿上下，占20%宽度 */}
-      <div className="video-editing-left-sidebar flex flex-col border-r border-border bg-card relative z-sidebar">
-        <VideoChatWindow
-          conversation={activeConversation}
-          onSendMessage={handleSendChatMessage}
-          onClearMessages={handleClearChatMessages}
-          isLoading={isChatLoading}
-          onCreativeBrainstormingClick={handleCreativeBrainstormingClick}
-          onPolishClick={handlePolishClick}
-          onConvertMessageToScript={handleConvertMessageToScript}
-          agentMode={agent.agentMode}
-          onAgentModeChange={agent.setAgentMode}
-          agentIsExecuting={agent.agentIsExecuting}
-          executionState={agent.executionState}
-          onAgentUndo={undefined}
-          onUndoAll={agent.undoAllOperations}
-          onUndoSingle={agent.undoSingleOperation}
-          onCancel={agent.cancelExecution}
-          hasMaterials={materialManagement.allMaterials.length > 0}
-        />
-      </div>
-
-      {/* 右侧区域 - 占80%宽度，包含上方面板和下方Timeline */}
+    <div className="flex-1 flex min-h-0 overflow-hidden relative">
+      {/* 主工作区 - 全宽，达芬奇式布局（脚本25% | 预览50% | 素材25% + 贯穿全宽时间轴）。
+          AI Chat 不再常驻，改为右下角浮动 Dock，见本组件末尾的 <AgentChatDock /> */}
       <div className="video-editing-right-area flex flex-col min-h-0 overflow-hidden">
         {/* 上方面板区域 */}
         <div className="video-editing-upper-panels flex min-h-0 overflow-hidden">
@@ -2654,28 +2636,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             />
           </div>
 
-          {/* Materials Management 面板 */}
-          <MaterialsPanel
-            {...materialManagement}
-            onSearchVideos={videoSearch.openSearchModal}
-            onSearchAudios={audioSearch.openSearchModal}
-            onSearchImages={imageSearch.openSearchModal}
-            onAIMixedEditing={handleAIMixedEditing}
-            onAutoMixAudio={handleAutoMixAudio}
-            onVideoAnalysis={handleVideoAnalysis}
-            onBatchVideoAnalysis={handleBatchVideoAnalysis}
-            getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
-            onRetryDownload={videoSearch.retryVideoDownload}
-            onAddToTimeline={handleAddMaterialToTimeline}
-            onCutMaterial={handleCutMaterial}
-            onWatermarkRemoval={handleWatermarkRemoval}
-            taskId={taskId}
-            projectId={projectId}
-            className="video-editing-materials-panel bg-card border-r border-border"
-          />
-
-          {/* Play Preview 面板 */}
-          <div className="video-editing-player-panel bg-card">
+          {/* Play Preview 面板 - 中央主舞台，占50%宽度 */}
+          <div className="video-editing-player-panel bg-card border-r border-border">
             <VideoPlayerPanel
               ref={videoPlayerRef}
               {...videoPlayback}
@@ -2698,6 +2660,26 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               projectName=""
             />
           </div>
+
+          {/* Materials Management 面板 - 右翼，占25%宽度 */}
+          <MaterialsPanel
+            {...materialManagement}
+            onSearchVideos={videoSearch.openSearchModal}
+            onSearchAudios={audioSearch.openSearchModal}
+            onSearchImages={imageSearch.openSearchModal}
+            onAIMixedEditing={handleAIMixedEditing}
+            onAutoMixAudio={handleAutoMixAudio}
+            onVideoAnalysis={handleVideoAnalysis}
+            onBatchVideoAnalysis={handleBatchVideoAnalysis}
+            getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
+            onRetryDownload={videoSearch.retryVideoDownload}
+            onAddToTimeline={handleAddMaterialToTimeline}
+            onCutMaterial={handleCutMaterial}
+            onWatermarkRemoval={handleWatermarkRemoval}
+            taskId={taskId}
+            projectId={projectId}
+            className="video-editing-materials-panel bg-card"
+          />
         </div>
 
         {/* 下方时间轴面板 - 在右侧区域的下方，全宽度 */}
@@ -2722,6 +2704,33 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           />
         </div>
       </div>
+
+      {/* 浮动 Agent 对话 Dock：关闭态为右下角圆形 FAB，打开态为 30%×80% 浮窗，
+          内部原样挂载 VideoChatWindow（对话/Agent模式/执行/撤销/取消逻辑零改动） */}
+      <AgentChatDock
+        isOpen={isAgentDockOpen}
+        onOpen={() => setIsAgentDockOpen(true)}
+        onClose={() => setIsAgentDockOpen(false)}
+        agentIsExecuting={agent.agentIsExecuting}
+        chatProps={{
+          conversation: activeConversation,
+          onSendMessage: handleSendChatMessage,
+          onClearMessages: handleClearChatMessages,
+          isLoading: isChatLoading,
+          onCreativeBrainstormingClick: handleCreativeBrainstormingClick,
+          onPolishClick: handlePolishClick,
+          onConvertMessageToScript: handleConvertMessageToScript,
+          agentMode: agent.agentMode,
+          onAgentModeChange: agent.setAgentMode,
+          agentIsExecuting: agent.agentIsExecuting,
+          executionState: agent.executionState,
+          onAgentUndo: undefined,
+          onUndoAll: agent.undoAllOperations,
+          onUndoSingle: agent.undoSingleOperation,
+          onCancel: agent.cancelExecution,
+          hasMaterials: materialManagement.allMaterials.length > 0,
+        }}
+      />
 
       <VideoSearchModal
         {...videoSearch}

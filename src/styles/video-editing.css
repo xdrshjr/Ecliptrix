@@ -1,16 +1,8 @@
 /* Video Editing Workspace Styles */
 
-/* 新布局：左侧AI Chat面板 - 贯穿上下，占20%宽度 */
-.video-editing-left-sidebar {
-  width: 20%;
-  height: 100%;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-/* 新布局：右侧区域 - 占80%宽度，包含上方面板和下方Timeline */
+/* 达芬奇式布局：工作区铺满全宽（左侧常驻 Chat 列已移除，改为右下角浮动 Dock） */
 .video-editing-right-area {
-  width: 80%;
+  width: 100%;
   height: 100%;
   flex: 1;
   overflow: hidden;
@@ -29,28 +21,28 @@
   overflow: hidden;
 }
 
-/* Text Script 面板 - 占上方面板区域的33.33%宽度 */
+/* 达芬奇式布局：左翼文本脚本 - 占上方面板区域的25%宽度 */
 .video-editing-script-panel {
-  width: 33.33%;
+  width: 25%;
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
 }
 
-/* Materials Management 面板 - 占上方面板区域的33.33%宽度 */
+/* 达芬奇式布局：右翼素材管理 - 占上方面板区域的25%宽度 */
 .video-editing-materials-panel {
-  width: 33.33%;
+  width: 25%;
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
   background-color: var(--card);
 }
 
-/* Play Preview 面板 - 占上方面板区域的33.33%宽度 */
+/* 达芬奇式布局：中央播放/合成预览 - 主舞台，填充两翼之外的剩余空间（≈50%） */
 .video-editing-player-panel {
-  width: 33.33%;
-  height: 100%;
   flex: 1;
+  min-width: 0;
+  height: 100%;
   overflow: hidden;
   background-color: var(--card);
   display: flex;
@@ -234,47 +226,25 @@
   overflow: hidden !important;
 }
 
-/* 响应式设计 - 新布局适配 */
-@media (max-width: 1024px) {
-  /* 中等屏幕：保持左右布局，调整比例 */
-  .video-editing-left-sidebar {
-    width: 25%;
-  }
-  
-  .video-editing-right-area {
-    width: 75%;
-  }
-  
-  .video-editing-script-panel,
-  .video-editing-materials-panel,
-  .video-editing-player-panel {
-    width: 33.33%;
-  }
-}
+/* 响应式设计 - 达芬奇式布局适配。中等屏幕(≤1024px)保持 25/50/25 三栏，
+ * 无需覆盖宽度（基础规则已是 25/50/25）。 */
 
 @media (max-width: 768px) {
-  /* 小屏幕：改为垂直布局 */
-  .video-editing-left-sidebar {
-    width: 100%;
-    height: 30%;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-  
+  /* 小屏幕：上方三栏改为垂直堆叠 */
   .video-editing-right-area {
     width: 100%;
-    height: 70%;
+    height: 100%;
   }
-  
+
   .video-editing-upper-panels {
     height: 70%;
     flex-direction: column;
   }
-  
+
   .video-editing-timeline-section {
     height: 30%;
   }
-  
+
   .video-editing-script-panel,
   .video-editing-materials-panel,
   .video-editing-player-panel {
@@ -283,7 +253,7 @@
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
-  
+
   .video-editing-player-panel {
     border-bottom: none;
   }
@@ -2357,4 +2327,92 @@
   background: rgba(0, 0, 0, 0.05);
   z-index: 50;
   cursor: not-allowed;
+}
+
+/* ============================================
+   Floating Agent Chat Dock (Notion-style FAB + panel)
+   ============================================ */
+
+/* 关闭态：右下角圆形浮动按钮（FAB）。
+ * z-index 由 JSX 上的 z-dock 工具类提供（=850 > lock-overlay 的 50，见 spec R-2）；
+ * 此处刻意不写 z-index，保持语义 token 单一真源。 */
+.agent-chat-fab {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: var(--card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.agent-chat-fab:hover {
+  transform: translateY(-1px) scale(1.04);
+}
+
+.agent-chat-fab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+/* 执行中脉冲环：浮窗关闭时仍能感知 Agent 正在工作 */
+.agent-chat-fab.is-busy::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 2px solid var(--primary);
+  animation: agent-fab-pulse 1.2s ease-out infinite;
+}
+
+@keyframes agent-fab-pulse {
+  0% { opacity: 0.7; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
+/* 打开态：右下角 30%×80% 浮窗外壳。
+ * z-index 由 JSX 上的 z-dock-panel 工具类提供（=860 > lock-overlay 的 50，见 spec R-2）；
+ * 浮窗下半部与时间轴锁定遮罩重叠，必须高于它，否则执行期输入框/取消按钮不可点。 */
+.agent-chat-floating-panel {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 30%;
+  height: 80%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+  animation: agent-panel-in 0.2s ease-out;
+}
+
+@keyframes agent-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-fab,
+  .agent-chat-floating-panel {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* 窄屏下放宽浮窗宽度，避免 30% 在手机上过窄 */
+@media (max-width: 768px) {
+  .agent-chat-floating-panel {
+    width: min(90%, 30rem);
+  }
 }
