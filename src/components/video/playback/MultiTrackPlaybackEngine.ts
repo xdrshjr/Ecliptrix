@@ -664,6 +664,15 @@ function toAudioElement(el: VideoElementLike): AudioElementLike {
     get paused() {
       return withMedia.paused ?? true;
     },
+    // Passed through for the AudioSyncPool in-flight seek guard: while the
+    // underlying element is still seeking / cold-loading (readyState < 2) the
+    // pool must not re-assign currentTime every frame and stall the seek.
+    get readyState() {
+      return el.readyState;
+    },
+    get seeking() {
+      return el.seeking;
+    },
     play: () => el.play(),
     pause: () => el.pause(),
   };

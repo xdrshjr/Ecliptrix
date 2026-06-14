@@ -2,7 +2,11 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useTimelineStore, setTrackVolumeAction } from './store';
+import {
+  useTimelineStore,
+  setTrackVolumePreviewAction,
+  commitTrackVolumeAction,
+} from './store';
 import { useLocale } from '@/contexts/LocaleContext';
 import { deriveTrackDisplayName } from './trackDisplayName';
 
@@ -10,8 +14,14 @@ import { deriveTrackDisplayName } from './trackDisplayName';
  * VolumeSlider — Track volume control popover.
  *
  * Reads visibility / position / trackId from `useTimelineStore.showVolumeSlider`.
- * Calls `setTrackVolumeAction` (history-aware) on commit and
- * `store.hideVolumeSlider` on close.
+ * While dragging / keyboard-stepping it pushes the live value through
+ * `setTrackVolumePreviewAction` (rAF-throttled, no undo entry) so the
+ * composition preview audio follows the slider in real time, then calls
+ * `commitTrackVolumeAction` once on release to record the single undo entry for
+ * the gesture. The commit restores the pre-gesture value before snapshotting
+ * history, so Undo reverts to where the gesture started (not a mid-drag frame
+ * left behind by the live-preview writes). Calls `store.hideVolumeSlider` on
+ * close.
  *
  * No props required — everything comes from the store.
  */
@@ -28,6 +38,10 @@ const VolumeSlider: React.FC = () => {
   const [displayVolume, setDisplayVolume] = useState(100);
   const isDraggingRef = useRef(false);
   const localVolumeRef = useRef(100);
+  // track.volume captured at the START of the current gesture. The live-preview
+  // channel mutates the store every drag/keyboard tick, so the commit on release
+  // restores this value first → one gesture undoes to its pre-gesture value.
+  const preGestureVolumeRef = useRef(100);
   // Keyboard step coalescing: one undo entry per ~300 ms window.
   const keyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingVolumeRef = useRef<number>(100);
@@ -111,6 +125,45 @@ const VolumeSlider: React.FC = () => {
     setDisplayVolume(newVolume);
   }, []);
 
+  // Live-preview channel: while a gesture is in progress, push the value to the
+  // store via a NO-HISTORY setter so the composition preview audio follows in
+  // real time. Coalesced through requestAnimationFrame because mousemove can
+  // fire at 60-120 Hz and each write re-runs useTimelineComposition's full
+  // signature rebuild — an unthrottled write would stutter on busy timelines.
+  const livePreviewRafRef = useRef<number | null>(null);
+  const livePreviewValueRef = useRef<number>(100);
+
+  const cancelLivePreview = useCallback(() => {
+    if (livePreviewRafRef.current === null) return;
+    if (typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(livePreviewRafRef.current);
+    }
+    livePreviewRafRef.current = null;
+  }, []);
+
+  const scheduleLivePreview = useCallback((vol: number) => {
+    if (!trackId) return;
+    livePreviewValueRef.current = vol;
+    if (typeof requestAnimationFrame === 'undefined') {
+      setTrackVolumePreviewAction(() => useTimelineStore.getState(), trackId, vol);
+      return;
+    }
+    if (livePreviewRafRef.current !== null) return; // already scheduled this frame
+    livePreviewRafRef.current = requestAnimationFrame(() => {
+      livePreviewRafRef.current = null;
+      if (trackId) {
+        setTrackVolumePreviewAction(
+          () => useTimelineStore.getState(),
+          trackId,
+          livePreviewValueRef.current,
+        );
+      }
+    });
+  }, [trackId]);
+
+  // Cancel any pending live-preview frame on unmount.
+  useEffect(() => cancelLivePreview, [cancelLivePreview]);
+
   // Commit any pending keyboard-stepped volume immediately. Clears the timer
   // and nulls the ref before dispatch so a re-entrant call cannot double-commit.
   const flushPendingKeyCommit = useCallback(() => {
@@ -118,9 +171,10 @@ const VolumeSlider: React.FC = () => {
     clearTimeout(keyCommitTimerRef.current);
     keyCommitTimerRef.current = null;
     if (trackId) {
-      setTrackVolumeAction(
+      commitTrackVolumeAction(
         () => useTimelineStore.getState(),
         trackId,
+        preGestureVolumeRef.current,
         pendingVolumeRef.current,
       );
     }
@@ -134,9 +188,10 @@ const VolumeSlider: React.FC = () => {
     keyCommitTimerRef.current = setTimeout(() => {
       keyCommitTimerRef.current = null;
       if (trackId) {
-        setTrackVolumeAction(
+        commitTrackVolumeAction(
           () => useTimelineStore.getState(),
           trackId,
+          preGestureVolumeRef.current,
           pendingVolumeRef.current,
         );
       }
@@ -198,9 +253,10 @@ const VolumeSlider: React.FC = () => {
       clearTimeout(keyCommitTimerRef.current);
       keyCommitTimerRef.current = null;
       if (trackId) {
-        setTrackVolumeAction(
+        commitTrackVolumeAction(
           () => useTimelineStore.getState(),
           trackId,
+          preGestureVolumeRef.current,
           pendingVolumeRef.current,
         );
       }
@@ -221,6 +277,9 @@ const VolumeSlider: React.FC = () => {
     // users can follow a mouse click with Home/End/Arrow etc.
     (e.currentTarget as HTMLDivElement).focus();
     isDraggingRef.current = true;
+    // Captured before any live-preview write so the gesture undoes to its start.
+    // localVolumeRef tracks store.volume while not dragging (sync effect above).
+    preGestureVolumeRef.current = localVolumeRef.current;
 
     // If mousedown lands on the thumb, do NOT jump to the click position;
     // drag continues via mousemove. Thumb is w-5 (20px) with translate(-50%)
@@ -243,12 +302,19 @@ const VolumeSlider: React.FC = () => {
       moveEvent.preventDefault();
       const vol = calculateVolume(moveEvent.clientX);
       updateVolume(vol);
+      scheduleLivePreview(vol);
     };
 
     const handleMouseUp = () => {
       isDraggingRef.current = false;
+      cancelLivePreview();
       if (trackId) {
-        setTrackVolumeAction(() => useTimelineStore.getState(), trackId, localVolumeRef.current);
+        commitTrackVolumeAction(
+          () => useTimelineStore.getState(),
+          trackId,
+          preGestureVolumeRef.current,
+          localVolumeRef.current,
+        );
       }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -256,7 +322,7 @@ const VolumeSlider: React.FC = () => {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [calculateVolume, updateVolume, trackId, isLocked]);
+  }, [calculateVolume, updateVolume, scheduleLivePreview, cancelLivePreview, trackId, isLocked]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (isLocked) {
@@ -266,6 +332,8 @@ const VolumeSlider: React.FC = () => {
     }
     e.stopPropagation();
     isDraggingRef.current = true;
+    // Captured before any live-preview write so the gesture undoes to its start.
+    preGestureVolumeRef.current = localVolumeRef.current;
 
     const touch = e.touches[0];
     const newVolume = calculateVolume(touch.clientX);
@@ -276,12 +344,19 @@ const VolumeSlider: React.FC = () => {
       const t = moveEvent.touches[0];
       const vol = calculateVolume(t.clientX);
       updateVolume(vol);
+      scheduleLivePreview(vol);
     };
 
     const handleTouchEnd = () => {
       isDraggingRef.current = false;
+      cancelLivePreview();
       if (trackId) {
-        setTrackVolumeAction(() => useTimelineStore.getState(), trackId, localVolumeRef.current);
+        commitTrackVolumeAction(
+          () => useTimelineStore.getState(),
+          trackId,
+          preGestureVolumeRef.current,
+          localVolumeRef.current,
+        );
       }
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
@@ -289,7 +364,7 @@ const VolumeSlider: React.FC = () => {
 
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
-  }, [calculateVolume, updateVolume, trackId, isLocked]);
+  }, [calculateVolume, updateVolume, scheduleLivePreview, cancelLivePreview, trackId, isLocked]);
 
   if (!mounted || !isVisible) return null;
 
@@ -420,7 +495,13 @@ const VolumeSlider: React.FC = () => {
             if (handled) {
               e.preventDefault();
               e.stopPropagation();
+              // First keystroke of a new burst: remember the pre-gesture volume
+              // so the coalesced commit undoes to where the burst started.
+              if (keyCommitTimerRef.current === null) {
+                preGestureVolumeRef.current = volume;
+              }
               updateVolume(next);
+              scheduleLivePreview(next);
               scheduleKeyCommit(next);
             }
           }}

@@ -64,6 +64,53 @@ export function setTrackVolumeAction(
   scheduleNextStateCapture(get);
 }
 
+/**
+ * Set the volume of a track WITHOUT recording an undo entry (live preview).
+ *
+ * Used while a volume slider is being dragged / keyboard-stepped so the
+ * composition preview follows the value in real time. The reactive chain
+ * (track.volume → useTimelineComposition rebuild → engine → AudioSyncPool)
+ * still fires, so the preview audio updates, but no history snapshot is taken
+ * — the trailing {@link setTrackVolumeAction} on release records the single
+ * undo entry for the whole gesture. Callers MUST throttle (rAF) the call rate.
+ *
+ * @param volume  Volume as a percentage (0-200).
+ */
+export function setTrackVolumePreviewAction(
+  get: () => TimelineStore,
+  trackId: string,
+  volume: number,
+): void {
+  get().setTrackVolume(trackId, clampVolume(volume));
+}
+
+/**
+ * Commit a volume gesture as ONE undo entry that reverts to the value from
+ * before the gesture began.
+ *
+ * The live-preview channel ({@link setTrackVolumePreviewAction}) mutates
+ * `track.volume` on every throttled drag / keyboard tick WITHOUT recording
+ * history, so by the time the gesture ends the store already holds an
+ * intermediate value. Recording history now (via {@link setTrackVolumeAction})
+ * would snapshot that intermediate value as the before-state, and a single Undo
+ * would jump to a mid-gesture frame instead of the pre-gesture value. To keep
+ * "one gesture = one clean undo", first restore the pre-gesture value (no
+ * history), then record the history entry for the final value — so the
+ * before-snapshot reflects the true start of the gesture.
+ *
+ * @param preGestureVolume  track.volume captured before the gesture started.
+ * @param finalVolume       The released value to commit (percentage, 0-200).
+ */
+export function commitTrackVolumeAction(
+  get: () => TimelineStore,
+  trackId: string,
+  preGestureVolume: number,
+  finalVolume: number,
+): void {
+  get().setTrackVolume(trackId, clampVolume(preGestureVolume));
+  setTrackVolumeAction(get, trackId, finalVolume);
+}
+
 // ---------------------------------------------------------------------------
 // Add track
 // ---------------------------------------------------------------------------

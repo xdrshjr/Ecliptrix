@@ -43,6 +43,8 @@ export {
   toggleTrackMuteAction,
   toggleTrackVisibilityAction,
   setTrackVolumeAction,
+  setTrackVolumePreviewAction,
+  commitTrackVolumeAction,
   removeTrackAction,
   addTrackAction,
 } from './actions/trackActions';

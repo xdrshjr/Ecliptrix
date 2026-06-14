@@ -219,6 +219,24 @@ export interface AudioElementLike {
   currentTime: number;
   volume: number;
   readonly paused: boolean;
+  /**
+   * Pipeline readiness (`HTMLMediaElement.readyState`). Read by the in-flight
+   * seek guard in {@link AudioSyncPool._assignCurrentTime}: while the element
+   * has not reached `HAVE_CURRENT_DATA` (< 2) it is still cold-loading, so
+   * re-assigning `currentTime` every frame would restart the load and keep it
+   * from ever settling — the audio mirror of the play-from-middle black screen
+   * (timeline-preview-midclip-play-black-screen 方案 B). Real `HTMLMediaElement`
+   * exposes it; plain test fakes may omit it (treated as "ready"). Optional +
+   * read-only so existing structural fakes still satisfy the interface.
+   */
+  readonly readyState?: number;
+  /**
+   * Whether a seek is currently in flight (a `currentTime` assignment that has
+   * not yet settled to a `seeked`). Read by the same guard so the per-frame
+   * planner never interrupts a running seek. Real `HTMLMediaElement` exposes it;
+   * plain test fakes may omit it (treated as "not seeking"). Optional + read-only.
+   */
+  readonly seeking?: boolean;
   play(): Promise<void> | void;
   pause(): void;
 }
@@ -278,17 +296,18 @@ export class AudioSyncPool {
       case 'pause':
         if (!el.paused) el.pause();
         return;
-      case 'seek':
+      case 'seek': {
         // Assign src BEFORE currentTime: a new src resets the element to time 0,
         // so the seek must follow it. No-op (normalized compare) when unchanged,
         // so a pure drift seek never churns src → no AbortError.
-        this._ensureSrc(el, action.url);
+        const srcJustSwapped = this._ensureSrc(el, action.url);
         if (action.targetSourceTime !== undefined) {
-          el.currentTime = action.targetSourceTime;
+          this._assignCurrentTime(el, action.targetSourceTime, srcJustSwapped);
         }
         if (action.volume !== undefined) el.volume = action.volume;
         this._ensurePlaying(el);
         return;
+      }
       case 'play':
         this._ensureSrc(el, action.url);
         if (action.volume !== undefined) el.volume = action.volume;
@@ -305,11 +324,39 @@ export class AudioSyncPool {
    * src (both normalized to absolute). Mirrors VideoSourcePool RC-B so the
    * compare key equals the assigned value and src is never re-written every
    * frame (which would interrupt play() and raise AbortError).
+   *
+   * Returns `true` when it actually swapped the src this tick — the caller uses
+   * it as the `srcJustSwapped` exception for the in-flight seek guard (a fresh
+   * src genuinely needs its initial seek, even while still loading).
    */
-  private _ensureSrc(el: AudioElementLike, url: string | undefined): void {
-    if (!url) return;
-    if (normalizeSrc(el.src) === normalizeSrc(url)) return;
+  private _ensureSrc(el: AudioElementLike, url: string | undefined): boolean {
+    if (!url) return false;
+    if (normalizeSrc(el.src) === normalizeSrc(url)) return false;
     el.src = url;
+    return true;
+  }
+
+  /**
+   * Assign `el.currentTime`, guarding against interrupting an in-flight or
+   * cold-loading seek. Mirrors `VideoSourcePool._ensureSeeked` (方案 B): once a
+   * fresh src has just been assigned (`srcJustSwapped`) the initial seek MUST
+   * land even while `readyState < 2` (otherwise a mid-clip/`clipStart`-offset
+   * source would play from 0 — audio/video misalignment). Otherwise, while the
+   * element is still seeking or has not reached `HAVE_CURRENT_DATA`, leave
+   * `currentTime` alone so the free-running composition clock does not restart
+   * the seek every frame and stall it below a playable state. Fakes without
+   * `seeking`/`readyState` (undefined) skip the guard and behave as before.
+   */
+  private _assignCurrentTime(
+    el: AudioElementLike,
+    targetSourceTime: number,
+    srcJustSwapped: boolean,
+  ): void {
+    if (!srcJustSwapped) {
+      if (el.seeking === true) return;
+      if (el.readyState !== undefined && el.readyState < 2) return;
+    }
+    el.currentTime = targetSourceTime;
   }
 
   private _ensurePlaying(el: AudioElementLike): void {

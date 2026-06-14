@@ -107,6 +107,8 @@ export {
   toggleTrackMuteAction,
   toggleTrackVisibilityAction,
   setTrackVolumeAction,
+  setTrackVolumePreviewAction,
+  commitTrackVolumeAction,
   undoAction,
   redoAction,
   clearHistoryAction,

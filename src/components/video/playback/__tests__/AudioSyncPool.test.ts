@@ -400,3 +400,95 @@ describe('AudioSyncPool.tick', () => {
     expect(el.paused).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// In-flight seek guard (timeline-preview-audio-silent-and-volume-not-live B1①②).
+// Mirrors VideoSourcePool._ensureSeeked 方案 B on the audio side: while a real
+// <video>/<audio> is still seeking or cold-loading (readyState < 2), the
+// per-frame planner must NOT keep re-assigning currentTime to chase a moving
+// target — that restarts the seek every frame and the element never settles
+// (mid-clip / clipStart-offset start → audio silent or stuttering). The fresh
+// src swap is the exception: its initial seek must land even while loading,
+// else the clip plays from source 0 (audio/video misalignment).
+// ---------------------------------------------------------------------------
+
+/** Fake audio element that also exposes the readiness/seeking the guard reads. */
+class GuardableFakeAudio extends FakeAudio {
+  seeking = false;
+  readyState = 4; // HAVE_ENOUGH_DATA by default → guard idle unless overridden
+}
+
+describe('AudioSyncPool.tick — in-flight seek guard (B1①②)', () => {
+  it('does NOT re-assign currentTime while a seek is in flight (seeking === true)', () => {
+    const el = new GuardableFakeAudio();
+    el.src = AUDIO_URL; // matches the clip url → no src swap, so the guard is active
+    el.currentTime = 0;
+    el.seeking = true; // a seek is already running
+    const pool = new AudioSyncPool(() => el);
+    // clip reads source [10,15); at t=2 target source = 12 → drift huge → seek
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { clipStart: 10, clipEnd: 15 })])];
+
+    pool.tick(groups, 2, true);
+
+    expect(el.currentTime).toBe(0); // guard prevented interrupting the in-flight seek
+  });
+
+  it('does NOT re-assign currentTime while the element is cold-loading (readyState < 2)', () => {
+    const el = new GuardableFakeAudio();
+    el.src = AUDIO_URL;
+    el.currentTime = 0;
+    el.seeking = false;
+    el.readyState = 0; // HAVE_NOTHING — still loading
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { clipStart: 10, clipEnd: 15 })])];
+
+    pool.tick(groups, 2, true);
+
+    expect(el.currentTime).toBe(0); // guard held off the re-seek during cold load
+  });
+
+  it('lands the initial seek on a fresh src swap even while readyState < 2 (srcJustSwapped exception)', () => {
+    const el = new GuardableFakeAudio();
+    el.src = ''; // no src yet → swap forced this tick
+    el.currentTime = 0;
+    el.seeking = false;
+    el.readyState = 0; // still cold, but the fresh-src exception overrides the guard
+    const pool = new AudioSyncPool(() => el);
+    // mid-clip start: clip reads source [10,15); at t=2 target source = 12
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { clipStart: 10, clipEnd: 15 })])];
+
+    pool.tick(groups, 2, true);
+
+    expect(el.src).toBe(AUDIO_URL); // src assigned
+    expect(el.currentTime).toBeCloseTo(12, 6); // initial seek landed despite cold load
+  });
+
+  it('re-seeks once the element is ready and not seeking (guard lifts)', () => {
+    const el = new GuardableFakeAudio();
+    el.src = AUDIO_URL;
+    el.currentTime = 0;
+    el.seeking = false;
+    el.readyState = 4; // ready
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { clipStart: 10, clipEnd: 15 })])];
+
+    pool.tick(groups, 2, true);
+
+    expect(el.currentTime).toBeCloseTo(12, 6); // ready → drift seek applied
+  });
+
+  it('still plays (volume + play) even when the seek is guarded, so it self-heals next tick', () => {
+    const el = new GuardableFakeAudio();
+    el.src = AUDIO_URL;
+    el.currentTime = 0;
+    el.seeking = true;
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { clipStart: 10, clipEnd: 15, volume: 0.5 })])];
+
+    pool.tick(groups, 2, true);
+
+    expect(el.currentTime).toBe(0); // seek guarded
+    expect(el.volume).toBe(0.5); // volume still applied
+    expect(el.paused).toBe(false); // and play() still issued
+  });
+});
