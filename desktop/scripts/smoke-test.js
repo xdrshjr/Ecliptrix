@@ -6,6 +6,7 @@ const os = require('os')
 const path = require('path')
 const { spawn, spawnSync } = require('child_process')
 const { withoutElectronRunAsNode } = require('./lib/electron-env')
+const { processesUnder, killPids } = require('./lib/process-cleanup')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
@@ -67,24 +68,6 @@ function readPorts(userDataDir) {
   } catch {
     return { frontend: 18320, backend: 18321 }
   }
-}
-
-/** List PIDs of processes whose executable lives under `rootDir` (Windows). */
-function processesUnder(rootDir) {
-  const escaped = rootDir.replace(/\\/g, '\\\\').replace(/'/g, "''")
-  const result = spawnSync(
-    'powershell',
-    [
-      '-NoProfile',
-      '-Command',
-      `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '${escaped}*' } | Select-Object -ExpandProperty ProcessId`,
-    ],
-    { encoding: 'utf-8', windowsHide: true }
-  )
-  return String(result.stdout || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
 }
 
 function fail(message) {
@@ -219,7 +202,7 @@ async function main() {
       }
       if (!exited) {
         console.warn('[smoke-test] graceful shutdown timed out — force killing tree')
-        spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
+        killPids([String(child.pid)])
         await sleep(2000)
       }
     }
@@ -229,9 +212,7 @@ async function main() {
   await sleep(2000)
   const leftovers = processesUnder(unpackedDir)
   if (leftovers.length > 0) {
-    for (const pid of leftovers) {
-      spawnSync('taskkill', ['/PID', pid, '/T', '/F'], { windowsHide: true })
-    }
+    killPids(leftovers)
     fail(`residual processes after exit (now killed): PIDs ${leftovers.join(', ')}`)
   }
   console.log('[smoke-test] no residual processes')
