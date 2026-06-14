@@ -12,8 +12,8 @@ import { useNarrationChat } from './useNarrationChat';
 
 interface UseNarrationDirectScriptOptions {
   locale?: 'zh' | 'en';
-  /** 父级追加回调：把组装好的新解说 segment 合并进 content.scriptSegments。 */
-  onComplete: (segment: ScriptSegment) => void;
+  /** 父级追加回调：把组装好的逐句新解说 segments 一次性合并进 content.scriptSegments。 */
+  onComplete: (segments: ScriptSegment[]) => void;
   /** 新 segment 的默认标题（随 i18n 变化，complete 时取最新值）。 */
   defaultSegmentTitle: string;
 }
@@ -23,25 +23,6 @@ function genId(prefix: string): string {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-/**
- * 拼接 narrationText：英文句首补一个空格，中文/标点直接相接（spec 决议 R9），
- * 避免 "A." + "B." 相接成 "A.B."。
- */
-function joinNarration(parts: string[]): string {
-  const clean = parts.map((p) => p.trim()).filter(Boolean);
-  let out = '';
-  for (const part of clean) {
-    if (!out) {
-      out = part;
-      continue;
-    }
-    const nextFirst = part[0] ?? '';
-    const needSpace = /[A-Za-z0-9]/.test(nextFirst);
-    out += (needSpace ? ' ' : '') + part;
-  }
-  return out;
 }
 
 function toSplitSentences(texts: string[]): NarrationSplitSentence[] {
@@ -87,11 +68,16 @@ export function useNarrationDirectScript(
   const handleRewrite = useCallback((fullText: string) => {
     setDraftTextState(fullText);
   }, []);
+  // 流式增量：把对话产出的正文逐块写入左侧 draftText（ChatGPT 式逐字显示）。
+  const handleStreamDraft = useCallback((partial: string) => {
+    setDraftTextState(partial);
+  }, []);
 
   const chat = useNarrationChat({
     locale,
     getDraftText,
     onRewrite: handleRewrite,
+    onStreamDraft: handleStreamDraft,
     abortRef,
   });
 
@@ -170,17 +156,18 @@ export function useNarrationDirectScript(
       .map((s) => ({ ...s, text: s.text.trim() }))
       .filter((s) => s.text.length > 0);
     if (sentences.length === 0) return;
-    const segment: ScriptSegment = {
+    // 每句生成一个独立 segment（每段仅 1 句），实现外部面板「一句一卡、逐句对应」。
+    // 多句时给标题补 1 基序号，便于区分各条目。
+    const multi = sentences.length > 1;
+    const segments: ScriptSegment[] = sentences.map((s, idx) => ({
       id: genId('seg'),
-      title: titleRef.current,
-      narrationText: joinNarration(sentences.map((s) => s.text)),
-      sentences: sentences.map((s) => ({
-        id: genId('sent'),
-        text: s.text,
-        narration: s.text,
-      })),
-    };
-    onComplete(segment);
+      title: multi ? `${titleRef.current} ${idx + 1}` : titleRef.current,
+      narrationText: s.text,
+      sentences: [{ id: genId('sent'), text: s.text, narration: s.text }],
+    }));
+    // 一次性批量上抛，由父级单次 handleUpdateSegments([...existing, ...segments]) 写入，
+    // 规避「逐次单写读陈旧 ref 导致丢句」的竞态（评审 8.2-(1) / 决议 R3）。
+    onComplete(segments);
     close();
   }, [onComplete, close]);
 

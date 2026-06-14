@@ -1019,11 +1019,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 视频理解生成本期仅占位弹窗。
   const [isVideoUnderstandingPlaceholderOpen, setIsVideoUnderstandingPlaceholderOpen] = useState(false);
 
-  // 「解说直接生成」完成时把新解说 segment 追加（而非替换）到 content.scriptSegments，
-  // 复用面板既有的 handleUpdateSegments 单一写入路径（评审决议 R3）。
-  const handleAppendNarrationSegments = useCallback((segment: ScriptSegment) => {
+  // 「解说直接生成」完成时把逐句新解说 segments 追加（而非替换）到 content.scriptSegments，
+  // 复用面板既有的 handleUpdateSegments 单一写入路径，单次批量写入（评审决议 R3）。
+  const handleAppendNarrationSegments = useCallback((segments: ScriptSegment[]) => {
     const existing = scriptSegmentsRef.current ?? [];
-    scriptGeneration.handleUpdateSegments([...existing, segment]);
+    scriptGeneration.handleUpdateSegments([...existing, ...segments]);
   }, [scriptGeneration]);
 
   const narrationDirectScript = useNarrationDirectScript({

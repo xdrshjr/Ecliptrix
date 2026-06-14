@@ -10,6 +10,11 @@ interface UseNarrationChatOptions {
   /** 流结束后把完整改写文案一次性回写到 draftText（spec §2.2 B-3）。 */
   onRewrite: (fullText: string) => void;
   /**
+   * 流式增量回调（本轮新需求）：每收到一块正文就把「已累计的正文」写入左侧
+   * draftText，实现 ChatGPT 式逐块显示。只回传 content（不含 reasoning）。
+   */
+  onStreamDraft?: (partial: string) => void;
+  /**
    * 与拆分调用共用的 AbortController ref（spec 决议 R4）。
    * 发送前赋新 controller，close()/abort() 中止之。
    */
@@ -55,7 +60,7 @@ function stripCodeFence(text: string): string {
  * 整段回写 draftText，并把该条 assistant 气泡替换为「已更新左侧文案」摘要。
  */
 export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationChatReturn {
-  const { locale, getDraftText, onRewrite, abortRef } = opts;
+  const { locale, getDraftText, onRewrite, onStreamDraft, abortRef } = opts;
   const isZh = locale !== 'en';
   const systemPrompt = isZh ? SYSTEM_PROMPT_ZH : SYSTEM_PROMPT_EN;
 
@@ -189,6 +194,9 @@ export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationCha
                 }
                 return next;
               });
+              // 流式增量 → 左侧：把已累计的正文（不含 reasoning）实时写入 draftText。
+              // reasoning 留在右侧可折叠区，绝不混进左侧（评审 8.3 边界约束）。
+              if (chunk) onStreamDraft?.(accumulated);
             } catch {
               // ignore malformed chunks
             }
@@ -236,9 +244,9 @@ export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationCha
         return next;
       });
     },
-    // formatX 取自 isZh，已纳入依赖；getDraftText/onRewrite/abortRef 为稳定引用。
+    // formatX 取自 isZh，已纳入依赖；getDraftText/onRewrite/onStreamDraft/abortRef 为稳定引用。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isStreaming, isZh, getDraftText, onRewrite, abortRef],
+    [isStreaming, isZh, getDraftText, onRewrite, onStreamDraft, abortRef],
   );
 
   return { messages, isStreaming, sendMessage, abort, reset };
