@@ -19,7 +19,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Conversation, ChatMessage } from '@/types';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
-import { TimelineChatPanel, WelcomeGuide } from './timeline';
+import { TimelineChatPanel } from './timeline';
 import AgentBusyBar from './AgentBusyBar';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -43,8 +43,6 @@ export interface VideoChatWindowProps {
   onUndoAll?: (messageId: string) => void;
   onUndoSingle?: (messageId: string, toolCallId: string) => void;
   onCancel?: () => void;
-  /** Whether the project has any imported materials (used by WelcomeGuide). */
-  hasMaterials?: boolean;
 }
 
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
@@ -63,7 +61,6 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onUndoAll,
   onUndoSingle,
   onCancel,
-  hasMaterials = false,
 }) => {
   const { t } = useLocale();
   const { showConfirm } = useNotification();
@@ -184,16 +181,6 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   // ----- Derived state -----
 
-  // ----- WelcomeGuide suggestion handler -----
-  const handleSuggestionClick = useCallback(
-    (text: string) => {
-      setInputMessage(text);
-      // Focus the textarea so the user can review and send
-      textareaRef.current?.focus();
-    },
-    [],
-  );
-
   const inputDisabled = isLoading || agentIsExecuting;
   const placeholderText = agentIsExecuting
     ? t.videoChatWindow.agentWorkingPlaceholder
@@ -201,64 +188,19 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       ? t.videoChatWindow.agentInputPlaceholder
       : t.videoChatWindow.inputPlaceholder;
 
-  // ----- Empty state (no conversation at all) -----
-
-  if (!conversation) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="text-center max-w-md mx-auto px-6">
-          <div className="w-20 h-20 bg-primary rounded-md mx-auto mb-6 flex items-center justify-center">
-            <svg className="w-10 h-10 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-semibold text-foreground mb-3">
-            {t.videoChatWindow.emptyStateTitle}
-          </h2>
-          <p className="text-muted-foreground mb-6 leading-relaxed">
-            {t.videoChatWindow.emptyStateSubtitle}
-          </p>
-          <div className="grid grid-cols-1 gap-3 text-sm">
-            <div className="bg-primary/10 rounded-md p-4 text-left border border-border">
-              <div className="flex items-center space-x-3 mb-2">
-                <div className="w-10 h-10 bg-primary rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                </div>
-                <h3 className="font-semibold text-primary">{t.videoChatWindow.scriptOptimizationTitle}</h3>
-              </div>
-              <p className="text-primary leading-relaxed">{t.videoChatWindow.scriptOptimizationDesc}</p>
-            </div>
-            <div className="bg-secondary/50 rounded-md p-4 text-left border border-border">
-              <div className="flex items-center space-x-3 mb-2">
-                <div className="w-10 h-10 bg-secondary rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-secondary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="font-semibold text-secondary-foreground">{t.videoChatWindow.editingSuggestionsTitle}</h3>
-              </div>
-              <p className="text-muted-foreground leading-relaxed">{t.videoChatWindow.editingSuggestionsDesc}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // ----- Main render -----
+  //
+  // The dock panel must open directly into the Agent chat operation surface —
+  // no "视频编辑AI助手" welcome/intro landing. The message area stays blank until
+  // a conversation has messages; the agent-mode toggle and input box render
+  // unconditionally so the popup is immediately chat-ready (round 2 requirement).
 
   return (
     <div className="flex flex-col h-full bg-background min-h-0">
-      {/* Messages Area — now rendered by TimelineChatPanel */}
-      {conversation.messages.length === 0 ? (
-        <WelcomeGuide
-          hasMaterials={hasMaterials}
-          onSuggestionClick={handleSuggestionClick}
-        />
-      ) : (
+      {/* Messages Area — rendered by TimelineChatPanel. While there are no
+          messages yet the area stays blank (an empty flex spacer) so the panel
+          opens straight into the chat surface instead of a welcome landing. */}
+      {conversation && conversation.messages.length > 0 ? (
         <TimelineChatPanel
           messages={conversation.messages}
           executionState={executionState}
@@ -266,6 +208,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           onUndoSingle={handleUndoSingle}
           onCancel={handleCancel}
         />
+      ) : (
+        <div className="flex-1 min-h-0" />
       )}
 
       {/* Action Buttons Bar - Above Input Area */}
