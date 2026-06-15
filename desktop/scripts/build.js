@@ -18,21 +18,33 @@ const RELEASE_DIR = path.join(DESKTOP_ROOT, 'release')
 const UNPACKED_DIR = path.join(RELEASE_DIR, 'win-unpacked')
 const BUILD_LOG_DIR = path.join(DESKTOP_ROOT, 'cache', 'build-logs')
 
-// electron-builder's final Windows step (addWinAsarIntegrity) reads then
-// rewrites the freshly-copied 188MB Ecliptrix.exe. Defender / third-party AV /
-// the search indexer open new executables on creation, briefly holding an
-// exclusive handle, so that rewrite intermittently fails with EBUSY/EPERM/
-// EACCES. The same inputs succeed on a plain retry — see
-// docs/diagnoses/desktop-build-asar-integrity-writefile-lock/analysis.md.
+// Two distinct Windows file-lock failure modes are retried here:
+//   1. electron-builder's final step (addWinAsarIntegrity) reads then rewrites
+//      the freshly-copied 188MB Ecliptrix.exe. Defender / third-party AV / the
+//      search indexer open new executables on creation, briefly holding an
+//      exclusive handle, so that rewrite intermittently fails with EBUSY/EPERM/
+//      EACCES — see docs/diagnoses/desktop-build-asar-integrity-writefile-lock/.
+//   2. electron-builder's FIRST step (EnsureEmptyDir while unpacking Electron)
+//      cannot delete a win-unpacked/*.dll (e.g. d3dcompiler_47.dll) still held
+//      by a leftover packaged Ecliptrix.exe instance from a prior launch. The
+//      Go app-builder emits "remove ...: Access is denied." + an EnsureEmptyDir
+//      stack frame. killResidualUnpackedProcesses() below pre-empts the common
+//      case; this regex makes a lock that reappears mid-build retryable too.
 const BUILDER_MAX_ATTEMPTS = 3
 const BUILDER_RETRY_BACKOFF_MS = 5000
+// taskkill /F returns before Windows finishes tearing the process down and
+// releasing its file handles, so deleting/emptying win-unpacked immediately
+// after a kill can still race the cleanup and hit the same lock. Wait briefly
+// once after killing so the next EnsureEmptyDir/rm sees the handles gone.
+const HANDLE_RELEASE_SETTLE_MS = 1000
 // Only these transient-lock signatures are retried; any other non-zero exit is
 // a deterministic failure and propagates immediately (no blind retry loops).
-// NOTE: we match the addWinAsarIntegrity *stack frame* (present only on the
-// failing rewrite) and the EBUSY/EPERM/EACCES codes — deliberately NOT the
-// "updating asar integrity" success log line, which would falsely flag a
-// later-step (e.g. NSIS) deterministic failure as transient and waste retries.
-const TRANSIENT_LOCK_RE = /EBUSY|EPERM|EACCES|addWinAsarIntegrity/i
+// NOTE: we match step-specific *stack frames* (addWinAsarIntegrity on the exe
+// rewrite, EnsureEmptyDir on the unpack clear) and the EBUSY/EPERM/EACCES codes
+// — deliberately NOT the "updating asar integrity" success log line, which
+// would falsely flag a later-step (e.g. NSIS) deterministic failure as
+// transient and waste retries.
+const TRANSIENT_LOCK_RE = /EBUSY|EPERM|EACCES|addWinAsarIntegrity|EnsureEmptyDir/i
 
 // Existence of these proves each prepare step actually produced its payload
 // (spec §6.1) — fail loudly here instead of shipping a broken installer.
@@ -110,9 +122,34 @@ async function cleanReleaseDir() {
     if (residual.length > 0) {
       console.log(`  [cleanup] killing residual processes under win-unpacked: ${residual.join(', ')}`)
       killPids(residual)
+      await sleep(HANDLE_RELEASE_SETTLE_MS)
     }
     await fs.promises.rm(UNPACKED_DIR, { recursive: true, force: true })
   }
+}
+
+/**
+ * Force-kill any leftover app instances still running out of the previous
+ * build's win-unpacked/ BEFORE the first packaging attempt. A packaged
+ * Ecliptrix.exe (and its embedded python.exe backend) left running from a prior
+ * launch / smoke test holds exclusive handles on win-unpacked/*.dll and the exe
+ * itself, so electron-builder's first step (EnsureEmptyDir while unpacking
+ * Electron) dies with "remove ...\d3dcompiler_47.dll: Access is denied." You
+ * cannot repackage an app while a copy of it runs from the output dir, so
+ * clearing these is always correct — and pre-empting here means the common case
+ * never even reaches the retry loop.
+ */
+async function killResidualUnpackedProcesses() {
+  if (process.platform !== 'win32') return
+  if (!fs.existsSync(UNPACKED_DIR)) return
+  const residual = processesUnder(UNPACKED_DIR)
+  if (residual.length === 0) return
+  console.log(
+    `  [cleanup] killing ${residual.length} leftover process(es) running under ` +
+      `win-unpacked before packaging: ${residual.join(', ')}`
+  )
+  killPids(residual)
+  await sleep(HANDLE_RELEASE_SETTLE_MS)
 }
 
 /**
@@ -127,6 +164,9 @@ async function runElectronBuilder(builderArgs) {
   const logPath = path.join(BUILD_LOG_DIR, `electron-builder-${timestamp()}.log`)
   const logStream = fs.createWriteStream(logPath, { flags: 'a' })
   console.log(`[electron-builder] full output → ${logPath}`)
+  // Pre-empt the leftover-instance lock (the EnsureEmptyDir "Access is denied"
+  // failure) before the first attempt rather than only reacting on retry.
+  await killResidualUnpackedProcesses()
   try {
     for (let attempt = 1; attempt <= BUILDER_MAX_ATTEMPTS; attempt++) {
       if (attempt > 1) {

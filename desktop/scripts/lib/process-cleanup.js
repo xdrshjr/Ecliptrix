@@ -3,6 +3,28 @@
 const { spawnSync } = require('child_process')
 
 /**
+ * Build the PowerShell -like pattern matching any executable path under
+ * `rootDir`. Exported so the escaping rules can be regression-tested without
+ * live OS processes.
+ *
+ * The pattern is interpolated into a PowerShell SINGLE-quoted string compared
+ * with -like. In both a single-quoted string and a -like wildcard, backslash is
+ * a literal character (the only -like metacharacters are * ? [ ]) — so the path
+ * must NOT be backslash-escaped. Doubling them (the previous bug) made -like
+ * require two backslashes per separator, matching nothing and silently
+ * returning zero processes. Only the single quote needs escaping (doubled) for
+ * the literal. A trailing separator is appended so a sibling dir (e.g.
+ * win-unpacked-old) cannot prefix-match win-unpacked.
+ *
+ * @param {string} rootDir Absolute directory to match executable paths against.
+ * @returns {string} The -like wildcard pattern (trailing `*` included).
+ */
+function buildUnderPattern(rootDir) {
+  const sep = rootDir.endsWith('\\') ? '' : '\\'
+  return (rootDir + sep).replace(/'/g, "''") + '*'
+}
+
+/**
  * List PIDs of processes whose executable lives under `rootDir` (Windows).
  *
  * Used both by the smoke test (residual-process gate) and by the packaging
@@ -14,13 +36,12 @@ const { spawnSync } = require('child_process')
  * @returns {string[]} Matching PIDs as strings; empty when none / not Windows.
  */
 function processesUnder(rootDir) {
-  const escaped = rootDir.replace(/\\/g, '\\\\').replace(/'/g, "''")
   const result = spawnSync(
     'powershell',
     [
       '-NoProfile',
       '-Command',
-      `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '${escaped}*' } | Select-Object -ExpandProperty ProcessId`,
+      `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '${buildUnderPattern(rootDir)}' } | Select-Object -ExpandProperty ProcessId`,
     ],
     { encoding: 'utf-8', windowsHide: true }
   )
@@ -42,6 +63,7 @@ function killPids(pids) {
 }
 
 module.exports = {
+  buildUnderPattern,
   processesUnder,
   killPids,
 }
