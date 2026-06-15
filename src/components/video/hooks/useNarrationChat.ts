@@ -165,7 +165,19 @@ export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationCha
           signal: controller.signal,
         });
         if (!resp.ok || !resp.body) {
-          throw new Error(`Chat request failed: ${resp.status}`);
+          // 优先呈现后端的可操作错误文案（如「未配置 AI 模型凭证…」结构化 503），
+          // 而非裸状态码。响应体可能非 JSON 或为空，解析失败时回退到原状态码提示。
+          let serverMessage = '';
+          try {
+            const errBody = await resp.json();
+            serverMessage =
+              (typeof errBody?.message === 'string' && errBody.message) ||
+              (typeof errBody?.error === 'string' && errBody.error) ||
+              '';
+          } catch {
+            // body 非 JSON / 为空：忽略，走下方状态码回退。
+          }
+          throw new Error(serverMessage || `Chat request failed: ${resp.status}`);
         }
         const reader = resp.body.getReader();
         const decoder = new TextDecoder('utf-8');

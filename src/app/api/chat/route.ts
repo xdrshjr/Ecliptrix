@@ -29,6 +29,22 @@ type ResolvedConfig = {
   maxTokens: number
 }
 
+// Actionable copy: the chat UI surfaces this message verbatim, so point the
+// user at the in-app fix instead of an env-var stack trace.
+const LLM_NOT_CONFIGURED_MESSAGE =
+  '尚未配置 AI 模型凭证,请前往 设置 → 模型设置 完成配置 (AI model not configured — open Settings → Model Settings)'
+
+// Distinguishable error so the outer catch can return a structured, actionable
+// 503 (rather than burying it in a generic 500). Identified by a stable `code`,
+// never by fuzzy-matching the message string.
+class LlmNotConfiguredError extends Error {
+  readonly code = 'LLM_NOT_CONFIGURED'
+  constructor(message: string = LLM_NOT_CONFIGURED_MESSAGE) {
+    super(message)
+    this.name = 'LlmNotConfiguredError'
+  }
+}
+
 const getConfig = async (): Promise<ResolvedConfig> => {
   // Try to resolve LLM settings from the FastAPI backend.
   try {
@@ -63,9 +79,7 @@ const getConfig = async (): Promise<ResolvedConfig> => {
   const apiType = normalizeApiType(process.env.LLM_API_TYPE)
 
   if (!apiKey) {
-    // Actionable copy: the chat UI surfaces this message verbatim, so point
-    // the user at the in-app fix instead of an env-var stack trace.
-    throw new Error('尚未配置 AI 模型凭证,请前往 设置 → 模型设置 完成配置 (AI model not configured — open Settings → Model Settings)')
+    throw new LlmNotConfiguredError()
   }
 
   return { apiUrl, apiKey, model, apiType, temperature: 0.7, maxTokens: 2000 }
@@ -201,6 +215,16 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Chat API] Unexpected error:', error)
     logResponse(false, String(error))
+
+    // 「未配置 AI 模型凭证」是设计内的可操作失败（桌面端按设计不随包发 LLM key），
+    // 而非服务器内部错误。返回可识别的结构化 503，让前端如实呈现引导文案，不再
+    // 被吞成无信息量的 500；其余未知错误维持原有 500 契约不变。
+    if (error instanceof LlmNotConfiguredError) {
+      return NextResponse.json(
+        { success: false, error_code: error.code, message: error.message },
+        { status: 503 },
+      )
+    }
 
     return NextResponse.json(
       { error: 'Internal server error' },
