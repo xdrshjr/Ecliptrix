@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from sqlalchemy import JSON, event, text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -32,6 +33,7 @@ from app.models.model_settings_models import (
     ModelFunctionType,
     ModelProviderCreate,
     ModelProviderUpdate,
+    TestConnectionResponse as ModelTestConnectionResponse,
 )
 from app.services.system_settings_service import (
     SystemSettingInternal,
@@ -694,13 +696,64 @@ class TestModelSettingsAssignmentCRUD:
             temperature=0.5,
             max_tokens=4096,
         )
-        result = await model_service.save_assignment(assign_req)
+        validation = AsyncMock(return_value=ModelTestConnectionResponse(success=True, message="ok"))
+        with patch.object(model_service, "test_connection", validation):
+            result = await model_service.save_assignment(assign_req)
 
         assert result is not None
         assert result.function_type == ModelFunctionType.CHAT
         assert result.model_name == "gpt-4o"
         assert result.temperature == 0.5
         assert result.provider_name == "Assign1"
+        validation.assert_awaited_once()
+        validation_request = validation.await_args.args[0]
+        assert validation_request.api_url == "https://a.com"
+        assert validation_request.api_key == "key1"
+        assert validation_request.model_name == "gpt-4o"
+        assert validation_request.provider_id == provider.id
+        assert validation_request.provider_type == "openai"
+
+    @pytest.mark.asyncio
+    async def test_save_chat_assignment_rejects_failed_connection(self, model_service, session_factory):
+        """CHAT assignments must not persist credentials that fail validation."""
+        provider_req = ModelProviderCreate(
+            name="InvalidChat",
+            provider_type="openai",
+            api_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key="sk-invalid",
+        )
+        provider = await model_service.create_provider(provider_req)
+
+        assign_req = ModelAssignmentRequest(
+            function_type=ModelFunctionType.CHAT,
+            provider_id=provider.id,
+            model_name="qwen3-next-80b-a3b-instruct",
+            temperature=0.7,
+            max_tokens=4096,
+        )
+
+        with patch.object(
+            model_service,
+            "test_connection",
+            AsyncMock(
+                return_value=ModelTestConnectionResponse(
+                    success=False,
+                    message="Error: invalid_api_key",
+                )
+            ),
+        ) as test_connection:
+            with pytest.raises(ValueError, match="CHAT model connection test failed"):
+                await model_service.save_assignment(assign_req)
+
+        test_connection.assert_awaited_once()
+        validation_request = test_connection.await_args.args[0]
+        assert validation_request.api_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        assert validation_request.api_key == "sk-invalid"
+        assert validation_request.model_name == "qwen3-next-80b-a3b-instruct"
+        assert validation_request.provider_id == provider.id
+        assert validation_request.provider_type == "openai"
+        result = await model_service.get_effective_config(ModelFunctionType.CHAT)
+        assert result.source == "environment"
 
     @pytest.mark.asyncio
     async def test_save_assignment_upsert(self, model_service, session_factory):
@@ -765,7 +818,12 @@ class TestModelSettingsAssignmentCRUD:
                 temperature=0.7,
                 max_tokens=4096,
             )
-            await model_service.save_assignment(req)
+            with patch.object(
+                model_service,
+                "test_connection",
+                AsyncMock(return_value=ModelTestConnectionResponse(success=True, message="ok")),
+            ):
+                await model_service.save_assignment(req)
 
         result = await model_service.get_all_assignments()
         assert len(result) == 2
@@ -784,7 +842,12 @@ class TestModelSettingsAssignmentCRUD:
             temperature=0.7,
             max_tokens=4096,
         )
-        await model_service.save_assignment(assign_req)
+        with patch.object(
+            model_service,
+            "test_connection",
+            AsyncMock(return_value=ModelTestConnectionResponse(success=True, message="ok")),
+        ):
+            await model_service.save_assignment(assign_req)
 
         deleted = await model_service.delete_assignment(ModelFunctionType.CODING)
         assert deleted is True
@@ -798,6 +861,34 @@ class TestModelSettingsAssignmentCRUD:
         """delete_assignment returns False if function_type has no assignment."""
         result = await model_service.delete_assignment(ModelFunctionType.VISION)
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_assignment_route_returns_400_for_validation_failure(self, monkeypatch):
+        """The assignment API reports failed CHAT validation as bad config."""
+        from app.routers import model_settings_router
+
+        async def fail_validation(request):
+            raise ValueError("CHAT model connection test failed: invalid_api_key")
+
+        monkeypatch.setattr(
+            model_settings_router.model_settings_service,
+            "save_assignment",
+            fail_validation,
+        )
+
+        request = ModelAssignmentRequest(
+            function_type=ModelFunctionType.CHAT,
+            provider_id=str(uuid.uuid4()),
+            model_name="qwen3-next-80b-a3b-instruct",
+            temperature=0.7,
+            max_tokens=4096,
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await model_settings_router.save_assignment(request)
+
+        assert exc_info.value.status_code == 400
+        assert "invalid_api_key" in exc_info.value.detail
 
 
 class TestModelSettingsEffectiveConfig:
@@ -816,7 +907,12 @@ class TestModelSettingsEffectiveConfig:
             temperature=0.5,
             max_tokens=8192,
         )
-        await model_service.save_assignment(assign_req)
+        with patch.object(
+            model_service,
+            "test_connection",
+            AsyncMock(return_value=ModelTestConnectionResponse(success=True, message="ok")),
+        ):
+            await model_service.save_assignment(assign_req)
 
         result = await model_service.get_effective_config(ModelFunctionType.CHAT)
 

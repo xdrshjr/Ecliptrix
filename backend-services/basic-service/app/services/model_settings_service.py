@@ -257,10 +257,13 @@ class ModelSettingsService:
         # Verify provider exists
         async with async_session_factory() as session:
             provider_check = await session.execute(
-                select(ModelProvider.id).where(ModelProvider.id == pid)
+                select(ModelProvider).where(ModelProvider.id == pid)
             )
-            if not provider_check.scalar_one_or_none():
+            provider = provider_check.scalar_one_or_none()
+            if not provider:
                 return None
+
+        await self._validate_assignment_connection(request, provider)
 
         async with async_session_factory() as session:
             # Check if assignment already exists
@@ -295,6 +298,42 @@ class ModelSettingsService:
             if a.function_type == request.function_type:
                 return a
         return None
+
+    async def _validate_assignment_connection(
+        self,
+        request: ModelAssignmentRequest,
+        provider: ModelProvider,
+    ) -> None:
+        """Validate CHAT assignments before they become resolved runtime config."""
+        if request.function_type != ModelFunctionType.CHAT:
+            return
+
+        api_format = provider.api_format
+        if api_format not in ("openai", "anthropic"):
+            api_format = None
+
+        result = await self.test_connection(
+            TestConnectionRequest(
+                api_url=provider.api_url,
+                api_key=provider.api_key,
+                model_name=request.model_name,
+                provider_id=str(provider.id),
+                provider_type=provider.provider_type,
+                api_format=api_format,
+            )
+        )
+
+        if result.success:
+            return
+
+        message = result.message or "unknown error"
+        logger.warning(
+            "Rejected CHAT assignment for provider %s model %s: %s",
+            provider.id,
+            request.model_name,
+            message,
+        )
+        raise ValueError(f"CHAT model connection test failed: {message}")
 
     async def delete_assignment(self, function_type: ModelFunctionType) -> bool:
         """Delete a feature assignment (revert to env var defaults)."""

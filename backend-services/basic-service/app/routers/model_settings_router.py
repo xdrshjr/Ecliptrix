@@ -165,6 +165,8 @@ async def save_assignment(request: ModelAssignmentRequest):
         if not result:
             raise HTTPException(status_code=400, detail="Provider not found")
         return {"success": True, "message": "Assignment saved", "assignment": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
