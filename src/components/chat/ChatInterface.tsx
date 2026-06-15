@@ -24,7 +24,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onModalStateChange,
   onNavigateToVideoEditing,
 }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   // Initialize content if null
   const chatContent: ChatTaskContent = content || {
     conversations: [],
@@ -364,6 +364,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       let accumulatedContent = '';
       let chunkCount = 0;
+      // 上游错误以 data:{error,message} 形式下发（route.ts:176-186），该块只有 error/message
+      // 字段、无 content。须在此识别并置 streamError，收尾时如实显示，否则会被吞成空气泡。
+      let streamError: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -381,6 +384,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
             try {
               const parsed = JSON.parse(data);
+
+              // 上游错误块：识别后置 streamError 并跳出，避免被当成"无内容"。
+              if (typeof parsed.error === 'string' && parsed.error) {
+                const detail =
+                  typeof parsed.message === 'string' && parsed.message.trim()
+                    ? `（${parsed.message.trim()}）`
+                    : '';
+                streamError = `${parsed.error}${detail}`;
+                break;
+              }
 
               // Regular chat streaming
               if (parsed.content) {
@@ -408,12 +421,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             }
           }
         }
+        if (streamError) break;
       }
 
-      // Mark streaming as complete for regular chatbot
+      // Mark streaming as complete for regular chatbot. On an upstream error,
+      // surface it to the user instead of leaving an empty assistant bubble.
+      const finalContent = streamError
+        ? `${locale === 'en' ? 'Request failed: ' : '对话失败：'}${streamError}`
+        : accumulatedContent;
       const finalMessages = [...messagesWithUser, {
         ...assistantMessage,
-        content: accumulatedContent,
+        content: finalContent,
         isStreaming: false
       }];
       
@@ -439,7 +457,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [chatContent, onUpdateContent, isLoading, updateConversationMessages]);
+  }, [chatContent, onUpdateContent, isLoading, updateConversationMessages, locale]);
 
   const activeConversation = chatContent.conversations.find(
     conv => conv.id === chatContent.activeConversationId

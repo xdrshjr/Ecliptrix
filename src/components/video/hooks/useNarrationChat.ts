@@ -196,6 +196,18 @@ export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationCha
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
+              // 上游错误以 data:{error,message} 形式下发（route.ts:176-186），该块既无 content
+              // 也无 reasoning。必须在下方空块判定 continue 之前识别它并置 errorMessage，使收尾
+              // 落到「改写失败：…」分支，否则会被静默吞掉、最终误报「模型未返回任何内容」。
+              // 错误文本绝不写入左侧 draft（onStreamDraft 仅在 chunk 非空时触发）。
+              if (typeof parsed.error === 'string' && parsed.error) {
+                const detail =
+                  typeof parsed.message === 'string' && parsed.message.trim()
+                    ? `（${parsed.message.trim()}）`
+                    : '';
+                errorMessage = `${parsed.error}${detail}`;
+                break;
+              }
               const chunk = typeof parsed.content === 'string' ? parsed.content : '';
               const reasoningChunk = typeof parsed.reasoning === 'string' ? parsed.reasoning : '';
               if (chunk.length === 0 && reasoningChunk.length === 0) continue;
@@ -220,6 +232,7 @@ export function useNarrationChat(opts: UseNarrationChatOptions): UseNarrationCha
               // ignore malformed chunks
             }
           }
+          if (errorMessage) break;
         }
       } catch (err) {
         if ((err as { name?: string })?.name === 'AbortError') {

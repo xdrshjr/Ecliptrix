@@ -189,6 +189,7 @@ export function useStoryboardChat(
       let accumulated = '';
       let accumulatedReasoning = '';
       let wasAborted = false;
+      let errorMessage: string | null = null;
       try {
         // eslint-disable-next-line no-restricted-syntax -- /api/chat is the streaming LLM passthrough route; it doesn't require session auth and uses a custom SSE reader that the http-client wrapper does not expose.
         const resp = await fetch('/api/chat', {
@@ -222,6 +223,17 @@ export function useStoryboardChat(
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
+              // 上游错误以 data:{error,message} 形式下发（route.ts:176-186），该块既无 content
+              // 也无 reasoning。须在空块判定 continue 之前识别并置 errorMessage，使收尾落到
+              // 「生成失败：…」分支，否则会被吞掉、误报为「响应无法解析为分镜 JSON」。
+              if (typeof parsed.error === 'string' && parsed.error) {
+                const detail =
+                  typeof parsed.message === 'string' && parsed.message.trim()
+                    ? `（${parsed.message.trim()}）`
+                    : '';
+                errorMessage = `${parsed.error}${detail}`;
+                break;
+              }
               const chunk = typeof parsed.content === 'string' ? parsed.content : '';
               const reasoningChunk = typeof parsed.reasoning === 'string' ? parsed.reasoning : '';
               if (chunk.length === 0 && reasoningChunk.length === 0) continue;
@@ -243,6 +255,7 @@ export function useStoryboardChat(
               // ignore malformed chunks
             }
           }
+          if (errorMessage) break;
         }
       } catch (err) {
         if ((err as any)?.name === 'AbortError') {
@@ -279,6 +292,8 @@ export function useStoryboardChat(
         let parseError: string | undefined;
         if (wasAborted) {
           summary = formatCancelled();
+        } else if (errorMessage) {
+          summary = `${isZh ? '生成失败：' : 'Generation failed: '}${errorMessage}`;
         } else if (parsed.shots.length > 0) {
           summary = formatSummary(parsed.shots.length);
         } else {
