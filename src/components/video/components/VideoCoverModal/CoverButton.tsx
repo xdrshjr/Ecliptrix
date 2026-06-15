@@ -10,10 +10,11 @@ interface CoverButtonProps {
 }
 
 /**
- * Small button that lives next to the aspect-ratio button group inside
- * ``VideoPlayerPanel``. Styled to match the surrounding ``aspect-ratio-btn``
- * look (CSS variables only — no hard-coded hex). Inline SVG icon to match
- * the project's existing icon convention (no lucide-react / icon dep).
+ * Small button that lives in the Player Console "settings row" next to the
+ * aspect-ratio segmented control inside ``VideoPlayerPanel``. Styled via
+ * ``console-cover-btn`` to match that control (CSS variables only — no
+ * hard-coded hex). Inline SVG icon to match the project's existing icon
+ * convention (no lucide-react / icon dep).
  */
 export const CoverButton: React.FC<CoverButtonProps> = ({ onClick, className, disabled }) => {
   const { t } = useLocale();
@@ -22,13 +23,7 @@ export const CoverButton: React.FC<CoverButtonProps> = ({ onClick, className, di
   return (
     <button
       type="button"
-      className={[
-        'aspect-ratio-btn',
-        'aspect-ratio-btn-inactive',
-        'inline-flex items-center justify-center gap-1',
-        'whitespace-nowrap',
-        className ?? '',
-      ].join(' ')}
+      className={['console-cover-btn', className ?? ''].filter(Boolean).join(' ')}
       onClick={onClick}
       disabled={disabled}
       aria-label={label}

@@ -328,6 +328,13 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     await videoExport.handleExport();
   }, [selectedAspectRatioId, playbackMode, timelineState, materials, videoExport.handleExport, logger]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Player Console 渲染派生值：进度条已播放填充、音量填充、可拖动门。
+  // 空/未知时长时 isSeekable=false → 进度条 disabled、播放键 disabled、--progress 兜底 0%。
+  const totalForBar = getTotalDuration();
+  const isSeekable = totalForBar > 0;
+  const progressPercent = isSeekable ? (getCurrentTime() / totalForBar) * 100 : 0;
+  const volumePercent = Math.round(volume * 100);
+
   return (
     <div
       className={`video-editing-composition-panel ${className}`}
@@ -540,111 +547,108 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             </div>
           </div>
 
-          {/* 控制栏和信息面板容器 - 占用剩余30%高度 */}
-          <div className="video-controls-info-container">
-            {/* 播放控制栏 */}
-            <div className="video-controls">
-              <div className="controls-row">
-                <div className="left-controls">
+          {/* 播放控制台 Player Console —— 进度条 / 走带行 / 分隔线 / 设置行
+              四段式单卡片，取代原先割裂的播放控制栏 + 宽高比信息栏两条横栏。 */}
+          <div className="player-console">
+            {/* 进度条：全宽，已播放段填充（--progress 见 §2.2） */}
+            <div className="console-scrubber-row">
+              <input
+                type="range"
+                min={0}
+                max={isSeekable ? totalForBar : 1}
+                step="any"
+                value={getCurrentTime()}
+                disabled={!isSeekable}
+                onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
+                aria-label={t.videoPlayerPanel.controls.seekAriaLabel}
+                aria-valuetext={formatTime(getCurrentTime())}
+                className="console-scrubber"
+                style={{ ['--progress']: `${progressPercent}%` } as React.CSSProperties}
+              />
+            </div>
+
+            {/* 走带行：播放键 + 时间 ｜ 音量 */}
+            <div className="console-transport-row">
+              <div className="console-transport-left">
+                <button
+                  type="button"
+                  onClick={handlePlayPauseClick}
+                  className="console-play-btn"
+                  // G3 (round-3): keep the button clickable while materials are
+                  // still downloading — only disable when there is nothing to play
+                  // (getTotalDuration()===0). Clicking before ready must reach
+                  // handlePlayPauseClick so its readiness guard can surface the toast.
+                  disabled={getTotalDuration() === 0}
+                  aria-disabled={!allTimelineMediaReady || undefined}
+                  title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
+                >
+                  {getCurrentlyPlaying() ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  )}
+                </button>
+
+                <div className="console-time">
+                  <span className="current-time">{formatTime(getCurrentTime())}</span>
+                  <span className="time-separator">/</span>
+                  <span className="total-time">{formatTime(getTotalDuration())}</span>
+                </div>
+              </div>
+
+              <div className="console-transport-right">
+                <div className="console-volume">
                   <button
-                    onClick={handlePlayPauseClick}
-                    className="control-btn play-pause-btn"
-                    // G3 (round-3): keep the button clickable while materials are
-                    // still downloading — only disable when there is nothing to play
-                    // (getTotalDuration()===0). Clicking before ready must reach
-                    // handlePlayPauseClick so its readiness guard can surface the toast.
-                    disabled={getTotalDuration() === 0}
-                    aria-disabled={!allTimelineMediaReady || undefined}
-                    title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
+                    type="button"
+                    className="console-icon-btn"
+                    onClick={handleVolumeToggleMute}
+                    title={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
+                    aria-label={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
+                    aria-pressed={volume === 0}
                   >
-                    {getCurrentlyPlaying() ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z"/>
-                      </svg>
-                    )}
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      {volume === 0 ? (
+                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                      ) : volume < 0.5 ? (
+                        <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                      ) : volume < 1 ? (
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                      ) : (
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                      )}
+                    </svg>
                   </button>
-
-                  <div className="time-display">
-                    <span className="current-time">{formatTime(getCurrentTime())}</span>
-                    <span className="time-separator">/</span>
-                    <span className="total-time">{formatTime(getTotalDuration())}</span>
-                  </div>
-                </div>
-
-                <div className="center-controls">
-                  <div className="progress-container">
-                    {(() => {
-                      // Empty/unknown duration yields min===max===0 which makes
-                      // AT announce "slider 0 of 0" and degenerates the track.
-                      // Disable + pin max=1 until a real duration is known.
-                      const totalDurationValue = getTotalDuration();
-                      const isSeekable = totalDurationValue > 0;
-                      return (
-                        <input
-                          type="range"
-                          min={0}
-                          max={isSeekable ? totalDurationValue : 1}
-                          step="any"
-                          value={getCurrentTime()}
-                          disabled={!isSeekable}
-                          onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
-                          aria-label={t.videoPlayerPanel.controls.seekAriaLabel}
-                          aria-valuetext={formatTime(getCurrentTime())}
-                          className="progress-slider"
-                        />
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                <div className="right-controls">
-                  <div className="volume-control">
-                    <button
-                      type="button"
-                      className="control-btn volume-btn"
-                      onClick={handleVolumeToggleMute}
-                      title={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
-                      aria-label={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
-                      aria-pressed={volume === 0}
-                    >
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        {volume === 0 ? (
-                          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-                        ) : volume < 0.5 ? (
-                          <path d="M3 9v6h4l5 5V4L7 9H3z"/>
-                        ) : volume < 1 ? (
-                          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-                        ) : (
-                          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                        )}
-                      </svg>
-                    </button>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.1}
-                      value={volume}
-                      onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                      aria-label={t.videoPlayerPanel.controls.previewVolumeAriaLabel}
-                      aria-valuetext={`${Math.round(volume * 100)}%`}
-                      className="volume-slider"
-                    />
-                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={volume}
+                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                    aria-label={t.videoPlayerPanel.controls.previewVolumeAriaLabel}
+                    aria-valuetext={`${volumePercent}%`}
+                    className="console-volume-slider"
+                    style={{ ['--vol']: `${volumePercent}%` } as React.CSSProperties}
+                  />
                 </div>
               </div>
             </div>
 
-            <div className="video-info-panel flex items-center justify-center">
-            {/* 宽高比选择器 + 封面入口（80/20） */}
-            <div className="aspect-ratio-row flex items-center gap-2 w-full">
-              <div className="aspect-ratio-group" style={{ flex: 4 }}>
-                <span className="info-label">{t.videoPlayerPanel.info.aspectRatio}</span>
-                <div className="aspect-ratio-buttons">
+            <div className="console-divider" />
+
+            {/* 设置行：宽高比分段控件 + 封面入口 */}
+            <div className="console-settings-row">
+              <div className="console-ratio">
+                <span className="console-ratio-label">{t.videoPlayerPanel.info.aspectRatio}</span>
+                <div
+                  className="console-ratio-segmented"
+                  role="group"
+                  aria-label={t.videoPlayerPanel.info.aspectRatio}
+                >
                   {ASPECT_RATIOS.map((aspectRatio) => {
                     const isSelected = selectedAspectRatio.id === aspectRatio.id;
                     return (
@@ -652,27 +656,14 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                         key={aspectRatio.id}
                         type="button"
                         onClick={() => handleAspectRatioChange(aspectRatio)}
-                        className={`
-                          aspect-ratio-btn
-                          ${isSelected
-                            ? 'aspect-ratio-btn-active'
-                            : 'aspect-ratio-btn-inactive'
-                          }
-                        `}
+                        className="console-ratio-seg"
                         title={aspectRatio.description}
-                        tabIndex={0}
                         aria-pressed={isSelected}
                         aria-label={
                           isSelected
                             ? `${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description} — ${t.videoPlayerPanel.accessibility.selected}`
                             : `${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description}`
                         }
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            handleAspectRatioChange(aspectRatio);
-                          }
-                        }}
                       >
                         {aspectRatio.label}
                       </button>
@@ -681,14 +672,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 </div>
               </div>
               {projectId && (
-                <div style={{ flex: 1 }} className="flex justify-end">
-                  <CoverButton onClick={() => setIsCoverModalOpen(true)} />
-                </div>
+                <CoverButton onClick={() => setIsCoverModalOpen(true)} />
               )}
             </div>
           </div>
         </div>
-      </div>
       </div>
 
       {/* 视频导出进度弹窗 */}
