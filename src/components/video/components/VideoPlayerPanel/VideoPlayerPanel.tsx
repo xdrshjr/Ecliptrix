@@ -15,7 +15,7 @@ import type { CoverAspectRatio } from '../VideoCoverModal/types';
 import { isPreviewProxyEnabled, isLocalPreviewEnabled } from '@/lib/playbackFlags';
 import PreviewCanvas from './PreviewCanvas';
 import { useCompositionPlayback } from '../../hooks/useCompositionPlayback';
-import { buildAspectRatios, aspectRatioToNumber, type AspectRatio } from './aspectRatios';
+import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectRatio } from './aspectRatios';
 import { selectActiveImageOverlays } from './imageOverlays';
 import { useCompositionTransport, type MediaReadiness } from './useCompositionTransport';
 
@@ -147,6 +147,14 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const previewAspectRatio = useMemo(
     () => aspectRatioToNumber(selectedAspectRatio.ratio),
     [selectedAspectRatio.ratio],
+  );
+
+  // 比例帧②的 contain 像素尺寸：用容器实测尺寸(①, videoContainerRef 的 ResizeObserver)
+  // + 所选比例算出"长边占满、短边留边"的盒子，替代只靠 min-height:200px 的塌缩写法。
+  // 容器尺寸未知(首帧 containerDimensions=0)时为 null，回退到 CSS 的 min-height 兜底。
+  const previewFrameBox = useMemo(
+    () => computeContainBox(containerDimensions.width, containerDimensions.height, previewAspectRatio),
+    [containerDimensions.width, containerDimensions.height, previewAspectRatio],
   );
   const compositionPreview = useCompositionPlayback({
     compositionPlayback,
@@ -426,12 +434,26 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 // 组合播放模式 - 稳定的宽高比容器
                 <div
                   className={`${selectedAspectRatio.cssClass} bg-black rounded-md overflow-hidden relative`}
-                  style={{
-                    maxHeight: '100%',
-                    maxWidth: '100%',
-                    minHeight: '200px',
-                    position: 'relative'
-                  }}
+                  style={
+                    previewFrameBox
+                      ? {
+                          // 已知容器尺寸：以 JS 算出的 contain 像素宽高撑满①(长边占满、短边留边)。
+                          // minHeight:0 覆盖 CSS 的 min-height:200px，避免容器高<200px 时反噬。
+                          width: `${previewFrameBox.width}px`,
+                          height: `${previewFrameBox.height}px`,
+                          minHeight: 0,
+                          maxHeight: '100%',
+                          maxWidth: '100%',
+                          position: 'relative',
+                        }
+                      : {
+                          // 首帧容器尺寸未知时的回退：维持原有 min-height 兜底，避免 0 尺寸。
+                          maxHeight: '100%',
+                          maxWidth: '100%',
+                          minHeight: '200px',
+                          position: 'relative',
+                        }
+                  }
                   onClick={() => setSelectedImageOverlay(null)} // 点击空白处取消选择
                 >
                   {/* local-video-editing-refactor S4 — the multi-track compositor
@@ -449,15 +471,17 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                     }}
                   />
 
-                  {/* 新增：图片叠加层 */}
+                  {/* 新增：图片叠加层 —— 句柄是②比例帧(position:relative)的绝对定位子节点，
+                      故归一化基准必须用②的计算尺寸(previewFrameBox)，而非①的 containerDimensions，
+                      使可拖拽句柄与合成器在 canvas 上栅格化的真实图片对齐。 */}
                   {getCurrentImageOverlays().map((overlay) => (
                     <ImageOverlay
                       key={overlay.id}
                       imageId={overlay.id}
                       imageUrl={overlay.url}
                       position={overlay.position}
-                      containerWidth={containerDimensions.width}
-                      containerHeight={containerDimensions.height}
+                      containerWidth={previewFrameBox ? previewFrameBox.width : containerDimensions.width}
+                      containerHeight={previewFrameBox ? previewFrameBox.height : containerDimensions.height}
                       onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
                       isSelected={selectedImageOverlay === overlay.id}
                       onSelect={() => handleImageOverlaySelect(overlay.id)}

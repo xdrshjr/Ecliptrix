@@ -45,3 +45,43 @@ export function aspectRatioToNumber(ratio: string): number | undefined {
   const [w, h] = ratio.split('/').map(Number);
   return w > 0 && h > 0 ? w / h : undefined;
 }
+
+/** Pixel size of the preview aspect-ratio frame ("contain" box). */
+export interface ContainBox {
+  /** Frame width in CSS pixels. */
+  width: number;
+  /** Frame height in CSS pixels. */
+  height: number;
+}
+
+/**
+ * Compute the largest box of aspect ratio `ratio` that fits ("contain") inside a
+ * `cw × ch` container: the long edge fills the container and the short edge is
+ * letterboxed. This is the "以长边占满为准、短边占部分" preview sizing.
+ *
+ * Returns `null` for degenerate inputs (non-finite or ≤ 0 container size, or a
+ * non-positive / undefined ratio) so callers can fall back to the CSS
+ * `min-height` first-frame behaviour instead of rendering a 0-sized frame.
+ *
+ * @param cw    container width in px
+ * @param ch    container height in px
+ * @param ratio target aspect ratio as width / height (e.g. 16 / 9)
+ */
+export function computeContainBox(
+  cw: number,
+  ch: number,
+  ratio: number | undefined,
+): ContainBox | null {
+  if (!Number.isFinite(cw) || !Number.isFinite(ch) || cw <= 0 || ch <= 0) {
+    return null;
+  }
+  if (ratio === undefined || !Number.isFinite(ratio) || ratio <= 0) {
+    return null;
+  }
+  // Container wider than the target → height is the limiting axis (fill height);
+  // otherwise width is the limiting axis (fill width). The other axis is centered
+  // by the parent flex container, leaving the letterbox margin.
+  return cw / ch > ratio
+    ? { width: ch * ratio, height: ch }
+    : { width: cw, height: cw / ratio };
+}
