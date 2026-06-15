@@ -5,6 +5,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { VideoChatWindow, type VideoChatWindowProps } from '../VideoChatWindow';
 import AgentChatFloatingButton from './AgentChatFloatingButton';
 import AgentChatFloatingPanel from './AgentChatFloatingPanel';
+import { useDraggableFab } from './useDraggableFab';
 
 interface AgentChatDockProps {
   /** 浮窗开合受控状态 */
@@ -20,10 +21,14 @@ interface AgentChatDockProps {
 /**
  * Notion-style floating Agent chat dock.
  *
- * Closed: a circular FAB at the bottom-right of the editing workspace.
- * Open: a 30%×80% floating panel hosting the existing VideoChatWindow unchanged —
- * all chat / agent-mode / execution / undo / cancel logic flows through `chatProps`
- * exactly as it did when the chat lived in the left sidebar.
+ * The circular FAB stays mounted at all times (draggable via useDraggableFab).
+ * When open, a 30%×80% floating panel overlays the FAB's upper half — the FAB's
+ * lower half stays visible so the user can always grab it (spec 2.4). The panel
+ * hosts the existing VideoChatWindow unchanged: all chat / agent-mode / execution
+ * / undo / cancel logic flows through `chatProps` exactly as before.
+ *
+ * The FAB activates (toggles open/close) through a single `onClick` path; dragging
+ * is swallowed by `movedRef` so a drag never toggles the panel (spec R1).
  */
 const AgentChatDock: React.FC<AgentChatDockProps> = ({
   isOpen,
@@ -35,6 +40,13 @@ const AgentChatDock: React.FC<AgentChatDockProps> = ({
   const { t } = useLocale();
   const fabRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
+  const { position, isDragging, movedRef, dragHandlers } = useDraggableFab();
+
+  // 轻点 FAB = 开合切换；拖动由 movedRef 守卫吞掉合成 click，不触发本回调。
+  const toggle = () => {
+    if (isOpen) onClose();
+    else onOpen();
+  };
 
   // Esc closes the panel while it is open.
   useEffect(() => {
@@ -55,29 +67,33 @@ const AgentChatDock: React.FC<AgentChatDockProps> = ({
     wasOpenRef.current = isOpen;
   }, [isOpen]);
 
-  if (!isOpen) {
-    return (
+  return (
+    <>
       <AgentChatFloatingButton
         ref={fabRef}
-        onClick={onOpen}
+        position={position}
+        isDragging={isDragging}
         isExecuting={agentIsExecuting}
         label={
           agentIsExecuting
             ? t.videoEditing.agentDock.busy
             : t.videoEditing.agentDock.fabLabel
         }
+        onActivate={toggle}
+        movedRef={movedRef}
+        dragHandlers={dragHandlers}
       />
-    );
-  }
-
-  return (
-    <AgentChatFloatingPanel
-      onClose={onClose}
-      title={t.videoEditing.agentDock.panelTitle}
-      closeLabel={t.videoEditing.agentDock.close}
-    >
-      <VideoChatWindow {...chatProps} />
-    </AgentChatFloatingPanel>
+      {isOpen && (
+        <AgentChatFloatingPanel
+          onClose={onClose}
+          title={t.videoEditing.agentDock.panelTitle}
+          closeLabel={t.videoEditing.agentDock.close}
+          anchor={position}
+        >
+          <VideoChatWindow {...chatProps} />
+        </AgentChatFloatingPanel>
+      )}
+    </>
   );
 };
 

@@ -28,6 +28,7 @@ const DIR = resolve(__dirname, '..');
 const dock = readFileSync(resolve(DIR, 'AgentChatDock.tsx'), 'utf-8');
 const fab = readFileSync(resolve(DIR, 'AgentChatFloatingButton.tsx'), 'utf-8');
 const panel = readFileSync(resolve(DIR, 'AgentChatFloatingPanel.tsx'), 'utf-8');
+const hook = readFileSync(resolve(DIR, 'useDraggableFab.ts'), 'utf-8');
 const barrel = readFileSync(resolve(DIR, 'index.ts'), 'utf-8');
 
 const INTERFACE = resolve(__dirname, '../../..', 'VideoEditingInterface.tsx');
@@ -42,14 +43,23 @@ const tailwindSrc = readFileSync(TAILWIND, 'utf-8');
 const CSS = resolve(__dirname, '../../../../..', 'styles', 'video-editing.css');
 const cssSrc = readFileSync(CSS, 'utf-8');
 
-describe('AgentChatDock — open/close switching', () => {
-  it('renders_fab_when_dock_closed: returns the FAB when not open', () => {
-    expect(dock).toContain('if (!isOpen)');
+describe('AgentChatDock — FAB always mounted + panel overlay', () => {
+  it('renders_fab_always: the FAB is mounted unconditionally (no closed-state early return)', () => {
+    // FAB now stays mounted while the panel is open (half-covered, never disappears):
+    // the old `if (!isOpen) { return <FAB/> }` early-return block is gone.
+    expect(dock).not.toContain('if (!isOpen) {');
     expect(dock).toContain('<AgentChatFloatingButton');
+    // the panel is rendered only when open, overlaying the always-mounted FAB
+    expect(dock).toContain('{isOpen && (');
   });
 
-  it('opens_panel_on_fab_click: the FAB onClick is wired to onOpen', () => {
-    expect(dock).toContain('onClick={onOpen}');
+  it('toggles_panel_on_fab_activate: the FAB activation is wired to a toggle (not onClick={onOpen})', () => {
+    // The old `onClick={onOpen}` is gone — activation is now a single onActivate/toggle path (spec R1/R2).
+    expect(dock).not.toContain('onClick={onOpen}');
+    expect(dock).toContain('onActivate={toggle}');
+    expect(dock).toContain('const toggle = ()');
+    expect(dock).toContain('if (isOpen) onClose();');
+    expect(dock).toContain('else onOpen();');
     // open branch renders the panel hosting VideoChatWindow
     expect(dock).toContain('<AgentChatFloatingPanel');
     expect(dock).toContain('<VideoChatWindow {...chatProps} />');
@@ -80,6 +90,53 @@ describe('AgentChatFloatingButton — busy indicator', () => {
     expect(dock).toContain('agentIsExecuting');
     expect(dock).toContain('t.videoEditing.agentDock.busy');
     expect(dock).toContain('t.videoEditing.agentDock.fabLabel');
+  });
+});
+
+describe('AgentChatDock — draggable FAB (spec 2.4)', () => {
+  it('uses the useDraggableFab hook for position + drag handlers', () => {
+    expect(dock).toContain("from './useDraggableFab'");
+    expect(dock).toContain('useDraggableFab()');
+    expect(hook).toContain('export function useDraggableFab');
+  });
+
+  it('spreads pointer drag handlers onto the FAB (mouse + touch)', () => {
+    expect(fab).toContain('dragHandlers');
+    expect(fab).toContain('{...dragHandlers}');
+    expect(hook).toContain('onPointerDown');
+    expect(hook).toContain('onPointerMove');
+    expect(hook).toContain('onPointerUp');
+  });
+
+  it('single activation path: onClick guarded by movedRef, pointerup never activates (spec R1)', () => {
+    expect(fab).toContain('movedRef');
+    expect(fab).toContain('if (movedRef.current) return;');
+    expect(fab).toContain('onActivate()');
+    // the hook's pointer handlers must NOT call onActivate (no double-trigger)
+    expect(hook).not.toContain('onActivate');
+  });
+
+  it('applies the is-dragging visual state and inline position', () => {
+    expect(fab).toContain('is-dragging');
+    expect(fab).toContain('position ?');
+  });
+
+  it('uses a drag threshold and a resize guard', () => {
+    expect(hook).toContain('DRAG_THRESHOLD');
+    expect(hook).toContain("addEventListener('resize'");
+  });
+
+  it('the panel anchors to the FAB position with real-rect clamping (half-occlusion)', () => {
+    expect(dock).toContain('anchor={position}');
+    expect(panel).toContain('anchor');
+    expect(panel).toContain('getBoundingClientRect');
+    expect(panel).toContain('FAB_HALF');
+  });
+
+  it('the CSS gives the FAB drag affordances', () => {
+    expect(cssSrc).toContain('touch-action: none');
+    expect(cssSrc).toContain('cursor: grab');
+    expect(cssSrc).toContain('.agent-chat-fab.is-dragging');
   });
 });
 

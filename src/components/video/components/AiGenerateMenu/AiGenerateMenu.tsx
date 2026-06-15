@@ -12,12 +12,27 @@ interface AiGenerateMenuProps {
   isBusy?: boolean;
   /** 触发按钮文案，默认取 t.scriptPanel.header.aiGenerate。 */
   label?: string;
+  /** 选中「统一转换所有语音」时调用；传入则在菜单尾部追加该项。 */
+  onConvertAllSpeech?: () => void;
+  /** 无片段时禁用「统一转换所有语音」项。 */
+  convertAllSpeechDisabled?: boolean;
+  /** 批量转换进行中：该项显示 spinner 并禁用。 */
+  isConvertingAllSpeech?: boolean;
 }
 
 interface MenuPosition {
   top: number;
   left: number;
   minWidth: number;
+}
+
+interface AiGenerateMenuItem {
+  key: string;
+  title: string;
+  desc: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  busy?: boolean;
 }
 
 /**
@@ -33,6 +48,9 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
   disabled = false,
   isBusy = false,
   label,
+  onConvertAllSpeech,
+  convertAllSpeechDisabled = false,
+  isConvertingAllSpeech = false,
 }) => {
   const { t } = useLocale();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -44,7 +62,7 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
 
   const buttonLabel = label ?? t.scriptPanel.header.aiGenerate;
 
-  const items = [
+  const items: AiGenerateMenuItem[] = [
     {
       key: 'narration-direct',
       title: t.narrationDirectScript.modeNarrationDirect,
@@ -57,6 +75,18 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
       desc: t.narrationDirectScript.modeVideoUnderstandingDesc,
       onSelect: onSelectVideoUnderstanding,
     },
+    ...(onConvertAllSpeech
+      ? [
+          {
+            key: 'convert-all-speech',
+            title: t.scriptPanel.actions.convertAllSpeech,
+            desc: t.scriptPanel.actions.convertAllSpeechDesc,
+            onSelect: onConvertAllSpeech,
+            disabled: convertAllSpeechDisabled,
+            busy: isConvertingAllSpeech,
+          },
+        ]
+      : []),
   ];
 
   const computePosition = useCallback(() => {
@@ -86,12 +116,21 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
     (index: number) => {
       const item = items[index];
       if (!item) return;
+      // 禁用 / 忙碌项：不关闭、不触发（防止 Enter/点击误触发批量转换）。
+      if (item.disabled || item.busy) return;
       closeMenu();
       item.onSelect();
     },
     // items rebuilt each render from stable callbacks; closeMenu stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [closeMenu, onSelectNarrationDirect, onSelectVideoUnderstanding],
+    [
+      closeMenu,
+      onSelectNarrationDirect,
+      onSelectVideoUnderstanding,
+      onConvertAllSpeech,
+      convertAllSpeechDisabled,
+      isConvertingAllSpeech,
+    ],
   );
 
   // 打开后聚焦首项；保持菜单跟随按钮位置（滚动/缩放时重算）。
@@ -213,25 +252,42 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
             style={{ position: 'fixed', top: position.top, left: position.left, minWidth: Math.max(position.minWidth, 240) }}
             className="z-[9999] w-60 max-w-[90vw] rounded-md border border-border bg-card p-1 shadow-lg ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
           >
-            {items.map((item, index) => (
-              <button
-                key={item.key}
-                ref={(el) => {
-                  itemRefs.current[index] = el;
-                }}
-                type="button"
-                role="menuitem"
-                tabIndex={-1}
-                onClick={() => selectItem(index)}
-                onMouseEnter={() => setActiveIndex(index)}
-                className={`flex w-full flex-col items-start gap-0.5 rounded-md px-3 py-2 text-left transition-colors ${
-                  activeIndex === index ? 'bg-primary/10' : 'hover:bg-accent'
-                }`}
-              >
-                <span className="text-sm font-medium text-foreground">{item.title}</span>
-                <span className="text-xs text-muted-foreground">{item.desc}</span>
-              </button>
-            ))}
+            {items.map((item, index) => {
+              const itemDisabled = Boolean(item.disabled || item.busy);
+              return (
+                <React.Fragment key={item.key}>
+                  {/* 「批处理动作」与上方「生成脚本」两项之间的视觉分组分隔线；不进入键盘焦点序列。 */}
+                  {item.key === 'convert-all-speech' && (
+                    <div className="my-1 h-px bg-border" role="separator" />
+                  )}
+                  <button
+                    ref={(el) => {
+                      itemRefs.current[index] = el;
+                    }}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    aria-disabled={itemDisabled || undefined}
+                    onClick={() => selectItem(index)}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    className={`flex w-full flex-col items-start gap-0.5 rounded-md px-3 py-2 text-left transition-colors ${
+                      activeIndex === index ? 'bg-primary/10' : 'hover:bg-accent'
+                    }${itemDisabled ? ' opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <span className="flex w-full items-center gap-1.5 text-sm font-medium text-foreground">
+                      {item.busy && (
+                        <svg className="w-3.5 h-3.5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      )}
+                      <span>{item.title}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">{item.desc}</span>
+                  </button>
+                </React.Fragment>
+              );
+            })}
           </div>,
           document.body,
         )}

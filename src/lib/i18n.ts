@@ -1212,6 +1212,7 @@ export interface Translations {
       addSentence: string;
       deleteSegment: string;
       convertAllSpeech: string;
+      convertAllSpeechDesc: string;
       aiStoryboard: string;
       aiMatchVideo: string;
       aiMatching: string;
@@ -3697,7 +3698,7 @@ export const translations: Record<string, Translations> = {
          aiVideoScript: 'AI Video Script',
        },
        header: {
-         title: 'Script',
+         title: 'Copy / Script',
          segmentsCount: '{count} Seg',
          sentencesCount: '{count} Seq',
          generateScript: 'Generate Script',
@@ -3718,6 +3719,7 @@ export const translations: Record<string, Translations> = {
         addSentence: 'Add Sentence',
         deleteSegment: 'Delete Segment',
         convertAllSpeech: 'Convert All Speech',
+        convertAllSpeechDesc: 'Run TTS on every segment in order',
         aiStoryboard: 'AI Storyboard',
         aiMatchVideo: 'AI Match Video',
         aiMatching: 'AI Matching...',
@@ -3740,7 +3742,7 @@ export const translations: Record<string, Translations> = {
        emptyState: {
          noScript: 'No script content',
          clickGenerate: 'Click "Generate Script" button to generate script based on left content',
-         scriptWillAppear: 'Text script will be displayed here',
+         scriptWillAppear: 'Copy / Script will appear here',
        },
        narration: {
          label: 'Narration',
@@ -6211,7 +6213,7 @@ export const translations: Record<string, Translations> = {
          aiVideoScript: 'AI视频脚本',
        },
        header: {
-         title: '文本脚本',
+         title: '文案/脚本',
          segmentsCount: '{count} 个片段',
          sentencesCount: '{count} 句话',
          generateScript: '生成脚本',
@@ -6232,6 +6234,7 @@ export const translations: Record<string, Translations> = {
         addSentence: '添加句子',
         deleteSegment: '删除段落',
         convertAllSpeech: '统一转换所有语音',
+        convertAllSpeechDesc: '对全部片段依次生成语音',
         aiStoryboard: 'AI分镜',
         aiMatchVideo: 'AI匹配视频',
         aiMatching: 'AI匹配中...',
@@ -6254,7 +6257,7 @@ export const translations: Record<string, Translations> = {
        emptyState: {
          noScript: '暂无脚本内容',
          clickGenerate: '点击"生成脚本"按钮根据左侧内容生成脚本',
-         scriptWillAppear: '文本脚本将显示在这里',
+         scriptWillAppear: '文案/脚本将显示在这里',
        },
        narration: {
          label: '解说文案',

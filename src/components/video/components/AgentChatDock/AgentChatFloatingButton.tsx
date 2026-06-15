@@ -1,51 +1,79 @@
 'use client';
 
 import React, { forwardRef } from 'react';
+import type { FabPosition } from './useDraggableFab';
 
 interface AgentChatFloatingButtonProps {
-  onClick: () => void;
   isExecuting: boolean;
   /** 无障碍标签 / tooltip 文案（来自 i18n） */
   label: string;
+  /** null = 用 CSS 默认右下角锚点；否则内联 right/bottom（px）覆盖。 */
+  position: FabPosition | null;
+  /** 拖动中视觉态（去 hover 缩放、cursor:grabbing）。 */
+  isDragging: boolean;
+  /** 轻点激活（开合切换）；拖动后由 movedRef 守卫吞掉合成 click。 */
+  onActivate: () => void;
+  /** 拖拽后浏览器派发的合成 click 守卫：拖动时 movedRef.current=true（spec R1）。 */
+  movedRef: React.MutableRefObject<boolean>;
+  /** useDraggableFab 返回的 Pointer 处理器，直接 spread 到 <button>。 */
+  dragHandlers: {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
+    onPointerUp: (e: React.PointerEvent<HTMLElement>) => void;
+  };
 }
 
 /**
  * Notion-style circular floating action button anchored to the bottom-right of
- * the editing workspace. Opens the Agent chat panel on click; while the Agent is
- * executing it shows a pulsing ring (the `is-busy` modifier) so the user can sense
- * activity even with the panel closed.
+ * the editing workspace. It now stays mounted while the panel is open (the panel
+ * only half-covers it) and can be dragged via Pointer Events. While the Agent is
+ * executing it shows a pulsing ring (the `is-busy` modifier).
  *
  * The `z-dock` utility class is the single source of truth for stacking (=850),
  * keeping the FAB above the timeline lock overlay (z-index:50) during execution.
+ *
+ * Activation goes through a single path (spec R1): the native `onClick` covers
+ * mouse click, touch tap (synthesized click) and keyboard Enter/Space. After a
+ * drag the browser still fires a synthetic click, which the `movedRef` guard
+ * swallows so dragging never toggles the panel. `onPointerUp` never activates.
  */
 const AgentChatFloatingButton = forwardRef<
   HTMLButtonElement,
   AgentChatFloatingButtonProps
->(({ onClick, isExecuting, label }, ref) => (
-  <button
-    ref={ref}
-    type="button"
-    onClick={onClick}
-    aria-label={label}
-    title={label}
-    className={`agent-chat-fab z-dock${isExecuting ? ' is-busy' : ''}`}
-  >
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
+>(({ isExecuting, label, position, isDragging, onActivate, movedRef, dragHandlers }, ref) => {
+  const handleClick = () => {
+    if (movedRef.current) return; // 吞掉拖拽后的合成 click
+    onActivate();
+  };
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={handleClick}
+      {...dragHandlers}
+      aria-label={label}
+      title={label}
+      style={position ? { right: position.right, bottom: position.bottom } : undefined}
+      className={`agent-chat-fab z-dock${isExecuting ? ' is-busy' : ''}${isDragging ? ' is-dragging' : ''}`}
     >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-      />
-    </svg>
-  </button>
-));
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        />
+      </svg>
+    </button>
+  );
+});
 
 AgentChatFloatingButton.displayName = 'AgentChatFloatingButton';
 

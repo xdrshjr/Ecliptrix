@@ -2349,12 +2349,20 @@
   background: var(--primary);
   color: var(--card);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  cursor: pointer;
+  cursor: grab;
+  /* Pointer 拖动在触屏不被滚动手势抢断 */
+  touch-action: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .agent-chat-fab:hover {
   transform: translateY(-1px) scale(1.04);
+}
+
+/* 拖动中：抓取光标、去掉 hover 缩放，避免位移与缩放叠加抖动 */
+.agent-chat-fab.is-dragging {
+  cursor: grabbing;
+  transform: none;
 }
 
 .agent-chat-fab:focus-visible {

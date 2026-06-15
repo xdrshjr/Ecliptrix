@@ -1812,32 +1812,18 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               null
             ) : activeTab === 'narration' ? (
               <>
-                {/* AI 生成下拉菜单：解说直接生成 / 视频理解生成（spec ai-generate-script-modes） */}
+                {/* AI 生成下拉菜单：解说直接生成 / 视频理解生成 / 统一转换所有语音
+                    （后者由独立外部按钮收纳进下拉，spec script-panel-toolbar-and-draggable-chat-dock） */}
                 {onSelectNarrationDirect && onSelectVideoUnderstanding && (
                   <AiGenerateMenu
                     onSelectNarrationDirect={onSelectNarrationDirect}
                     onSelectVideoUnderstanding={onSelectVideoUnderstanding}
-                    isBusy={isGenerating}
+                    isBusy={isGenerating || isBatchConverting}
+                    onConvertAllSpeech={handleBatchConvertToSpeech}
+                    convertAllSpeechDisabled={segments.length === 0}
+                    isConvertingAllSpeech={isBatchConverting}
                   />
                 )}
-                {/* 统一转换所有语音按钮 */}
-                <button
-                  onClick={handleBatchConvertToSpeech}
-                  disabled={isBatchConverting || segments.length === 0}
-                  className="p-2 text-chart-2 bg-chart-2/10 border border-chart-2/30 rounded-md hover:bg-chart-2/20 hover:border-chart-2/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title={t.scriptPanel.actions.convertAllSpeech}
-                >
-                  {isBatchConverting ? (
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M6 10l4-4v3h8v2H10v3l-4-4z" />
-                    </svg>
-                  )}
-                </button>
               </>
             ) : (
               /* AI视频脚本 tab - AI生成 + 添加场景按钮 */
