@@ -6,9 +6,12 @@ import { createScriptService, ScriptService } from '../services';
 import { http, ApiError } from '@/lib/api/http-client';
 
 // 为脚本段落生成关键词的函数
-const generateKeywordsForSegments = async (
-  segments: ScriptSegment[], 
-  taskId: string, 
+// 导出为共享工具：「解说直接生成」新链路复用同一已验证逻辑补跑关键词（评审决议 B1）。
+// 取材为 segment.sentences[].text 拼接——调用方须保证调用时 sentence.text 仍是解说原文
+// （即在「画面脚本覆写」之前调用），以免关键词从画面描述生成（评审 R-4）。
+export const generateKeywordsForSegments = async (
+  segments: ScriptSegment[],
+  taskId: string,
   logger: VideoEditingLogger
 ): Promise<ScriptSegment[]> => {
   logger.info('开始为脚本段落生成关键词', {

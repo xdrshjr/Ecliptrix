@@ -23,6 +23,12 @@ import {
   useNarrationDirectScript
 } from './hooks';
 import { useAgentExecution } from './hooks/useAgentExecution';
+import { generateKeywordsForSegments } from './hooks/useScriptGeneration';
+import {
+  generateSentenceAiVideoPrompt,
+  buildFullScriptContext,
+  runWithConcurrency,
+} from '@/lib/api/sentenceAiVideoPrompt';
 import { useConvertToScript } from './hooks/useConvertToScript';
 import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript';
 import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
@@ -1022,6 +1028,92 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 视频理解生成本期仅占位弹窗。
   const [isVideoUnderstandingPlaceholderOpen, setIsVideoUnderstandingPlaceholderOpen] = useState(false);
 
+  // 「解说直接生成」富化：为新 segments 生成独立的画面脚本与搜索关键词（修复两个 Bug）。
+  // - Bug#1：每句以 generateSentenceAiVideoPrompt(解说原文) 生成画面/视觉描述，覆写
+  //   sentence.text（面板「AI视频脚本」即取该字段）；segment.narrationText 与
+  //   sentence.narration 保持解说原文不变 —— TTS 取 narrationText，不受覆写影响（评审 R-1）。
+  // - Bug#2：复用旧链路已验证的 generateKeywordsForSegments 补跑关键词，写入 segment.keywords。
+  //   关键词取材解说原文，且在覆写 sentence.text 之前计算，避免从画面描述生成（评审 R-4）。
+  // 富化置于父级、异步执行（弹窗 close() 会中止其内部请求，故不能放在弹窗 hook —— 评审 R-5），
+  // 完成后按 id 合并 scriptSegmentsRef.current 单次写回，仅覆盖用户未编辑的句子，避免覆盖
+  // 富化期间用户的删除/改动（评审 R-5 / 决议 R3）。失败降级：sentence.text 保留解说原文，
+  // 面板永不空白。
+  const enrichNarrationSegments = useCallback(async (newSegments: ScriptSegment[]) => {
+    if (newSegments.length === 0) return;
+
+    // 1) 先按解说原文生成关键词（此刻 newSegments 的 sentence.text 仍等于解说原文）。
+    let keywordedSegments: ScriptSegment[] = newSegments;
+    try {
+      keywordedSegments = await generateKeywordsForSegments(newSegments, taskId || 'unknown', logger);
+    } catch (err) {
+      logger.warn('解说直接生成关键词富化失败，保留空关键词', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const keywordsBySegment = new Map(keywordedSegments.map(s => [s.id, s.keywords]));
+
+    // 2) 为每句生成独立的画面/视频脚本描述（复用已验证的 per-sentence 工具）。
+    const fullScript = buildFullScriptContext([
+      ...(scriptSegmentsRef.current ?? []),
+      ...newSegments,
+    ]);
+    const jobs = newSegments.flatMap(seg =>
+      seg.sentences.map(sent => ({
+        sentenceId: sent.id,
+        narration: (sent.narration ?? sent.text ?? '').trim(),
+      })),
+    ).filter(j => j.narration.length > 0);
+    const visualBySentence = new Map<string, string>();
+    await runWithConcurrency(jobs, 2, async (job) => {
+      try {
+        const res = await generateSentenceAiVideoPrompt(job.narration, fullScript);
+        if (res.success && res.prompt.trim()) {
+          visualBySentence.set(job.sentenceId, res.prompt.trim());
+        }
+      } catch (err) {
+        logger.warn('解说直接生成画面脚本富化单句失败，保留解说原文', {
+          sentenceId: job.sentenceId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+
+    // 记录每句的解说原文，供写回时判断用户是否在富化期间手动编辑过该句。
+    const narrationBySentence = new Map(
+      newSegments.flatMap(seg =>
+        seg.sentences.map(sent => [sent.id, (sent.narration ?? sent.text ?? '').trim()] as const),
+      ),
+    );
+    const enrichedSegmentIds = new Set(newSegments.map(s => s.id));
+
+    // 3) 按 id 合并 scriptSegmentsRef.current 单次写回（用户可能已删除/编辑条目）。
+    const latest = scriptSegmentsRef.current ?? [];
+    if (!latest.some(s => enrichedSegmentIds.has(s.id))) return; // 全被删除/清空 → 不写
+    const merged = latest.map(seg => {
+      if (!enrichedSegmentIds.has(seg.id)) return seg;
+      const sentences = seg.sentences.map(sent => {
+        const visual = visualBySentence.get(sent.id);
+        if (!visual) return sent;
+        // 仅当句子正文仍是解说原文（未被用户手动编辑）时才覆写为画面脚本。
+        if ((sent.text ?? '').trim() !== narrationBySentence.get(sent.id)) return sent;
+        return {
+          ...sent,
+          text: visual,
+          // 预置 aiVideoPrompt=画面脚本/succeeded，抑制 TTS 后的重复润色（评审 R-3）。
+          aiVideoPrompt: visual,
+          aiVideoPromptStatus: 'succeeded' as const,
+          aiVideoPromptError: undefined,
+        };
+      });
+      return {
+        ...seg,
+        sentences,
+        keywords: keywordsBySegment.get(seg.id) ?? seg.keywords,
+      };
+    });
+    scriptGeneration.handleUpdateSegments(merged);
+  }, [scriptGeneration, taskId, logger]);
+
   // 「解说直接生成」完成时把逐句新解说 segments 写入 content.scriptSegments：
   // 首次生成（面板为空，或仍是系统示意占位 segment-1/2/3）→ 替换掉示意脚本；
   // 后续生成 → 追加到已有真实解说之后。
@@ -1029,10 +1121,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const handleAppendNarrationSegments = useCallback((segments: ScriptSegment[]) => {
     const existing = scriptSegmentsRef.current ?? [];
     const replaceExisting = existing.length === 0 || isPlaceholderScript(existing);
+    // 立即按解说原文写入（卡片即时可见，并作为富化失败时的兜底——面板永不空白），
+    // 随后异步富化生成独立画面脚本与搜索关键词，完成后按 id 合并写回。
     scriptGeneration.handleUpdateSegments(
       replaceExisting ? segments : [...existing, ...segments]
     );
-  }, [scriptGeneration]);
+    void enrichNarrationSegments(segments);
+  }, [scriptGeneration, enrichNarrationSegments]);
 
   const narrationDirectScript = useNarrationDirectScript({
     locale: locale === 'en' ? 'en' : 'zh',
