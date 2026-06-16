@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import LoginModal from '@/components/LoginModal';
-import DesktopTitleBar from '@/components/desktop/DesktopTitleBar';
+import LoginScreen from '@/components/auth/LoginScreen';
 import { useAuth } from '@/contexts/AuthContext';
 
 /**
@@ -11,20 +10,24 @@ import { useAuth } from '@/contexts/AuthContext';
  *
  * This page exists so that the http-client wrapper (`src/lib/api/http-client.ts`)
  * can redirect to `/login?reason=session-expired` on a 401 response without
- * landing the user on a 404. The page mounts the existing `LoginModal` in an
- * always-open state and redirects back to `/` after a successful login.
+ * landing the user on a 404. It now renders the full-window `LoginScreen` (the
+ * same gate AuthGate surfaces in place) so the fallback route stays visually
+ * consistent with the desktop login gate (spec §3 #7). `LoginScreen` owns its
+ * own single `DesktopTitleBar` and session-expired notice, so this page must
+ * not render a second one. It redirects back to `/` after a successful login.
  *
- * Created in Phase 4.5 of the unified-api-auth-refactor.
+ * Created in Phase 4.5 of the unified-api-auth-refactor; switched from the old
+ * closable `LoginModal` to `LoginScreen` in the desktop-login-gate fix.
  */
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Always open while on this page; closing simply navigates home.
-  const [open, setOpen] = useState(true);
-
-  const reason = searchParams.get('reason');
+  // Narrow the free-form query string to the LoginScreen `reason` union; any
+  // value other than the known notice falls back to no banner (evidence I).
+  const reasonParam = searchParams.get('reason');
+  const reason = reasonParam === 'session-expired' ? 'session-expired' : null;
 
   // Once authenticated, leave the login route.
   useEffect(() => {
@@ -33,29 +36,7 @@ function LoginPageContent() {
     }
   }, [isAuthenticated, isLoading, router]);
 
-  const handleClose = () => {
-    setOpen(false);
-    router.push('/');
-  };
-
-  return (
-    // Frameless desktop fallback route — give it the self-drawn title bar so
-    // the window still has drag/minimize/close controls (spec §2.3e).
-    <div className="min-h-screen flex flex-col">
-      <DesktopTitleBar />
-      <div className="flex-1 min-h-0 w-full flex items-center justify-center bg-background">
-        {reason === 'session-expired' && (
-          <div
-            role="alert"
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-md bg-yellow-100 text-yellow-900 text-sm shadow"
-          >
-            会话已过期，请重新登录 / Your session has expired. Please log in again.
-          </div>
-        )}
-        <LoginModal isOpen={open} onClose={handleClose} />
-      </div>
-    </div>
-  );
+  return <LoginScreen reason={reason} />;
 }
 
 export default function LoginPage() {

@@ -63,6 +63,19 @@ export interface Translations {
     loggingIn: string;
     networkError: string;
     networkTimeout: string;
+    // Desktop login gate (spec §6)
+    loginGateTitle: string;
+    loginGateSubtitle: string;
+    loginTagline: string;
+    usernamePlaceholder: string;
+    loginPasswordPlaceholder: string;
+    showPassword: string;
+    hidePassword: string;
+    capsLockOn: string;
+    sessionExpired: string;
+    feature1: string;
+    feature2: string;
+    feature3: string;
   };
   profile: {
     title: string;
@@ -2564,6 +2577,18 @@ export const translations: Record<string, Translations> = {
       loggingIn: 'Logging in...',
       networkError: 'Network error — please try again',
       networkTimeout: 'Request timed out — please try again',
+      loginGateTitle: 'Sign in to Ecliptrix',
+      loginGateSubtitle: 'Enter your administrator account to continue',
+      loginTagline: 'Where light and shadow collide',
+      usernamePlaceholder: 'Enter your username',
+      loginPasswordPlaceholder: 'Enter your password',
+      showPassword: 'Show password',
+      hidePassword: 'Hide password',
+      capsLockOn: 'Caps Lock is on',
+      sessionExpired: 'Your session has expired. Please log in again.',
+      feature1: 'Professional video editing',
+      feature2: 'AI-powered content creation',
+      feature3: 'Creative brainstorming assistance',
     },
     profile: {
       title: 'User Profile',
@@ -5079,6 +5104,18 @@ export const translations: Record<string, Translations> = {
       loggingIn: '登录中...',
       networkError: '网络异常，请稍后重试',
       networkTimeout: '请求超时，请稍后重试',
+      loginGateTitle: '登录 Ecliptrix',
+      loginGateSubtitle: '请输入管理员账号以继续',
+      loginTagline: '光与影之交汇',
+      usernamePlaceholder: '请输入用户名',
+      loginPasswordPlaceholder: '请输入密码',
+      showPassword: '显示密码',
+      hidePassword: '隐藏密码',
+      capsLockOn: '大写锁定已开启',
+      sessionExpired: '会话已过期，请重新登录。',
+      feature1: '专业视频剪辑',
+      feature2: 'AI 智能内容创作',
+      feature3: '创意灵感辅助',
     },
     profile: {
       title: '用户资料',

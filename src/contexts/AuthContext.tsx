@@ -19,8 +19,6 @@ import {
   TimeoutError,
   resetSessionExpiryFlag,
 } from '@/lib/api/http-client';
-import { isDesktop } from '@/lib/desktop/isDesktop';
-import { getBootstrapCredentials } from '@/lib/desktop/desktopAuth';
 
 let lastNetworkWarnAt = 0;
 const NETWORK_WARN_THROTTLE_MS = 30_000;
@@ -104,10 +102,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoading: true,
     sessionToken: null,
   });
-
-  // Debounce desktop silent auto-login so the mount path and a concurrent
-  // `session-expired` event never trigger two overlapping logins (spec §2.2c).
-  const desktopLoginInFlightRef = React.useRef(false);
 
   // Validate session periodically
   const validateSession = React.useCallback(async (): Promise<boolean> => {
@@ -219,12 +213,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               isLoading: false,
               sessionToken: storedToken,
             });
-          } else if (isDesktop()) {
-            // Stored session is invalid on desktop — silently re-login instead of
-            // landing on a login screen. Keep isLoading=true (don't paint an empty
-            // state) until silentDesktopLogin resolves it (spec §2.2c, R6).
-            void silentDesktopLogin();
           } else {
+            // Stored session is invalid — settle to unauthenticated on every
+            // platform. The desktop login gate (AuthGate → LoginScreen) surfaces
+            // in place; there is no silent auto-login any more (spec §2.2/§2.3).
             setAuthState({
               user: null,
               isAuthenticated: false,
@@ -232,11 +224,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               sessionToken: null,
             });
           }
-        } else if (isDesktop()) {
-          // No stored session on desktop — silent auto-login. Stay in the loading
-          // placeholder until it resolves so no empty Container flashes (R6).
-          void silentDesktopLogin();
         } else {
+          // No stored session — land unauthenticated. On desktop this is what
+          // raises the mandatory login gate; on web it shows the landing page.
           setAuthState(prev => ({ ...prev, isLoading: false }));
         }
       } catch (error) {
@@ -253,9 +243,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     loadAuthState();
-    // silentDesktopLogin (and its login closure) are intentionally omitted —
-    // this effect runs the mount-time bootstrap once; the in-flight ref guards
-    // against duplicate silent logins.
+    // This effect runs the mount-time session bootstrap once. validateSession is
+    // a stable callback; other setters are intentionally omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [validateSession]);
 
@@ -272,10 +261,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Listen for the global `ecliptrix:session-expired` event dispatched by
   // `src/lib/api/http-client.ts` when any browser->backend call returns 401.
-  // The wrapper has already cleared localStorage and (when appropriate)
-  // navigated to /login, so all we need to do here is mirror the in-memory
-  // React state. We do NOT call the backend logout endpoint — the 401 already
-  // proved the session is invalid server-side.
+  // The wrapper has already cleared localStorage and (on web) navigated to
+  // /login, so all we need to do here is mirror the in-memory React state. We
+  // do NOT call the backend logout endpoint — the 401 already proved the
+  // session is invalid server-side. On desktop, clearing isAuthenticated lets
+  // AuthGate surface the LoginScreen in place (spec §2.4).
   useEffect(() => {
     const handleSessionExpired = () => {
       // Defensive: ensure localStorage is cleared even if the event fires
@@ -292,22 +282,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isLoading: false,
         sessionToken: null,
       });
-
-      // Desktop is single-user and never shows a login screen — after a 401
-      // clears the session, silently re-login so protected requests recover
-      // instead of stranding the user logged out (spec §2.2c).
-      if (isDesktop()) {
-        void silentDesktopLogin();
-      }
     };
 
     window.addEventListener('ecliptrix:session-expired', handleSessionExpired);
     return () => {
       window.removeEventListener('ecliptrix:session-expired', handleSessionExpired);
     };
-    // silentDesktopLogin is a stable closure over the mount-time login; the
-    // listener intentionally registers once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Listen for the global `ecliptrix:rate-limited` event dispatched by
@@ -394,36 +374,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: false, error: message };
     }
   };
-
-  // Desktop-only silent auto-login (spec §2.2c). Fetches the ROOT credentials
-  // the main process exposes over IPC and drives the same `login` as the manual
-  // flow, so the user never sees a login screen. A no-op on the browser and
-  // whenever credentials are unavailable. Declared as a hoisted function so the
-  // mount/session-expired effects above can call it; it owns the in-flight ref.
-  async function silentDesktopLogin(): Promise<void> {
-    if (!isDesktop()) return;
-    if (desktopLoginInFlightRef.current) return;
-    desktopLoginInFlightRef.current = true;
-    try {
-      const credentials = await getBootstrapCredentials();
-      if (!credentials) {
-        // No bridge / credentials — resolve out of the loading placeholder
-        // instead of hanging on it.
-        setAuthState(prev => ({ ...prev, isLoading: false }));
-        return;
-      }
-      const result = await login(credentials);
-      if (!result.success) {
-        // login() leaves isLoading untouched on failure — settle it here so the
-        // boot placeholder doesn't spin forever (R6/R7).
-        setAuthState(prev => ({ ...prev, isLoading: false }));
-      }
-    } catch {
-      setAuthState(prev => ({ ...prev, isLoading: false }));
-    } finally {
-      desktopLoginInFlightRef.current = false;
-    }
-  }
 
   const logout = () => {
     // Clear localStorage

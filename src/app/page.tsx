@@ -12,6 +12,7 @@ import { SettingsMenuItem } from '@/components/AdminSettings/SettingsSidebar';
 import SetupGuideDialog from '@/components/Onboarding/SetupGuideDialog';
 import LandingPage from '@/components/HomePage/LandingPage';
 import DesktopTitleBar from '@/components/desktop/DesktopTitleBar';
+import AuthGate from '@/components/auth/AuthGate';
 import { useTasks } from '@/hooks/useTasks';
 import { useLlmConfigStatus } from '@/hooks/useLlmConfigStatus';
 import { useAuth } from '@/contexts/AuthContext';
@@ -131,6 +132,10 @@ export default function HomePage() {
   };
 
   return (
+    // Mandatory desktop login gate (spec §2.7): on the packaged desktop shell,
+    // AuthGate REPLACES this whole subtree (incl. the page-level title bar) with
+    // the LoginScreen until authenticated; on web it transparently passes through.
+    <AuthGate>
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* 桌面端自绘标题栏 - 浏览器端渲染 null,零影响。动作簇(语言/主题/设置/用户)
           随同名回调并入标题栏,与 Header 同源(spec §2.3e)。 */}
@@ -246,5 +251,6 @@ export default function HomePage() {
         onDismiss={dismissSetupGuide}
       />
     </div>
+    </AuthGate>
   );
 }
