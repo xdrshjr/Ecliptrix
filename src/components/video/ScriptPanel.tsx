@@ -1438,8 +1438,12 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           onAddMaterial(audioMaterial);
 
           // 更新脚本段落的音频时长
+          // 从 segmentsRef.current 读取最新段落（而非闭包里点击时刻的 segments 快照），
+          // 只增量 patch 目标段 duration，并在 onUpdateSegments 之前同步前移 ref，
+          // 复刻 patchSentence 的范式：否则会用 TTS 开始前的过期快照整批覆盖，
+          // 抹掉这期间异步富化写入的 keywords / 画面脚本 sentence.text。
           if (response.total_duration && onUpdateSegments) {
-            const updatedSegments = segments.map(seg => {
+            const updatedSegments = segmentsRef.current.map(seg => {
               if (seg.id === segment.id) {
                 logger.info('更新脚本段落音频时长', {
                   segmentId: seg.id,
@@ -1456,6 +1460,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               }
               return seg;
             });
+            segmentsRef.current = updatedSegments;
             onUpdateSegments(updatedSegments);
             
             logger.info('脚本段落时长更新完成', {
