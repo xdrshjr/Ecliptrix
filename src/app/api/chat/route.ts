@@ -45,14 +45,51 @@ class LlmNotConfiguredError extends Error {
   }
 }
 
-const getConfig = async (): Promise<ResolvedConfig> => {
+// Pull the caller's session token out of the inbound request the same way the
+// backend's `_extract_token` does (auth.py:24-52): Authorization header (Bearer
+// or raw), then X-Session-Token header, then the ecliptrix-session-token cookie.
+// Forwarding it to the resolve call is what lets the user's in-app "设置 → 模型
+// 设置" chat credentials actually take effect — without it the admin-guarded
+// resolve endpoint 401s and chat silently falls back to the (possibly mismatched)
+// process env vars.
+const extractSessionToken = (request: NextRequest): string | null => {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader) {
+    return authHeader.startsWith('Bearer ')
+      ? authHeader.slice(7).trim()
+      : authHeader.trim()
+  }
+
+  const sessionHeader = request.headers.get('x-session-token')
+  if (sessionHeader) {
+    return sessionHeader.trim()
+  }
+
+  const cookieToken = request.cookies.get('ecliptrix-session-token')?.value
+  if (cookieToken) {
+    return cookieToken.trim()
+  }
+
+  return null
+}
+
+const getConfig = async (request: NextRequest): Promise<ResolvedConfig> => {
   // Try to resolve LLM settings from the FastAPI backend.
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const token = extractSessionToken(request)
+    if (token) {
+      // The resolve endpoint is route-level `require_admin`; forwarding the
+      // caller's token lets it return the DB-configured chat model. Without a
+      // token we keep the existing env fallback (dev/no-auth back-compat).
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
     const res = await fetch(
       backendConfig.joinPath('/api/model-settings/resolve/chat'),
       {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
       },
     )
     if (res.ok) {
@@ -120,7 +157,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const config = await getConfig()
+    const config = await getConfig(request)
     logRequest(messages, config)
 
     console.log(`[Chat API] Calling LLM API (api_type=${config.apiType}) base=${config.apiUrl}`)
