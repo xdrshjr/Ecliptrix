@@ -12,6 +12,14 @@ const REQUIRED_KEYS = ['LLM_API_KEY', 'LLM_API_URL']
 // (your_volcano_tts_api_key); both forms must be recognised so neither gets
 // injected as a fake credential nor mistaken for a real value during backfill.
 const PLACEHOLDER_PATTERN = /^your_[a-z0-9_]*$/i
+const STALE_FACTORY_ROOT_PASSWORDS = new Set(['adminjr'])
+
+function stripEnvQuotes(value) {
+  const raw = String(value).trim()
+  const isDoubleQuoted = raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2
+  const isSingleQuoted = raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2
+  return isDoubleQuoted || isSingleQuoted ? raw.slice(1, -1) : raw
+}
 
 /** Minimal KEY=VALUE parser for userData/.env (comments + blank lines skipped). */
 function parseEnvFile(envPath) {
@@ -91,6 +99,7 @@ function loadUserEnv(envPath) {
 function backfillUserEnv(envPath, templatePath) {
   if (!fs.existsSync(envPath) || !fs.existsSync(templatePath)) return []
   const template = parseEnvFile(templatePath)
+  const current = parseEnvFile(envPath)
 
   const original = fs.readFileSync(envPath, 'utf-8')
   const eol = original.includes('\r\n') ? '\r\n' : '\n'
@@ -102,9 +111,30 @@ function backfillUserEnv(envPath, templatePath) {
     if (eq <= 0) return line
     const key = trimmed.slice(0, eq).trim()
     const currentValue = trimmed.slice(eq + 1).trim()
+    const normalizedCurrentValue = stripEnvQuotes(currentValue)
+    const templateValue = template[key]
+
+    if (
+      key === 'ROOT_PASSWORD' &&
+      STALE_FACTORY_ROOT_PASSWORDS.has(normalizedCurrentValue) &&
+      templateValue !== undefined
+    ) {
+      const tv = String(templateValue).trim()
+      const templateRootUsername = String(template.ROOT_USERNAME || 'admin').trim()
+      const currentRootUsername = String(current.ROOT_USERNAME || templateRootUsername).trim()
+      const templateHasNewFactoryValue =
+        tv !== '' &&
+        !PLACEHOLDER_PATTERN.test(tv) &&
+        !STALE_FACTORY_ROOT_PASSWORDS.has(stripEnvQuotes(tv))
+
+      if (currentRootUsername === templateRootUsername && templateHasNewFactoryValue) {
+        healed.push(key)
+        return `${key}=${templateValue}`
+      }
+    }
+
     // Only heal a value that is still a placeholder; real and empty stay put.
     if (!PLACEHOLDER_PATTERN.test(currentValue)) return line
-    const templateValue = template[key]
     if (templateValue === undefined) return line
     const tv = String(templateValue).trim()
     // The template side must carry a real value; never write a placeholder or
