@@ -12,7 +12,7 @@ const REQUIRED_KEYS = ['LLM_API_KEY', 'LLM_API_URL']
 // (your_volcano_tts_api_key); both forms must be recognised so neither gets
 // injected as a fake credential nor mistaken for a real value during backfill.
 const PLACEHOLDER_PATTERN = /^your_[a-z0-9_]*$/i
-const STALE_FACTORY_ROOT_PASSWORDS = new Set(['adminjr'])
+const STALE_FACTORY_ROOT_PASSWORDS = new Set(['adminjr', 'change_me_on_first_run'])
 
 function stripEnvQuotes(value) {
   const raw = String(value).trim()

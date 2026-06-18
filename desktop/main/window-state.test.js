@@ -113,6 +113,64 @@ function testBackfillMigratesStaleFactoryRootPassword() {
   )
 }
 
+function testBackfillMigratesChangeMeFactoryRootPassword() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-root-default-'))
+  const envPath = path.join(dir, '.env')
+  const templatePath = path.join(dir, 'env.template.desktop')
+
+  fs.writeFileSync(
+    envPath,
+    'ROOT_USERNAME=admin\nROOT_PASSWORD=change_me_on_first_run\nLLM_API_KEY=custom\n',
+  )
+  fs.writeFileSync(templatePath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=admin\nLLM_API_KEY=template\n')
+
+  const healed = backfillUserEnv(envPath, templatePath)
+  const env = parseEnvFile(envPath)
+
+  assert.deepStrictEqual(
+    healed,
+    ['ROOT_PASSWORD'],
+    'change_me_on_first_run factory root password should be reported as migrated',
+  )
+  assert.strictEqual(env.ROOT_PASSWORD, 'admin')
+  assert.strictEqual(
+    env.LLM_API_KEY,
+    'custom',
+    'real user-edited values must not be overwritten during root password migration',
+  )
+}
+
+function testBackfillPreservesCustomRootPassword() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-root-default-'))
+  const envPath = path.join(dir, '.env')
+  const templatePath = path.join(dir, 'env.template.desktop')
+
+  fs.writeFileSync(envPath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=custom-secret\n')
+  fs.writeFileSync(templatePath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=admin\n')
+
+  const healed = backfillUserEnv(envPath, templatePath)
+  const env = parseEnvFile(envPath)
+
+  assert.deepStrictEqual(healed, [], 'custom root passwords must not be migrated')
+  assert.strictEqual(env.ROOT_PASSWORD, 'custom-secret')
+}
+
+function testBackfillPreservesChangedRootUsername() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-root-default-'))
+  const envPath = path.join(dir, '.env')
+  const templatePath = path.join(dir, 'env.template.desktop')
+
+  fs.writeFileSync(envPath, 'ROOT_USERNAME=owner\nROOT_PASSWORD=adminjr\n')
+  fs.writeFileSync(templatePath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=admin\n')
+
+  const healed = backfillUserEnv(envPath, templatePath)
+  const env = parseEnvFile(envPath)
+
+  assert.deepStrictEqual(healed, [], 'changed root usernames must preserve their password')
+  assert.strictEqual(env.ROOT_USERNAME, 'owner')
+  assert.strictEqual(env.ROOT_PASSWORD, 'adminjr')
+}
+
 testLargeDisplayUsesDefaultSize()
 testSmallDisplayStartsFullscreen()
 testRealSavedBoundsArePreservedWhenTheyFit()
@@ -120,5 +178,8 @@ testLegacySyntheticBoundsAreIgnored()
 testFreshConfigDoesNotSeedSyntheticBounds()
 testDesktopTemplateUsesAdminAdminRootDefault()
 testBackfillMigratesStaleFactoryRootPassword()
+testBackfillMigratesChangeMeFactoryRootPassword()
+testBackfillPreservesCustomRootPassword()
+testBackfillPreservesChangedRootUsername()
 
 console.log('window-state tests passed')
