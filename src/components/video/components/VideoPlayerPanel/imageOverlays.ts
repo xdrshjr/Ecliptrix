@@ -16,11 +16,14 @@ export interface ActiveImageOverlay {
   materialId?: string;
 }
 
+// Centered 80% default (D1): kept in sync with the other default sites
+// (ItemPlacementService / ImageOverlayLayer / useVideoExport) so the fallback
+// for an item without imagePosition matches a freshly added image.
 const DEFAULT_OVERLAY_POSITION: ImagePosition = {
   x: 0.1,
   y: 0.1,
-  width: 0.3,
-  height: 0.3,
+  width: 0.8,
+  height: 0.8,
   zIndex: 10,
 };
 

@@ -92,9 +92,9 @@ describe('computeImageBounds', () => {
     expect(bounds.h).toBeCloseTo(0.1, 6);
   });
 
-  it('applies the v1 default position when none is supplied', () => {
+  it('applies the centered-80% default position when none is supplied (D1)', () => {
     const bounds = computeImageBounds(undefined);
-    expect(bounds).toEqual({ x: 0.1, y: 0.1, w: 0.3, h: 0.3 });
+    expect(bounds).toEqual({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
   });
 });
 

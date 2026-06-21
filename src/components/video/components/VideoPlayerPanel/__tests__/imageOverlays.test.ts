@@ -72,7 +72,7 @@ describe('selectActiveImageOverlays', () => {
     expect(withPos[0].position).toMatchObject({ x: 0.5, zIndex: 3 });
 
     const noPos = selectActiveImageOverlays(timeline([imageItem({ id: 'i' })]), [material()], 1);
-    expect(noPos[0].position).toMatchObject({ x: 0.1, y: 0.1, width: 0.3, height: 0.3, zIndex: 10 });
+    expect(noPos[0].position).toMatchObject({ x: 0.1, y: 0.1, width: 0.8, height: 0.8, zIndex: 10 });
   });
 
   it('drops items outside the [start, start+duration) window (half-open)', () => {

@@ -497,8 +497,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 </div>
               ) : (
                 // 预览模式占位符 - 充满整个容器，保持宽高比稳定
+                // overflow-hidden：D3 防御兜底，占位模式叠加层若越界不溢出面板。
                 <div
-                  className="video-placeholder-container relative"
+                  className="video-placeholder-container relative overflow-hidden"
                   onClick={() => setSelectedImageOverlay(null)}
                   style={{
                     minHeight: '200px',

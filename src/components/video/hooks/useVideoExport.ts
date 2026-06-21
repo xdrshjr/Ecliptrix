@@ -235,12 +235,13 @@ export const useVideoExport = ({
                   selectPlaybackUrl(material, { purpose: 'export' }),
                 );
 
-                // 获取图片位置信息，如果没有则使用默认位置
+                // 获取图片位置信息，如果没有则使用默认位置（居中 80%，D1）。
+                // 与新建写入 / 兜底常量一致，避免导出兜底仍用旧 30%。
                 const imagePosition = item.imagePosition || {
                   x: 0.1,
                   y: 0.1,
-                  width: 0.3,
-                  height: 0.3,
+                  width: 0.8,
+                  height: 0.8,
                   zIndex: 10
                 };
 

@@ -320,18 +320,65 @@ export class CanvasCompositor implements ICanvasCompositor {
     if (!img || !img.complete || img.naturalWidth === 0) return false;
     ctx.save();
     ctx.globalAlpha = clamp01(layer.opacity);
-    const x = fit.x + layer.bounds.x * fit.width;
-    const y = fit.y + layer.bounds.y * fit.height;
-    const w = layer.bounds.w * fit.width;
-    const h = layer.bounds.h * fit.height;
+    const boxX = fit.x + layer.bounds.x * fit.width;
+    const boxY = fit.y + layer.bounds.y * fit.height;
+    const boxW = layer.bounds.w * fit.width;
+    const boxH = layer.bounds.h * fit.height;
+    // D2: draw the image with `object-contain` semantics inside the bounds box —
+    // the image is NEVER stretched/distorted. When the display box ratio equals
+    // the image's natural ratio (D6 aligns new items to this) contain fills the
+    // box exactly, matching the old `drawImage(img, x, y, w, h)` result. This is
+    // the hard invariant that mirrors the React `<img object-contain>` handle, so
+    // the canvas raster and the draggable handle are WYSIWYG.
+    const rect = this._containRect(img.naturalWidth, img.naturalHeight, boxX, boxY, boxW, boxH);
     try {
-      ctx.drawImage(img, x, y, w, h);
+      ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
       ctx.restore();
       return true;
     } catch {
       ctx.restore();
       return false;
     }
+  }
+
+  /**
+   * Contain-fit the image inside the box (`object-contain` parity, D2): scale by
+   * the natural aspect ratio so it never stretches, then center any letterbox /
+   * pillarbox gap inside the box. Returns the canvas-pixel rect to draw into.
+   *
+   * Degenerate inputs (non-positive natural size or box) fall back to the box
+   * itself so the caller still draws something rather than nothing.
+   */
+  private _containRect(
+    natW: number,
+    natH: number,
+    boxX: number,
+    boxY: number,
+    boxW: number,
+    boxH: number,
+  ): { x: number; y: number; w: number; h: number } {
+    if (!(natW > 0) || !(natH > 0) || boxW <= 0 || boxH <= 0) {
+      return { x: boxX, y: boxY, w: boxW, h: boxH };
+    }
+    const imageAspect = natW / natH;
+    const boxAspect = boxW / boxH;
+    let w: number;
+    let h: number;
+    if (imageAspect >= boxAspect) {
+      // Image is wider than the box → width fills, height shrinks.
+      w = boxW;
+      h = boxW / imageAspect;
+    } else {
+      // Image is taller than the box → height fills, width shrinks.
+      h = boxH;
+      w = boxH * imageAspect;
+    }
+    return {
+      x: boxX + (boxW - w) / 2,
+      y: boxY + (boxH - h) / 2,
+      w,
+      h,
+    };
   }
 
   private _drawSubtitleLayer(

@@ -212,14 +212,19 @@ export class ItemPlacementService {
       }
     }
 
-    // Image-specific: set default position overlay
-    // Matches the original: { x: 0.1, y: 0.1, width: 0.3, height: 0.3, zIndex: 10 }
+    // Image-specific: set default position overlay.
+    // Centered 80% (D1): regardless of the source image pixel size, a freshly
+    // added image occupies the middle ~80% of the preview frame instead of the
+    // old top-left 30%, so a large image never covers the whole video. Kept in
+    // sync with the other default sites (ImageOverlayLayer / imageOverlays /
+    // useVideoExport) — see DEFAULT_IMAGE_POSITION in
+    // components/VideoPlayerPanel/imageOverlayGeometry.ts.
     if (material.type === 'image') {
       itemData.imagePosition = {
         x: 0.1,
         y: 0.1,
-        width: 0.3,
-        height: 0.3,
+        width: 0.8,
+        height: 0.8,
         zIndex: 10,
       };
     }

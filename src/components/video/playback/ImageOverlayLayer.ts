@@ -69,12 +69,17 @@ export interface FitRect {
 /** Full-canvas fit-rect — the identity mapping for already-normalized bounds. */
 const FULL_RECT: FitRect = { x: 0, y: 0, w: 1, h: 1 };
 
-/** Default position when an image item carries none (matches v1 default). */
+/**
+ * Default position when an image item carries none — centered 80% (D1).
+ * Kept in sync with the other default sites (ItemPlacementService /
+ * imageOverlays / useVideoExport): a large image never defaults to covering the
+ * whole frame.
+ */
 const DEFAULT_POSITION: ImageOverlayPosition = {
   x: 0.1,
   y: 0.1,
-  width: 0.3,
-  height: 0.3,
+  width: 0.8,
+  height: 0.8,
   zIndex: 10,
 };
 
