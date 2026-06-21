@@ -52,7 +52,7 @@ export interface TimelineSlice {
   // Item operations
   addItemToTrack: (trackId: string, material: MaterialData) => TimelineItemData | null;
   removeItem: (itemId: string) => void;
-  moveItem: (itemId: string, newStartTime: number, isPreview?: boolean) => void;
+  moveItem: (itemId: string, newStartTime: number, isPreview?: boolean, targetTrackId?: string) => void;
   resizeItem: (itemId: string, edge: 'start' | 'end', newPosition: number) => void;
   updateItemVolume: (itemId: string, volume: number) => void;
   updateItemSubtitle: (itemId: string, text: string) => void;
@@ -222,18 +222,35 @@ export const createTimelineSlice: StateCreator<
       state._syncDerivedState();
     },
 
-    // NOTE: the `isPreview` parameter is part of the public shape the drag
-    // layer and action orchestrator rely on (they pass `true` during a drag
-    // preview and `false` on commit) but this implementation treats both
-    // identically — aggregate mutation + derived sync. History recording is
-    // the concern of the orchestrated action layer, not this slice. Prefixed
-    // with `_` to silence no-unused-vars while preserving the signature.
-    moveItem: (itemId: string, newStartTime: number, _isPreview?: boolean) => {
+    // NOTE: `isPreview` is part of the public shape the drag layer and action
+    // orchestrator rely on (they pass `true` during a drag preview and `false`
+    // on commit). History recording is the concern of the orchestrated action
+    // layer, not this slice. `targetTrackId` (commit only) enables cross-track
+    // moves; preview frames never transfer tracks (analysis constraint #2), so
+    // it is ignored while `isPreview` is true.
+    moveItem: (itemId: string, newStartTime: number, isPreview?: boolean, targetTrackId?: string) => {
       const state = get();
       const aggregate = state._aggregate;
 
+      // Resolve whether this is a genuine, safe cross-track transfer. Guard
+      // BEFORE mutating: aggregate.moveItem removes from the source track then
+      // adds to the target, and a rejected add (locked / incompatible) would
+      // drop the clip (analysis §8.3). If the target can't accept the item we
+      // fall back to a same-track move (time only) so nothing is ever lost.
+      let effectiveTargetId: string | undefined;
+      if (targetTrackId && !isPreview) {
+        const found = aggregate.findItem(itemId);
+        if (found && found.track.id !== targetTrackId && !found.track.isLocked) {
+          const targetTrack = aggregate.findTrack(targetTrackId);
+          const materialType = found.item.originalMaterialType ?? found.item.type;
+          if (targetTrack && !targetTrack.isLocked && targetTrack.canAcceptMaterial(materialType)) {
+            effectiveTargetId = targetTrackId;
+          }
+        }
+      }
+
       try {
-        aggregate.moveItem(itemId, TimePosition.create(newStartTime));
+        aggregate.moveItem(itemId, TimePosition.create(newStartTime), effectiveTargetId);
       } catch (err) {
         console.error('[timelineSlice] moveItem failed:', err);
         return;

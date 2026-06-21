@@ -1243,7 +1243,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         targetTrackId = 'image-track-1';
         break;
       case 'audio':
-        targetTrackId = 'audio-track-1';
+        // 搜索/库内音频默认落到「音频轨道二」，把轨道一留给解说/视频内嵌音频，
+        // 从而默认产生可叠加的两条音频轨（缺轨时 handleMaterialDrop 会回退到首条兼容音频轨）。
+        targetTrackId = 'audio-track-2';
         break;
       case 'subtitle':
         targetTrackId = 'subtitle-track-1';

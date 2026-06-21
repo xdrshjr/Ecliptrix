@@ -61,6 +61,12 @@ export interface DragContext {
   itemId: string | null;
   /** ID of the track the item belongs to. */
   trackId: string | null;
+  /**
+   * Track id under the pointer during a move drag, or null. Differs from
+   * `trackId` (the source track) once the pointer crosses into another track,
+   * which is what signals a cross-track move at commit time.
+   */
+  targetTrackId: string | null;
 
   /** Original start time (seconds) — used for ESC restore. */
   originalStartTime: number;
@@ -125,6 +131,13 @@ export type PointerMoveEvent = {
   clientY: number;
   /** Total pixel delta from the pointer-down position (clientX - downX). */
   deltaX: number;
+  /**
+   * Track id under the pointer, resolved by the UI layer via hit-testing
+   * (document.elementFromPoint → closest('[data-track-id]')). Null when the
+   * pointer is outside any track. Used to enable cross-track moves; the
+   * machine stays DOM-free and only stores what the UI computes.
+   */
+  targetTrackId?: string | null;
 };
 
 export type PointerUpEvent = {
@@ -152,6 +165,7 @@ export type DragEvent =
 const initialContext: DragContext = {
   itemId: null,
   trackId: null,
+  targetTrackId: null,
   originalStartTime: 0,
   originalDuration: 0,
   interactionType: null,
@@ -288,6 +302,7 @@ export const dragMachine = setup({
       return {
         itemId: e.itemId,
         trackId: e.trackId,
+        targetTrackId: null as string | null,
         originalStartTime: e.originalStartTime,
         originalDuration: e.originalDuration,
         pointerDownPosition: { x: e.clientX, y: e.clientY },
@@ -312,6 +327,9 @@ export const dragMachine = setup({
         ),
         previewDuration: context.originalDuration,
         currentDelta: { x: e.deltaX, y: 0 },
+        // Track the hovered track so the commit path can transfer the clip.
+        // Falls back to the source track when the pointer is outside any lane.
+        targetTrackId: (e.targetTrackId ?? context.trackId) as string | null,
       };
     }),
 
@@ -356,6 +374,7 @@ export const dragMachine = setup({
     resetContext: assign(() => ({
       itemId: null as string | null,
       trackId: null as string | null,
+      targetTrackId: null as string | null,
       originalStartTime: 0,
       originalDuration: 0,
       interactionType: null as InteractionType | null,
@@ -586,7 +605,7 @@ export function isCommitted(snapshot: DragSnapshot): boolean {
 /** Extract the current drag preview from the snapshot, or null. */
 export function getDragPreview(
   snapshot: DragSnapshot
-): { itemId: string; startTime: number; duration: number } | null {
+): { itemId: string; startTime: number; duration: number; targetTrackId: string | null } | null {
   const ctx = snapshot.context;
   if (
     ctx.itemId != null &&
@@ -597,6 +616,7 @@ export function getDragPreview(
       itemId: ctx.itemId,
       startTime: ctx.previewStartTime,
       duration: ctx.previewDuration,
+      targetTrackId: ctx.targetTrackId,
     };
   }
   return null;

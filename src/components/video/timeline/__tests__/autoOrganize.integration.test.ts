@@ -266,3 +266,95 @@ describe('autoOrganize integration', () => {
     expect(elapsed).toBeLessThan(50);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cross-track audio move (Bug #1) — store wiring + data-loss guard.
+// Regression for "can't drag an audio clip from audio-track-1 to
+// audio-track-2 (so two audios can never overlap)". The drag-commit path
+// passes the hovered track id to moveItem(itemId, time, isPreview, targetTrackId);
+// these tests drive that store surface directly (the UI hit-test that produces
+// targetTrackId is the only piece not exercised here).
+// ---------------------------------------------------------------------------
+
+function twoAudioTrackData(): TimelineData {
+  return {
+    currentTime: 0,
+    totalDuration: 10,
+    zoomLevel: 1,
+    playbackRate: 1,
+    isPlaying: false,
+    snapToGrid: false,
+    gridSize: 1,
+    scrollLeft: 0,
+    tracks: [
+      {
+        id: 'audio-track-1', name: 'Audio 1', type: 'audio', height: 60,
+        isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
+        items: [
+          { id: 'a-1', name: 'A1', type: 'audio', startTime: 0, duration: 4, trackId: 'audio-track-1', color: '#27AE60', volume: 1 },
+          { id: 'a-2', name: 'A2', type: 'audio', startTime: 4, duration: 3, trackId: 'audio-track-1', color: '#27AE60', volume: 1 },
+        ],
+      },
+      {
+        id: 'audio-track-2', name: 'Audio 2', type: 'audio', height: 60,
+        isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1,
+        items: [],
+      },
+    ],
+  };
+}
+
+describe('cross-track audio move (Bug #1)', () => {
+  beforeEach(() => {
+    useTimelineStore.getState().initTimeline(twoAudioTrackData());
+    useTimelineStore.getState().clearHistory();
+  });
+
+  afterEach(() => {
+    useTimelineStore.getState().disposeDragActor();
+  });
+
+  it('transfers an audio clip to the target track on commit', () => {
+    useTimelineStore.getState().moveItem('a-2', 0, false, 'audio-track-2');
+    const data = useTimelineStore.getState().exportToData();
+    const t1 = data.tracks.find(t => t.id === 'audio-track-1')!;
+    const t2 = data.tracks.find(t => t.id === 'audio-track-2')!;
+    expect(t1.items.map(i => i.id)).toEqual(['a-1']);
+    expect(t2.items.map(i => i.id)).toEqual(['a-2']);
+  });
+
+  it('produces overlapping audio (both clips start at 0) after the move + autoOrganize', () => {
+    // Moving the 2nd clip to its own track turns a sequential pair into an
+    // overlay: autoOrganize packs each track from 0 independently, so both
+    // clips now start at 0 — which is what makes the export amix them.
+    useTimelineStore.getState().moveItem('a-2', 0, false, 'audio-track-2');
+    useTimelineStore.getState().autoOrganize();
+    const data = useTimelineStore.getState().exportToData();
+    const a1 = data.tracks.find(t => t.id === 'audio-track-1')!.items.find(i => i.id === 'a-1')!;
+    const a2 = data.tracks.find(t => t.id === 'audio-track-2')!.items.find(i => i.id === 'a-2')!;
+    expect(a1.startTime).toBe(0);
+    expect(a2.startTime).toBe(0);
+  });
+
+  it('falls back to a same-track move when the target is locked (clip is never dropped)', () => {
+    useTimelineStore.getState().toggleTrackLock('audio-track-2');
+    useTimelineStore.getState().moveItem('a-1', 1, false, 'audio-track-2');
+    const data = useTimelineStore.getState().exportToData();
+    const t1 = data.tracks.find(t => t.id === 'audio-track-1')!;
+    const t2 = data.tracks.find(t => t.id === 'audio-track-2')!;
+    // Clip stays on its source track; nothing leaked onto the locked track.
+    expect(t1.items.map(i => i.id).sort()).toEqual(['a-1', 'a-2']);
+    expect(t2.items).toEqual([]);
+  });
+
+  it('preview frames never transfer tracks (only commit moves across tracks)', () => {
+    // isPreview === true must ignore targetTrackId so a mid-drag preview can't
+    // shuttle the clip between lanes every pointer frame (analysis constraint #2).
+    useTimelineStore.getState().moveItem('a-1', 0, true, 'audio-track-2');
+    const data = useTimelineStore.getState().exportToData();
+    const t1 = data.tracks.find(t => t.id === 'audio-track-1')!;
+    const t2 = data.tracks.find(t => t.id === 'audio-track-2')!;
+    expect(t1.items.some(i => i.id === 'a-1')).toBe(true);
+    expect(t2.items).toEqual([]);
+  });
+});

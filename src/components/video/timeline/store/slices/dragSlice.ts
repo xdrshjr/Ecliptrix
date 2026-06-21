@@ -39,6 +39,8 @@ export interface DragPreviewData {
   itemId: string;
   startTime: number;
   duration: number;
+  /** Track under the pointer (move drags only); null outside any lane. */
+  targetTrackId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +137,15 @@ function ensureDragActor(
       const originalStartTime = snapshot.context.originalStartTime;
       const swapTargetId = get().swapTargetItemId;
 
+      // Cross-track move: the pointer finished over a different track than the
+      // clip started on. Cross-track transfers must skip the swap branch —
+      // findSwapTarget only scans the source track, so any swapTargetId held
+      // here is stale and must not hijack the commit (analysis constraint #3).
+      const sourceTrackId = snapshot.context.trackId;
+      const targetTrackId = preview.targetTrackId ?? null;
+      const isCrossTrackMove =
+        interactionType === 'move' && !!targetTrackId && targetTrackId !== sourceTrackId;
+
       // Why: updateDrag mutated the aggregate via moveItem(…, true) on every
       // POINTER_MOVE for move interactions (timelineSlice.moveItem currently
       // ignores its isPreview flag), so by commit the dragged item already
@@ -150,7 +161,23 @@ function ensureDragActor(
         state.moveItem(preview.itemId, originalStartTime, false);
       }
 
-      if (interactionType === 'move' && swapTargetId && swapTargetId !== preview.itemId) {
+      if (isCrossTrackMove && targetTrackId) {
+        // Transfer the clip to the track under the pointer. moveItem guards the
+        // target (unlocked + type-compatible) and falls back to a same-track
+        // move if it can't accept, so the clip is never dropped (§8.3).
+        state.recordAction('MOVE_ITEM', {
+          itemId: preview.itemId,
+          newStartTime: preview.startTime,
+          targetTrackId,
+        });
+        state.moveItem(preview.itemId, preview.startTime, false, targetTrackId);
+        state.autoOrganize();
+        if (typeof requestAnimationFrame !== 'undefined') {
+          requestAnimationFrame(() => get().captureNextState());
+        } else {
+          Promise.resolve().then(() => get().captureNextState());
+        }
+      } else if (interactionType === 'move' && swapTargetId && swapTargetId !== preview.itemId) {
         // Dispatch as a swap; swapItemsAction records history + auto-organizes.
         swapItemsAction(get, preview.itemId, swapTargetId);
         set({ swapTargetItemId: null } as Partial<TimelineStore>);
@@ -232,13 +259,20 @@ export const createDragSlice: StateCreator<
     const preview = getDragPreviewQuery(snapshot);
     const dragging = isDraggingQuery(snapshot);
     if (preview && dragging) {
-      // Move in preview mode (no history recording)
+      // Move in preview mode (no history recording). Preview never transfers
+      // tracks — the clip stays on its source track and only its start time
+      // tracks the pointer; the actual cross-track transfer happens once, at
+      // commit (analysis constraint #2). So no targetTrackId is passed here.
       get().moveItem(preview.itemId, preview.startTime, true);
 
-      // Swap-target detection: only for move interactions. Resize drags can
-      // never mean "swap", so clear any stale target in that case.
+      // Swap-target detection: only for same-track move interactions. Resize
+      // drags can never mean "swap"; neither can a cross-track move (the clip
+      // is heading to another lane, not swapping with a peer on this one), so
+      // clear any stale target in those cases.
       const interactionType = snapshot.context.interactionType;
-      if (interactionType === 'move') {
+      const crossTrack =
+        !!preview.targetTrackId && preview.targetTrackId !== snapshot.context.trackId;
+      if (interactionType === 'move' && !crossTrack) {
         const tracks = get().tracks;
         const nextTarget = DragCalculationService.findSwapTarget(
           tracks,

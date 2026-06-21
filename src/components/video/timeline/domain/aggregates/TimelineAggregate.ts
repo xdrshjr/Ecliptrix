@@ -179,11 +179,25 @@ export class TimelineAggregate {
     if (targetTrackId && targetTrackId !== sourceTrack.id) {
       // Cross-track move
       const targetTrack = this.findTrackOrThrow(targetTrackId);
-      // Remove from source (validates source not locked)
+      // Validate the whole transfer BEFORE mutating either track, so a
+      // rejected add can never leave the item removed-from-source-but-not-
+      // added — which would make the clip vanish from the timeline (this op
+      // is not transactional once removeItem runs). See analysis §8.3.
+      if (sourceTrack.isLocked) {
+        throw new TrackLockedError(sourceTrack.id, 'moveItem');
+      }
+      if (targetTrack.isLocked) {
+        throw new TrackLockedError(targetTrack.id, 'moveItem');
+      }
+      const materialType = item.originalMaterialType ?? item.type;
+      if (!targetTrack.canAcceptMaterial(materialType)) {
+        throw new Error(
+          `Track "${targetTrack.id}" (type=${targetTrack.type}) cannot accept material of type "${materialType}".`,
+        );
+      }
+      // Validated — now perform the transfer.
       sourceTrack.removeItem(itemId);
-      // Move to new time
       item.moveTo(newStartTime);
-      // Add to target (validates target not locked + type compatibility)
       targetTrack.addItem(item);
     } else {
       // Same-track move — just assert the track is not locked via a guard

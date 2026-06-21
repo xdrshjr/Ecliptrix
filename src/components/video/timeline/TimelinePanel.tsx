@@ -319,11 +319,23 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
 
     const handlePointerMove = throttle((e: PointerEvent) => {
+      // Hit-test the track under the pointer so the drag layer can transfer the
+      // clip across tracks (e.g. audio-track-1 → audio-track-2). The `.track`
+      // container already carries data-track-id (Track.tsx); resolve it via the
+      // topmost element at the pointer. Null when outside any lane.
+      const targetTrackId =
+        (typeof document !== 'undefined'
+          ? document
+              .elementFromPoint(e.clientX, e.clientY)
+              ?.closest('[data-track-id]')
+              ?.getAttribute('data-track-id')
+          : null) ?? null;
       useTimelineStore.getState().updateDrag({
         type: 'POINTER_MOVE',
         clientX: e.clientX,
         clientY: e.clientY,
         deltaX: e.clientX - dragStartXRef.current,
+        targetTrackId,
       });
     }, 16);
 
