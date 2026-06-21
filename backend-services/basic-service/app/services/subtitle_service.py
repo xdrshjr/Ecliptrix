@@ -754,7 +754,7 @@ class SubtitleService:
 
                 # Escape path separators and colons for ffmpeg filter syntax
                 escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
-                drawtext_filter = f"drawtext=textfile={escaped_path}"
+                drawtext_filter = f"drawtext=textfile='{escaped_path}'"
 
                 # Add font file if available
                 if font_path:
@@ -867,7 +867,7 @@ class SubtitleService:
                     f.write(line_text)  # single line, no newline needed
 
                 escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
-                drawtext_filter = f"drawtext=textfile={escaped_path}"
+                drawtext_filter = f"drawtext=textfile='{escaped_path}'"
                 
                 # Add font file if available
                 font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
