@@ -1028,35 +1028,28 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 视频理解生成本期仅占位弹窗。
   const [isVideoUnderstandingPlaceholderOpen, setIsVideoUnderstandingPlaceholderOpen] = useState(false);
 
-  // 「解说直接生成」富化：为新 segments 生成独立的画面脚本与搜索关键词（修复两个 Bug）。
-  // - Bug#1：每句以 generateSentenceAiVideoPrompt(解说原文) 生成画面/视觉描述，覆写
-  //   sentence.text（面板「AI视频脚本」即取该字段）；segment.narrationText 与
-  //   sentence.narration 保持解说原文不变 —— TTS 取 narrationText，不受覆写影响（评审 R-1）。
-  // - Bug#2：复用旧链路已验证的 generateKeywordsForSegments 补跑关键词，写入 segment.keywords。
-  //   关键词取材解说原文，且在覆写 sentence.text 之前计算，避免从画面描述生成（评审 R-4）。
+  // 「解说直接生成」富化：把链路重排为严格顺序三段流水线（spec narration-direct-ai-video-script-keywords v2）。
+  //   [1] 整篇解说作上下文 → [2] 逐句生成 AI 视频脚本（画面描述）→ [3] 用画面脚本组装输入 →
+  //   [4] 从「AI 视频脚本」提取英文搜索关键词（目标 3、上限 3）→ [6] 合并单次写回。
+  // - 画面脚本：每句以 generateSentenceAiVideoPrompt(解说原文, 整篇解说) 生成，覆写 sentence.text
+  //   （面板「AI视频脚本」即取该字段）；segment.narrationText 与 sentence.narration 保持解说原文
+  //   不变 —— TTS 取 narrationText，不受覆写影响（评审 R-1/R-5）。
+  // - 关键词：取材改为【生成出的 AI 视频脚本】、语言改为英文（评审 R-2，有意反转前序诊断 R-4），
+  //   故 generateKeywordsForSegments 须在画面脚本覆写【之后】、对画面脚本调用。
   // 富化置于父级、异步执行（弹窗 close() 会中止其内部请求，故不能放在弹窗 hook —— 评审 R-5），
   // 完成后按 id 合并 scriptSegmentsRef.current 单次写回，仅覆盖用户未编辑的句子，避免覆盖
   // 富化期间用户的删除/改动（评审 R-5 / 决议 R3）。失败降级：sentence.text 保留解说原文，
-  // 面板永不空白。
+  // 面板永不空白；关键词失败 → segment.keywords 留空（搜索框无预填，不报错）。
   const enrichNarrationSegments = useCallback(async (newSegments: ScriptSegment[]) => {
     if (newSegments.length === 0) return;
 
-    // 1) 先按解说原文生成关键词（此刻 newSegments 的 sentence.text 仍等于解说原文）。
-    let keywordedSegments: ScriptSegment[] = newSegments;
-    try {
-      keywordedSegments = await generateKeywordsForSegments(newSegments, taskId || 'unknown', logger);
-    } catch (err) {
-      logger.warn('解说直接生成关键词富化失败，保留空关键词', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-    const keywordsBySegment = new Map(keywordedSegments.map(s => [s.id, s.keywords]));
-
-    // 2) 为每句生成独立的画面/视频脚本描述（复用已验证的 per-sentence 工具）。
+    // [1] 构建整篇解说上下文（优先每段 narrationText，即「整篇所有解说文案」）。
     const fullScript = buildFullScriptContext([
       ...(scriptSegmentsRef.current ?? []),
       ...newSegments,
     ]);
+
+    // [2] 逐句生成独立的画面/视频脚本描述（针对当前句、全篇作上下文；并发 limit=2）。
     const jobs = newSegments.flatMap(seg =>
       seg.sentences.map(sent => ({
         sentenceId: sent.id,
@@ -1078,7 +1071,33 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       }
     });
 
-    // 记录每句的解说原文，供写回时判断用户是否在富化期间手动编辑过该句。
+    // [3] 用「生成出的 AI 视频脚本」组装关键词输入（sentence.text 替换为画面脚本，缺失则回退解说原文）。
+    //     generateKeywordsForSegments 的取材 = sentences.map(s => s.text).join(' ')，故此处即「AI 视频脚本」。
+    const scriptedSegments: ScriptSegment[] = newSegments.map(seg => ({
+      ...seg,
+      sentences: seg.sentences.map(sent => ({
+        ...sent,
+        text: visualBySentence.get(sent.id) ?? sent.text,
+      })),
+    }));
+
+    // [4] 从 AI 视频脚本生成英文关键词（每段目标 3、上限 3）。
+    let keywordedSegments: ScriptSegment[] = scriptedSegments;
+    try {
+      keywordedSegments = await generateKeywordsForSegments(
+        scriptedSegments,
+        taskId || 'unknown',
+        logger,
+        { language: 'english' },
+      );
+    } catch (err) {
+      logger.warn('解说直接生成关键词富化失败，保留空关键词', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    const keywordsBySegment = new Map(keywordedSegments.map(s => [s.id, s.keywords]));
+
+    // [5] 记录每句的解说原文，供写回时判断用户是否在富化期间手动编辑过该句。
     const narrationBySentence = new Map(
       newSegments.flatMap(seg =>
         seg.sentences.map(sent => [sent.id, (sent.narration ?? sent.text ?? '').trim()] as const),
@@ -1086,7 +1105,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     );
     const enrichedSegmentIds = new Set(newSegments.map(s => s.id));
 
-    // 3) 按 id 合并 scriptSegmentsRef.current 单次写回（用户可能已删除/编辑条目）。
+    // [6] 按 id 合并 scriptSegmentsRef.current 单次写回（用户可能已删除/编辑条目）。
     const latest = scriptSegmentsRef.current ?? [];
     if (!latest.some(s => enrichedSegmentIds.has(s.id))) return; // 全被删除/清空 → 不写
     const merged = latest.map(seg => {

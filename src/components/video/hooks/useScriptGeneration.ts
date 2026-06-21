@@ -7,12 +7,17 @@ import { http, ApiError } from '@/lib/api/http-client';
 
 // 为脚本段落生成关键词的函数
 // 导出为共享工具：「解说直接生成」新链路复用同一已验证逻辑补跑关键词（评审决议 B1）。
-// 取材为 segment.sentences[].text 拼接——调用方须保证调用时 sentence.text 仍是解说原文
-// （即在「画面脚本覆写」之前调用），以免关键词从画面描述生成（评审 R-4）。
+// 取材为 segment.sentences[].text 拼接。
+// 注意（反转前序诊断 R-4）：取材现可为「AI 视频脚本」——「解说直接生成」链路在覆写
+// sentence.text 为画面脚本【之后】调用本函数，故 segmentContent 即画面脚本拼接，关键词
+// 由画面描述生成而非解说原文；语言亦可选（options.language，缺省中文 / 'english' 输出英文，
+// 经 /api/script-keywords-generation 的 language 参数透传）。旧脚本生成链路不传 options，
+// 行为零变化。
 export const generateKeywordsForSegments = async (
   segments: ScriptSegment[],
   taskId: string,
-  logger: VideoEditingLogger
+  logger: VideoEditingLogger,
+  options?: { language?: 'chinese' | 'english' },
 ): Promise<ScriptSegment[]> => {
   logger.info('开始为脚本段落生成关键词', {
     segmentCount: segments.length,
@@ -37,6 +42,7 @@ export const generateKeywordsForSegments = async (
           segmentTitle: segment.title,
           segmentContent: segmentContent,
           taskId: taskId,
+          ...(options?.language ? { language: options.language } : {}),
         });
       } catch (httpError) {
         logger.warn(`段落 ${index + 1} 关键词生成失败`, {

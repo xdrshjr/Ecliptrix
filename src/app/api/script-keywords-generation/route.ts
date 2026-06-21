@@ -13,7 +13,14 @@ const getConfig = () => {
   return { apiUrl, apiKey, model };
 };
 
-// 构建关键词生成的提示词
+// 关键词语言：默认中文；解说直接生成链路传 'english' 以输出英文素材检索词。
+type KeywordLanguage = 'chinese' | 'english';
+
+// 非法 / 缺省的 language 一律回退中文，绝不返回 400 阻断上游富化（评审 R-4）。
+const normalizeLanguage = (value: unknown): KeywordLanguage =>
+  value === 'english' ? 'english' : 'chinese';
+
+// 构建关键词生成的提示词（中文分支，语义不变）
 const buildKeywordsPrompt = (segmentTitle: string, segmentContent: string) => {
   return `你是一个专业的视频制作助手。基于以下视频脚本片段，生成2-3个最相关的关键词，用于搜索匹配的视频素材。
 
@@ -40,17 +47,68 @@ ${segmentContent}
 现在请为上述脚本片段生成关键词：`;
 };
 
-// 格式化消息
-const formatMessages = (prompt: string) => [
+// 构建关键词生成的提示词（英文分支）。
+// 取材为 AI 视频脚本，通常为中文 → 必须显式声明「源文可能为中文、一律输出英文」（评审 R-1）。
+// 数量为目标 3、上限 3（best-effort ≤3，评审 R-2）。
+const buildKeywordsPromptEnglish = (segmentTitle: string, segmentContent: string) => {
+  return `You are a professional video production assistant. Based on the following video script segment, produce up to 3 concise ENGLISH keywords for searching matching stock-video footage.
+
+CRITICAL: The source script may be written in Chinese (or another language). Regardless of the source language, you MUST output the keywords in ENGLISH only.
+
+Segment title: ${segmentTitle}
+
+Segment content:
+${segmentContent}
+
+Requirements:
+1. Produce up to 3 keywords (3 is the target; fewer is acceptable). Each keyword should be a concise noun or short noun phrase.
+2. Keywords should help find stock-video footage matching the script content.
+3. Prefer concrete, visual concepts (e.g. natural scenery, business office, portrait).
+4. Avoid abstract concepts and verbs.
+5. Keywords must be suitable for stock-video search engines such as Pexels.
+6. Output the keywords in ENGLISH only, even if the source script is in Chinese.
+
+Output format:
+Return the keyword list directly, one keyword per line. No numbering, no bullets, no quotes.
+
+Example:
+mountain landscape
+city skyline at night
+team meeting
+
+Now produce the ENGLISH keywords for the segment above:`;
+};
+
+// 格式化消息（按语言切换 system message）
+const formatMessages = (prompt: string, language: KeywordLanguage) => [
   {
     role: 'system',
-    content: '你是一个专业的视频制作助手，擅长为视频脚本生成相关的搜索关键词。'
+    content: language === 'english'
+      ? 'You are a professional video production assistant who excels at generating concise ENGLISH search keywords for video scripts, even when the source script is written in another language such as Chinese.'
+      : '你是一个专业的视频制作助手，擅长为视频脚本生成相关的搜索关键词。'
   },
   {
     role: 'user',
     content: prompt
   }
 ];
+
+// 健壮解析关键词（中/英分支统一，评审 R-3）：
+// 逐行剥离行首编号(1. / 2) / 3、)、项目符号(- / * / •)与包裹引号后再保留该行，
+// 而非整行丢弃编号行（旧逻辑 !line.match(/^\d+\./) 会把「1. mountain landscape」误删致 0 关键词）。
+const parseKeywords = (content: string): string[] =>
+  content
+    .split('\n')
+    .map((line: string) =>
+      line
+        .trim()
+        .replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '') // 剥离行首编号 / 项目符号前缀
+        .trim()
+        .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '') // 剥离包裹引号
+        .trim(),
+    )
+    .filter((line: string) => line.length > 0)
+    .slice(0, 3); // 目标 3、上限 3（best-effort ≤3）
 
 // 日志记录函数
 const logRequest = (segmentTitle: string, segmentContent: string, taskId: string, config: any) => {
@@ -77,11 +135,13 @@ const logResponse = (success: boolean, taskId: string, keywords?: string[], erro
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { segmentTitle, segmentContent, taskId } = body as { 
-      segmentTitle: string; 
-      segmentContent: string; 
+    const { segmentTitle, segmentContent, taskId } = body as {
+      segmentTitle: string;
+      segmentContent: string;
       taskId: string;
     };
+    // language 可选，缺省 / 非法值一律回退中文（评审 R-4），不阻断富化。
+    const language = normalizeLanguage((body as { language?: unknown }).language);
 
     // 验证请求参数
     if (!segmentTitle || typeof segmentTitle !== 'string' || segmentTitle.trim().length === 0) {
@@ -111,13 +171,15 @@ export async function POST(request: NextRequest) {
     const config = getConfig();
     logRequest(segmentTitle, segmentContent, taskId, config);
 
-    // 构建提示词
-    const prompt = buildKeywordsPrompt(segmentTitle, segmentContent);
+    // 构建提示词（按语言切换中/英分支）
+    const prompt = language === 'english'
+      ? buildKeywordsPromptEnglish(segmentTitle, segmentContent)
+      : buildKeywordsPrompt(segmentTitle, segmentContent);
 
     // 准备请求数据
     const requestData = {
       model: config.model,
-      messages: formatMessages(prompt),
+      messages: formatMessages(prompt, language),
       temperature: 0.3, // 较低的温度以获得更一致的结果
       max_tokens: 200, // 关键词不需要太多token
     };
@@ -159,13 +221,9 @@ export async function POST(request: NextRequest) {
     }
 
     const content = result.choices[0].message.content.trim();
-    
-    // 解析关键词（每行一个关键词）
-    const keywords = content
-      .split('\n')
-      .map((line: string) => line.trim())
-      .filter((line: string) => line.length > 0 && !line.match(/^\d+\./)) // 过滤空行和编号
-      .slice(0, 3); // 最多取3个关键词
+
+    // 解析关键词（健壮：剥离编号 / 项目符号 / 引号前缀后保留该行，评审 R-3）
+    const keywords = parseKeywords(content);
 
     // 验证关键词数量
     if (keywords.length === 0) {
