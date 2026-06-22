@@ -415,3 +415,126 @@ describe('useCompositionPlayback — RC-B resolver (compare == assign)', () => {
     expect(result.current.isReady).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// image-overlay-drag-ghost-duplicate — paused-state repaint on overlay change
+// ---------------------------------------------------------------------------
+
+describe('useCompositionPlayback — image-overlay ghost-duplicate repaint (方案 A)', () => {
+  const imgMaterial = {
+    id: 'mat-img',
+    name: 'x.png',
+    type: 'image',
+    format: 'png',
+    size: 1,
+    url: '/api/storage/files/images/x.png',
+    createdAt: new Date(),
+  } as MaterialItem;
+
+  function timelineWithImage(pos: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }): TimelineState {
+    return {
+      tracks: [
+        {
+          isVisible: true,
+          items: [
+            {
+              id: 'img-1',
+              originalMaterialType: 'image',
+              materialId: 'mat-img',
+              startTime: 0,
+              duration: 10,
+              imagePosition: pos,
+            },
+          ],
+        },
+      ],
+    } as unknown as TimelineState;
+  }
+
+  type Props = Parameters<typeof useCompositionPlayback>[0];
+
+  function makeProps(timelineState: TimelineState, isPlaying: boolean): Props {
+    return {
+      compositionPlayback: composition({
+        videoSequences: [vseq({ id: 'a', materialId: 'mat-1' })],
+      }),
+      materials: [directLocalMaterial('mat-1'), imgMaterial],
+      timelineState,
+      preferPreviewProxy: true,
+      preferLocalProxy: true,
+      currentTime: 0,
+      isPlaying,
+      aspectRatio: 16 / 9,
+      enabled: true,
+    };
+  }
+
+  function renderWith(timelineState: TimelineState, isPlaying = false) {
+    const host = fakeHost();
+    const r = renderHook((p: Props) => useCompositionPlayback(p), {
+      initialProps: makeProps(timelineState, isPlaying),
+    });
+    act(() => {
+      r.result.current.hostRef(host as never);
+    });
+    return r;
+  }
+
+  it('re-seeks one frame when a paused image overlay is moved (clears the ghost copy)', () => {
+    const r = renderWith(
+      timelineWithImage({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 }),
+    );
+    seekSpy.mockClear();
+    act(() => {
+      r.rerender(
+        makeProps(
+          timelineWithImage({ x: 0.4, y: 0.4, width: 0.8, height: 0.8 }),
+          false,
+        ),
+      );
+    });
+    // The canvas-rasterised copy is repainted at the new position via a same-
+    // time seek, so no duplicate is left behind at the old spot.
+    expect(seekSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('does NOT re-seek from the overlay path while playing (the rAF loop owns repaint)', () => {
+    const r = renderWith(
+      timelineWithImage({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 }),
+      true,
+    );
+    seekSpy.mockClear();
+    act(() => {
+      r.rerender(
+        makeProps(
+          timelineWithImage({ x: 0.4, y: 0.4, width: 0.8, height: 0.8 }),
+          true,
+        ),
+      );
+    });
+    expect(seekSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT re-seek when a new timelineState carries identical overlay data (signature stable)', () => {
+    const r = renderWith(
+      timelineWithImage({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 }),
+    );
+    seekSpy.mockClear();
+    act(() => {
+      // A brand-new object reference with the SAME overlay content — the derived
+      // signature is unchanged, so the repaint effect must not fire.
+      r.rerender(
+        makeProps(
+          timelineWithImage({ x: 0.1, y: 0.1, width: 0.8, height: 0.8 }),
+          false,
+        ),
+      );
+    });
+    expect(seekSpy).not.toHaveBeenCalled();
+  });
+});

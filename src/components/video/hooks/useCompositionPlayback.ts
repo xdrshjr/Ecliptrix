@@ -542,5 +542,49 @@ export function useCompositionPlayback(
     return unsubscribe;
   }, [enabled, hostVersion]);
 
+  // image-overlay-drag-ghost-duplicate fix (方案 A) — a paused-state companion to
+  // the H5 viewport effect above. While paused the rAF/tick loop is stopped, so
+  // moving / resizing an image overlay in the preview repaints ONLY the React
+  // <ImageOverlay> handle (z=10); the copy the canvas rasterised (z=2) stays put
+  // and is left behind as a ghost at the old spot. Derive a signature of the
+  // image-overlay inputs the canvas actually reads (id + src + time range +
+  // x/y/w/h/zIndex + opacity) so any move / resize / opacity / add / remove
+  // changes it, while unrelated edits and pure scrubs do not.
+  const imageOverlaySignature = useMemo(() => {
+    const inputs = buildImageOverlayInputs(timelineState, materials);
+    return JSON.stringify(
+      inputs.map((it) => {
+        const p = it.position;
+        return [
+          it.id,
+          it.src,
+          it.startTime,
+          it.duration,
+          p?.x ?? null,
+          p?.y ?? null,
+          p?.width ?? null,
+          p?.height ?? null,
+          p?.zIndex ?? null,
+          it.opacity ?? null,
+        ];
+      }),
+    );
+  }, [timelineState, materials]);
+
+  // When the image-overlay signature changes while NOT playing, re-seek the
+  // engine to the SAME comp time so it folds the live image items into a fresh
+  // frame — snapping the canvas-rasterised copy onto the moved React handle so
+  // no duplicate is left behind. The playing path is owned by the rAF loop (skip
+  // it). Seeking to currentTimeRef.current does not move the playhead, so the
+  // scrub effect's echo guard (`Math.abs(last - currentTime) < 1e-6`) absorbs
+  // it — no seek self-loop.
+  useEffect(() => {
+    if (!enabled) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (engine.getPhase() === 'playing') return;
+    engine.seek(currentTimeRef.current ?? 0);
+  }, [imageOverlaySignature, enabled, hostVersion]);
+
   return { hostRef, play, pause, seek, getPhase, isReady };
 }
