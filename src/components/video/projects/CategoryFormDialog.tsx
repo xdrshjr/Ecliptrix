@@ -48,11 +48,13 @@ const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} labelledBy="category-form-title">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-card rounded-md shadow-xl border border-border w-full max-w-sm"
-      >
+    <Modal
+      isOpen={isOpen}
+      onClose={onCancel}
+      labelledBy="category-form-title"
+      contentClassName="w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-md border border-border bg-card shadow-xl"
+    >
+      <form onSubmit={handleSubmit}>
         <div className="px-6 pt-6 pb-2">
           <h3 id="category-form-title" className="text-lg font-semibold text-foreground">
             {mode === 'create' ? t.videoProjects.newCategory : t.videoProjects.rename}

@@ -97,14 +97,95 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+# Business tables whose obsolete ``user_id`` ownership column (and every index
+# referencing it) must be stripped on startup when an OLDER database — created
+# before the user system was removed (migration 015) — is opened by the current
+# code. ``create_all`` only creates missing tables, it never ALTERs an existing
+# one, so the stale ``user_id NOT NULL`` column survives and makes every INSERT
+# fail. The desktop build ships no ``alembic/`` directory (it relies solely on
+# ``create_all``), so this self-heal has to live in application code.
+_USER_OWNED_TABLES = (
+    "video_projects",
+    "video_project_categories",
+    "storyboard_packs",
+    "project_covers",
+)
+
+# Residual user-system tables to drop entirely. Child before parent:
+# ``login_history.user_id`` references ``users.id``.
+_USER_SYSTEM_TABLES = ("login_history", "users")
+
+
+def _drop_residual_user_system(sync_conn) -> None:
+    """Strip the obsolete ``user_id`` column / user-system tables from an upgraded DB.
+
+    Idempotent self-heal that mirrors migration ``015_drop_user_system`` but
+    runs from application code because the desktop build ships no ``alembic/``
+    directory and only ever runs ``create_all`` (which never drops a column).
+    For each business table we act *only* when the inspector still reports a
+    ``user_id`` column, so a fresh database — built by ``create_all`` from the
+    current user-less models — is left untouched and re-running on an
+    already-cleaned database is a no-op.
+
+    ``batch_alter_table(recreate="always")`` rebuilds the table: older SQLite
+    has no native ``DROP COLUMN`` and the ``user_id`` columns carry indexes that
+    must be dropped first, otherwise SQLite's table rebuild would re-emit an
+    index referencing the now-missing column and fail with "no such column".
+    On PostgreSQL the same body runs as plain ``ALTER TABLE``.
+    """
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    inspector = sa.inspect(sync_conn)
+    existing_tables = set(inspector.get_table_names())
+    op = Operations(MigrationContext.configure(sync_conn))
+
+    for table in _USER_OWNED_TABLES:
+        if table not in existing_tables:
+            continue
+        column_names = {col["name"] for col in inspector.get_columns(table)}
+        if "user_id" not in column_names:
+            continue
+
+        # Discover the actual indexes that reference user_id (the implicit
+        # ``ix_<table>_user_id`` from ``index=True`` plus named composite
+        # indexes) — drop_index raises on an unknown name, so blind drops are
+        # unsafe; the inspector keeps this robust across DBs.
+        stale_indexes = [
+            index["name"]
+            for index in inspector.get_indexes(table)
+            if "user_id" in (index.get("column_names") or [])
+        ]
+        row_count = sync_conn.execute(sa.text(f"SELECT COUNT(*) FROM {table}")).scalar()
+        logger.warning(
+            "Legacy schema detected: dropping residual 'user_id' column from "
+            "'%s' (rebuilding %s row(s))",
+            table,
+            row_count,
+        )
+        with op.batch_alter_table(table, recreate="always") as batch_op:
+            for index_name in stale_indexes:
+                batch_op.drop_index(index_name)
+            batch_op.drop_column("user_id")
+
+    for table in _USER_SYSTEM_TABLES:
+        if table in existing_tables:
+            logger.warning("Legacy schema detected: dropping obsolete table '%s'", table)
+            op.drop_table(table)
+
+
 async def init_db() -> None:
-    """Initialize database on application startup (auto-create tables + sync root user)."""
-    from app.models.db_models import Base, User
-    import bcrypt
-    from sqlalchemy import select
+    """Initialize database on application startup (auto-create tables)."""
+    from app.models.db_models import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Self-heal an OLDER database created before the user system was removed:
+        # create_all never drops the obsolete ``user_id NOT NULL`` column, so an
+        # upgraded DB would fail every project/category/cover/pack INSERT. The
+        # guard makes this a no-op on fresh or already-cleaned databases.
+        await conn.run_sync(_drop_residual_user_system)
 
         # Ensure api_format column exists on model_providers (added in migration 005).
         # IF NOT EXISTS keeps the transaction healthy on re-runs — a raised
@@ -118,70 +199,6 @@ async def init_db() -> None:
             ))
 
     logger.info("Database tables created/verified")
-
-    # Sync root user from .env configuration
-    root_username = settings.auth.root_username
-    root_password = ***REMOVED***
-
-    async with async_session_factory() as session:
-        # Step 1: Find all users with is_root=True
-        stmt = select(User).where(User.is_root == True)
-        result = await session.execute(stmt)
-        root_users = result.scalars().all()
-
-        # Step 2: Handle multiple is_root users (abnormal state) — keep first, demote rest
-        if len(root_users) > 1:
-            logger.warning(f"Found {len(root_users)} root users, keeping first and demoting others")
-            for extra_root in root_users[1:]:
-                extra_root.is_root = False
-            root_users = [root_users[0]]
-
-        password_hash = bcrypt.hashpw(
-            root_password.encode('utf-8'),
-            bcrypt.gensalt()
-        ).decode('utf-8')
-
-        if root_users:
-            # Step 3a: Root user exists — sync username, password, and flags
-            root_user = root_users[0]
-            if root_user.username != root_username:
-                logger.info(f"Syncing root username: {root_user.username} -> {root_username}")
-                root_user.username = root_username
-            root_user.password_hash = password_hash
-            root_user.is_admin = True
-            root_user.is_active = True
-            root_user.user_role = "admin"
-            logger.info("Root user synced from .env configuration")
-        else:
-            # Step 3b: No root user exists — check if username is already taken
-            existing_stmt = select(User).where(User.username == root_username)
-            existing_result = await session.execute(existing_stmt)
-            existing_user = existing_result.scalar_one_or_none()
-
-            if existing_user:
-                # Promote existing user to root
-                existing_user.is_root = True
-                existing_user.is_admin = True
-                existing_user.is_active = True
-                existing_user.user_role = "admin"
-                existing_user.password_hash = password_hash
-                logger.info(f"Existing user '{root_username}' promoted to root")
-            else:
-                # Create new root user
-                root_user = User(
-                    username=root_username,
-                    email=f"{root_username}@local.dev",
-                    password_hash=password_hash,
-                    is_root=True,
-                    is_admin=True,
-                    is_active=True,
-                    user_role="admin",
-                    full_name="Root Administrator"
-                )
-                session.add(root_user)
-                logger.info(f"Root user '{root_username}' created")
-
-        await session.commit()
 
 
 async def close_db() -> None:
