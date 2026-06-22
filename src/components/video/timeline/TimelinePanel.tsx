@@ -170,6 +170,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     useShallow((state) => ({ isDragging: state.isDragging, isResizing: state.isResizing, isInteracting: state.isInteracting })),
   );
 
+  // Fix C: item flagged by a cross-track drag commit to be scrolled into view.
+  const pendingScrollItemId = useTimelineStore((state) => state.pendingScrollItemId);
+
   // ---------------------------------------------------------------------------
   // Initialize store on mount
   // ---------------------------------------------------------------------------
@@ -340,10 +343,22 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }, 16);
 
     const handlePointerUp = (e: PointerEvent) => {
+      // Fix D: re-hit-test the track under the release point so the commit
+      // targets where the user actually let go, not the last (throttled and
+      // possibly stale) POINTER_MOVE target (analysis §3.3). Null when released
+      // outside any lane — the machine then keeps the last move target.
+      const targetTrackId =
+        (typeof document !== 'undefined'
+          ? document
+              .elementFromPoint(e.clientX, e.clientY)
+              ?.closest('[data-track-id]')
+              ?.getAttribute('data-track-id')
+          : null) ?? null;
       useTimelineStore.getState().endDrag({
         type: 'POINTER_UP',
         clientX: e.clientX,
         clientY: e.clientY,
+        targetTrackId,
       });
     };
 
@@ -363,6 +378,47 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isInteracting]);
+
+  // ---------------------------------------------------------------------------
+  // Fix C: scroll a cross-track-moved clip into view.
+  // After a cross-track commit, autoOrganize repacks the target track flush
+  // from 0, so the moved clip can land past the right edge of the viewport and
+  // look "lost". The store flags it via pendingScrollItemId; here we scroll the
+  // real track-scroll container to it (store.setScrollLeft alone does NOT move
+  // the DOM — scroll sync is one-way DOM→store). Geometry is read from the
+  // rendered element (data-clip-id) so header/offset are handled for free,
+  // mirroring the addTrack vertical auto-scroll. Writing scrollLeft fires the
+  // container's onScroll → handleTrackScroll, which syncs ruler + store mirror.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!pendingScrollItemId) return;
+    if (typeof window === 'undefined') return;
+    const scrollEl = trackScrollRef.current;
+    if (!scrollEl) {
+      useTimelineStore.getState().clearPendingScrollItem();
+      return;
+    }
+    const rafId = requestAnimationFrame(() => {
+      const el = scrollEl.querySelector<HTMLElement>(
+        `[data-clip-id="${pendingScrollItemId}"]`,
+      );
+      if (el) {
+        const parentRect = scrollEl.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const elLeftInParent = elRect.left - parentRect.left + scrollEl.scrollLeft;
+        const elRightInParent = elLeftInParent + elRect.width;
+        const viewLeft = scrollEl.scrollLeft;
+        const viewRight = viewLeft + scrollEl.clientWidth;
+        const MARGIN = 48;
+        if (elLeftInParent < viewLeft || elRightInParent > viewRight) {
+          // Reveal the clip's start with a little left context.
+          scrollEl.scrollLeft = Math.max(0, elLeftInParent - MARGIN);
+        }
+      }
+      useTimelineStore.getState().clearPendingScrollItem();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [pendingScrollItemId]);
 
   // ---------------------------------------------------------------------------
   // Global keyboard shortcuts

@@ -172,6 +172,15 @@ function ensureDragActor(
         });
         state.moveItem(preview.itemId, preview.startTime, false, targetTrackId);
         state.autoOrganize();
+        // Fix C: the clip has correctly transferred to the target track, but
+        // autoOrganize repacks that track flush-from-0, so a short clip dropped
+        // onto a track that already holds a long clip (e.g. narration on
+        // audio-track-1) lands past the right edge of the viewport and reads as
+        // "lost". Select it and ask the panel to scroll it into view so the
+        // cross-track move is observable. Data already moved + non-overlapping
+        // (INV-5 preserved) — this is purely a visibility aid.
+        state.selectItem(preview.itemId);
+        state.requestScrollItemIntoView(preview.itemId);
         if (typeof requestAnimationFrame !== 'undefined') {
           requestAnimationFrame(() => get().captureNextState());
         } else {

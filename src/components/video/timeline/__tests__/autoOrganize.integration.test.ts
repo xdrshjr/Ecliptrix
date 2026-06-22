@@ -358,3 +358,139 @@ describe('cross-track audio move (Bug #1)', () => {
     expect(t2.items).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cross-track audio move into an OCCUPIED track (Bug #2 / round-2) — fixes C+D.
+// Round-1 only exercised "move into an EMPTY target track" (twoAudioTrackData
+// has audio-track-2 empty), so the "packed past the viewport" symptom of
+// dragging onto a track that already holds a long clip was never covered
+// (analysis §3.3). These tests drive the REAL drag machine end-to-end
+// (POINTER_DOWN → MOVE → UP) so the dragSlice commit path — where fixes C
+// (select + flag scroll-into-view) and D (pointerup re-targets the drop point)
+// live — is what's under test.
+// ---------------------------------------------------------------------------
+
+function occupiedAudioTrackData(): TimelineData {
+  return {
+    currentTime: 0,
+    totalDuration: 10,
+    zoomLevel: 1,
+    playbackRate: 1,
+    isPlaying: false,
+    snapToGrid: false,
+    gridSize: 1,
+    scrollLeft: 0,
+    tracks: [
+      {
+        // Long narration-style clip on track 1 — its start stays at 0, so a
+        // shorter clip packed after it lands off-screen (the round-2 symptom).
+        id: 'audio-track-1', name: 'Audio 1', type: 'audio', height: 60,
+        isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
+        items: [
+          { id: 'long', name: 'Long', type: 'audio', startTime: 0, duration: 8, trackId: 'audio-track-1', color: '#27AE60', volume: 1 },
+        ],
+      },
+      {
+        id: 'audio-track-2', name: 'Audio 2', type: 'audio', height: 60,
+        isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1,
+        items: [
+          { id: 'short', name: 'Short', type: 'audio', startTime: 0, duration: 2, trackId: 'audio-track-2', color: '#27AE60', volume: 1 },
+        ],
+      },
+    ],
+  };
+}
+
+describe('cross-track audio move into occupied track (Bug #2 / round-2)', () => {
+  beforeEach(() => {
+    useTimelineStore.getState().initTimeline(occupiedAudioTrackData());
+    useTimelineStore.getState().clearHistory();
+    // The cross-track commit schedules captureNextState via rAF; stub it with a
+    // microtask shim so flushRaf() drains it deterministically.
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      setTimeout(() => cb(performance.now()), 0);
+      return 0 as unknown as number;
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useTimelineStore.getState().disposeDragActor();
+  });
+
+  // Drive the real drag machine: short (track 2, [0,2), 100px wide at zoom 1)
+  // dragged up onto the occupied audio-track-1. relativeX in the middle → move.
+  function dragShortOntoTrack1(opts?: { moveTarget?: string; upTarget?: string | null }) {
+    const store = useTimelineStore.getState();
+    store.startDrag({
+      type: 'POINTER_DOWN',
+      itemId: 'short',
+      trackId: 'audio-track-2',
+      clientX: 0, clientY: 0,
+      relativeX: 50,
+      itemWidth: 100,
+      originalStartTime: 0,
+      originalDuration: 2,
+      zoomLevel: 1,
+      clipStart: 0,
+      originalMediaDuration: 2,
+    });
+    // 1st move exits `detecting` → `dragging` (no preview yet).
+    store.updateDrag({ type: 'POINTER_MOVE', clientX: 10, clientY: 0, deltaX: 10 });
+    // 2nd move computes the preview (deltaX 0 → startTime 0) and records the
+    // hovered target track.
+    store.updateDrag({
+      type: 'POINTER_MOVE', clientX: 10, clientY: 0, deltaX: 0,
+      targetTrackId: opts?.moveTarget ?? 'audio-track-1',
+    });
+    store.endDrag({
+      type: 'POINTER_UP', clientX: 10, clientY: 0,
+      targetTrackId: opts?.upTarget === undefined ? 'audio-track-1' : opts.upTarget,
+    });
+  }
+
+  it('packs the moved clip AFTER the existing one (non-overlap, INV-5 preserved)', async () => {
+    dragShortOntoTrack1();
+    await flushRaf();
+
+    const data = useTimelineStore.getState().exportToData();
+    const t1 = data.tracks.find(t => t.id === 'audio-track-1')!;
+    const t2 = data.tracks.find(t => t.id === 'audio-track-2')!;
+
+    // Clip transferred to the occupied track; source track is now empty.
+    expect(t1.items.map(i => i.id)).toEqual(['long', 'short']);
+    expect(t2.items).toEqual([]);
+
+    // Sequential, NON-overlapping pack (no same-track overlap → no INV-5 break).
+    const long = t1.items.find(i => i.id === 'long')!;
+    const short = t1.items.find(i => i.id === 'short')!;
+    expect(long.startTime).toBe(0);
+    expect(short.startTime).toBe(long.startTime + long.duration); // 8
+  });
+
+  it('flags the moved clip for scroll-into-view and selects it (fix C)', async () => {
+    dragShortOntoTrack1();
+    await flushRaf();
+
+    // The clip lands at t=8s (behind the long clip) — off-screen for a default
+    // viewport. The store signals the panel to scroll it into view, and selects
+    // it so the user can see exactly where it landed.
+    expect(useTimelineStore.getState().pendingScrollItemId).toBe('short');
+    expect(useTimelineStore.getState().selectedItems).toEqual(['short']);
+  });
+
+  it('pointer-up drop-point target overrides a stale POINTER_MOVE target (fix D)', async () => {
+    // Simulate a fast drag whose last move target lagged on the SOURCE track
+    // (no cross-track signal), while the actual release was over track 1.
+    dragShortOntoTrack1({ moveTarget: 'audio-track-2', upTarget: 'audio-track-1' });
+    await flushRaf();
+
+    const data = useTimelineStore.getState().exportToData();
+    const t1 = data.tracks.find(t => t.id === 'audio-track-1')!;
+    const t2 = data.tracks.find(t => t.id === 'audio-track-2')!;
+    // Without fix D the stale move target (== source) would abort the transfer
+    // and the clip would stay on track 2. The drop-point re-target moves it.
+    expect(t1.items.map(i => i.id)).toEqual(['long', 'short']);
+    expect(t2.items).toEqual([]);
+  });
+});

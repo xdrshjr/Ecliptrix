@@ -144,6 +144,14 @@ export type PointerUpEvent = {
   type: 'POINTER_UP';
   clientX: number;
   clientY: number;
+  /**
+   * Track id under the pointer at release, re-resolved by the UI layer by
+   * hit-testing the drop point. Overrides the last POINTER_MOVE target so a
+   * fast drag whose throttled tail lagged still commits to where the user
+   * actually let go (analysis §3.3 / fix D). Null/undefined when released
+   * outside any lane — the last move target is then kept.
+   */
+  targetTrackId?: string | null;
 };
 
 export type EscapeEvent = { type: 'ESCAPE' };
@@ -366,6 +374,17 @@ export const dragMachine = setup({
       };
     }),
 
+    // Fix D: at pointer-up, prefer the freshly hit-tested drop-point track over
+    // the last (possibly stale/throttled) POINTER_MOVE target. Falls back to the
+    // existing context target when the release resolved to no lane, so this is
+    // purely additive — it only changes the commit when the drop point differs.
+    applyPointerUpTarget: assign(({ context, event }) => {
+      const e = event as PointerUpEvent;
+      return {
+        targetTrackId: (e.targetTrackId ?? context.targetTrackId) as string | null,
+      };
+    }),
+
     restoreOriginal: assign(({ context }) => ({
       previewStartTime: context.originalStartTime,
       previewDuration: context.originalDuration,
@@ -454,6 +473,7 @@ export const dragMachine = setup({
         },
         POINTER_UP: {
           target: 'committed',
+          actions: 'applyPointerUpTarget',
         },
         ESCAPE: {
           target: 'idle',
@@ -474,6 +494,7 @@ export const dragMachine = setup({
         },
         POINTER_UP: {
           target: 'committed',
+          actions: 'applyPointerUpTarget',
         },
         ESCAPE: {
           target: 'idle',
