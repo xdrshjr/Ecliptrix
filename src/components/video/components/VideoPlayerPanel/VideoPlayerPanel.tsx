@@ -461,7 +461,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                           position: 'relative',
                         }
                   }
-                  onClick={() => setSelectedImageOverlay(null)} // 点击空白处取消选择
+                  onMouseDown={() => setSelectedImageOverlay(null)} // D1′：按下空白处取消选择（mousedown 触发，规避手势尾随 click 清选）
                 >
                   {/* local-video-editing-refactor S4 — the multi-track compositor
                       host is now the SOLE preview surface. useCompositionPlayback
@@ -500,7 +500,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                 // overflow-hidden：D3 防御兜底，占位模式叠加层若越界不溢出面板。
                 <div
                   className="video-placeholder-container relative overflow-hidden"
-                  onClick={() => setSelectedImageOverlay(null)}
+                  onMouseDown={() => setSelectedImageOverlay(null)} // D1′：按下空白处取消选择（占位模式）
                   style={{
                     minHeight: '200px',
                     display: 'flex',

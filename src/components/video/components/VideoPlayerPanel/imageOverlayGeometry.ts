@@ -165,3 +165,85 @@ export function resizeKeepingAspect(
   }
   return { width: newWidth, height: newHeight };
 }
+
+/** 四角缩放手柄 id：`tl/tr/bl/br` = 左上/右上/左下/右下（D2）。 */
+export type HandleId = 'tl' | 'tr' | 'bl' | 'br';
+
+/** 单个缩放手柄的渲染元数据（角居中定位 + 对角线光标），驱动四角手柄渲染。 */
+export interface ResizeHandleMeta {
+  id: HandleId;
+  /** Tailwind 定位类，使手柄中心精确对齐 box 对应角。 */
+  positionClass: string;
+  /** 光标类（对角线方向）。 */
+  cursorClass: string;
+}
+
+/**
+ * 四角手柄元数据（D2，C4 统一为角居中 `-translate-*-1/2`）：tl/br 走 nwse 光标、
+ * tr/bl 走 nesw 光标。ImageOverlay 直接 map 此表渲染四个手柄。
+ */
+export const RESIZE_HANDLES: readonly ResizeHandleMeta[] = [
+  { id: 'tl', positionClass: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2', cursorClass: 'cursor-nwse-resize' },
+  { id: 'tr', positionClass: 'top-0 right-0 translate-x-1/2 -translate-y-1/2', cursorClass: 'cursor-nesw-resize' },
+  { id: 'bl', positionClass: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2', cursorClass: 'cursor-nesw-resize' },
+  { id: 'br', positionClass: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2', cursorClass: 'cursor-nwse-resize' },
+];
+
+/**
+ * 每角「固定哪两条边」（C5 数据表）：fixLeft=左边(x)固定、否则右边(x+width)固定；
+ * fixTop=上边(y)固定、否则下边(y+height)固定。被拖角追随鼠标，对角恒定不动。
+ */
+const HANDLE_ANCHORS: Record<HandleId, { fixLeft: boolean; fixTop: boolean }> = {
+  br: { fixLeft: true, fixTop: true },
+  bl: { fixLeft: false, fixTop: true },
+  tr: { fixLeft: true, fixTop: false },
+  tl: { fixLeft: false, fixTop: false },
+};
+
+/**
+ * 多角等比缩放求解（D2/C5 数据表化）：按 `handle` 固定对角，鼠标驱动被拖角，复用
+ * `resizeKeepingAspect` 保持「显示框像素比例 == 图片自然比例」（`imageAspect` 为
+ * null 时退化为自由改框），按固定对角反推 `{x,y}`，最后 `clampImagePosition`
+ * 钳制。返回完整归一化显示框。
+ *
+ * @param handle      被拖的角
+ * @param base        当前显示框（= safePosition，已 clamp）
+ * @param mouseXNorm  鼠标归一化 x（内部按可用空间钳制）
+ * @param mouseYNorm  鼠标归一化 y
+ * @param imageAspect 图片自然比例 naturalW/naturalH，未就绪传 null
+ * @param frameAR     显示框像素宽高比 containerWidth/containerHeight
+ */
+export function resizeFromHandle(
+  handle: HandleId,
+  base: ImagePosition,
+  mouseXNorm: number,
+  mouseYNorm: number,
+  imageAspect: number | null,
+  frameAR: number,
+): ImagePosition {
+  const { fixLeft, fixTop } = HANDLE_ANCHORS[handle];
+  const right = base.x + base.width;
+  const bottom = base.y + base.height;
+
+  const rawWidth = fixLeft ? mouseXNorm - base.x : right - mouseXNorm;
+  const rawHeight = fixTop ? mouseYNorm - base.y : bottom - mouseYNorm;
+  const maxWidth = fixLeft ? 1 - base.x : right;
+  const maxHeight = fixTop ? 1 - base.y : bottom;
+
+  const { width, height } = resizeKeepingAspect(
+    rawWidth,
+    rawHeight,
+    maxWidth,
+    maxHeight,
+    imageAspect,
+    frameAR,
+  );
+
+  return clampImagePosition({
+    ...base,
+    x: fixLeft ? base.x : right - width,
+    y: fixTop ? base.y : bottom - height,
+    width,
+    height,
+  });
+}

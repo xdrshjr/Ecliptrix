@@ -14,6 +14,8 @@ import {
   clampImagePosition,
   alignDefaultBoxToImage,
   resizeKeepingAspect,
+  resizeFromHandle,
+  RESIZE_HANDLES,
   DEFAULT_IMAGE_POSITION,
   MIN_OVERLAY_SIZE,
 } from '../imageOverlayGeometry';
@@ -142,5 +144,87 @@ describe('resizeKeepingAspect (D4)', () => {
     const free = resizeKeepingAspect(2, -1, 0.6, 0.6, null, 1);
     expect(free.width).toBeCloseTo(0.6, 6); // capped at maxWidth
     expect(free.height).toBe(MIN_OVERLAY_SIZE); // floored at min
+  });
+});
+
+describe('RESIZE_HANDLES (D2 metadata)', () => {
+  it('declares exactly the four corners with center-aligned positioning', () => {
+    expect(RESIZE_HANDLES.map((h) => h.id).sort()).toEqual(['bl', 'br', 'tl', 'tr']);
+    // C4: every handle is center-aligned on its corner via a -translate-*-1/2 pair.
+    for (const h of RESIZE_HANDLES) {
+      expect(h.positionClass).toMatch(/translate-x-1\/2/);
+      expect(h.positionClass).toMatch(/translate-y-1\/2/);
+    }
+  });
+
+  it('uses both diagonal cursor classes (tl/br nwse, tr/bl nesw)', () => {
+    const cursorOf = (id: string) => RESIZE_HANDLES.find((h) => h.id === id)!.cursorClass;
+    expect(cursorOf('tl')).toBe('cursor-nwse-resize');
+    expect(cursorOf('br')).toBe('cursor-nwse-resize');
+    expect(cursorOf('tr')).toBe('cursor-nesw-resize');
+    expect(cursorOf('bl')).toBe('cursor-nesw-resize');
+  });
+});
+
+describe('resizeFromHandle (D2 multi-corner equal-ratio)', () => {
+  const square: ImagePosition = { x: 0.4, y: 0.4, width: 0.2, height: 0.2, zIndex: 10 };
+
+  it("'br' keeps the top-left anchor fixed (round-1 resizeKeepingAspect parity)", () => {
+    const base: ImagePosition = { x: 0.1, y: 0.1, width: 0.2, height: 0.2, zIndex: 10 };
+    const out = resizeFromHandle('br', base, 0.7, 0.7, 1, 1);
+    expect(out.x).toBeCloseTo(0.1, 6); // left fixed
+    expect(out.y).toBeCloseTo(0.1, 6); // top fixed
+    expect(out.width).toBeCloseTo(0.6, 6);
+    expect(out.height).toBeCloseTo(0.6, 6);
+    expect(out.zIndex).toBe(10);
+  });
+
+  it("'tl' keeps the bottom-right corner fixed while resizing equal-ratio", () => {
+    const out = resizeFromHandle('tl', square, 0.1, 0.1, 1, 1);
+    // bottom-right stays at (0.6, 0.6).
+    expect(out.x + out.width).toBeCloseTo(0.6, 6);
+    expect(out.y + out.height).toBeCloseTo(0.6, 6);
+    expect(out.width).toBeCloseTo(0.5, 6);
+    expect(out.height).toBeCloseTo(0.5, 6);
+  });
+
+  it("'bl' keeps the top-right corner fixed (top edge + right edge)", () => {
+    const base: ImagePosition = { x: 0.4, y: 0.1, width: 0.2, height: 0.2, zIndex: 10 };
+    const out = resizeFromHandle('bl', base, 0.1, 0.5, 1, 1);
+    expect(out.y).toBeCloseTo(0.1, 6); // top fixed
+    expect(out.x + out.width).toBeCloseTo(0.6, 6); // right fixed
+    expect(out.width).toBeCloseTo(0.5, 6);
+    expect(out.height).toBeCloseTo(0.5, 6);
+  });
+
+  it("'tr' keeps the bottom-left corner fixed (left edge + bottom edge)", () => {
+    const base: ImagePosition = { x: 0.1, y: 0.4, width: 0.2, height: 0.2, zIndex: 10 };
+    const out = resizeFromHandle('tr', base, 0.5, 0.1, 1, 1);
+    expect(out.x).toBeCloseTo(0.1, 6); // left fixed
+    expect(out.y + out.height).toBeCloseTo(0.6, 6); // bottom fixed
+    expect(out.width).toBeCloseTo(0.4, 6);
+    expect(out.height).toBeCloseTo(0.4, 6);
+  });
+
+  it('degrades to free resize when the image aspect is unknown', () => {
+    const base: ImagePosition = { x: 0.1, y: 0.1, width: 0.2, height: 0.2, zIndex: 10 };
+    const out = resizeFromHandle('br', base, 0.7, 0.5, null, 1);
+    expect(out.width).toBeCloseTo(0.6, 6);
+    expect(out.height).toBeCloseTo(0.4, 6); // height independent of width when aspect is null
+  });
+
+  it('never produces negative coords or overflows the frame on an extreme outward drag', () => {
+    const out = resizeFromHandle('tl', square, -0.5, -0.5, 1, 1);
+    expect(out.x).toBeGreaterThanOrEqual(0);
+    expect(out.y).toBeGreaterThanOrEqual(0);
+    expect(out.x + out.width).toBeLessThanOrEqual(1 + 1e-9);
+    expect(out.y + out.height).toBeLessThanOrEqual(1 + 1e-9);
+  });
+
+  it('floors to the minimum size on a collapsing inward drag (ratio preserved)', () => {
+    const out = resizeFromHandle('br', square, 0.4, 0.4, 1, 1);
+    expect(out.width).toBeGreaterThanOrEqual(MIN_OVERLAY_SIZE - 1e-9);
+    expect(out.height).toBeGreaterThanOrEqual(MIN_OVERLAY_SIZE - 1e-9);
+    expect((out.width / out.height) * 1).toBeCloseTo(1, 6); // square image → square box
   });
 });

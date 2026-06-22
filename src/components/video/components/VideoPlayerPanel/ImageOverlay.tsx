@@ -6,7 +6,9 @@ import { VideoEditingLogger } from '../../utils/logger';
 import {
   clampImagePosition,
   alignDefaultBoxToImage,
-  resizeKeepingAspect,
+  resizeFromHandle,
+  RESIZE_HANDLES,
+  type HandleId,
 } from './imageOverlayGeometry';
 
 const overlayLogger = new VideoEditingLogger({ component: 'ImageOverlay' });
@@ -41,6 +43,10 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   const imgRef = useRef<HTMLImageElement>(null);
   // D6 防重入：首帧对齐对单个挂载最多触发一次。
   const alignedRef = useRef(false);
+  // D2b：当前被拖的角必须用 ref 承载（非 state）——全局 mousemove 监听按回调标识
+  // 订阅，若用 state 存活动角则每次 setState 改变回调标识 → effect 重订阅 → 手势
+  // 中途丢事件/读到陈旧角。ref 不进依赖数组，回调标识稳定，手势连续。
+  const resizeHandleRef = useRef<HandleId | null>(null);
 
   // D3：入口钳制一次，作为渲染 + 拖拽 + 缩放的唯一基准。
   const safePosition = useMemo(() => clampImagePosition(position), [position]);
@@ -160,55 +166,59 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
       overlayLogger.debug('drag-end', { imageId, finalPosition: safePosition });
     }
 
+    resizeHandleRef.current = null;
     setIsDragging(false);
     setIsResizing(false);
   }, [isDragging, isResizing, imageId, safePosition]);
 
-  // 处理调整大小
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // 处理调整大小开始（D2 柯里化按角；写入活动角 ref，保留 preventDefault+stopPropagation）
+  const handleResizeMouseDown = useCallback(
+    (handle: HandleId) => (e: React.MouseEvent) => {
+      // preventDefault 抑制缩放拖动时的文本选中/图片原生拖拽残影（C6）；
+      // stopPropagation 阻断外层 wrapper 的 onMouseDown 取消选择 + 根 div 拖拽。
+      e.preventDefault();
+      e.stopPropagation();
 
-    setIsResizing(true);
-    overlayLogger.debug('resize-start', { imageId });
-  }, [imageId]);
+      resizeHandleRef.current = handle;
+      setIsResizing(true);
+      overlayLogger.debug('resize-start', { imageId, handle });
+    },
+    [imageId],
+  );
 
-  // 处理调整大小移动（D4 等比缩放，基于 safePosition）
+  // 处理调整大小移动（D2/D4 多角等比缩放，基于 safePosition）
   const handleResizeMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
+    const handle = resizeHandleRef.current;
+    if (!handle) return;
     if (containerWidth === 0 || containerHeight === 0) return;
 
     const containerRect = overlayRef.current?.parentElement?.getBoundingClientRect();
     if (!containerRect) return;
 
     const base = safePosition;
-    // 自由宽/高：鼠标相对叠加层左上角的归一化尺寸。
-    const rawWidth = (e.clientX - containerRect.left - base.x * containerWidth) / containerWidth;
-    const rawHeight = (e.clientY - containerRect.top - base.y * containerHeight) / containerHeight;
+    // C7：组件只算归一化鼠标坐标；raw/锚点反推全在 resizeFromHandle 内完成。
+    const mouseXNorm = (e.clientX - containerRect.left) / containerWidth;
+    const mouseYNorm = (e.clientY - containerRect.top) / containerHeight;
     const imageAspect =
       naturalSize && naturalSize.h > 0 ? naturalSize.w / naturalSize.h : null;
     const frameAR = containerWidth / containerHeight;
 
-    const { width: newWidth, height: newHeight } = resizeKeepingAspect(
-      rawWidth,
-      rawHeight,
-      1 - base.x,
-      1 - base.y,
+    const newPosition = resizeFromHandle(
+      handle,
+      base,
+      mouseXNorm,
+      mouseYNorm,
       imageAspect,
       frameAR,
     );
-
-    const newPosition = clampImagePosition({
-      ...base,
-      width: newWidth,
-      height: newHeight,
-    });
 
     onPositionChange(newPosition);
 
     overlayLogger.debug('resize-update', {
       imageId,
-      newSize: { width: newWidth, height: newHeight },
+      handle,
+      newSize: { width: newPosition.width, height: newPosition.height },
       equalRatio: !!imageAspect,
     });
   }, [isResizing, safePosition, naturalSize, containerWidth, containerHeight, onPositionChange, imageId]);
@@ -249,6 +259,9 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
         zIndex: safePosition.zIndex || 10,
       }}
       onMouseDown={handleMouseDown}
+      // D1′ defense-in-depth：拦截源自叠加层的尾随 click，防御未来在祖先上新挂
+      // onClick 导致选区被清（主修复已在 wrapper 改用 onMouseDown 取消选择）。
+      onClick={(e) => e.stopPropagation()}
     >
       <img
         ref={imgRef}
@@ -260,13 +273,17 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
         onError={() => overlayLogger.error('image-load-failed', { imageId, imageUrl })}
       />
 
-      {/* 选中时显示调整大小手柄 */}
-      {isSelected && (
+      {/* 选中时显示四角缩放手柄（D2）：角居中定位 + 对角线光标 + 外扩透明命中区
+          (p-1 → 实际可点 ≈ 20px)，可见方块沿用 w-3 h-3 蓝色样式。 */}
+      {isSelected && RESIZE_HANDLES.map((handle) => (
         <div
-          className="absolute bottom-0 right-0 w-3 h-3 bg-blue-500 cursor-se-resize"
-          onMouseDown={handleResizeMouseDown}
-        />
-      )}
+          key={handle.id}
+          className={`absolute ${handle.positionClass} ${handle.cursorClass} p-1`}
+          onMouseDown={handleResizeMouseDown(handle.id)}
+        >
+          <div className="w-3 h-3 bg-blue-500 pointer-events-none" />
+        </div>
+      ))}
 
       {/* 显示图片边框（仅在选中时） */}
       {isSelected && (
