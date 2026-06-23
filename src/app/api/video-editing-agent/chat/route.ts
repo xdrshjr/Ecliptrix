@@ -296,16 +296,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Read auth from header first, fall back to body (belt-and-suspenders for
-    // environments where the Authorization header is silently stripped).
+    // environments where the Authorization header is silently stripped). The
+    // user/auth system was removed on feat/remove-user-system, so this is now
+    // optional and may be undefined — downstream (getConfig, createVideoEditingAgent,
+    // toolFetch) all tolerate a missing token and the backend has no auth middleware.
     const incomingAuthToken = readIncomingAuth(request) ?? bodyToken;
-
-    if (!incomingAuthToken) {
-      console.error('[VideoEditingAgent] No auth token found — returning 401 immediately. Header:', request.headers.get('authorization') ? 'present' : 'missing', 'Body token:', bodyToken ? 'present' : 'missing');
-      return NextResponse.json(
-        { success: false, message: '未提供认证凭证', error_code: 'UNAUTHORIZED', error_details: { reason: 'Missing session token' } },
-        { status: 401 },
-      );
-    }
 
     const config = await getConfig(incomingAuthToken);
     const lastUserMessage = lastMessage.content;
