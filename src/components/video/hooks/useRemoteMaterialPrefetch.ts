@@ -1,7 +1,7 @@
 /**
  * useRemoteMaterialPrefetch — Hook layer
  *
- * Watches a `MaterialItem[]` for newly-added remote video assets and drives
+ * Watches a `MaterialItem[]` for newly-added remote video/audio assets and drives
  * the `RemoteMaterialPrefetchAdapter` ingest+poll lifecycle for each one,
  * patching the corresponding `MaterialItem` with `cacheStatus` /
  * `cacheUrl` / `cacheError` / `downloadProgress` as the backend transitions.
@@ -13,8 +13,8 @@
  * `onPatchMaterial` callback so unit tests can mock it cheaply.
  *
  * Detection:
- *   - Only `type === 'video'` materials are considered (audio / image
- *     don't go through the timeline preview hot path).
+ *   - Only `type === 'video' | 'audio'` materials are considered for durable
+ *     cache ingest. Preview-proxy transcoding remains video-only.
  *   - "remote" = url starts with http(s) AND is NOT same-origin
  *     (`window.location.origin`). This excludes our own `/api/storage/...`
  *     URLs, which the playback pipeline can already serve via Range.
@@ -239,7 +239,7 @@ function keyFor(material: MaterialItem): RemoteMaterialKey {
 
 function shouldPrefetch(material: MaterialItem, isRemote: (u: string) => boolean): boolean {
   if (canPreviewDirectLocalMaterial(material)) return false;
-  if (material.type !== 'video') return false;
+  if (material.type !== 'video' && material.type !== 'audio') return false;
   if (!material.url) return false;
   // Already finished / in-flight on a previous render — skip.
   if (material.cacheStatus === 'ready' && material.cacheUrl) return false;

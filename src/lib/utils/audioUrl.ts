@@ -28,6 +28,19 @@ export function selectAudioPlaybackUrl(material: MaterialItem): string | null {
     }
   }
 
+  const metadataLocalResolvedUrl = material.metadata?.localResolvedUrl as string | undefined;
+  if (metadataLocalResolvedUrl && !isBlobUrl(metadataLocalResolvedUrl)) {
+    return metadataLocalResolvedUrl;
+  }
+
+  const topLevelLocalResolvedUrl = (material as MaterialItem & { localResolvedUrl?: string })
+    .localResolvedUrl;
+  if (topLevelLocalResolvedUrl && !isBlobUrl(topLevelLocalResolvedUrl)) {
+    return topLevelLocalResolvedUrl;
+  }
+
+  if (material.cacheUrl && !isBlobUrl(material.cacheUrl)) return material.cacheUrl;
+
   if (material.serverUrl) return material.serverUrl;
 
   const originalUrl = material.metadata?.originalUrl as string | undefined;

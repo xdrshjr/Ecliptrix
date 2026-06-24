@@ -232,6 +232,54 @@ describe('useRemoteMaterialPrefetch', () => {
     );
   });
 
+  it('prefetches remote audio materials through the durable cache path', async () => {
+    const adapter = makeAdapter(
+      {
+        source: 'freesound',
+        source_id: '2468',
+        material_id: 'mid-audio-1',
+        status: 'pending',
+      },
+      {
+        source: 'freesound',
+        source_id: '2468',
+        material_id: 'mid-audio-1',
+        status: 'ready',
+        local_url: '/api/storage/files/cached_materials/freesound/2468.mp3',
+      },
+    );
+    const onPatch = vi.fn();
+    renderHook(() =>
+      useRemoteMaterialPrefetch(
+        [
+          makeMaterial({
+            id: 'a1',
+            name: 'ambient.mp3',
+            type: 'audio',
+            format: 'mp3',
+            url: 'https://freesound.org/data/previews/2/2468.mp3',
+            metadata: { source: 'freesound', sourceId: '2468' },
+          }),
+        ],
+        onPatch,
+        { adapter },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(onPatch).toHaveBeenCalledWith(
+        'a1',
+        expect.objectContaining({
+          cacheStatus: 'ready',
+          cacheUrl: '/api/storage/files/cached_materials/freesound/2468.mp3',
+        }),
+      );
+    });
+    expect(adapter.lastKey).toEqual(
+      expect.objectContaining({ source: 'freesound', source_id: '2468' }),
+    );
+  });
+
   it('falls back to url-derived source_id when no metadata.id', async () => {
     const adapter = makeAdapter({
       source: 'url',

@@ -206,14 +206,11 @@ export const useAudioSearch = (
 
       for (const audio of selectedAudios) {
         try {
-          // 下载音频文件
-          const response = await fetch(audio.download_url);
-          if (!response.ok) {
-            throw new Error(`下载音频失败: ${response.status}`);
+          // Create a remote material and let the shared cache prefetch path localize it.
+          const sourceUrl = audio.download_url || audio.preview_url;
+          if (!sourceUrl) {
+            throw new Error('Audio result has no playable URL');
           }
-
-          const audioBlob = await response.blob();
-          const localUrl = URL.createObjectURL(audioBlob);
 
           // 创建素材项
           const material: MaterialItem = {
@@ -221,15 +218,17 @@ export const useAudioSearch = (
             name: audio.name,
             type: 'audio' as MaterialType,
             format: audio.type || 'mp3',
-            size: audio.filesize || audioBlob.size,
+            size: audio.filesize || 0,
             duration: audio.duration,
-            url: localUrl,
-            serverUrl: audio.download_url,
+            url: sourceUrl,
+            serverUrl: sourceUrl,
             createdAt: new Date(),
             tags: audio.tags,
             description: audio.description,
             metadata: {
-              originalUrl: audio.download_url,
+              source: 'freesound',
+              sourceId: String(audio.id),
+              originalUrl: sourceUrl,
               previewUrl: audio.preview_url,
               waveformUrl: audio.waveform_url,
               license: audio.license,
@@ -244,16 +243,16 @@ export const useAudioSearch = (
 
           materials.push(material);
 
-          logger.info('音频下载成功', {
+          logger.info('音频素材创建成功', {
             audioId: audio.id,
             audioName: audio.name,
-            fileSize: audioBlob.size,
+            fileSize: audio.filesize || 0,
             duration: audio.duration,
             materialId: material.id
           });
 
         } catch (error) {
-          logger.error('音频下载失败', error as Error, {
+          logger.error('音频素材创建失败', error as Error, {
             audioId: audio.id,
             audioName: audio.name,
             downloadUrl: audio.download_url
@@ -265,7 +264,7 @@ export const useAudioSearch = (
       }
 
       if (materials.length === 0) {
-        setValidationError('所有音频下载失败，请检查网络连接');
+        setValidationError('所有音频素材创建失败，请检查搜索结果');
         return;
       }
 
@@ -329,4 +328,4 @@ export const useAudioSearch = (
     setValidationError,
     taskId
   };
-}; 
+};

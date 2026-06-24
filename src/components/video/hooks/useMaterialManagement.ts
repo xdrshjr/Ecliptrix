@@ -287,7 +287,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleMaterialUpload,
     handleDragUpload,
     triggerAutoAnalysis,
-  } = useMaterialUpload({ taskId, logger, user, isMountedRef, setMaterials });
+  } = useMaterialUpload({ taskId, logger, isMountedRef, setMaterials });
 
   // 添加或更新素材到列表
   const addMaterials = useCallback((newMaterials: MaterialItem[]) => {
@@ -453,37 +453,12 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     },
     [updateStoreMaterial],
   );
-  // Preview-proxy trigger接线 (spec §3.2.2(b)): derive the set of materialIds
-  // currently referenced by a *video* timeline item from the global store, so
-  // useRemoteMaterialPrefetch can diff "newly added to the timeline" and
-  // request a 480p proxy. Triggering on timeline membership (not material-
-  // library入库) satisfies master-plan condition 2 (addItem path, not
-  // addMaterials).
+  // Remote prefetch trigger接线 (spec §3.2.2(b)): derive the set of materialIds
+  // currently referenced by a media timeline item from the global store, so
+  // useRemoteMaterialPrefetch can localize remote video/audio assets. The
+  // hook keeps preview-proxy transcoding video-only via its own eligibility
+  // guard.
   const timelineState = useVideoEditingStore(state => state.timelineState);
-  const timelineVideoMaterialIds = useMemo(() => {
-    const ids = new Set<string>();
-    timelineState?.tracks?.forEach(track =>
-      track.items?.forEach(item => {
-        if (item.type === 'video' && item.materialId) {
-          ids.add(item.materialId);
-        }
-      }),
-    );
-    return ids;
-  }, [timelineState]);
-  useRemoteMaterialPrefetch(materials, patchMaterialCache, {
-    // Necessary input that actually arms the preview-proxy trigger block.
-    timelineReferencedMaterialIds: timelineVideoMaterialIds,
-    // Pass the same patch sink as the preview-proxy hydration target so all
-    // mirror fields land in the React useState path consistently.
-    onPatchPreviewProxy: patchMaterialCache,
-  });
-
-  // Round-2 client-side preview download (spec §3.3.3): derive the set of
-  // timeline-referenced *video + audio* materialIds (C2: image excluded — it
-  // has no CompositionPlayback channel and must not block the readiness gate).
-  // Kept separate from `timelineVideoMaterialIds` (video-only) so the round-1
-  // preview-proxy trigger口径 above stays untouched.
   const timelineMediaMaterialIds = useMemo(() => {
     const ids = new Set<string>();
     timelineState?.tracks?.forEach(track =>
@@ -495,6 +470,18 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     );
     return ids;
   }, [timelineState]);
+  useRemoteMaterialPrefetch(materials, patchMaterialCache, {
+    // Necessary input that arms timeline-aware remote cache and preview-proxy
+    // follow-up work. Preview-proxy remains video-only inside the hook.
+    timelineReferencedMaterialIds: timelineMediaMaterialIds,
+    // Pass the same patch sink as the preview-proxy hydration target so all
+    // mirror fields land in the React useState path consistently.
+    onPatchPreviewProxy: patchMaterialCache,
+  });
+
+  // Round-2 client-side preview download (spec §3.3.3): derive the set of
+  // timeline-referenced *video + audio* materialIds (C2: image excluded — it
+  // has no CompositionPlayback channel and must not block the readiness gate).
   const { retryLocalDownload, evictLocalMaterial } = useLocalMaterialDownload(materials, {
     timelineReferencedMaterialIds: timelineMediaMaterialIds,
     // Reuse the same patch sink so localProxy* fields share the authoritative

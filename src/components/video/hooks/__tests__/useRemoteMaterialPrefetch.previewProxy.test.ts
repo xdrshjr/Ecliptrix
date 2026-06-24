@@ -213,6 +213,39 @@ describe('useRemoteMaterialPrefetch — preview-proxy branch', () => {
     expect(requestSpy).not.toHaveBeenCalled();
   });
 
+  it('never requests preview-proxy for audio timeline materials', async () => {
+    const onPatchPP = vi.fn();
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    const { rerender } = renderHook(
+      ({ refs }: { refs: Set<string> }) =>
+        useRemoteMaterialPrefetch(
+          [
+            makeMaterial({
+              id: 'audio-1',
+              name: 'ambient.mp3',
+              type: 'audio',
+              format: 'mp3',
+              bytes: 100 * 1024 * 1024,
+              url: 'https://freesound.org/data/previews/2/2468.mp3',
+              serverUrl: '/api/storage/files/cached_materials/freesound/2468.mp3',
+              cacheUrl: '/api/storage/files/cached_materials/freesound/2468.mp3',
+              metadata: { source: 'freesound', sourceId: '2468' },
+            }),
+          ],
+          () => {},
+          {
+            mediaProxyClient: client,
+            onPatchPreviewProxy: onPatchPP,
+            timelineReferencedMaterialIds: refs,
+          },
+        ),
+      { initialProps: { refs: new Set<string>() } },
+    );
+    rerender({ refs: new Set<string>(['audio-1']) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(requestSpy).not.toHaveBeenCalled();
+  });
+
   it('exempts a known-small file (< 8MB) even when resolvable', async () => {
     const onPatchPP = vi.fn();
     const requestSpy = vi.spyOn(client, 'requestPreviewProxy');

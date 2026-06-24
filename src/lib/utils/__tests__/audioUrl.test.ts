@@ -61,6 +61,33 @@ describe('selectAudioPlaybackUrl', () => {
     expect(selectAudioPlaybackUrl(m)).toBe('blob:http://localhost/legacy');
   });
 
+  it('prefers metadata.localResolvedUrl before remote server URLs', () => {
+    const m = baseMaterial({
+      url: 'https://freesound.org/data/previews/2/2468.mp3',
+      serverUrl: 'https://freesound.org/data/previews/2/2468.mp3',
+      cacheUrl: '/api/storage/files/cached_materials/freesound/2468.mp3',
+      metadata: {
+        localResolvedUrl: '/api/storage/files/audio/local-2468.mp3',
+        originalUrl: 'https://freesound.org/data/previews/2/2468.mp3',
+      },
+    });
+    expect(selectAudioPlaybackUrl(m)).toBe('/api/storage/files/audio/local-2468.mp3');
+  });
+
+  it('prefers cacheUrl before remote server URLs', () => {
+    const m = baseMaterial({
+      url: 'https://freesound.org/data/previews/2/2468.mp3',
+      serverUrl: 'https://freesound.org/data/previews/2/2468.mp3',
+      cacheUrl: '/api/storage/files/cached_materials/freesound/2468.mp3',
+      metadata: {
+        originalUrl: 'https://freesound.org/data/previews/2/2468.mp3',
+      },
+    });
+    expect(selectAudioPlaybackUrl(m)).toBe(
+      '/api/storage/files/cached_materials/freesound/2468.mp3',
+    );
+  });
+
   it('falls through to serverUrl when local cache misses', () => {
     const m = baseMaterial({
       url: 'blob:http://localhost/dead',
