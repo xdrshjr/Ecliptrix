@@ -1,4 +1,10 @@
+/**
+ * @vitest-environment node
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import * as httpModule from '@/lib/api/http-client';
 import { ApiError } from '@/lib/api/http-client';
 import { generateKeywordsForSegments } from '../useScriptGeneration';
@@ -82,5 +88,39 @@ describe('generateKeywordsForSegments', () => {
     });
 
     expect(result[0].keywords).toBeUndefined();
+  });
+});
+
+describe('ScriptPanel lazy search keywords', () => {
+  const file = resolve(__dirname, '..', '..', 'ScriptPanel.tsx');
+  const src = readFileSync(file, 'utf-8');
+  const importBlock = src.slice(0, src.indexOf('interface ScriptPanelProps'));
+  const openSearchStart = src.indexOf('const handleOpenVideoSearch = useCallback');
+  expect(openSearchStart).toBeGreaterThan(-1);
+  const openSearchEnd = src.indexOf('const handleVideoNavigation = useCallback', openSearchStart);
+  expect(openSearchEnd).toBeGreaterThan(openSearchStart);
+  const handleOpenVideoSearch = src.slice(openSearchStart, openSearchEnd);
+
+  it('imports the shared keyword generator for search-open fallback', () => {
+    expect(importBlock).toMatch(/generateKeywordsForSegments/);
+    expect(importBlock).toMatch(/\.\/hooks\/useScriptGeneration/);
+  });
+
+  it('generates English keywords before opening search when the segment has none', () => {
+    expect(handleOpenVideoSearch).toMatch(/generateKeywordsForSegments\(/);
+    expect(handleOpenVideoSearch).toMatch(/language:\s*'english'/);
+    expect(handleOpenVideoSearch).toMatch(/onUpdateSegments\(/);
+    expect(handleOpenVideoSearch).toMatch(/openSearchModal\(\s*generatedKeywords\s*\)/);
+  });
+
+  it('guards duplicate lazy-generation clicks for the same segment', () => {
+    expect(src).toMatch(/keywordGenerationPromisesRef\s*=\s*useRef/);
+    expect(handleOpenVideoSearch).toMatch(/keywordGenerationPromisesRef\.current\.get\(segmentId\)/);
+    expect(handleOpenVideoSearch).toMatch(/keywordGenerationPromisesRef\.current\.set\(segmentId/);
+  });
+
+  it('reuses keywords written by background enrichment before starting lazy generation', () => {
+    expect(handleOpenVideoSearch).toMatch(/freshKeywords/);
+    expect(handleOpenVideoSearch).toMatch(/return freshKeywords/);
   });
 });

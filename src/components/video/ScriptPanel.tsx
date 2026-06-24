@@ -25,6 +25,7 @@ import { AiGenerateMenu } from './components/AiGenerateMenu';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
+import { generateKeywordsForSegments } from './hooks/useScriptGeneration';
 import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -153,6 +154,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [convertingSegments, setConvertingSegments] = useState<Set<string>>(new Set());
   const [ttsProgress, setTtsProgress] = useState<Record<string, number>>({});
   const [completedSegments, setCompletedSegments] = useState<Set<string>>(new Set());
+  const [keywordGeneratingSegments, setKeywordGeneratingSegments] = useState<Set<string>>(new Set());
+  const keywordGenerationPromisesRef = useRef<Map<string, Promise<string[] | undefined>>>(new Map());
   
   // 视频搜索相关状态
   const [currentSegmentId, setCurrentSegmentId] = useState<string | null>(null);
@@ -1017,7 +1020,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   ]);
 
   // 打开视频搜索模态框
-  const handleOpenVideoSearch = useCallback((segmentId: string) => {
+  const handleOpenVideoSearch = useCallback(async (segmentId: string) => {
     // 检查语音转换是否完成
     if (!completedSegments.has(segmentId)) {
       logger.warn('尝试打开视频搜索但语音转换未完成', { segmentId });
@@ -1025,21 +1028,83 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
 
     // 查找对应的段落，获取关键词
-    const segment = segments.find(s => s.id === segmentId);
-    const keywords = segment?.keywords;
+    const segment = segmentsRef.current.find(s => s.id === segmentId);
+    const keywords = segment?.keywords?.filter(keyword => keyword.trim().length > 0);
 
     logger.userAction('打开视频搜索', 'videoSearchButton', { 
       segmentId,
-      hasKeywords: !!keywords,
+      hasKeywords: !!keywords?.length,
       keywordCount: keywords?.length || 0,
       keywords
     });
     
     setCurrentSegmentId(segmentId);
+
+    if (keywords && keywords.length > 0) {
+      videoSearch.openSearchModal(keywords);
+      return;
+    }
+
+    if (!segment) {
+      videoSearch.openSearchModal();
+      return;
+    }
+
+    let keywordPromise = keywordGenerationPromisesRef.current.get(segmentId);
+    if (!keywordPromise) {
+      setKeywordGeneratingSegments(prev => new Set(prev).add(segmentId));
+      keywordPromise = (async () => {
+        const currentSegment = segmentsRef.current.find(s => s.id === segmentId) || segment;
+        const freshKeywords = currentSegment.keywords?.filter(keyword => keyword.trim().length > 0);
+        if (freshKeywords && freshKeywords.length > 0) {
+          return freshKeywords;
+        }
+
+        const [segmentWithKeywords] = await generateKeywordsForSegments(
+          [currentSegment],
+          taskId || 'unknown',
+          logger,
+          { language: 'english' },
+        );
+        const generatedKeywords = segmentWithKeywords?.keywords?.filter(keyword => keyword.trim().length > 0);
+
+        if (generatedKeywords && generatedKeywords.length > 0 && onUpdateSegments) {
+          const nextSegments = segmentsRef.current.map(s =>
+            s.id === segmentId ? { ...s, keywords: generatedKeywords } : s,
+          );
+          segmentsRef.current = nextSegments;
+          onUpdateSegments(nextSegments);
+        }
+
+        return generatedKeywords && generatedKeywords.length > 0 ? generatedKeywords : undefined;
+      })().finally(() => {
+        keywordGenerationPromisesRef.current.delete(segmentId);
+        setKeywordGeneratingSegments(prev => {
+          const next = new Set(prev);
+          next.delete(segmentId);
+          return next;
+        });
+      });
+      keywordGenerationPromisesRef.current.set(segmentId, keywordPromise);
+    }
     
-    // 如果段落有关键词，传递给视频搜索模态框
-    videoSearch.openSearchModal(keywords);
-  }, [completedSegments, logger, videoSearch, segments]);
+    let generatedKeywords: string[] | undefined;
+    try {
+      generatedKeywords = await keywordPromise;
+    } catch (error) {
+      logger.warn('搜索打开时生成关键词失败', {
+        segmentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (generatedKeywords && generatedKeywords.length > 0) {
+      videoSearch.openSearchModal(generatedKeywords);
+      return;
+    }
+
+    showError('Search keywords could not be generated. Opening search without keywords.');
+    videoSearch.openSearchModal();
+  }, [completedSegments, logger, onUpdateSegments, showError, taskId, videoSearch]);
 
   // 切换视频预览
   const handleVideoNavigation = useCallback((segmentId: string, direction: 'prev' | 'next') => {
@@ -2026,14 +2091,18 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 {/* 搜索在线视频按钮 - 一直显示，但只有转换完成后才可点击 */}
                 <button
                   onClick={() => handleOpenVideoSearch(segment.id)}
-                  disabled={!completedSegments.has(segment.id)}
+                  disabled={!completedSegments.has(segment.id) || keywordGeneratingSegments.has(segment.id)}
                   className={`p-1.5 border rounded transition-colors ${
-                    completedSegments.has(segment.id)
+                    completedSegments.has(segment.id) && !keywordGeneratingSegments.has(segment.id)
                       ? 'text-primary bg-primary/10 border-primary/30 hover:bg-primary/20 hover:border-primary/40'
                       : 'text-muted-foreground bg-muted border-border cursor-not-allowed opacity-50'
                   }`}
-                  title={completedSegments.has(segment.id) ? t.scriptPanel.actions.searchOnlineVideos : t.scriptPanel.actions.completeConversionFirst}
-                  aria-label={completedSegments.has(segment.id)
+                  title={keywordGeneratingSegments.has(segment.id)
+                    ? 'Generating search keywords...'
+                    : completedSegments.has(segment.id) ? t.scriptPanel.actions.searchOnlineVideos : t.scriptPanel.actions.completeConversionFirst}
+                  aria-label={keywordGeneratingSegments.has(segment.id)
+                    ? 'Generating search keywords...'
+                    : completedSegments.has(segment.id)
                     ? t.scriptPanel.actions.searchOnlineVideos
                     : `${t.scriptPanel.actions.searchOnlineVideos} — ${t.scriptPanel.actions.completeConversionFirst}`}
                 >
