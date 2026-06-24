@@ -47,6 +47,7 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   onPatchMaterialCache?: (id: string, patch: RemoteMaterialPatch) => void;
   // 新增：图片叠加位置更新回调
   onImagePositionChange?: (itemId: string, position: ImagePosition) => void;
+  onImagePositionConfirm?: (itemId: string, position: ImagePosition) => void;
   // 新增：项目元信息，供 Cover 模态使用（无 projectId 时按钮隐藏）
   projectId?: string;
   projectName?: string;
@@ -92,6 +93,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   timelineState,
   materials,
   onImagePositionChange,
+  onImagePositionConfirm,
   projectId,
   projectName,
 }, ref) => {
@@ -135,6 +137,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
 
   // 新增：图片叠加相关状态
   const [selectedImageOverlay, setSelectedImageOverlay] = useState<string | null>(null);
+  const [imageOverlayEntrySnapshots, setImageOverlayEntrySnapshots] = useState<Record<string, ImagePosition>>({});
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
@@ -240,10 +243,39 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   }, [onImagePositionChange, logger]);
 
   // 新增：处理图片选择
-  const handleImageOverlaySelect = useCallback((itemId: string) => {
+  const handleImageOverlaySelect = useCallback((itemId: string, position: ImagePosition) => {
     setSelectedImageOverlay(itemId);
+    setImageOverlayEntrySnapshots((prev) => {
+      if (selectedImageOverlay === itemId && prev[itemId]) return prev;
+      return { ...prev, [itemId]: position };
+    });
     logger.info('选择图片叠加', { itemId });
-  }, [logger]);
+  }, [logger, selectedImageOverlay]);
+
+  const clearImageOverlaySnapshot = useCallback((itemId: string) => {
+    setImageOverlayEntrySnapshots((prev) => {
+      if (!(itemId in prev)) return prev;
+      const { [itemId]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const handleImagePositionConfirm = useCallback((itemId: string, position: ImagePosition) => {
+    logger.info('图片叠加位置确认', { itemId, position });
+    onImagePositionConfirm?.(itemId, position);
+    clearImageOverlaySnapshot(itemId);
+    setSelectedImageOverlay(null);
+  }, [clearImageOverlaySnapshot, logger, onImagePositionConfirm]);
+
+  const handleImagePositionCancel = useCallback((itemId: string) => {
+    const snapshot = imageOverlayEntrySnapshots[itemId];
+    if (snapshot) {
+      logger.info('图片叠加位置取消', { itemId, snapshot });
+      handleImagePositionChange(itemId, snapshot);
+    }
+    clearImageOverlaySnapshot(itemId);
+    setSelectedImageOverlay(null);
+  }, [clearImageOverlaySnapshot, handleImagePositionChange, imageOverlayEntrySnapshots, logger]);
 
   // 新增：监听容器尺寸变化（ResizeObserver）
   useEffect(() => {
@@ -490,8 +522,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       containerWidth={previewFrameBox ? previewFrameBox.width : containerDimensions.width}
                       containerHeight={previewFrameBox ? previewFrameBox.height : containerDimensions.height}
                       onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
+                      onConfirm={() => handleImagePositionConfirm(overlay.id, overlay.position)}
+                      onCancel={() => handleImagePositionCancel(overlay.id)}
                       isSelected={selectedImageOverlay === overlay.id}
-                      onSelect={() => handleImageOverlaySelect(overlay.id)}
+                      onSelect={() => handleImageOverlaySelect(overlay.id, overlay.position)}
                     />
                   ))}
                 </div>
@@ -539,8 +573,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       containerWidth={containerDimensions.width}
                       containerHeight={containerDimensions.height}
                       onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
+                      onConfirm={() => handleImagePositionConfirm(overlay.id, overlay.position)}
+                      onCancel={() => handleImagePositionCancel(overlay.id)}
                       isSelected={selectedImageOverlay === overlay.id}
-                      onSelect={() => handleImageOverlaySelect(overlay.id)}
+                      onSelect={() => handleImageOverlaySelect(overlay.id, overlay.position)}
                     />
                   ))}
                 </div>

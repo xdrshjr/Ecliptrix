@@ -5,7 +5,7 @@ import { VideoEditingLogger } from './utils/logger';
 import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment, StoryboardScriptSegment, ScriptSegment } from '@/types';
 import { useVideoEditingStore } from '@/stores';
 import ScriptPanel from './ScriptPanel';
-import { TimelinePanel } from './timeline';
+import { TimelinePanel, useTimelineStore } from './timeline';
 import '../../styles/video-editing.css';
 import { shouldRestrictVideoEditing, getDeviceType, getDeviceInfo } from '@/lib/utils/deviceDetection';
 import { MobileWarningDialog } from '@/components/ui';
@@ -2055,6 +2055,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [timelineComposition]);
 
+  const handleImagePositionConfirm = useCallback((itemId: string, position: ImagePosition) => {
+    useTimelineStore.getState().updateItemImagePosition(itemId, position);
+  }, []);
+
   // 新增：AI自动混剪功能
   const handleAutoMixAudio = useCallback(() => {
     if (materialManagement.allMaterials.length === 0) {
@@ -2772,6 +2776,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               materials={materialManagement.allMaterials}
               onPatchMaterialCache={materialManagement.patchMaterialCache}
               onImagePositionChange={handleImagePositionChange}
+              onImagePositionConfirm={handleImagePositionConfirm}
               projectId={projectId}
               projectName=""
             />

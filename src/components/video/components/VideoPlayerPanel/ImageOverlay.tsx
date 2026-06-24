@@ -19,6 +19,8 @@ interface ImageOverlayProps {
   containerWidth: number;
   containerHeight: number;
   onPositionChange: (position: ImagePosition) => void;
+  onConfirm?: () => void;
+  onCancel?: () => void;
   isSelected?: boolean;
   onSelect?: () => void;
   imageId: string;
@@ -30,6 +32,8 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   containerWidth,
   containerHeight,
   onPositionChange,
+  onConfirm,
+  onCancel,
   isSelected = false,
   onSelect,
   imageId
@@ -186,6 +190,23 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     [imageId],
   );
 
+  const handleControlMouseDown = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleConfirmClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onConfirm?.();
+  }, [onConfirm]);
+
+  const handleCancelClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onCancel?.();
+  }, [onCancel]);
+
   // 处理调整大小移动（D2/D4 多角等比缩放，基于 safePosition）
   const handleResizeMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
@@ -288,6 +309,31 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
       {/* 显示图片边框（仅在选中时） */}
       {isSelected && (
         <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
+      )}
+
+      {isSelected && (
+        <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
+          <button
+            type="button"
+            title="Confirm image position"
+            aria-label="Confirm image position"
+            className="flex h-6 w-6 items-center justify-center rounded bg-green-600 text-xs font-semibold text-white shadow hover:bg-green-700"
+            onMouseDown={handleControlMouseDown}
+            onClick={handleConfirmClick}
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            title="Cancel image position"
+            aria-label="Cancel image position"
+            className="flex h-6 w-6 items-center justify-center rounded bg-red-600 text-xs font-semibold text-white shadow hover:bg-red-700"
+            onMouseDown={handleControlMouseDown}
+            onClick={handleCancelClick}
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

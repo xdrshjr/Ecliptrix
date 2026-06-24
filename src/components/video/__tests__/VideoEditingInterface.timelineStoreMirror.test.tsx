@@ -319,4 +319,16 @@ describe('timeline store mirror — production wiring (source level)', () => {
       /m\.type\s*!==\s*'video'\s*&&\s*m\.type\s*!==\s*'audio'/,
     );
   });
+
+  it('commits confirmed image overlay positions to the authoritative timeline store', () => {
+    expect(interfaceSrc).toMatch(
+      /import\s+\{\s*TimelinePanel,\s*useTimelineStore\s*\}\s+from\s+'\.\/timeline'/,
+    );
+    expect(interfaceSrc).toMatch(
+      /const\s+handleImagePositionConfirm\s*=\s*useCallback\(\s*\(itemId:\s*string,\s*position:\s*ImagePosition\)/,
+    );
+    expect(interfaceSrc).toMatch(
+      /useTimelineStore\.getState\(\)\.updateItemImagePosition\(itemId,\s*position\)/,
+    );
+  });
 });

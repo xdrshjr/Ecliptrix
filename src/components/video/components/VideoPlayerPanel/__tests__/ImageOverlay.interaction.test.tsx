@@ -58,3 +58,29 @@ describe('ImageOverlay — selection stability + four-corner resize (D1′/D2/D2
     expect(OVERLAY).toMatch(/resizeFromHandle\(/); // move delegates to the pure helper
   });
 });
+
+describe('ImageOverlay explicit commit/cancel controls', () => {
+  it('exposes confirm/cancel callbacks on selected image overlays', () => {
+    expect(OVERLAY).toMatch(/onConfirm\?:\s*\(\)\s*=>\s*void/);
+    expect(OVERLAY).toMatch(/onCancel\?:\s*\(\)\s*=>\s*void/);
+  });
+
+  it('renders selected-state confirm and cancel buttons with event isolation', () => {
+    expect(OVERLAY).toMatch(/title="Confirm image position"/);
+    expect(OVERLAY).toMatch(/aria-label="Confirm image position"/);
+    expect(OVERLAY).toMatch(/title="Cancel image position"/);
+    expect(OVERLAY).toMatch(/aria-label="Cancel image position"/);
+    expect(OVERLAY).toMatch(/handleControlMouseDown/);
+    expect(OVERLAY).toMatch(/handleConfirmClick/);
+    expect(OVERLAY).toMatch(/handleCancelClick/);
+  });
+
+  it('VideoPlayerPanel wires commit and cancel handlers into both overlay render paths', () => {
+    const confirmMatches = PANEL.match(/onConfirm=\{\(\)\s*=>\s*handleImagePositionConfirm\(overlay\.id,\s*overlay\.position\)\}/g);
+    const cancelMatches = PANEL.match(/onCancel=\{\(\)\s*=>\s*handleImagePositionCancel\(overlay\.id\)\}/g);
+    expect(confirmMatches).not.toBeNull();
+    expect(cancelMatches).not.toBeNull();
+    expect(confirmMatches!.length).toBe(2);
+    expect(cancelMatches!.length).toBe(2);
+  });
+});

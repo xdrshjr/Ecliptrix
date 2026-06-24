@@ -24,6 +24,7 @@ import type {
   TimelineSnapshot,
   MaterialData,
   TimelineItemData,
+  ImagePosition,
 } from '../../domain';
 import type { TimelineStore } from '../useTimelineStore';
 
@@ -56,6 +57,8 @@ export interface TimelineSlice {
   resizeItem: (itemId: string, edge: 'start' | 'end', newPosition: number) => void;
   updateItemVolume: (itemId: string, volume: number) => void;
   updateItemSubtitle: (itemId: string, text: string) => void;
+  /** Persist an image overlay's position/scale into the authoritative store. */
+  updateItemImagePosition: (itemId: string, position: ImagePosition) => void;
   /** Shift subsequent items on the same track to close gaps after a given item. */
   consolidateTrackAfterItem: (itemId: string) => void;
   /**
@@ -376,6 +379,19 @@ export const createTimelineSlice: StateCreator<
       }
 
       found.item.text = text;
+      state._syncDerivedState();
+    },
+
+    updateItemImagePosition: (itemId: string, position: ImagePosition) => {
+      const state = get();
+      const aggregate = state._aggregate;
+      const found = aggregate.findItem(itemId);
+      if (!found) {
+        console.warn(`[timelineSlice] updateItemImagePosition: item "${itemId}" not found.`);
+        return;
+      }
+
+      found.item.imagePosition = position;
       state._syncDerivedState();
     },
 
