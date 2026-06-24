@@ -25,6 +25,7 @@ import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
 import { clampVolume, VOLUME_DEFAULT, getDefaultTrackHeight, type TrackKind } from './constants';
 import { http, ApiError } from '@/lib/api/http-client';
 import { TimelineRepository } from './infrastructure';
+import { shouldTimelineHandleCopyShortcut } from './shortcutOwnership';
 import type { MaterialData } from './domain';
 
 // ---------------------------------------------------------------------------
@@ -477,6 +478,15 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         e.preventDefault();
         useTimelineStore.getState().redo();
       } else if (ctrl && (e.key === 'c' || e.key === 'C')) {
+        const state = useTimelineStore.getState();
+        const selection = window.getSelection();
+        if (!shouldTimelineHandleCopyShortcut({
+          selection,
+          selectedItems: state.selectedItems,
+        })) {
+          return;
+        }
+
         e.preventDefault();
         handleCopyRef.current();
       } else if (ctrl && (e.key === 'e' || e.key === 'E')) {
