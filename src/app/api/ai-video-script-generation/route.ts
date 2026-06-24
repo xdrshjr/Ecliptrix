@@ -1,17 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ScriptGenerationConfig, ChatMessage } from '@/types';
 import { truncateChatMessages } from '@/lib/utils/chatMessageUtils';
+import { backendConfig } from '@/lib/config/backend';
+import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat';
 
-const getConfig = () => {
+type ResolvedConfig = {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  apiType: LlmApiType;
+};
+
+// Actionable copy surfaced verbatim to the user when no model is configured.
+const LLM_NOT_CONFIGURED_MESSAGE =
+  '尚未配置 AI 模型凭证,请前往 设置 → 模型设置 完成配置 (AI model not configured — open Settings → Model Settings)';
+
+// Distinguishable error so the outer catch can return a structured 503 instead
+// of a generic 500. Identified by a stable `code`, never by message matching.
+class LlmNotConfiguredError extends Error {
+  readonly code = 'LLM_NOT_CONFIGURED';
+  constructor(message: string = LLM_NOT_CONFIGURED_MESSAGE) {
+    super(message);
+    this.name = 'LlmNotConfiguredError';
+  }
+}
+
+// Resolve LLM credentials the same way /api/chat and Agent inference do: the
+// DB-configured chat model first (via the FastAPI resolve endpoint), env vars
+// as fallback. Crucially this returns `apiType`, so the call site can pick the
+// correct OpenAI vs Anthropic transport. The previous direct `process.env`
+// read here was api_type-blind and 401'd against Anthropic-compatible endpoints
+// (e.g. the desktop default), because it always hit `/chat/completions`.
+const getConfig = async (): Promise<ResolvedConfig> => {
+  let backendNotConfiguredMessage: string | null = null;
+  try {
+    const res = await fetch(
+      backendConfig.joinPath('/api/model-settings/resolve/chat'),
+      { method: 'GET', headers: { 'Content-Type': 'application/json' } },
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.api_key) {
+        return {
+          apiUrl: data.api_url,
+          apiKey: data.api_key,
+          model: data.model_name,
+          apiType: normalizeApiType(data.api_type),
+        };
+      }
+    } else if (res.status === 503) {
+      const data = await res.json().catch(() => null);
+      if (data?.error_code === 'MODEL_NOT_CONFIGURED' && typeof data.message === 'string') {
+        backendNotConfiguredMessage = data.message;
+      }
+    }
+  } catch {
+    console.warn('[AI Video Script Generation API] Failed to fetch model settings from backend, falling back to env vars');
+  }
+
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+  const apiType = normalizeApiType(process.env.LLM_API_TYPE);
 
   if (!apiKey) {
-    throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.');
+    throw new LlmNotConfiguredError(backendNotConfiguredMessage ?? undefined);
   }
 
-  return { apiUrl, apiKey, model };
+  return { apiUrl, apiKey, model, apiType };
 };
 
 /**
@@ -197,7 +253,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = getConfig();
+    const config = await getConfig();
 
     const inputSources: string[] = [];
     if (hasChatMessages) inputSources.push(`chatMessages(${chatMessages!.length})`);
@@ -207,42 +263,53 @@ export async function POST(request: NextRequest) {
 
     console.log(`[AI Video Script Generation API] ${new Date().toISOString()} - Request for task: ${taskId}, sources: [${inputSources.join(', ')}]`);
 
-    const requestData = {
-      model: config.model,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert AI video script writer. You create vivid scene descriptions for AI video generation. You always return valid JSON responses exactly as requested.'
-        },
-        {
-          role: 'user',
-          content: buildAIVideoScriptPrompt(chatMessages, scriptConfig, customPrompt, videoAnalysisContext, durationTarget)
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 3000,
-    };
-
-    const response = await fetch(`${config.apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
+    // Reuse the shared, api_type-aware LLM client (same path as /api/chat and
+    // Agent inference) and accumulate the streamed content into one string, so
+    // the existing non-streaming "extract {…} → JSON.parse → validate segments"
+    // logic below stays unchanged. This route's own system prompt, temperature
+    // (0.7) and max_tokens (3000) are preserved.
+    const messages = [
+      {
+        role: 'system',
+        content: 'You are an expert AI video script writer. You create vivid scene descriptions for AI video generation. You always return valid JSON responses exactly as requested.'
       },
-      body: JSON.stringify(requestData),
-    });
+      {
+        role: 'user',
+        content: buildAIVideoScriptPrompt(chatMessages, scriptConfig, customPrompt, videoAnalysisContext, durationTarget)
+      }
+    ];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[AI Video Script Generation API] LLM API error: ${response.status} - ${errorText}`);
-      return NextResponse.json(
-        { error: `LLM API error: ${response.status}` },
-        { status: response.status }
-      );
+    console.log(`[AI Video Script Generation API] Calling LLM API (api_type=${config.apiType}) base=${config.apiUrl} for task: ${taskId}`);
+
+    let content = '';
+    let upstreamError: { status: number; message: string } | null = null;
+    for await (const event of streamLlmChat({
+      config: {
+        apiUrl: config.apiUrl,
+        apiKey: config.apiKey,
+        model: config.model,
+        apiType: config.apiType,
+      },
+      messages,
+      temperature: 0.7,
+      maxTokens: 3000,
+    })) {
+      if (event.kind === 'error') {
+        upstreamError = { status: event.status, message: event.message };
+        break;
+      }
+      if (event.kind === 'content') content += event.text;
     }
 
-    const result = await response.json();
-    const content = result.choices?.[0]?.message?.content;
+    if (upstreamError) {
+      // Preserve the upstream status (401/429/…) instead of collapsing to 500.
+      console.error(`[AI Video Script Generation API] LLM API error: ${upstreamError.status} - ${upstreamError.message}`);
+      const httpStatus = upstreamError.status >= 400 && upstreamError.status <= 599 ? upstreamError.status : 502;
+      return NextResponse.json(
+        { error: `LLM API error: ${upstreamError.status}` },
+        { status: httpStatus }
+      );
+    }
 
     if (!content) {
       return NextResponse.json(
@@ -292,6 +359,16 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[AI Video Script Generation API] Request processing error:', error);
+
+    // 「未配置 AI 模型凭证」是设计内的可操作失败，返回可识别的结构化 503（与 /api/chat 一致），
+    // 而非塌缩成无信息量的 500；其余未知错误维持原有 500 契约不变。
+    if (error instanceof LlmNotConfiguredError) {
+      return NextResponse.json(
+        { success: false, error_code: error.code, message: error.message },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
