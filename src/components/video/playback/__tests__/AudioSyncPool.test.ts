@@ -418,6 +418,66 @@ class GuardableFakeAudio extends FakeAudio {
   readyState = 4; // HAVE_ENOUGH_DATA by default → guard idle unless overridden
 }
 
+type EventfulAudio = AudioElementLike & {
+  paused: boolean;
+  playCalls: number;
+  rejectPlay: boolean;
+  playedSources: string[];
+  addEventListener(type: string, cb: () => void, opts?: { once?: boolean }): void;
+  removeEventListener(type: string, cb: () => void): void;
+  dispatchEvent(type: string): void;
+  listenerCount(type: string): number;
+};
+
+function eventfulAudio(over: Partial<EventfulAudio> = {}): EventfulAudio {
+  const handlers: Array<{ type: string; cb: () => void; once: boolean }> = [];
+  const el = {
+    src: '',
+    currentTime: 0,
+    volume: 1,
+    paused: true,
+    playCalls: 0,
+    rejectPlay: true,
+    playedSources: [] as string[],
+    play(): Promise<void> {
+      el.playCalls += 1;
+      el.playedSources.push(el.src);
+      if (el.rejectPlay) {
+        el.paused = true;
+        return Promise.reject(new Error('NotAllowedError'));
+      }
+      el.paused = false;
+      return Promise.resolve();
+    },
+    pause() {
+      el.paused = true;
+    },
+    addEventListener(type: string, cb: () => void, opts?: { once?: boolean }) {
+      handlers.push({ type, cb, once: !!(opts && opts.once) });
+    },
+    removeEventListener(type: string, cb: () => void) {
+      for (let i = handlers.length - 1; i >= 0; i--) {
+        if (handlers[i].type === type && handlers[i].cb === cb) handlers.splice(i, 1);
+      }
+    },
+    dispatchEvent(type: string) {
+      const matched = handlers.filter((h) => h.type === type);
+      for (const h of matched) {
+        if (h.once) {
+          const idx = handlers.indexOf(h);
+          if (idx >= 0) handlers.splice(idx, 1);
+        }
+        h.cb();
+      }
+    },
+    listenerCount(type: string) {
+      return handlers.filter((h) => h.type === type).length;
+    },
+    ...over,
+  };
+  return el as unknown as EventfulAudio;
+}
+
 describe('AudioSyncPool.tick — in-flight seek guard (B1①②)', () => {
   it('does NOT re-assign currentTime while a seek is in flight (seeking === true)', () => {
     const el = new GuardableFakeAudio();
@@ -490,5 +550,99 @@ describe('AudioSyncPool.tick — in-flight seek guard (B1①②)', () => {
     expect(el.currentTime).toBe(0); // seek guarded
     expect(el.volume).toBe(0.5); // volume still applied
     expect(el.paused).toBe(false); // and play() still issued
+  });
+});
+
+describe('AudioSyncPool.tick — canplay retry after rejected play()', () => {
+  it('arms one canplay retry after a rejected play() and retries playback on canplay', async () => {
+    const el = eventfulAudio({ rejectPlay: true });
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'song.mp3' })])];
+
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(el.playCalls).toBe(1);
+    expect(el.listenerCount('canplay')).toBe(1);
+
+    el.rejectPlay = false;
+    el.dispatchEvent('canplay');
+
+    expect(el.playCalls).toBe(2);
+    expect(el.listenerCount('canplay')).toBe(0);
+    expect(el.paused).toBe(false);
+  });
+
+  it('does not stack duplicate canplay listeners across repeated rejected ticks', async () => {
+    const el = eventfulAudio({ rejectPlay: true });
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'song.mp3' })])];
+
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(el.playCalls).toBe(2);
+    expect(el.listenerCount('canplay')).toBe(1);
+  });
+
+  it('keeps non-EventTarget fakes swallowing rejected play() without throwing', () => {
+    const el = new FakeAudio();
+    el.play = () => Promise.reject(new Error('interrupted'));
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'song.mp3' })])];
+
+    expect(() => pool.tick(groups, 2, true)).not.toThrow();
+    expect((el as unknown as { __ecliptrixAudioPlayKick?: unknown }).__ecliptrixAudioPlayKick).toBeUndefined();
+  });
+
+  it('disarms a pending retry when the pool pauses for a gap or user pause', async () => {
+    const el = eventfulAudio({ rejectPlay: true });
+    const pool = new AudioSyncPool(() => el);
+    const groups = [audioGroup('t1', [clip('a', 0, 5, { url: 'song.mp3' })])];
+
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(el.listenerCount('canplay')).toBe(1);
+
+    pool.tick(groups, 2, false);
+    el.rejectPlay = false;
+    el.dispatchEvent('canplay');
+
+    expect(el.playCalls).toBe(1);
+    expect(el.paused).toBe(true);
+  });
+
+  it('ignores stale canplay retries after a source swap and retries only the current source', async () => {
+    const el = eventfulAudio({ rejectPlay: true });
+    const pool = new AudioSyncPool(() => el);
+    const groups = [
+      audioGroup('t1', [
+        clip('a', 0, 5, { url: 'first.mp3' }),
+        clip('b', 5, 5, { url: 'second.mp3' }),
+      ]),
+    ];
+
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(el.listenerCount('canplay')).toBe(1);
+
+    pool.tick(groups, 7, true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(el.listenerCount('canplay')).toBe(2);
+
+    el.rejectPlay = false;
+    el.dispatchEvent('canplay');
+
+    expect(el.playCalls).toBe(3);
+    expect(el.playedSources).toEqual(['first.mp3', 'second.mp3', 'second.mp3']);
+    expect(el.paused).toBe(false);
   });
 });

@@ -244,6 +244,21 @@ export interface AudioElementLike {
 /** Resolves (or lazily creates) the audio element bound to a track id. */
 export type AudioElementResolver = (trackId: string) => AudioElementLike | null;
 
+type AudioCanplayRetryMarker = {
+  epoch: number;
+  src: string;
+};
+
+type AudioCanplayRetryTarget = AudioElementLike & {
+  addEventListener?: (
+    type: string,
+    listener: () => void,
+    opts?: { once?: boolean },
+  ) => void;
+  __ecliptrixAudioPlayKick?: AudioCanplayRetryMarker;
+  __ecliptrixAudioPlayRetryEpoch?: number;
+};
+
 /**
  * Thin stateful wrapper that applies pure {@link computeAudioSyncActions} to
  * injected audio elements. Keeps DOM-touching code out of the tested path.
@@ -294,6 +309,7 @@ export class AudioSyncPool {
     if (!el) return;
     switch (action.action) {
       case 'pause':
+        this._disarmCanplayRetry(el);
         if (!el.paused) el.pause();
         return;
       case 'seek': {
@@ -332,6 +348,7 @@ export class AudioSyncPool {
   private _ensureSrc(el: AudioElementLike, url: string | undefined): boolean {
     if (!url) return false;
     if (normalizeSrc(el.src) === normalizeSrc(url)) return false;
+    this._disarmCanplayRetry(el);
     el.src = url;
     return true;
   }
@@ -361,13 +378,55 @@ export class AudioSyncPool {
 
   private _ensurePlaying(el: AudioElementLike): void {
     if (!el.paused) return;
+    const retryTarget = el as AudioCanplayRetryTarget;
+    const epoch = retryTarget.__ecliptrixAudioPlayRetryEpoch ?? 0;
+    const src = normalizeSrc(el.src);
     const result = el.play();
     // The browser rejects play() when interrupted by a near-simultaneous
     // pause/seek; that is benign and self-heals next tick, so swallow only the
     // promise rejection (NOT a structural error) to avoid an unhandled
     // rejection. Non-promise returns (test fakes) need no handling.
     if (result && typeof (result as Promise<void>).catch === 'function') {
-      (result as Promise<void>).catch(() => undefined);
+      (result as Promise<void>).catch(() => {
+        if ((retryTarget.__ecliptrixAudioPlayRetryEpoch ?? 0) !== epoch) return;
+        if (normalizeSrc(el.src) !== src) return;
+        this._scheduleCanplayRetry(el, epoch, src);
+      });
     }
+  }
+
+  private _scheduleCanplayRetry(el: AudioElementLike, epoch: number, src: string): void {
+    const target = el as AudioCanplayRetryTarget;
+    if (typeof target.addEventListener !== 'function' || target.__ecliptrixAudioPlayKick) {
+      // Plain structural fakes keep the old swallow-only behavior; already
+      // armed elements avoid stacking one canplay listener per rejected tick.
+      return;
+    }
+
+    const marker: AudioCanplayRetryMarker = { epoch, src };
+    target.__ecliptrixAudioPlayKick = marker;
+    target.addEventListener(
+      'canplay',
+      () => {
+        if (target.__ecliptrixAudioPlayKick !== marker) return;
+        target.__ecliptrixAudioPlayKick = undefined;
+        if ((target.__ecliptrixAudioPlayRetryEpoch ?? 0) !== marker.epoch) return;
+        if (normalizeSrc(el.src) !== marker.src) return;
+        if (!el.paused) return;
+
+        const retry = el.play();
+        if (retry && typeof (retry as Promise<void>).catch === 'function') {
+          (retry as Promise<void>).catch(() => undefined);
+        }
+      },
+      { once: true },
+    );
+  }
+
+  private _disarmCanplayRetry(el: AudioElementLike): void {
+    const target = el as AudioCanplayRetryTarget;
+    target.__ecliptrixAudioPlayKick = undefined;
+    target.__ecliptrixAudioPlayRetryEpoch =
+      (target.__ecliptrixAudioPlayRetryEpoch ?? 0) + 1;
   }
 }
