@@ -16,6 +16,8 @@ export interface ActiveImageOverlay {
   materialId?: string;
 }
 
+export type ImageOverlayPlaybackMode = 'composition' | 'preview';
+
 // Centered 80% default (D1): kept in sync with the other default sites
 // (ItemPlacementService / ImageOverlayLayer / useVideoExport) so the fallback
 // for an item without imagePosition matches a freshly added image.
@@ -26,6 +28,17 @@ const DEFAULT_OVERLAY_POSITION: ImagePosition = {
   height: 0.8,
   zIndex: 10,
 };
+
+export function getImageOverlayPlaybackTime(
+  playbackMode: ImageOverlayPlaybackMode,
+  currentTimelineTime: number | undefined,
+  compositionCurrentTime: number,
+  currentTime: number,
+): number {
+  return playbackMode === 'composition'
+    ? (currentTimelineTime ?? compositionCurrentTime)
+    : currentTime;
+}
 
 /**
  * Select the image-overlay items active at `currentPlaybackTime`: timeline items

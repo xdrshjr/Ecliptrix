@@ -84,3 +84,17 @@ describe('ImageOverlay explicit commit/cancel controls', () => {
     expect(cancelMatches!.length).toBe(2);
   });
 });
+
+describe('VideoPlayerPanel image overlay playback time source', () => {
+  it('selects React image overlays from the composition timeline clock only in composition mode', () => {
+    expect(PANEL).toMatch(
+      /const\s+imageOverlayPlaybackTime\s*=\s*getImageOverlayPlaybackTime\(\s*playbackMode,\s*currentTimelineTime,\s*compositionCurrentTime,\s*currentTime,\s*\)/,
+    );
+    expect(PANEL).toMatch(
+      /selectActiveImageOverlays\(\s*timelineState,\s*materials,\s*imageOverlayPlaybackTime,/,
+    );
+    expect(PANEL).toMatch(
+      /\[timelineState,\s*materials,\s*imageOverlayPlaybackTime,\s*logger\]/,
+    );
+  });
+});

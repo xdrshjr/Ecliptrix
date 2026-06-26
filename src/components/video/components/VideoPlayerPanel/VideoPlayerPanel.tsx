@@ -16,7 +16,7 @@ import { isPreviewProxyEnabled, isLocalPreviewEnabled } from '@/lib/playbackFlag
 import PreviewCanvas from './PreviewCanvas';
 import { useCompositionPlayback } from '../../hooks/useCompositionPlayback';
 import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectRatio } from './aspectRatios';
-import { selectActiveImageOverlays } from './imageOverlays';
+import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from './imageOverlays';
 import { useCompositionTransport, type MediaReadiness } from './useCompositionTransport';
 
 interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
@@ -179,6 +179,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // 当前播放模式：preview 或 composition
   const playbackMode = compositionPlayback?.isCompositionMode && compositionPlayback.videoSequences.length > 0
     ? 'composition' : 'preview';
+  const imageOverlayPlaybackTime = getImageOverlayPlaybackTime(
+    playbackMode,
+    currentTimelineTime,
+    compositionCurrentTime,
+    currentTime,
+  );
 
   // 显示一次"素材下载中"提示（播放门未就绪时）。
   const surfaceMaterialsDownloading = useCallback((readiness: MediaReadiness) => {
@@ -230,10 +236,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       selectActiveImageOverlays(
         timelineState,
         materials,
-        compositionCurrentTime ?? currentTime,
+        imageOverlayPlaybackTime,
         (info) => logger.warn('image material missing or no URL', info),
       ),
-    [timelineState, materials, compositionCurrentTime, currentTime, logger],
+    [timelineState, materials, imageOverlayPlaybackTime, logger],
   );
 
   // 新增：处理图片位置变化

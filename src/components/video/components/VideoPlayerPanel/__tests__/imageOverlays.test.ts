@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { TimelineState, MaterialItem, TimelineItem } from '@/types';
-import { selectActiveImageOverlays } from '../imageOverlays';
+import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from '../imageOverlays';
 
 function imageItem(over: Partial<TimelineItem> & { id: string }): TimelineItem {
   return {
@@ -102,5 +102,19 @@ describe('selectActiveImageOverlays', () => {
     expect(onMissing).toHaveBeenCalledWith(
       expect.objectContaining({ itemId: 'i', materialFound: false }),
     );
+  });
+});
+
+describe('getImageOverlayPlaybackTime', () => {
+  it('uses the parent timeline clock for composition overlays when available', () => {
+    expect(getImageOverlayPlaybackTime('composition', 3, 0, 9)).toBe(3);
+  });
+
+  it('falls back to the local composition clock before the parent timeline clock is available', () => {
+    expect(getImageOverlayPlaybackTime('composition', undefined, 2, 9)).toBe(2);
+  });
+
+  it('keeps preview overlays on the ordinary preview clock', () => {
+    expect(getImageOverlayPlaybackTime('preview', 3, 2, 9)).toBe(9);
   });
 });
