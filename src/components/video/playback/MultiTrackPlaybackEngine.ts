@@ -631,6 +631,41 @@ interface StartReanchorHandshake {
 const TICK_END_EPSILON = 1e-3;
 
 /**
+ * The {@link AudioElementLike} surface plus the EventTarget methods the
+ * {@link AudioSyncPool} canplay-retry recovery arms on. The structural
+ * `AudioElementLike` does not declare them; a real HTMLMediaElement carries
+ * them. {@link toAudioElement} forwards them to the underlying real `<video>` so
+ * the pool's rejected-`play()` → `canplay` retry actually arms (the missing link
+ * that left mid-clip audio silent — audio-midclip-start-still-silent).
+ */
+type AudioAdapterWithEvents = AudioElementLike & {
+  addEventListener?: (
+    type: string,
+    listener: () => void,
+    opts?: { once?: boolean },
+  ) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+};
+
+/**
+ * The underlying real element, plus the memo slot the adapter is cached on and
+ * the event methods a real element exposes. Memoizing the adapter per real
+ * element hands the pool ONE stable object across every resolve so its retry
+ * markers (`__ecliptrixAudioPlayKick` / `__ecliptrixAudioPlayRetryEpoch`)
+ * persist — a fresh wrapper per resolve would always read epoch `0` and stack
+ * one `canplay` listener per rejected tick.
+ */
+type AudioAdapterCarrier = VideoElementLike & {
+  addEventListener?: (
+    type: string,
+    listener: () => void,
+    opts?: { once?: boolean },
+  ) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+  __ecliptrixAudioAdapter?: AudioElementLike;
+};
+
+/**
  * Adapt a {@link VideoElementLike} (the host's audio `<audio>`/`<video>` handle)
  * into the {@link AudioElementLike} surface the AudioSyncPool writes. The pool
  * reads `src` / `currentTime` / `volume` / `paused` and assigns `src` /
@@ -639,10 +674,24 @@ const TICK_END_EPSILON = 1e-3;
  * without it the pool's `el.src = url` would write nowhere). A real
  * HTMLMediaElement carries `src`/`volume`/`paused` already — the casts only
  * satisfy the structural minimum so a bare fake works in tests too.
+ *
+ * Exposes (and forwards) the underlying element's `addEventListener` /
+ * `removeEventListener` so the pool's rejected-`play()` → `canplay` retry arms
+ * on the real `<video>` (without it the retry was dead code and mid-clip audio
+ * stayed silent — audio-midclip-start-still-silent). The adapter is memoized on
+ * the underlying element so the pool sees one stable object across the multiple
+ * resolves a single tick performs, keeping its retry markers alive.
  */
-function toAudioElement(el: VideoElementLike): AudioElementLike {
+export function toAudioElement(el: VideoElementLike): AudioElementLike {
+  const carrier = el as AudioAdapterCarrier;
+  // Hand the pool ONE stable adapter per underlying element so its canplay-retry
+  // dedupe / epoch markers persist across the multiple resolves a single tick
+  // performs (a fresh wrapper would reset the epoch guard and stack listeners).
+  const memoized = carrier.__ecliptrixAudioAdapter;
+  if (memoized) return memoized;
+
   const withMedia = el as unknown as { volume?: number; paused?: boolean };
-  return {
+  const adapter: AudioAdapterWithEvents = {
     get src() {
       return el.src;
     },
@@ -676,4 +725,22 @@ function toAudioElement(el: VideoElementLike): AudioElementLike {
     play: () => el.play(),
     pause: () => el.pause(),
   };
+
+  // Forward the event surface to the underlying real element. Arrow forms keep
+  // `this` bound to that element — assigning the unbound method
+  // (`addEventListener: carrier.addEventListener`) would throw "Illegal
+  // invocation" on the first rejected play(). A bare structural fake without
+  // these methods leaves them undefined, so the pool keeps its swallow-only
+  // fallback for such fakes (parity with VideoSourcePool).
+  if (typeof carrier.addEventListener === 'function') {
+    adapter.addEventListener = (type, listener, opts) =>
+      carrier.addEventListener!(type, listener, opts);
+  }
+  if (typeof carrier.removeEventListener === 'function') {
+    adapter.removeEventListener = (type, listener) =>
+      carrier.removeEventListener!(type, listener);
+  }
+
+  carrier.__ecliptrixAudioAdapter = adapter;
+  return adapter;
 }

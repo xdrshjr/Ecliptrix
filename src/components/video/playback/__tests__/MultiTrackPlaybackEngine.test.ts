@@ -13,13 +13,17 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { MultiTrackPlaybackEngine, type MultiTrackAttachDeps } from '../MultiTrackPlaybackEngine';
+import {
+  MultiTrackPlaybackEngine,
+  toAudioElement,
+  type MultiTrackAttachDeps,
+} from '../MultiTrackPlaybackEngine';
 import { PlaybackClock } from '../PlaybackClock';
 import { BIND_SEEK_TIMEOUT_MS, PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC } from '../internal/constants';
 import { CanvasCompositor } from '../CanvasCompositor';
 import { PlayheadController } from '../PlayheadController';
 import type { VideoElementLike } from '../VideoSourcePool';
-import type { AudioSyncGroup } from '../AudioSyncPool';
+import { AudioSyncPool, type AudioSyncGroup, type AudioElementLike } from '../AudioSyncPool';
 import type { VideoTrackGroup } from '../types';
 import type { SubtitleSequenceItem, VideoSequenceItem } from '../../types';
 
@@ -915,5 +919,195 @@ describe('MultiTrackPlaybackEngine — dispose', () => {
     expect(() =>
       h.engine.attach({} as MultiTrackAttachDeps),
     ).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toAudioElement adapter — canplay-retry wiring (audio-midclip-start-still-silent).
+//
+// The mid-clip-start silence is the AudioSyncPool's rejected-play() → canplay
+// retry never arming in production: the pool was handed a plain wrapper with no
+// `addEventListener`, AND a fresh wrapper per resolve so its dedupe/epoch markers
+// never persisted. These tests drive AudioSyncPool.tick THROUGH `toAudioElement`
+// (the production analogue) — the path the existing suite never exercised, which
+// is why it stayed green on broken production code.
+// ---------------------------------------------------------------------------
+
+type RejectingAudioVideo = VideoElementLike & {
+  paused: boolean;
+  volume: number;
+  seeking: boolean;
+  playCalls: number;
+  rejectPlay: boolean;
+  _handlers: Array<{ type: string; cb: () => void; once: boolean }>;
+  addEventListener(type: string, cb: () => void, opts?: { once?: boolean }): void;
+  removeEventListener(type: string, cb: () => void): void;
+  dispatchEvent(type: string): void;
+  listenerCount(type: string): number;
+};
+
+/**
+ * A real-`<video>`-like element with an event registry whose first `play()`
+ * rejects (the cold mid-clip seek case). The event methods read `this._handlers`
+ * ON PURPOSE: an unbound forward (`adapter.addEventListener = el.addEventListener`)
+ * would invoke them with the adapter as `this` (no `_handlers`) and throw — the
+ * test analogue of a real element's "Illegal invocation", so this fake fails if
+ * the adapter ever drops the `this` binding (constraint 1).
+ */
+function rejectingAudioVideo(over: Partial<RejectingAudioVideo> = {}): RejectingAudioVideo {
+  const el = {
+    src: '',
+    currentTime: 0,
+    readyState: 4,
+    seeking: false,
+    volume: 1,
+    paused: true,
+    playCalls: 0,
+    rejectPlay: true,
+    _handlers: [] as Array<{ type: string; cb: () => void; once: boolean }>,
+    play(): Promise<void> {
+      el.playCalls += 1;
+      if (el.rejectPlay) {
+        el.paused = true;
+        return Promise.reject(new Error('NotAllowedError'));
+      }
+      el.paused = false;
+      return Promise.resolve();
+    },
+    pause(): void {
+      el.paused = true;
+    },
+    addEventListener(this: RejectingAudioVideo, type: string, cb: () => void, opts?: { once?: boolean }): void {
+      this._handlers.push({ type, cb, once: !!(opts && opts.once) });
+    },
+    removeEventListener(this: RejectingAudioVideo, type: string, cb: () => void): void {
+      for (let i = this._handlers.length - 1; i >= 0; i--) {
+        if (this._handlers[i].type === type && this._handlers[i].cb === cb) {
+          this._handlers.splice(i, 1);
+        }
+      }
+    },
+    dispatchEvent(this: RejectingAudioVideo, type: string): void {
+      const matched = this._handlers.filter((h) => h.type === type);
+      for (const h of matched) {
+        if (h.once) {
+          const idx = this._handlers.indexOf(h);
+          if (idx >= 0) this._handlers.splice(idx, 1);
+        }
+        h.cb();
+      }
+    },
+    listenerCount(this: RejectingAudioVideo, type: string): number {
+      return this._handlers.filter((h) => h.type === type).length;
+    },
+    ...over,
+  };
+  return el as unknown as RejectingAudioVideo;
+}
+
+function audioClipGroup(url: string): AudioSyncGroup[] {
+  return [
+    {
+      trackId: 't1',
+      muted: false,
+      volume: 1,
+      kind: 'audio',
+      items: [{ id: 'a', startTime: 0, duration: 5, clipStart: 0, clipEnd: 5, url }],
+    },
+  ];
+}
+
+describe('toAudioElement — adapter event surface + memoization', () => {
+  it('forwards addEventListener/removeEventListener to the underlying element', () => {
+    const underlying = rejectingAudioVideo();
+    const adapter = toAudioElement(underlying) as AudioElementLike & {
+      addEventListener?: (t: string, cb: () => void, o?: { once?: boolean }) => void;
+      removeEventListener?: (t: string, cb: () => void) => void;
+    };
+
+    expect(typeof adapter.addEventListener).toBe('function');
+    expect(typeof adapter.removeEventListener).toBe('function');
+
+    let fired = 0;
+    const cb = () => {
+      fired += 1;
+    };
+    adapter.addEventListener!('canplay', cb);
+    // The listener landed on the UNDERLYING element's registry (delegation), and
+    // would have thrown if forwarded unbound (Illegal invocation).
+    expect(underlying.listenerCount('canplay')).toBe(1);
+
+    underlying.dispatchEvent('canplay');
+    expect(fired).toBe(1);
+
+    adapter.removeEventListener!('canplay', cb);
+    expect(underlying.listenerCount('canplay')).toBe(0);
+  });
+
+  it('returns the SAME adapter for the same underlying element (stable identity across resolves)', () => {
+    const underlying = rejectingAudioVideo();
+    expect(toAudioElement(underlying)).toBe(toAudioElement(underlying));
+  });
+
+  it('leaves the event surface undefined for a bare fake (no addEventListener) — swallow-only parity', () => {
+    const bare = fakeAudioEl(); // no addEventListener on the underlying fake
+    bare.play = () => Promise.reject(new Error('interrupted'));
+    const adapter = toAudioElement(bare) as AudioElementLike & {
+      addEventListener?: unknown;
+    };
+    expect(adapter.addEventListener).toBeUndefined();
+
+    const pool = new AudioSyncPool(() => toAudioElement(bare));
+    // A rejected play() on a non-EventTarget fake must not throw and must not arm
+    // a retry marker (mirrors VideoSourcePool's plain-stub fallback).
+    expect(() => pool.tick(audioClipGroup('song.mp3'), 2, true)).not.toThrow();
+    expect(
+      (adapter as unknown as { __ecliptrixAudioPlayKick?: unknown }).__ecliptrixAudioPlayKick,
+    ).toBeUndefined();
+  });
+});
+
+describe('AudioSyncPool through toAudioElement — rejected play() re-issues on canplay', () => {
+  it('arms exactly one canplay retry through the adapter and re-plays on canplay', async () => {
+    const underlying = rejectingAudioVideo({ rejectPlay: true });
+    const pool = new AudioSyncPool(() => toAudioElement(underlying));
+    const groups = audioClipGroup('song.mp3');
+
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // First mid-clip play() rejected → one canplay listener armed on the real
+    // element through the adapter (the wiring that was dead in production).
+    expect(underlying.playCalls).toBe(1);
+    expect(underlying.listenerCount('canplay')).toBe(1);
+    expect(underlying.paused).toBe(true);
+
+    underlying.rejectPlay = false;
+    underlying.dispatchEvent('canplay');
+
+    // canplay re-issued play() exactly once, it resolved, and the one-shot
+    // listener cleared.
+    expect(underlying.playCalls).toBe(2);
+    expect(underlying.paused).toBe(false);
+    expect(underlying.listenerCount('canplay')).toBe(0);
+  });
+
+  it('does not stack canplay listeners across repeated rejected ticks (markers persist via memo)', async () => {
+    const underlying = rejectingAudioVideo({ rejectPlay: true });
+    const pool = new AudioSyncPool(() => toAudioElement(underlying));
+    const groups = audioClipGroup('song.mp3');
+
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+    pool.tick(groups, 2, true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Two rejecting ticks, but the memoized adapter keeps the dedupe marker, so
+    // exactly one listener is armed (no stacking).
+    expect(underlying.playCalls).toBe(2);
+    expect(underlying.listenerCount('canplay')).toBe(1);
   });
 });
