@@ -44,6 +44,11 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from app.dependencies.auth import get_current_user
 from app.logger import get_logger
 from app.models.db_models import User
+from app.security.url_guard import URLGuardError, validate_local_path_for_ffmpeg
+from app.services.local_media_resolver import (
+    audio_generated_dir,
+    audio_subtitle_dir,
+)
 from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
@@ -416,3 +421,99 @@ async def serve_storage_file(
     # Starlette 0.27.0 ``FileResponse`` supports neither Range nor
     # ``Accept-Ranges`` (see analysis.md), so ``_serve_safe_media`` handles it.
     return _serve_safe_media(absolute_path, basename, request, headers)
+
+
+# ---------------------------------------------------------------------------
+# Generated / subtitle audio served with HTTP Range (mid-clip preview seek).
+#
+# TTS / generated audio (``/api/audio/generated``) and subtitle/ASR audio
+# (``/api/audio/subtitles``) used to be served by bare ``StaticFiles`` mounts.
+# Under the pinned Starlette 0.27.0 those mounts ignore the ``Range`` request
+# header (200 whole-file, no ``Accept-Ranges``), so a browser ``<audio>``/
+# ``<video>`` element handed a non-zero ``currentTime`` — i.e. preview playback
+# STARTED FROM THE MIDDLE of an audio clip — can never reach a playable state
+# at that offset and the audio track stays silent. Starting at the clip head
+# works only because it needs no seek (progressive download from byte 0). Video
+# never had this bug because every video file is served by the Range-capable
+# ``/api/storage/files`` router below — this gives the two audio dirs the SAME
+# explicit ``206`` serving via ``_serve_safe_media``, at the SAME public URLs
+# and SAME physical roots (under ``STORAGE_ROOT``), so saved projects, the media
+# resolver, and producers are unaffected.
+# See docs/diagnoses/audio-midclip-silent-non-seekable-source/analysis.md.
+# ---------------------------------------------------------------------------
+
+audio_router = APIRouter(prefix="/audio", tags=["Audio Files"])
+
+
+def _serve_audio_with_range(
+    root: Path, file_path: str, request: Request
+) -> Response:
+    """Serve an audio/subtitle file from ``root`` honouring HTTP Range.
+
+    Mirrors ``serve_storage_file``: contain ``file_path`` inside ``root``
+    (``..``-traversal guard — a hand-rolled route does NOT get StaticFiles'
+    free escape protection), ``404`` a missing file, then delegate to
+    ``_serve_safe_media`` so single-range ``206`` behaviour is byte-identical
+    to ``/api/storage/files``.
+
+    Args:
+        root: physical directory the audio dir is anchored to (under
+            ``STORAGE_ROOT`` — ``audio_generated_dir()`` / ``audio_subtitle_dir()``).
+        file_path: relative path captured from the URL.
+        request: starlette request; its ``Range`` header drives ``206``.
+
+    Returns:
+        ``FileResponse`` (200, whole file), ``StreamingResponse`` (206, byte
+        slice), or a ``416`` ``Response`` for an unsatisfiable range.
+
+    Raises:
+        HTTPException 400: empty path or ``..`` traversal attempt.
+        HTTPException 404: file does not exist.
+    """
+    if not file_path or file_path.strip() == "":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty file path",
+        )
+
+    candidate = root / file_path
+    try:
+        absolute_path = validate_local_path_for_ffmpeg(
+            str(candidate), [root], must_exist=False
+        )
+    except URLGuardError as exc:
+        logger.warning(
+            "audio file router: path traversal attempt rejected",
+            {"path": file_path},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path",
+        ) from exc
+
+    if not absolute_path.exists() or not absolute_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+
+    basename = os.path.basename(absolute_path)
+    return _serve_safe_media(absolute_path, basename, request, {})
+
+
+@audio_router.get("/generated/{file_path:path}")
+async def serve_generated_audio(
+    file_path: str,
+    request: Request,
+) -> Response:
+    """Serve a generated (TTS) audio file with HTTP Range (mid-clip seek)."""
+    return _serve_audio_with_range(audio_generated_dir(), file_path, request)
+
+
+@audio_router.get("/subtitles/{file_path:path}")
+async def serve_subtitle_audio(
+    file_path: str,
+    request: Request,
+) -> Response:
+    """Serve a subtitle/ASR audio file with HTTP Range (mid-clip seek)."""
+    return _serve_audio_with_range(audio_subtitle_dir(), file_path, request)

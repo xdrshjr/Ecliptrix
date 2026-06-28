@@ -661,32 +661,28 @@ from app.routers import admin_playback_router
 
 app.include_router(admin_playback_router.router, prefix="/api")
 
-# Mount generated audio + subtitles under the persistent, writable STORAGE_ROOT
+# Generated audio + subtitles live under the persistent, writable STORAGE_ROOT
 # (Bug B / B1). The write side (tts_service / sentence_tts_service) and the
-# composition/ASR resolvers anchor to the same dirs so "write == mount == resolve"
+# composition/ASR resolvers anchor to the same dirs so "write == serve == resolve"
 # holds in dev, packaged desktop, and a read-only Program Files install alike.
 # See docs/diagnoses/preview-seek-blackscreen-and-packaged-export-r3.
+#
+# They are served by storage_files_router.audio_router (explicit HTTP 206 Range)
+# at the SAME /api/audio/{generated,subtitles} URLs — NOT a bare StaticFiles
+# mount. Under the pinned Starlette 0.27.0 StaticFiles ignores the Range header,
+# so a preview started from the MIDDLE of an audio clip could never seek into the
+# source and the audio track stayed silent (head-start worked because it needs no
+# seek). Range-capable serving fixes that, just like video already had via
+# /api/storage/files. See docs/diagnoses/audio-midclip-silent-non-seekable-source.
 from app.services.local_media_resolver import (  # noqa: E402
     audio_generated_dir,
     audio_subtitle_dir,
 )
 
-audio_static_dir = str(audio_generated_dir())
-os.makedirs(audio_static_dir, exist_ok=True)
-app.mount(
-    "/api/audio/generated",
-    StaticFiles(directory=audio_static_dir),
-    name="generated_audio",
-)
-
-# Mount static files for subtitle files
-subtitle_static_dir = str(audio_subtitle_dir())
-os.makedirs(subtitle_static_dir, exist_ok=True)
-app.mount(
-    "/api/audio/subtitles",
-    StaticFiles(directory=subtitle_static_dir),
-    name="audio_subtitles",
-)
+# Ensure the dirs exist so first-run serving / the write side never trip on a
+# missing directory (the old StaticFiles mounts created them at startup too).
+os.makedirs(str(audio_generated_dir()), exist_ok=True)
+os.makedirs(str(audio_subtitle_dir()), exist_ok=True)
 
 # Silence detection audio & removal output are now stored under STORAGE_ROOT
 # (e.g. static/uploads/audio/silence_detect/ and static/uploads/video/silence_removed/)
@@ -713,5 +709,8 @@ os.makedirs(uploads_dir, exist_ok=True)
 from app.routers import storage_files_router  # noqa: E402
 
 app.include_router(storage_files_router.router, prefix="/api")
+# Generated/subtitle audio with HTTP 206 Range (mid-clip preview audio fix) —
+# same /api/audio/{generated,subtitles} URLs the old StaticFiles mounts used.
+app.include_router(storage_files_router.audio_router, prefix="/api")
 
 logger.info("FastAPI application configured successfully")
