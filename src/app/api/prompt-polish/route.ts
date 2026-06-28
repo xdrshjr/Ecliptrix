@@ -1,29 +1,89 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage } from '@/types';
+import { backendConfig } from '@/lib/config/backend';
+import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat';
 
 // ============================================================================
 // Prompt Polish API Route
 // POST /api/prompt-polish
 //
 // Accepts a user-authored prompt and returns an LLM-polished version.
-// Uses the same LLM_API_URL / LLM_API_KEY configuration as the chat route.
+// Resolves the active chat model the same way /api/chat and Agent inference do
+// (DB-configured model via the FastAPI resolve endpoint, env vars as fallback),
+// so the call is api_type-aware. The previous env-only + hardcoded
+// `/chat/completions` + Bearer implementation was api_type-blind and 401'd
+// against Anthropic-compatible endpoints (e.g. the desktop default), which made
+// the narration-direct "AI 视频脚本" silently fall back to the raw narration —
+// see docs/diagnoses/narration-direct-ai-video-script-equals-narration.
 // ============================================================================
 
 const LOG_PREFIX = '[Prompt Polish API]';
 
 // ---------------------------------------------------------------------------
-// LLM configuration — mirrors the pattern in video-script-generation/route.ts
+// LLM configuration — mirrors /api/chat and /api/ai-video-script-generation
 // ---------------------------------------------------------------------------
-const getConfig = () => {
+type ResolvedConfig = {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  apiType: LlmApiType;
+};
+
+// Actionable copy surfaced verbatim to the user when no model is configured.
+const LLM_NOT_CONFIGURED_MESSAGE =
+  '尚未配置 AI 模型凭证,请前往 设置 → 模型设置 完成配置 (AI model not configured — open Settings → Model Settings)';
+
+// Distinguishable error so the outer catch can return a structured 503 instead
+// of a generic 500. Identified by a stable `code`, never by message matching.
+class LlmNotConfiguredError extends Error {
+  readonly code = 'LLM_NOT_CONFIGURED';
+  constructor(message: string = LLM_NOT_CONFIGURED_MESSAGE) {
+    super(message);
+    this.name = 'LlmNotConfiguredError';
+  }
+}
+
+// Resolve LLM credentials: the DB-configured chat model first (via the FastAPI
+// resolve endpoint, an open no-auth endpoint for the single-user local app),
+// env vars as fallback. Crucially returns `apiType`, so the call site picks the
+// correct OpenAI vs Anthropic transport.
+const getConfig = async (): Promise<ResolvedConfig> => {
+  let backendNotConfiguredMessage: string | null = null;
+  try {
+    const res = await fetch(
+      backendConfig.joinPath('/api/model-settings/resolve/chat'),
+      { method: 'GET', headers: { 'Content-Type': 'application/json' } },
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.api_key) {
+        return {
+          apiUrl: data.api_url,
+          apiKey: data.api_key,
+          model: data.model_name,
+          apiType: normalizeApiType(data.api_type),
+        };
+      }
+    } else if (res.status === 503) {
+      const data = await res.json().catch(() => null);
+      if (data?.error_code === 'MODEL_NOT_CONFIGURED' && typeof data.message === 'string') {
+        backendNotConfiguredMessage = data.message;
+      }
+    }
+  } catch {
+    console.warn(`${LOG_PREFIX} Failed to fetch model settings from backend, falling back to env vars`);
+  }
+
   const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+  const apiType = normalizeApiType(process.env.LLM_API_TYPE);
 
   if (!apiKey) {
-    throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.');
+    throw new LlmNotConfiguredError(backendNotConfiguredMessage ?? undefined);
   }
 
-  return { apiUrl, apiKey, model };
+  return { apiUrl, apiKey, model, apiType };
 };
 
 // ---------------------------------------------------------------------------
@@ -188,51 +248,59 @@ export async function POST(request: NextRequest) {
     }
 
     // ------ Config ------
-    const config = getConfig();
+    const config = await getConfig();
     logRequest(body, config.model);
 
     // ------ Build LLM messages ------
     const systemPrompt = buildSystemPrompt(body.targetType);
     const userPrompt = buildUserPrompt(body.prompt, body.chatMessages, body.videoAnalysisContext);
 
-    const requestData = {
-      model: config.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 1000,
-    };
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ];
 
-    console.log(`${LOG_PREFIX} Calling LLM API: ${config.apiUrl}/chat/completions`);
+    console.log(`${LOG_PREFIX} Calling LLM API (api_type=${config.apiType}) base=${config.apiUrl}`);
 
     // ------ LLM call ------
-    const response = await fetch(`${config.apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
+    // Reuse the shared, api_type-aware streaming client (same path as /api/chat
+    // and /api/ai-video-script-generation) and accumulate the streamed deltas
+    // into one string; the route stays non-streaming to its caller. NOTE: the
+    // polished prompt is free text, so it is returned as-is — never JSON-parsed.
+    let content = '';
+    let upstreamError: { status: number; message: string } | null = null;
+    for await (const event of streamLlmChat({
+      config: {
+        apiUrl: config.apiUrl,
+        apiKey: config.apiKey,
+        model: config.model,
+        apiType: config.apiType,
       },
-      body: JSON.stringify(requestData),
+      messages,
+      temperature: 0.7,
+      maxTokens: 1000,
       signal: AbortSignal.timeout(30000), // 30s timeout for polish requests
-    });
+    })) {
+      if (event.kind === 'error') {
+        upstreamError = { status: event.status, message: event.message };
+        break;
+      }
+      if (event.kind === 'content') content += event.text;
+    }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`${LOG_PREFIX} LLM API error: ${response.status} - ${errorText}`);
-      logResponse(false, `LLM API error: ${response.status}`);
+    if (upstreamError) {
+      console.error(`${LOG_PREFIX} LLM API error: ${upstreamError.status} - ${upstreamError.message}`);
+      logResponse(false, `LLM API error: ${upstreamError.status}`);
 
+      // Preserve the upstream status (401/429/…) instead of collapsing to 500.
+      const httpStatus = upstreamError.status >= 400 && upstreamError.status <= 599 ? upstreamError.status : 502;
       return NextResponse.json(
-        { success: false, polishedPrompt: '', message: `LLM API error: ${response.status}` },
-        { status: 500 },
+        { success: false, polishedPrompt: '', message: `LLM API error: ${upstreamError.status}` },
+        { status: httpStatus },
       );
     }
 
-    const result = await response.json();
-    const content = result.choices?.[0]?.message?.content;
-
-    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+    if (!content || content.trim().length === 0) {
       console.error(`${LOG_PREFIX} LLM returned empty or invalid content`);
       logResponse(false, 'Empty LLM response');
 
@@ -261,6 +329,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, polishedPrompt: '', message: 'LLM API call timed out. Please try again.' },
         { status: 500 },
+      );
+    }
+
+    // "未配置 AI 模型凭证" is a designed, actionable failure — surface the
+    // actionable message with a 503 rather than a generic 500.
+    if (error instanceof LlmNotConfiguredError) {
+      console.error(`${LOG_PREFIX} ${error.message}`);
+      logResponse(false, error.message);
+      return NextResponse.json(
+        { success: false, polishedPrompt: '', message: error.message },
+        { status: 503 },
       );
     }
 
