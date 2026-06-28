@@ -1392,6 +1392,12 @@ export interface Translations {
       aiPromptGenerating: string;
       aiPromptRetry: string;
       aiPromptFailedToast: string;
+      // 「解说直接生成」专用：AI 视频脚本（画面描述）状态文案。
+      // 前缀 videoScript* 以与相邻的 generating/generationFailed/retry（ARK 视频生成）
+      // 及 aiPromptGenerating/aiPromptRetry（句级 ARK 提示词）区分，勿混用。
+      videoScriptGenerating: string;
+      videoScriptFailed: string;
+      videoScriptRetry: string;
     };
   };
   videoEditing: {
@@ -3911,6 +3917,9 @@ export const translations: Record<string, Translations> = {
          aiPromptGenerating: 'Generating…',
          aiPromptRetry: 'Retry',
          aiPromptFailedToast: 'AI prompt generation failed: {reason}',
+         videoScriptGenerating: 'Generating AI video script…',
+         videoScriptFailed: 'AI video script generation failed',
+         videoScriptRetry: 'Regenerate',
         },
      },
    videoEditing: {
@@ -6438,6 +6447,9 @@ export const translations: Record<string, Translations> = {
          aiPromptGenerating: '生成中…',
          aiPromptRetry: '重新生成',
          aiPromptFailedToast: 'AI 提示词生成失败：{reason}',
+         videoScriptGenerating: 'AI 视频脚本生成中…',
+         videoScriptFailed: 'AI 视频脚本生成失败',
+         videoScriptRetry: '重新生成',
         },
      },
    videoEditing: {

@@ -24,11 +24,11 @@ import {
 } from './hooks';
 import { useAgentExecution } from './hooks/useAgentExecution';
 import { generateKeywordsForSegments } from './hooks/useScriptGeneration';
+import { generateNarrationVideoScript } from '@/lib/api/narrationVideoScript';
 import {
-  generateSentenceAiVideoPrompt,
-  buildFullScriptContext,
-  runWithConcurrency,
-} from '@/lib/api/sentenceAiVideoPrompt';
+  enrichNarrationSegments as enrichNarrationSegmentsCore,
+  regenerateNarrationVideoScript,
+} from './utils/enrichNarrationSegments';
 import { useConvertToScript } from './hooks/useConvertToScript';
 import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript';
 import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
@@ -1028,110 +1028,46 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 视频理解生成本期仅占位弹窗。
   const [isVideoUnderstandingPlaceholderOpen, setIsVideoUnderstandingPlaceholderOpen] = useState(false);
 
-  // 「解说直接生成」富化：把链路重排为严格顺序三段流水线（spec narration-direct-ai-video-script-keywords v2）。
-  //   [1] 整篇解说作上下文 → [2] 逐句生成 AI 视频脚本（画面描述）→ [3] 用画面脚本组装输入 →
-  //   [4] 从「AI 视频脚本」提取英文搜索关键词（目标 3、上限 3）→ [6] 合并单次写回。
-  // - 画面脚本：每句以 generateSentenceAiVideoPrompt(解说原文, 整篇解说) 生成，覆写 sentence.text
-  //   （面板「AI视频脚本」即取该字段）；segment.narrationText 与 sentence.narration 保持解说原文
-  //   不变 —— TTS 取 narrationText，不受覆写影响（评审 R-1/R-5）。
-  // - 关键词：取材改为【生成出的 AI 视频脚本】、语言改为英文（评审 R-2，有意反转前序诊断 R-4），
-  //   故 generateKeywordsForSegments 须在画面脚本覆写【之后】、对画面脚本调用。
-  // 富化置于父级、异步执行（弹窗 close() 会中止其内部请求，故不能放在弹窗 hook —— 评审 R-5），
-  // 完成后按 id 合并 scriptSegmentsRef.current 单次写回，仅覆盖用户未编辑的句子，避免覆盖
-  // 富化期间用户的删除/改动（评审 R-5 / 决议 R3）。失败降级：sentence.text 保留解说原文，
-  // 面板永不空白；关键词失败 → segment.keywords 留空（搜索框无预填，不报错）。
+  // 「解说直接生成」富化（spec narration-direct-video-script-rewrite v2 §3.2，推翻重写）。
+  // 推翻前序「复用 prompt-polish 优化器 + 就地覆写 sentence.text + 静默回退」的脆弱设计，
+  // 改为「专用转换端点（generateNarrationVideoScript，禁复述旁白）→ 写专用 videoScript 字段
+  // （失败置 'failed'，绝不静默回退旁白）→ 用画面脚本组装英文关键词 → ref 合并单次写回」，
+  // 并以 try/finally 收敛任何残留 generating 句为 failed（RV-2 无悬挂态）。
+  // 主体抽到 utils/enrichNarrationSegments（见 spec「实施过程发现的方案缺陷 IF-1」），此处仅做
+  // 依赖注入：commitSegments「先前移 scriptSegmentsRef 再 handleUpdateSegments」满足 RV-3
+  // 「写回前同步前移 ref」；narrationText / sentence.narration 全程只读不写（G3，TTS 不受影响）。
+  // 富化置于父级、异步执行（弹窗 close() 会中止其内部请求，故不能放在弹窗 hook —— 评审 R-5）。
+  const commitNarrationSegments = useCallback((segments: ScriptSegment[]) => {
+    scriptSegmentsRef.current = segments;
+    scriptGeneration.handleUpdateSegments(segments);
+  }, [scriptGeneration]);
+
   const enrichNarrationSegments = useCallback(async (newSegments: ScriptSegment[]) => {
-    if (newSegments.length === 0) return;
-
-    // [1] 构建整篇解说上下文（优先每段 narrationText，即「整篇所有解说文案」）。
-    const fullScript = buildFullScriptContext([
-      ...(scriptSegmentsRef.current ?? []),
-      ...newSegments,
-    ]);
-
-    // [2] 逐句生成独立的画面/视频脚本描述（针对当前句、全篇作上下文；并发 limit=2）。
-    const jobs = newSegments.flatMap(seg =>
-      seg.sentences.map(sent => ({
-        sentenceId: sent.id,
-        narration: (sent.narration ?? sent.text ?? '').trim(),
-      })),
-    ).filter(j => j.narration.length > 0);
-    const visualBySentence = new Map<string, string>();
-    await runWithConcurrency(jobs, 2, async (job) => {
-      try {
-        const res = await generateSentenceAiVideoPrompt(job.narration, fullScript);
-        if (res.success && res.prompt.trim()) {
-          visualBySentence.set(job.sentenceId, res.prompt.trim());
-        }
-      } catch (err) {
-        logger.warn('解说直接生成画面脚本富化单句失败，保留解说原文', {
-          sentenceId: job.sentenceId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+    await enrichNarrationSegmentsCore({
+      newSegments,
+      getLatestSegments: () => scriptSegmentsRef.current ?? [],
+      commitSegments: commitNarrationSegments,
+      generateVideoScript: (narration, fullScript, loc) =>
+        generateNarrationVideoScript(narration, fullScript, loc),
+      generateKeywords: (segments) =>
+        generateKeywordsForSegments(segments, taskId || 'unknown', logger, { language: 'english' }),
+      locale: locale === 'en' ? 'en' : 'zh',
+      onWarn: (message, meta) => logger.warn(message, meta),
     });
+  }, [commitNarrationSegments, taskId, logger, locale]);
 
-    // [3] 用「生成出的 AI 视频脚本」组装关键词输入（sentence.text 替换为画面脚本，缺失则回退解说原文）。
-    //     generateKeywordsForSegments 的取材 = sentences.map(s => s.text).join(' ')，故此处即「AI 视频脚本」。
-    const scriptedSegments: ScriptSegment[] = newSegments.map(seg => ({
-      ...seg,
-      sentences: seg.sentences.map(sent => ({
-        ...sent,
-        text: visualBySentence.get(sent.id) ?? sent.text,
-      })),
-    }));
-
-    // [4] 从 AI 视频脚本生成英文关键词（每段目标 3、上限 3）。
-    let keywordedSegments: ScriptSegment[] = scriptedSegments;
-    try {
-      keywordedSegments = await generateKeywordsForSegments(
-        scriptedSegments,
-        taskId || 'unknown',
-        logger,
-        { language: 'english' },
-      );
-    } catch (err) {
-      logger.warn('解说直接生成关键词富化失败，保留空关键词', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-    const keywordsBySegment = new Map(keywordedSegments.map(s => [s.id, s.keywords]));
-
-    // [5] 记录每句的解说原文，供写回时判断用户是否在富化期间手动编辑过该句。
-    const narrationBySentence = new Map(
-      newSegments.flatMap(seg =>
-        seg.sentences.map(sent => [sent.id, (sent.narration ?? sent.text ?? '').trim()] as const),
-      ),
-    );
-    const enrichedSegmentIds = new Set(newSegments.map(s => s.id));
-
-    // [6] 按 id 合并 scriptSegmentsRef.current 单次写回（用户可能已删除/编辑条目）。
-    const latest = scriptSegmentsRef.current ?? [];
-    if (!latest.some(s => enrichedSegmentIds.has(s.id))) return; // 全被删除/清空 → 不写
-    const merged = latest.map(seg => {
-      if (!enrichedSegmentIds.has(seg.id)) return seg;
-      const sentences = seg.sentences.map(sent => {
-        const visual = visualBySentence.get(sent.id);
-        if (!visual) return sent;
-        // 仅当句子正文仍是解说原文（未被用户手动编辑）时才覆写为画面脚本。
-        if ((sent.text ?? '').trim() !== narrationBySentence.get(sent.id)) return sent;
-        return {
-          ...sent,
-          text: visual,
-          // 预置 aiVideoPrompt=画面脚本/succeeded，抑制 TTS 后的重复润色（评审 R-3）。
-          aiVideoPrompt: visual,
-          aiVideoPromptStatus: 'succeeded' as const,
-          aiVideoPromptError: undefined,
-        };
-      });
-      return {
-        ...seg,
-        sentences,
-        keywords: keywordsBySegment.get(seg.id) ?? seg.keywords,
-      };
+  // 卡片「重新生成」：单句重试 AI 视频脚本（ref-safe 增量 patch，RV-3）。
+  const handleRegenerateVideoScript = useCallback(async (segmentId: string, sentenceId: string) => {
+    await regenerateNarrationVideoScript({
+      segmentId,
+      sentenceId,
+      getLatestSegments: () => scriptSegmentsRef.current ?? [],
+      commitSegments: commitNarrationSegments,
+      generateVideoScript: (narration, fullScript, loc) =>
+        generateNarrationVideoScript(narration, fullScript, loc),
+      locale: locale === 'en' ? 'en' : 'zh',
     });
-    scriptGeneration.handleUpdateSegments(merged);
-  }, [scriptGeneration, taskId, logger]);
+  }, [commitNarrationSegments, locale]);
 
   // 「解说直接生成」完成时把逐句新解说 segments 写入 content.scriptSegments：
   // 首次生成（面板为空，或仍是系统示意占位 segment-1/2/3）→ 替换掉示意脚本；
@@ -2753,6 +2689,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               storyboardScriptSegments={content?.storyboardScriptSegments || []}
               onUpdateStoryboardScriptSegments={handleUpdateStoryboardScriptSegments}
               onGenerateAiVideoForSentence={handleGenerateAiVideoForSentence}
+              onRegenerateVideoScript={handleRegenerateVideoScript}
             />
           </div>
 

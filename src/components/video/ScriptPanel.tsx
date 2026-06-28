@@ -71,6 +71,8 @@ interface ScriptPanelProps {
     params: ArkVideoGenerateParams,
     link: { segmentId: string; sentenceId: string },
   ) => void;
+  // 「解说直接生成」句卡片「重新生成」AI 视频脚本：父级桥接 generateNarrationVideoScript。
+  onRegenerateVideoScript?: (segmentId: string, sentenceId: string) => void;
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -91,6 +93,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   storyboardScriptSegments = [],
   onUpdateStoryboardScriptSegments,
   onGenerateAiVideoForSentence,
+  onRegenerateVideoScript,
   projectId,
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
@@ -576,13 +579,18 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   }, [logger]);
 
   const handleStartEdit = (sentence: ScriptSentence) => {
+    // 「解说直接生成」句（有 videoScriptStatus）编辑的是画面脚本 videoScript，而非旁白 text；
+    // 常规链路句仍编辑 sentence.text（行为不变）。
+    const isNarrationDirect = sentence.videoScriptStatus !== undefined;
+    const initialEditText = isNarrationDirect ? (sentence.videoScript ?? '') : sentence.text;
     logger.info('开始编辑句子', {
       sentenceId: sentence.id,
-      originalText: sentence.text,
+      originalText: initialEditText,
+      isNarrationDirect,
       timestamp: new Date().toISOString()
     });
     setEditingSentenceId(sentence.id);
-    setEditingText(sentence.text);
+    setEditingText(initialEditText);
   };
 
   const handleCancelEdit = () => {
@@ -619,14 +627,22 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       timestamp: new Date().toISOString()
     });
 
-    // 更新segments数据
+    // 更新segments数据。「解说直接生成」句把编辑写回 videoScript（与旁白 text 解耦，spec §7），
+    // 并置 succeeded；常规链路句仍写 text。两路均 `{...sentence}` 展开既有字段（RV-1 字段保全）。
     const updatedSegments = segments.map(segment => ({
       ...segment,
-      sentences: segment.sentences.map(sentence => 
-        sentence.id === editingSentenceId 
-          ? { ...sentence, text: trimmedText }
-          : sentence
-      )
+      sentences: segment.sentences.map(sentence => {
+        if (sentence.id !== editingSentenceId) return sentence;
+        if (sentence.videoScriptStatus !== undefined) {
+          return {
+            ...sentence,
+            videoScript: trimmedText,
+            videoScriptStatus: 'succeeded' as const,
+            videoScriptError: undefined,
+          };
+        }
+        return { ...sentence, text: trimmedText };
+      })
     }));
 
     onUpdateSegments(updatedSegments);
@@ -2291,9 +2307,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                       const fallbackPrompt = raw.length < 8 && segment.narrationText
                         ? `${raw}（上下文：${segment.narrationText.slice(0, 100)}）`
                         : raw;
-                      const initialPrompt = (sentence.aiVideoPrompt && sentence.aiVideoPrompt.trim())
-                        ? sentence.aiVideoPrompt
-                        : fallbackPrompt;
+                      // 优先用画面脚本 videoScript（narration-direct 句），其次 aiVideoPrompt，
+                      // 最后回退旁白兜底，避免 ARK 句级初始提示词取到旁白原文（spec §7 / R6）。
+                      const initialPrompt = (sentence.videoScript && sentence.videoScript.trim())
+                        ? sentence.videoScript
+                        : (sentence.aiVideoPrompt && sentence.aiVideoPrompt.trim())
+                          ? sentence.aiVideoPrompt
+                          : fallbackPrompt;
                       const initialDuration = mapSentenceDurationToArkBucket(sentenceTiming.duration);
                       setSentenceAiModal({
                         open: true,
@@ -2340,12 +2360,60 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                         </div>
                       ) : (
                         <div className="flex-1 min-w-0">
-                          <p
-                            className="text-sm text-foreground leading-relaxed cursor-pointer"
-                            onClick={() => handleStartEdit(sentence)}
-                          >
-                            {sentence.text}
-                          </p>
+                          {/* 「AI 视频脚本」正文按 videoScriptStatus 优先级渲染（spec §7）：
+                              generating → 生成中…；videoScript 非空 → 画面脚本；failed → 失败 + 重新生成；
+                              其余（videoScriptStatus===undefined，常规链路句）→ 渲染 sentence.text（行为不变）。
+                              永不把旁白当脚本静默展示。 */}
+                          {(() => {
+                            const videoScriptText = (sentence.videoScript ?? '').trim();
+                            if (sentence.videoScriptStatus === 'generating') {
+                              return (
+                                <p className="text-sm text-muted-foreground leading-relaxed flex items-center gap-2">
+                                  <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                  </svg>
+                                  <span>{t.scriptPanel.aiVideoScript.videoScriptGenerating}</span>
+                                </p>
+                              );
+                            }
+                            if (videoScriptText) {
+                              return (
+                                <p
+                                  className="text-sm text-foreground leading-relaxed cursor-pointer"
+                                  onClick={() => handleStartEdit(sentence)}
+                                >
+                                  {videoScriptText}
+                                </p>
+                              );
+                            }
+                            if (sentence.videoScriptStatus === 'failed') {
+                              return (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm text-red-500">
+                                    {t.scriptPanel.aiVideoScript.videoScriptFailed}
+                                  </span>
+                                  {onRegenerateVideoScript && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onRegenerateVideoScript(segment.id, sentence.id)}
+                                      className="text-xs font-medium px-2 py-0.5 rounded border border-red-500 text-red-500 hover:bg-red-500/10 transition-colors"
+                                    >
+                                      {t.scriptPanel.aiVideoScript.videoScriptRetry}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <p
+                                className="text-sm text-foreground leading-relaxed cursor-pointer"
+                                onClick={() => handleStartEdit(sentence)}
+                              >
+                                {sentence.text}
+                              </p>
+                            );
+                          })()}
                           {/* 时间信息显示在句子下方 */}
                           {sentenceTiming ? (
                             <div className="flex items-center space-x-2 mt-1">

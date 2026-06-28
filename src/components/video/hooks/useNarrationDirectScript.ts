@@ -163,7 +163,9 @@ export function useNarrationDirectScript(
       id: genId('seg'),
       title: multi ? `${titleRef.current} ${idx + 1}` : titleRef.current,
       narrationText: s.text,
-      sentences: [{ id: genId('sent'), text: s.text, narration: s.text }],
+      // 每句即刻携带 videoScriptStatus:'generating'：卡片「AI 视频脚本」先显示「生成中…」，
+      // 绝不把旁白当脚本展示；随后父级富化（spec §3.2）把它落为画面脚本或 failed。
+      sentences: [{ id: genId('sent'), text: s.text, narration: s.text, videoScriptStatus: 'generating' as const }],
     }));
     // 一次性批量上抛，由父级单次 handleUpdateSegments([...existing, ...segments]) 写入，
     // 规避「逐次单写读陈旧 ref 导致丢句」的竞态（评审 8.2-(1) / 决议 R3）。

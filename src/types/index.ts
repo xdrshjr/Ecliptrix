@@ -162,6 +162,12 @@ export interface ScriptSentence {
   id: string;
   text: string;
   narration?: string; // 解说文案（对应该句的旁白文本）
+  // 「AI 视频脚本」专用字段（解说直接生成链路）：与 text/narration/aiVideoPrompt 语义分离。
+  // text=旁白原文（TTS/ARK 兜底取文）；videoScript=画面/镜头描述（与旁白逐字不同）。
+  // videoScriptStatus 是否存在 == 是否「解说直接生成句」的判别位（常规链路句恒 undefined）。
+  videoScript?: string;
+  videoScriptStatus?: 'idle' | 'generating' | 'succeeded' | 'failed';
+  videoScriptError?: string;
   startTime?: number; // 预留给未来的时间轴功能
   endTime?: number;
   // 句子级 AI 视频生成关联字段（per-sentence narration AI video）
