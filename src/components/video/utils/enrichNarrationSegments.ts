@@ -2,9 +2,10 @@
  * 「解说直接生成」富化流水线（spec narration-direct-video-script-rewrite v2 §3.2）。
  *
  * 把链路重写为：整篇解说作上下文 → 逐句调【专用转换端点】生成 AI 视频脚本（画面描述，
- * 与旁白逐字不同）→ 写 `videoScript`/状态（失败置 'failed'，绝不静默回退旁白）→ 用画面
- * 脚本组装关键词输入 → 从画面脚本提取英文关键词 → 按 id 合并 ref 单次写回；并以 `try/finally`
- * 收敛任何残留 `generating` 句为 `failed`（RV-2 无悬挂态）。
+ * 与旁白逐字不同）→ 写 `videoScript`/状态（失败置 'failed'，绝不静默回退旁白）；并【与逐句
+ * 脚本生成并行】从旁白原文提取英文关键词、先到先 ref-safe 单独写回（方案 A：关键词不再排在
+ * 逐句脚本之后串行，建卡即就位，消除「点搜索时关键词几乎必空」的时序根因）→ 画面脚本按 id
+ * 合并 ref 写回；并以 `try/finally` 收敛任何残留 `generating` 句为 `failed`（RV-2 无悬挂态）。
  *
  * 抽成依赖注入的独立 util（见 spec「实施过程发现的方案缺陷 IF-1」）：富化主体原应内联在
  * `VideoEditingInterface` 的 useCallback 里，但其单测无法在不渲染整个巨型组件时覆盖真实
@@ -40,7 +41,7 @@ export interface EnrichNarrationSegmentsDeps {
   commitSegments: (segments: ScriptSegment[]) => void;
   /** 专用端点：旁白 → 画面脚本（与旁白逐字不同）。 */
   generateVideoScript: GenerateVideoScriptFn;
-  /** 关键词端点：取材为传入 segments 的 `sentence.text`（此处即画面脚本）。 */
+  /** 关键词端点：取材为传入 segments 的 `sentence.text`（方案 A：此处即旁白原文，与画面脚本并行）。 */
   generateKeywords: GenerateKeywordsFn;
   /** 画面脚本输出语言。 */
   locale: 'zh' | 'en';
@@ -111,10 +112,16 @@ export async function enrichNarrationSegments(deps: EnrichNarrationSegmentsDeps)
       })))
       .filter(job => job.narration.length > 0);
 
-    // [2.3] 逐句并发生成画面脚本。
+    // [2.3]+[2.5] 并行（方案 A，对齐用户「生成解说/视频脚本时异步同时生成关键词」诉求）：
+    //   逐句画面脚本生成（慢，N 次 LLM、并发 2）与英文关键词生成【同时启动】，互不阻塞。
+    //   关键词不再等画面脚本——它取材旁白原文（newSegments 建卡即有 sentence.text/narration），
+    //   先到先用一次独立 ref-safe 写回落地，使关键词在富化早期就位（通常早于 TTS 完成），
+    //   消除「关键词被排到逐句脚本之后串行、用户点搜索时几乎必空」的时序根因。
     const scriptBySentence = new Map<string, string>();
     const failedBySentence = new Map<string, string>();
-    await runWithConcurrency(jobs, VIDEO_SCRIPT_CONCURRENCY, async (job) => {
+
+    // [2.3] 逐句并发生成画面脚本（仅填充 maps，写回延后到 [2.6]，不携带关键词）。
+    const videoScriptTask = runWithConcurrency(jobs, VIDEO_SCRIPT_CONCURRENCY, async (job) => {
       try {
         const res = await generateVideoScript(job.narration, fullScript, locale);
         if (res.success && res.videoScript.trim()) {
@@ -127,28 +134,31 @@ export async function enrichNarrationSegments(deps: EnrichNarrationSegmentsDeps)
       }
     });
 
-    // [2.4] 用画面脚本组装关键词输入（缺失句回退旁白），关键词取材 = sentences.map(s => s.text)。
-    const scriptedSegments: ScriptSegment[] = newSegments.map(seg => ({
-      ...seg,
-      sentences: seg.sentences.map(sent => ({
-        ...sent,
-        text: scriptBySentence.get(sent.id) ?? sent.narration ?? sent.text,
-      })),
-    }));
+    // [2.5] 关键词生成：取材【旁白原文】（直接喂 newSegments，generateKeywords 读 sentence.text），
+    //   与 [2.3] 并行；拿到即用恒等 patchFn 单独写回 keywords（不动句子字段），尽早落到面板。
+    //   失败仅 best-effort 告警（点击态兜底为安全网）。
+    const keywordTask = (async () => {
+      try {
+        const keyworded = await generateKeywords(newSegments);
+        const keywordsBySegment = new Map(keyworded.map(seg => [seg.id, seg.keywords]));
+        mergeAndCommit(
+          { getLatestSegments, commitSegments: deps.commitSegments },
+          enrichedIds,
+          (sent) => sent,
+          keywordsBySegment,
+        );
+      } catch (err) {
+        onWarn?.('解说直接生成关键词富化失败，保留空关键词', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
 
-    // [2.5] 从画面脚本生成英文关键词。
-    let keywordsBySegment = new Map<string, string[] | undefined>();
-    try {
-      const keyworded = await generateKeywords(scriptedSegments);
-      keywordsBySegment = new Map(keyworded.map(seg => [seg.id, seg.keywords]));
-    } catch (err) {
-      onWarn?.('解说直接生成关键词富化失败，保留空关键词', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    await Promise.all([videoScriptTask, keywordTask]);
 
-    // [2.6] 合并单次写回：成功 → videoScript/succeeded；失败 → failed；空旁白漏网句若仍
-    //       generating → failed（不动 text / narration / narrationText）。
+    // [2.6] 画面脚本单次写回：成功 → videoScript/succeeded；失败 → failed；空旁白漏网句若仍
+    //       generating → failed（不动 text / narration / narrationText）。关键词已在 [2.5] 单独
+    //       写回，这里【不再携带 keywords】，避免用过时映射覆盖已落地的关键词（防 clobber）。
     mergeAndCommit({ getLatestSegments, commitSegments: deps.commitSegments }, enrichedIds, (sent) => {
       const ok = scriptBySentence.get(sent.id);
       if (ok) return { ...sent, ...succeededPatch(ok) };
@@ -160,7 +170,7 @@ export async function enrichNarrationSegments(deps: EnrichNarrationSegmentsDeps)
         return { ...sent, videoScriptStatus: FAILED, videoScriptError: sent.videoScriptError ?? 'empty narration' };
       }
       return sent;
-    }, keywordsBySegment);
+    });
   } catch (err) {
     onWarn?.('解说直接生成富化异常', { error: err instanceof Error ? err.message : String(err) });
   } finally {

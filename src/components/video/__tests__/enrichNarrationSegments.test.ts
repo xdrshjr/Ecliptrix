@@ -7,7 +7,8 @@ import {
 
 // 单测：spec narration-direct-video-script-rewrite v2 §8.1。
 // 验证富化 util 的真实合并/收敛逻辑：
-//  - 关键词请求体 segmentContent 含【画面脚本】而非旁白；
+//  - 关键词请求体 segmentContent 取材【旁白原文】（方案 A：与画面脚本生成并行、建卡即有），
+//    而非画面脚本——消除「关键词排在逐句脚本之后串行」的时序根因；
 //  - 成功句写 videoScript + 'succeeded'（且同步 aiVideoPrompt）、失败句写 'failed'；
 //  - sentence.text / narration / narrationText 全程不变（G3）；
 //  - 【RV-2】空旁白 / 异常路径结束后无任何句残留 'generating'；
@@ -33,7 +34,7 @@ function makeRef(initial: ScriptSegment[]) {
 }
 
 describe('enrichNarrationSegments util', () => {
-  it('writes the generated video script (not the narration) and feeds it to keyword generation', async () => {
+  it('writes the generated video script and feeds the narration (not the video script) to keyword generation [方案A]', async () => {
     const initial: ScriptSegment[] = [
       {
         id: 'seg-a',
@@ -91,13 +92,13 @@ describe('enrichNarrationSegments util', () => {
     expect(sb.videoScript).toBeUndefined();
     expect(sb.text).toBe('nb-旁白');
 
-    // 关键词取材：成功句用画面脚本，失败句回退旁白。
+    // 关键词取材（方案 A）：直接用旁白原文，与画面脚本生成并行、不等也不用画面脚本。
     expect(keywordInput).not.toBeNull();
     const kSegA = keywordInput!.find(s => s.id === 'seg-a')!;
     const kSegB = keywordInput!.find(s => s.id === 'seg-b')!;
-    expect(kSegA.sentences[0].text).toBe(VISUAL_A);
-    expect(kSegA.sentences[0].text).not.toBe('na-旁白');
-    expect(kSegB.sentences[0].text).toBe('nb-旁白'); // 失败 → 回退旁白
+    expect(kSegA.sentences[0].text).toBe('na-旁白');
+    expect(kSegA.sentences[0].text).not.toBe(VISUAL_A); // 不再取材画面脚本
+    expect(kSegB.sentences[0].text).toBe('nb-旁白');
 
     // 无悬挂态。
     expect(noGenerating(ref.current)).toBe(true);
