@@ -2,6 +2,10 @@
 
 const { spawnSync } = require('child_process')
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /**
  * Build the PowerShell -like pattern matching any executable path under
  * `rootDir`. Exported so the escaping rules can be regression-tested without
@@ -62,8 +66,29 @@ function killPids(pids) {
   }
 }
 
+async function waitForNoProcessesUnder(rootDir, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 10000
+  const intervalMs = options.intervalMs ?? 250
+  const listProcesses = options.processesUnder || processesUnder
+  const wait = options.sleep || sleep
+  const now = options.now || (() => Date.now())
+  const deadline = now() + timeoutMs
+  let leftovers = []
+
+  while (now() <= deadline) {
+    leftovers = listProcesses(rootDir)
+    if (leftovers.length === 0) return []
+    const remainingMs = deadline - now()
+    if (remainingMs <= 0) break
+    await wait(Math.min(intervalMs, remainingMs))
+  }
+
+  return leftovers
+}
+
 module.exports = {
   buildUnderPattern,
   processesUnder,
   killPids,
+  waitForNoProcessesUnder,
 }

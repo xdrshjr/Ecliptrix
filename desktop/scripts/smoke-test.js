@@ -6,7 +6,7 @@ const os = require('os')
 const path = require('path')
 const { spawn, spawnSync } = require('child_process')
 const { withoutElectronRunAsNode } = require('./lib/electron-env')
-const { processesUnder, killPids } = require('./lib/process-cleanup')
+const { killPids, waitForNoProcessesUnder } = require('./lib/process-cleanup')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
@@ -15,7 +15,9 @@ const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
 // measured 60-70s, and a smoke deadline below the app's own would fail the
 // build before the app even times out on slow disks.
 const STARTUP_TIMEOUT_MS = 120 * 1000
+const WINDOW_LOAD_TIMEOUT_MS = 60 * 1000
 const SHUTDOWN_TIMEOUT_MS = 30 * 1000
+const PROCESS_DRAIN_TIMEOUT_MS = 10 * 1000
 const SMOKE_USERNAME = 'smokeadmin'
 const SMOKE_PASSWORD = 'smoke-test-password-1'
 
@@ -190,6 +192,23 @@ async function main() {
       fail('process.log missing backend/frontend health lines')
     }
     console.log('[smoke-test] categorised logs ok')
+
+    const mainLogPath = path.join(logsDir, 'main.log')
+    const windowLoadDeadline = Date.now() + WINDOW_LOAD_TIMEOUT_MS
+    let windowLoaded = false
+    while (!windowLoaded && Date.now() < windowLoadDeadline) {
+      if (exited) fail('Ecliptrix.exe exited before main window finished loading')
+      try {
+        windowLoaded = /main window finished load/.test(fs.readFileSync(mainLogPath, 'utf-8'))
+      } catch {
+        windowLoaded = false
+      }
+      if (!windowLoaded) await sleep(500)
+    }
+    if (!windowLoaded) {
+      fail(`main window did not finish loading within ${WINDOW_LOAD_TIMEOUT_MS / 1000}s`)
+    }
+    console.log('[smoke-test] main window loaded ok')
   } finally {
     // 5. Graceful shutdown: WM_CLOSE to the main window (taskkill without /F),
     //    escalate to a tree kill if it hangs.
@@ -203,14 +222,13 @@ async function main() {
       if (!exited) {
         console.warn('[smoke-test] graceful shutdown timed out — force killing tree')
         killPids([String(child.pid)])
-        await sleep(2000)
+        await waitForNoProcessesUnder(unpackedDir, { timeoutMs: PROCESS_DRAIN_TIMEOUT_MS })
       }
     }
   }
 
   // 6. No residual processes from the unpacked dir (spec §6.2 / §7 risk 6).
-  await sleep(2000)
-  const leftovers = processesUnder(unpackedDir)
+  const leftovers = await waitForNoProcessesUnder(unpackedDir, { timeoutMs: PROCESS_DRAIN_TIMEOUT_MS })
   if (leftovers.length > 0) {
     killPids(leftovers)
     fail(`residual processes after exit (now killed): PIDs ${leftovers.join(', ')}`)

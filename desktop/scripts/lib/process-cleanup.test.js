@@ -2,7 +2,7 @@
 
 const assert = require('assert')
 
-const { buildUnderPattern } = require('./process-cleanup')
+const { buildUnderPattern, waitForNoProcessesUnder } = require('./process-cleanup')
 
 // Regression: buildUnderPattern once doubled every backslash (rootDir.replace(
 // /\\/g, '\\\\')). In a PowerShell single-quoted string compared with -like,
@@ -58,9 +58,52 @@ function testSingleQuotesAreEscapedForPowerShell() {
   )
 }
 
+async function testWaitForNoProcessesUnderWaitsUntilEmpty() {
+  const snapshots = [['101'], ['101'], []]
+  const sleeps = []
+  const result = await waitForNoProcessesUnder('C:\\app', {
+    timeoutMs: 1000,
+    intervalMs: 25,
+    now: () => sleeps.length * 25,
+    sleep: async (ms) => sleeps.push(ms),
+    processesUnder: () => snapshots.shift() || [],
+  })
+
+  assert.deepStrictEqual(result, [], 'wait should resolve with no leftovers after process list clears')
+  assert.deepStrictEqual(sleeps, [25, 25], 'wait should poll until the process list clears')
+}
+
+async function testWaitForNoProcessesUnderReturnsLastLeftoversOnTimeout() {
+  let now = 0
+  const result = await waitForNoProcessesUnder('C:\\app', {
+    timeoutMs: 50,
+    intervalMs: 25,
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms
+    },
+    processesUnder: () => ['202', '303'],
+  })
+
+  assert.deepStrictEqual(
+    result,
+    ['202', '303'],
+    'wait should return the final observed leftovers when timeout expires',
+  )
+}
+
 testBackslashesAreNotDoubled()
 testTrailingSeparatorAppendedOnce()
 testSiblingPrefixCannotMatch()
 testSingleQuotesAreEscapedForPowerShell()
 
-console.log('process-cleanup tests passed')
+Promise.resolve()
+  .then(testWaitForNoProcessesUnderWaitsUntilEmpty)
+  .then(testWaitForNoProcessesUnderReturnsLastLeftoversOnTimeout)
+  .then(() => {
+    console.log('process-cleanup tests passed')
+  })
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })
