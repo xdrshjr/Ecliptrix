@@ -25,7 +25,7 @@ import { AiGenerateMenu } from './components/AiGenerateMenu';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
-import { generateKeywordsForSegments } from './hooks/useScriptGeneration';
+import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
 import { VideoEditingLogger } from './utils';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -1082,7 +1082,24 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           logger,
           { language: 'english' },
         );
-        const generatedKeywords = segmentWithKeywords?.keywords?.filter(keyword => keyword.trim().length > 0);
+        let generatedKeywords = segmentWithKeywords?.keywords?.filter(keyword => keyword.trim().length > 0);
+
+        // 桌面端 LLM 关键词不可用（401 / 空内容）时回退：从旁白原文本地派生检索词
+        // （FAST_LLM 中→英翻译 → 失败再退化为本地分词），保证搜索框永不为空（评审 R4）。
+        if (!generatedKeywords || generatedKeywords.length === 0) {
+          const narrationText = currentSegment.sentences
+            .map(sentence => (sentence.narration ?? sentence.text ?? '').trim())
+            .filter(value => value.length > 0)
+            .join(' ');
+          const localKeywords = await deriveLocalKeywordsFromNarration(
+            narrationText,
+            taskId || 'unknown',
+            logger,
+          );
+          if (localKeywords.length > 0) {
+            generatedKeywords = localKeywords;
+          }
+        }
 
         if (generatedKeywords && generatedKeywords.length > 0 && onUpdateSegments) {
           const nextSegments = segmentsRef.current.map(s =>

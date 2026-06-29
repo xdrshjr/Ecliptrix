@@ -82,9 +82,9 @@ export const generateKeywordsForSegments = async (
 
   // 等待所有关键词生成完成
   const segmentsWithKeywords = await Promise.all(keywordPromises);
-  
+
   const successCount = segmentsWithKeywords.filter(s => s.keywords && s.keywords.length > 0).length;
-  
+
   logger.info('脚本段落关键词生成完成', {
     totalSegments: segments.length,
     successfulSegments: successCount,
@@ -93,6 +93,64 @@ export const generateKeywordsForSegments = async (
   });
 
   return segmentsWithKeywords;
+};
+
+// 纯本地分词兜底（无网络）：从旁白原文派生检索词，保证搜索框永不为空。
+// 含拉丁字母的词（英文旁白 / 已含英文术语）按空白与标点切分取前 3 个；
+// 中文等无词边界文本则回退为「首句裁剪片段」，仍返回非空数组（评审 R4）。
+const deriveOfflineKeywords = (narration: string): string[] => {
+  const text = narration.trim();
+  if (!text) return [];
+  const latinWords = text
+    .split(/[\s,，、;；:：.。!！?？"'“”‘’()（）\[\]{}\-—/\\|]+/)
+    .map(word => word.trim())
+    .filter(word => word.length > 1 && /[a-zA-Z]/.test(word));
+  if (latinWords.length > 0) return latinWords.slice(0, 3);
+  const firstSentence = text
+    .split(/[。！？!?\n\r]+/)
+    .map(sentence => sentence.trim())
+    .find(sentence => sentence.length > 0) ?? text;
+  return [firstSentence.slice(0, 30)];
+};
+
+// 关键词路径的本地兜底（评审 R4：真错可见 + 旁白本地兜底，搜索框永不为空）。
+// 当主关键词路由 /api/script-keywords-generation 失败 / 返回空（桌面端 LLM 401 / 空内容是
+// 常见诱因）时，从旁白原文派生可用检索词：
+//   1) 复用 FAST_LLM 的 /api/translate-search-query（与在线视频搜索同一路由）把中文旁白
+//      译成英文检索短语；
+//   2) FAST_LLM 也不可用时，退化为纯本地分词（无网络），保证返回非空。
+// 仅当旁白本身为空时返回 []（此时调用方才弹原报错——真错可见）。
+export const deriveLocalKeywordsFromNarration = async (
+  narration: string,
+  taskId: string,
+  logger: VideoEditingLogger,
+): Promise<string[]> => {
+  const text = (narration ?? '').trim();
+  if (!text) return [];
+
+  // 1) FAST_LLM 中→英翻译：整句译文作为检索短语（openSearchModal 会按空格拼成查询串）。
+  try {
+    const res = await http.post<{ success?: boolean; translatedQuery?: string }>(
+      '/api/translate-search-query',
+      { query: text, taskId },
+    );
+    const translated = res?.translatedQuery?.trim();
+    if (res?.success && translated) {
+      logger.info('关键词本地兜底：FAST_LLM 旁白翻译成功', { taskId, translated });
+      return [translated];
+    }
+  } catch (error) {
+    logger.warn('关键词本地兜底：FAST_LLM 旁白翻译失败，退化为本地分词', {
+      taskId,
+      status: error instanceof ApiError ? error.status : undefined,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  // 2) 纯本地分词兜底（无网络）。
+  const offline = deriveOfflineKeywords(text);
+  logger.info('关键词本地兜底：使用旁白本地分词', { taskId, keywords: offline });
+  return offline;
 };
 
 /**

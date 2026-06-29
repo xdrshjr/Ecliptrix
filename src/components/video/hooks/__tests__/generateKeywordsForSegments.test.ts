@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as httpModule from '@/lib/api/http-client';
 import { ApiError } from '@/lib/api/http-client';
-import { generateKeywordsForSegments } from '../useScriptGeneration';
+import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from '../useScriptGeneration';
 import { VideoEditingLogger } from '../../utils';
 import { ScriptSegment } from '@/types';
 
@@ -88,6 +88,55 @@ describe('generateKeywordsForSegments', () => {
     });
 
     expect(result[0].keywords).toBeUndefined();
+  });
+});
+
+// 关键词路径优雅降级（评审 R4 / 第 3 轮）：桌面端 LLM 关键词不可用时，从旁白原文本地派生
+// 检索词，保证搜索框永不为空；仅旁白为空时才返回 [] 让调用方弹原报错（真错可见）。
+describe('deriveLocalKeywordsFromNarration', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('uses the FAST_LLM translation as the search phrase when available', async () => {
+    const spy = vi.spyOn(httpModule.http, 'post').mockResolvedValue({
+      success: true,
+      translatedQuery: 'hand drip coffee brewing',
+    } as never);
+
+    const keywords = await deriveLocalKeywordsFromNarration('介绍一杯手冲咖啡的制作过程', 'task-1', logger);
+
+    expect(spy.mock.calls[0][0]).toBe('/api/translate-search-query');
+    expect(keywords).toEqual(['hand drip coffee brewing']);
+  });
+
+  it('degrades to offline narration tokens when the FAST_LLM route fails (desktop 401)', async () => {
+    vi.spyOn(httpModule.http, 'post').mockRejectedValue(
+      new ApiError(401, 'UNAUTHORIZED', 'invalid_api_key'),
+    );
+
+    const keywords = await deriveLocalKeywordsFromNarration('a calm sunrise over the mountains', 'task-2', logger);
+
+    // 译文不可用 → 退化为本地分词，仍返回非空（搜索框永不为空）。
+    expect(keywords.length).toBeGreaterThan(0);
+    expect(keywords).toContain('calm');
+  });
+
+  it('falls back to a narration snippet for Chinese text when no latin words exist', async () => {
+    vi.spyOn(httpModule.http, 'post').mockResolvedValue({ success: false } as never);
+
+    const keywords = await deriveLocalKeywordsFromNarration('介绍一杯手冲咖啡的制作过程。', 'task-3', logger);
+
+    expect(keywords).toHaveLength(1);
+    expect(keywords[0]).toContain('手冲咖啡');
+  });
+
+  it('returns [] only when the narration is empty (real error stays visible)', async () => {
+    const spy = vi.spyOn(httpModule.http, 'post');
+
+    const keywords = await deriveLocalKeywordsFromNarration('   ', 'task-4', logger);
+
+    expect(keywords).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

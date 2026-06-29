@@ -23,7 +23,7 @@ import {
   useNarrationDirectScript
 } from './hooks';
 import { useAgentExecution } from './hooks/useAgentExecution';
-import { generateKeywordsForSegments } from './hooks/useScriptGeneration';
+import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
 import { generateNarrationVideoScript } from '@/lib/api/narrationVideoScript';
 import {
   enrichNarrationSegments as enrichNarrationSegmentsCore,
@@ -1049,8 +1049,26 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       commitSegments: commitNarrationSegments,
       generateVideoScript: (narration, fullScript, loc) =>
         generateNarrationVideoScript(narration, fullScript, loc),
-      generateKeywords: (segments) =>
-        generateKeywordsForSegments(segments, taskId || 'unknown', logger, { language: 'english' }),
+      generateKeywords: async (segments) => {
+        const withKeywords = await generateKeywordsForSegments(
+          segments,
+          taskId || 'unknown',
+          logger,
+          { language: 'english' },
+        );
+        // 桌面端 LLM 关键词不可用时，逐段从旁白原文本地派生兜底，使关键词在富化早期即就位
+        // （搜索框永不为空，用户点搜索前关键词已写回）。LLM 成功的段落不受影响（评审 R4）。
+        return Promise.all(withKeywords.map(async (seg) => {
+          const existing = seg.keywords?.filter(keyword => keyword.trim().length > 0);
+          if (existing && existing.length > 0) return seg;
+          const narrationText = seg.sentences
+            .map(sentence => (sentence.narration ?? sentence.text ?? '').trim())
+            .filter(value => value.length > 0)
+            .join(' ');
+          const local = await deriveLocalKeywordsFromNarration(narrationText, taskId || 'unknown', logger);
+          return local.length > 0 ? { ...seg, keywords: local } : seg;
+        }));
+      },
       locale: locale === 'en' ? 'en' : 'zh',
       onWarn: (message, meta) => logger.warn(message, meta),
     });
