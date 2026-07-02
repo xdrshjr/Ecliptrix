@@ -995,6 +995,8 @@ export interface Translations {
     clickToPreview: string;
     clickToPreviewDesc: string;
     previewUnavailable: string;
+    previewUnavailableHint: string;
+    openInBrowser: string;
     selectedVideos: string;
     noSelection: string;
     noSelectionDesc: string;
@@ -3521,7 +3523,9 @@ export const translations: Record<string, Translations> = {
       items: 'videos,',
       clickToPreview: 'Click video to preview',
       clickToPreviewDesc: 'Select a video from the left to view details',
-      previewUnavailable: 'No preview video',
+      previewUnavailable: 'Preview unavailable',
+      previewUnavailableHint: 'This video cannot be previewed here. Check your network/proxy, or open it in your browser.',
+      openInBrowser: 'Open in browser',
       selectedVideos: 'Selected Videos',
       noSelection: 'No selection',
       noSelectionDesc: 'Click videos to select',
@@ -6052,7 +6056,9 @@ export const translations: Record<string, Translations> = {
       items: '个视频，',
       clickToPreview: '点击视频进行预览',
       clickToPreviewDesc: '在左侧选择一个视频来查看详情',
-      previewUnavailable: '无预览视频',
+      previewUnavailable: '预览不可用',
+      previewUnavailableHint: '该视频无法在此内联预览。请检查网络/代理，或在浏览器中打开。',
+      openInBrowser: '在浏览器中打开',
       selectedVideos: '已选择的视频',
       noSelection: '暂无选择',
       noSelectionDesc: '点击视频进行选择',

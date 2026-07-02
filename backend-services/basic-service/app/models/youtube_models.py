@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from enum import Enum
+from dataclasses import dataclass, field
 
 
 class SearchOrientation(str, Enum):
@@ -102,4 +103,21 @@ class YoutubeVideoDownloadAndUploadResponse(BaseModel):
     width: Optional[int] = Field(default=None, description="视频宽度")
     height: Optional[int] = Field(default=None, description="视频高度")
     original_youtube_url: Optional[str] = Field(default=None, description="原始YouTube URL")
-    error: Optional[str] = Field(default=None, description="错误信息") 
+    error: Optional[str] = Field(default=None, description="错误信息")
+
+
+@dataclass
+class YoutubePreviewStream:
+    """左侧预览用的渐进式（音视频合流）直链解析结果（进程内内存缓存条目）。
+
+    仅用于「后端回代字节 → 前端同源 <video> 预览」链路，不落库、不进合成请求。
+    ``http_headers`` 必须取自所选 format 的 ``fmt['http_headers']``（含匹配该
+    客户端的 UA 等），回代 googlevideo 直链时原样透传；不要用顶层桌面 UA，
+    否则字节回代阶段会 403（详见 spec §2.2 / §8 P1-1）。
+    """
+    url: str                                          # googlevideo 直链
+    http_headers: Dict[str, str] = field(default_factory=dict)
+    content_type: str = "video/mp4"                   # 如 "video/mp4"
+    ext: str = "mp4"                                   # "mp4" / "webm"
+    filesize: Optional[int] = None                    # 可能为 None（approx）
+    expire_at: float = 0.0                             # time.time() + TTL，过期即重解析 

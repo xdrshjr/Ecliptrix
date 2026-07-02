@@ -2,20 +2,30 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+import re
 
-from fastapi import APIRouter, HTTPException, status
+import httpx
+from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from app.logger import get_logger
 from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse,
     YoutubeVideoInfoRequest, YoutubeVideoInfoResponse,
     YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse,
-    YoutubeVideoDownloadAndUploadRequest, YoutubeVideoDownloadAndUploadResponse
+    YoutubeVideoDownloadAndUploadRequest, YoutubeVideoDownloadAndUploadResponse,
+    YoutubePreviewStream,
 )
-from app.services.youtube_service import youtube_service
+from app.services.youtube_service import youtube_service, YoutubePreviewError
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/youtube", tags=["YouTube"])
+
+# 11 位 YouTube 视频 ID 严格校验（拒绝任意 URL / 路径穿越，从源头收敛 SSRF，spec §2.5）。
+_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+# 回代 googlevideo 直链的分片大小（64KB）。
+_PREVIEW_STREAM_CHUNK = 64 * 1024
 
 
 @router.post("/search", response_model=YoutubeSearchResponse)
@@ -268,6 +278,177 @@ async def download_and_upload_youtube_video(request: YoutubeVideoDownloadAndUplo
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="视频下载并上传过程中发生内部服务器错误"
         )
+
+
+async def _open_preview_upstream(
+    stream: YoutubePreviewStream, range_header: str | None
+):
+    """打开对 googlevideo 直链的上游流（经 YOUTUBE_PROXY），返回 ``(client, response)``。
+
+    使用「所选 format 的 http_headers」而非顶层桌面 UA（P1-1），转发浏览器 Range。
+    出错时负责关闭 client 后再抛出，避免连接泄漏。
+    """
+    # follow_redirects=True：googlevideo 边缘节点存在 302；直链源自 yt-dlp 解析
+    # 结果（非客户端输入）且经受信代理出网，SSRF 面已在「只传 11 位 id」处收敛（spec §8 P2-4）。
+    client = httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=15, read=30, write=30, pool=15),
+        follow_redirects=True,
+        proxy=(youtube_service.proxy or None),
+    )
+    upstream_headers = dict(stream.http_headers)
+    if range_header:
+        upstream_headers["Range"] = range_header
+
+    try:
+        req = client.build_request("GET", stream.url, headers=upstream_headers)
+        response = await client.send(req, stream=True)
+    except Exception:
+        await client.aclose()
+        raise
+    return client, response
+
+
+@router.get("/preview/stream")
+async def preview_stream(video_id: str, request: Request):
+    """渐进式预览流：解析渐进式 mp4 直链并经代理回代字节（支持 Range 206）。
+
+    前端左侧预览面板的同源 ``<video>`` 指向本端点（经 Next.js BFF），从而规避
+    ``<iframe youtube.com/embed>`` 触发的反机器人「请登录…」挑战（spec §1）。
+
+    Args:
+        video_id: YouTube 11 位视频 ID（``^[A-Za-z0-9_-]{11}$``）。
+        request: 用于读取浏览器透传的 ``Range`` 请求头。
+
+    Returns:
+        StreamingResponse: 200/206 视频字节流；含 Content-Type/Length/Range、
+        Accept-Ranges、Cache-Control: no-store。
+
+    Raises:
+        HTTPException: 400 非法 video_id；502 解析/上游失败；504 解析超时。
+    """
+    if not video_id or not _VIDEO_ID_RE.match(video_id):
+        logger.warning(f"非法的预览 video_id: {video_id!r}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的 video_id，需为 11 位 YouTube 视频 ID",
+        )
+
+    # 1) 解析渐进式直链（线程池 + 超时，避免阻塞事件循环 / yt-dlp 无限挂起）。
+    try:
+        stream = await asyncio.wait_for(
+            asyncio.to_thread(youtube_service.resolve_preview_stream, video_id),
+            timeout=30,
+        )
+    except asyncio.TimeoutError:
+        logger.error(f"预览直链解析超时（30s） - video_id: {video_id}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="解析预览直链超时，请检查服务器网络/代理是否能访问 YouTube",
+        )
+    except YoutubePreviewError as exc:
+        logger.warning(f"预览直链解析失败 - video_id: {video_id}: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"无法解析预览直链: {exc}",
+        )
+
+    range_header = request.headers.get("range")
+
+    # 2) 打开上游流；上游 403/410（直链过期或 IP 变化）时失效缓存、重解析一次（R2）。
+    #    信号量限制并发 preview 上游流（R6 / 落地条件 3），断连/异常时在 finally 释放。
+    semaphore = youtube_service.preview_semaphore
+    await semaphore.acquire()
+    ownership_transferred = False
+    try:
+        try:
+            client, upstream = await _open_preview_upstream(stream, range_header)
+            if upstream.status_code in (403, 410):
+                logger.info(
+                    f"预览上游 {upstream.status_code}，失效缓存并重解析一次 - video_id: {video_id}"
+                )
+                await upstream.aclose()
+                await client.aclose()
+                youtube_service.invalidate_preview_cache(video_id)
+                stream = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        youtube_service.resolve_preview_stream, video_id, True
+                    ),
+                    timeout=30,
+                )
+                client, upstream = await _open_preview_upstream(stream, range_header)
+        except asyncio.TimeoutError:
+            logger.error(f"预览重解析超时（30s） - video_id: {video_id}")
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="解析预览直链超时，请检查服务器网络/代理是否能访问 YouTube",
+            )
+        except YoutubePreviewError as exc:
+            logger.warning(f"预览直链重解析失败 - video_id: {video_id}: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"无法解析预览直链: {exc}",
+            )
+        except httpx.TimeoutException as exc:
+            logger.error(f"预览上游连接超时 - video_id: {video_id}: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="预览上游连接超时",
+            )
+        except httpx.HTTPError as exc:
+            logger.error(f"预览上游连接失败 - video_id: {video_id}: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="预览上游连接失败",
+            )
+
+        # 上游仍报错（非 2xx/206）→ 502，先关闭连接。
+        if upstream.status_code >= 400:
+            upstream_status = upstream.status_code
+            await upstream.aclose()
+            await client.aclose()
+            logger.warning(
+                f"预览上游返回 {upstream_status} - video_id: {video_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"预览上游返回 {upstream_status}",
+            )
+
+        # 3) 拷贝上游响应头并回代。
+        response_headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "no-store",
+        }
+        for name in ("content-type", "content-length", "content-range"):
+            value = upstream.headers.get(name)
+            if value:
+                response_headers[name.title()] = value
+        response_headers.setdefault("Content-Type", stream.content_type)
+
+        async def _body():
+            # P2-2 断连清理：浏览器快速切换/关闭预览会中断请求，Starlette 会
+            # aclose() 本生成器并抛 GeneratorExit；finally 确保关闭 httpx 连接、
+            # 释放信号量，避免到 googlevideo 的连接/代理堆积。
+            try:
+                async for chunk in upstream.aiter_bytes(_PREVIEW_STREAM_CHUNK):
+                    yield chunk
+            finally:
+                try:
+                    await upstream.aclose()
+                finally:
+                    await client.aclose()
+                    semaphore.release()
+
+        # 信号量释放责任移交给生成器 finally。
+        ownership_transferred = True
+        return StreamingResponse(
+            _body(),
+            status_code=upstream.status_code,
+            headers=response_headers,
+        )
+    finally:
+        if not ownership_transferred:
+            semaphore.release()
 
 
 @router.get("/health")

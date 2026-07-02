@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { UseVideoSearchReturn, VideoLibraryType } from '../../types';
 import { VideoEditingLogger } from '../../utils/logger';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -61,6 +61,14 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   const { t } = useLocale();
 
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // YouTube 左侧预览：<video> 指向同源流端点，解析/上游失败时降级为缩略图 + 在浏览器打开。
+  const [youtubePreviewError, setYoutubePreviewError] = useState(false);
+
+  // 切换预览视频时重置错误态，避免上一条失败态残留到下一条。
+  useEffect(() => {
+    setYoutubePreviewError(false);
+  }, [youtubePreviewVideo?.id]);
 
   useEffect(() => {
     if (isModalOpen) {
@@ -460,32 +468,64 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     <div className="w-full h-full min-h-[200px] max-h-[320px] bg-muted rounded-md overflow-hidden flex items-center justify-center">
                       {(currentPreviewVideo.video_url || currentPreviewVideo.videoUrl) ? (
                         activeLibrary === 'youtube' ? (
-                          // YouTube视频使用嵌入式播放器
-                          <iframe
-                            src={`https://www.youtube.com/embed/${currentPreviewVideo.id}?autoplay=0&controls=1&modestbranding=1&rel=0`}
-                            className="w-full h-full max-h-[320px] object-contain"
-                            style={{ aspectRatio: 'auto' }}
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            onLoad={() => {
-                              logger.info('YouTube视频预览加载完成', {
-                                videoId: currentPreviewVideo.id,
-                                videoTitle: currentPreviewVideo.title,
-                                activeLibrary,
-                                videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
-                                videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
-                                previewContainerMaxHeight: '320px',
-                                layoutType: 'constrained_height_preview'
-                              });
-                            }}
-                            onError={(e) => {
-                              logger.error('YouTube视频预览加载失败', new Error('YouTube iframe load error'), {
-                                videoId: currentPreviewVideo.id,
-                                activeLibrary
-                              });
-                            }}
-                          />
+                          // YouTube视频：改走后端渐进式流端点（同源 <video>），规避 iframe 内嵌
+                          // 播放器触发的反机器人「请登录…」挑战；解析/上游失败时降级。
+                          youtubePreviewError ? (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
+                              {(currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl) ? (
+                                <img
+                                  src={currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl}
+                                  alt={currentPreviewVideo.title}
+                                  className="max-w-full max-h-[220px] object-contain rounded-md mb-3"
+                                />
+                              ) : (
+                                <svg className="w-12 h-12 mb-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              )}
+                              <p className="text-sm font-medium text-foreground">{t.videoSearchModal.previewUnavailable}</p>
+                              <p className="text-xs text-muted-foreground mt-1">{t.videoSearchModal.previewUnavailableHint}</p>
+                              <a
+                                href={currentPreviewVideo.videoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-3 inline-flex items-center space-x-1 text-xs font-medium text-destructive hover:underline"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                                <span>{t.videoSearchModal.openInBrowser}</span>
+                              </a>
+                            </div>
+                          ) : (
+                            <video
+                              key={currentPreviewVideo.id}
+                              src={`/api/youtube/preview-stream?video_id=${encodeURIComponent(currentPreviewVideo.id)}`}
+                              className="w-full h-full max-h-[320px] object-contain"
+                              style={{ maxWidth: '100%', maxHeight: '320px' }}
+                              controls
+                              preload="metadata"
+                              onLoadedData={() => {
+                                setYoutubePreviewError(false);
+                                logger.info('YouTube视频预览加载完成', {
+                                  videoId: currentPreviewVideo.id,
+                                  videoTitle: currentPreviewVideo.title,
+                                  activeLibrary,
+                                  videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
+                                  videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
+                                  previewContainerMaxHeight: '320px',
+                                  layoutType: 'constrained_height_preview'
+                                });
+                              }}
+                              onError={() => {
+                                setYoutubePreviewError(true);
+                                logger.error('YouTube视频预览加载失败', new Error('YouTube preview stream load error'), {
+                                  videoId: currentPreviewVideo.id,
+                                  activeLibrary
+                                });
+                              }}
+                            />
+                          )
                         ) : (
                           // 官方视频库使用video元素
                           <video

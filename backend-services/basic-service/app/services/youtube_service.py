@@ -19,7 +19,8 @@ from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse, YoutubeVideoInfo,
     YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse,
     YoutubeVideoInfoRequest, YoutubeVideoInfoResponse,
-    YoutubeVideoDownloadAndUploadRequest, YoutubeVideoDownloadAndUploadResponse
+    YoutubeVideoDownloadAndUploadRequest, YoutubeVideoDownloadAndUploadResponse,
+    YoutubePreviewStream,
 )
 
 logger = get_logger(__name__)
@@ -29,8 +30,31 @@ _settings = get_settings()
 _max_concurrent_downloads = _settings.youtube.download.max_concurrent_downloads
 _download_semaphore = asyncio.Semaphore(_max_concurrent_downloads)
 
+# 左侧预览「渐进式直链回代」用的并发信号量（spec §7 R6 / 评审落地条件 3）：
+# 限制同时进行的 preview 上游拉流数，避免用户快速切换预览时把代理打爆。
+_PREVIEW_MAX_CONCURRENT = 4
+_preview_semaphore = asyncio.Semaphore(_PREVIEW_MAX_CONCURRENT)
+
+# 预览解析结果缓存 TTL（秒）。取保守值 1h，短于 googlevideo 直链真实 ~6h 过期，
+# 使同一视频的多段 Range 请求复用同一签名 URL、Content-Length 一致（spec §2.3）。
+_PREVIEW_CACHE_TTL = 3600
+
+# 常见渐进式容器 → HTTP Content-Type 映射。
+_PREVIEW_CONTENT_TYPES = {
+    "mp4": "video/mp4",
+    "webm": "video/webm",
+    "3gp": "video/3gpp",
+}
+
 _youtube_proxy = _settings.youtube_proxy
 logger.info(f"YouTube服务初始化 - 最大并发下载数: {_max_concurrent_downloads}, 代理: {'已配置' if _youtube_proxy else '未配置'}")
+
+
+class YoutubePreviewError(Exception):
+    """预览直链解析失败（无可用渐进式格式 / yt-dlp 抽取失败 / 被反机器人拦截到 yt-dlp 层）。
+
+    路由层据此返回 502，前端 <video> onError 降级为缩略图 + 「在浏览器中打开」。
+    """
 
 
 async def retry_with_exponential_backoff(
@@ -104,7 +128,14 @@ class YouTubeService:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.proxy = _youtube_proxy or None
+        # video_id -> YoutubePreviewStream。进程内内存缓存，单用户本地应用无需分布式缓存。
+        self._preview_stream_cache: Dict[str, YoutubePreviewStream] = {}
         logger.info(f"YouTube服务初始化完成，下载目录: {self.output_dir}, 代理: {self.proxy or '无'}")
+
+    @property
+    def preview_semaphore(self) -> asyncio.Semaphore:
+        """预览上游拉流并发信号量（供路由层限制并发 preview 流）。"""
+        return _preview_semaphore
 
     def progress_hook(self, d: Dict[str, Any]) -> None:
         """下载进度回调函数"""
@@ -162,6 +193,145 @@ class YouTubeService:
             robust_opts.update(base_opts)
 
         return robust_opts
+
+    def _pick_progressive_format(self, formats: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """从 yt-dlp ``formats`` 中挑选浏览器 ``<video>`` 可直接播放的渐进式合流格式。
+
+        浏览器原生 ``<video>`` 需要「单文件、音视频合流」的格式；YouTube 高清多为
+        DASH（音视频分离）不适合预览。优先级对应 spec §2.2 的选择器：
+        ``best[ext=mp4][acodec!=none][vcodec!=none][height<=720]/22/18/best[渐进式]``。
+
+        Args:
+            formats: ``extract_info(download=False)`` 返回的 ``info['formats']``。
+
+        Returns:
+            选中的 format dict（含 ``url`` 与 ``http_headers``）；无可用渐进式则返回 None。
+        """
+        if not formats:
+            return None
+
+        def _is_progressive(fmt: Dict[str, Any]) -> bool:
+            return (
+                bool(fmt.get("url"))
+                and fmt.get("acodec") not in (None, "none")
+                and fmt.get("vcodec") not in (None, "none")
+            )
+
+        progressive = [fmt for fmt in formats if _is_progressive(fmt)]
+        if not progressive:
+            return None
+
+        def _height(fmt: Dict[str, Any]) -> int:
+            h = fmt.get("height")
+            return h if isinstance(h, (int, float)) else 0
+
+        # 1) mp4 渐进式且 height<=720，取其中分辨率最高者（有 720p=itag22 则用之，否则 360p=itag18）。
+        mp4_le_720 = [
+            fmt for fmt in progressive
+            if fmt.get("ext") == "mp4" and 0 < _height(fmt) <= 720
+        ]
+        if mp4_le_720:
+            return max(mp4_le_720, key=_height)
+
+        # 2) 显式回退到 itag 22 / 18（当分辨率元数据缺失时）。
+        by_id = {str(fmt.get("format_id")): fmt for fmt in progressive}
+        for itag in ("22", "18"):
+            if itag in by_id:
+                return by_id[itag]
+
+        # 3) 任意 mp4 渐进式（分辨率最高者）。
+        mp4_any = [fmt for fmt in progressive if fmt.get("ext") == "mp4"]
+        if mp4_any:
+            return max(mp4_any, key=_height)
+
+        # 4) 兜底：任意渐进式（分辨率最高者）。
+        return max(progressive, key=_height)
+
+    def resolve_preview_stream(
+        self, video_id: str, force_refresh: bool = False
+    ) -> YoutubePreviewStream:
+        """解析某 YouTube 视频的渐进式预览直链（yt-dlp + TTL 内存缓存）。
+
+        阻塞调用（内部跑 ``yt_dlp.extract_info``），路由层须用 ``asyncio.to_thread``
+        + 超时包裹。命中未过期缓存则直接复用，保证同一视频的多段 Range 请求指向
+        同一签名 URL（Content-Length/Content-Range 一致，spec §2.3 / R4）。
+
+        Args:
+            video_id: 已由调用方用 ``^[A-Za-z0-9_-]{11}$`` 校验过的 11 位视频 ID。
+            force_refresh: 为 True 时忽略缓存并重解析（上游直链 403/过期后重取一次）。
+
+        Returns:
+            YoutubePreviewStream: 渐进式直链 + 该 format 级 ``http_headers`` + 元信息。
+
+        Raises:
+            YoutubePreviewError: yt-dlp 抽取失败或无可用渐进式格式。
+        """
+        if not force_refresh:
+            cached = self._preview_stream_cache.get(video_id)
+            if cached and cached.expire_at > time.time():
+                logger.info(f"预览直链缓存命中 - video_id: {video_id}")
+                return cached
+
+        watch_url = f"https://www.youtube.com/watch?v={video_id}"
+
+        # P1-1：preview 专用 opts。基于 _get_robust_ydl_options 结果「原地改写」
+        # player_client 为 web/ios（android 直链回代常 403、且日益需要 PO Token），
+        # 同时保留 skip=['hls','dash']（避免顶层浅 update 覆盖丢失）。
+        ydl_opts = self._get_robust_ydl_options({"quiet": True})
+        try:
+            ydl_opts["extractor_args"]["youtube"]["player_client"] = ["web", "ios"]
+        except (KeyError, TypeError):  # pragma: no cover - 结构恒存在，仅防御
+            ydl_opts.setdefault("extractor_args", {}).setdefault("youtube", {})[
+                "player_client"
+            ] = ["web", "ios"]
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(watch_url, download=False)
+        except Exception as exc:
+            # 含被 YouTube 反机器人拦截到 yt-dlp 层的情况（"Sign in to confirm..."）。
+            raise YoutubePreviewError(
+                f"yt-dlp 解析预览直链失败 (video_id={video_id}): {exc}"
+            ) from exc
+
+        if not info:
+            raise YoutubePreviewError(
+                f"yt-dlp 未返回视频信息 (video_id={video_id})"
+            )
+
+        fmt = self._pick_progressive_format(info.get("formats", []) or [])
+        if not fmt or not fmt.get("url"):
+            raise YoutubePreviewError(
+                f"无可用于内联预览的渐进式合流格式 (video_id={video_id})；"
+                f"可能为直播/年龄限制/仅 DASH 视频，前端应降级为缩略图 + 在浏览器打开"
+            )
+
+        # P1-1：回代请求头必须用「所选 format 的 http_headers」，缺省再退 info 顶层，
+        # 绝不用 _get_robust_ydl_options 的顶层桌面 UA（会导致字节回代阶段 403）。
+        http_headers = fmt.get("http_headers") or info.get("http_headers") or {}
+        ext = (fmt.get("ext") or "mp4").lower()
+        content_type = _PREVIEW_CONTENT_TYPES.get(ext, "video/mp4")
+        filesize = fmt.get("filesize") or fmt.get("filesize_approx")
+
+        stream = YoutubePreviewStream(
+            url=fmt["url"],
+            http_headers=dict(http_headers),
+            content_type=content_type,
+            ext=ext,
+            filesize=int(filesize) if isinstance(filesize, (int, float)) else None,
+            expire_at=time.time() + _PREVIEW_CACHE_TTL,
+        )
+        self._preview_stream_cache[video_id] = stream
+        logger.info(
+            f"预览直链解析成功 - video_id: {video_id}, "
+            f"format_id: {fmt.get('format_id')}, ext: {ext}, "
+            f"height: {fmt.get('height')}, filesize: {stream.filesize}"
+        )
+        return stream
+
+    def invalidate_preview_cache(self, video_id: str) -> None:
+        """失效某视频的预览直链缓存（上游 403/过期后强制重解析前调用）。"""
+        self._preview_stream_cache.pop(video_id, None)
 
     def sanitize_filename(self, title: str, max_length: int = 200) -> str:
         """
