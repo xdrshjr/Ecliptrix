@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ScriptSegment } from '@/types';
 import type {
+  NarrationCompleteMode,
   NarrationDirectStep,
   NarrationSplitSentence,
   UseNarrationDirectScriptReturn,
@@ -12,8 +13,8 @@ import { useNarrationChat } from './useNarrationChat';
 
 interface UseNarrationDirectScriptOptions {
   locale?: 'zh' | 'en';
-  /** 父级追加回调：把组装好的逐句新解说 segments 一次性合并进 content.scriptSegments。 */
-  onComplete: (segments: ScriptSegment[]) => void;
+  /** 父级写入回调：把组装好的逐句新解说 segments 按 mode（追加/替换）写入 content.scriptSegments。 */
+  onComplete: (segments: ScriptSegment[], mode: NarrationCompleteMode) => void;
   /** 新 segment 的默认标题（随 i18n 变化，complete 时取最新值）。 */
   defaultSegmentTitle: string;
 }
@@ -151,7 +152,7 @@ export function useNarrationDirectScript(
     setSplitSentences(next);
   }, []);
 
-  const complete = useCallback(() => {
+  const complete = useCallback((mode: NarrationCompleteMode) => {
     const sentences = splitRef.current
       .map((s) => ({ ...s, text: s.text.trim() }))
       .filter((s) => s.text.length > 0);
@@ -167,9 +168,9 @@ export function useNarrationDirectScript(
       // 绝不把旁白当脚本展示；随后父级富化（spec §3.2）把它落为画面脚本或 failed。
       sentences: [{ id: genId('sent'), text: s.text, narration: s.text, videoScriptStatus: 'generating' as const }],
     }));
-    // 一次性批量上抛，由父级单次 handleUpdateSegments([...existing, ...segments]) 写入，
+    // 一次性批量上抛，由父级单次 handleWriteNarrationSegments(segments, mode) 写入，
     // 规避「逐次单写读陈旧 ref 导致丢句」的竞态（评审 8.2-(1) / 决议 R3）。
-    onComplete(segments);
+    onComplete(segments, mode);
     close();
   }, [onComplete, close]);
 

@@ -215,7 +215,7 @@ describe('useNarrationDirectScript', () => {
     expect(result.current.splitSentences).toHaveLength(0);
   });
 
-  it('complete() emits one ScriptSegment per sentence and appends them in a single onComplete call', async () => {
+  it('complete(\'append\') emits one ScriptSegment per sentence and appends them in a single onComplete call', async () => {
     const onComplete = vi.fn();
     globalThis.fetch = mockChatFetch([
       { content: '{"sentences":["第一句。","第二句。"]}' },
@@ -229,13 +229,15 @@ describe('useNarrationDirectScript', () => {
       await result.current.goToSplitStep();
     });
     act(() => {
-      result.current.complete();
+      result.current.complete('append');
     });
 
     // 逐句导出：N 句 → N 个 segment，一次性批量上抛（B1，规避逐次单写丢句）。
     expect(onComplete).toHaveBeenCalledTimes(1);
     const segments = onComplete.mock.calls[0][0] as ScriptSegment[];
     expect(segments).toHaveLength(2);
+    // mode 沿 complete → onComplete 透传，父级据此判定追加/替换。
+    expect(onComplete.mock.calls[0][1]).toBe('append');
     // 每段仅含 1 句，narrationText 即该句本身（不再拼接）。
     expect(segments.map((seg) => seg.narrationText)).toEqual(['第一句。', '第二句。']);
     expect(segments.every((seg) => seg.sentences.length === 1)).toBe(true);
@@ -244,6 +246,31 @@ describe('useNarrationDirectScript', () => {
     // 多句时标题补 1 基序号，便于面板逐句对应。
     expect(segments.map((seg) => seg.title)).toEqual(['解说段落 1', '解说段落 2']);
     // complete() closes and resets.
+    expect(result.current.isOpen).toBe(false);
+  });
+
+  it('complete(\'replace\') forwards the replace mode as the second onComplete argument', async () => {
+    const onComplete = vi.fn();
+    globalThis.fetch = mockChatFetch([
+      { content: '{"sentences":["第一句。","第二句。"]}' },
+    ]) as any;
+
+    const { result } = renderHook(() => useNarrationDirectScript(makeOptions(onComplete)));
+    act(() => {
+      result.current.open('第一句。第二句。');
+    });
+    await act(async () => {
+      await result.current.goToSplitStep();
+    });
+    act(() => {
+      result.current.complete('replace');
+    });
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    const segments = onComplete.mock.calls[0][0] as ScriptSegment[];
+    expect(segments).toHaveLength(2);
+    // 「替换」意图沿 complete('replace') 透传为第二参。
+    expect(onComplete.mock.calls[0][1]).toBe('replace');
     expect(result.current.isOpen).toBe(false);
   });
 
@@ -258,7 +285,7 @@ describe('useNarrationDirectScript', () => {
       await result.current.goToSplitStep();
     });
     act(() => {
-      result.current.complete();
+      result.current.complete('append');
     });
     const segments = onComplete.mock.calls[0][0] as ScriptSegment[];
     expect(segments).toHaveLength(1);
@@ -279,7 +306,7 @@ describe('useNarrationDirectScript', () => {
       await result.current.goToSplitStep();
     });
     act(() => {
-      result.current.complete();
+      result.current.complete('append');
     });
     const segments = onComplete.mock.calls[0][0] as ScriptSegment[];
     // 取代旧 joinNarration(R9) 拼接行为：每句独立成段，不再合并成 "A. B."。

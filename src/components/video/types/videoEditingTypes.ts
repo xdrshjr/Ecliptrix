@@ -489,6 +489,12 @@ export interface NarrationChatMessage extends ChatMessage {
   summaryText?: string;
 }
 
+/**
+ * 「解说直接生成」写入外部脚本面板的用户意图：
+ * 'append' 追加到已有真实解说之后，'replace' 全量覆盖现有解说文案。
+ */
+export type NarrationCompleteMode = 'append' | 'replace';
+
 /** 解说直接生成编排 hook 的返回类型。 */
 export interface UseNarrationDirectScriptReturn {
   isOpen: boolean;
@@ -513,8 +519,8 @@ export interface UseNarrationDirectScriptReturn {
   goToSplitStep: () => Promise<void>;
   backToCompose: () => void;
   updateSplitSentences: (next: NarrationSplitSentence[]) => void;
-  /** 组装新解说 segment 并经 onComplete 上抛父级（追加写入）。 */
-  complete: () => void;
+  /** 组装新解说 segment 并按 mode（'append' 追加 / 'replace' 替换）经 onComplete 上抛父级。 */
+  complete: (mode: NarrationCompleteMode) => void;
 }
 
 // 新增：视频理解脚本生成模式类型

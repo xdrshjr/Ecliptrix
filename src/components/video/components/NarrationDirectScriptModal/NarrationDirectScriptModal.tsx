@@ -15,8 +15,8 @@ interface NarrationDirectScriptModalProps {
 /**
  * 解说直接生成两步式弹窗主体（Stepper + 左右分栏 + footer 导航）。
  *
- * 第 1 步撰写、第 2 步逐句拆分精修；「完成」后由 controller.complete() 组装新
- * 解说 segment 并经父级 onComplete 追加到下方解说脚本面板。
+ * 第 1 步撰写、第 2 步逐句拆分精修；第 2 步「追加」/「替换」由 controller.complete(mode)
+ * 组装新解说 segment 并经父级 onComplete 按 mode 写入下方解说脚本面板。
  */
 const NarrationDirectScriptModal: React.FC<NarrationDirectScriptModalProps> = ({ controller }) => {
   const { t } = useLocale();
@@ -179,13 +179,23 @@ const NarrationDirectScriptModal: React.FC<NarrationDirectScriptModalProps> = ({
               >
                 {t.narrationDirectScript.back}
               </button>
+              {/* 「替换」为破坏性动作 —— 次级样式且置于「追加」左侧，降低误触覆盖真实解说的概率。 */}
               <button
                 type="button"
-                onClick={complete}
+                onClick={() => complete('replace')}
+                disabled={!canComplete}
+                className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t.narrationDirectScript.replaceButton}
+              </button>
+              {/* 「追加」为非破坏、高频的默认动作 —— 主按钮样式且置于最右默认位。 */}
+              <button
+                type="button"
+                onClick={() => complete('append')}
                 disabled={!canComplete}
                 className="rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {t.narrationDirectScript.complete}
+                {t.narrationDirectScript.appendButton}
               </button>
             </>
           )}

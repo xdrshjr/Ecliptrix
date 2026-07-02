@@ -2502,7 +2502,8 @@ export interface Translations {
     deleteSentence: string;
     next: string;
     back: string;
-    complete: string;
+    appendButton: string;
+    replaceButton: string;
     close: string;
     composeReadyHint: string;
     emptyDraftHint: string;
@@ -5034,11 +5035,12 @@ export const translations: Record<string, Translations> = {
       deleteSentence: 'Delete sentence',
       next: 'Next',
       back: 'Back',
-      complete: 'Done',
+      appendButton: 'Append',
+      replaceButton: 'Replace',
       close: 'Close',
       composeReadyHint: 'Ready — click Next to split the narration into sentences.',
       emptyDraftHint: 'Write the narration first, then click Next.',
-      splitFooterHint: 'Edit, add or delete sentences, then click Done to append them below.',
+      splitFooterHint: 'Edit, add or delete sentences, then Append below or Replace the existing narration.',
       defaultSegmentTitle: 'Narration segment',
     },
     videoUnderstandingPlaceholder: {
@@ -7563,11 +7565,12 @@ export const translations: Record<string, Translations> = {
       deleteSentence: '删除句子',
       next: '下一步',
       back: '上一步',
-      complete: '完成',
+      appendButton: '追加',
+      replaceButton: '替换',
       close: '关闭',
       composeReadyHint: '文案就绪 — 点击「下一步」逐句拆分。',
       emptyDraftHint: '请先撰写解说文案，再点击「下一步」。',
-      splitFooterHint: '可编辑 / 新增 / 删除句子，点击「完成」追加到下方解说脚本。',
+      splitFooterHint: '可编辑 / 新增 / 删除句子，然后「追加」到下方，或「替换」现有解说文案。',
       defaultSegmentTitle: '解说段落',
     },
     videoUnderstandingPlaceholder: {

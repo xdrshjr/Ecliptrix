@@ -29,10 +29,12 @@ import {
   enrichNarrationSegments as enrichNarrationSegmentsCore,
   regenerateNarrationVideoScript,
 } from './utils/enrichNarrationSegments';
+import { resolveNarrationSegmentsWrite } from './utils/narrationSegmentsWrite';
+import type { NarrationCompleteMode } from './types/videoEditingTypes';
 import { useConvertToScript } from './hooks/useConvertToScript';
 import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript';
 import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
-import { getMockScriptSegments, isPlaceholderScript, mockVideoPreview } from './data';
+import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1087,24 +1089,26 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     });
   }, [commitNarrationSegments, locale]);
 
-  // 「解说直接生成」完成时把逐句新解说 segments 写入 content.scriptSegments：
-  // 首次生成（面板为空，或仍是系统示意占位 segment-1/2/3）→ 替换掉示意脚本；
-  // 后续生成 → 追加到已有真实解说之后。
-  // 复用面板既有的 handleUpdateSegments 单一写入路径，单次批量写入（评审决议 R3）。
-  const handleAppendNarrationSegments = useCallback((segments: ScriptSegment[]) => {
+  // 「解说直接生成」完成时把逐句新解说 segments 按用户选择的 mode 写入 content.scriptSegments：
+  // 「追加」→ 接在已有真实解说之后（面板为空/占位时仅写本次，保留占位守卫）；
+  // 「替换」→ 无条件用本次生成整段覆盖现有解说文案。
+  // 判定收敛在 resolveNarrationSegmentsWrite 唯一锚点；复用面板既有的 handleUpdateSegments
+  // 单一写入路径，单次批量写入（评审决议 R3 / 红线 §9.1）。
+  const handleWriteNarrationSegments = useCallback((segments: ScriptSegment[], mode: NarrationCompleteMode) => {
     const existing = scriptSegmentsRef.current ?? [];
-    const replaceExisting = existing.length === 0 || isPlaceholderScript(existing);
+    const nextSegments = resolveNarrationSegmentsWrite(existing, segments, mode);
+    // 同步前移 ref（在 handleUpdateSegments 之前），与 commitNarrationSegments 一致，
+    // 保证随后异步富化按 id 合并回写时读到的是最新数组（替换后 ref 已是新 segments，R3）。
+    scriptSegmentsRef.current = nextSegments;
     // 立即按解说原文写入（卡片即时可见，并作为富化失败时的兜底——面板永不空白），
     // 随后异步富化生成独立画面脚本与搜索关键词，完成后按 id 合并写回。
-    scriptGeneration.handleUpdateSegments(
-      replaceExisting ? segments : [...existing, ...segments]
-    );
+    scriptGeneration.handleUpdateSegments(nextSegments);
     void enrichNarrationSegments(segments);
   }, [scriptGeneration, enrichNarrationSegments]);
 
   const narrationDirectScript = useNarrationDirectScript({
     locale: locale === 'en' ? 'en' : 'zh',
-    onComplete: handleAppendNarrationSegments,
+    onComplete: handleWriteNarrationSegments,
     defaultSegmentTitle: t.narrationDirectScript.defaultSegmentTitle,
   });
 
