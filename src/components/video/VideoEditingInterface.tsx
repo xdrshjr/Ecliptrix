@@ -29,6 +29,7 @@ import {
   enrichNarrationSegments as enrichNarrationSegmentsCore,
   regenerateNarrationVideoScript,
 } from './utils/enrichNarrationSegments';
+import { enrichSegmentsWithKeywords } from './utils/enrichSegmentsWithKeywords';
 import { resolveNarrationSegmentsWrite } from './utils/narrationSegmentsWrite';
 import type { NarrationCompleteMode } from './types/videoEditingTypes';
 import { useConvertToScript } from './hooks/useConvertToScript';
@@ -571,7 +572,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const documentState = useDocumentState(content, onUpdateContent, taskId);
   const videoPlayback = usePreviewTransport(taskId, handleVideoTimeUpdate, timelineCurrentTime, currentEffectiveVolume);
   const aiAssistant = useAIAssistant(taskId, documentState.markdownValue, documentState.handleMarkdownChange);
-  const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent, content);
+  // 脚本片段落面板后触发后台英文关键词富化（诊断 narration-keywords-lazy-on-video-search-click 方案 A）。
+  // 真正实现（enrichScriptSegmentsKeywords，依赖 scriptSegmentsRef + commitNarrationSegments 的 ref-safe
+  // 写回）装配顺序晚于此处，故用 ref 转发：注入 useScriptGeneration 的是稳定身份的 stable 包装，
+  // 调用时读 ref.current 取到最新实现（初始为 no-op，在下方 effect 中赋真值）。
+  const enrichScriptKeywordsRef = useRef<(segments: ScriptSegment[]) => void>(() => {});
+  const enrichScriptKeywordsStable = useCallback((segments: ScriptSegment[]) => {
+    enrichScriptKeywordsRef.current(segments);
+  }, []);
+  const scriptGeneration = useScriptGeneration(taskId, documentState.markdownValue, onUpdateContent, content, enrichScriptKeywordsStable);
   const materialManagement = useMaterialManagement(taskId, content?.materials || []);
 
   // Persist materials back to content whenever they change.
@@ -1044,6 +1053,29 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     scriptGeneration.handleUpdateSegments(segments);
   }, [scriptGeneration]);
 
+  // 统一「英文关键词生成 + 本地兜底」：解说直接生成与其它脚本生成链路共用同一实现，杜绝逻辑漂移
+  // （诊断 narration-keywords-lazy-on-video-search-click §8.3）。经 /api/script-keywords-generation
+  // 的 language:'english' 输出 2–3 个英文关键词；桌面端 LLM 不可用时逐段从旁白原文本地派生兜底，
+  // 使关键词在富化早期即就位（搜索框永不为空，用户点搜索前关键词已写回）。
+  const generateEnglishKeywords = useCallback(async (segments: ScriptSegment[]): Promise<ScriptSegment[]> => {
+    const withKeywords = await generateKeywordsForSegments(
+      segments,
+      taskId || 'unknown',
+      logger,
+      { language: 'english' },
+    );
+    return Promise.all(withKeywords.map(async (seg) => {
+      const existing = seg.keywords?.filter(keyword => keyword.trim().length > 0);
+      if (existing && existing.length > 0) return seg;
+      const narrationText = seg.sentences
+        .map(sentence => (sentence.narration ?? sentence.text ?? '').trim())
+        .filter(value => value.length > 0)
+        .join(' ');
+      const local = await deriveLocalKeywordsFromNarration(narrationText, taskId || 'unknown', logger);
+      return local.length > 0 ? { ...seg, keywords: local } : seg;
+    }));
+  }, [taskId, logger]);
+
   const enrichNarrationSegments = useCallback(async (newSegments: ScriptSegment[]) => {
     await enrichNarrationSegmentsCore({
       newSegments,
@@ -1051,30 +1083,33 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       commitSegments: commitNarrationSegments,
       generateVideoScript: (narration, fullScript, loc) =>
         generateNarrationVideoScript(narration, fullScript, loc),
-      generateKeywords: async (segments) => {
-        const withKeywords = await generateKeywordsForSegments(
-          segments,
-          taskId || 'unknown',
-          logger,
-          { language: 'english' },
-        );
-        // 桌面端 LLM 关键词不可用时，逐段从旁白原文本地派生兜底，使关键词在富化早期即就位
-        // （搜索框永不为空，用户点搜索前关键词已写回）。LLM 成功的段落不受影响（评审 R4）。
-        return Promise.all(withKeywords.map(async (seg) => {
-          const existing = seg.keywords?.filter(keyword => keyword.trim().length > 0);
-          if (existing && existing.length > 0) return seg;
-          const narrationText = seg.sentences
-            .map(sentence => (sentence.narration ?? sentence.text ?? '').trim())
-            .filter(value => value.length > 0)
-            .join(' ');
-          const local = await deriveLocalKeywordsFromNarration(narrationText, taskId || 'unknown', logger);
-          return local.length > 0 ? { ...seg, keywords: local } : seg;
-        }));
-      },
+      generateKeywords: generateEnglishKeywords,
       locale: locale === 'en' ? 'en' : 'zh',
       onWarn: (message, meta) => logger.warn(message, meta),
     });
-  }, [commitNarrationSegments, taskId, logger, locale]);
+  }, [commitNarrationSegments, generateEnglishKeywords, logger, locale]);
+
+  // 通用脚本片段的后台英文关键词富化（复用 narration-direct 同源逻辑）：视频理解 / 转换消息为脚本 /
+  // 标准配置等链路产出片段落面板后由此调用，让 2–3 个英文关键词在后台就位，而非等用户点段落卡片
+  // 「搜索在线视频」时才现场生成（诊断 narration-keywords-lazy-on-video-search-click 方案 A）。
+  const enrichScriptSegmentsKeywords = useCallback(async (newSegments: ScriptSegment[]) => {
+    await enrichSegmentsWithKeywords({
+      newSegments,
+      getLatestSegments: () => scriptSegmentsRef.current ?? [],
+      commitSegments: commitNarrationSegments,
+      generateKeywords: generateEnglishKeywords,
+      onWarn: (message, meta) => logger.warn(message, meta),
+    });
+  }, [commitNarrationSegments, generateEnglishKeywords, logger]);
+
+  // 把上方注入 useScriptGeneration 的 ref 转发赋为真实实现：先同步前移 scriptSegmentsRef（镜像
+  // handleWriteNarrationSegments 的做法，使随后按 id 合并回写读到最新数组），再后台异步富化关键词。
+  useEffect(() => {
+    enrichScriptKeywordsRef.current = (segments: ScriptSegment[]) => {
+      scriptSegmentsRef.current = segments;
+      void enrichScriptSegmentsKeywords(segments);
+    };
+  }, [enrichScriptSegmentsKeywords]);
 
   // 卡片「重新生成」：单句重试 AI 视频脚本（ref-safe 增量 patch，RV-3）。
   const handleRegenerateVideoScript = useCallback(async (segmentId: string, sentenceId: string) => {

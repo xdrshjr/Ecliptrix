@@ -156,18 +156,21 @@ export const deriveLocalKeywordsFromNarration = async (
 /**
  * useScriptGeneration Hook
  * 管理脚本生成功能
- * 
+ *
  * @param taskId - 任务ID，用于日志记录
  * @param markdownContent - Markdown内容
  * @param onUpdateContent - 内容更新回调
  * @param currentContent - 当前完整的内容对象，用于保留原有数据
+ * @param enrichKeywords - 可选：片段落面板后触发的后台英文关键词富化（由父级注入，走 ref-safe 写回，
+ *   诊断 narration-keywords-lazy-on-video-search-click 方案 A）。缺省时行为与旧版一致。
  * @returns 脚本生成相关的状态和方法
  */
 export const useScriptGeneration = (
   taskId: string,
   markdownContent: string,
   onUpdateContent: (content: VideoEditingTaskContent) => void,
-  currentContent: VideoEditingTaskContent | null
+  currentContent: VideoEditingTaskContent | null,
+  enrichKeywords?: (segments: ScriptSegment[]) => void
 ): UseScriptGenerationReturn => {
   // 初始化日志器和脚本服务
   const logger = useMemo(() => new VideoEditingLogger({
@@ -249,29 +252,28 @@ export const useScriptGeneration = (
       setGenerationProgress(100);
 
       if (result.success && result.segments) {
-        logger.info('脚本生成成功，开始生成关键词', {
+        logger.info('脚本生成成功，片段先落面板，随后后台异步生成英文关键词', {
           segmentCount: result.segments.length
         });
 
-        // 为每个段落生成关键词
-        const segmentsWithKeywords = await generateKeywordsForSegments(result.segments, taskId, logger);
-
-        // 更新content，添加生成的脚本片段（包含关键词），同时保留原有数据
+        // 片段先落面板（不再阻塞等待关键词），保留原有数据
         const updatedContent: VideoEditingTaskContent = {
           ...currentContent, // 保留所有原有数据（包括conversations等）
           markdownContent: markdownContent,
           lastModified: new Date(),
-          scriptSegments: segmentsWithKeywords,
+          scriptSegments: result.segments,
         };
 
         onUpdateContent(updatedContent);
-        
-        logger.info('脚本内容已更新到任务中（带配置和关键词）', {
-          segmentCount: segmentsWithKeywords.length,
-          totalSentences: segmentsWithKeywords.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0),
-          totalDuration: segmentsWithKeywords.reduce((sum: number, segment: ScriptSegment) => sum + (segment.duration || 0), 0),
-          averageSegmentLength: segmentsWithKeywords.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0) / segmentsWithKeywords.length,
-          segmentsWithKeywords: segmentsWithKeywords.filter((s: ScriptSegment) => s.keywords && s.keywords.length > 0).length,
+
+        // 后台异步富化英文关键词并 ref-safe 回填（取代旧的「阻塞式 + 缺省中文」生成，
+        // 诊断 narration-keywords-lazy-on-video-search-click 证据 B）。
+        enrichKeywords?.(result.segments);
+
+        logger.info('脚本内容已更新到任务中（带配置；关键词后台生成）', {
+          segmentCount: result.segments.length,
+          totalSentences: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + segment.sentences.length, 0),
+          totalDuration: result.segments.reduce((sum: number, segment: ScriptSegment) => sum + (segment.duration || 0), 0),
           metadata: result.metadata,
           appliedConfig: config
         });
@@ -305,7 +307,7 @@ export const useScriptGeneration = (
         config
       });
     }
-  }, [markdownContent, taskId, isGeneratingScript, onUpdateContent, logger, scriptService, currentContent]);
+  }, [markdownContent, taskId, isGeneratingScript, onUpdateContent, logger, scriptService, currentContent, enrichKeywords]);
 
   // 处理脚本生成（无配置，保持向后兼容）
   const handleGenerateScript = useCallback(async (chatMessages?: ChatMessage[]) => {
@@ -365,6 +367,11 @@ export const useScriptGeneration = (
 
     onUpdateContent(updatedContent);
 
+    // 后台异步富化英文关键词并 ref-safe 回填（LIVE 主 bug 面：此前该链路完全不生成关键词，
+    // 片段以空 keywords 到达段落卡片，用户点「搜索在线视频」时才现场懒生成 —— 诊断
+    // narration-keywords-lazy-on-video-search-click 证据 C）。
+    enrichKeywords?.(generatedSegments);
+
     logger.info('视频理解生成的脚本已更新到任务中', {
       segmentCount: generatedSegments.length,
       totalSentences: generatedSegments.reduce((sum, segment) => sum + segment.sentences.length, 0),
@@ -372,7 +379,7 @@ export const useScriptGeneration = (
       segmentsWithVideos: generatedSegments.filter(segment => segment.videos && segment.videos.length > 0).length,
       lastModified: updatedContent.lastModified.toISOString()
     });
-  }, [markdownContent, onUpdateContent, logger, currentContent]);
+  }, [markdownContent, onUpdateContent, logger, currentContent, enrichKeywords]);
 
   return {
     isGeneratingScript,
