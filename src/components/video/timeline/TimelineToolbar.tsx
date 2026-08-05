@@ -207,8 +207,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   const cameraMotionDisabledHint =
     cameraMotionEligibility.reason === 'track-locked'
       ? t.timeline.cameraMotion.disabledTrackLocked
-      : cameraMotionEligibility.reason === 'not-video'
-        ? t.timeline.cameraMotion.disabledNotVideo
+      : cameraMotionEligibility.reason === 'not-visual'
+        ? t.timeline.cameraMotion.disabledNotVisual
         : t.timeline.cameraMotion.disabledNoSelection;
 
   // 高级功能按钮

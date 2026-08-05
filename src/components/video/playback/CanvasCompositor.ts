@@ -17,7 +17,7 @@ import {
 } from './internal/constants';
 import { fitContain, type FitRect } from './internal/fitContain';
 import { Camera3DRenderer } from './camera/Camera3DRenderer';
-import { fallbackCropForDraw } from './camera/resolveCameraDraw';
+import { fallbackCropForDraw, resolveCameraDraw } from './camera/resolveCameraDraw';
 import type { ResolvedCameraDraw } from './camera/types';
 import type {
   CompositorLayer,
@@ -31,6 +31,19 @@ import type {
 
 const DEFAULT_LETTERBOX_COLOR = '#000';
 const DROPPED_RATE_EMIT_INTERVAL_MS = 1000;
+
+/**
+ * How much wider than its on-screen content rect a still's cached texture is
+ * kept (D19). Zooming to `S` shows `1/S` of the texture across the same pixels,
+ * so this is the zoom factor the down-sample stays pixel-exact up to.
+ *
+ * NOT the top of `CAMERA_RANGES.scale` (4, and up to 8 once `rollPad` folds in):
+ * a 4x texture of an 8000px original is ~25 megapixels, which is the per-frame
+ * upload D19 exists to avoid in the first place. Past this factor the PREVIEW
+ * softens a little; the export re-reads the original at full resolution, so
+ * nothing the user ships is affected.
+ */
+const STILL_TEXTURE_ZOOM_HEADROOM = 2;
 
 export type { CompositorStats } from './types';
 
@@ -84,6 +97,18 @@ export class CanvasCompositor implements ICanvasCompositor {
   // UI can say so once instead of spamming (R6: never throw, always degrade).
   private _camera3D: Camera3DRenderer | null = null;
   private _camera3DDegradedOnce = false;
+  private _onCamera3DDegrade: (() => void) | null = null;
+  /**
+   * Down-sampled textures for stills that carry camera motion (D19).
+   *
+   * A video texture is 1080p-ish by nature; a still can be 8000×6000, and
+   * uploading that to the GPU every frame drops the preview on its face. The
+   * crop maths is normalized, so using the cache canvas' own dimensions as the
+   * intrinsic size is exactly equivalent — the down-sample costs nothing
+   * mathematically. Keyed by `src` and cleared with the image cache; stills
+   * WITHOUT motion never enter it (no memory cost for the untouched path).
+   */
+  private _stillTextureCache = new Map<string, HTMLCanvasElement | null>();
 
   // §5.4 per-track draw accounting (diagnostics only; default empty / cleared on
   // detach). Keyed by the video layer id (== track id).
@@ -135,6 +160,7 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._activeSource = null;
     this._overlays = [];
     this._imageCache.clear();
+    this._stillTextureCache.clear();
     this._drawWindow = [];
     this._belowRecoverHold = 0;
     this._emitSeeded = false;
@@ -352,8 +378,28 @@ export class CanvasCompositor implements ICanvasCompositor {
     intrinsicW: number,
     intrinsicH: number,
   ): boolean {
-    const cx = fit.x + fit.width / 2;
-    const cy = fit.y + fit.height / 2;
+    // A video's content rect IS its fit-rect. Everything else is material-
+    // agnostic and shared with stills (camera-motion-stills §4.3.2).
+    return this._drawCameraSource(ctx, source, fit, camera, opacity, intrinsicW, intrinsicH);
+  }
+
+  /**
+   * The material-agnostic camera draw. `content` is the rect the motion acts on
+   * and is clipped to: the fit-rect for a video, the contain rect inside its own
+   * position box for a still — a rolled still must not spill over the neighbour
+   * sitting next to it.
+   */
+  private _drawCameraSource(
+    ctx: CanvasRenderingContext2D,
+    source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
+    content: FitRect,
+    camera: ResolvedCameraDraw,
+    opacity: number,
+    intrinsicW: number,
+    intrinsicH: number,
+  ): boolean {
+    const cx = content.x + content.width / 2;
+    const cy = content.y + content.height / 2;
 
     if (camera.mode === '3d' && !camera.degraded && camera.quad) {
       const renderer = this._ensureCamera3DRenderer();
@@ -361,14 +407,14 @@ export class CanvasCompositor implements ICanvasCompositor {
         source,
         camera.crop,
         camera.quad,
-        Math.ceil(fit.width),
-        Math.ceil(fit.height),
+        Math.ceil(content.width),
+        Math.ceil(content.height),
       );
       if (surface) {
         ctx.save();
         ctx.globalAlpha = clamp01(opacity);
         try {
-          ctx.drawImage(surface, fit.x, fit.y, fit.width, fit.height);
+          ctx.drawImage(surface, content.x, content.y, content.width, content.height);
           ctx.restore();
           return true;
         } catch {
@@ -376,7 +422,7 @@ export class CanvasCompositor implements ICanvasCompositor {
           return false;
         }
       }
-      this._camera3DDegradedOnce = true;
+      this._flagCamera3DDegraded();
     }
 
     // 2D (and the degraded-3D fallback).
@@ -385,7 +431,7 @@ export class CanvasCompositor implements ICanvasCompositor {
     // because WebGL was unusable (above) or because the projection itself
     // degenerated (`camera.degraded`, set by the math kernel). Both are the
     // same thing to a viewer, so both must flip the flag.
-    if (camera.mode === '3d') this._camera3DDegradedOnce = true;
+    if (camera.mode === '3d') this._flagCamera3DDegraded();
     const sx = crop.x * intrinsicW;
     const sy = crop.y * intrinsicH;
     const sw = crop.w * intrinsicW;
@@ -393,12 +439,12 @@ export class CanvasCompositor implements ICanvasCompositor {
     if (!(sw > 0) || !(sh > 0)) return false;
 
     const rollPad = camera.rollPad > 1 ? camera.rollPad : 1;
-    const dw = fit.width * rollPad;
-    const dh = fit.height * rollPad;
+    const dw = content.width * rollPad;
+    const dh = content.height * rollPad;
 
     ctx.save();
     ctx.beginPath();
-    ctx.rect(fit.x, fit.y, fit.width, fit.height);
+    ctx.rect(content.x, content.y, content.width, content.height);
     ctx.clip();
     ctx.globalAlpha = clamp01(opacity);
     if (camera.roll !== 0) {
@@ -425,10 +471,36 @@ export class CanvasCompositor implements ICanvasCompositor {
   }
 
   /**
+   * Record a run-time 3D degrade and notify ONCE (D20).
+   *
+   * This runs inside the draw hot path, so the notification has to be edge-
+   * triggered: polling it or re-firing per frame would turn a diagnostic signal
+   * into a performance problem and a setState storm. Both trigger points (WebGL
+   * unusable, projection degenerate) funnel through here so the badge cannot
+   * learn about one and miss the other.
+   */
+  private _flagCamera3DDegraded(): void {
+    if (this._camera3DDegradedOnce) return;
+    this._camera3DDegradedOnce = true;
+    this._onCamera3DDegrade?.();
+  }
+
+  /**
+   * Subscribe to the first 3D degrade of this compositor's life. Returns an
+   * unsubscribe function. Fires at most once per `detach()` cycle.
+   */
+  onCamera3DDegrade(callback: () => void): () => void {
+    this._onCamera3DDegrade = callback;
+    return () => {
+      if (this._onCamera3DDegrade === callback) this._onCamera3DDegrade = null;
+    };
+  }
+
+  /**
    * Whether a 3D camera frame ever fell back to the 2D approximation — either
-   * WebGL was unusable or the projection degenerated. Diagnostic read-out; the
-   * user-facing notice for this degrade is the panel's own badge, which probes
-   * `Camera3DRenderer.isSupported()` directly rather than waiting for a frame.
+   * WebGL was unusable or the projection degenerated. The push notification
+   * above is what the preview badge listens to; this getter is the pull-side
+   * read-out for diagnostics and tests.
    */
   camera3DDegraded(): boolean {
     return this._camera3DDegradedOnce;
@@ -441,8 +513,6 @@ export class CanvasCompositor implements ICanvasCompositor {
   ): boolean {
     const img = this._loadImage(layer.src);
     if (!img || !img.complete || img.naturalWidth === 0) return false;
-    ctx.save();
-    ctx.globalAlpha = clamp01(layer.opacity);
     const boxX = fit.x + layer.bounds.x * fit.width;
     const boxY = fit.y + layer.bounds.y * fit.height;
     const boxW = layer.bounds.w * fit.width;
@@ -454,6 +524,37 @@ export class CanvasCompositor implements ICanvasCompositor {
     // the hard invariant that mirrors the React `<img object-contain>` handle, so
     // the canvas raster and the draggable handle are WYSIWYG.
     const rect = this._containRect(img.naturalWidth, img.naturalHeight, boxX, boxY, boxW, boxH);
+
+    if (layer.cameraInput) {
+      // D15: the still's frame aspect is the IMAGE's own aspect, because contain
+      // preserves it — one source of truth, nothing to guess or wire through.
+      const camera = resolveCameraDraw(
+        layer.cameraInput.motion,
+        layer.cameraInput.tLocal,
+        layer.cameraInput.clipDuration,
+        img.naturalWidth / img.naturalHeight,
+      );
+      if (camera && rect.w > 0 && rect.h > 0) {
+        const texture = this._stillTexture(layer.src, img, rect.w);
+        const source = texture ?? img;
+        const intrinsicW = texture ? texture.width : img.naturalWidth;
+        const intrinsicH = texture ? texture.height : img.naturalHeight;
+        return this._drawCameraSource(
+          ctx,
+          source,
+          { x: rect.x, y: rect.y, width: rect.w, height: rect.h },
+          camera,
+          layer.opacity,
+          intrinsicW,
+          intrinsicH,
+        );
+      }
+      // `undefined` (identity / unknown version) falls through to the plain
+      // contain draw below — the zero-regression fast path, untouched.
+    }
+
+    ctx.save();
+    ctx.globalAlpha = clamp01(layer.opacity);
     try {
       ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
       ctx.restore();
@@ -462,6 +563,45 @@ export class CanvasCompositor implements ICanvasCompositor {
       ctx.restore();
       return false;
     }
+  }
+
+  /**
+   * Down-sampled texture for an animated still (D19), or `null` to use the
+   * image directly.
+   *
+   * Target size is `min(natural, STILL_TEXTURE_ZOOM_HEADROOM × content width)`,
+   * so an 8000×6000 original stops costing a 48-megapixel upload every frame.
+   * Built once per `src` and kept for the compositor's life, exactly like
+   * `_imageCache` — which also means the first content width to ask for a given
+   * image sizes it: two stills sharing one file get the first one's texture.
+   */
+  private _stillTexture(
+    src: string,
+    img: HTMLImageElement,
+    contentWidth: number,
+  ): HTMLCanvasElement | null {
+    const cached = this._stillTextureCache.get(src);
+    if (cached !== undefined) return cached;
+
+    let texture: HTMLCanvasElement | null = null;
+    const scale = Math.min(1, (STILL_TEXTURE_ZOOM_HEADROOM * contentWidth) / img.naturalWidth);
+    if (scale < 1 && typeof document !== 'undefined' && contentWidth > 0) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(2, Math.ceil((img.naturalWidth * scale) / 2) * 2);
+        canvas.height = Math.max(2, Math.ceil((img.naturalHeight * scale) / 2) * 2);
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          texture = canvas;
+        }
+      } catch {
+        texture = null;
+      }
+    }
+    this._stillTextureCache.set(src, texture);
+    return texture;
   }
 
   /**

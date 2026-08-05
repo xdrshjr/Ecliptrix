@@ -132,13 +132,59 @@ describe('CameraMotionModal — stage reuses the shared math (R12)', () => {
 
   it('honours prefers-reduced-motion in the panel and the stage', () => {
     expect(modalSrc).toMatch(/prefers-reduced-motion: reduce/);
-    expect(stageSrc).toMatch(/reducedMotion \? 0 :/);
+    // The stage no longer owns this: reduced motion now means "open paused at
+    // the midpoint", which is the transport state the panel seeds (§4.5.2).
+    expect(modalSrc).toMatch(/useState\(!reducedMotion\)/);
+    expect(modalSrc).toMatch(/useState\(reducedMotion \? 0\.5 : 0\)/);
     expect(gridSrc).toMatch(/reducedMotion \? undefined : PRESET_ANIMATION\[presetId\]/);
+  });
+
+  it('scrubs with a real range input that announces its position (A27)', () => {
+    expect(stageSrc).toMatch(/type="range"/);
+    expect(stageSrc).toMatch(/aria-label=\{labels\.scrub\}/);
+    expect(stageSrc).toMatch(/aria-valuetext=\{valueText\(labels\.scrubValue/);
+    // A native range gives keyboard stepping for free — precise inspection must
+    // not depend on mouse accuracy.
+    expect(stageSrc).toMatch(/step=\{0\.005\}/);
+  });
+
+  it('pauses the loop as soon as the user drags (A27)', () => {
+    expect(modalSrc).toMatch(/const handleStageScrub = useCallback\(\(u: number\) => \{\s*\n\s*setStagePlaying\(false\);\s*\n\s*setStageProgress\(u\);/);
+    expect(stageSrc).toMatch(/onChange=\{handleScrub\}/);
+  });
+
+  it('animates the playhead without re-rendering the panel each frame', () => {
+    // The slider is uncontrolled and written from the draw loop; a 60Hz
+    // setState here would re-render the whole panel around the canvas.
+    expect(stageSrc).toMatch(/defaultValue=\{clamp01\(progress\)\}/);
+    expect(stageSrc).toMatch(/writeScrubPosition\(u\)/);
+    expect(stageSrc).not.toMatch(/setState/);
+  });
+
+  it('resets the transport every time the panel opens', () => {
+    expect(modalSrc).toMatch(/setStagePlaying\(!reducedMotion\)/);
+    expect(modalSrc).toMatch(/setStageProgress\(reducedMotion \? 0\.5 : 0\)/);
   });
 
   it('shows the WebGL-degraded badge only in 3D', () => {
     expect(modalSrc).toMatch(/mode === '3d' && webglDegraded/);
     expect(modalSrc).toMatch(/labels\.webglDegraded/);
+  });
+
+  it('stands the preview badge down while the panel is open (D29)', () => {
+    // Two near-identical sentences with different trigger conditions is worse
+    // than one: the user cannot tell whether they are the same thing.
+    expect(modalSrc).toMatch(/markCameraMotionPanelOpen\(\)/);
+    const badgeSrc = readFileSync(
+      resolve(dir, '../VideoPlayerPanel/CameraDegradeBadge.tsx'),
+      'utf-8',
+    );
+    expect(badgeSrc).toMatch(/subscribeCameraMotionPanel/);
+    expect(badgeSrc).toMatch(/if \(!degraded \|\| dismissed \|\| suppressed\) return null/);
+    // The half-sentence the badge exists for.
+    expect(badgeSrc).toMatch(/labels\.degradedBadge/);
+    expect(badgeSrc).toMatch(/role="status"/);
+    expect(badgeSrc).toMatch(/aria-live="polite"/);
   });
 
   it('raises the three quality hints from real measurements, not guesses', () => {

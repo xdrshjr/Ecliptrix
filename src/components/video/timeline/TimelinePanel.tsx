@@ -206,6 +206,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }),
   );
 
+  // Stage backdrop for the panel (camera-motion-stills D23). Thumbnails are a
+  // video-only artefact, so a still would otherwise pick its motion against a
+  // grey placeholder — the one thing that decides whether the preset LOOKS
+  // right. Prefer the live material's URL (the very image the compositor
+  // paints) and fall back to the item's own copy (review P2-3).
+  const cameraMotionStagePoster = useMemo(() => {
+    if (!cameraMotionTarget) return undefined;
+    if (cameraMotionTarget.thumbnailUrl) return cameraMotionTarget.thumbnailUrl;
+    if (cameraMotionTarget.originalMaterialType !== 'image') return undefined;
+    const material = cameraMotionTarget.materialId
+      ? materials.find((candidate) => candidate.id === cameraMotionTarget.materialId)
+      : undefined;
+    return material?.url ?? cameraMotionTarget.url ?? undefined;
+  }, [cameraMotionTarget, materials]);
+
   // ---------------------------------------------------------------------------
   // Initialize store on mount
   // ---------------------------------------------------------------------------
@@ -1185,7 +1200,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           onApply={handleApplyCameraMotion}
           clipName={cameraMotionTarget.name}
           clipDuration={cameraMotionTarget.duration}
-          clipThumbnailUrl={cameraMotionTarget.thumbnailUrl}
+          clipThumbnailUrl={cameraMotionStagePoster}
           initialMotion={cameraMotionTarget.cameraMotion}
           targetItemIds={cameraMotionTargetIds}
         />

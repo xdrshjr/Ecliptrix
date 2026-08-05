@@ -180,6 +180,9 @@ export function buildImageOverlayInputs(
         duration: item.duration,
         position: item.imagePosition ?? null,
         opacity: item.opacity ?? null,
+        // Stills take the same camera motion as video clips; the layer decides
+        // per frame whether there is anything to do (camera-motion-stills §4.3.1).
+        cameraMotion: item.cameraMotion ?? null,
       });
     }
   }
@@ -255,6 +258,12 @@ export interface UseCompositionPlaybackReturn {
   getPhase: () => MultiTrackPhase;
   /** True when every video material is previewable (readiness gate). */
   isReady: boolean;
+  /**
+   * A 3D camera frame fell back to the 2D approximation at least once since
+   * this engine attached (camera-motion-stills §4.3.5). Edge-triggered, so it
+   * costs one setState for the whole session, not one per frame.
+   */
+  camera3DDegraded: boolean;
 }
 
 /**
@@ -613,5 +622,19 @@ export function useCompositionPlayback(
     engine.seek(currentTimeRef.current ?? 0);
   }, [cameraMotionSignature, enabled, hostVersion]);
 
-  return { hostRef, play, pause, seek, getPhase, isReady };
+  // camera-motion-stills §4.3.5 / G5 — a 3D preview that silently fell back to
+  // 2D is worse than one that says so: the user starts redesigning a motion
+  // that will export perfectly. One edge-triggered callback, one setState, no
+  // per-frame reads (D20).
+  const [camera3DDegraded, setCamera3DDegraded] = useState(false);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const engine = engineRef.current;
+    // Optional-chained on purpose: an injected/stubbed engine that predates this
+    // signal must degrade to "no badge", never to a crashed preview.
+    if (typeof engine?.onCamera3DDegrade !== 'function') return undefined;
+    return engine.onCamera3DDegrade(() => setCamera3DDegraded(true));
+  }, [enabled, hostVersion, aspectRatio, buildTimelineFacade]);
+
+  return { hostRef, play, pause, seek, getPhase, isReady, camera3DDegraded };
 }

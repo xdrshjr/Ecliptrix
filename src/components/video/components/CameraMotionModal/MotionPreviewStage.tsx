@@ -12,15 +12,29 @@
  *
  * The loop is a 2s `requestAnimationFrame` cycle over the clip's own duration,
  * so the timing the user sees on the stage is the timing they will get.
+ *
+ * A scrub bar under the stage freezes that loop at any point. Judging a motion
+ * needs to be possible at a chosen instant, not only while it flies past — and
+ * because the control is a real `<input type="range">`, that inspection works
+ * with the arrow keys at whatever pace the user wants, mouse precision not
+ * required.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   Camera3DRenderer,
   fallbackCropForDraw,
   resolveCameraDraw,
   type CameraMotion,
 } from '@/components/video/playback/camera';
+
+export interface MotionStageLabels {
+  scrub: string;
+  /** `{percent}` placeholder — announced through `aria-valuetext`. */
+  scrubValue: string;
+  play: string;
+  pause: string;
+}
 
 interface MotionPreviewStageProps {
   motion: CameraMotion | null;
@@ -30,8 +44,14 @@ interface MotionPreviewStageProps {
   posterUrl?: string;
   /** Loop period in seconds. */
   loopSeconds?: number;
-  /** Static first frame instead of a loop (prefers-reduced-motion). */
-  reducedMotion?: boolean;
+  /** Auto-loop when true; frozen at {@link progress} when false. */
+  playing: boolean;
+  /** Frozen position in [0,1]; also the slider's value while paused. */
+  progress: number;
+  /** Dragging the slider reports here (and pauses the loop, in the parent). */
+  onProgressChange: (u: number) => void;
+  onTogglePlaying: () => void;
+  labels: MotionStageLabels;
   /** Raised once a 3D frame fell back to the 2D approximation. */
   onDegraded?: () => void;
   className?: string;
@@ -80,11 +100,16 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
   clipDuration,
   posterUrl,
   loopSeconds = 2,
-  reducedMotion = false,
+  playing,
+  progress,
+  onProgressChange,
+  onTogglePlaying,
+  labels,
   onDegraded,
   className,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sliderRef = useRef<HTMLInputElement>(null);
   const rendererRef = useRef<Camera3DRenderer | null>(null);
   const textureRef = useRef<HTMLCanvasElement | HTMLImageElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -92,10 +117,59 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
   const durationRef = useRef(clipDuration);
   const degradedRef = useRef(false);
   const onDegradedRef = useRef(onDegraded);
+  const playingRef = useRef(playing);
+  const progressRef = useRef(progress);
 
   motionRef.current = motion;
   durationRef.current = clipDuration;
   onDegradedRef.current = onDegraded;
+  playingRef.current = playing;
+  progressRef.current = progress;
+
+  const labelsRef = useRef(labels);
+  labelsRef.current = labels;
+  /** Wall-clock origin of the current loop; re-anchored on every resume. */
+  const loopStartRef = useRef<number | null>(null);
+  const percentRef = useRef<HTMLSpanElement>(null);
+
+  const percent = Math.round(clamp01(progress) * 100);
+
+  /** Push a position into the DOM controls without going through React. */
+  const writeScrubPosition = useCallback((u: number) => {
+    const slider = sliderRef.current;
+    if (slider) {
+      slider.value = String(u);
+      slider.setAttribute('aria-valuetext', valueText(labelsRef.current.scrubValue, u));
+    }
+    if (percentRef.current) {
+      percentRef.current.textContent = `${Math.round(u * 100)}%`;
+    }
+  }, []);
+
+  const handleScrub = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      onProgressChange(clamp01(Number(event.target.value)));
+    },
+    [onProgressChange],
+  );
+
+  // Paused: React state owns the position (a reset, a preset change, or the
+  // reduced-motion default). Playing: the draw loop owns it, so stay out.
+  useEffect(() => {
+    if (playing) return;
+    writeScrubPosition(clamp01(progress));
+  }, [playing, progress, writeScrubPosition]);
+
+  // Resume from where the user parked the playhead, not from wherever the wall
+  // clock happens to be: pressing play after inspecting a frame should continue
+  // that motion, not teleport somewhere else in the loop.
+  useEffect(() => {
+    if (!playing) return;
+    loopStartRef.current = now() - clamp01(progressRef.current) * loopSeconds * 1000;
+    // `progress` intentionally omitted: re-anchoring on every scrub while
+    // playing would fight the clock. It is read once, at the resume edge.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, loopSeconds]);
 
   // Texture: the clip poster when available, else the painted placeholder.
   useEffect(() => {
@@ -123,9 +197,11 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
     canvas.width = STAGE_W;
     canvas.height = STAGE_H;
 
-    const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (loopStartRef.current === null) {
+      loopStartRef.current = now() - clamp01(progressRef.current) * loopSeconds * 1000;
+    }
 
-    const draw = (now: number) => {
+    const draw = (frameNow: number) => {
       const texture = textureRef.current;
       const currentMotion = motionRef.current;
       const duration = durationRef.current > 0 ? durationRef.current : loopSeconds;
@@ -134,10 +210,21 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
       ctx.fillRect(0, 0, STAGE_W, STAGE_H);
       if (!texture) return;
 
-      const elapsed = reducedMotion ? 0 : ((now - start) / 1000) % loopSeconds;
+      // While playing the position comes from the clock (anchored at the last
+      // resume, so play/pause is continuous); while paused it is the scrub
+      // value. The slider's DOM value is written directly, not through React,
+      // so a 60Hz playhead never re-renders the panel around it.
+      let u: number;
+      if (playingRef.current) {
+        const elapsed = (frameNow - (loopStartRef.current ?? frameNow)) / 1000;
+        u = (((elapsed % loopSeconds) + loopSeconds) % loopSeconds) / loopSeconds;
+        writeScrubPosition(u);
+      } else {
+        u = clamp01(progressRef.current);
+      }
       // Map the loop position onto the clip's own timeline so the stage shows
       // the real window solve (including a custom start offset / duration).
-      const tLocal = (elapsed / loopSeconds) * duration;
+      const tLocal = u * duration;
       const camera = currentMotion
         ? resolveCameraDraw(currentMotion, tLocal, duration, STAGE_W / STAGE_H)
         : undefined;
@@ -190,8 +277,8 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
       ctx.restore();
     };
 
-    const tick = (now: number) => {
-      draw(now);
+    const tick = (frameNow: number) => {
+      draw(frameNow);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -202,16 +289,76 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
       rendererRef.current?.dispose();
       rendererRef.current = null;
     };
-  }, [loopSeconds, reducedMotion]);
+  }, [loopSeconds, writeScrubPosition]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={className ?? 'w-full rounded-lg border border-border bg-black'}
-      style={{ aspectRatio: '16 / 9' }}
-      role="img"
-    />
+    <div className="space-y-1.5">
+      <canvas
+        ref={canvasRef}
+        className={className ?? 'w-full rounded-lg border border-border bg-black'}
+        style={{ aspectRatio: '16 / 9' }}
+        role="img"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onTogglePlaying}
+          aria-label={playing ? labels.pause : labels.play}
+          title={playing ? labels.pause : labels.play}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border
+            bg-card text-foreground transition-colors hover:bg-muted
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            {playing ? (
+              <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+            ) : (
+              <path d="M8 5v14l11-7z" />
+            )}
+          </svg>
+        </button>
+        {/* Uncontrolled ON PURPOSE: the playhead is written straight to the DOM
+            by the draw loop (see above), so an animated slider costs zero React
+            renders. While paused the effect below keeps it in sync with state. */}
+        <input
+          ref={sliderRef}
+          type="range"
+          min={0}
+          max={1}
+          step={0.005}
+          defaultValue={clamp01(progress)}
+          onChange={handleScrub}
+          aria-label={labels.scrub}
+          aria-valuetext={valueText(labels.scrubValue, clamp01(progress))}
+          className="h-1.5 w-full cursor-pointer accent-primary"
+        />
+        <span
+          ref={percentRef}
+          className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground"
+        >
+          {percent}%
+        </span>
+      </div>
+    </div>
   );
 };
+
+function now(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+/** `'Motion progress {percent}%'` → `'Motion progress 42%'`. */
+function valueText(template: string, u: number): string {
+  return template.replace('{percent}', String(Math.round(u * 100)));
+}
 
 export default MotionPreviewStage;

@@ -141,6 +141,7 @@ export class MultiTrackPlaybackEngine {
   // (flag off) pays nothing per frame.
   private _debugEnabled = false;
   private _lastDebugMs = 0;
+  private _cameraDegradeUnsub: (() => void) | null = null;
 
   constructor(deps: { clock?: PlaybackClock; compositor?: CanvasCompositor; playhead?: PlayheadController; now?: () => number } = {}) {
     this.clock = deps.clock ?? new PlaybackClock();
@@ -263,12 +264,28 @@ export class MultiTrackPlaybackEngine {
     }
   }
 
+  /**
+   * Forward the compositor's one-shot 3D-degrade signal (camera-motion-stills
+   * §4.3.5 / D20). Returns an unsubscribe function; also released on dispose so
+   * a hook that forgets to clean up cannot setState into an unmounted tree.
+   */
+  onCamera3DDegrade(callback: () => void): () => void {
+    const unsubscribe = this.compositor.onCamera3DDegrade(callback);
+    this._cameraDegradeUnsub = unsubscribe;
+    return () => {
+      if (this._cameraDegradeUnsub === unsubscribe) this._cameraDegradeUnsub = null;
+      unsubscribe();
+    };
+  }
+
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
     this.clock.stop();
     this._clockUnsub?.();
     this._clockUnsub = null;
+    this._cameraDegradeUnsub?.();
+    this._cameraDegradeUnsub = null;
     this._disarmStartReanchor();
     this._unbindReadinessRepaint();
     try {

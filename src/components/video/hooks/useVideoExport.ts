@@ -258,6 +258,12 @@ export const useVideoExport = ({
                   duration: item.duration,
                 });
 
+                // 2D / 3D camera motion for stills (camera-motion-stills
+                // §4.4.1). `toCameraMotionWire` returns undefined when there is
+                // none, so the key simply does not appear and the backend
+                // renders byte-for-byte as before.
+                const imageCameraWire = toCameraMotionWire(item.cameraMotion);
+
                 imageItems.push({
                   id: item.id,
                   name: item.name,
@@ -268,7 +274,8 @@ export const useVideoExport = ({
                   position: imagePosition,
                   opacity: item.opacity || 1.0,
                   fade_in_duration: 0.0,
-                  fade_out_duration: 0.0
+                  fade_out_duration: 0.0,
+                  ...(imageCameraWire ? { camera_motion: imageCameraWire } : {})
                 });
                 
                 logger.debug('图片项目添加完成', {

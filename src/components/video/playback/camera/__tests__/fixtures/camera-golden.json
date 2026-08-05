@@ -2698,6 +2698,1353 @@
         "rollPad": 1,
         "degraded": true
       }
+    },
+    {
+      "name": "still-4x3-push-in-start",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 0,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-4x3-push-in-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.05555555555555558,
+          0.05555555555555558,
+          0.8888888888888888,
+          0.8888888888888888
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-4x3-push-in-end",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 6,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.09999999999999998,
+          0.09999999999999998,
+          0.8,
+          0.8
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-4x3-pan-left-start",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 0,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.13043478260869557,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-4x3-pan-left-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.06521739130434778,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-4x3-pan-left-end",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 6,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-4x3-roll-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "roll-slight",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": -2,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 2,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.02380952380952389,
+          0.02380952380952389,
+          0.9523809523809522,
+          0.9523809523809522
+        ],
+        "roll": 0,
+        "rollPad": 1.045923489289097
+      }
+    },
+    {
+      "name": "still-4x3-orbit-mid",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "orbit-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 10,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": -10,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -0.03377380627821336,
+            -0.03377380627821336,
+            1
+          ],
+          [
+            1.0337738062782134,
+            -0.03377380627821336,
+            1
+          ],
+          [
+            -0.03377380627821336,
+            1.0337738062782134,
+            1
+          ],
+          [
+            1.0337738062782134,
+            1.0337738062782134,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "still-4x3-degenerate-3d",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "custom",
+        "intensity": 2,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": -45,
+          "rotateY": -45,
+          "dolly": 0.6
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 45,
+          "rotateY": 45,
+          "dolly": 0.6
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -1.101760710915651,
+            -0.5466766128983229,
+            2.0073533323559576
+          ],
+          [
+            3.5559673045849762,
+            -6.00662776723796,
+            12.478640269603227
+          ],
+          [
+            0.15980216312814516,
+            1.2243338920621458,
+            1.3891530908893575
+          ],
+          [
+            3.1436813612692003,
+            2.2275236144441735,
+            3.313105730504162
+          ]
+        ]
+      }
+    },
+    {
+      "name": "still-1x1-push-in-start",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 0,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-1x1-push-in-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.05555555555555558,
+          0.05555555555555558,
+          0.8888888888888888,
+          0.8888888888888888
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-1x1-push-in-end",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 6,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.09999999999999998,
+          0.09999999999999998,
+          0.8,
+          0.8
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-1x1-pan-left-start",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 0,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.13043478260869557,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-1x1-pan-left-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.06521739130434778,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-1x1-pan-left-end",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 6,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-1x1-roll-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "roll-slight",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": -2,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 2,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.023809523809523836,
+          0.023809523809523836,
+          0.9523809523809523,
+          0.9523809523809523
+        ],
+        "roll": 0,
+        "rollPad": 1.0342903237215968
+      }
+    },
+    {
+      "name": "still-1x1-orbit-mid",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "orbit-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 10,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": -10,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -0.02725868119437813,
+            -0.02725868119437813,
+            1
+          ],
+          [
+            1.027258681194378,
+            -0.02725868119437813,
+            1
+          ],
+          [
+            -0.02725868119437813,
+            1.027258681194378,
+            1
+          ],
+          [
+            1.027258681194378,
+            1.027258681194378,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "still-1x1-degenerate-3d",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "custom",
+        "intensity": 2,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": -45,
+          "rotateY": -45,
+          "dolly": 0.6
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 45,
+          "rotateY": 45,
+          "dolly": 0.6
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 1080,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -1.531500598882813,
+            -0.6900254988564871,
+            2.2425825394633976
+          ],
+          [
+            1.6739757159942354,
+            -3.5082038114441803,
+            7.5533909910273
+          ],
+          [
+            0.2671936189454698,
+            1.2948507036033752,
+            1.4978824496567282
+          ],
+          [
+            3.0583522252732096,
+            1.9986480362376584,
+            2.8241763912598206
+          ]
+        ]
+      }
+    },
+    {
+      "name": "still-9x16-push-in-start",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 0,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-9x16-push-in-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.05555555555555558,
+          0.05555555555555558,
+          0.8888888888888888,
+          0.8888888888888888
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-9x16-push-in-end",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "push-in",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.25,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 6,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.09999999999999998,
+          0.09999999999999998,
+          0.8,
+          0.8
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-9x16-pan-left-start",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 0,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.13043478260869557,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-9x16-pan-left-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.06521739130434778,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-9x16-pan-left-end",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "pan-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.15,
+          "x": 0.62,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.15,
+          "x": 0.38,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 6,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.06521739130434778,
+          0.8695652173913044,
+          0.8695652173913044
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "still-9x16-roll-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "roll-slight",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": -2,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 2,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.023809523809523836,
+          0.023809523809523836,
+          0.9523809523809523,
+          0.9523809523809523
+        ],
+        "roll": 0,
+        "rollPad": 1.061383354056433
+      }
+    },
+    {
+      "name": "still-9x16-orbit-mid",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "orbit-left",
+        "intensity": 1,
+        "easing": "easeInOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 10,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": -10,
+          "dolly": 0
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -0.01871662830668308,
+            -0.01871662830668308,
+            1
+          ],
+          [
+            1.018716628306683,
+            -0.01871662830668308,
+            1
+          ],
+          [
+            -0.01871662830668308,
+            1.018716628306683,
+            1
+          ],
+          [
+            1.018716628306683,
+            1.018716628306683,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "still-9x16-degenerate-3d",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "custom",
+        "intensity": 2,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": -45,
+          "rotateY": -45,
+          "dolly": 0.6
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 45,
+          "rotateY": 45,
+          "dolly": 0.6
+        }
+      },
+      "clipDuration": 6,
+      "t": 3,
+      "frame": {
+        "w": 608,
+        "h": 1080
+      },
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -3.1236351758507306,
+            -1.1061892700701976,
+            2.6496821637487833
+          ],
+          [
+            -0.27256633615787806,
+            -2.517307568571945,
+            4.977561608688793
+          ],
+          [
+            0.7590722894951814,
+            1.511823507336111,
+            1.6691748290243884
+          ],
+          [
+            3.736123233636048,
+            1.934423213774765,
+            2.3663248632211897
+          ]
+        ]
+      }
     }
   ]
 }

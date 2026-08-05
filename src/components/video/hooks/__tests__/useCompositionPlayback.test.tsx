@@ -71,6 +71,7 @@ import {
   buildImageOverlayInputs,
   isCompositionReady,
 } from '../useCompositionPlayback';
+import { applyPreset } from '../../playback/camera/cameraPresets';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -254,6 +255,41 @@ describe('buildImageOverlayInputs', () => {
     expect(out).toHaveLength(1);
     expect(out[0].src).toBe('/api/storage/files/images/x.png');
     expect(out[0].opacity).toBe(0.8);
+  });
+
+  it('passes each still its camera motion (camera-motion-stills §4.3.1)', () => {
+    const motion = applyPreset('push-in', '2d');
+    const timeline = {
+      tracks: [
+        {
+          isVisible: true,
+          items: [
+            {
+              id: 'img-1',
+              originalMaterialType: 'image',
+              materialId: 'mat-img',
+              startTime: 1,
+              duration: 4,
+              cameraMotion: motion,
+            },
+            {
+              id: 'img-2',
+              originalMaterialType: 'image',
+              materialId: 'mat-img',
+              startTime: 6,
+              duration: 2,
+            },
+          ],
+        },
+      ],
+    } as unknown as TimelineState;
+    const materials = [
+      { id: 'mat-img', url: '/api/storage/files/images/x.png' } as MaterialItem,
+    ];
+    const out = buildImageOverlayInputs(timeline, materials);
+    expect(out[0].cameraMotion).toEqual(motion);
+    // A still without one gets `null`, never a stale neighbour's motion.
+    expect(out[1].cameraMotion).toBeNull();
   });
 
   it('drops image items whose material has no URL', () => {
@@ -536,5 +572,66 @@ describe('useCompositionPlayback — image-overlay ghost-duplicate repaint (方�
       );
     });
     expect(seekSpy).not.toHaveBeenCalled();
+  });
+
+  // camera-motion-stills §4.3.4 — "I clicked Apply and nothing happened" is the
+  // highest-frequency complaint this whole feature can produce. The paused
+  // repaint is driven by `cameraMotionSignature`, which walks VIDEO TRACKS and
+  // never looks at the material type, so stills are covered by construction —
+  // and this test is what keeps that true.
+  function timelineWithStillMotion(motion?: unknown): TimelineState {
+    return {
+      tracks: [
+        {
+          type: 'video',
+          isVisible: true,
+          items: [
+            {
+              id: 'img-1',
+              originalMaterialType: 'image',
+              materialId: 'mat-img',
+              startTime: 0,
+              duration: 10,
+              imagePosition: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+              cameraMotion: motion,
+            },
+          ],
+        },
+      ],
+    } as unknown as TimelineState;
+  }
+
+  it('repaints while PAUSED when a still gains a camera motion (A18)', () => {
+    const host = fakeHost();
+    const r = renderHook((p: Props) => useCompositionPlayback(p), {
+      initialProps: makeProps(timelineWithStillMotion(undefined), false),
+    });
+    act(() => {
+      r.result.current.hostRef(host as never);
+    });
+    seekSpy.mockClear();
+
+    act(() => {
+      r.rerender(makeProps(timelineWithStillMotion(applyPreset('push-in', '2d')), false));
+    });
+
+    expect(seekSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('repaints again when the still motion is EDITED', () => {
+    const host = fakeHost();
+    const r = renderHook((p: Props) => useCompositionPlayback(p), {
+      initialProps: makeProps(timelineWithStillMotion(applyPreset('push-in', '2d')), false),
+    });
+    act(() => {
+      r.result.current.hostRef(host as never);
+    });
+    seekSpy.mockClear();
+
+    act(() => {
+      r.rerender(makeProps(timelineWithStillMotion(applyPreset('orbit-left', '3d')), false));
+    });
+
+    expect(seekSpy).toHaveBeenCalledWith(0);
   });
 });

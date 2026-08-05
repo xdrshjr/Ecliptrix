@@ -29,7 +29,9 @@ from app.services.composition.camera_motion import (
     ease,
     is_identity_camera_motion,
     keyframe_at,
+    load_camera_config,
     project_3d_corners,
+    reset_camera_config_cache,
     resolve_window,
     roll_cover,
     roll_pad_for_motion,
@@ -322,6 +324,58 @@ class TestFilterChain:
 
 
 # ---------------------------------------------------------------------------
+# Config loading (§14 I4 — a trimmed YAML must not change behaviour)
+# ---------------------------------------------------------------------------
+
+
+class TestConfigLoading:
+    @pytest.fixture(autouse=True)
+    def _isolate_cache(self):
+        reset_camera_config_cache()
+        yield
+        reset_camera_config_cache()
+
+    def test_a_trimmed_yaml_behaves_exactly_like_the_dataclass_defaults(self, tmp_path):
+        """Every fallback inside the parser has to BE the dataclass default.
+
+        A config file that only sets `enabled` once silently opted the install
+        into `supersample=2` — the 7x-slower path — because the parser carried a
+        second, divergent set of defaults. Whole-object equality is the only
+        assertion that keeps catching that for every field added later.
+        """
+        path = tmp_path / "camera-motion.yaml"
+        path.write_text("camera_motion:\n  enabled: true\n", encoding="utf-8")
+        assert load_camera_config(str(path)) == CameraMotionConfig()
+
+    def test_a_missing_stills_section_keeps_stills_enabled(self, tmp_path):
+        path = tmp_path / "camera-motion.yaml"
+        path.write_text("camera_motion:\n  supersample: 2\n", encoding="utf-8")
+        loaded = load_camera_config(str(path))
+        assert loaded.supersample == 2
+        assert loaded.stills_enabled is True
+        assert loaded.stills_max_source_pixels == CameraMotionConfig().stills_max_source_pixels
+
+    def test_the_stills_section_is_read_when_present(self, tmp_path):
+        path = tmp_path / "camera-motion.yaml"
+        path.write_text(
+            "camera_motion:\n  stills:\n    enabled: false\n    max_source_pixels: 1000\n",
+            encoding="utf-8",
+        )
+        loaded = load_camera_config(str(path))
+        assert loaded.stills_enabled is False
+        assert loaded.stills_max_source_pixels == 1000
+
+    def test_the_shipped_config_file_parses(self):
+        """The repo's own config/camera-motion.yaml must stay loadable — a typo
+        there degrades every install to defaults with only a log line."""
+        shipped = Path(__file__).resolve().parents[1] / "config" / "camera-motion.yaml"
+        assert shipped.exists()
+        loaded = load_camera_config(str(shipped))
+        assert loaded.enabled is True
+        assert loaded.stills_enabled is True
+
+
+# ---------------------------------------------------------------------------
 # Cross-language golden vectors (§9.3)
 # ---------------------------------------------------------------------------
 
@@ -393,10 +447,15 @@ def _resolve(motion_wire, t_local, clip_duration, aspect):
 class TestGoldenVectors:
     def test_python_matches_the_typescript_kernel(self):
         golden = _load_golden()
-        aspect = golden["frame"]["w"] / golden["frame"]["h"]
+        default_frame = golden["frame"]
         assert len(golden["cases"]) >= 30
 
         for case in golden["cases"]:
+            # Stills brought non-16:9 content rects into the fixture, and both
+            # rollPad and coverScale are functions of the aspect — a per-case
+            # frame is the only way those cases mean anything.
+            frame = case.get("frame") or default_frame
+            aspect = frame["w"] / frame["h"]
             wire = _wire_from_camel(case["motion"])
             actual = _resolve(wire, case["t"], case["clipDuration"], aspect)
             expected = case["expect"]

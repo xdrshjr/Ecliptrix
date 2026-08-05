@@ -100,6 +100,14 @@ class CameraMotionConfig:
     poly_degree_fallback: Optional[int] = None
     max_fit_error_px: float = 0.75
     dry_run_probe: bool = True
+    #: Still-image camera motion master switch (camera-motion-stills §7.3).
+    stills_enabled: bool = True
+    #: Operator brake, in SOURCE pixels (D28). The content rect is always
+    #: <= the position box <= the output resolution, so gating on it would
+    #: never fire (4K output is exactly 3840*2160); the cost that actually
+    #: hurts is decoding an 8000x6000 original, and `zoompan` sits AFTER
+    #: `scale=cw:ch` so it never sees the original at all.
+    stills_max_source_pixels: int = 33_177_600  # 7680x4320
 
 
 _config_cache: Optional[CameraMotionConfig] = None
@@ -120,6 +128,9 @@ def load_camera_config(config_path: str = "config/camera-motion.yaml") -> Camera
             with open(path, "r", encoding="utf-8") as handle:
                 raw = yaml.safe_load(handle) or {}
             section = raw.get("camera_motion", raw) or {}
+            # A trimmed YAML must behave exactly like no YAML at all: every
+            # fallback below has to be the dataclass default, verbatim (§14 I4).
+            stills = section.get("stills") or {}
             _config_cache = CameraMotionConfig(
                 enabled=bool(section.get("enabled", True)),
                 # Default 1, NOT 2 — must agree with CameraMotionConfig's own
@@ -134,6 +145,10 @@ def load_camera_config(config_path: str = "config/camera-motion.yaml") -> Camera
                 ),
                 max_fit_error_px=float(section.get("max_fit_error_px", 0.75) or 0.75),
                 dry_run_probe=bool(section.get("dry_run_probe", True)),
+                stills_enabled=bool(stills.get("enabled", True)),
+                stills_max_source_pixels=int(
+                    stills.get("max_source_pixels", 33_177_600) or 33_177_600
+                ),
             )
             logger.info("Camera motion configuration loaded successfully")
         else:
@@ -764,3 +779,195 @@ def build_camera_filter_chain(
         parts.append(perspective_segment)
 
     return ",".join(parts), warnings
+
+
+# ---------------------------------------------------------------------------
+# Still-image overlay plan (camera-motion-stills §4.4.2)
+# ---------------------------------------------------------------------------
+
+
+def contain_fit(nat_w: int, nat_h: int, box_w: int, box_h: int) -> Tuple[int, int]:
+    """The content rect an image occupies after `contain` inside its box.
+
+    Equivalent to FFmpeg's ``scale=box_w:box_h:force_original_aspect_ratio=
+    decrease``; we compute it explicitly because the camera chain needs literal
+    numbers (``zoompan``'s ``s=WxH`` and ``perspective``'s corner coordinates
+    cannot be expressed with run-time variables other than ``iw``/``ih``).
+
+    Returns ``(0, 0)`` on any non-positive input — the caller then drops the
+    motion for that image instead of raising (R22: an unreadable image must
+    never fail the whole export).
+
+    ``_even`` rounds UP, so the result could in principle exceed the box and make
+    the following ``pad`` fail with "Padded dimensions cannot be smaller than
+    input dimensions". It cannot: ``k = min(box_w/nat_w, box_h/nat_h)`` puts both
+    sides at ``<= box``, and for an EVEN integer ``box``, ``x <= box`` implies
+    ``_even(x) <= box`` (``ceil(x) <= box``; if ``ceil(x) == box - 1`` it is odd
+    and the +1 lands exactly on ``box``). Anchor: ``contain_fit(1919, 1080, 1920,
+    1080) == (1920, 1080)`` — flush with the edge, never past it.
+    """
+    if nat_w <= 0 or nat_h <= 0 or box_w <= 0 or box_h <= 0:
+        return (0, 0)
+    k = min(box_w / nat_w, box_h / nat_h)
+    return (_even(nat_w * k), _even(nat_h * k))
+
+
+def still_static_chain(box_w: int, box_h: int) -> str:
+    """The legacy, motion-free image filter chain — character for character.
+
+    This is the zero-regression contract (D16 / C11): the string between the
+    ``[k:v]`` and ``[imgN]`` labels for an image WITHOUT camera motion must be
+    byte-identical to the inline f-strings this constructor replaced, so "no
+    motion" is provably free rather than merely believed to be.
+    """
+    return (
+        f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease,"
+        f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:black@0"
+    )
+
+
+@dataclass(frozen=True)
+class StillOverlayPlan:
+    """One image's complete plan inside the overlay filtergraph."""
+
+    #: Input options for THIS input, e.g. ``['-loop','1','-t','8.000',...]``.
+    #: They must be emitted immediately before the ``-i`` they modify (D27).
+    input_args: List[str]
+    #: The filter chain between the ``[k:v]`` and ``[imgN]`` labels.
+    chain: str
+    #: Appended after ``overlay=x:y:enable=...`` (e.g. ``':eof_action=pass'``).
+    overlay_suffix: str
+    warnings: List[str]
+    #: True only when a camera chain was actually injected.
+    animated: bool
+
+
+def _static_plan(box_w: int, box_h: int, warnings: List[str]) -> StillOverlayPlan:
+    return StillOverlayPlan(
+        input_args=[],
+        chain=still_static_chain(box_w, box_h),
+        overlay_suffix="",
+        warnings=warnings,
+        animated=False,
+    )
+
+
+def build_still_overlay_plan(
+    motion: Any,
+    *,
+    nat_w: int,
+    nat_h: int,
+    box_w: int,
+    box_h: int,
+    fps: int,
+    duration: float,
+    start_time: float,
+    caps: CameraFilterCaps,
+    label: str,
+    ffmpeg_path: str,
+    config: Optional[CameraMotionConfig] = None,
+) -> StillOverlayPlan:
+    """Build the overlay branch for ONE image (camera-motion-stills §4.4.2).
+
+    The single constructor behind both image-overlay call sites (D16 / H3):
+    injecting the motion in only one of them would make camera motion vanish as
+    soon as the project also has subtitles — an almost un-diagnosable WYSIWYG
+    break.
+
+    ``caps`` / ``label`` / ``ffmpeg_path`` deliberately have NO defaults (D26 /
+    review P0-2, P1-6). ``CameraFilterCaps()`` defaults every field to True, so a
+    ``caps=None`` fallback would not be conservative — it would assert that every
+    filter exists on every machine and silently disable the "probe missing →
+    degrade" path G4 promises. A missing ``label`` would likewise make every
+    still warning read the same, leaving the user unable to tell WHICH image was
+    degraded. Both mistakes belong in the type checker, not in someone's export.
+    """
+    warnings: List[str] = []
+    config = config or load_camera_config()
+
+    # The user did not ask for motion — nothing to explain.
+    if motion is None or is_identity_camera_motion(motion):
+        return _static_plan(box_w, box_h, warnings)
+
+    if not config.stills_enabled:
+        warnings.append(
+            f"{label}: still-image camera motion is disabled on the server; "
+            f"rendered without motion"
+        )
+        return _static_plan(box_w, box_h, warnings)
+
+    if nat_w <= 0 or nat_h <= 0:
+        warnings.append(
+            f"{label}: could not read the image dimensions; rendered without camera motion"
+        )
+        return _static_plan(box_w, box_h, warnings)
+
+    if nat_w * nat_h > config.stills_max_source_pixels:
+        warnings.append(
+            f"{label}: image is {nat_w}x{nat_h}, above the "
+            f"{config.stills_max_source_pixels}px camera-motion limit; "
+            f"rendered without motion"
+        )
+        return _static_plan(box_w, box_h, warnings)
+
+    cw, ch = contain_fit(nat_w, nat_h, box_w, box_h)
+    if cw <= 0 or ch <= 0:
+        warnings.append(
+            f"{label}: the image frame is too small for camera motion; "
+            f"rendered without motion"
+        )
+        return _static_plan(box_w, box_h, warnings)
+
+    # The math kernel is shared with video verbatim — stills only feed it the
+    # right "content rect" (§4.2). No new geometry, no second implementation.
+    chain, chain_warnings = build_camera_filter_chain(
+        motion=motion,
+        frame_w=cw,
+        frame_h=ch,
+        fps=fps,
+        clip_duration=duration,
+        caps=caps,
+        config=config,
+        label=label,
+    )
+    warnings.extend(chain_warnings)
+
+    # D26: 0.1s lavfi pre-flight. On the video side a bad chain costs one clip's
+    # normalize; here it costs a whole-file re-encode of the overlay pass, so
+    # this gate is the single highest-value check on the still path.
+    if chain and config.dry_run_probe:
+        ok, first_error = dry_run_chain(chain, ffmpeg_path)
+        if not ok:
+            logger.error(f"Still camera filter dry-run failed ({label}): {first_error}")
+            warnings.append(
+                f"{label}: camera motion filter check failed "
+                f"({first_error or 'unknown error'}); rendered without motion"
+            )
+            chain = ""
+
+    if not chain:
+        return _static_plan(box_w, box_h, warnings)
+
+    # D18: contain-scale → camera → pad. The motion acts on the content rect,
+    # exactly like the preview, instead of on a box already padded with
+    # transparency (which would dilute the motion and break WYSIWYG).
+    # `chain` opens with `setpts=PTS-STARTPTS,fps=F`, so the timeline shift has
+    # to come after it.
+    parts = [
+        f"scale={cw}:{ch}:flags=bicubic",
+        chain,
+        f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:black@0",
+        f"setpts=PTS-STARTPTS+{_num(start_time)}/TB",
+    ]
+    return StillOverlayPlan(
+        # D17: only an animated image becomes a stream. `zoompan=d=1` emits a
+        # single frame for a single-frame input; measured 1 frame vs exactly 90
+        # with `-loop 1 -t 3 -framerate 30` (§4.4.5).
+        input_args=["-loop", "1", "-t", f"{duration:.3f}", "-framerate", str(fps)],
+        chain=",".join(parts),
+        # D25: the looped input ends at `-t`; `pass` says so explicitly. Only on
+        # the animated branch, so the static string stays byte-identical.
+        overlay_suffix=":eof_action=pass",
+        warnings=warnings,
+        animated=True,
+    )

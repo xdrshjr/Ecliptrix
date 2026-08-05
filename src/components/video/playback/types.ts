@@ -11,7 +11,7 @@
  */
 
 import type { VideoSequenceItem } from '../types';
-import type { ResolvedCameraDraw } from './camera/types';
+import type { ResolvedCameraDraw, StillCameraInput } from './camera/types';
 
 /**
  * One composited preview frame emitted by {@link IPlaybackClock} on each tick.
@@ -124,6 +124,13 @@ export type CompositorLayer =
       bounds: { x: number; y: number; w: number; h: number };
       opacity: number;
       z: number;
+      /**
+       * This still's camera motion, UNRESOLVED (camera-motion-stills §4.3.1).
+       * Unlike the video branch it is not a `ResolvedCameraDraw`: resolving
+       * needs the image's aspect, which only exists once the compositor has
+       * decoded it. `undefined` keeps the existing contain-draw path untouched.
+       */
+      cameraInput?: StillCameraInput;
     };
 
 /**

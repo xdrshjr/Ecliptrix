@@ -23,5 +23,33 @@ unit-testable modules:
   mirror of the frontend math kernel, the FFmpeg ``zoompan`` / ``perspective`` /
   ``rotate`` chain builder injected between ``scale`` and ``pad``, the filter
   capability probe, and the 0.1s dry-run pre-flight that catches bad expressions
-  before a 4K transcode starts.
+  before a 4K transcode starts. Stills reuse all of it through
+  ``build_still_overlay_plan`` (camera-motion-stills), the single constructor
+  for an image's overlay branch.
 """
+
+from app.services.composition.camera_motion import (  # noqa: F401
+    CameraFilterCaps,
+    CameraMotionConfig,
+    StillOverlayPlan,
+    build_camera_filter_chain,
+    build_still_overlay_plan,
+    contain_fit,
+    dry_run_chain,
+    load_camera_config,
+    probe_camera_filters,
+    still_static_chain,
+)
+
+__all__ = [
+    "CameraFilterCaps",
+    "CameraMotionConfig",
+    "StillOverlayPlan",
+    "build_camera_filter_chain",
+    "build_still_overlay_plan",
+    "contain_fit",
+    "dry_run_chain",
+    "load_camera_config",
+    "probe_camera_filters",
+    "still_static_chain",
+]

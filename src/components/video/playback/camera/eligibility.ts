@@ -5,16 +5,17 @@
  * badge all call THIS function. Writing the rule four times is how the four
  * entry points drift apart.
  *
- * v1 scope (D9 / N1): video clips on unlocked video tracks only. Image items
- * ride the `ImageOverlayLayer` / `_process_image_overlays` path, which this
- * feature does not touch — better to disable them outright than to ship half a
- * behaviour.
+ * Scope: any VISUAL clip on an unlocked video track — video clips and the image
+ * clips that ride the `ImageOverlayLayer` / overlay-pass path alike
+ * (camera-motion-stills §4.5.1). Stills were excluded in v1 only because the
+ * export side could not animate them yet; they share the data model, the math
+ * kernel and the panel, so the rule is now simply "is it visible".
  */
 
 import type { TimelineItemData, TrackData } from '../../timeline/domain/types';
 
 /** Why a clip cannot take a camera motion — drives the disabled tooltip. */
-export type CameraIneligibleReason = 'no-selection' | 'track-locked' | 'not-video';
+export type CameraIneligibleReason = 'no-selection' | 'track-locked' | 'not-visual';
 
 export function canApplyCameraMotion(
   item: TimelineItemData | undefined,
@@ -31,11 +32,10 @@ export function cameraMotionIneligibleReason(
   if (!item) return 'no-selection';
   if (!track) return 'no-selection';
   if (track.isLocked) return 'track-locked';
-  if (track.type !== 'video') return 'not-video';
-  if (item.type !== 'video') return 'not-video';
-  // Image materials dropped onto a video track keep `type: 'video'` but carry
-  // `originalMaterialType: 'image'` — they render through the image overlay
-  // path, so they are out of scope for v1 (D9 / N1).
-  if (item.originalMaterialType === 'image') return 'not-video';
+  // Audio and subtitle items have no picture to move. Image materials dropped
+  // onto a video track keep `type: 'video'` and `originalMaterialType: 'image'`,
+  // so this pair of checks admits them without a type-specific special case.
+  if (track.type !== 'video') return 'not-visual';
+  if (item.type !== 'video') return 'not-visual';
   return null;
 }

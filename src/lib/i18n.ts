@@ -797,9 +797,15 @@ export interface Translations {
       qualityHintRoll: string;
       qualityHintClamped: string;
       disabledNoSelection: string;
-      disabledNotVideo: string;
+      disabledNotVisual: string;
       disabledTrackLocked: string;
       badgeTitle: string;
+      degradedBadge: string;
+      degradedBadgeDismiss: string;
+      stageScrub: string;
+      stageScrubValue: string;
+      stagePlay: string;
+      stagePause: string;
       presets: {
         none: string;
         pushIn: string;
@@ -3595,10 +3601,19 @@ export const translations: Record<string, Translations> = {
         qualityHintCover: 'Wide 3D angle crops more of the frame; sharpness may drop.',
         qualityHintRoll: 'Roll crops the frame for the whole clip; sharpness may drop.',
         qualityHintClamped: 'Some values hit their limit at this intensity - the motion stops early.',
-        disabledNoSelection: 'Select a video clip first',
-        disabledNotVideo: 'Image clips do not support camera motion yet',
+        disabledNoSelection: 'Select a clip first',
+        disabledNotVisual: 'Only video and image clips can take a camera motion',
         disabledTrackLocked: 'Track is locked',
         badgeTitle: 'Camera motion: {preset}',
+        // Shares the WHY with `webglDegraded` above but drops the attribution:
+        // this badge also fires on run-time projection degrades, which have
+        // nothing to do with WebGL (D29).
+        degradedBadge: '3D camera motion degraded to a 2D preview - export is still full 3D',
+        degradedBadgeDismiss: 'Dismiss',
+        stageScrub: 'Motion progress',
+        stageScrubValue: 'Motion progress {percent}%',
+        stagePlay: 'Play preview loop',
+        stagePause: 'Pause preview loop',
         presets: {
           none: 'None',
           pushIn: 'Push In',
@@ -6199,10 +6214,18 @@ export const translations: Record<string, Translations> = {
         qualityHintCover: '3D 角度较大，裁切较多，画质可能下降。',
         qualityHintRoll: '旋转运镜全程都有裁切，画质可能下降。',
         qualityHintClamped: '当前强度下部分参数已达上限，运镜会提前结束。',
-        disabledNoSelection: '请先选中一个视频片段',
-        disabledNotVideo: '图片片段暂不支持运镜',
+        disabledNoSelection: '请先选中一个片段',
+        disabledNotVisual: '仅视频与图片片段可添加运镜',
         disabledTrackLocked: '轨道已锁定',
         badgeTitle: '运镜：{preset}',
+        // 与上面的 webglDegraded 共用同一句语义主句，但不重复归因：本角标同样
+        // 覆盖运行期投影退化，那与 WebGL 无关（D29）。
+        degradedBadge: '3D 运镜已降级为 2D 预览，导出仍为完整 3D',
+        degradedBadgeDismiss: '关闭提示',
+        stageScrub: '运镜进度',
+        stageScrubValue: '运镜进度 {percent}%',
+        stagePlay: '播放示意循环',
+        stagePause: '暂停示意循环',
         presets: {
           none: '无',
           pushIn: '缓慢推近',

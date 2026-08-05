@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildVideoLayers, type ActiveVideoEntry } from '../internal/assembleLayers';
+import { assembleLayers, buildVideoLayers, type ActiveVideoEntry } from '../internal/assembleLayers';
 import { applyPreset } from '../camera/cameraPresets';
 import { _clearCameraConstantsCache } from '../camera/cameraGeometry';
 import type { VideoSequenceItem } from '../../types';
@@ -77,5 +77,58 @@ describe('buildVideoLayers — camera', () => {
     const motion = { ...applyPreset('push-in', '2d'), startOffset: 2, duration: 2 };
     const [layer] = buildVideoLayers([entry({ clip: clip({ cameraMotion: motion }) })], 4.5);
     expect(layer.camera!.crop.w).toBeCloseTo(1, 6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Still passthrough (camera-motion-stills, review P2-1)
+// ---------------------------------------------------------------------------
+
+describe('assembleLayers — still cameraInput survives the z re-map', () => {
+  it('still carries cameraInput after assembleLayers rewrites z', () => {
+    _clearCameraConstantsCache();
+    // The z re-map is a spread today, so this passes "by accident". It is
+    // exactly the accident `compositorPassthroughFields` lost once before, when
+    // an early return rebuilt the layer field by field and silently dropped the
+    // camera. This assertion is what turns the accident into a contract.
+    const layers = assembleLayers({
+      videoEntries: [],
+      imageItems: [
+        {
+          id: 'img-1',
+          src: '/api/storage/files/images/x.png',
+          startTime: 4,
+          duration: 6,
+          cameraMotion: applyPreset('push-in', '2d'),
+        },
+      ],
+      subtitleItems: [],
+      t: 5,
+      subtitleMaxWidthPx: 800,
+      measureSubtitle: (text: string) => text.length * 10,
+    });
+
+    const image = layers.find((layer) => layer.kind === 'image');
+    expect(image).toBeDefined();
+    const cameraInput = (image as Extract<typeof image, { kind: 'image' }>).cameraInput;
+    expect(cameraInput).toBeDefined();
+    expect(cameraInput!.tLocal).toBeCloseTo(1, 9);
+    expect(cameraInput!.clipDuration).toBe(6);
+  });
+
+  it('leaves the field off entirely for a still with no motion', () => {
+    const layers = assembleLayers({
+      videoEntries: [],
+      imageItems: [
+        { id: 'img-1', src: '/api/storage/files/images/x.png', startTime: 0, duration: 6 },
+      ],
+      subtitleItems: [],
+      t: 1,
+      subtitleMaxWidthPx: 800,
+      measureSubtitle: (text: string) => text.length * 10,
+    });
+    const image = layers.find((layer) => layer.kind === 'image');
+    expect(image).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(image, 'cameraInput')).toBe(false);
   });
 });

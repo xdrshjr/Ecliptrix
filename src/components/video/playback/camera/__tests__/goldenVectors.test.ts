@@ -32,6 +32,13 @@ interface GoldenCase {
   motion: CameraMotion;
   clipDuration: number;
   t: number;
+  /**
+   * Per-case frame, defaulting to the 16:9 {@link FRAME}. Stills gave the
+   * fixture its first non-16:9 cases (camera-motion-stills §9.1): a still's
+   * frame aspect is the IMAGE's aspect, so 4:3 / 1:1 / 9:16 content rects are
+   * the normal case there, and `rollPad` / `coverScale` both depend on it.
+   */
+  frame?: { w: number; h: number };
   expect: {
     mode: string;
     crop: [number, number, number, number];
@@ -45,14 +52,21 @@ interface GoldenCase {
 /** Every preset at start / midpoint / end, plus the four required edge cases. */
 function buildCases(): GoldenCase[] {
   const cases: GoldenCase[] = [];
-  const push = (name: string, motion: CameraMotion, t: number, clipDuration = CLIP_DURATION) => {
+  const push = (
+    name: string,
+    motion: CameraMotion,
+    t: number,
+    clipDuration = CLIP_DURATION,
+    frame?: { w: number; h: number },
+  ) => {
     _clearCameraConstantsCache();
-    const draw = resolveCameraDraw(motion, t, clipDuration, ASPECT);
+    const draw = resolveCameraDraw(motion, t, clipDuration, frame ? frame.w / frame.h : ASPECT);
     cases.push({
       name,
       motion,
       clipDuration,
       t,
+      ...(frame ? { frame } : {}),
       expect: draw
         ? {
             mode: draw.mode,
@@ -88,6 +102,38 @@ function buildCases(): GoldenCase[] {
     start: { ...DEFAULT_KEYFRAME, rotateY: -45, rotateX: -45, dolly: 0.6 },
     end: { ...DEFAULT_KEYFRAME, rotateY: 45, rotateX: 45, dolly: 0.6 },
   }, CLIP_DURATION / 2);
+
+  // Still content rects (camera-motion-stills §9.1). Every one of these is a
+  // frame aspect the video path never produces, and both `rollPad` (roll cover)
+  // and `coverScale` (3D quad cover) are functions OF the aspect — so agreement
+  // at 16:9 says nothing about agreement here.
+  const STILL_FRAMES: Array<[string, { w: number; h: number }]> = [
+    ['4x3', { w: 1600, h: 1200 }],
+    ['1x1', { w: 1080, h: 1080 }],
+    ['9x16', { w: 608, h: 1080 }],
+  ];
+  STILL_FRAMES.forEach(([label, frame]) => {
+    (['push-in', 'pan-left'] as const).forEach((presetId) => {
+      const motion = applyPreset(presetId, '2d');
+      push(`still-${label}-${presetId}-start`, motion, 0, CLIP_DURATION, frame);
+      push(`still-${label}-${presetId}-mid`, motion, CLIP_DURATION / 2, CLIP_DURATION, frame);
+      push(`still-${label}-${presetId}-end`, motion, CLIP_DURATION, CLIP_DURATION, frame);
+    });
+    // roll: rollPad is the aspect-sensitive one.
+    push(`still-${label}-roll-mid`, applyPreset('roll-slight', '2d'), CLIP_DURATION / 2, CLIP_DURATION, frame);
+    // 3D: coverScale is likewise aspect-sensitive.
+    push(`still-${label}-orbit-mid`, applyPreset('orbit-left', '3d'), CLIP_DURATION / 2, CLIP_DURATION, frame);
+    // 3D degenerate — the fallback path must agree across languages too.
+    push(`still-${label}-degenerate-3d`, {
+      version: 1,
+      mode: '3d',
+      presetId: 'custom',
+      intensity: 2,
+      easing: 'linear',
+      start: { ...DEFAULT_KEYFRAME, rotateY: -45, rotateX: -45, dolly: 0.6 },
+      end: { ...DEFAULT_KEYFRAME, rotateY: 45, rotateX: 45, dolly: 0.6 },
+    }, CLIP_DURATION / 2, CLIP_DURATION, frame);
+  });
 
   return cases;
 }
@@ -127,13 +173,18 @@ describe('camera golden vectors', () => {
     expect(names).toContain('intensity-zero-nondefault-start');
     expect(names).toContain('negative-start-offset');
     expect(names).toContain('extreme-3d-angles');
+    // Non-16:9 still coverage (camera-motion-stills §9.1).
+    expect(names).toContain('still-4x3-push-in-mid');
+    expect(names).toContain('still-1x1-roll-mid');
+    expect(names).toContain('still-9x16-orbit-mid');
   });
 
   it('reproduces every stored vector from the live implementation', () => {
     expect(fixture).not.toBeNull();
     fixture!.cases.forEach((stored) => {
       _clearCameraConstantsCache();
-      const draw = resolveCameraDraw(stored.motion, stored.t, stored.clipDuration, ASPECT);
+      const aspect = stored.frame ? stored.frame.w / stored.frame.h : ASPECT;
+      const draw = resolveCameraDraw(stored.motion, stored.t, stored.clipDuration, aspect);
       if (stored.expect === null) {
         expect(draw, stored.name).toBeUndefined();
         return;

@@ -23,6 +23,8 @@
  */
 
 import { TIME_EPSILON } from '../timeline/domain/services/ClipTimeMapping';
+import { isIdentityCameraMotion } from './camera';
+import type { CameraMotion, StillCameraInput } from './camera';
 import type { CompositorLayer } from './types';
 
 /**
@@ -52,6 +54,12 @@ export interface ImageOverlayInput {
   position?: ImageOverlayPosition | null;
   /** Item-level opacity [0,1]; defaults to 1 when absent. */
   opacity?: number | null;
+  /**
+   * This still's 2D / 3D camera motion (camera-motion-stills §4.3.1). Absent on
+   * every image that has none, which keeps the compositor's zero-cost fast path
+   * exactly as cheap as it was before the feature existed.
+   */
+  cameraMotion?: CameraMotion | null;
 }
 
 /** Canvas fit-rect in normalized space — defaults to the full canvas. */
@@ -148,6 +156,27 @@ export function effectiveImageOpacity(opacity: number | null | undefined): numbe
 }
 
 /**
+ * The still's camera input at composition time `t`, or `undefined`.
+ *
+ * `tLocal` mirrors the video layer's `t − clip.startTime` exactly, which is what
+ * lets a split still keep running the window that opened before it. Identity
+ * motions are dropped here rather than in the compositor so the "nothing to do"
+ * case never reaches the draw hot path (§4.3.2 fast path).
+ */
+export function stillCameraInputAt(
+  item: ImageOverlayInput,
+  t: number,
+): StillCameraInput | undefined {
+  const motion = item.cameraMotion;
+  if (!motion || isIdentityCameraMotion(motion)) return undefined;
+  return {
+    motion,
+    tLocal: t - item.startTime,
+    clipDuration: item.duration,
+  };
+}
+
+/**
  * Build the ordered `image` compositor layers active at time `t`.
  *
  * Output `z` is taken from each item's `position.zIndex` (falling back to a
@@ -167,6 +196,7 @@ export function buildImageLayersAt(
     const bounds = computeImageBounds(item.position, fit);
     if (bounds.w <= 0 || bounds.h <= 0) return;
     const z = item.position?.zIndex ?? index;
+    const cameraInput = stillCameraInputAt(item, t);
     layers.push({
       kind: 'image',
       id: item.id,
@@ -174,6 +204,7 @@ export function buildImageLayersAt(
       bounds,
       opacity: effectiveImageOpacity(item.opacity),
       z,
+      ...(cameraInput ? { cameraInput } : {}),
     });
   });
   return layers;

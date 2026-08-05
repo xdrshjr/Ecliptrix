@@ -278,6 +278,18 @@ class ImageCompositionItem(BaseModel):
     fade_in_duration: float = Field(0.0, ge=0, description="Fade-in duration in seconds")
     fade_out_duration: float = Field(0.0, ge=0, description="Fade-out duration in seconds")
 
+    # Same structure (and the same clamping) as `video_items[].camera_motion`:
+    # a still is not a second kind of camera motion, it is the same feature
+    # applied to the last kind of visible material (camera-motion-stills §7.1).
+    camera_motion: Optional[CameraMotion] = Field(
+        None,
+        description=(
+            "2D / 3D camera motion for this still (camera-motion-stills). "
+            "Optional and fully backward compatible: omitting it renders "
+            "exactly as before."
+        ),
+    )
+
 
 class AspectRatio(str, Enum):
     """Supported aspect ratios for video composition."""

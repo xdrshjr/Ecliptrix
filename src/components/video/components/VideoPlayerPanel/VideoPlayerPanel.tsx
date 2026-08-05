@@ -14,6 +14,7 @@ import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
 import type { CoverAspectRatio } from '../VideoCoverModal/types';
 import { isPreviewProxyEnabled, isLocalPreviewEnabled } from '@/lib/playbackFlags';
 import PreviewCanvas from './PreviewCanvas';
+import CameraDegradeBadge from './CameraDegradeBadge';
 import { useCompositionPlayback } from '../../hooks/useCompositionPlayback';
 import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectRatio } from './aspectRatios';
 import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from './imageOverlays';
@@ -515,6 +516,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       zIndex: 2,
                     }}
                   />
+
+                  {/* 3D 运镜运行期降级角标（camera-motion-stills §4.3.5）。绝对定位
+                      在比例帧内，不参与 letterbox 计算；运镜面板打开时由它自己的
+                      静态角标负责，这里同屏去重（D29）。 */}
+                  <CameraDegradeBadge degraded={compositionPreview.camera3DDegraded} />
 
                   {/* 新增：图片叠加层 —— 句柄是②比例帧(position:relative)的绝对定位子节点，
                       故归一化基准必须用②的计算尺寸(previewFrameBox)，而非①的 containerDimensions，

@@ -118,12 +118,44 @@ export interface SubtitleCompositionItem {
   position?: string;
 }
 
+/**
+ * An image overlaid on the composition — a still on a video track. Mirrors the
+ * backend `ImageCompositionItem`.
+ */
+export interface ImageCompositionItem {
+  id: string;
+  name: string;
+  url: string;
+  start_time: number;
+  duration: number;
+  track_id: string;
+  /** Normalized [0,1] box against the output frame. */
+  position: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    zIndex?: number;
+  };
+  opacity?: number;
+  fade_in_duration?: number;
+  fade_out_duration?: number;
+  /**
+   * 2D / 3D camera motion for this still (camera-motion-stills §4.4.1). Same
+   * wire shape as `video_items[].camera_motion` — a still is the same feature
+   * on a different material, not a second one. Omitting it renders exactly as
+   * before.
+   */
+  camera_motion?: CameraMotionWire;
+}
+
 export interface VideoCompositionRequest {
   task_id: string;
   aspect_ratio?: string; // Add aspect ratio support (e.g., "16:9", "9:16", "4:3", "1:1", "21:9")
   video_items: VideoCompositionItem[];
   audio_items?: AudioCompositionItem[];
   subtitle_items?: SubtitleCompositionItem[];
+  image_items?: ImageCompositionItem[];
   total_duration: number;
   output_resolution?: {
     width: number;

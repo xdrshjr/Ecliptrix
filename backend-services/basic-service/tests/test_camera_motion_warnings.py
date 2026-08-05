@@ -70,6 +70,21 @@ class TestStatusRouteWhitelist:
         assert result["status"] == "completed"
 
     @pytest.mark.asyncio
+    async def test_still_warnings_reach_the_client_too(self, stub_service):
+        """The same whitelist carries the still-specific messages (C12): the
+        stills path feeds the very same bucket, so if this ever diverges it will
+        be because someone re-typed the route payload by hand."""
+        warning = "storyboard-03.png: still-image camera motion is disabled on the server; rendered without motion"
+        stub_service({
+            "id": "comp-2", "task_id": "task-2", "status": "completed",
+            "progress": 1.0, "start_time": 0, "warnings": [warning],
+        })
+
+        result = await video_router.get_composition_status("comp-2")
+
+        assert result["warnings"] == [warning]
+
+    @pytest.mark.asyncio
     async def test_warnings_default_to_an_empty_list(self, stub_service):
         stub_service({
             "id": "comp-1", "task_id": "task-1", "status": "processing",
@@ -165,6 +180,28 @@ class TestServiceWiring:
         assert "'camera_motion'" in source
         assert "'camera_label'" in source
 
+    def test_the_overlay_fallback_path_still_reports(self):
+        """W2 for stills, including the branch that is easiest to lose.
+
+        `_process_overlays_sequential` is reached only after the merged pass has
+        already failed — i.e. the path a user most needs explained — and it used
+        to return None. If its warnings are dropped, "my picture stopped moving
+        when I added subtitles" comes with no explanation at all (P1-1 / A29).
+        """
+        import inspect
+        from app.services import video_composition_service as module
+
+        fallback = inspect.getsource(module.VideoCompositionService._process_overlays_sequential)
+        assert "return warnings" in fallback
+
+        compose = inspect.getsource(module.VideoCompositionService._compose_video_sync)
+        # Both fallback call sites (merged-returned-false and merged-raised) feed
+        # the same bucket as the direct branches.
+        assert compose.count("_record_composition_warnings") == 4
+
+        recorder = inspect.getsource(module.VideoCompositionService._record_composition_warnings)
+        assert "if warning not in bucket" in recorder  # W2 de-duplication
+
     def test_normalize_returns_warnings_on_both_paths(self):
         import inspect
         from app.services import video_composition_service as module
@@ -204,6 +241,22 @@ class TestServiceWiring:
         assert any(expect_fragment in w for w in warnings)
         # The clip name is in the message so a multi-clip export is actionable.
         assert all("城市航拍_01" in w for w in warnings)
+
+    def test_still_degrade_paths_produce_a_user_readable_warning(self):
+        """The still path has its own gates (camera-motion-stills §9.1); they
+        feed the SAME bucket, so the message has to be equally actionable."""
+        from app.services.composition.camera_motion import build_still_overlay_plan
+
+        plan = build_still_overlay_plan(
+            {"version": 1, "mode": "2d", "preset_id": "push-in", "intensity": 1.0,
+             "easing": "easeInOut", "start": {"scale": 1.0}, "end": {"scale": 1.25}},
+            nat_w=1600, nat_h=1200, box_w=960, box_h=540, fps=30,
+            duration=8.0, start_time=1.6,
+            caps=CameraFilterCaps(zoompan=False), label="storyboard-03.png",
+            ffmpeg_path="ffmpeg", config=CameraMotionConfig(dry_run_probe=False),
+        )
+        assert plan.animated is False
+        assert plan.warnings and all(w.startswith("storyboard-03.png: ") for w in plan.warnings)
 
     def test_a_clean_render_produces_no_warnings(self):
         motion = {

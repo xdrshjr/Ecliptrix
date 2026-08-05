@@ -123,9 +123,50 @@ function state(cameraMotion?: unknown): TimelineState {
   } as TimelineState;
 }
 
+function stillMaterial(): MaterialItem {
+  return {
+    id: 'mat-img',
+    name: 'storyboard-03.png',
+    type: 'image',
+    format: 'png',
+    size: 1000,
+    url: '/api/storage/files/images/storyboard-03.png',
+    createdAt: new Date(),
+    metadata: {
+      storageKind: 'local',
+      isLocalFile: true,
+      localResolvedUrl: '/api/storage/files/images/storyboard-03.png',
+    },
+  } as MaterialItem;
+}
+
+/** A video clip (so the export validates) plus one still on the same track. */
+function stillState(cameraMotion?: unknown): TimelineState {
+  const base = state(undefined);
+  base.tracks[0].items.push({
+    id: 'item-still',
+    name: 'storyboard-03.png',
+    type: 'video',
+    materialId: 'mat-img',
+    trackId: 'track-0',
+    startTime: 1.6,
+    duration: 4,
+    color: '#2563eb',
+    originalMaterialType: 'image',
+    imagePosition: { x: 0, y: 0, width: 1, height: 1, zIndex: 10 },
+    cameraMotion: cameraMotion as never,
+  } as never);
+  return base;
+}
+
 async function runExport(timelineState: TimelineState) {
   const { result } = renderHook(() =>
-    useVideoExport({ timelineState, materials: [material()], taskId: 'task-1', aspectRatio: '16:9' }),
+    useVideoExport({
+      timelineState,
+      materials: [material(), stillMaterial()],
+      taskId: 'task-1',
+      aspectRatio: '16:9',
+    }),
   );
   await act(async () => {
     await result.current.handleExport();
@@ -157,6 +198,33 @@ describe('useVideoExport — camera motion', () => {
     expect(wire.preset_id).toBe('orbit-left');
     expect(wire.start.rotate_y).toBeCloseTo(10, 6);
     expect(wire.end.rotate_y).toBeCloseTo(-10, 6);
+  });
+
+  it('omits camera_motion for a still without a motion (zero regression)', async () => {
+    const request = await runExport(stillState(undefined));
+    expect(request!.image_items).toHaveLength(1);
+    expect(request!.image_items[0].camera_motion).toBeUndefined();
+    expect('camera_motion' in request!.image_items[0]).toBe(false);
+  });
+
+  it('sends the snake_cased motion for a still (camera-motion-stills §4.4.1)', async () => {
+    const request = await runExport(stillState(applyPreset('orbit-left', '3d')));
+    const wire = request!.image_items[0].camera_motion;
+    // Same wire, same clamping, same everything as a video clip: a still is not
+    // a second kind of camera motion.
+    expect(wire.mode).toBe('3d');
+    expect(wire.preset_id).toBe('orbit-left');
+    expect(wire.start.rotate_y).toBeCloseTo(10, 6);
+    expect(wire.end.rotate_y).toBeCloseTo(-10, 6);
+    expect(wire.version).toBe(1);
+  });
+
+  it('sends a 2D still motion with its scale endpoints intact', async () => {
+    const request = await runExport(stillState(applyPreset('push-in', '2d')));
+    const wire = request!.image_items[0].camera_motion;
+    expect(wire.mode).toBe('2d');
+    expect(wire.start.scale).toBeCloseTo(1, 6);
+    expect(wire.end.scale).toBeCloseTo(1.25, 6);
   });
 
   it('surfaces status-channel warnings after a successful export (W4)', async () => {

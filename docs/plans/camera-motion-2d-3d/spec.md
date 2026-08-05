@@ -202,18 +202,21 @@ undo/redo 快照机制，随项目 JSON 持久化，随导出请求下发后端�
 
 #### 4.2.1 进度与缓动
 
+> **正文已按 §14 I1 回写（camera-motion-stills C16）。** 下方是实现与测试的实际语义；
+> 旧版本对**显式** `duration` 和 `w0` 下界的 clamp 会让 §4.6 的分割重基失效（左半段在
+> 自己的 2s 里跑完整段 6s 运镜 = 切点跳变），已删除。
+
 ```
 tLocal = t_composition − clip.startTime            // clip 内相对时间，单位秒
-// 先夹 w0，保证 [w0, clipDuration] 至少留出一个 MIN_WINDOW（评审 P2-3：
-// 否则 w0 → clipDuration 时下面 clamp 的 min > max，行为未定义）
-w0     = clamp(motion.startOffset ?? 0,
-               −clipDuration,                       // 允许为负：分割后的右半段（§4.6）
-               max(0, clipDuration − MIN_WINDOW))
-wdMax  = max(MIN_WINDOW, clipDuration − w0)        // 两步求解，避免 clamp 的 min > max
+// w0 只夹上界。它保证「隐式窗口」下 clipDuration − w0 ≥ MIN_WINDOW（评审 P2-3 的
+// NaN 守卫真正的来源）；下界不夹 —— w0 为负是分割后右半段的正常状态（§4.6 / P1-5）。
+w0     = min(motion.startOffset ?? 0, max(0, clipDuration − MIN_WINDOW))
+// 显式 duration 不按 clip 长度夹：窗口长于 clip 是合法且必需的语义
+//（「这段运镜只播到一半就被切断了」）。
 wd     = motion.duration != null
-           ? clamp(motion.duration, MIN_WINDOW, wdMax)
-           : wdMax
-u      = wd <= MIN_WINDOW ? 1 : clamp((tLocal − w0) / wd, 0, 1)
+           ? max(motion.duration, MIN_WINDOW)
+           : max(MIN_WINDOW, clipDuration − w0)
+u      = clamp((tLocal − w0) / wd, 0, 1)
 e      = ease(u)
 ```
 
@@ -552,14 +555,17 @@ roll 常量 `RP`（§4.2.3 的 D13）。`U = clip((T−w0)/wd,0,1)`；`E = <缓�
 ```
 setpts=PTS-STARTPTS,
 fps=F,                                        # 强制 CFR，使 on/F 精确等于时间
-# ══ 2D 段（mode='2d'；存在缩放/平移/roll 中任意一项即启用）══
+# ══ 裁切段（与 mode 无关；整个窗口内 crop 不恒等于全画面即启用。§14 I2 回写：
+#    原文写作「mode='2d'」，那会让 3D 预设的缩放分量只出现在预览、不出现在成片
+#    —— parallax-push 的 scale 1→1.08 正是这种情形，camera-motion-stills C16）══
 #    上采样倍数 = OS·RP：既给 zoompan 取整留精度（D7），又给 roll 的
 #    crop-back 留分辨率，使最终 SW×SH 仍是原生像素而非拉伸像素。
 scale=(OS*RP)*SW:(OS*RP)*SH:flags=bicubic,
 zoompan=z='<SCALE(E)>':x='clip((<CX(E)>)*iw*(<SCALE(E)>)-ow/2,0,iw*(<SCALE(E)>)-ow)'
        :y='clip((<CY(E)>)*ih*(<SCALE(E)>)-oh/2,0,ih*(<SCALE(E)>)-oh)'
        :d=1:fps=F:s=<(OS*RP)*SW>x<(OS*RP)*SH>,
-#   —— roll 子段（仅 roll 不恒为 0）：先原地旋转（四角会留空），
+#   —— roll 子段（仅 mode='2d' 且 roll 不恒为 0；3D 的 roll 已折进 Rz）：
+#      先原地旋转（四角会留空），
 #      再居中裁掉 1/RP（该区域由 RP ≥ rollCover 保证无空洞）——
 rotate=a='(<ROLL(E)>)*PI/180':c=black:ow=iw:oh=ih,
 crop=iw/RP:ih/RP:(iw-iw/RP)/2:(ih-ih/RP)/2,
@@ -1094,7 +1100,10 @@ v1 的「`intensity === 0` → 视为无运镜」是**错的**：`pull-out` 预�
 ```yaml
 camera_motion:
   enabled: true              # D10 运维兜底开关
-  supersample: 2             # 1..3；1 = 关闭 2D 超采样（实际上采样倍数 = supersample × RP）
+  supersample: 1             # 1..3；1 = 关闭 2D 超采样（实际上采样倍数 = supersample × RP）
+                             # 默认 1 而非 2：§14 I4 实测 4K/30fps 下 supersample=2 的
+                             # 2D 推近是无运镜的 7.07×，超出 §8 P6 自定的 3× 闸门
+                             #（camera-motion-stills C16 回写）
   interpolation: linear      # linear | cubic（perspective 插值质量）
   poly_degree: 3             # 3D 轨迹拟合初始次数
   poly_degree_fallback: null # 评审 P2-6：v1 置 null 即"一次拟合不过就降级"；
@@ -1347,8 +1356,12 @@ Python 侧以 `Path(__file__).resolve().parents[3] / "src" / …` 定位，文�
 
 > 记录于实现节点（2026-08-05）。按 §Constraints 的要求，**不静默偏离**：以下每条
 > 都给出「方案原文 → 为什么错 → 实际采用的修正 → 落测位置」。P0/P1 全部已在代码中
-> 修正并有回归测试；正文 §4 / §7 的对应段落**尚未回写**，下一次修订 spec 时应一并
-> 更新（本节即为待回写清单）。
+> 修正并有回归测试。
+>
+> **回写状态（2026-08-05，camera-motion-stills C16）：I1 / I2 / I4 的正文已回写**
+> —— §4.2.1 的窗口求解、§4.4.3 的裁切段启用条件、§7.3 的 `supersample` 默认值现在
+> 与实现一致。本节保留为「为什么是这样」的证据链，不再是待办清单。I3 / I5 / I6 本就
+> 只记录实现事实，无正文可改。
 
 ### I1（阻断级）— §4.2.1 的窗口 clamp 会让 §4.6 的分割重基失效
 
@@ -1378,7 +1391,8 @@ length」、`splitRebase.test.ts`「keeps the two halves frame-identical」；Py
 
 ### I2（阻断级）— §4.4.3 把 zoompan 段限定为 `mode=='2d'`，会丢掉 3D 的缩放分量
 
-**方案原文**（§4.4.3 注释）：`# ══ 2D 段（mode='2d'；存在缩放/平移/roll 中任意一项即启用）══`
+**方案原文**（§4.4.3 注释，v1 原始措辞；正文已按本条回写）：
+`# ══ 2D 段（mode='2d'；存在缩放/平移/roll 中任意一项即启用）══`
 
 **为什么错。** §4.3.3 明确写着预览端 3D 的 `u,v` **取自 `crop` 子矩形**、且
 「与导出的 `zoompan → perspective` 顺序一致」；§4.2.3 也为 3D 定义了

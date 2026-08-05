@@ -124,3 +124,20 @@ export interface ResolvedCameraDraw {
   /** 3D degenerated this frame (corner behind the camera / no ray hit) → draw as 2D. */
   degraded?: boolean;
 }
+
+/**
+ * A still image layer's camera input (camera-motion-stills §4.3.1).
+ *
+ * Deliberately does NOT carry `frameAspect`: an image's aspect only exists once
+ * it is decoded, inside the compositor's image cache, and the pure layer
+ * assembly cannot see it. Guessing an aspect there is exactly the bug v1's P1-1
+ * was about, so the resolve is deferred to draw time while the two purely
+ * data-level facts — is there a motion, how far into the clip are we — stay
+ * testable without a DOM.
+ */
+export interface StillCameraInput {
+  motion: CameraMotion;
+  /** Clip-local time, `t − item.startTime` (same shape as the video layer). */
+  tLocal: number;
+  clipDuration: number;
+}

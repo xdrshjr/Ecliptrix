@@ -31,6 +31,7 @@ import PresetGrid from './PresetGrid';
 import MotionPreviewStage from './MotionPreviewStage';
 import ParameterControls from './ParameterControls';
 import { presetLabel } from './presetLabels';
+import { markCameraMotionPanelOpen } from './panelPresence';
 
 const TITLE_ID = 'camera-motion-modal-title';
 const DESC_ID = 'camera-motion-modal-desc';
@@ -103,6 +104,11 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
   const [draft, setDraft] = useState<CameraMotion>(() => initialMotion ?? emptyCameraMotion('2d'));
   const [applyToAll, setApplyToAll] = useState(true);
   const [webglDegraded, setWebglDegraded] = useState(false);
+  // Stage transport (§4.5.2). `prefers-reduced-motion` starts frozen at the
+  // midpoint — the single most informative still of a motion — instead of
+  // looping at someone who asked the OS for less movement.
+  const [stagePlaying, setStagePlaying] = useState(!reducedMotion);
+  const [stageProgress, setStageProgress] = useState(reducedMotion ? 0.5 : 0);
 
   // Re-seed the draft each time the panel opens on a (possibly different) clip.
   useEffect(() => {
@@ -112,7 +118,27 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
     setMode(seed.mode);
     setApplyToAll(true);
     setWebglDegraded(!Camera3DRenderer.isSupported());
-  }, [isOpen, initialMotion]);
+    setStagePlaying(!reducedMotion);
+    setStageProgress(reducedMotion ? 0.5 : 0);
+  }, [isOpen, initialMotion, reducedMotion]);
+
+  // Dragging the scrub bar IS the pause gesture: nobody drags a slider hoping
+  // the thing keeps running away from them.
+  const handleStageScrub = useCallback((u: number) => {
+    setStagePlaying(false);
+    setStageProgress(u);
+  }, []);
+
+  const handleStageToggle = useCallback(() => {
+    setStagePlaying((playing) => !playing);
+  }, []);
+
+  // Tell the preview badge to stand down while this panel (and its own WebGL
+  // badge) is on screen — one message about one thing (D29).
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    return markCameraMotionPanelOpen();
+  }, [isOpen]);
 
   const baselineFingerprint = useMemo(
     () => (initialMotion ? cameraMotionFingerprint(initialMotion) : ''),
@@ -273,7 +299,16 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
               motion={isNone ? null : draft}
               clipDuration={clipDuration}
               posterUrl={clipThumbnailUrl}
-              reducedMotion={reducedMotion}
+              playing={stagePlaying}
+              progress={stageProgress}
+              onProgressChange={handleStageScrub}
+              onTogglePlaying={handleStageToggle}
+              labels={{
+                scrub: labels.stageScrub,
+                scrubValue: labels.stageScrubValue,
+                play: labels.stagePlay,
+                pause: labels.stagePause,
+              }}
               onDegraded={() => setWebglDegraded(true)}
             />
             {mode === '3d' && webglDegraded && (

@@ -186,6 +186,10 @@ export function assembleLayers(input: AssembleLayersInput): CompositorLayer[] {
   const baseZ = input.overlayBaseZ ?? DEFAULT_OVERLAY_BASE_Z;
   const video = buildVideoLayers(input.videoEntries, input.t);
 
+  // The SPREAD is load-bearing: it is what carries `cameraInput` (and anything
+  // added later) through to the compositor. Rebuilding the object field by field
+  // here is exactly how `compositorPassthroughFields` once dropped a camera —
+  // see the assembleLayers passthrough test (camera-motion-stills P2-1).
   const images = buildImageLayersAt(input.imageItems, input.t, input.imageFit).map(
     (layer, index) => ({ ...layer, z: baseZ + layer.z + index }),
   );
