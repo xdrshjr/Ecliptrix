@@ -90,6 +90,23 @@ async function download(url, destFile, { sha256, retries = 3 } = {}) {
 }
 
 /**
+ * The `tar` to use on Windows.
+ *
+ * Bare `tar` resolves against PATH, and on a developer box that usually means
+ * Git for Windows' GNU tar rather than the bsdtar Windows ships. GNU tar reads
+ * `M:\cache\python.zip` as the rsh form `host:path` and dies with
+ * "Cannot connect to M: resolve failed" — so the packaging build works from one
+ * shell and fails from another, on the same machine, for a reason nothing in the
+ * error message points at. (`--force-local` would fix GNU tar and break bsdtar,
+ * which does not accept the flag; naming the binary fixes both.)
+ */
+function windowsTar() {
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows'
+  const bsdtar = path.join(systemRoot, 'System32', 'tar.exe')
+  return fs.existsSync(bsdtar) ? bsdtar : 'tar'
+}
+
+/**
  * Extract a .zip archive. Windows 10+ ships bsdtar (which reads zip);
  * elsewhere fall back to the system `unzip`.
  */
@@ -97,7 +114,7 @@ function extractZip(zipFile, destDir) {
   fs.mkdirSync(destDir, { recursive: true })
   const result =
     process.platform === 'win32'
-      ? spawnSync('tar', ['-xf', zipFile, '-C', destDir], { stdio: 'inherit' })
+      ? spawnSync(windowsTar(), ['-xf', zipFile, '-C', destDir], { stdio: 'inherit' })
       : spawnSync('unzip', ['-oq', zipFile, '-d', destDir], { stdio: 'inherit' })
   if (result.error) throw result.error
   if (result.status !== 0) {

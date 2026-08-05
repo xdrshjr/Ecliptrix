@@ -1,0 +1,75 @@
+{
+  "metric": "N3",
+  "title": "Dual-track 3D see-through, pixel level (closes Iteration 1's R2)",
+  "box": {
+    "x": 192,
+    "y": 108,
+    "width": 576,
+    "height": 324
+  },
+  "sampleTimeSeconds": 4.4,
+  "thresholds": {
+    "minSeeThroughFraction": 0.05,
+    "maxFractionGap": 0.03,
+    "minStillMaskIoU": 0.9,
+    "backdropTolerance": 26,
+    "blackLevel": 24
+  },
+  "cases": [
+    {
+      "presetId": "orbit-left",
+      "t": 4.4,
+      "previewSeeThroughFraction": 0.19099365569272977,
+      "exportSeeThroughFraction": 0.2040519975994513,
+      "stillMaskIoU": 0.9840721499960444,
+      "boxPixels": 186624,
+      "previewRevealedBlackPixels": 0,
+      "exportRevealedBlackPixels": 0,
+      "seeThroughFractionGap": 0.013058341906721532,
+      "checks": {
+        "backdropIsActuallyRevealed": true,
+        "sameAmountRevealed": true,
+        "sameRegionRevealed": true,
+        "noOpaqueBlackRevealed": true
+      },
+      "pass": true
+    },
+    {
+      "presetId": "crane-up",
+      "t": 4.4,
+      "previewSeeThroughFraction": 0.18292395404663922,
+      "exportSeeThroughFraction": 0.19194208676268862,
+      "stillMaskIoU": 0.981652152406243,
+      "boxPixels": 186624,
+      "previewRevealedBlackPixels": 0,
+      "exportRevealedBlackPixels": 0,
+      "seeThroughFractionGap": 0.009018132716049398,
+      "checks": {
+        "backdropIsActuallyRevealed": true,
+        "sameAmountRevealed": true,
+        "sameRegionRevealed": true,
+        "noOpaqueBlackRevealed": true
+      },
+      "pass": true
+    },
+    {
+      "presetId": "spiral",
+      "t": 4.4,
+      "previewSeeThroughFraction": 0.1634409293552812,
+      "exportSeeThroughFraction": 0.1755186899862826,
+      "stillMaskIoU": 0.9849345548903723,
+      "boxPixels": 186624,
+      "previewRevealedBlackPixels": 0,
+      "exportRevealedBlackPixels": 0,
+      "seeThroughFractionGap": 0.012077760631001383,
+      "checks": {
+        "backdropIsActuallyRevealed": true,
+        "sameAmountRevealed": true,
+        "sameRegionRevealed": true,
+        "noOpaqueBlackRevealed": true
+      },
+      "pass": true
+    }
+  ],
+  "pass": true
+}

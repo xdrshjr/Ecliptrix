@@ -39,6 +39,13 @@ import canvasGolden from '../../../../../docs/plans/timeline-camera-motion/fixtu
 const CANVAS = { width: 1920, height: 1080 };
 const CLIP = { startTime: 0, duration: 6 };
 
+/** A constant 3D framing, for probing where the pinhole verdict flips. */
+function yawedMotion(yaw: number, dolly: number): CameraMotion {
+  const base = motionFromPreset('orbit-left')!;
+  const held = { scale: 1, offsetX: 0, offsetY: 0, roll: 0, yaw, pitch: 0, dolly };
+  return { ...base, from: { ...held }, to: { ...held }, intensity: 1 };
+}
+
 /** A pure pan: the preset shape `ensureCoverage` was designed to inflate. */
 function purePan(): CameraMotion {
   const base = motionFromPreset('pan-left')!;
@@ -140,15 +147,26 @@ describe('N1-c — the coverage contract for stills (§3.1.1)', () => {
     }
   });
 
-  it('gates Apply on the same rule the renderer will follow', () => {
-    // `isMotionRenderable` also folds coverage in, so a still judged with the
-    // canvas rule is gated on a framing the canvas never draws (G3 / P1-9).
-    const motion = motionFromPreset('spiral')!;
-    const box = { width: 300, height: 600 };
-    expect(typeof isMotionRenderable(motion, box, false)).toBe('boolean');
-    expect(isMotionRenderable(motion, box, false)).toBe(
-      isMotionRenderable(motion, box, false),
-    );
+  it('gates Apply on the REAL rect — a portrait project is not judged as 16:9', () => {
+    // The verdict at the leading corner is `distance - sin(yaw)·halfWidth > 0`,
+    // where `distance` scales with the LONG edge and `halfWidth` with the short
+    // one. So the same yaw folds a 16:9 frame inside out and is perfectly
+    // drawable in 9:16 — which is exactly what the hard-coded GUARD_CANVAS got
+    // wrong: it blocked Apply on a framing the renderer draws fine (G3 / P1-9).
+    const yawed = yawedMotion(79, 0.3);
+    expect(isMotionRenderable(yawed, { width: 1920, height: 1080 })).toBe(false);
+    expect(isMotionRenderable(yawed, { width: 1080, height: 1920 })).toBe(true);
+  });
+
+  it('gates a still on its own box under the STILL coverage rule', () => {
+    // A still renders with coverage off, so the gate must judge it that way too:
+    // every shipped preset has to clear it on a box whose ratio is nothing like
+    // the canvas', or the panel refuses moves the compositor draws correctly.
+    const tallBox = { width: 300, height: 600 };
+    for (const preset of CAMERA_MOTION_PRESETS) {
+      const motion = motionFromPreset(preset.id)!;
+      expect(isMotionRenderable(motion, tallBox, false)).toBe(true);
+    }
   });
 });
 

@@ -1,0 +1,8 @@
+{
+  "check": "camera_motion_overlay refactor (node #3) emits byte-identical output",
+  "reason": "N7 found build_overlay_motion_filter at 107 lines against the repo's 50-line ceiling; it was split into _motion_fields + _perspective_options.",
+  "comparedAgainstCommit": "81428c2",
+  "comparisons": 128,
+  "differing": [],
+  "pass": true
+}

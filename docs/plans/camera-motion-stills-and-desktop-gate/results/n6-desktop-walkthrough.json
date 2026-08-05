@@ -1,0 +1,283 @@
+{
+  "metric": "N6",
+  "title": "Desktop gate — the packaged FFmpeg renders the same camera move",
+  "package": {
+    "packageRoot": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked",
+    "exists": true,
+    "builtAt": "2026-08-05T04:29:32.043168",
+    "gitHead": {
+      "head": "81428c292a2b47c169aba7fe2236e251df714882",
+      "branch": "feat/remove-user-system",
+      "subject": "feat: camera motion for still images, end to end"
+    },
+    "cameraMotionSourcesPresent": {
+      "app/services/composition/camera_motion.py": true,
+      "app/services/composition/camera_motion_filters.py": true,
+      "app/services/composition/camera_motion_overlay.py": true
+    },
+    "containsThisRoundsCode": true,
+    "l11Satisfied": true
+  },
+  "ffmpeg": {
+    "available": true,
+    "path": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe",
+    "ffmpegVersionRaw": [
+      "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+      "built with gcc 15.2.0 (Rev13, Built by MSYS2 project)",
+      "configuration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-cairo --enable-fontconfig --enable-iconv --enable-gnutls --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-zlib --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-sdl2 --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxvid --enable-libaom --enable-libopenjpeg --enable-libvpx --enable-mediafoundation --enable-libass --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-openal --enable-libgme --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libtheora --enable-libvo-amrwbenc --enable-libgsm --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-librubberband"
+    ],
+    "ffprobeVersionRaw": [
+      "ffprobe version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+    ],
+    "developerFfmpegVersionRaw": [
+      "ffmpeg version 2025-05-15-git-12b853530a-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers"
+    ],
+    "differsFromDeveloperBuild": true
+  },
+  "capabilityProbe": {
+    "packaged": {
+      "has_perspective": true,
+      "perspective_supports_eval_frame": true,
+      "perspective_supports_sense": true,
+      "supports_filter_complex_script": true,
+      "version": "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers"
+    },
+    "developer": {
+      "has_perspective": true,
+      "perspective_supports_eval_frame": true,
+      "perspective_supports_sense": true,
+      "supports_filter_complex_script": true,
+      "version": "ffmpeg version 2025-05-15-git-12b853530a-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers"
+    },
+    "comparedFields": [
+      "has_perspective",
+      "perspective_supports_eval_frame",
+      "perspective_supports_sense",
+      "supports_filter_complex_script"
+    ],
+    "differingFields": [],
+    "identical": true
+  },
+  "crossBinaryRender": {
+    "threshold": 0.98,
+    "sampleProgress": 0.5,
+    "cases": [
+      {
+        "presetId": "ken-burns",
+        "ssimBox": 1.0,
+        "pass": true
+      },
+      {
+        "presetId": "orbit-left",
+        "ssimBox": 1.0,
+        "pass": true
+      }
+    ],
+    "pass": true
+  },
+  "packagedAppSmokeTest": {
+    "ran": true,
+    "exit": 0,
+    "pass": true,
+    "steps": [
+      "[smoke-test] userData: C:\\Users\\jdqqj\\AppData\\Local\\Temp\\ecliptrix-smoke-QMqtgb",
+      "[smoke-test] launching M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\Ecliptrix.exe",
+      "[smoke-test] services healthy (frontend:18320 backend:18321)",
+      "[smoke-test] llm-status reports unconfigured ok",
+      "[smoke-test] project list (no-auth) ok",
+      "[smoke-test] sqlite file ok",
+      "[smoke-test] categorised logs ok",
+      "[smoke-test] main window loaded ok",
+      "[smoke-test] requesting shutdown...",
+      "[smoke-test] no residual processes",
+      "[smoke-test] PASS"
+    ],
+    "envKeysStripped": [
+      "AGENT_LLM_01_MODEL",
+      "AGENT_LLM_02_MODEL",
+      "AGENT_LLM_API_01_KEY",
+      "AGENT_LLM_API_01_TYPE",
+      "AGENT_LLM_API_01_URL",
+      "AGENT_LLM_API_02_KEY",
+      "AGENT_LLM_API_02_TYPE",
+      "AGENT_LLM_API_02_URL",
+      "FAST_LLM_API_KEY",
+      "FAST_LLM_API_TYPE",
+      "FAST_LLM_API_URL",
+      "FAST_LLM_MODEL",
+      "LLM_API_KEY",
+      "LLM_API_TYPE",
+      "LLM_API_URL",
+      "LLM_MODEL",
+      "VIDEO_CUT_LLM_API_KEY",
+      "VIDEO_CUT_LLM_API_TYPE",
+      "VIDEO_CUT_LLM_API_URL",
+      "VIDEO_CUT_LLM_MODEL",
+      "VL_LLM_API_KEY",
+      "VL_LLM_API_TYPE",
+      "VL_LLM_API_URL",
+      "VL_LLM_MODEL"
+    ],
+    "log": "logs/n6-smoke-test.log"
+  },
+  "checklist": [
+    {
+      "step": 1,
+      "title": "Repackage so the walkthrough tests this round's code (L11)",
+      "status": "automated",
+      "evidence": {
+        "builtAt": "2026-08-05T04:29:32.043168",
+        "gitHead": "81428c292a2b47c169aba7fe2236e251df714882",
+        "cameraMotionSourcesPresent": {
+          "app/services/composition/camera_motion.py": true,
+          "app/services/composition/camera_motion_filters.py": true,
+          "app/services/composition/camera_motion_overlay.py": true
+        },
+        "packagedAppSmokeTest": {
+          "ran": true,
+          "exit": 0,
+          "pass": true,
+          "steps": [
+            "[smoke-test] userData: C:\\Users\\jdqqj\\AppData\\Local\\Temp\\ecliptrix-smoke-QMqtgb",
+            "[smoke-test] launching M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\Ecliptrix.exe",
+            "[smoke-test] services healthy (frontend:18320 backend:18321)",
+            "[smoke-test] llm-status reports unconfigured ok",
+            "[smoke-test] project list (no-auth) ok",
+            "[smoke-test] sqlite file ok",
+            "[smoke-test] categorised logs ok",
+            "[smoke-test] main window loaded ok",
+            "[smoke-test] requesting shutdown...",
+            "[smoke-test] no residual processes",
+            "[smoke-test] PASS"
+          ],
+          "envKeysStripped": [
+            "AGENT_LLM_01_MODEL",
+            "AGENT_LLM_02_MODEL",
+            "AGENT_LLM_API_01_KEY",
+            "AGENT_LLM_API_01_TYPE",
+            "AGENT_LLM_API_01_URL",
+            "AGENT_LLM_API_02_KEY",
+            "AGENT_LLM_API_02_TYPE",
+            "AGENT_LLM_API_02_URL",
+            "FAST_LLM_API_KEY",
+            "FAST_LLM_API_TYPE",
+            "FAST_LLM_API_URL",
+            "FAST_LLM_MODEL",
+            "LLM_API_KEY",
+            "LLM_API_TYPE",
+            "LLM_API_URL",
+            "LLM_MODEL",
+            "VIDEO_CUT_LLM_API_KEY",
+            "VIDEO_CUT_LLM_API_TYPE",
+            "VIDEO_CUT_LLM_API_URL",
+            "VIDEO_CUT_LLM_MODEL",
+            "VL_LLM_API_KEY",
+            "VL_LLM_API_TYPE",
+            "VL_LLM_API_URL",
+            "VL_LLM_MODEL"
+          ],
+          "log": "logs/n6-smoke-test.log"
+        }
+      }
+    },
+    {
+      "step": 2,
+      "title": "Record the packaged FFmpeg version and the capability probe's landing",
+      "status": "automated",
+      "evidence": {
+        "capabilityProbe": {
+          "packaged": {
+            "has_perspective": true,
+            "perspective_supports_eval_frame": true,
+            "perspective_supports_sense": true,
+            "supports_filter_complex_script": true,
+            "version": "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers"
+          },
+          "developer": {
+            "has_perspective": true,
+            "perspective_supports_eval_frame": true,
+            "perspective_supports_sense": true,
+            "supports_filter_complex_script": true,
+            "version": "ffmpeg version 2025-05-15-git-12b853530a-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers"
+          },
+          "comparedFields": [
+            "has_perspective",
+            "perspective_supports_eval_frame",
+            "perspective_supports_sense",
+            "supports_filter_complex_script"
+          ],
+          "differingFields": [],
+          "identical": true
+        }
+      }
+    },
+    {
+      "step": 3,
+      "title": "Create a project and import the D4 media (video + image + subtitle)",
+      "status": "not-run-here",
+      "reason": "GUI action; this node cannot drive the packaged application's interface."
+    },
+    {
+      "step": 4,
+      "title": "Apply a 3D preset to the VIDEO clip and check the canvas preview",
+      "status": "not-run-here",
+      "reason": "GUI action. The equivalent pixel evidence outside the package is N2 and Iteration 1's M2."
+    },
+    {
+      "step": 5,
+      "title": "Apply a 2D preset to the IMAGE clip (Ken Burns) and check the canvas preview",
+      "status": "not-run-here",
+      "reason": "GUI action. Covered outside the package by N2's 24 grids on the real compositor."
+    },
+    {
+      "step": 6,
+      "title": "Apply a 3D preset to the image and confirm the lower track shows through",
+      "status": "not-run-here",
+      "reason": "GUI action. Covered outside the package by N3's pixel-level see-through assertion."
+    },
+    {
+      "step": 7,
+      "title": "Export and play the result back, confirming all three moves are present",
+      "status": "partially-automated",
+      "reason": "Playback in the packaged player is a human check. The rendering half — the packaged FFmpeg actually producing the move — IS measured here.",
+      "evidence": {
+        "crossBinaryRender": {
+          "threshold": 0.98,
+          "sampleProgress": 0.5,
+          "cases": [
+            {
+              "presetId": "ken-burns",
+              "ssimBox": 1.0,
+              "pass": true
+            },
+            {
+              "presetId": "orbit-left",
+              "ssimBox": 1.0,
+              "pass": true
+            }
+          ],
+          "pass": true
+        }
+      }
+    },
+    {
+      "step": 8,
+      "title": "Remove every move and export again; the result must match the pre-feature output",
+      "status": "automated",
+      "reason": "Byte-identity of the motionless command is proved against 8c702ec by N4-②.",
+      "evidence": {
+        "see": "n4-regression.json -> frozenCommands.motionlessOverlay"
+      }
+    }
+  ],
+  "manualStepsNotRun": [
+    3,
+    4,
+    5,
+    6
+  ],
+  "failures": [],
+  "dodEightClosed": false,
+  "dodEightStatus": "PARTIAL. The version-skew risk H4 exists for — a differently-versioned packaged FFmpeg degrading camera motion — is measured and clear. The remaining 4 checklist steps are GUI actions in the packaged app and are recorded as not run rather than assumed.",
+  "pass": true
+}

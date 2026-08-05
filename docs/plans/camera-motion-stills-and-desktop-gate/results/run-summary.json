@@ -1,0 +1,54 @@
+{
+  "startedAtEpoch": 1785919401.693284,
+  "totalSeconds": 571.1,
+  "gate": "n0",
+  "stages": {
+    "env": {
+      "exit": 0,
+      "seconds": 15.0,
+      "title": "Environment and fixture snapshot"
+    },
+    "n0": {
+      "exit": 0,
+      "seconds": 14.8,
+      "title": "N0 motionless box baseline (GATE)"
+    },
+    "n1": {
+      "exit": 0,
+      "seconds": 20.4,
+      "title": "N1 stills geometry parity + N1-c coverage contract"
+    },
+    "n2": {
+      "exit": 0,
+      "seconds": 93.5,
+      "title": "N2 preview vs export, pixel level"
+    },
+    "n3": {
+      "exit": 0,
+      "seconds": 16.3,
+      "title": "N3 dual-track 3D see-through"
+    },
+    "n4": {
+      "exit": 0,
+      "seconds": 323.5,
+      "title": "N4 zero regression against 8c702ec"
+    },
+    "n5": {
+      "exit": 0,
+      "seconds": 6.3,
+      "title": "N5 panel perspective, degradation, lifecycle"
+    },
+    "n6": {
+      "exit": 0,
+      "seconds": 30.4,
+      "title": "N6 desktop gate (packaged FFmpeg)"
+    },
+    "n7": {
+      "exit": 0,
+      "seconds": 50.8,
+      "title": "N7 draw budget, i18n, repository standards"
+    }
+  },
+  "failed": [],
+  "pass": true
+}

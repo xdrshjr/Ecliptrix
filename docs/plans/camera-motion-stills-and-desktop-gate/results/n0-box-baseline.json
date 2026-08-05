@@ -1,0 +1,200 @@
+{
+  "metric": "N0",
+  "title": "Motionless still: preview box vs export box (prerequisite for N1/N2)",
+  "thresholdPx": 1.0,
+  "sampleTimeSeconds": 2.0,
+  "canvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "method": "Gating comparison is the plan's N0: the preview's placement box (the production computeImageBounds output on the layer, scaled by the canvas) against the export's (read back out of the scale=/overlay= numbers in the command that actually rendered the file). Neither is re-derived by the harness. The supplementary 'renderedPicture' numbers locate the still's magenta frame in the rendered pixels of both sides end to end.",
+  "measuredDivergence_containQuantisation": "Boxes whose normalized position does not land on whole pixels diverge by up to ~1px at the box level and up to ~4px at the picture level, because the export truncates the box origin with int(), rounds the box to even dimensions, and lets FFmpeg's scale pick an integer contained size, while the preview keeps all four in floating point. Pre-existing and unrelated to camera motion (measured with no motion applied); recorded here as the G4/L15 evidence base, NOT fixed this round.",
+  "maxRenderedPictureDeltaPx": 4,
+  "fixtureRatioConstraint": "base clip intrinsic ratio == project canvas ratio, so the preview's letterbox fit-rect is the full canvas and G4 cannot leak into N1/N2",
+  "cases": [
+    {
+      "caseId": "box-a-16x9-still",
+      "still": "still_16x9",
+      "position": {
+        "x": 0.1,
+        "y": 0.1,
+        "width": 0.3,
+        "height": 0.3
+      },
+      "gating": true,
+      "previewBoxPx": {
+        "x": 192.0,
+        "y": 108.0,
+        "width": 576.0,
+        "height": 324.0
+      },
+      "exportBoxPx": {
+        "x": 192.0,
+        "y": 108.0,
+        "width": 576.0,
+        "height": 324.0
+      },
+      "boxCornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxBoxCornerDeltaPx": 0.0,
+      "renderedPicture": {
+        "previewBBox": {
+          "x0": 192,
+          "y0": 108,
+          "x1": 767,
+          "y1": 431,
+          "width": 576,
+          "height": 324,
+          "pixels": 17869
+        },
+        "exportBBox": {
+          "x0": 192,
+          "y0": 108,
+          "x1": 767,
+          "y1": 431,
+          "width": 576,
+          "height": 324,
+          "pixels": 18097
+        },
+        "edgeDeltasPx": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 0,
+          "y1": 0
+        },
+        "maxEdgeDeltaPx": 0
+      },
+      "pass": true
+    },
+    {
+      "caseId": "box-b-wide-box-4x3-still",
+      "still": "still_4x3",
+      "position": {
+        "x": 0.5,
+        "y": 0.2,
+        "width": 0.4,
+        "height": 0.3
+      },
+      "gating": true,
+      "previewBoxPx": {
+        "x": 960.0,
+        "y": 216.0,
+        "width": 768.0,
+        "height": 324.0
+      },
+      "exportBoxPx": {
+        "x": 960.0,
+        "y": 216.0,
+        "width": 768.0,
+        "height": 324.0
+      },
+      "boxCornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxBoxCornerDeltaPx": 0.0,
+      "renderedPicture": {
+        "previewBBox": {
+          "x0": 1128,
+          "y0": 216,
+          "x1": 1559,
+          "y1": 539,
+          "width": 432,
+          "height": 324,
+          "pixels": 14894
+        },
+        "exportBBox": {
+          "x0": 1128,
+          "y0": 216,
+          "x1": 1559,
+          "y1": 539,
+          "width": 432,
+          "height": 324,
+          "pixels": 15058
+        },
+        "edgeDeltasPx": {
+          "x0": 0,
+          "y0": 0,
+          "x1": 0,
+          "y1": 0
+        },
+        "maxEdgeDeltaPx": 0
+      },
+      "pass": true
+    },
+    {
+      "caseId": "box-c-tall-box-16x9-still",
+      "still": "still_16x9",
+      "position": {
+        "x": 0.28,
+        "y": 0.42,
+        "width": 0.22,
+        "height": 0.44
+      },
+      "gating": false,
+      "previewBoxPx": {
+        "x": 537.6,
+        "y": 453.59999999999997,
+        "width": 422.4,
+        "height": 475.2
+      },
+      "exportBoxPx": {
+        "x": 537.0,
+        "y": 453.0,
+        "width": 422.0,
+        "height": 476.0
+      },
+      "boxCornerDeltasPx": {
+        "TL": 0.848528,
+        "TR": 1.16619,
+        "BR": 1.019804,
+        "BL": 0.632456
+      },
+      "maxBoxCornerDeltaPx": 1.16619,
+      "renderedPicture": {
+        "previewBBox": {
+          "x0": 538,
+          "y0": 572,
+          "x1": 959,
+          "y1": 809,
+          "width": 422,
+          "height": 238,
+          "pixels": 9216
+        },
+        "exportBBox": {
+          "x0": 536,
+          "y0": 570,
+          "x1": 957,
+          "y1": 805,
+          "width": 422,
+          "height": 236,
+          "pixels": 9381
+        },
+        "edgeDeltasPx": {
+          "x0": 2,
+          "y0": 2,
+          "x1": 2,
+          "y1": 4
+        },
+        "maxEdgeDeltaPx": 4
+      },
+      "pass": false
+    }
+  ],
+  "gatingCaseIds": [
+    "box-a-16x9-still",
+    "box-b-wide-box-4x3-still"
+  ],
+  "evidenceOnlyCaseIds": [
+    "box-c-tall-box-16x9-still"
+  ],
+  "downstreamFixtureRule": "N1 / N2 / N3 may only use the gating boxes. Their normalized positions land on whole output pixels, which is the regime where the two sides agree exactly (measured 0.000px) and a camera-motion deviation is therefore attributable to the camera motion.",
+  "maxBoxCornerDeltaPx": 0.0,
+  "pass": true
+}

@@ -1,0 +1,338 @@
+{
+  "metric": "N1",
+  "title": "Stills geometry parity — TS cameraBoxHomography vs the emitted FFmpeg perspective",
+  "thresholdPx": 0.5,
+  "emitter": {
+    "fps": 30.0,
+    "startTime": 0.0
+  },
+  "sweep": {
+    "comparisons": 1600,
+    "missingPresets": [],
+    "perPreset": [
+      {
+        "presetId": "zoom-in",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 0.0,
+        "meanDeviationPx": 0.0,
+        "worst": {
+          "boxId": null,
+          "t": null,
+          "px": 0.0
+        },
+        "pass": true
+      },
+      {
+        "presetId": "zoom-out",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 0.0,
+        "meanDeviationPx": 0.0,
+        "worst": {
+          "boxId": null,
+          "t": null,
+          "px": 0.0
+        },
+        "pass": true
+      },
+      {
+        "presetId": "pan-left",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 2.2737367544323206e-13,
+        "meanDeviationPx": 3.1192826099868396e-14,
+        "worst": {
+          "boxId": "canvas-ratio",
+          "t": "4.500000",
+          "px": 2.2737367544323206e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "pan-right",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 2.2737367544323206e-13,
+        "meanDeviationPx": 3.1192826099868396e-14,
+        "worst": {
+          "boxId": "canvas-ratio",
+          "t": "0.000000",
+          "px": 2.2737367544323206e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "tilt-up",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 1.1368683772161603e-13,
+        "meanDeviationPx": 8.01136934569513e-15,
+        "worst": {
+          "boxId": "canvas-ratio",
+          "t": "4.500000",
+          "px": 1.1368683772161603e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "tilt-down",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 1.1368683772161603e-13,
+        "meanDeviationPx": 8.01136934569513e-15,
+        "worst": {
+          "boxId": "canvas-ratio",
+          "t": "1.500000",
+          "px": 1.1368683772161603e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "rotate-in",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 0.00013494747648070836,
+        "meanDeviationPx": 2.6116787780206843e-05,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "0.000000",
+          "px": 0.00013494747648070836
+        },
+        "pass": true
+      },
+      {
+        "presetId": "ken-burns",
+        "space": "2d",
+        "corners": 100,
+        "maxDeviationPx": 2.8421709430404007e-13,
+        "meanDeviationPx": 6.177705485508562e-14,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "4.500000",
+          "px": 2.8421709430404007e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "orbit-left",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 3.695717958252567e-05,
+        "meanDeviationPx": 1.2487285585056653e-05,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "0.000000",
+          "px": 3.695717958252567e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "orbit-right",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 3.695717958252567e-05,
+        "meanDeviationPx": 1.2487285592423707e-05,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "6.000000",
+          "px": 3.695717958252567e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "dive",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 0.00010731135212205787,
+        "meanDeviationPx": 1.7748481079086466e-05,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "0.000000",
+          "px": 0.00010731135212205787
+        },
+        "pass": true
+      },
+      {
+        "presetId": "crane-up",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 1.9760404801573396e-05,
+        "meanDeviationPx": 5.194360144228249e-06,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "6.000000",
+          "px": 1.9760404801573396e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "swing-in",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 0.0002368913915012386,
+        "meanDeviationPx": 2.9841612880703552e-05,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "0.000000",
+          "px": 0.0002368913915012386
+        },
+        "pass": true
+      },
+      {
+        "presetId": "dolly-in-3d",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 1.6543993355922913e-05,
+        "meanDeviationPx": 5.357965959791216e-06,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "0.000000",
+          "px": 1.6543993355922913e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "boom",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 0.00017040713908344848,
+        "meanDeviationPx": 7.043390706420456e-05,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "6.000000",
+          "px": 0.00017040713908344848
+        },
+        "pass": true
+      },
+      {
+        "presetId": "spiral",
+        "space": "3d",
+        "corners": 100,
+        "maxDeviationPx": 0.00043066901988427414,
+        "meanDeviationPx": 0.00016389384604564391,
+        "worst": {
+          "boxId": "full-canvas",
+          "t": "0.000000",
+          "px": 0.00043066901988427414
+        },
+        "pass": true
+      }
+    ],
+    "perBox": {
+      "canvas-ratio": {
+        "count": 320,
+        "min": 0.0,
+        "mean": 2.8610838941429082e-05,
+        "max": 0.00034449717035275516,
+        "p95": 0.00018064992166607675
+      },
+      "four-three-box": {
+        "count": 320,
+        "min": 0.0,
+        "mean": 1.7855830331221753e-05,
+        "max": 0.00020215413493752878,
+        "p95": 0.00010276876870712674
+      },
+      "corner-small": {
+        "count": 320,
+        "min": 0.0,
+        "mean": 7.169430401044019e-06,
+        "max": 8.617212938997295e-05,
+        "p95": 4.462635980780762e-05
+      },
+      "full-canvas": {
+        "count": 320,
+        "min": 0.0,
+        "mean": 3.5771545260028955e-05,
+        "max": 0.00043066901988427414,
+        "p95": 0.00022527605908744238
+      },
+      "portrait-project": {
+        "count": 320,
+        "min": 0.0,
+        "mean": 1.7955333901129477e-05,
+        "max": 0.00021751599274700151,
+        "p95": 0.00011299530437086731
+      }
+    },
+    "maxDeviationPx": 0.00043066901988427414,
+    "meanDeviationPx": 2.1472595766970663e-05,
+    "p95DeviationPx": 0.00012979628250887315,
+    "boxIds": [
+      "canvas-ratio",
+      "corner-small",
+      "four-three-box",
+      "full-canvas",
+      "portrait-project"
+    ]
+  },
+  "n1c_coverageContract": {
+    "probe": "synthetic (scale=1, offsetX=+-0.1) — the shipped 2D pans carry scale=1.15 and never trip coverage",
+    "stillPanNeverZoomed": {
+      "scales": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "expected": 1.0,
+      "pass": true
+    },
+    "coverageFlagIsLive": {
+      "enforcedScales": [
+        1.2,
+        1.2,
+        1.2,
+        1.2,
+        1.2
+      ],
+      "maxEnforcedScale": 1.2,
+      "expectedByPlan": 1.2,
+      "pass": true
+    },
+    "coverageUsesBoxAspect": {
+      "probe": "rolled 2D move (roll -12deg..+12deg)",
+      "boxAspect": 1.3333333333333333,
+      "canvasAspect": 1.7777777777777777,
+      "coverageWithBoxAspect": 1.2830847472665194,
+      "coverageWithCanvasAspect": 1.384730462777424,
+      "pass": true
+    },
+    "measuredFinding_pureRollFreePanIsAspectInvariant": {
+      "note": "ensure_coverage drops every aspect term when roll == 0, so the plan's literal N1-c(c) wording (same pure-pan preset, two aspects) is unsatisfiable by construction. Recorded, not worked around.",
+      "coverageByAspect": {
+        "16:9": 1.2,
+        "4:3": 1.2,
+        "1:1": 1.2
+      }
+    },
+    "pass": true
+  },
+  "videoSideFrozen": {
+    "generatorExit": 0,
+    "gitPorcelain": [],
+    "iteration1GoldenUnchanged": true,
+    "stillsGoldenReproducible": true,
+    "pass": true
+  },
+  "shippedSuites": {
+    "vitest": {
+      "files": [
+        "src/components/video/playback/__tests__/cameraMotionBox.test.ts",
+        "src/components/video/playback/__tests__/ImageOverlayLayer.motion.test.ts",
+        "src/components/video/playback/__tests__/CanvasCompositor.imageMotion.test.ts",
+        "src/components/video/playback/__tests__/CameraMotionLayer.test.ts"
+      ],
+      "missing": [],
+      "exit": 0,
+      "log": "logs/n1-vitest.log"
+    },
+    "pytest": {
+      "exit": 0,
+      "log": "logs/n1-pytest.log"
+    }
+  },
+  "pass": true
+}

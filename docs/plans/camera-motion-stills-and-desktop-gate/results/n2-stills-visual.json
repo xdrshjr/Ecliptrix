@@ -1,0 +1,618 @@
+{
+  "metric": "N2",
+  "title": "Stills preview vs export, pixel level (real Chromium vs real FFmpeg)",
+  "thresholds": {
+    "2d": 0.97,
+    "3d": 0.93,
+    "strongZoom": 0.9,
+    "floor": 0.85
+  },
+  "directionSentinelMargin": 0.02,
+  "still": "still_4x3",
+  "box": {
+    "x": 192,
+    "y": 108,
+    "width": 576,
+    "height": 324
+  },
+  "method": "SSIM is measured on the still's box, not the whole frame: the box is 9% of the canvas and a whole-frame score cannot distinguish a correct still from one drawn somewhere else entirely.",
+  "grids": [
+    {
+      "presetId": "ken-burns",
+      "space": "2d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.991612,
+      "ssimBoxNativeScale": 0.939946,
+      "ssimFullFrame": 0.996507,
+      "ssimBoxMirrored": 0.305121,
+      "ssimBoxShifted2px": 0.354852,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.958957,
+        "0": 0.991612,
+        "1": 0.953071
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "ken-burns",
+      "space": "2d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.98687,
+      "ssimBoxNativeScale": 0.916306,
+      "ssimFullFrame": 0.996442,
+      "ssimBoxMirrored": 0.290564,
+      "ssimBoxShifted2px": 0.314855,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.956624,
+        "0": 0.98687,
+        "1": 0.946712
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "ken-burns",
+      "space": "2d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.988968,
+      "ssimBoxNativeScale": 0.932673,
+      "ssimFullFrame": 0.996494,
+      "ssimBoxMirrored": 0.220357,
+      "ssimBoxShifted2px": 0.270489,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.960888,
+        "0": 0.988968,
+        "1": 0.946052
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "zoom-in",
+      "space": "2d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.99039,
+      "ssimBoxNativeScale": 0.943151,
+      "ssimFullFrame": 0.996526,
+      "ssimBoxMirrored": 0.395112,
+      "ssimBoxShifted2px": 0.417055,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.9,
+      "frameOffsetScan": {
+        "-1": 0.983518,
+        "0": 0.99039,
+        "1": 0.980691
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "zoom-in",
+      "space": "2d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.990803,
+      "ssimBoxNativeScale": 0.935555,
+      "ssimFullFrame": 0.996491,
+      "ssimBoxMirrored": 0.338436,
+      "ssimBoxShifted2px": 0.340473,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.9,
+      "frameOffsetScan": {
+        "-1": 0.862991,
+        "0": 0.990803,
+        "1": 0.870825
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "zoom-in",
+      "space": "2d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.986182,
+      "ssimBoxNativeScale": 0.906122,
+      "ssimFullFrame": 0.996348,
+      "ssimBoxMirrored": 0.321444,
+      "ssimBoxShifted2px": 0.277557,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.9,
+      "frameOffsetScan": {
+        "-1": 0.975677,
+        "0": 0.986182,
+        "1": 0.979702
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "pan-right",
+      "space": "2d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.99019,
+      "ssimBoxNativeScale": 0.929797,
+      "ssimFullFrame": 0.996451,
+      "ssimBoxMirrored": 0.339583,
+      "ssimBoxShifted2px": 0.324703,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.971687,
+        "0": 0.99019,
+        "1": 0.945222
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "pan-right",
+      "space": "2d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.99086,
+      "ssimBoxNativeScale": 0.926369,
+      "ssimFullFrame": 0.996541,
+      "ssimBoxMirrored": 0.336563,
+      "ssimBoxShifted2px": 0.326021,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.66942,
+        "0": 0.99086,
+        "1": 0.631771
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "pan-right",
+      "space": "2d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.990247,
+      "ssimBoxNativeScale": 0.934289,
+      "ssimFullFrame": 0.996449,
+      "ssimBoxMirrored": 0.334963,
+      "ssimBoxShifted2px": 0.322264,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.962904,
+        "0": 0.990247,
+        "1": 0.957606
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "rotate-in",
+      "space": "2d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.990479,
+      "ssimBoxNativeScale": 0.939258,
+      "ssimFullFrame": 0.996445,
+      "ssimBoxMirrored": 0.183537,
+      "ssimBoxShifted2px": 0.342743,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.957999,
+        "0": 0.990479,
+        "1": 0.963426
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "rotate-in",
+      "space": "2d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.989721,
+      "ssimBoxNativeScale": 0.927307,
+      "ssimFullFrame": 0.996477,
+      "ssimBoxMirrored": 0.232661,
+      "ssimBoxShifted2px": 0.315175,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.983139,
+        "0": 0.989721,
+        "1": 0.984484
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "rotate-in",
+      "space": "2d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.989094,
+      "ssimBoxNativeScale": 0.930872,
+      "ssimFullFrame": 0.99651,
+      "ssimBoxMirrored": 0.326343,
+      "ssimBoxShifted2px": 0.292119,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.97,
+      "frameOffsetScan": {
+        "-1": 0.988668,
+        "0": 0.989094,
+        "1": 0.989206
+      },
+      "bestFrameOffset": 1,
+      "pass": true
+    },
+    {
+      "presetId": "orbit-left",
+      "space": "3d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.985817,
+      "ssimBoxNativeScale": 0.968403,
+      "ssimFullFrame": 0.996271,
+      "ssimBoxMirrored": 0.350855,
+      "ssimBoxShifted2px": 0.385254,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.98502,
+        "0": 0.985817,
+        "1": 0.986478
+      },
+      "bestFrameOffset": 1,
+      "pass": true
+    },
+    {
+      "presetId": "orbit-left",
+      "space": "3d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.986947,
+      "ssimBoxNativeScale": 0.967494,
+      "ssimFullFrame": 0.996292,
+      "ssimBoxMirrored": 0.348575,
+      "ssimBoxShifted2px": 0.384977,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.975977,
+        "0": 0.986947,
+        "1": 0.983375
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "orbit-left",
+      "space": "3d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.986305,
+      "ssimBoxNativeScale": 0.968378,
+      "ssimFullFrame": 0.996272,
+      "ssimBoxMirrored": 0.355749,
+      "ssimBoxShifted2px": 0.386333,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.985692,
+        "0": 0.986305,
+        "1": 0.986372
+      },
+      "bestFrameOffset": 1,
+      "pass": true
+    },
+    {
+      "presetId": "dive",
+      "space": "3d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.985282,
+      "ssimBoxNativeScale": 0.968329,
+      "ssimFullFrame": 0.995948,
+      "ssimBoxMirrored": 0.273006,
+      "ssimBoxShifted2px": 0.435849,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.9,
+      "frameOffsetScan": {
+        "-1": 0.975841,
+        "0": 0.985282,
+        "1": 0.97734
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "dive",
+      "space": "3d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.989416,
+      "ssimBoxNativeScale": 0.97641,
+      "ssimFullFrame": 0.996489,
+      "ssimBoxMirrored": 0.352813,
+      "ssimBoxShifted2px": 0.406296,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.9,
+      "frameOffsetScan": {
+        "-1": 0.986833,
+        "0": 0.989416,
+        "1": 0.986855
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "dive",
+      "space": "3d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.987426,
+      "ssimBoxNativeScale": 0.971634,
+      "ssimFullFrame": 0.996363,
+      "ssimBoxMirrored": 0.377145,
+      "ssimBoxShifted2px": 0.393811,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.9,
+      "frameOffsetScan": {
+        "-1": 0.98747,
+        "0": 0.987426,
+        "1": 0.987823
+      },
+      "bestFrameOffset": 1,
+      "pass": true
+    },
+    {
+      "presetId": "crane-up",
+      "space": "3d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.986691,
+      "ssimBoxNativeScale": 0.967827,
+      "ssimFullFrame": 0.996283,
+      "ssimBoxMirrored": 0.317975,
+      "ssimBoxShifted2px": 0.384966,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.987481,
+        "0": 0.986691,
+        "1": 0.985564
+      },
+      "bestFrameOffset": -1,
+      "pass": true
+    },
+    {
+      "presetId": "crane-up",
+      "space": "3d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.98586,
+      "ssimBoxNativeScale": 0.967875,
+      "ssimFullFrame": 0.996298,
+      "ssimBoxMirrored": 0.23945,
+      "ssimBoxShifted2px": 0.381101,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.980936,
+        "0": 0.98586,
+        "1": 0.974611
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "crane-up",
+      "space": "3d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.986671,
+      "ssimBoxNativeScale": 0.963974,
+      "ssimFullFrame": 0.996271,
+      "ssimBoxMirrored": 0.130576,
+      "ssimBoxShifted2px": 0.382985,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.98695,
+        "0": 0.986671,
+        "1": 0.986559
+      },
+      "bestFrameOffset": -1,
+      "pass": true
+    },
+    {
+      "presetId": "spiral",
+      "space": "3d",
+      "t": 2.0,
+      "exportFrameIndex": 60,
+      "ssimBox": 0.984631,
+      "ssimBoxNativeScale": 0.964834,
+      "ssimFullFrame": 0.996196,
+      "ssimBoxMirrored": 0.141427,
+      "ssimBoxShifted2px": 0.363308,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.983224,
+        "0": 0.984631,
+        "1": 0.983573
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "spiral",
+      "space": "3d",
+      "t": 3.0,
+      "exportFrameIndex": 90,
+      "ssimBox": 0.98562,
+      "ssimBoxNativeScale": 0.967405,
+      "ssimFullFrame": 0.996246,
+      "ssimBoxMirrored": 0.339148,
+      "ssimBoxShifted2px": 0.36136,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.944882,
+        "0": 0.98562,
+        "1": 0.9534
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    },
+    {
+      "presetId": "spiral",
+      "space": "3d",
+      "t": 4.0,
+      "exportFrameIndex": 120,
+      "ssimBox": 0.985205,
+      "ssimBoxNativeScale": 0.966273,
+      "ssimFullFrame": 0.996238,
+      "ssimBoxMirrored": 0.097477,
+      "ssimBoxShifted2px": 0.359073,
+      "directionSentinelPass": true,
+      "sensitivityProbePass": true,
+      "threshold": 0.93,
+      "frameOffsetScan": {
+        "-1": 0.98185,
+        "0": 0.985205,
+        "1": 0.983609
+      },
+      "bestFrameOffset": 0,
+      "pass": true
+    }
+  ],
+  "ssimBoxSummary": {
+    "count": 24,
+    "min": 0.984631,
+    "mean": 0.9879702916666667,
+    "max": 0.991612,
+    "p95": 0.99086
+  },
+  "controlNoMotion": {
+    "frames": [
+      {
+        "t": 2.0,
+        "ssimBox": 0.992199,
+        "ssimBoxNativeScale": 0.979677
+      },
+      {
+        "t": 3.0,
+        "ssimBox": 0.992189,
+        "ssimBoxNativeScale": 0.979679
+      },
+      {
+        "t": 4.0,
+        "ssimBox": 0.992203,
+        "ssimBoxNativeScale": 0.979688
+      }
+    ],
+    "summary": {
+      "count": 3,
+      "min": 0.992189,
+      "mean": 0.992197,
+      "max": 0.992203,
+      "p95": 0.992203
+    },
+    "note": "Preview and export never agree perfectly even with no camera move: Chromium's canvas and FFmpeg's scaler are different resamplers. This is the floor any motion grid is read against."
+  },
+  "bestFrameOffsetsObserved": [
+    -1,
+    0,
+    1
+  ],
+  "frameOffsetMeanSsim": {
+    "-1": 0.9581095,
+    "0": 0.9879702916666667,
+    "1": 0.9551802916666664
+  },
+  "frameAlignmentPass": true,
+  "exports": {
+    "ken-burns": {
+      "filterComplexChars": 1077,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "zoom-in": {
+      "filterComplexChars": 1313,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "pan-right": {
+      "filterComplexChars": 1179,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "rotate-in": {
+      "filterComplexChars": 1765,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "orbit-left": {
+      "filterComplexChars": 2033,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "dive": {
+      "filterComplexChars": 1849,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "crane-up": {
+      "filterComplexChars": 1889,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "spiral": {
+      "filterComplexChars": 4249,
+      "hasLoopInput": true,
+      "warnings": []
+    },
+    "control-no-motion": {
+      "filterComplexChars": 160,
+      "hasLoopInput": false,
+      "warnings": []
+    }
+  },
+  "pass": true
+}

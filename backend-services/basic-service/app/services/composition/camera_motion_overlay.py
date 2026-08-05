@@ -144,36 +144,70 @@ def build_overlay_motion_filter(
         )
 
     rate = float(fps) if fps and fps > 0 else 30.0
-    warnings: List[str] = []
     box_aspect = width / height if height else 16.0 / 9.0
+    prefix, fields, warnings = _motion_fields(plan, timing, rate, box_aspect, animated)
+    options = _perspective_options(prefix, fields, width, height, animated)
 
+    return OverlayMotion(
+        filter_text="perspective=" + ":".join(options),
+        input_options=_input_options(timing, rate) if animated else [],
+        warnings=warnings,
+    )
+
+
+def _motion_fields(
+    plan: CameraMotionPlan,
+    timing: OverlayTiming,
+    rate: float,
+    box_aspect: float,
+    animated: bool,
+) -> Tuple[str, dict, List[str]]:
+    """The per-field expressions, animated or frozen.
+
+    Returns:
+        ``(prefix, fields, warnings)`` — ``prefix`` holds the statements the
+        corner expressions must be evaluated after (empty when nothing animates).
+    """
     if animated:
-        prefix = (
-            _progress_expression(plan, timing.duration, rate, timing.start_time) + ";"
-        )
         # `enforce_coverage=False`: the box is an overlay, and the transparent
         # ring around a panned still is the intended result (§3.1.1).
-        fields = _field_symbols(plan, box_aspect, "ld(0)", enforce_coverage=False)
-    else:
-        midpoint = state_at(
-            plan, timing.duration, timing.duration / 2.0, box_aspect, enforce_coverage=False
+        return (
+            _progress_expression(plan, timing.duration, rate, timing.start_time) + ";",
+            _field_symbols(plan, box_aspect, "ld(0)", enforce_coverage=False),
+            [],
         )
-        prefix = ""
-        fields = {
-            "scale": _const(midpoint.scale),
-            "offset_x": _const(midpoint.offset_x),
-            "offset_y": _const(midpoint.offset_y),
-            "roll": _const(math.radians(midpoint.roll)),
-            "yaw": _const(math.radians(midpoint.yaw)),
-            "pitch": _const(math.radians(midpoint.pitch)),
-            "dolly": _const(midpoint.dolly),
-        }
-        warnings.append(
+
+    midpoint = state_at(
+        plan, timing.duration, timing.duration / 2.0, box_aspect, enforce_coverage=False
+    )
+    fields = {
+        "scale": _const(midpoint.scale),
+        "offset_x": _const(midpoint.offset_x),
+        "offset_y": _const(midpoint.offset_y),
+        "roll": _const(math.radians(midpoint.roll)),
+        "yaw": _const(math.radians(midpoint.yaw)),
+        "pitch": _const(math.radians(midpoint.pitch)),
+        "dolly": _const(midpoint.dolly),
+    }
+    return (
+        "",
+        fields,
+        [
             "camera_motion_static: this FFmpeg build cannot evaluate filter "
             "expressions per frame (perspective lacks eval=frame), so the image "
             "camera move was rendered as a single fixed framing."
-        )
+        ],
+    )
 
+
+def _perspective_options(
+    prefix: str,
+    fields: dict,
+    width: int,
+    height: int,
+    animated: bool,
+) -> List[str]:
+    """The eight corner options plus the three mode options, in emission order."""
     geometry = {
         "focal": PERSPECTIVE_FOCAL_RATIO * float(max(width, height)),
         "width": float(width),
@@ -192,24 +226,19 @@ def build_overlay_motion_filter(
     )
 
     terms, trig_prefix = _hoisted_terms(fields, animated)
-    prefix += trig_prefix
+    statements = prefix + trig_prefix
 
     points = [_corner_expressions(terms, geometry, du, dv) for du, dv in corners]
     # Clockwise [TL,TR,BR,BL] -> FFmpeg raster order [TL,TR,BL,BR] (R-P0-2/L12).
     raster = [points[0], points[1], points[3], points[2]]
     options: List[str] = []
     for slot, (x_expr, y_expr) in enumerate(raster):
-        options.append(f"x{slot}={_quote(prefix + x_expr)}")
-        options.append(f"y{slot}={_quote(prefix + y_expr)}")
+        options.append(f"x{slot}={_quote(statements + x_expr)}")
+        options.append(f"y{slot}={_quote(statements + y_expr)}")
     options.append("sense=destination")
     options.append(f"eval={'frame' if animated else 'init'}")
     options.append("interpolation=cubic")
-
-    return OverlayMotion(
-        filter_text="perspective=" + ":".join(options),
-        input_options=_input_options(timing, rate) if animated else [],
-        warnings=warnings,
-    )
+    return options
 
 
 def _input_options(timing: OverlayTiming, fps: float) -> List[str]:

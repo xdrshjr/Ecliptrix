@@ -1,0 +1,134 @@
+{
+  "metric": "N4",
+  "title": "Zero regression — the baseline commit is executed, not quoted",
+  "baselineCommit": "8c702ec",
+  "gitHead": {
+    "head": "81428c292a2b47c169aba7fe2236e251df714882",
+    "branch": "feat/remove-user-system",
+    "subject": "feat: camera motion for still images, end to end"
+  },
+  "frozenCommands": {
+    "baselineCommit": "8c702ec",
+    "videoSide": {
+      "presets": 16,
+      "filtergraphChars": {
+        "min": 1074,
+        "max": 4271
+      },
+      "differing": {},
+      "pass": true
+    },
+    "motionlessOverlay": {
+      "baseline": {
+        "filterComplex": "[1:v]scale=960:432:force_original_aspect_ratio=decrease,pad=960:432:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:216:enable='between(t,1.0,5.0)'[v0]",
+        "hasLoopInput": false,
+        "inputFlags": [
+          "-y",
+          "-i",
+          "-i",
+          "-filter_complex",
+          "-map",
+          "-map",
+          "-c:a",
+          "-c:v"
+        ],
+        "signature": "(image_items: List, video_path: str, output_path: str, temp_dir: str, output_resolution: Dict[str, int]) -> bool"
+      },
+      "head": {
+        "filterComplex": "[1:v]scale=960:432:force_original_aspect_ratio=decrease,pad=960:432:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:216:enable='between(t,1.0,5.0)'[v0]",
+        "hasLoopInput": false,
+        "inputFlags": [
+          "-y",
+          "-i",
+          "-i",
+          "-filter_complex",
+          "-map",
+          "-map",
+          "-c:a",
+          "-c:v"
+        ],
+        "signature": "(image_items: List, video_path: str, output_path: str, ctx: app.services.video_composition_service.OverlayPassContext) -> bool"
+      },
+      "pass": true
+    },
+    "pass": true
+  },
+  "frontend": {
+    "head": {
+      "exit": 1,
+      "summary": [
+        "Test Files  2 failed | 195 passed (197)",
+        "Tests  3 failed | 1642 passed (1645)"
+      ],
+      "failingFiles": [
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+        "src/lib/api/server/__tests__/backend-proxy.test.ts"
+      ]
+    },
+    "baseline": {
+      "checked": true,
+      "commit": "8c702ec",
+      "files": [
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+        "src/lib/api/server/__tests__/backend-proxy.test.ts"
+      ],
+      "exit": 1,
+      "failingAtBaseline": [
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+        "src/lib/api/server/__tests__/backend-proxy.test.ts"
+      ],
+      "summary": [
+        "Test Files  2 failed (2)",
+        "Tests  3 failed | 21 passed (24)"
+      ]
+    },
+    "newFailures": [],
+    "pass": true
+  },
+  "backend": {
+    "targetedSuites": {
+      "files": [
+        "tests/test_camera_motion_overlay.py",
+        "tests/test_image_overlay_no_silent_drop.py",
+        "tests/test_camera_motion_geometry.py",
+        "tests/test_filtergraph_builder.py"
+      ],
+      "exit": 0,
+      "pass": true,
+      "log": "logs/n4-pytest-targeted.log"
+    },
+    "compositionSubset": {
+      "selector": "composition or filtergraph or camera or overlay or scaling or transition",
+      "excludedUncollectable": {
+        "tests/test_content_polish_api.py": "SyntaxError: bytes can only contain ASCII literal characters",
+        "tests/test_tts_api.py": "AttributeError: module pytest has no attribute config (pytest>=4)"
+      },
+      "headSummary": {
+        "line": "17 failed, 127 passed, 944 deselected, 1 error in 88.38s (0:01:28)",
+        "collected": 144
+      },
+      "baselineSummary": {
+        "line": "17 failed, 101 passed, 1044 deselected, 1 error in 83.23s (0:01:23)",
+        "collected": 118
+      },
+      "headFailingFiles": [
+        "tests/test_video_composition.py",
+        "tests/test_video_composition_enhanced.py",
+        "tests/test_video_composition_pexels_retry.py",
+        "tests/test_video_composition_timeline.py",
+        "tests/test_video_composition_timeline_order.py"
+      ],
+      "baselineFailingFiles": [
+        "tests/test_video_composition.py",
+        "tests/test_video_composition_enhanced.py",
+        "tests/test_video_composition_pexels_retry.py",
+        "tests/test_video_composition_timeline.py",
+        "tests/test_video_composition_timeline_order.py"
+      ],
+      "newFailures": [],
+      "pass": true
+    },
+    "pass": true
+  },
+  "pass": true
+}

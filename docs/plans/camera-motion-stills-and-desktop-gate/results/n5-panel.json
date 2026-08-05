@@ -1,0 +1,62 @@
+{
+  "metric": "N5",
+  "title": "Panel true perspective — delegation, degradation, lifecycle",
+  "scopeNote": "The React component is not mounted: this harness has no React runtime. Corner correctness is established by the component delegating to the shared drawWithMotion seam (checked here), that seam projecting through the kernel (checked here), the shipped suites asserting the seam's corners, and N2 confirming the resulting pixels.",
+  "delegation": {
+    "file": "src\\components\\video\\components\\CameraMotionModal\\MotionPreviewStage.tsx",
+    "checks": {
+      "usesSharedDrawSeam": true,
+      "usesKernelStateSampler": true,
+      "seamProjectsThroughKernel": true,
+      "noOwnTrigonometry": true,
+      "teardownIsRelease": true
+    },
+    "pass": true
+  },
+  "degradation": {
+    "i18nKeysUsed": [
+      "previewUnavailable"
+    ],
+    "missingByLocale": {},
+    "checks": {
+      "hasStatusRoleNotice": true,
+      "fallsBackToAffineShadow": true,
+      "announcesOnlyExistingKeys": true
+    },
+    "pass": true
+  },
+  "lifecycle": {
+    "cycles": 20,
+    "acquired": 20,
+    "released": 20,
+    "webgl": {
+      "available": true,
+      "perspectiveRendererAcquires": true,
+      "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+      "vendor": "Google Inc. (Intel)",
+      "renderer": "ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "checks": {
+      "acquireReleaseBalanced": true,
+      "canvasReleased": true,
+      "bundleReleased": true,
+      "contextObtainableAfterChurn": true
+    },
+    "pass": true
+  },
+  "shippedSuites": {
+    "files": [
+      "src/components/video/playback/__tests__/PerspectiveQuadRenderer.lifecycle.test.ts",
+      "src/components/video/playback/__tests__/PerspectiveQuadRenderer.upload.test.ts",
+      "src/components/video/playback/__tests__/CanvasCompositor.imageMotion.test.ts",
+      "src/components/video/playback/__tests__/cameraMotionCompositor.test.ts"
+    ],
+    "exit": 0,
+    "log": "logs/n5-vitest.log"
+  },
+  "notRunHere": [
+    "Mounting MotionPreviewStage and reading the quad it hands the renderer at runtime",
+    "Keyboard / screen-reader walkthrough of the panel (belongs to the desktop checklist)"
+  ],
+  "pass": true
+}
