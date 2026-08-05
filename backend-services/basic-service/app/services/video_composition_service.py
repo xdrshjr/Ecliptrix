@@ -2628,7 +2628,7 @@ class VideoCompositionService:
                 f"No position information for image item {item.id}, using default position"
             )
             placement = DEFAULT_IMAGE_POSITION
-        box = quantise_overlay_box(*placement, video_width, video_height)
+        box = quantise_overlay_box(placement, video_width, video_height)
         return OverlayBox(width=box.width, height=box.height), box.x, box.y
 
     def _image_overlay_filter_parts(

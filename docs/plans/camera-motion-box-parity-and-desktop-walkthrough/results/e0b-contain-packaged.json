@@ -1,9 +1,9 @@
 {
   "label": "packaged",
-  "ffmpeg": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe",
+  "ffmpeg": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe",
   "version": "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
-  "total": 16,
-  "agreed": 16,
+  "total": 20,
+  "agreed": 20,
   "pass": true,
   "cases": [
     {
@@ -28,8 +28,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=634:356:force_original_aspect_ratio=decrease,pad=634:356:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 00000209064f7dc0] n:0 pts:0 pts_time:0 x1:0 x2:632 y1:0 y2:355 w:633 h:356 crop=633:356:0:0 drawbox=0:0:633:356"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=634:356:force_original_aspect_ratio=decrease,pad=634:356:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 00000242cbc80fc0] n:0 pts:0 pts_time:0 x1:0 x2:632 y1:0 y2:355 w:633 h:356 crop=633:356:0:0 drawbox=0:0:633:356"
     },
     {
       "natural": [
@@ -53,8 +53,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=434:288:force_original_aspect_ratio=decrease,pad=434:288:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 000002421e5185c0] n:0 pts:0 pts_time:0 x1:1 x2:432 y1:0 y2:287 w:432 h:288 crop=432:288:1:0 drawbox=1:0:432:288"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=434:288:force_original_aspect_ratio=decrease,pad=434:288:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000028a0b71c940] n:0 pts:0 pts_time:0 x1:1 x2:432 y1:0 y2:287 w:432 h:288 crop=432:288:1:0 drawbox=1:0:432:288"
     },
     {
       "natural": [
@@ -78,8 +78,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1234x567:d=1 -vf scale=321:123:force_original_aspect_ratio=decrease,pad=321:123:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 0000020ebce57780] n:0 pts:0 pts_time:0 x1:26 x2:293 y1:0 y2:122 w:268 h:123 crop=268:123:26:0 drawbox=26:0:268:123"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1234x567:d=1 -vf scale=321:123:force_original_aspect_ratio=decrease,pad=321:123:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000029edd200a80] n:0 pts:0 pts_time:0 x1:26 x2:293 y1:0 y2:122 w:268 h:123 crop=268:123:26:0 drawbox=26:0:268:123"
     },
     {
       "natural": [
@@ -103,8 +103,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=844:474:force_original_aspect_ratio=decrease,pad=844:474:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 00000209dbb56b00] n:0 pts:0 pts_time:0 x1:0 x2:842 y1:0 y2:473 w:843 h:474 crop=843:474:0:0 drawbox=0:0:843:474"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=844:474:force_original_aspect_ratio=decrease,pad=844:474:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 00000229f6632c00] n:0 pts:0 pts_time:0 x1:0 x2:842 y1:0 y2:473 w:843 h:474 crop=843:474:0:0 drawbox=0:0:843:474"
     },
     {
       "natural": [
@@ -128,8 +128,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=422:238:force_original_aspect_ratio=decrease,pad=422:238:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 00000211f8d593c0] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:0 y2:236 w:422 h:237 crop=422:237:0:0 drawbox=0:0:422:237"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=422:238:force_original_aspect_ratio=decrease,pad=422:238:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 00000199a5be1680] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:0 y2:236 w:422 h:237 crop=422:237:0:0 drawbox=0:0:422:237"
     },
     {
       "natural": [
@@ -153,8 +153,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 00000200fe8c21c0] n:0 pts:0 pts_time:0 x1:0 x2:639 y1:0 y2:359 w:640 h:360 crop=640:360:0:0 drawbox=0:0:640:360"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001a42d7202c0] n:0 pts:0 pts_time:0 x1:0 x2:639 y1:0 y2:359 w:640 h:360 crop=640:360:0:0 drawbox=0:0:640:360"
     },
     {
       "natural": [
@@ -178,8 +178,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 000001b6661acfc0] n:0 pts:0 pts_time:0 x1:80 x2:559 y1:0 y2:359 w:480 h:360 crop=480:360:80:0 drawbox=80:0:480:360"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001904d9ef580] n:0 pts:0 pts_time:0 x1:80 x2:559 y1:0 y2:359 w:480 h:360 crop=480:360:80:0 drawbox=80:0:480:360"
     },
     {
       "natural": [
@@ -203,8 +203,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=476:358:force_original_aspect_ratio=decrease,pad=476:358:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 0000022165a3aa40] n:0 pts:0 pts_time:0 x1:0 x2:475 y1:0 y2:356 w:476 h:357 crop=476:357:0:0 drawbox=0:0:476:357"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=476:358:force_original_aspect_ratio=decrease,pad=476:358:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001f2c10400c0] n:0 pts:0 pts_time:0 x1:0 x2:475 y1:0 y2:356 w:476 h:357 crop=476:357:0:0 drawbox=0:0:476:357"
     },
     {
       "natural": [
@@ -228,8 +228,8 @@
         "pad_y": 148
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=238:476:force_original_aspect_ratio=decrease,pad=238:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 00000209bdf09ec0] n:0 pts:0 pts_time:0 x1:0 x2:237 y1:148 y2:326 w:238 h:179 crop=238:179:0:148 drawbox=0:148:238:179"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=238:476:force_original_aspect_ratio=decrease,pad=238:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000019e5fef1e80] n:0 pts:0 pts_time:0 x1:0 x2:237 y1:148 y2:326 w:238 h:179 crop=238:179:0:148 drawbox=0:148:238:179"
     },
     {
       "natural": [
@@ -253,8 +253,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=844:322:force_original_aspect_ratio=decrease,pad=844:322:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 0000016c69849fc0] n:0 pts:0 pts_time:0 x1:180 x2:662 y1:0 y2:321 w:483 h:322 crop=483:322:180:0 drawbox=180:0:483:322"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=844:322:force_original_aspect_ratio=decrease,pad=844:322:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001b520df12c0] n:0 pts:0 pts_time:0 x1:180 x2:662 y1:0 y2:321 w:483 h:322 crop=483:322:180:0 drawbox=180:0:483:322"
     },
     {
       "natural": [
@@ -278,8 +278,8 @@
         "pad_y": 40
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=240:240:force_original_aspect_ratio=decrease,pad=240:240:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 00000279adc87f40] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:40 y2:199 w:240 h:160 crop=240:160:0:40 drawbox=0:40:240:160"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=240:240:force_original_aspect_ratio=decrease,pad=240:240:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000021bd4a82280] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:40 y2:199 w:240 h:160 crop=240:160:0:40 drawbox=0:40:240:160"
     },
     {
       "natural": [
@@ -303,8 +303,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=1140:476:force_original_aspect_ratio=decrease,pad=1140:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 000001ac07885e80] n:0 pts:0 pts_time:0 x1:213 x2:926 y1:0 y2:475 w:714 h:476 crop=714:476:213:0 drawbox=213:0:714:476"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=1140:476:force_original_aspect_ratio=decrease,pad=1140:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 00000295b21c0c00] n:0 pts:0 pts_time:0 x1:213 x2:926 y1:0 y2:475 w:714 h:476 crop=714:476:213:0 drawbox=213:0:714:476"
     },
     {
       "natural": [
@@ -328,8 +328,8 @@
         "pad_y": 252
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=240:640:force_original_aspect_ratio=decrease,pad=240:640:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 000001edeff0bdc0] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:252 y2:386 w:240 h:135 crop=240:135:0:252 drawbox=0:252:240:135"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=240:640:force_original_aspect_ratio=decrease,pad=240:640:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000019f10851b80] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:252 y2:386 w:240 h:135 crop=240:135:0:252 drawbox=0:252:240:135"
     },
     {
       "natural": [
@@ -353,8 +353,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=1140:240:force_original_aspect_ratio=decrease,pad=1140:240:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 000001ed8a1d7000] n:0 pts:0 pts_time:0 x1:356 x2:782 y1:0 y2:239 w:427 h:240 crop=427:240:356:0 drawbox=356:0:427:240"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=1140:240:force_original_aspect_ratio=decrease,pad=1140:240:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000025f2ee02200] n:0 pts:0 pts_time:0 x1:356 x2:782 y1:0 y2:239 w:427 h:240 crop=427:240:356:0 drawbox=356:0:427:240"
     },
     {
       "natural": [
@@ -378,8 +378,8 @@
         "pad_y": 0
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=1126:360:force_original_aspect_ratio=decrease,pad=1126:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 000001aba776a100] n:0 pts:0 pts_time:0 x1:323 x2:802 y1:0 y2:359 w:480 h:360 crop=480:360:323:0 drawbox=323:0:480:360"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=1126:360:force_original_aspect_ratio=decrease,pad=1126:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001e1e50f2d80] n:0 pts:0 pts_time:0 x1:323 x2:802 y1:0 y2:359 w:480 h:360 crop=480:360:323:0 drawbox=323:0:480:360"
     },
     {
       "natural": [
@@ -403,8 +403,108 @@
         "pad_y": 183
       },
       "match": true,
-      "command": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\ffmpeg\\ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1234x567:d=1 -vf scale=240:476:force_original_aspect_ratio=decrease,pad=240:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
-      "rawBbox": "[Parsed_bbox_3 @ 0000012d6df47c80] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:183 y2:292 w:240 h:110 crop=240:110:0:183 drawbox=0:183:240:110"
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1234x567:d=1 -vf scale=240:476:force_original_aspect_ratio=decrease,pad=240:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000017f1ca00a80] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:183 y2:292 w:240 h:110 crop=240:110:0:183 drawbox=0:183:240:110"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        422,
+        360
+      ],
+      "predicted": {
+        "w": 422,
+        "h": 317,
+        "pad_x": 0,
+        "pad_y": 21
+      },
+      "observed": {
+        "w": 422,
+        "h": 317,
+        "pad_x": 0,
+        "pad_y": 21
+      },
+      "match": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=422:360:force_original_aspect_ratio=decrease,pad=422:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001e728631ac0] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:21 y2:337 w:422 h:317 crop=422:317:0:21 drawbox=0:21:422:317"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        422,
+        476
+      ],
+      "predicted": {
+        "w": 422,
+        "h": 281,
+        "pad_x": 0,
+        "pad_y": 97
+      },
+      "observed": {
+        "w": 422,
+        "h": 281,
+        "pad_x": 0,
+        "pad_y": 97
+      },
+      "match": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=422:476:force_original_aspect_ratio=decrease,pad=422:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001580fef1380] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:97 y2:377 w:422 h:281 crop=422:281:0:97 drawbox=0:97:422:281"
+    },
+    {
+      "natural": [
+        1080,
+        1920
+      ],
+      "box": [
+        638,
+        360
+      ],
+      "predicted": {
+        "w": 203,
+        "h": 360,
+        "pad_x": 217,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 203,
+        "h": 360,
+        "pad_x": 217,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1080x1920:d=1 -vf scale=638:360:force_original_aspect_ratio=decrease,pad=638:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000016eaaae20c0] n:0 pts:0 pts_time:0 x1:217 x2:419 y1:0 y2:359 w:203 h:360 crop=203:360:217:0 drawbox=217:0:203:360"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        422,
+        240
+      ],
+      "predicted": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 1
+      },
+      "observed": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 1
+      },
+      "match": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=422:240:force_original_aspect_ratio=decrease,pad=422:240:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001f8146bfe40] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:1 y2:237 w:422 h:237 crop=422:237:0:1 drawbox=0:1:422:237"
     }
   ]
 }

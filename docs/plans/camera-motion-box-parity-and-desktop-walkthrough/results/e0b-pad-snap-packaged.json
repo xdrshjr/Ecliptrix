@@ -1,0 +1,996 @@
+{
+  "probe": "e0b-pad-snap",
+  "question": "In the PRODUCTION pixel-format chain (PNG -> yuva420p -> overlay on yuv420p), where does the contained picture actually land — and is the gray-format E0-b table still the right one to hold the preview to?",
+  "answer": "No. With chroma subsampling the scaled size floors to the even grid (1920x1080 into a 634x356 box measures 632 wide, not the 633 gray reported) and so does the centring offset — but the offset is computed from the size BEFORE that snap, then floored: a raw 21.5 offset lands at 20, not at the 22 you get by centring the snapped size. The preview has to replay THIS table, because it is the one the shipped file is rendered with.",
+  "label": "packaged",
+  "ffmpeg": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe",
+  "version": "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "total": 20,
+  "scoredCases": 19,
+  "notProductionRealisable": 1,
+  "agreedWithGrayRule": 3,
+  "agreedWithSubsampledRule": 7,
+  "agreedWithEvenSizeCentredRule": 15,
+  "agreedWithProductionRule": 19,
+  "casesWhereRulesDiffer": 16,
+  "casesSeparatingEvenFromProduction": 4,
+  "discriminating": true,
+  "pass": true,
+  "cases": [
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        634,
+        356
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 633,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 633,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 632,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 632,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 632,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=634x356:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1920x1080.png -filter_complex [1:v]scale=634:356:force_original_aspect_ratio=decrease,pad=634:356:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 00000206959657c0] n:0 pts:0 pts_time:0 x1:0 x2:631 y1:0 y2:355 w:632 h:356 crop=632:356:0:0 drawbox=0:0:632:356"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        434,
+        288
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 432,
+        "h": 288,
+        "pad_x": 1,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 432,
+        "h": 288,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 432,
+        "h": 288,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 432,
+        "h": 288,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 432,
+        "h": 288,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": true,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=434x288:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1501x1000.png -filter_complex [1:v]scale=434:288:force_original_aspect_ratio=decrease,pad=434:288:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 0000024ca0b39e40] n:0 pts:0 pts_time:0 x1:0 x2:431 y1:0 y2:287 w:432 h:288 crop=432:288:0:0 drawbox=0:0:432:288"
+    },
+    {
+      "natural": [
+        1234,
+        567
+      ],
+      "box": [
+        321,
+        123
+      ],
+      "productionRealisable": false,
+      "grayRule": {
+        "w": 268,
+        "h": 123,
+        "pad_x": 26,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 268,
+        "h": 123,
+        "pad_x": 26,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 268,
+        "h": 122,
+        "pad_x": 26,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 268,
+        "h": 122,
+        "pad_x": 26,
+        "pad_y": 0
+      },
+      "observed": null,
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": false,
+      "matchesProductionRule": false,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=322x124:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1234x567.png -filter_complex [1:v]scale=321:123:force_original_aspect_ratio=decrease,pad=321:123:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "k finished with error code: -22 (Invalid argument)\n[vost#0:0/wrapped_avframe @ 0000026c1bb3dcc0] Terminating thread with return code -22 (Invalid argument)\n[out#0/null @ 0000026c1bad1fc0] Nothing was written into output file, because at least one of its streams received no packets.\nframe=    0 fps=0.0 q=0.0 Lsize=       0KiB time=N/A bitrate=N/A speed=N/A elapsed=0:00:00.00    \nConversion failed!\n"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        844,
+        474
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 843,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 843,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 842,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 842,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 842,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=844x474:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1920x1080.png -filter_complex [1:v]scale=844:474:force_original_aspect_ratio=decrease,pad=844:474:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000002d34c80a540] n:0 pts:0 pts_time:0 x1:0 x2:841 y1:0 y2:473 w:842 h:474 crop=842:474:0:0 drawbox=0:0:842:474"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        422,
+        238
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=422x238:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1920x1080.png -filter_complex [1:v]scale=422:238:force_original_aspect_ratio=decrease,pad=422:238:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 00000209ab555f00] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:0 y2:235 w:422 h:236 crop=422:236:0:0 drawbox=0:0:422:236"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        640,
+        360
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "matchesGrayRule": true,
+      "matchesSubsampledRule": true,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": false,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=640x360:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1920x1080.png -filter_complex [1:v]scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000002a7e02c6680] n:0 pts:0 pts_time:0 x1:0 x2:639 y1:0 y2:359 w:640 h:360 crop=640:360:0:0 drawbox=0:0:640:360"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        640,
+        360
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "matchesGrayRule": true,
+      "matchesSubsampledRule": true,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": false,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=640x360:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1440x1080.png -filter_complex [1:v]scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000002ca825a7ac0] n:0 pts:0 pts_time:0 x1:80 x2:559 y1:0 y2:359 w:480 h:360 crop=480:360:80:0 drawbox=80:0:480:360"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        476,
+        358
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 476,
+        "h": 357,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 476,
+        "h": 357,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 476,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 476,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 476,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=476x358:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1440x1080.png -filter_complex [1:v]scale=476:358:force_original_aspect_ratio=decrease,pad=476:358:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000002194fd7dc40] n:0 pts:0 pts_time:0 x1:0 x2:475 y1:0 y2:355 w:476 h:356 crop=476:356:0:0 drawbox=0:0:476:356"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        238,
+        476
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 238,
+        "h": 179,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "subsampledRule": {
+        "w": 238,
+        "h": 179,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "evenSizeCentredRule": {
+        "w": 238,
+        "h": 178,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "productionRule": {
+        "w": 238,
+        "h": 178,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "observed": {
+        "w": 238,
+        "h": 178,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=238x476:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1440x1080.png -filter_complex [1:v]scale=238:476:force_original_aspect_ratio=decrease,pad=238:476:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 00000190dc2d6340] n:0 pts:0 pts_time:0 x1:0 x2:237 y1:148 y2:325 w:238 h:178 crop=238:178:0:148 drawbox=0:148:238:178"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        844,
+        322
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 483,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 483,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 482,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 482,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 482,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=844x322:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1501x1000.png -filter_complex [1:v]scale=844:322:force_original_aspect_ratio=decrease,pad=844:322:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 0000014f76dbd9c0] n:0 pts:0 pts_time:0 x1:180 x2:661 y1:0 y2:321 w:482 h:322 crop=482:322:180:0 drawbox=180:0:482:322"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        240,
+        240
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "subsampledRule": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "evenSizeCentredRule": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "productionRule": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "observed": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "matchesGrayRule": true,
+      "matchesSubsampledRule": true,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": false,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=240x240:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1501x1000.png -filter_complex [1:v]scale=240:240:force_original_aspect_ratio=decrease,pad=240:240:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000001de30a5fd00] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:40 y2:199 w:240 h:160 crop=240:160:0:40 drawbox=0:40:240:160"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        1140,
+        476
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 714,
+        "h": 476,
+        "pad_x": 213,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 714,
+        "h": 476,
+        "pad_x": 212,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 714,
+        "h": 476,
+        "pad_x": 212,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 714,
+        "h": 476,
+        "pad_x": 212,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 714,
+        "h": 476,
+        "pad_x": 212,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": true,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=1140x476:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1501x1000.png -filter_complex [1:v]scale=1140:476:force_original_aspect_ratio=decrease,pad=1140:476:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 0000011ea7cd7fc0] n:0 pts:0 pts_time:0 x1:212 x2:925 y1:0 y2:475 w:714 h:476 crop=714:476:212:0 drawbox=212:0:714:476"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        240,
+        640
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 240,
+        "h": 135,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "subsampledRule": {
+        "w": 240,
+        "h": 135,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "evenSizeCentredRule": {
+        "w": 240,
+        "h": 134,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "productionRule": {
+        "w": 240,
+        "h": 134,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "observed": {
+        "w": 240,
+        "h": 134,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=240x640:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1920x1080.png -filter_complex [1:v]scale=240:640:force_original_aspect_ratio=decrease,pad=240:640:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000001f3b7727100] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:252 y2:385 w:240 h:134 crop=240:134:0:252 drawbox=0:252:240:134"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        1140,
+        240
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 427,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 427,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 426,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 426,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 426,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=1140x240:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1920x1080.png -filter_complex [1:v]scale=1140:240:force_original_aspect_ratio=decrease,pad=1140:240:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000001327e0da0c0] n:0 pts:0 pts_time:0 x1:356 x2:781 y1:0 y2:239 w:426 h:240 crop=426:240:356:0 drawbox=356:0:426:240"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        1126,
+        360
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 323,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 322,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 322,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 322,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 322,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": true,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=1126x360:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1440x1080.png -filter_complex [1:v]scale=1126:360:force_original_aspect_ratio=decrease,pad=1126:360:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000001c3a61b99c0] n:0 pts:0 pts_time:0 x1:322 x2:801 y1:0 y2:359 w:480 h:360 crop=480:360:322:0 drawbox=322:0:480:360"
+    },
+    {
+      "natural": [
+        1234,
+        567
+      ],
+      "box": [
+        240,
+        476
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
+        "pad_y": 183
+      },
+      "subsampledRule": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
+        "pad_y": 182
+      },
+      "evenSizeCentredRule": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
+        "pad_y": 182
+      },
+      "productionRule": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
+        "pad_y": 182
+      },
+      "observed": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
+        "pad_y": 182
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": true,
+      "matchesEvenSizeCentredRule": true,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": false,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=240x476:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1234x567.png -filter_complex [1:v]scale=240:476:force_original_aspect_ratio=decrease,pad=240:476:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000002594a613080] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:182 y2:291 w:240 h:110 crop=240:110:0:182 drawbox=0:182:240:110"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        422,
+        360
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 422,
+        "h": 317,
+        "pad_x": 0,
+        "pad_y": 21
+      },
+      "subsampledRule": {
+        "w": 422,
+        "h": 317,
+        "pad_x": 0,
+        "pad_y": 20
+      },
+      "evenSizeCentredRule": {
+        "w": 422,
+        "h": 316,
+        "pad_x": 0,
+        "pad_y": 22
+      },
+      "productionRule": {
+        "w": 422,
+        "h": 316,
+        "pad_x": 0,
+        "pad_y": 20
+      },
+      "observed": {
+        "w": 422,
+        "h": 316,
+        "pad_x": 0,
+        "pad_y": 20
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": false,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=422x360:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1440x1080.png -filter_complex [1:v]scale=422:360:force_original_aspect_ratio=decrease,pad=422:360:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 0000024657625c00] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:20 y2:335 w:422 h:316 crop=422:316:0:20 drawbox=0:20:422:316"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        422,
+        476
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 422,
+        "h": 281,
+        "pad_x": 0,
+        "pad_y": 97
+      },
+      "subsampledRule": {
+        "w": 422,
+        "h": 281,
+        "pad_x": 0,
+        "pad_y": 96
+      },
+      "evenSizeCentredRule": {
+        "w": 422,
+        "h": 280,
+        "pad_x": 0,
+        "pad_y": 98
+      },
+      "productionRule": {
+        "w": 422,
+        "h": 280,
+        "pad_x": 0,
+        "pad_y": 96
+      },
+      "observed": {
+        "w": 422,
+        "h": 280,
+        "pad_x": 0,
+        "pad_y": 96
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": false,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=422x476:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1501x1000.png -filter_complex [1:v]scale=422:476:force_original_aspect_ratio=decrease,pad=422:476:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 0000022e2d813780] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:96 y2:375 w:422 h:280 crop=422:280:0:96 drawbox=0:96:422:280"
+    },
+    {
+      "natural": [
+        1080,
+        1920
+      ],
+      "box": [
+        638,
+        360
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 203,
+        "h": 360,
+        "pad_x": 217,
+        "pad_y": 0
+      },
+      "subsampledRule": {
+        "w": 203,
+        "h": 360,
+        "pad_x": 216,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 202,
+        "h": 360,
+        "pad_x": 218,
+        "pad_y": 0
+      },
+      "productionRule": {
+        "w": 202,
+        "h": 360,
+        "pad_x": 216,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 202,
+        "h": 360,
+        "pad_x": 216,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": false,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=638x360:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1080x1920.png -filter_complex [1:v]scale=638:360:force_original_aspect_ratio=decrease,pad=638:360:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 0000023964e610c0] n:0 pts:0 pts_time:0 x1:216 x2:417 y1:0 y2:359 w:202 h:360 crop=202:360:216:0 drawbox=216:0:202:360"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        422,
+        240
+      ],
+      "productionRealisable": true,
+      "grayRule": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 1
+      },
+      "subsampledRule": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "evenSizeCentredRule": {
+        "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 2
+      },
+      "productionRule": {
+        "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "matchesGrayRule": false,
+      "matchesSubsampledRule": false,
+      "matchesEvenSizeCentredRule": false,
+      "matchesProductionRule": true,
+      "rulesDiffer": true,
+      "separatesEvenFromProduction": true,
+      "command": "M:/takoAI/Ecliptrix/desktop/release/win-unpacked/resources/ffmpeg/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=black:s=422x240:d=1,format=yuv420p -i C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pad-snap-packaged\\white-1920x1080.png -filter_complex [1:v]scale=422:240:force_original_aspect_ratio=decrease,pad=422:240:(ow-iw)/2:(oh-ih)/2:black@0[img];[0:v][img]overlay=0:0[ov];[ov]format=gray,bbox=min_val=100[v] -map [v] -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_4 @ 000002137eff13c0] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:0 y2:235 w:422 h:236 crop=422:236:0:0 drawbox=0:0:422:236"
+    }
+  ]
+}

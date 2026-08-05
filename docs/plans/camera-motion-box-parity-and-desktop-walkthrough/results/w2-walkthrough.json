@@ -1,0 +1,98 @@
+{
+  "metric": "W2/W3",
+  "exePath": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\Ecliptrix.exe",
+  "port": 19333,
+  "steps": [
+    {
+      "step": 1,
+      "title": "launch + services healthy + page target attached",
+      "status": "automated",
+      "ports": {
+        "frontend": 18320,
+        "backend": 18321
+      },
+      "documentTitle": "Ecliptrix - Where light and shadow collide",
+      "screenshot": "..\\results\\samples\\walkthrough\\step1-launched.png"
+    },
+    {
+      "step": 2,
+      "title": "create project + import media",
+      "status": "automated",
+      "reason": null,
+      "editorReady": {
+        "timeline": true,
+        "canvas": 0,
+        "uploadButton": true
+      },
+      "importedFiles": [
+        "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\w2-media\\walkthrough_clip.mp4",
+        "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\w2-media\\walkthrough_still.png",
+        "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\w2-media\\walkthrough_subs.srt"
+      ],
+      "materialsInPanel": 2,
+      "screenshot": "..\\results\\samples\\walkthrough\\step2-imported.png",
+      "domSnapshot": null
+    },
+    {
+      "step": 3,
+      "title": "open the camera-motion panel from the clip context menu",
+      "status": "automated",
+      "reason": null,
+      "timelineClips": 1,
+      "panel": {
+        "visible": true,
+        "presets": 25,
+        "hasCanvas": 17
+      },
+      "screenshot": "..\\results\\samples\\walkthrough\\step3-panel.png",
+      "domSnapshot": null
+    },
+    {
+      "step": 4,
+      "title": "apply a preset to the clip",
+      "status": "automated",
+      "reason": null,
+      "badge": 1,
+      "screenshot": "..\\results\\samples\\walkthrough\\step4-applied.png"
+    },
+    {
+      "step": 5,
+      "title": "apply 2D and 3D motion to the still and confirm the canvas moves",
+      "status": "not-run-here",
+      "reason": "NOT IMPLEMENTED in this driver. Not blocked by step 4, which is automated. Needs: select the still clip on the timeline, apply ken-burns and a 3D preset to it, then assert consecutive canvas frames differ in the direction the preset implies."
+    },
+    {
+      "step": 6,
+      "title": "capture canvas frames during the move",
+      "status": "not-run-here",
+      "reason": "NOT IMPLEMENTED — needs step 5 to put the canvas in motion first."
+    },
+    {
+      "step": 7,
+      "title": "export and play back",
+      "status": "not-run-here",
+      "reason": "NOT IMPLEMENTED — needs step 6's canvas frames to compare the export against."
+    }
+  ],
+  "automatedSteps": 4,
+  "totalSteps": 7,
+  "w3": {
+    "ran": false,
+    "reason": "walkthrough did not reach step 7"
+  },
+  "dodEightClosed": false,
+  "dodEightStatus": "NOT CLOSED — 4/7 steps automated; the rest are recorded as not-run-here with reasons",
+  "log": [
+    "2026-08-05T14:48:24.212Z main window finished load: true",
+    "2026-08-05T14:48:29.484Z step1 [automated] launch + services healthy + page target attached",
+    "2026-08-05T14:48:42.036Z setup dismissed={\"ok\":true,\"tag\":\"BUTTON\",\"title\":null} newProject={\"ok\":true,\"tag\":\"BUTTON\",\"title\":null} named={\"ok\":true,\"value\":\"Camera motion walkthrough\"} create={\"ok\":true,\"tag\":\"BUTTON\",\"title\":null}",
+    "2026-08-05T14:48:42.273Z editor probe: {\"timeline\":true,\"canvas\":0,\"uploadButton\":true}",
+    "2026-08-05T14:48:58.058Z step2 [automated] create project + import media",
+    "2026-08-05T14:49:02.082Z timeline clips after add: 1",
+    "2026-08-05T14:49:04.316Z step3 [automated] open the camera-motion panel from the clip context menu",
+    "2026-08-05T14:49:06.074Z step4 [automated] apply a preset to the clip",
+    "2026-08-05T14:49:06.074Z step5 [not-run-here] apply 2D and 3D motion to the still and confirm the canvas moves — NOT IMPLEMENTED in this driver. Not blocked by step 4, which is automated. Needs: select the still clip on the timeline, apply ken-burns and a 3D preset to it, then assert consecutive canvas frames differ in the direction the preset implies.",
+    "2026-08-05T14:49:06.075Z step6 [not-run-here] capture canvas frames during the move — NOT IMPLEMENTED — needs step 5 to put the canvas in motion first.",
+    "2026-08-05T14:49:06.075Z step7 [not-run-here] export and play back — NOT IMPLEMENTED — needs step 6's canvas frames to compare the export against."
+  ]
+}

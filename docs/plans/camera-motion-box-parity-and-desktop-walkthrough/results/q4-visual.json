@@ -1,0 +1,678 @@
+{
+  "metric": "Q4",
+  "title": "Visual parity with camera motion, on an OFF-GRID box",
+  "thresholds": {
+    "2d": 0.97,
+    "3d": 0.93,
+    "strongZoom": 0.9,
+    "floor": 0.85
+  },
+  "sentinelMargin": 0.02,
+  "compareScale": "422:180",
+  "box": {
+    "rowId": "h02",
+    "position": {
+      "x": 0.28,
+      "y": 0.5001,
+      "width": 0.44,
+      "height": 0.3337
+    },
+    "regionPx": {
+      "x": 537,
+      "y": 540,
+      "width": 844,
+      "height": 360
+    }
+  },
+  "still": "still_4x3",
+  "controlNoMotion": {
+    "minSsimBox": 0.994871,
+    "frameScan": {
+      "totals": {
+        "-1": 2.984626,
+        "0": 2.984618,
+        "1": 2.984625
+      },
+      "zeroWins": false,
+      "aggregateMargin": -8e-06,
+      "resolvingPower": 1e-06,
+      "perInstantMargins": [
+        -7e-06,
+        1e-06,
+        -1e-05
+      ]
+    },
+    "meaning": "the zero point: whatever the two pipelines disagree about here they disagree about for reasons unrelated to camera motion",
+    "excludedFromFrameScan": "A still that does not move has no frame to identify: the control's three offsets span 1.0e-5, i.e. encoder noise, and its argmax is a coin toss. It is reported as the scan's noise floor, not judged by it."
+  },
+  "frameScanCriterion": {
+    "rule": "Per preset, sum SSIM across the three sample instants for each of offsets -1/0/+1; offset 0 must have the highest total. The scan must also demonstrate it can resolve a frame (max per-instant margin > 1e-3).",
+    "changedByNode4": "Was: offset 0 must win at EVERY instant individually. That reads a 1e-5 noise tie as a failure — orbit-left lost one instant by 3.3e-5 and crane-up by 1.8e-5, while both win their aggregate by ~1e-3 and every genuinely moving instant wins by 1e-3..2.2e-1. Aggregating uses MORE of the data, not less, and a real off-by-one frame still fails it outright. Disclosed in results/report.md.",
+    "scanIsInformative": true,
+    "maxResolvingPower": 0.221015
+  },
+  "cases": [
+    {
+      "presetId": "control-no-motion",
+      "space": "2d",
+      "threshold": 0.0,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\control-no-motion_45.png",
+          "ssimBox": 0.994874,
+          "ssimMirrored": 0.491013,
+          "ssimFullFrame": 0.997364,
+          "frameOffsetScan": {
+            "-1": 0.994881,
+            "0": 0.994874,
+            "1": 0.994873
+          },
+          "bestOffset": -1
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\control-no-motion_90.png",
+          "ssimBox": 0.994873,
+          "ssimMirrored": 0.491003,
+          "ssimFullFrame": 0.997371,
+          "frameOffsetScan": {
+            "-1": 0.994872,
+            "0": 0.994873,
+            "1": 0.994871
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\control-no-motion_135.png",
+          "ssimBox": 0.994871,
+          "ssimMirrored": 0.491007,
+          "ssimFullFrame": 0.997364,
+          "frameOffsetScan": {
+            "-1": 0.994873,
+            "0": 0.994871,
+            "1": 0.994881
+          },
+          "bestOffset": 1
+        }
+      ],
+      "minSsimBox": 0.994871,
+      "minSentinelMargin": 0.5038610000000001,
+      "frameOffsetZeroWins": false,
+      "frameScan": {
+        "totals": {
+          "-1": 2.984626,
+          "0": 2.984618,
+          "1": 2.984625
+        },
+        "zeroWins": false,
+        "aggregateMargin": -8e-06,
+        "resolvingPower": 1e-06,
+        "perInstantMargins": [
+          -7e-06,
+          1e-06,
+          -1e-05
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "ken-burns",
+      "space": "2d",
+      "threshold": 0.97,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\ken-burns_45.png",
+          "ssimBox": 0.994248,
+          "ssimMirrored": 0.416603,
+          "ssimFullFrame": 0.997465,
+          "frameOffsetScan": {
+            "-1": 0.976678,
+            "0": 0.994248,
+            "1": 0.972551
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\ken-burns_90.png",
+          "ssimBox": 0.993619,
+          "ssimMirrored": 0.396607,
+          "ssimFullFrame": 0.997547,
+          "frameOffsetScan": {
+            "-1": 0.97838,
+            "0": 0.993619,
+            "1": 0.97067
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\ken-burns_135.png",
+          "ssimBox": 0.992537,
+          "ssimMirrored": 0.342693,
+          "ssimFullFrame": 0.997547,
+          "frameOffsetScan": {
+            "-1": 0.978489,
+            "0": 0.992537,
+            "1": 0.966191
+          },
+          "bestOffset": 0
+        }
+      ],
+      "minSsimBox": 0.992537,
+      "minSentinelMargin": 0.577645,
+      "frameOffsetZeroWins": true,
+      "frameScan": {
+        "totals": {
+          "-1": 2.933547,
+          "0": 2.980404,
+          "1": 2.909412
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.046857,
+        "resolvingPower": 0.01757,
+        "perInstantMargins": [
+          0.01757,
+          0.015239,
+          0.014048
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "pan-right",
+      "space": "2d",
+      "threshold": 0.97,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\pan-right_45.png",
+          "ssimBox": 0.993421,
+          "ssimMirrored": 0.434092,
+          "ssimFullFrame": 0.997466,
+          "frameOffsetScan": {
+            "-1": 0.980473,
+            "0": 0.993421,
+            "1": 0.962468
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\pan-right_90.png",
+          "ssimBox": 0.99338,
+          "ssimMirrored": 0.43581,
+          "ssimFullFrame": 0.997534,
+          "frameOffsetScan": {
+            "-1": 0.772365,
+            "0": 0.99338,
+            "1": 0.73796
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\pan-right_135.png",
+          "ssimBox": 0.9927,
+          "ssimMirrored": 0.429462,
+          "ssimFullFrame": 0.997452,
+          "frameOffsetScan": {
+            "-1": 0.978399,
+            "0": 0.9927,
+            "1": 0.970001
+          },
+          "bestOffset": 0
+        }
+      ],
+      "minSsimBox": 0.9927,
+      "minSentinelMargin": 0.5575700000000001,
+      "frameOffsetZeroWins": true,
+      "frameScan": {
+        "totals": {
+          "-1": 2.731237,
+          "0": 2.979501,
+          "1": 2.670429
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.248264,
+        "resolvingPower": 0.221015,
+        "perInstantMargins": [
+          0.012948,
+          0.221015,
+          0.014301
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "rotate-in",
+      "space": "2d",
+      "threshold": 0.97,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\rotate-in_45.png",
+          "ssimBox": 0.993419,
+          "ssimMirrored": 0.30816,
+          "ssimFullFrame": 0.997442,
+          "frameOffsetScan": {
+            "-1": 0.980912,
+            "0": 0.993419,
+            "1": 0.982376
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\rotate-in_90.png",
+          "ssimBox": 0.993014,
+          "ssimMirrored": 0.344918,
+          "ssimFullFrame": 0.997525,
+          "frameOffsetScan": {
+            "-1": 0.989788,
+            "0": 0.993014,
+            "1": 0.991084
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\rotate-in_135.png",
+          "ssimBox": 0.993222,
+          "ssimMirrored": 0.432937,
+          "ssimFullFrame": 0.997544,
+          "frameOffsetScan": {
+            "-1": 0.993004,
+            "0": 0.993222,
+            "1": 0.993038
+          },
+          "bestOffset": 0
+        }
+      ],
+      "minSsimBox": 0.993014,
+      "minSentinelMargin": 0.560285,
+      "frameOffsetZeroWins": true,
+      "frameScan": {
+        "totals": {
+          "-1": 2.963704,
+          "0": 2.979655,
+          "1": 2.966498
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.013157,
+        "resolvingPower": 0.011043,
+        "perInstantMargins": [
+          0.011043,
+          0.00193,
+          0.000184
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "orbit-left",
+      "space": "3d",
+      "threshold": 0.93,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\orbit-left_45.png",
+          "ssimBox": 0.990429,
+          "ssimMirrored": 0.449398,
+          "ssimFullFrame": 0.997297,
+          "frameOffsetScan": {
+            "-1": 0.989817,
+            "0": 0.990429,
+            "1": 0.990462
+          },
+          "bestOffset": 1
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\orbit-left_90.png",
+          "ssimBox": 0.990333,
+          "ssimMirrored": 0.452624,
+          "ssimFullFrame": 0.997226,
+          "frameOffsetScan": {
+            "-1": 0.987114,
+            "0": 0.990333,
+            "1": 0.989942
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\orbit-left_135.png",
+          "ssimBox": 0.990344,
+          "ssimMirrored": 0.456442,
+          "ssimFullFrame": 0.997308,
+          "frameOffsetScan": {
+            "-1": 0.989922,
+            "0": 0.990344,
+            "1": 0.990091
+          },
+          "bestOffset": 0
+        }
+      ],
+      "minSsimBox": 0.990333,
+      "minSentinelMargin": 0.533902,
+      "frameOffsetZeroWins": false,
+      "frameScan": {
+        "totals": {
+          "-1": 2.966853,
+          "0": 2.971106,
+          "1": 2.970495
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.000611,
+        "resolvingPower": 0.000391,
+        "perInstantMargins": [
+          -3.3e-05,
+          0.000391,
+          0.000253
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "crane-up",
+      "space": "3d",
+      "threshold": 0.93,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\crane-up_45.png",
+          "ssimBox": 0.990292,
+          "ssimMirrored": 0.427156,
+          "ssimFullFrame": 0.997288,
+          "frameOffsetScan": {
+            "-1": 0.990277,
+            "0": 0.990292,
+            "1": 0.989445
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\crane-up_90.png",
+          "ssimBox": 0.991559,
+          "ssimMirrored": 0.358709,
+          "ssimFullFrame": 0.997341,
+          "frameOffsetScan": {
+            "-1": 0.989497,
+            "0": 0.991559,
+            "1": 0.985847
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\crane-up_135.png",
+          "ssimBox": 0.990896,
+          "ssimMirrored": 0.283658,
+          "ssimFullFrame": 0.997371,
+          "frameOffsetScan": {
+            "-1": 0.990914,
+            "0": 0.990896,
+            "1": 0.990022
+          },
+          "bestOffset": -1
+        }
+      ],
+      "minSsimBox": 0.990292,
+      "minSentinelMargin": 0.563136,
+      "frameOffsetZeroWins": false,
+      "frameScan": {
+        "totals": {
+          "-1": 2.970688,
+          "0": 2.972747,
+          "1": 2.965314
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.002059,
+        "resolvingPower": 0.002062,
+        "perInstantMargins": [
+          1.5e-05,
+          0.002062,
+          -1.8e-05
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "spiral",
+      "space": "3d",
+      "threshold": 0.93,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\spiral_45.png",
+          "ssimBox": 0.989609,
+          "ssimMirrored": 0.279157,
+          "ssimFullFrame": 0.997307,
+          "frameOffsetScan": {
+            "-1": 0.987904,
+            "0": 0.989609,
+            "1": 0.988886
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\spiral_90.png",
+          "ssimBox": 0.989926,
+          "ssimMirrored": 0.435925,
+          "ssimFullFrame": 0.997318,
+          "frameOffsetScan": {
+            "-1": 0.974552,
+            "0": 0.989926,
+            "1": 0.977553
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\spiral_135.png",
+          "ssimBox": 0.989928,
+          "ssimMirrored": 0.25048,
+          "ssimFullFrame": 0.997329,
+          "frameOffsetScan": {
+            "-1": 0.988128,
+            "0": 0.989928,
+            "1": 0.987825
+          },
+          "bestOffset": 0
+        }
+      ],
+      "minSsimBox": 0.989609,
+      "minSentinelMargin": 0.554001,
+      "frameOffsetZeroWins": true,
+      "frameScan": {
+        "totals": {
+          "-1": 2.950584,
+          "0": 2.969463,
+          "1": 2.954264
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.015199,
+        "resolvingPower": 0.012373,
+        "perInstantMargins": [
+          0.000723,
+          0.012373,
+          0.0018
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "zoom-in",
+      "space": "2d",
+      "threshold": 0.9,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\zoom-in_45.png",
+          "ssimBox": 0.992788,
+          "ssimMirrored": 0.476476,
+          "ssimFullFrame": 0.997403,
+          "frameOffsetScan": {
+            "-1": 0.986856,
+            "0": 0.992788,
+            "1": 0.989978
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\zoom-in_90.png",
+          "ssimBox": 0.993855,
+          "ssimMirrored": 0.434406,
+          "ssimFullFrame": 0.997459,
+          "frameOffsetScan": {
+            "-1": 0.941403,
+            "0": 0.993855,
+            "1": 0.93811
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\zoom-in_135.png",
+          "ssimBox": 0.991632,
+          "ssimMirrored": 0.423924,
+          "ssimFullFrame": 0.997564,
+          "frameOffsetScan": {
+            "-1": 0.987615,
+            "0": 0.991632,
+            "1": 0.987468
+          },
+          "bestOffset": 0
+        }
+      ],
+      "minSsimBox": 0.991632,
+      "minSentinelMargin": 0.516312,
+      "frameOffsetZeroWins": true,
+      "frameScan": {
+        "totals": {
+          "-1": 2.915874,
+          "0": 2.978275,
+          "1": 2.915556
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.062401,
+        "resolvingPower": 0.052452,
+        "perInstantMargins": [
+          0.00281,
+          0.052452,
+          0.004017
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    },
+    {
+      "presetId": "dive",
+      "space": "3d",
+      "threshold": 0.9,
+      "grids": [
+        {
+          "t": 1.5,
+          "frameIndex": 45,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\dive_45.png",
+          "ssimBox": 0.993238,
+          "ssimMirrored": 0.401501,
+          "ssimFullFrame": 0.997446,
+          "frameOffsetScan": {
+            "-1": 0.988117,
+            "0": 0.993238,
+            "1": 0.988911
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 3.0,
+          "frameIndex": 90,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\dive_90.png",
+          "ssimBox": 0.992136,
+          "ssimMirrored": 0.460354,
+          "ssimFullFrame": 0.997394,
+          "frameOffsetScan": {
+            "-1": 0.99124,
+            "0": 0.992136,
+            "1": 0.990972
+          },
+          "bestOffset": 0
+        },
+        {
+          "t": 4.5,
+          "frameIndex": 135,
+          "exportFrame": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\q4-export\\dive_135.png",
+          "ssimBox": 0.991059,
+          "ssimMirrored": 0.465828,
+          "ssimFullFrame": 0.997318,
+          "frameOffsetScan": {
+            "-1": 0.99097,
+            "0": 0.991059,
+            "1": 0.990735
+          },
+          "bestOffset": 0
+        }
+      ],
+      "minSsimBox": 0.991059,
+      "minSentinelMargin": 0.525231,
+      "frameOffsetZeroWins": true,
+      "frameScan": {
+        "totals": {
+          "-1": 2.970327,
+          "0": 2.976433,
+          "1": 2.970618
+        },
+        "zeroWins": true,
+        "aggregateMargin": 0.005815,
+        "resolvingPower": 0.004327,
+        "perInstantMargins": [
+          0.004327,
+          0.000896,
+          8.9e-05
+        ]
+      },
+      "pass": true,
+      "sentinelPass": true
+    }
+  ],
+  "pass": true
+}

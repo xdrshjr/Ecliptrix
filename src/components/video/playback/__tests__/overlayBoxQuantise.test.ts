@@ -59,6 +59,8 @@ interface ContainVector {
   natural: [number, number];
   box: [number, number];
   expect: { w: number; h: number; pad_x: number; pad_y: number };
+  grayChainReading: { w: number; h: number; pad_x: number; pad_y: number } | null;
+  subsamplingShiftsIt: boolean;
 }
 interface QuantiseVector {
   id: string;
@@ -79,7 +81,12 @@ const golden = JSON.parse(fs.readFileSync(FIXTURE, 'utf-8')) as {
 
 describe('containRectInBox — measured FFmpeg contain rule', () => {
   it('reproduces every real FFmpeg reading', () => {
-    expect(golden.containVectors.length).toBeGreaterThanOrEqual(16);
+    // 19, not the 20 combinations the probe runs: one of them is an ODD box,
+    // which yuv420p refuses outright and which production can never emit
+    // (`ensure_even_dimensions` runs first). It has no reading, so it carries no
+    // expectation — dropping it is not a relaxed threshold, it is a question
+    // FFmpeg declined to answer. See `productionRealisable` in the probe JSON.
+    expect(golden.containVectors.length).toBeGreaterThanOrEqual(19);
     for (const v of golden.containVectors) {
       const got = containRectInBox(v.natural[0], v.natural[1], v.box[0], v.box[1]);
       expect({ w: got.w, h: got.h, pad_x: got.x, pad_y: got.y }, `natural ${v.natural} box ${v.box}`).toEqual(
@@ -88,12 +95,42 @@ describe('containRectInBox — measured FFmpeg contain rule', () => {
     }
   });
 
-  it('loses a pixel even when the box ratio equals the picture ratio', () => {
+  it('is pinned to the production chain, not the no-subsampling one', () => {
+    // The fixture must keep vectors where the two chains DISAGREE. If a future
+    // regeneration ever sourced the gray readings again, this goes red instead of
+    // silently reintroducing the 1px Q2 was stuck on.
+    const shifted = golden.containVectors.filter((v) => v.subsamplingShiftsIt);
+    expect(shifted.length, 'the golden file lost its discriminating vectors').toBeGreaterThanOrEqual(8);
+    for (const v of shifted) {
+      const got = containRectInBox(v.natural[0], v.natural[1], v.box[0], v.box[1]);
+      expect({ w: got.w, h: got.h, pad_x: got.x, pad_y: got.y }).not.toEqual(v.grayChainReading);
+    }
+  });
+
+  it('loses pixels even when the box ratio equals the picture ratio', () => {
     // The intuition "same ratio ⇒ contain fills the box exactly" is false, and
     // believing it is how a preview ends up skipping quantisation altogether.
+    // 632, not 634 and not the gray chain's 633: `av_rescale` takes one pixel and
+    // chroma subsampling takes the next.
     const got = containRectInBox(1920, 1080, 634, 356);
-    expect(got.w).toBe(633);
-    expect(got.x).toBe(0); // floor(1/2) — the 1px gap sits entirely on the right
+    expect(got.w).toBe(632);
+    expect(got.x).toBe(0); // floor(2/2) = 1 → floored to even → 0, gap on the right
+  });
+
+  it('floors the centring offset to the even grid', () => {
+    // 1440×1080 into 238×476: raw contained height 179, so (476-179)/2 = 148.5 →
+    // 148, already even. This is the second half of the subsampling rule.
+    expect(containRectInBox(1440, 1080, 238, 476)).toEqual({ x: 0, y: 148, w: 238, h: 178 });
+  });
+
+  it('centres on the RAW size, then snaps — not the other way round', () => {
+    // THE vector Q2's neg-top exposed. Raw contained height is 317, so the offset
+    // is floor((360-317)/2) = 21 → 20. Centring the SNAPPED 316 instead gives 22,
+    // and the still sits 2px below where the shipped file puts it. The first 16
+    // probe combinations agreed under both readings, which is exactly how the
+    // wrong one got blessed as a golden vector.
+    expect(containRectInBox(1440, 1080, 422, 360)).toEqual({ x: 0, y: 20, w: 422, h: 316 });
+    expect(containRectInBox(1501, 1000, 422, 476)).toEqual({ x: 0, y: 96, w: 422, h: 280 });
   });
 
   it('centres with floor, not rounding', () => {
@@ -131,9 +168,31 @@ describe('quantiseOverlayBoxNormalised — export grid parity', () => {
   });
 
   it('truncates the origin toward zero, so negative origins survive', () => {
-    // Math.floor would give -97 here and disagree with Python's int().
+    // Math.floor on the RAW product would give -97 here and disagree with
+    // Python's int(). The order is trunc-then-snap, and it is not commutative.
     expect(quantiseOverlayBoxNormalised({ x: -0.05, y: 0, width: 0.4, height: 0.4 }, 1920, 1080).x)
       .toBeCloseTo(-96 / 1920, 12);
+  });
+
+  it('lands the origin on the even grid `overlay` actually uses', () => {
+    // THE Q2 vector. `overlay=537:302` renders the picture at 536,302 on both
+    // FFmpeg builds (144/144, results/ffmpeg-overlay-alignment.json). B0 emitted
+    // 537 and drew the preview at 537, so Q1 was green and the shipped file was
+    // still 1px off. Quantising to the landing grid collapses the two.
+    const box = quantiseOverlayBoxNormalised(
+      { x: 0.28, y: 0.28, width: 0.22, height: 0.22 },
+      1920,
+      1080,
+    );
+    expect(Math.round(box.x * 1920)).toBe(536);
+    expect(Math.round(box.y * 1080)).toBe(302);
+  });
+
+  it('floors a negative origin AWAY from zero, as `overlay` does', () => {
+    // -0.0509 * 1920 = -97.728 → int() -97 → -98. Snapping toward zero would
+    // give -96 and open a 2px split on exactly the fixtures D1 makes mandatory.
+    expect(quantiseOverlayBoxNormalised({ x: -0.0509, y: 0, width: 0.4, height: 0.4 }, 1920, 1080).x)
+      .toBeCloseTo(-98 / 1920, 12);
   });
 });
 
@@ -214,7 +273,7 @@ describe('DD-9 — the quantised path must NOT clamp', () => {
       OUT,
     );
     expect(bounds.w).toBe(844 / 1920);
-    expect(bounds.x).toBe(1371 / 1920);
+    expect(bounds.x).toBe(1370 / 1920); // int() gives 1371; `overlay` lands on 1370
     expect(bounds.x + bounds.w).toBeGreaterThan(1); // stays out of bounds, on purpose
   });
 

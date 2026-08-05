@@ -56,6 +56,25 @@ function roundHalfAway(value: number): number {
 }
 
 /**
+ * Round DOWN to an even number — the landing grid FFmpeg's `overlay` snaps its
+ * origin to.
+ *
+ * Measured, not read from documentation (L-Q4): `results/ffmpeg-overlay-
+ * alignment.json` records 144/144 agreement on the dev build AND the packaged
+ * 8.1.1, including 72 negative-origin samples. `overlay=5:5` of an 11×11 rect
+ * lands at 4,4 and is still 11×11 — the ORIGIN snaps, the SIZE does not. The
+ * negative branch floors AWAY from zero (-5 → -6), which is why this cannot be
+ * `Math.trunc`.
+ *
+ * `Math.floor(v / 2) * 2` rather than `v & ~1`: equivalent over this domain, but
+ * `&` coerces to int32, and a cross-language contract should not rest on two
+ * languages' integer models agreeing. Python twin: `_floor_even`.
+ */
+function floorEven(value: number): number {
+  return Math.floor(value / 2) * 2;
+}
+
+/**
  * Snap a normalized overlay position onto the export pixel grid.
  *
  * Mirrors `_overlay_placement` exactly, INCLUDING its asymmetry: the origin is
@@ -68,6 +87,14 @@ function roundHalfAway(value: number): number {
  * edge). The multiplication order `pos.x * outW` is also part of the contract —
  * both sides are IEEE754 doubles, so the same expression yields the same double
  * and the truncation agrees bit-for-bit.
+ *
+ * The truncated origin is then snapped DOWN to even (`floorEven`), because that
+ * is where `overlay` actually renders it. Q1 showed both sides already agreed on
+ * the numbers in the command; Q2 rendered that command and still found the
+ * picture 1px away, because "the command says 537" and "the pixels are at 536"
+ * were two different statements. Folding the snap in makes the command state
+ * where the picture really lands, so the preview can draw on the same pixel.
+ * Exported pixels do not move — FFmpeg was already snapping.
  *
  * DD-9 — the output is deliberately NOT clamped: no `clamp01`, no
  * `Math.min(w, 1 - x)`. Clamping is a preview-only habit; export lets `overlay`
@@ -90,8 +117,8 @@ export function quantiseOverlayBoxNormalised(
   const boxW = ensureEven(Math.trunc(pos.width * outW));
   const boxH = ensureEven(Math.trunc(pos.height * outH));
   return {
-    x: Math.trunc(pos.x * outW) / outW,
-    y: Math.trunc(pos.y * outH) / outH,
+    x: floorEven(Math.trunc(pos.x * outW)) / outW,
+    y: floorEven(Math.trunc(pos.y * outH)) / outH,
     w: boxW / outW,
     h: boxH / outH,
   };
@@ -100,14 +127,23 @@ export function quantiseOverlayBoxNormalised(
 /**
  * Contain-fit a natural-sized picture inside a box, reproducing FFmpeg's
  * `scale=…:force_original_aspect_ratio=decrease` + `pad=…:(ow-iw)/2:(oh-ih)/2`
- * integer arithmetic.
+ * integer arithmetic **as the production pixel-format chain resolves it**.
  *
- * The rule is MEASURED, not read from documentation (L-Q4): E0-b ran 16 real
- * FFmpeg combinations on both the dev build and the packaged 8.1.1 and got the
- * same table (`results/e0b-contain-*.json`). Two results are counter-intuitive
- * enough to be worth stating: a box with the SAME ratio as the picture still
- * loses a pixel (1920×1080 into 634×356 yields 633×356), and centring is `floor`,
- * not rounding, so a 1px gap sits entirely on the right (`pad_x = 0`).
+ * The rule is MEASURED, not read from documentation (L-Q4), and it was measured
+ * TWICE because the first measurement used the wrong chain. E0-b had to append
+ * `format=gray` to make `bbox` readable, and gray has no chroma subsampling; the
+ * production chain is a PNG negotiated to `yuva420p` overlaid on a `yuv420p`
+ * frame, where `hsub = vsub = 1`. Under subsampling both the scaled size and the
+ * centring offset floor to the even grid, so the gray table is off by up to 1px
+ * per axis on exactly the boxes this round exists to fix. `results/e0b-pad-snap-
+ * {dev,packaged}.json` records 15/15 agreement with the rule below on both FFmpeg
+ * majors, with 12 of the 15 discriminating against the gray table.
+ *
+ * Three results are counter-intuitive enough to be worth stating: a box with the
+ * SAME ratio as the picture still loses pixels (1920×1080 into 634×356 yields
+ * 632×356, not 634 and not the gray table's 633); centring is `floor`, not
+ * rounding; and the floored offset is then floored AGAIN to even, so a 149px
+ * centring offset lands at 148.
  *
  * EVALUATION SPACE (contract — violating it silently breaks parity): `boxW` and
  * `boxH` MUST be OUTPUT pixel integers, and the returned rect is in OUTPUT pixel
@@ -130,7 +166,16 @@ export function containRectInBox(
   if (!(natW > 0) || !(natH > 0) || !(boxW > 0) || !(boxH > 0)) {
     return { x: 0, y: 0, w: boxW, h: boxH };
   }
-  const w = Math.min(boxW, roundHalfAway((boxH * natW) / natH));
-  const h = Math.min(boxH, roundHalfAway((boxW * natH) / natW));
-  return { x: Math.floor((boxW - w) / 2), y: Math.floor((boxH - h) / 2), w, h };
+  const rawW = Math.min(boxW, roundHalfAway((boxH * natW) / natH));
+  const rawH = Math.min(boxH, roundHalfAway((boxW * natH) / natW));
+  // The offset is centred on the RAW size and only then snapped — not centred on
+  // the snapped size. The two readings differ by 2px exactly when the raw offset
+  // is odd, which is why 20 probe combinations were needed to tell them apart and
+  // why Q2's two vertically-clipped fixtures found it when 16 could not.
+  return {
+    x: floorEven(Math.floor((boxW - rawW) / 2)),
+    y: floorEven(Math.floor((boxH - rawH) / 2)),
+    w: floorEven(rawW),
+    h: floorEven(rawH),
+  };
 }

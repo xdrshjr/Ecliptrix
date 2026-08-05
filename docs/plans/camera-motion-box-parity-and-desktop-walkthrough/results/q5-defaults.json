@@ -1,0 +1,41 @@
+{
+  "metric": "Q5",
+  "title": "Fallback default position — a request with no ImagePosition",
+  "frame": {
+    "id": "16:9",
+    "width": 1920,
+    "height": 1080
+  },
+  "frontendBoxPx": {
+    "x": 192.0,
+    "y": 108.0,
+    "width": 1536.0,
+    "height": 864.0
+  },
+  "backendBoxPx": {
+    "width": 1536,
+    "height": 864,
+    "motionFilter": null,
+    "x": 192,
+    "y": 108
+  },
+  "backendFilterComplex": "[1:v]scale=1536:864:force_original_aspect_ratio=decrease,pad=1536:864:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:108:enable='between(t,1.0,5.0)'[v0]",
+  "cornerDeltasPx": {
+    "TL": 0.0,
+    "TR": 0.0,
+    "BR": 0.0,
+    "BL": 0.0
+  },
+  "maxCornerDeltaPx": 0.0,
+  "identical": true,
+  "behaviourChange_DD6": {
+    "what": "backend fallback 0.3/0.3 -> 0.8/0.8, matching the three frontend sites",
+    "baselineCommit": "d4df938",
+    "baselineReading": {
+      "available": false,
+      "reason": "baseline driver emitted no default-position command"
+    },
+    "note": "This is an explicit change to an existing export default, not a silent fix. The before/after boxes are both recorded so the size of the change is reviewable: a still that used to render at 30% of the frame now renders at 80%, which is what the preview has always shown."
+  },
+  "pass": true
+}

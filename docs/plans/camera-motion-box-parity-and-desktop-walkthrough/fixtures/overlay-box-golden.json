@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden vectors shared by the TS and Python overlay-box twins. containVectors are REAL FFmpeg readings (E0-b, agreed across dev git-2025-05-15 and packaged 8.1.1); quantiseVectors mirror the B0 export-side expressions (DD-1). Regenerate with experiments/gen_overlay_box_golden.py.",
+  "_comment": "Golden vectors shared by the TS and Python overlay-box twins. containVectors are REAL FFmpeg readings taken on the PRODUCTION pixel-format chain (e0b-pad-snap-*.json, agreed across dev git-2025-05-15 and packaged 8.1.1); `grayChainReading` is the no-subsampling E0-b value kept only as contrast. quantiseVectors mirror the B0 export-side expressions plus the measured `overlay` origin snap (DD-1). Regenerate with experiments/gen_overlay_box_golden.py.",
   "exportResolutions": [
     {
       "id": "16:9",
@@ -38,11 +38,18 @@
         356
       ],
       "expect": {
+        "w": 632,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "grayChainReading": {
         "w": 633,
         "h": 356,
         "pad_x": 0,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -56,25 +63,16 @@
       "expect": {
         "w": 432,
         "h": 288,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "grayChainReading": {
+        "w": 432,
+        "h": 288,
         "pad_x": 1,
         "pad_y": 0
-      }
-    },
-    {
-      "natural": [
-        1234,
-        567
-      ],
-      "box": [
-        321,
-        123
-      ],
-      "expect": {
-        "w": 268,
-        "h": 123,
-        "pad_x": 26,
-        "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -86,11 +84,18 @@
         474
       ],
       "expect": {
+        "w": 842,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "grayChainReading": {
         "w": 843,
         "h": 474,
         "pad_x": 0,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -103,10 +108,17 @@
       ],
       "expect": {
         "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "grayChainReading": {
+        "w": 422,
         "h": 237,
         "pad_x": 0,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -122,7 +134,14 @@
         "h": 360,
         "pad_x": 0,
         "pad_y": 0
-      }
+      },
+      "grayChainReading": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "subsamplingShiftsIt": false
     },
     {
       "natural": [
@@ -138,7 +157,14 @@
         "h": 360,
         "pad_x": 80,
         "pad_y": 0
-      }
+      },
+      "grayChainReading": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "subsamplingShiftsIt": false
     },
     {
       "natural": [
@@ -151,10 +177,17 @@
       ],
       "expect": {
         "w": 476,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "grayChainReading": {
+        "w": 476,
         "h": 357,
         "pad_x": 0,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -167,10 +200,17 @@
       ],
       "expect": {
         "w": 238,
+        "h": 178,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "grayChainReading": {
+        "w": 238,
         "h": 179,
         "pad_x": 0,
         "pad_y": 148
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -182,11 +222,18 @@
         322
       ],
       "expect": {
+        "w": 482,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "grayChainReading": {
         "w": 483,
         "h": 322,
         "pad_x": 180,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -202,7 +249,14 @@
         "h": 160,
         "pad_x": 0,
         "pad_y": 40
-      }
+      },
+      "grayChainReading": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "subsamplingShiftsIt": false
     },
     {
       "natural": [
@@ -216,9 +270,16 @@
       "expect": {
         "w": 714,
         "h": 476,
+        "pad_x": 212,
+        "pad_y": 0
+      },
+      "grayChainReading": {
+        "w": 714,
+        "h": 476,
         "pad_x": 213,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -231,10 +292,17 @@
       ],
       "expect": {
         "w": 240,
+        "h": 134,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "grayChainReading": {
+        "w": 240,
         "h": 135,
         "pad_x": 0,
         "pad_y": 252
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -246,11 +314,18 @@
         240
       ],
       "expect": {
+        "w": 426,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "grayChainReading": {
         "w": 427,
         "h": 240,
         "pad_x": 356,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -264,9 +339,16 @@
       "expect": {
         "w": 480,
         "h": 360,
+        "pad_x": 322,
+        "pad_y": 0
+      },
+      "grayChainReading": {
+        "w": 480,
+        "h": 360,
         "pad_x": 323,
         "pad_y": 0
-      }
+      },
+      "subsamplingShiftsIt": true
     },
     {
       "natural": [
@@ -281,8 +363,107 @@
         "w": 240,
         "h": 110,
         "pad_x": 0,
+        "pad_y": 182
+      },
+      "grayChainReading": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
         "pad_y": 183
-      }
+      },
+      "subsamplingShiftsIt": true
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        422,
+        360
+      ],
+      "expect": {
+        "w": 422,
+        "h": 316,
+        "pad_x": 0,
+        "pad_y": 20
+      },
+      "grayChainReading": {
+        "w": 422,
+        "h": 317,
+        "pad_x": 0,
+        "pad_y": 21
+      },
+      "subsamplingShiftsIt": true
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        422,
+        476
+      ],
+      "expect": {
+        "w": 422,
+        "h": 280,
+        "pad_x": 0,
+        "pad_y": 96
+      },
+      "grayChainReading": {
+        "w": 422,
+        "h": 281,
+        "pad_x": 0,
+        "pad_y": 97
+      },
+      "subsamplingShiftsIt": true
+    },
+    {
+      "natural": [
+        1080,
+        1920
+      ],
+      "box": [
+        638,
+        360
+      ],
+      "expect": {
+        "w": 202,
+        "h": 360,
+        "pad_x": 216,
+        "pad_y": 0
+      },
+      "grayChainReading": {
+        "w": 203,
+        "h": 360,
+        "pad_x": 217,
+        "pad_y": 0
+      },
+      "subsamplingShiftsIt": true
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        422,
+        240
+      ],
+      "expect": {
+        "w": 422,
+        "h": 236,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "grayChainReading": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 1
+      },
+      "subsamplingShiftsIt": true
     }
   ],
   "quantiseVectors": [
@@ -300,7 +481,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 537,
+        "xPx": 536,
         "yPx": 360,
         "boxW": 422,
         "boxH": 238
@@ -340,7 +521,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 403,
+        "xPx": 402,
         "yPx": 360,
         "boxW": 316,
         "boxH": 238
@@ -400,7 +581,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 537,
+        "xPx": 536,
         "yPx": 540,
         "boxW": 640,
         "boxH": 476
@@ -440,7 +621,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 403,
+        "xPx": 402,
         "yPx": 540,
         "boxW": 480,
         "boxH": 476
@@ -500,8 +681,8 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 537,
-        "yPx": 771,
+        "xPx": 536,
+        "yPx": 770,
         "boxW": 844,
         "boxH": 360
       }
@@ -521,7 +702,7 @@
       "negative": false,
       "expect": {
         "xPx": 302,
-        "yPx": 1371,
+        "yPx": 1370,
         "boxW": 476,
         "boxH": 640
       }
@@ -540,8 +721,8 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 403,
-        "yPx": 771,
+        "xPx": 402,
+        "yPx": 770,
         "boxW": 634,
         "boxH": 360
       }
@@ -561,7 +742,7 @@
       "negative": false,
       "expect": {
         "xPx": 302,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 476,
         "boxH": 360
       }
@@ -581,7 +762,7 @@
       "negative": false,
       "expect": {
         "xPx": 716,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 1126,
         "boxH": 360
       }
@@ -701,7 +882,7 @@
       "negative": false,
       "expect": {
         "xPx": 640,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 640,
         "boxH": 238
       }
@@ -721,7 +902,7 @@
       "negative": false,
       "expect": {
         "xPx": 360,
-        "yPx": 1371,
+        "yPx": 1370,
         "boxW": 360,
         "boxH": 422
       }
@@ -741,7 +922,7 @@
       "negative": false,
       "expect": {
         "xPx": 480,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 480,
         "boxH": 238
       }
@@ -761,7 +942,7 @@
       "negative": false,
       "expect": {
         "xPx": 360,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 360,
         "boxH": 238
       }
@@ -781,7 +962,7 @@
       "negative": false,
       "expect": {
         "xPx": 854,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 854,
         "boxH": 238
       }
@@ -821,7 +1002,7 @@
       "negative": false,
       "expect": {
         "xPx": 360,
-        "yPx": 537,
+        "yPx": 536,
         "boxW": 476,
         "boxH": 844
       }
@@ -901,7 +1082,7 @@
       "negative": false,
       "expect": {
         "xPx": 960,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 422,
         "boxH": 476
       }
@@ -921,7 +1102,7 @@
       "negative": false,
       "expect": {
         "xPx": 540,
-        "yPx": 1371,
+        "yPx": 1370,
         "boxW": 238,
         "boxH": 844
       }
@@ -941,7 +1122,7 @@
       "negative": false,
       "expect": {
         "xPx": 720,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 316,
         "boxH": 476
       }
@@ -961,7 +1142,7 @@
       "negative": false,
       "expect": {
         "xPx": 540,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 238,
         "boxH": 476
       }
@@ -981,7 +1162,7 @@
       "negative": false,
       "expect": {
         "xPx": 1280,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 564,
         "boxH": 476
       }
@@ -1021,7 +1202,7 @@
       "negative": false,
       "expect": {
         "xPx": 540,
-        "yPx": 537,
+        "yPx": 536,
         "boxW": 360,
         "boxH": 640
       }
@@ -1200,7 +1381,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 1371,
+        "xPx": 1370,
         "yPx": 302,
         "boxW": 422,
         "boxH": 238
@@ -1220,8 +1401,8 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 771,
-        "yPx": 537,
+        "xPx": 770,
+        "yPx": 536,
         "boxW": 238,
         "boxH": 422
       }
@@ -1260,7 +1441,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 302,
         "boxW": 238,
         "boxH": 238
@@ -1300,7 +1481,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 1371,
+        "xPx": 1370,
         "yPx": 360,
         "boxW": 640,
         "boxH": 476
@@ -1320,7 +1501,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 640,
         "boxW": 360,
         "boxH": 844
@@ -1360,7 +1541,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 360,
         "boxW": 360,
         "boxH": 476
@@ -1400,7 +1581,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 1371,
+        "xPx": 1370,
         "yPx": 540,
         "boxW": 844,
         "boxH": 360
@@ -1420,7 +1601,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 960,
         "boxW": 476,
         "boxH": 640
@@ -1460,7 +1641,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 540,
         "boxW": 476,
         "boxH": 360
@@ -1500,7 +1681,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 537,
+        "xPx": 536,
         "yPx": 540,
         "boxW": 422,
         "boxH": 476
@@ -1540,7 +1721,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 403,
+        "xPx": 402,
         "yPx": 540,
         "boxW": 316,
         "boxH": 476
@@ -1600,8 +1781,8 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 537,
-        "yPx": 771,
+        "xPx": 536,
+        "yPx": 770,
         "boxW": 640,
         "boxH": 360
       }
@@ -1621,7 +1802,7 @@
       "negative": false,
       "expect": {
         "xPx": 302,
-        "yPx": 1371,
+        "yPx": 1370,
         "boxW": 360,
         "boxH": 640
       }
@@ -1640,8 +1821,8 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 403,
-        "yPx": 771,
+        "xPx": 402,
+        "yPx": 770,
         "boxW": 480,
         "boxH": 360
       }
@@ -1661,7 +1842,7 @@
       "negative": false,
       "expect": {
         "xPx": 302,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 360,
         "boxH": 360
       }
@@ -1681,7 +1862,7 @@
       "negative": false,
       "expect": {
         "xPx": 716,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 854,
         "boxH": 360
       }
@@ -1700,7 +1881,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 537,
+        "xPx": 536,
         "yPx": 302,
         "boxW": 844,
         "boxH": 238
@@ -1721,7 +1902,7 @@
       "negative": false,
       "expect": {
         "xPx": 302,
-        "yPx": 537,
+        "yPx": 536,
         "boxW": 476,
         "boxH": 422
       }
@@ -1740,7 +1921,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 403,
+        "xPx": 402,
         "yPx": 302,
         "boxW": 634,
         "boxH": 238
@@ -1801,7 +1982,7 @@
       "negative": false,
       "expect": {
         "xPx": 640,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 422,
         "boxH": 238
       }
@@ -1821,7 +2002,7 @@
       "negative": false,
       "expect": {
         "xPx": 360,
-        "yPx": 1371,
+        "yPx": 1370,
         "boxW": 238,
         "boxH": 422
       }
@@ -1841,7 +2022,7 @@
       "negative": false,
       "expect": {
         "xPx": 480,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 316,
         "boxH": 238
       }
@@ -1861,7 +2042,7 @@
       "negative": false,
       "expect": {
         "xPx": 360,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 238,
         "boxH": 238
       }
@@ -1881,7 +2062,7 @@
       "negative": false,
       "expect": {
         "xPx": 854,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 564,
         "boxH": 238
       }
@@ -1921,7 +2102,7 @@
       "negative": false,
       "expect": {
         "xPx": 360,
-        "yPx": 537,
+        "yPx": 536,
         "boxW": 360,
         "boxH": 844
       }
@@ -2121,7 +2302,7 @@
       "negative": false,
       "expect": {
         "xPx": 540,
-        "yPx": 537,
+        "yPx": 536,
         "boxW": 238,
         "boxH": 640
       }
@@ -2400,7 +2581,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 1371,
+        "xPx": 1370,
         "yPx": 360,
         "boxW": 422,
         "boxH": 476
@@ -2420,7 +2601,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 640,
         "boxW": 238,
         "boxH": 844
@@ -2460,7 +2641,7 @@
       "outOfBounds": false,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 360,
         "boxW": 238,
         "boxH": 476
@@ -2500,7 +2681,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 1371,
+        "xPx": 1370,
         "yPx": 540,
         "boxW": 640,
         "boxH": 360
@@ -2520,7 +2701,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 960,
         "boxW": 360,
         "boxH": 640
@@ -2560,7 +2741,7 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
+        "xPx": 770,
         "yPx": 540,
         "boxW": 360,
         "boxH": 360
@@ -2600,8 +2781,8 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 1371,
-        "yPx": 771,
+        "xPx": 1370,
+        "yPx": 770,
         "boxW": 844,
         "boxH": 238
       }
@@ -2620,8 +2801,8 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
-        "yPx": 1371,
+        "xPx": 770,
+        "yPx": 1370,
         "boxW": 476,
         "boxH": 422
       }
@@ -2641,7 +2822,7 @@
       "negative": false,
       "expect": {
         "xPx": 1028,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 634,
         "boxH": 238
       }
@@ -2660,8 +2841,8 @@
       "outOfBounds": true,
       "negative": false,
       "expect": {
-        "xPx": 771,
-        "yPx": 771,
+        "xPx": 770,
+        "yPx": 770,
         "boxW": 476,
         "boxH": 238
       }
@@ -2681,7 +2862,7 @@
       "negative": false,
       "expect": {
         "xPx": 1828,
-        "yPx": 771,
+        "yPx": 770,
         "boxW": 1126,
         "boxH": 238
       }
@@ -2800,7 +2981,7 @@
       "outOfBounds": false,
       "negative": true,
       "expect": {
-        "xPx": 537,
+        "xPx": 536,
         "yPx": -54,
         "boxW": 640,
         "boxH": 476
@@ -2840,7 +3021,7 @@
       "outOfBounds": false,
       "negative": true,
       "expect": {
-        "xPx": 403,
+        "xPx": 402,
         "yPx": -54,
         "boxW": 480,
         "boxH": 476
@@ -2884,6 +3065,206 @@
         "yPx": -54,
         "boxW": 854,
         "boxH": 476
+      }
+    },
+    {
+      "id": "p26-16:9",
+      "position": {
+        "x": -0.0509,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outW": 1920,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": -98,
+        "yPx": 360,
+        "boxW": 640,
+        "boxH": 238
+      }
+    },
+    {
+      "id": "p26-9:16",
+      "position": {
+        "x": -0.0509,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outW": 1080,
+      "outH": 1920,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": -54,
+        "yPx": 640,
+        "boxW": 360,
+        "boxH": 422
+      }
+    },
+    {
+      "id": "p26-4:3",
+      "position": {
+        "x": -0.0509,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outW": 1440,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": -74,
+        "yPx": 360,
+        "boxW": 480,
+        "boxH": 238
+      }
+    },
+    {
+      "id": "p26-1:1",
+      "position": {
+        "x": -0.0509,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outW": 1080,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": -54,
+        "yPx": 360,
+        "boxW": 360,
+        "boxH": 238
+      }
+    },
+    {
+      "id": "p26-21:9",
+      "position": {
+        "x": -0.0509,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outW": 2560,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": -130,
+        "yPx": 360,
+        "boxW": 854,
+        "boxH": 238
+      }
+    },
+    {
+      "id": "p27-16:9",
+      "position": {
+        "x": 0.3337,
+        "y": -0.0509,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outW": 1920,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": 640,
+        "yPx": -54,
+        "boxW": 422,
+        "boxH": 360
+      }
+    },
+    {
+      "id": "p27-9:16",
+      "position": {
+        "x": 0.3337,
+        "y": -0.0509,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outW": 1080,
+      "outH": 1920,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": 360,
+        "yPx": -98,
+        "boxW": 238,
+        "boxH": 640
+      }
+    },
+    {
+      "id": "p27-4:3",
+      "position": {
+        "x": 0.3337,
+        "y": -0.0509,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outW": 1440,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": 480,
+        "yPx": -54,
+        "boxW": 316,
+        "boxH": 360
+      }
+    },
+    {
+      "id": "p27-1:1",
+      "position": {
+        "x": 0.3337,
+        "y": -0.0509,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outW": 1080,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": 360,
+        "yPx": -54,
+        "boxW": 238,
+        "boxH": 360
+      }
+    },
+    {
+      "id": "p27-21:9",
+      "position": {
+        "x": 0.3337,
+        "y": -0.0509,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outW": 2560,
+      "outH": 1080,
+      "offGrid": true,
+      "outOfBounds": false,
+      "negative": true,
+      "expect": {
+        "xPx": 854,
+        "yPx": -54,
+        "boxW": 564,
+        "boxH": 360
       }
     }
   ]

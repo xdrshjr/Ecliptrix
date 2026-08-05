@@ -1,0 +1,192 @@
+{
+  "metric": "Q7",
+  "title": "Budget and repository standards",
+  "baselineCommit": "d4df938",
+  "lineCounts": {
+    "newFiles": [
+      {
+        "path": "src/components/video/playback/internal/overlayBoxQuantise.ts",
+        "lines": 181,
+        "limit": 800,
+        "pass": true
+      },
+      {
+        "path": "src/components/video/playback/exportResolutions.ts",
+        "lines": 50,
+        "limit": 800,
+        "pass": true
+      },
+      {
+        "path": "backend-services/basic-service/app/services/composition/overlay_box.py",
+        "lines": 166,
+        "limit": 800,
+        "pass": true
+      },
+      {
+        "path": "src/components/video/playback/__tests__/overlayBoxQuantise.test.ts",
+        "lines": 335,
+        "limit": 800,
+        "pass": true
+      },
+      {
+        "path": "src/components/video/playback/__tests__/drawFramePathRetired.test.ts",
+        "lines": 96,
+        "limit": 800,
+        "pass": true
+      },
+      {
+        "path": "src/components/video/components/CameraMotionModal/__tests__/MotionPreviewStage.test.tsx",
+        "lines": 114,
+        "limit": 800,
+        "pass": true
+      },
+      {
+        "path": "backend-services/basic-service/tests/test_overlay_box.py",
+        "lines": 212,
+        "limit": 800,
+        "pass": true
+      }
+    ],
+    "existingOverThreshold": [
+      {
+        "path": "backend-services/basic-service/app/services/video_composition_service.py",
+        "baseline": 3024,
+        "head": 3022,
+        "net": -2,
+        "pass": true
+      },
+      {
+        "path": "src/components/video/hooks/useVideoExport.ts",
+        "baseline": 818,
+        "head": 818,
+        "net": 0,
+        "pass": true
+      }
+    ],
+    "boundedFiles": [
+      {
+        "path": "src/components/video/components/VideoPlayerPanel/VideoPlayerPanel.tsx",
+        "lines": 770,
+        "limit": 800,
+        "baseline": 764,
+        "pass": true
+      }
+    ],
+    "rule": "new files <= 800; already-over-threshold files must not grow (net <= 0)",
+    "pass": true
+  },
+  "touchedFunctions": {
+    "limits": {
+      "lines": 50,
+      "params": 5
+    },
+    "functions": [
+      {
+        "file": "backend-services/basic-service/app/services/video_composition_service.py",
+        "function": "_overlay_placement",
+        "lines": 21,
+        "params": 3,
+        "pass": true
+      },
+      {
+        "file": "backend-services/basic-service/app/services/video_composition_service.py",
+        "function": "_image_overlay_filter_parts",
+        "lines": 29,
+        "params": 1,
+        "pass": true
+      },
+      {
+        "file": "backend-services/basic-service/app/services/composition/overlay_box.py",
+        "function": "quantise_overlay_box",
+        "lines": 37,
+        "params": 3,
+        "pass": true
+      },
+      {
+        "file": "backend-services/basic-service/app/services/composition/overlay_box.py",
+        "function": "contain_rect_in_box",
+        "lines": 41,
+        "params": 4,
+        "pass": true
+      },
+      {
+        "file": "backend-services/basic-service/app/services/composition/overlay_box.py",
+        "function": "build_contain_pad_filter",
+        "lines": 16,
+        "params": 2,
+        "pass": true
+      }
+    ],
+    "pass": true
+  },
+  "i18n": {
+    "locales": {
+      "en": 1998,
+      "zh-CN": 1998
+    },
+    "enKeys": 1998,
+    "onlyInEn": {},
+    "onlyInOther": {},
+    "cameraMotionKeys": 62,
+    "pass": true
+  },
+  "guards": {
+    "dd12_noProductionDrawFrameCaller": {
+      "hits": [],
+      "pass": true,
+      "note": "types.ts (interface declaration) and __tests__ are the sanctioned references"
+    },
+    "lq1_oneImplementationPerLanguage": {
+      "typescriptFiles": [
+        "src/components/video/playback/internal/overlayBoxQuantise.ts"
+      ],
+      "pythonFiles": [],
+      "pass": true
+    },
+    "pass": true
+  },
+  "typecheck": {
+    "exit": 0,
+    "pass": true,
+    "log": "logs/q7-typecheck.log"
+  },
+  "drawBudget": {
+    "layers": 3,
+    "withMotionDrawMs": {
+      "count": 1200,
+      "min": 0.5,
+      "mean": 1.1553333334376414,
+      "max": 63.900000005960464,
+      "p95": 1.4000000059604645
+    },
+    "baselineDrawMs": {
+      "count": 10,
+      "min": 0.3999999761581421,
+      "mean": 0.5900000035762787,
+      "max": 1.2000000178813934,
+      "p95": 1.2000000178813934
+    },
+    "incrementMsPerLayer": 0.18844444328712093,
+    "rafIntervalMs": {
+      "count": 1199,
+      "min": 1.5,
+      "mean": 16.797914929097647,
+      "max": 1006.5999999940395,
+      "p95": 12.5
+    },
+    "targetFpsFinal": 60,
+    "webgl": {
+      "available": true,
+      "perspectiveRendererAcquires": true,
+      "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+      "vendor": "Google Inc. (Intel)",
+      "renderer": "ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "limits": {
+      "incrementMsPerLayer": 1.0,
+      "meanFrameMs": 12.0
+    },
+    "pass": true
+  },
+  "pass": true
+}

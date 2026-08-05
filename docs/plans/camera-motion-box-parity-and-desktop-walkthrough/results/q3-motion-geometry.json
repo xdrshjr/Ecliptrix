@@ -1,0 +1,335 @@
+{
+  "metric": "Q3",
+  "title": "Camera-motion geometry on off-grid boxes — TS motionBoxQuad vs the emitted perspective",
+  "thresholdPx": 0.5,
+  "minComparisons": 1200,
+  "boxAspectRule": "DD-10 — boxAspect = boxW/boxH (output pixel integers), never the preview canvas ratio",
+  "boxes": [
+    {
+      "id": "16x9-h00-422x238",
+      "width": 422,
+      "height": 238,
+      "fromFrame": "16:9",
+      "fromRow": "h00",
+      "outOfBounds": false
+    },
+    {
+      "id": "16x9-h03-422x360",
+      "width": 422,
+      "height": 360,
+      "fromFrame": "16:9",
+      "fromRow": "h03",
+      "outOfBounds": true
+    },
+    {
+      "id": "16x9-v01-640x360",
+      "width": 640,
+      "height": 360,
+      "fromFrame": "16:9",
+      "fromRow": "v01",
+      "outOfBounds": false
+    },
+    {
+      "id": "9x16-h01-360x422",
+      "width": 360,
+      "height": 422,
+      "fromFrame": "9:16",
+      "fromRow": "h01",
+      "outOfBounds": false
+    },
+    {
+      "id": "9x16-h04-360x844",
+      "width": 360,
+      "height": 844,
+      "fromFrame": "9:16",
+      "fromRow": "h04",
+      "outOfBounds": false
+    },
+    {
+      "id": "9x16-oob-bottom-238x844",
+      "width": 238,
+      "height": 844,
+      "fromFrame": "9:16",
+      "fromRow": "oob-bottom",
+      "outOfBounds": true
+    },
+    {
+      "id": "4x3-h02-634x360",
+      "width": 634,
+      "height": 360,
+      "fromFrame": "4:3",
+      "fromRow": "h02",
+      "outOfBounds": false
+    },
+    {
+      "id": "4x3-h05-634x476",
+      "width": 634,
+      "height": 476,
+      "fromFrame": "4:3",
+      "fromRow": "h05",
+      "outOfBounds": false
+    },
+    {
+      "id": "1x1-h00-238x238",
+      "width": 238,
+      "height": 238,
+      "fromFrame": "1:1",
+      "fromRow": "h00",
+      "outOfBounds": false
+    },
+    {
+      "id": "1x1-h03-238x360",
+      "width": 238,
+      "height": 360,
+      "fromFrame": "1:1",
+      "fromRow": "h03",
+      "outOfBounds": true
+    },
+    {
+      "id": "1x1-v01-360x360",
+      "width": 360,
+      "height": 360,
+      "fromFrame": "1:1",
+      "fromRow": "v01",
+      "outOfBounds": false
+    },
+    {
+      "id": "21x9-h01-854x238",
+      "width": 854,
+      "height": 238,
+      "fromFrame": "21:9",
+      "fromRow": "h01",
+      "outOfBounds": false
+    }
+  ],
+  "emitter": {
+    "fps": 30.0,
+    "startTime": 0.0,
+    "clip": {
+      "startTime": 0.0,
+      "duration": 6.0
+    }
+  },
+  "sweep": {
+    "comparisons": 3840,
+    "perPreset": [
+      {
+        "presetId": "zoom-in",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 1.6077746776921858e-13,
+        "meanDeviationPx": 9.54699920554945e-15,
+        "worst": {
+          "boxId": "4x3-h05-634x476",
+          "t": 6,
+          "px": 1.6077746776921858e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "zoom-out",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 1.6077746776921858e-13,
+        "meanDeviationPx": 9.54699920554945e-15,
+        "worst": {
+          "boxId": "4x3-h05-634x476",
+          "t": 0,
+          "px": 1.6077746776921858e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "pan-left",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 1.2710574864626038e-13,
+        "meanDeviationPx": 4.021073591424319e-14,
+        "worst": {
+          "boxId": "4x3-h02-634x360",
+          "t": 0,
+          "px": 1.2710574864626038e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "pan-right",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 1.2710574864626038e-13,
+        "meanDeviationPx": 4.021073591424319e-14,
+        "worst": {
+          "boxId": "4x3-h02-634x360",
+          "t": 0,
+          "px": 1.2710574864626038e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "tilt-up",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 1.180976748471683e-13,
+        "meanDeviationPx": 3.554339298755813e-14,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 0,
+          "px": 1.180976748471683e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "tilt-down",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 1.180976748471683e-13,
+        "meanDeviationPx": 3.5543392987558137e-14,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 0,
+          "px": 1.180976748471683e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "rotate-in",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 5.617375670731711e-05,
+        "meanDeviationPx": 1.3036051248104773e-05,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 0,
+          "px": 5.617375670731711e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "ken-burns",
+        "space": "2d",
+        "corners": 240,
+        "maxDeviationPx": 2.3166989564381633e-13,
+        "meanDeviationPx": 4.772271270823607e-14,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 1.5,
+          "px": 2.3166989564381633e-13
+        },
+        "pass": true
+      },
+      {
+        "presetId": "orbit-left",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 1.5604508456896437e-05,
+        "meanDeviationPx": 5.209421396078613e-06,
+        "worst": {
+          "boxId": "21x9-h01-854x238",
+          "t": 0,
+          "px": 1.5604508456896437e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "orbit-right",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 1.5604508456896437e-05,
+        "meanDeviationPx": 5.209421396078613e-06,
+        "worst": {
+          "boxId": "21x9-h01-854x238",
+          "t": 6,
+          "px": 1.5604508456896437e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "dive",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 8.748620242318902e-05,
+        "meanDeviationPx": 1.1076999071486433e-05,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 0,
+          "px": 8.748620242318902e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "crane-up",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 1.573115763809874e-05,
+        "meanDeviationPx": 3.280976628533989e-06,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 6,
+          "px": 1.573115763809874e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "swing-in",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 0.00010308629256631481,
+        "meanDeviationPx": 1.2607853011686352e-05,
+        "worst": {
+          "boxId": "21x9-h01-854x238",
+          "t": 0,
+          "px": 0.00010308629256631481
+        },
+        "pass": true
+      },
+      {
+        "presetId": "dolly-in-3d",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 1.3168008610519048e-05,
+        "meanDeviationPx": 3.4586249266130077e-06,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 0,
+          "px": 1.3168008610519048e-05
+        },
+        "pass": true
+      },
+      {
+        "presetId": "boom",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 0.00013718241103286743,
+        "meanDeviationPx": 4.517801501649405e-05,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 6,
+          "px": 0.00013718241103286743
+        },
+        "pass": true
+      },
+      {
+        "presetId": "spiral",
+        "space": "3d",
+        "corners": 240,
+        "maxDeviationPx": 0.00016955199930064475,
+        "meanDeviationPx": 7.927315271719205e-05,
+        "worst": {
+          "boxId": "9x16-h04-360x844",
+          "t": 0,
+          "px": 0.00016955199930064475
+        },
+        "pass": true
+      }
+    ],
+    "maxDeviationPx": 0.00016955199930064475,
+    "meanDeviationPx": 1.1145657226912057e-05,
+    "p95DeviationPx": 6.852277688852276e-05
+  },
+  "sensitivity": {
+    "injectedPx": 1.0,
+    "maxDeviationPx": 1.0001287924068327,
+    "pass": true
+  },
+  "pass": true
+}

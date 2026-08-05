@@ -1,0 +1,45 @@
+{
+  "metric": "W1",
+  "title": "The packaged app carries THIS working tree's camera-motion sources",
+  "packageRoot": "M:\\takoAI\\Ecliptrix\\desktop\\release\\win-unpacked\\resources\\backend",
+  "scope": "Backend only. The frontend is compiled into a Next.js build, so a byte comparison there is meaningless rather than reassuring; W2 exercises that half by driving the real window.",
+  "files": [
+    {
+      "path": "app/services/composition/overlay_box.py",
+      "packagedSha256": "24548585a6bf299772015fa19d963f5aefaee96c57d657a0be273575d97592e2",
+      "worktreeSha256": "24548585a6bf299772015fa19d963f5aefaee96c57d657a0be273575d97592e2",
+      "identical": true
+    },
+    {
+      "path": "app/services/composition/video_scaling.py",
+      "packagedSha256": "5be022d0541844dad1fa79fdff35adfa49f819e678716d913f9a1a57d93a95cf",
+      "worktreeSha256": "5be022d0541844dad1fa79fdff35adfa49f819e678716d913f9a1a57d93a95cf",
+      "identical": true
+    },
+    {
+      "path": "app/services/composition/camera_motion.py",
+      "packagedSha256": "de91d7ec7a26c42bff39421694063289f681eee8fad746210b4ac3aaa309bcd0",
+      "worktreeSha256": "de91d7ec7a26c42bff39421694063289f681eee8fad746210b4ac3aaa309bcd0",
+      "identical": true
+    },
+    {
+      "path": "app/services/composition/camera_motion_filters.py",
+      "packagedSha256": "c101250a043baf30c79201cc20c513b8c47c01435f33ff3ef4c7ced6ce973723",
+      "worktreeSha256": "c101250a043baf30c79201cc20c513b8c47c01435f33ff3ef4c7ced6ce973723",
+      "identical": true
+    },
+    {
+      "path": "app/services/composition/camera_motion_overlay.py",
+      "packagedSha256": "76ac3a85654ba90d721df7d3d1a105449a24e0213b3dc7970100841982bc8d54",
+      "worktreeSha256": "76ac3a85654ba90d721df7d3d1a105449a24e0213b3dc7970100841982bc8d54",
+      "identical": true
+    },
+    {
+      "path": "app/services/video_composition_service.py",
+      "packagedSha256": "7c19691de3e6502bfdc5c97c68c7617eee4c88af26ebfa097cb07dadb82f3277",
+      "worktreeSha256": "7c19691de3e6502bfdc5c97c68c7617eee4c88af26ebfa097cb07dadb82f3277",
+      "identical": true
+    }
+  ],
+  "pass": true
+}

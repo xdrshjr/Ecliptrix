@@ -1,0 +1,5767 @@
+{
+  "metric": "Q1",
+  "title": "Box geometry parity on off-grid positions — preview bounds vs the emitted command",
+  "threshold": "identity: every row's box must be the SAME output pixel (exact integer equality on x/y/width/height) AND its raw corner residual must stay under 1e-09px; exceptions must be 0 (L-Q11)",
+  "representationBoundPx": 1e-09,
+  "instrumentChange": {
+    "what": "the verdict was `maxCornerDeltaPx != 0.0`; it is now exact-integer pixel identity plus a 1e-9px ceiling on the raw residual",
+    "why": "The preview holds its box normalised (DD-2 — the only space a display-sized canvas and a 1920x1080 export can share). Recovering the pixel is `n/W*W`, which in float64 is not always `n`: 770/1080*1080 is 769.9999999999999. `!= 0.0` therefore stopped measuring geometry below ~1e-12px and started measuring which integers survive a binary round-trip — it read 0 exceptions before the origin was snapped to the even grid and 33 after, with both runs describing the same box.",
+    "notAThresholdRelaxation": "The geometric quantity is EXACTLY equal on every row: both sides are the same integer, and production rebuilds it with Math.round (CanvasCompositor._drawImageLayer), so it recovers that integer. The new predicate is strictly stronger where it matters — nothing within half a pixel passes — and the raw residual is still reported per row. The sensitivity mutation is judged by this same predicate and still fails it.",
+    "worstObservedResidualPx": 1.6077746776921858e-13
+  },
+  "method": "Preview: buildImageLayersAt(items, t, undefined, 853/480, exportFrame).bounds, multiplied by the output resolution exactly as _drawImageLayer does. Export: the scale=/overlay= integers parsed back out of the filtergraph that rendered a real file through _process_image_overlays. Neither is recomputed here.",
+  "fixtureAudit": {
+    "rows": 28,
+    "offGridRowsPerFrame": {
+      "16:9": 28,
+      "9:16": 28,
+      "4:3": 28,
+      "1:1": 28,
+      "21:9": 28
+    },
+    "everyRowOffGridOnEveryFrame": true,
+    "outOfBoundsRowIds": [
+      "h03",
+      "h10",
+      "h11",
+      "v07",
+      "v10",
+      "v11",
+      "oob-right",
+      "oob-bottom"
+    ],
+    "negativeRowIds": [
+      "neg-left",
+      "neg-top"
+    ],
+    "offGridWindow": [
+      0.15,
+      0.85
+    ],
+    "predicateSensitivity": {
+      "control": {
+        "id": "control-on-grid",
+        "x": 0.25,
+        "y": 0.25,
+        "width": 0.5,
+        "height": 0.5
+      },
+      "frame": {
+        "id": "16:9",
+        "width": 1920,
+        "height": 1080
+      },
+      "projected": [
+        480,
+        270,
+        960,
+        540
+      ],
+      "isOffGrid": false,
+      "expected": false,
+      "pass": true
+    }
+  },
+  "comparisons": 140,
+  "maxCornerDeltaPx": 1.6077746776921858e-13,
+  "exceptions": [],
+  "unquantisedBaselineGapPx": 613.7919999999999,
+  "unquantisedBaselineNote": "legacyPreviewBoxPx is the SAME production function called without an exportFrame — i.e. the B0 behaviour. It is reported per row so the size of what this round fixed is visible, not asserted.",
+  "containSpaceProbe": [
+    {
+      "probe": {
+        "natW": 1920,
+        "natH": 1080,
+        "boxOutW": 634,
+        "boxOutH": 356,
+        "previewScale": 0.44427083333333334
+      },
+      "evaluatedInOutputSpace": {
+        "x": 0,
+        "y": 0,
+        "w": 632,
+        "h": 356
+      },
+      "evaluatedInPreviewSpaceScaledUp": {
+        "x": 0,
+        "y": 0,
+        "w": 630.2461899179367,
+        "h": 355.63892145369283
+      },
+      "maxDivergenceOutputPx": 1.7538100820632962
+    },
+    {
+      "probe": {
+        "natW": 1501,
+        "natH": 1000,
+        "boxOutW": 434,
+        "boxOutH": 288,
+        "previewScale": 0.44427083333333334
+      },
+      "evaluatedInOutputSpace": {
+        "x": 0,
+        "y": 0,
+        "w": 432,
+        "h": 288
+      },
+      "evaluatedInPreviewSpaceScaledUp": {
+        "x": 0,
+        "y": 0,
+        "w": 432.168815943728,
+        "h": 288.11254396248535
+      },
+      "maxDivergenceOutputPx": 0.16881594372802056
+    },
+    {
+      "probe": {
+        "natW": 1440,
+        "natH": 1080,
+        "boxOutW": 642,
+        "boxOutH": 428,
+        "previewScale": 0.44427083333333334
+      },
+      "evaluatedInOutputSpace": {
+        "x": 34,
+        "y": 0,
+        "w": 570,
+        "h": 428
+      },
+      "evaluatedInPreviewSpaceScaledUp": {
+        "x": 36.01406799531067,
+        "y": 0,
+        "w": 567.221570926143,
+        "h": 427.6670574443142
+      },
+      "maxDivergenceOutputPx": 2.7784290738569553
+    }
+  ],
+  "sensitivity": {
+    "mutation": "Math.trunc -> Math.round inside overlayBoxQuantise.ts",
+    "detectedBy": "the pixelIdentical predicate — the same one the verdict uses, so this proves the verdict can fail rather than proving some looser reading can",
+    "rowsMoved": 63,
+    "rowsTotal": 140,
+    "maxCornerDeltaPx": 4.0,
+    "movedRowIds": [
+      "h00",
+      "h01",
+      "h02",
+      "h03",
+      "h04",
+      "h05",
+      "h06",
+      "h07",
+      "h08",
+      "h09",
+      "h10",
+      "h11"
+    ],
+    "pass": true
+  },
+  "previewCanvasForAspect": {
+    "width": 853,
+    "height": 480
+  },
+  "rows": [
+    {
+      "frameId": "16:9",
+      "rowId": "h00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 302.0,
+        "width": 422.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 238,
+        "motionFilter": null,
+        "x": 536,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 302.40000000000003,
+        "width": 422.4,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h01",
+      "position": {
+        "x": 0.28,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 360.0,
+        "width": 640.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 238,
+        "motionFilter": null,
+        "x": 536,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 360.396,
+        "width": 640.704,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h02",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 540.0,
+        "width": 844.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 360,
+        "motionFilter": null,
+        "x": 536,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 540.108,
+        "width": 844.8,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": 769.9999999999999,
+        "width": 422.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 360,
+        "motionFilter": null,
+        "x": 640,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 771.4440000000001,
+        "width": 422.4,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h04",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": 302.0,
+        "width": 640.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 476,
+        "motionFilter": null,
+        "x": 640,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 302.40000000000003,
+        "width": 640.704,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h05",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": 360.0,
+        "width": 844.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 476,
+        "motionFilter": null,
+        "x": 640,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 360.396,
+        "width": 844.8,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h06",
+      "position": {
+        "x": 0.5001,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 960.0,
+        "y": 540.0,
+        "width": 422.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 238,
+        "motionFilter": null,
+        "x": 960,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 960.192,
+        "y": 540.108,
+        "width": 422.4,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h07",
+      "position": {
+        "x": 0.5001,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 960.0,
+        "y": 769.9999999999999,
+        "width": 640.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 238,
+        "motionFilter": null,
+        "x": 960,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 960.192,
+        "y": 771.4440000000001,
+        "width": 640.704,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h08",
+      "position": {
+        "x": 0.5001,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 960.0,
+        "y": 302.0,
+        "width": 844.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 360,
+        "motionFilter": null,
+        "x": 960,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 960.192,
+        "y": 302.40000000000003,
+        "width": 844.8,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h09",
+      "position": {
+        "x": 0.7143,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1370.0,
+        "y": 360.0,
+        "width": 422.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1370,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1371.4560000000001,
+        "y": 360.396,
+        "width": 422.4,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h10",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1370.0,
+        "y": 540.0,
+        "width": 640.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 476,
+        "motionFilter": null,
+        "x": 1370,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1371.4560000000001,
+        "y": 540.108,
+        "width": 548.5439999999999,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "h11",
+      "position": {
+        "x": 0.7143,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1370.0,
+        "y": 769.9999999999999,
+        "width": 844.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 476,
+        "motionFilter": null,
+        "x": 1370,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1371.4560000000001,
+        "y": 771.4440000000001,
+        "width": 548.5439999999999,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 302.0,
+        "width": 422.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 238,
+        "motionFilter": null,
+        "x": 536,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 302.40000000000003,
+        "width": 422.4,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v01",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 302.0,
+        "width": 640.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 360,
+        "motionFilter": null,
+        "x": 536,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 302.40000000000003,
+        "width": 640.704,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v02",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": 302.0,
+        "width": 844.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 476,
+        "motionFilter": null,
+        "x": 640,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 302.40000000000003,
+        "width": 844.8,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": 360.0,
+        "width": 422.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 238,
+        "motionFilter": null,
+        "x": 640,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 360.396,
+        "width": 422.4,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v04",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 960.0,
+        "y": 360.0,
+        "width": 640.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 360,
+        "motionFilter": null,
+        "x": 960,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 960.192,
+        "y": 360.396,
+        "width": 640.704,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v05",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 960.0,
+        "y": 360.0,
+        "width": 844.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 476,
+        "motionFilter": null,
+        "x": 960,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 960.192,
+        "y": 360.396,
+        "width": 844.8,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v06",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1370.0,
+        "y": 540.0,
+        "width": 422.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 238,
+        "motionFilter": null,
+        "x": 1370,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1371.4560000000001,
+        "y": 540.108,
+        "width": 422.4,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v07",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1370.0,
+        "y": 540.0,
+        "width": 640.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1370,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1371.4560000000001,
+        "y": 540.108,
+        "width": 548.5439999999999,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v08",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 540.0,
+        "width": 844.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 476,
+        "motionFilter": null,
+        "x": 536,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 540.108,
+        "width": 844.8,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v09",
+      "position": {
+        "x": 0.28,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 769.9999999999999,
+        "width": 422.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 238,
+        "motionFilter": null,
+        "x": 536,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 771.4440000000001,
+        "width": 422.4,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v10",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": 769.9999999999999,
+        "width": 640.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 360,
+        "motionFilter": null,
+        "x": 640,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 771.4440000000001,
+        "width": 640.704,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "v11",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": 769.9999999999999,
+        "width": 844.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 844,
+        "height": 476,
+        "motionFilter": null,
+        "x": 640,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 771.4440000000001,
+        "width": 844.8,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "oob-right",
+      "position": {
+        "x": 0.9001,
+        "y": 0.2801,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1728.0,
+        "y": 302.0,
+        "width": 640.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 238,
+        "motionFilter": null,
+        "x": 1728,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1728.192,
+        "y": 302.50800000000004,
+        "width": 191.808,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "oob-bottom",
+      "position": {
+        "x": 0.28,
+        "y": 0.8801,
+        "width": 0.22,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 536.0,
+        "y": 950.0,
+        "width": 422.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 476,
+        "motionFilter": null,
+        "x": 536,
+        "y": 950
+      },
+      "legacyPreviewBoxPx": {
+        "x": 537.6,
+        "y": 950.508,
+        "width": 422.4,
+        "height": 129.49200000000002
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "neg-left",
+      "position": {
+        "x": -0.05,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": -96.0,
+        "y": 360.0,
+        "width": 640.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 640,
+        "height": 238,
+        "motionFilter": null,
+        "x": -96,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 0,
+        "y": 360.396,
+        "width": 640.704,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "16:9",
+      "rowId": "neg-top",
+      "position": {
+        "x": 0.3337,
+        "y": -0.05,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 640.0,
+        "y": -54.0,
+        "width": 422.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 422,
+        "height": 360,
+        "motionFilter": null,
+        "x": 640,
+        "y": -54
+      },
+      "legacyPreviewBoxPx": {
+        "x": 640.704,
+        "y": 0,
+        "width": 422.4,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 536.0,
+        "width": 238.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 422,
+        "motionFilter": null,
+        "x": 302,
+        "y": 536
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 537.6,
+        "width": 237.6,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h01",
+      "position": {
+        "x": 0.28,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 640.0,
+        "width": 360.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 422,
+        "motionFilter": null,
+        "x": 302,
+        "y": 640
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 640.704,
+        "width": 360.396,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h02",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 960.0,
+        "width": 476.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 640,
+        "motionFilter": null,
+        "x": 302,
+        "y": 960
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 960.192,
+        "width": 475.2,
+        "height": 640.704
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 1370.0,
+        "width": 238.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 640,
+        "motionFilter": null,
+        "x": 360,
+        "y": 1370
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 1371.4560000000001,
+        "width": 237.6,
+        "height": 548.5439999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h04",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 536.0,
+        "width": 360.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 844,
+        "motionFilter": null,
+        "x": 360,
+        "y": 536
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 537.6,
+        "width": 360.396,
+        "height": 844.8
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h05",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 640.0,
+        "width": 476.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 844,
+        "motionFilter": null,
+        "x": 360,
+        "y": 640
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 640.704,
+        "width": 475.2,
+        "height": 844.8
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h06",
+      "position": {
+        "x": 0.5001,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 960.0,
+        "width": 238.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 422,
+        "motionFilter": null,
+        "x": 540,
+        "y": 960
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 960.192,
+        "width": 237.6,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h07",
+      "position": {
+        "x": 0.5001,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 1370.0,
+        "width": 360.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 422,
+        "motionFilter": null,
+        "x": 540,
+        "y": 1370
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 1371.4560000000001,
+        "width": 360.396,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h08",
+      "position": {
+        "x": 0.5001,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 536.0,
+        "width": 476.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 640,
+        "motionFilter": null,
+        "x": 540,
+        "y": 536
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 537.6,
+        "width": 475.2,
+        "height": 640.704
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h09",
+      "position": {
+        "x": 0.7143,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 640.0,
+        "width": 238.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 640,
+        "motionFilter": null,
+        "x": 770,
+        "y": 640
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 640.704,
+        "width": 237.6,
+        "height": 640.704
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h10",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 960.0,
+        "width": 360.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 844,
+        "motionFilter": null,
+        "x": 770,
+        "y": 960
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 960.192,
+        "width": 308.5559999999999,
+        "height": 844.8
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "h11",
+      "position": {
+        "x": 0.7143,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 1370.0,
+        "width": 476.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 844,
+        "motionFilter": null,
+        "x": 770,
+        "y": 1370
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 1371.4560000000001,
+        "width": 308.5559999999999,
+        "height": 548.5439999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 536.0,
+        "width": 238.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 422,
+        "motionFilter": null,
+        "x": 302,
+        "y": 536
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 537.6,
+        "width": 237.6,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v01",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 536.0,
+        "width": 360.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 640,
+        "motionFilter": null,
+        "x": 302,
+        "y": 536
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 537.6,
+        "width": 360.396,
+        "height": 640.704
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v02",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 536.0,
+        "width": 476.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 844,
+        "motionFilter": null,
+        "x": 360,
+        "y": 536
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 537.6,
+        "width": 475.2,
+        "height": 844.8
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 640.0,
+        "width": 238.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 422,
+        "motionFilter": null,
+        "x": 360,
+        "y": 640
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 640.704,
+        "width": 237.6,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v04",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 640.0,
+        "width": 360.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 640,
+        "motionFilter": null,
+        "x": 540,
+        "y": 640
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 640.704,
+        "width": 360.396,
+        "height": 640.704
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v05",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 640.0,
+        "width": 476.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 844,
+        "motionFilter": null,
+        "x": 540,
+        "y": 640
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 640.704,
+        "width": 475.2,
+        "height": 844.8
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v06",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 960.0,
+        "width": 238.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 422,
+        "motionFilter": null,
+        "x": 770,
+        "y": 960
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 960.192,
+        "width": 237.6,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v07",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 960.0,
+        "width": 360.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 640,
+        "motionFilter": null,
+        "x": 770,
+        "y": 960
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 960.192,
+        "width": 308.5559999999999,
+        "height": 640.704
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v08",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 960.0,
+        "width": 476.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 844,
+        "motionFilter": null,
+        "x": 302,
+        "y": 960
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 960.192,
+        "width": 475.2,
+        "height": 844.8
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v09",
+      "position": {
+        "x": 0.28,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 1370.0,
+        "width": 238.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 422,
+        "motionFilter": null,
+        "x": 302,
+        "y": 1370
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 1371.4560000000001,
+        "width": 237.6,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v10",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 1370.0,
+        "width": 360.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 640,
+        "motionFilter": null,
+        "x": 360,
+        "y": 1370
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 1371.4560000000001,
+        "width": 360.396,
+        "height": 548.5439999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "v11",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 1370.0,
+        "width": 476.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 844,
+        "motionFilter": null,
+        "x": 360,
+        "y": 1370
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 1371.4560000000001,
+        "width": 475.2,
+        "height": 548.5439999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "oob-right",
+      "position": {
+        "x": 0.9001,
+        "y": 0.2801,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 972.0,
+        "y": 536.0,
+        "width": 360.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 422,
+        "motionFilter": null,
+        "x": 972,
+        "y": 536
+      },
+      "legacyPreviewBoxPx": {
+        "x": 972.1080000000001,
+        "y": 537.792,
+        "width": 107.89199999999998,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "oob-bottom",
+      "position": {
+        "x": 0.28,
+        "y": 0.8801,
+        "width": 0.22,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 1688.0,
+        "width": 238.0,
+        "height": 844.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 844,
+        "motionFilter": null,
+        "x": 302,
+        "y": 1688
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 1689.792,
+        "width": 237.6,
+        "height": 230.20800000000003
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "neg-left",
+      "position": {
+        "x": -0.05,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": -54.0,
+        "y": 640.0,
+        "width": 360.0,
+        "height": 422.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 422,
+        "motionFilter": null,
+        "x": -54,
+        "y": 640
+      },
+      "legacyPreviewBoxPx": {
+        "x": 0,
+        "y": 640.704,
+        "width": 360.396,
+        "height": 422.4
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "9:16",
+      "rowId": "neg-top",
+      "position": {
+        "x": 0.3337,
+        "y": -0.05,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": -96.0,
+        "width": 238.0,
+        "height": 640.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 640,
+        "motionFilter": null,
+        "x": 360,
+        "y": -96
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 0,
+        "width": 237.6,
+        "height": 640.704
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 302.0,
+        "width": 316.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 238,
+        "motionFilter": null,
+        "x": 402,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 302.40000000000003,
+        "width": 316.8,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h01",
+      "position": {
+        "x": 0.28,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 360.0,
+        "width": 480.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 238,
+        "motionFilter": null,
+        "x": 402,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 360.396,
+        "width": 480.528,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h02",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 540.0,
+        "width": 634.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 360,
+        "motionFilter": null,
+        "x": 402,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 540.108,
+        "width": 633.6,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": 769.9999999999999,
+        "width": 316.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 360,
+        "motionFilter": null,
+        "x": 480,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 771.4440000000001,
+        "width": 316.8,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h04",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": 302.0,
+        "width": 480.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 476,
+        "motionFilter": null,
+        "x": 480,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 302.40000000000003,
+        "width": 480.528,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h05",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": 360.0,
+        "width": 634.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 476,
+        "motionFilter": null,
+        "x": 480,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 360.396,
+        "width": 633.6,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h06",
+      "position": {
+        "x": 0.5001,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 720.0,
+        "y": 540.0,
+        "width": 316.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 238,
+        "motionFilter": null,
+        "x": 720,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 720.144,
+        "y": 540.108,
+        "width": 316.8,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h07",
+      "position": {
+        "x": 0.5001,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 720.0,
+        "y": 769.9999999999999,
+        "width": 480.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 238,
+        "motionFilter": null,
+        "x": 720,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 720.144,
+        "y": 771.4440000000001,
+        "width": 480.528,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h08",
+      "position": {
+        "x": 0.5001,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 720.0,
+        "y": 302.0,
+        "width": 634.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 360,
+        "motionFilter": null,
+        "x": 720,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 720.144,
+        "y": 302.40000000000003,
+        "width": 633.6,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h09",
+      "position": {
+        "x": 0.7143,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1028.0,
+        "y": 360.0,
+        "width": 316.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1028,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1028.592,
+        "y": 360.396,
+        "width": 316.8,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h10",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1028.0,
+        "y": 540.0,
+        "width": 480.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 476,
+        "motionFilter": null,
+        "x": 1028,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1028.592,
+        "y": 540.108,
+        "width": 411.40799999999996,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "h11",
+      "position": {
+        "x": 0.7143,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1028.0,
+        "y": 769.9999999999999,
+        "width": 634.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 476,
+        "motionFilter": null,
+        "x": 1028,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1028.592,
+        "y": 771.4440000000001,
+        "width": 411.40799999999996,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 302.0,
+        "width": 316.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 238,
+        "motionFilter": null,
+        "x": 402,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 302.40000000000003,
+        "width": 316.8,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v01",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 302.0,
+        "width": 480.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 360,
+        "motionFilter": null,
+        "x": 402,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 302.40000000000003,
+        "width": 480.528,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v02",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": 302.0,
+        "width": 634.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 476,
+        "motionFilter": null,
+        "x": 480,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 302.40000000000003,
+        "width": 633.6,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": 360.0,
+        "width": 316.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 238,
+        "motionFilter": null,
+        "x": 480,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 360.396,
+        "width": 316.8,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v04",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 720.0,
+        "y": 360.0,
+        "width": 480.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 360,
+        "motionFilter": null,
+        "x": 720,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 720.144,
+        "y": 360.396,
+        "width": 480.528,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v05",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 720.0,
+        "y": 360.0,
+        "width": 634.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 476,
+        "motionFilter": null,
+        "x": 720,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 720.144,
+        "y": 360.396,
+        "width": 633.6,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v06",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1028.0,
+        "y": 540.0,
+        "width": 316.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 238,
+        "motionFilter": null,
+        "x": 1028,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1028.592,
+        "y": 540.108,
+        "width": 316.8,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v07",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1028.0,
+        "y": 540.0,
+        "width": 480.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1028,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1028.592,
+        "y": 540.108,
+        "width": 411.40799999999996,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v08",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 540.0,
+        "width": 634.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 476,
+        "motionFilter": null,
+        "x": 402,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 540.108,
+        "width": 633.6,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v09",
+      "position": {
+        "x": 0.28,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 769.9999999999999,
+        "width": 316.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 238,
+        "motionFilter": null,
+        "x": 402,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 771.4440000000001,
+        "width": 316.8,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v10",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": 769.9999999999999,
+        "width": 480.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 360,
+        "motionFilter": null,
+        "x": 480,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 771.4440000000001,
+        "width": 480.528,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "v11",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": 769.9999999999999,
+        "width": 634.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 634,
+        "height": 476,
+        "motionFilter": null,
+        "x": 480,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 771.4440000000001,
+        "width": 633.6,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "oob-right",
+      "position": {
+        "x": 0.9001,
+        "y": 0.2801,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1296.0,
+        "y": 302.0,
+        "width": 480.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 238,
+        "motionFilter": null,
+        "x": 1296,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1296.144,
+        "y": 302.50800000000004,
+        "width": 143.856,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "oob-bottom",
+      "position": {
+        "x": 0.28,
+        "y": 0.8801,
+        "width": 0.22,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 402.0,
+        "y": 950.0,
+        "width": 316.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 476,
+        "motionFilter": null,
+        "x": 402,
+        "y": 950
+      },
+      "legacyPreviewBoxPx": {
+        "x": 403.20000000000005,
+        "y": 950.508,
+        "width": 316.8,
+        "height": 129.49200000000002
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "neg-left",
+      "position": {
+        "x": -0.05,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": -72.0,
+        "y": 360.0,
+        "width": 480.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 480,
+        "height": 238,
+        "motionFilter": null,
+        "x": -72,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 0,
+        "y": 360.396,
+        "width": 480.528,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "4:3",
+      "rowId": "neg-top",
+      "position": {
+        "x": 0.3337,
+        "y": -0.05,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 480.0,
+        "y": -54.0,
+        "width": 316.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 316,
+        "height": 360,
+        "motionFilter": null,
+        "x": 480,
+        "y": -54
+      },
+      "legacyPreviewBoxPx": {
+        "x": 480.528,
+        "y": 0,
+        "width": 316.8,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 302.0,
+        "width": 238.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 238,
+        "motionFilter": null,
+        "x": 302,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 302.40000000000003,
+        "width": 237.6,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h01",
+      "position": {
+        "x": 0.28,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 360.0,
+        "width": 360.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 238,
+        "motionFilter": null,
+        "x": 302,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 360.396,
+        "width": 360.396,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h02",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 540.0,
+        "width": 476.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 360,
+        "motionFilter": null,
+        "x": 302,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 540.108,
+        "width": 475.2,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 769.9999999999999,
+        "width": 238.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 360,
+        "motionFilter": null,
+        "x": 360,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 771.4440000000001,
+        "width": 237.6,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h04",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 302.0,
+        "width": 360.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 476,
+        "motionFilter": null,
+        "x": 360,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 302.40000000000003,
+        "width": 360.396,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h05",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 360.0,
+        "width": 476.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 476,
+        "motionFilter": null,
+        "x": 360,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 360.396,
+        "width": 475.2,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h06",
+      "position": {
+        "x": 0.5001,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 540.0,
+        "width": 238.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 238,
+        "motionFilter": null,
+        "x": 540,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 540.108,
+        "width": 237.6,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h07",
+      "position": {
+        "x": 0.5001,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 769.9999999999999,
+        "width": 360.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 238,
+        "motionFilter": null,
+        "x": 540,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 771.4440000000001,
+        "width": 360.396,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h08",
+      "position": {
+        "x": 0.5001,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 302.0,
+        "width": 476.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 360,
+        "motionFilter": null,
+        "x": 540,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 302.40000000000003,
+        "width": 475.2,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h09",
+      "position": {
+        "x": 0.7143,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 360.0,
+        "width": 238.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 360,
+        "motionFilter": null,
+        "x": 770,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 360.396,
+        "width": 237.6,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h10",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 540.0,
+        "width": 360.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 476,
+        "motionFilter": null,
+        "x": 770,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 540.108,
+        "width": 308.5559999999999,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "h11",
+      "position": {
+        "x": 0.7143,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 769.9999999999999,
+        "width": 476.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 476,
+        "motionFilter": null,
+        "x": 770,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 771.4440000000001,
+        "width": 308.5559999999999,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.6077746776921858e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.6077746776921858e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 302.0,
+        "width": 238.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 238,
+        "motionFilter": null,
+        "x": 302,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 302.40000000000003,
+        "width": 237.6,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v01",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 302.0,
+        "width": 360.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 360,
+        "motionFilter": null,
+        "x": 302,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 302.40000000000003,
+        "width": 360.396,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v02",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 302.0,
+        "width": 476.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 476,
+        "motionFilter": null,
+        "x": 360,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 302.40000000000003,
+        "width": 475.2,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 360.0,
+        "width": 238.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 238,
+        "motionFilter": null,
+        "x": 360,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 360.396,
+        "width": 237.6,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v04",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 360.0,
+        "width": 360.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 360,
+        "motionFilter": null,
+        "x": 540,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 360.396,
+        "width": 360.396,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v05",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 540.0,
+        "y": 360.0,
+        "width": 476.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 476,
+        "motionFilter": null,
+        "x": 540,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 540.108,
+        "y": 360.396,
+        "width": 475.2,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v06",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 540.0,
+        "width": 238.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 238,
+        "motionFilter": null,
+        "x": 770,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 540.108,
+        "width": 237.6,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v07",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 769.9999999999999,
+        "y": 540.0,
+        "width": 360.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 360,
+        "motionFilter": null,
+        "x": 770,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 771.4440000000001,
+        "y": 540.108,
+        "width": 308.5559999999999,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v08",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 540.0,
+        "width": 476.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 476,
+        "motionFilter": null,
+        "x": 302,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 540.108,
+        "width": 475.2,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v09",
+      "position": {
+        "x": 0.28,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 769.9999999999999,
+        "width": 238.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 238,
+        "motionFilter": null,
+        "x": 302,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 771.4440000000001,
+        "width": 237.6,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v10",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 769.9999999999999,
+        "width": 360.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 360,
+        "motionFilter": null,
+        "x": 360,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 771.4440000000001,
+        "width": 360.396,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "v11",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": 769.9999999999999,
+        "width": 476.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 476,
+        "height": 476,
+        "motionFilter": null,
+        "x": 360,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 771.4440000000001,
+        "width": 475.2,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "oob-right",
+      "position": {
+        "x": 0.9001,
+        "y": 0.2801,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 972.0,
+        "y": 302.0,
+        "width": 360.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 238,
+        "motionFilter": null,
+        "x": 972,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 972.1080000000001,
+        "y": 302.50800000000004,
+        "width": 107.89199999999998,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "oob-bottom",
+      "position": {
+        "x": 0.28,
+        "y": 0.8801,
+        "width": 0.22,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 302.0,
+        "y": 950.0,
+        "width": 238.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 476,
+        "motionFilter": null,
+        "x": 302,
+        "y": 950
+      },
+      "legacyPreviewBoxPx": {
+        "x": 302.40000000000003,
+        "y": 950.508,
+        "width": 237.6,
+        "height": 129.49200000000002
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "neg-left",
+      "position": {
+        "x": -0.05,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": -54.0,
+        "y": 360.0,
+        "width": 360.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 360,
+        "height": 238,
+        "motionFilter": null,
+        "x": -54,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 0,
+        "y": 360.396,
+        "width": 360.396,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "1:1",
+      "rowId": "neg-top",
+      "position": {
+        "x": 0.3337,
+        "y": -0.05,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 360.0,
+        "y": -54.0,
+        "width": 238.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 238,
+        "height": 360,
+        "motionFilter": null,
+        "x": 360,
+        "y": -54
+      },
+      "legacyPreviewBoxPx": {
+        "x": 360.396,
+        "y": 0,
+        "width": 237.6,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 302.0,
+        "width": 564.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 238,
+        "motionFilter": null,
+        "x": 716,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 302.40000000000003,
+        "width": 563.2,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h01",
+      "position": {
+        "x": 0.28,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 360.0,
+        "width": 854.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 238,
+        "motionFilter": null,
+        "x": 716,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 360.396,
+        "width": 854.2719999999999,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h02",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 540.0,
+        "width": 1126.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 360,
+        "motionFilter": null,
+        "x": 716,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 540.108,
+        "width": 1126.4,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": 769.9999999999999,
+        "width": 564.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 360,
+        "motionFilter": null,
+        "x": 854,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 771.4440000000001,
+        "width": 563.2,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h04",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": 302.0,
+        "width": 854.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 476,
+        "motionFilter": null,
+        "x": 854,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 302.40000000000003,
+        "width": 854.2719999999999,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h05",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": 360.0,
+        "width": 1126.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 476,
+        "motionFilter": null,
+        "x": 854,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 360.396,
+        "width": 1126.4,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h06",
+      "position": {
+        "x": 0.5001,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1280.0,
+        "y": 540.0,
+        "width": 564.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 238,
+        "motionFilter": null,
+        "x": 1280,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1280.2559999999999,
+        "y": 540.108,
+        "width": 563.2,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h07",
+      "position": {
+        "x": 0.5001,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1280.0,
+        "y": 769.9999999999999,
+        "width": 854.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 238,
+        "motionFilter": null,
+        "x": 1280,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1280.2559999999999,
+        "y": 771.4440000000001,
+        "width": 854.2719999999999,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h08",
+      "position": {
+        "x": 0.5001,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1280.0,
+        "y": 302.0,
+        "width": 1126.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1280,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1280.2559999999999,
+        "y": 302.40000000000003,
+        "width": 1126.4,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h09",
+      "position": {
+        "x": 0.7143,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1828.0,
+        "y": 360.0,
+        "width": 564.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1828,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1828.6080000000002,
+        "y": 360.396,
+        "width": 563.2,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h10",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1828.0,
+        "y": 540.0,
+        "width": 854.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 476,
+        "motionFilter": null,
+        "x": 1828,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1828.6080000000002,
+        "y": 540.108,
+        "width": 731.3919999999998,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "h11",
+      "position": {
+        "x": 0.7143,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1828.0,
+        "y": 769.9999999999999,
+        "width": 1126.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 476,
+        "motionFilter": null,
+        "x": 1828,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1828.6080000000002,
+        "y": 771.4440000000001,
+        "width": 731.3919999999998,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v00",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 302.0,
+        "width": 564.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 238,
+        "motionFilter": null,
+        "x": 716,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 302.40000000000003,
+        "width": 563.2,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v01",
+      "position": {
+        "x": 0.28,
+        "y": 0.28,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 302.0,
+        "width": 854.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 360,
+        "motionFilter": null,
+        "x": 716,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 302.40000000000003,
+        "width": 854.2719999999999,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v02",
+      "position": {
+        "x": 0.3337,
+        "y": 0.28,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": 302.0,
+        "width": 1126.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 476,
+        "motionFilter": null,
+        "x": 854,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 302.40000000000003,
+        "width": 1126.4,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v03",
+      "position": {
+        "x": 0.3337,
+        "y": 0.3337,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": 360.0,
+        "width": 564.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 238,
+        "motionFilter": null,
+        "x": 854,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 360.396,
+        "width": 563.2,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v04",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1280.0,
+        "y": 360.0,
+        "width": 854.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1280,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1280.2559999999999,
+        "y": 360.396,
+        "width": 854.2719999999999,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v05",
+      "position": {
+        "x": 0.5001,
+        "y": 0.3337,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1280.0,
+        "y": 360.0,
+        "width": 1126.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 476,
+        "motionFilter": null,
+        "x": 1280,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1280.2559999999999,
+        "y": 360.396,
+        "width": 1126.4,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v06",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1828.0,
+        "y": 540.0,
+        "width": 564.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 238,
+        "motionFilter": null,
+        "x": 1828,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1828.6080000000002,
+        "y": 540.108,
+        "width": 563.2,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v07",
+      "position": {
+        "x": 0.7143,
+        "y": 0.5001,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 1828.0,
+        "y": 540.0,
+        "width": 854.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 360,
+        "motionFilter": null,
+        "x": 1828,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 1828.6080000000002,
+        "y": 540.108,
+        "width": 731.3919999999998,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v08",
+      "position": {
+        "x": 0.28,
+        "y": 0.5001,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 540.0,
+        "width": 1126.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 476,
+        "motionFilter": null,
+        "x": 716,
+        "y": 540
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 540.108,
+        "width": 1126.4,
+        "height": 475.2
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v09",
+      "position": {
+        "x": 0.28,
+        "y": 0.7143,
+        "width": 0.22,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 769.9999999999999,
+        "width": 564.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 238,
+        "motionFilter": null,
+        "x": 716,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 771.4440000000001,
+        "width": 563.2,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 1.1368683772161603e-13,
+        "BL": 1.1368683772161603e-13
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v10",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.3337,
+        "height": 0.3337
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": 769.9999999999999,
+        "width": 854.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 360,
+        "motionFilter": null,
+        "x": 854,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 771.4440000000001,
+        "width": 854.2719999999999,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "v11",
+      "position": {
+        "x": 0.3337,
+        "y": 0.7143,
+        "width": 0.44,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": 769.9999999999999,
+        "width": 1126.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 1126,
+        "height": 476,
+        "motionFilter": null,
+        "x": 854,
+        "y": 770
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 771.4440000000001,
+        "width": 1126.4,
+        "height": 308.5559999999999
+      },
+      "cornerDeltasPx": {
+        "TL": 1.1368683772161603e-13,
+        "TR": 1.1368683772161603e-13,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 1.1368683772161603e-13,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "oob-right",
+      "position": {
+        "x": 0.9001,
+        "y": 0.2801,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 2304.0,
+        "y": 302.0,
+        "width": 854.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 238,
+        "motionFilter": null,
+        "x": 2304,
+        "y": 302
+      },
+      "legacyPreviewBoxPx": {
+        "x": 2304.256,
+        "y": 302.50800000000004,
+        "width": 255.74399999999997,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "oob-bottom",
+      "position": {
+        "x": 0.28,
+        "y": 0.8801,
+        "width": 0.22,
+        "height": 0.44
+      },
+      "outOfBounds": true,
+      "negativeOrigin": false,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 716.0,
+        "y": 950.0,
+        "width": 564.0,
+        "height": 476.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 476,
+        "motionFilter": null,
+        "x": 716,
+        "y": 950
+      },
+      "legacyPreviewBoxPx": {
+        "x": 716.8000000000001,
+        "y": 950.508,
+        "width": 563.2,
+        "height": 129.49200000000002
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "neg-left",
+      "position": {
+        "x": -0.05,
+        "y": 0.3337,
+        "width": 0.3337,
+        "height": 0.22
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": -128.0,
+        "y": 360.0,
+        "width": 854.0,
+        "height": 238.0
+      },
+      "exportBoxPx": {
+        "width": 854,
+        "height": 238,
+        "motionFilter": null,
+        "x": -128,
+        "y": 360
+      },
+      "legacyPreviewBoxPx": {
+        "x": 0,
+        "y": 360.396,
+        "width": 854.2719999999999,
+        "height": 237.6
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    },
+    {
+      "frameId": "21:9",
+      "rowId": "neg-top",
+      "position": {
+        "x": 0.3337,
+        "y": -0.05,
+        "width": 0.22,
+        "height": 0.3337
+      },
+      "outOfBounds": false,
+      "negativeOrigin": true,
+      "offGrid": true,
+      "previewBoxPx": {
+        "x": 854.0,
+        "y": -54.0,
+        "width": 564.0,
+        "height": 360.0
+      },
+      "exportBoxPx": {
+        "width": 564,
+        "height": 360,
+        "motionFilter": null,
+        "x": 854,
+        "y": -54
+      },
+      "legacyPreviewBoxPx": {
+        "x": 854.2719999999999,
+        "y": 0,
+        "width": 563.2,
+        "height": 360.396
+      },
+      "cornerDeltasPx": {
+        "TL": 0.0,
+        "TR": 0.0,
+        "BR": 0.0,
+        "BL": 0.0
+      },
+      "maxCornerDeltaPx": 0.0,
+      "pixelIdentical": true
+    }
+  ],
+  "pass": true
+}

@@ -1,0 +1,183 @@
+{
+  "metric": "Q6",
+  "title": "Zero regression — B0 is executed, not quoted",
+  "baselineCommit": "d4df938",
+  "gitHead": {
+    "head": "a856de9856417017816815dde9ff4a7d6733beae",
+    "branch": "feat/remove-user-system",
+    "subject": "fix: parse the aspect-ratio table with an exec loop so tsc passes"
+  },
+  "frozenCommands": {
+    "baselineCommit": "d4df938",
+    "videoSide": {
+      "presets": 16,
+      "filtergraphChars": {
+        "min": 1074,
+        "max": 4271
+      },
+      "differing": {},
+      "pass": true
+    },
+    "motionlessOverlay": {
+      "baseline": {
+        "filterComplex": "[1:v]scale=960:432:force_original_aspect_ratio=decrease,pad=960:432:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:216:enable='between(t,1.0,5.0)'[v0]",
+        "hasLoopInput": false,
+        "inputFlags": [
+          "-y",
+          "-i",
+          "-i",
+          "-filter_complex",
+          "-map",
+          "-map",
+          "-c:a",
+          "-c:v"
+        ],
+        "signature": "(image_items: List, video_path: str, output_path: str, ctx: app.services.video_composition_service.OverlayPassContext) -> bool"
+      },
+      "head": {
+        "filterComplex": "[1:v]scale=960:432:force_original_aspect_ratio=decrease,pad=960:432:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:216:enable='between(t,1.0,5.0)'[v0]",
+        "hasLoopInput": false,
+        "inputFlags": [
+          "-y",
+          "-i",
+          "-i",
+          "-filter_complex",
+          "-map",
+          "-map",
+          "-c:a",
+          "-c:v"
+        ],
+        "signature": "(image_items: List, video_path: str, output_path: str, ctx: app.services.video_composition_service.OverlayPassContext) -> bool"
+      },
+      "pass": true
+    },
+    "imageSideOnGrid": {
+      "positions": [
+        {
+          "height": 0.3,
+          "id": "og-a",
+          "width": 0.3,
+          "x": 0.1,
+          "y": 0.1
+        },
+        {
+          "height": 0.3,
+          "id": "og-b",
+          "width": 0.4,
+          "x": 0.5,
+          "y": 0.2
+        },
+        {
+          "height": 0.5,
+          "id": "og-c",
+          "width": 0.5,
+          "x": 0.25,
+          "y": 0.25
+        }
+      ],
+      "chars": 480,
+      "headFilterComplex": "[1:v]scale=576:324:force_original_aspect_ratio=decrease,pad=576:324:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:108:enable='between(t,1.0,5.0)'[v0];[2:v]scale=768:324:force_original_aspect_ratio=decrease,pad=768:324:(ow-iw)/2:(oh-ih)/2:black@0[img1];[v0][img1]overlay=960:216:enable='between(t,1.0,5.0)'[v1];[3:v]scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2:black@0[img2];[v1][img2]overlay=480:270:enable='between(t,1.0,5.0)'[v2]",
+      "baselineFilterComplex": "[1:v]scale=576:324:force_original_aspect_ratio=decrease,pad=576:324:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:108:enable='between(t,1.0,5.0)'[v0];[2:v]scale=768:324:force_original_aspect_ratio=decrease,pad=768:324:(ow-iw)/2:(oh-ih)/2:black@0[img1];[v0][img1]overlay=960:216:enable='between(t,1.0,5.0)'[v1];[3:v]scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2:black@0[img2];[v1][img2]overlay=480:270:enable='between(t,1.0,5.0)'[v2]",
+      "identical": true,
+      "pass": true
+    },
+    "defaultPosition": {
+      "headFilterComplex": "[1:v]scale=1536:864:force_original_aspect_ratio=decrease,pad=1536:864:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:108:enable='between(t,1.0,5.0)'[v0]",
+      "baselineFilterComplex": "[1:v]scale=576:324:force_original_aspect_ratio=decrease,pad=576:324:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:108:enable='between(t,1.0,5.0)'[v0]",
+      "expectedToDiffer": true,
+      "note": "DD-6 changes this on purpose; Q5 owns the verdict, Q6 only records both readings."
+    },
+    "pass": true
+  },
+  "defaultPosition": {
+    "headFilterComplex": "[1:v]scale=1536:864:force_original_aspect_ratio=decrease,pad=1536:864:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:108:enable='between(t,1.0,5.0)'[v0]",
+    "baselineFilterComplex": "[1:v]scale=576:324:force_original_aspect_ratio=decrease,pad=576:324:(ow-iw)/2:(oh-ih)/2:black@0[img0];[0:v][img0]overlay=192:108:enable='between(t,1.0,5.0)'[v0]",
+    "expectedToDiffer": true,
+    "note": "DD-6 changes this on purpose; Q5 owns the verdict, Q6 only records both readings."
+  },
+  "frontend": {
+    "head": {
+      "exit": 1,
+      "summary": [
+        "Test Files  2 failed | 198 passed (200)",
+        "Tests  3 failed | 1680 passed (1683)"
+      ],
+      "failingFiles": [
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+        "src/lib/api/server/__tests__/backend-proxy.test.ts"
+      ]
+    },
+    "baseline": {
+      "checked": true,
+      "commit": "d4df938",
+      "files": [
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+        "src/lib/api/server/__tests__/backend-proxy.test.ts"
+      ],
+      "exit": 1,
+      "failingAtBaseline": [
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+        "src/lib/api/server/__tests__/backend-proxy.test.ts"
+      ],
+      "summary": [
+        "Test Files  2 failed (2)",
+        "Tests  3 failed | 21 passed (24)"
+      ]
+    },
+    "newFailures": [],
+    "pass": true
+  },
+  "backend": {
+    "targetedSuites": {
+      "files": [
+        "tests/test_camera_motion_overlay.py",
+        "tests/test_image_overlay_no_silent_drop.py",
+        "tests/test_camera_motion_geometry.py",
+        "tests/test_filtergraph_builder.py",
+        "tests/test_overlay_box.py"
+      ],
+      "exit": 0,
+      "summary": {
+        "line": "77 passed in 4.65s",
+        "collected": 77
+      },
+      "pass": true,
+      "log": "logs/q6-pytest-targeted.log"
+    },
+    "compositionSubset": {
+      "selector": "composition or filtergraph or camera or overlay or scaling or transition",
+      "excludedUncollectable": {
+        "tests/test_content_polish_api.py": "SyntaxError: bytes can only contain ASCII literal characters",
+        "tests/test_tts_api.py": "AttributeError: module pytest has no attribute config (pytest>=4)"
+      },
+      "headSummary": {
+        "line": "17 failed, 142 passed, 944 deselected, 1 error in 63.89s (0:01:03)",
+        "collected": 159
+      },
+      "baselineSummary": {
+        "line": "17 failed, 127 passed, 1044 deselected, 1 error in 71.77s (0:01:11)",
+        "collected": 144
+      },
+      "headFailingFiles": [
+        "tests/test_video_composition.py",
+        "tests/test_video_composition_enhanced.py",
+        "tests/test_video_composition_pexels_retry.py",
+        "tests/test_video_composition_timeline.py",
+        "tests/test_video_composition_timeline_order.py"
+      ],
+      "baselineFailingFiles": [
+        "tests/test_video_composition.py",
+        "tests/test_video_composition_enhanced.py",
+        "tests/test_video_composition_pexels_retry.py",
+        "tests/test_video_composition_timeline.py",
+        "tests/test_video_composition_timeline_order.py"
+      ],
+      "newFailures": [],
+      "noLongerFailing": [],
+      "identicalFailureSet": true,
+      "pass": true
+    },
+    "pass": true
+  },
+  "pass": true
+}

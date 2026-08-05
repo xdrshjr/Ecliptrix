@@ -1,0 +1,7 @@
+{
+  "name": "camera-motion-preview-harness",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electron harness that runs the shipping preview compositor for the M2 / M3 camera-motion experiments.",
+  "main": "main.js"
+}
