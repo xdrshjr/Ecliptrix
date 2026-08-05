@@ -374,7 +374,8 @@ export class MultiTrackPlaybackEngine {
   private _assemble(videoEntries: ActiveVideoEntry[], comp: number): CompositorLayer[] {
     if (!this._deps) return [];
     const tl = this._deps.timeline;
-    const maxWidth = this._deps.canvas.width * DEFAULT_SUBTITLE_MAX_WIDTH_FRACTION;
+    const canvas = this._deps.canvas;
+    const maxWidth = canvas.width * DEFAULT_SUBTITLE_MAX_WIDTH_FRACTION;
     return assembleLayers({
       videoEntries,
       subtitleItems: tl.getSubtitleItems(),
@@ -382,6 +383,9 @@ export class MultiTrackPlaybackEngine {
       t: comp,
       subtitleMaxWidthPx: maxWidth,
       measureSubtitle: this._measure,
+      // The 2D camera-motion coverage guarantee is aspect-dependent; feeding the
+      // live canvas shape keeps preview and export on the same framing.
+      canvasAspect: canvas.height > 0 ? canvas.width / canvas.height : undefined,
     });
   }
 

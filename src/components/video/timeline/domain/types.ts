@@ -80,6 +80,12 @@ export interface TimelineItemData {
   transitionIn?: SequenceTransitionData;
   /** Fade-out / cross-dissolve on this clip's trailing edge (spec 02 §2.4). */
   transitionOut?: SequenceTransitionData;
+  /**
+   * 2D / 3D 运镜 attached to this clip
+   * (docs/plans/timeline-camera-motion/experiment-plan.md §5). Optional, so old
+   * project files load unchanged and simply have no motion.
+   */
+  cameraMotion?: CameraMotionData;
 }
 
 /**
@@ -90,6 +96,37 @@ export interface TimelineItemData {
 export interface SequenceTransitionData {
   type: 'fade' | 'dissolve';
   duration: number;
+}
+
+/**
+ * One endpoint of a camera move. Structurally identical to
+ * `playback/types.CameraMotionState`; redeclared here for the same reason
+ * {@link SequenceTransitionData} is — the domain DTO layer must not depend on
+ * the playback module.
+ */
+export interface CameraMotionStateData {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+  roll: number;
+  yaw: number;
+  pitch: number;
+  dolly: number;
+}
+
+/**
+ * Camera-motion metadata carried on a timeline item. Structurally identical to
+ * `playback/types.CameraMotion`.
+ */
+export interface CameraMotionData {
+  presetId: string;
+  space: '2d' | '3d';
+  from: CameraMotionStateData;
+  to: CameraMotionStateData;
+  easing: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+  startRatio: number;
+  endRatio: number;
+  intensity: number;
 }
 
 /**
@@ -195,6 +232,7 @@ export interface CreateItemProps {
   audioDetached?: boolean;
   transitionIn?: SequenceTransitionData;
   transitionOut?: SequenceTransitionData;
+  cameraMotion?: CameraMotionData;
 }
 
 // ---------------------------------------------------------------------------

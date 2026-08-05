@@ -99,6 +99,19 @@ export type CompositorLayer =
       /** Effective opacity = item.opacity * transition alpha, in [0,1]. */
       opacity: number;
       z: number;
+      /**
+       * Camera-motion (2D/3D 运镜) sample for this frame — the TIME stage only.
+       *
+       * `assembleLayers` folds `t` into a scalar {@link CameraMotionState}; the
+       * PIXEL stage (homography → affine / perspective quad) happens inside the
+       * compositor where the canvas + intrinsic sizes are known. Keeping the two
+       * apart is what lets the pure layer assembler stay DOM/canvas free
+       * (timeline-camera-motion plan §3.1 / R-P0-1).
+       */
+      motion?: {
+        space: CameraMotionSpace;
+        state: CameraMotionState;
+      };
     }
   | {
       kind: 'subtitle';
@@ -126,6 +139,102 @@ export type CompositorLayer =
 export interface SequenceTransition {
   type: 'fade' | 'dissolve';
   duration: number;
+}
+
+// ---------------------------------------------------------------------------
+// Camera motion (2D / 3D 运镜) — shared preview ⇄ export contract.
+//
+// Plan: docs/plans/timeline-camera-motion/experiment-plan.md §3 / §5.
+// The Python mirror lives in
+// backend-services/basic-service/app/services/composition/camera_motion.py and
+// MUST stay numerically identical (locked by the D1 golden vectors).
+// ---------------------------------------------------------------------------
+
+/** `2d` = affine only (末行 [0,0,1]); `3d` = true perspective homography. */
+export type CameraMotionSpace = '2d' | '3d';
+
+/** Closed-form cubic easings — chosen so TS and Python agree bit-for-bit. */
+export type CameraMotionEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+
+/**
+ * One endpoint of a camera move. 2D presets only use the first four fields.
+ *
+ * The neutral state `N = { scale:1, offsetX:0, offsetY:0, roll:0, yaw:0,
+ * pitch:0, dolly:1 }` is the identity transform; `intensity` scales the
+ * *offset from N* (plan §3.3), so `intensity = 0` is a true identity even for
+ * presets whose `from` differs from N (e.g. Zoom Out).
+ */
+export interface CameraMotionState {
+  /** Uniform zoom. 1 = the frame exactly fills the canvas. Must be > 0. */
+  scale: number;
+  /** Horizontal pan, normalized to the CANVAS width (not the fit-rect). */
+  offsetX: number;
+  /** Vertical pan, normalized to the CANVAS height. */
+  offsetY: number;
+  /** In-plane rotation, degrees (screen space, applied after projection). */
+  roll: number;
+  /** Rotation about the vertical axis, degrees (3D only). */
+  yaw: number;
+  /** Rotation about the horizontal axis, degrees (3D only). */
+  pitch: number;
+  /** Camera distance multiplier; 1 = neutral, >1 pulls back (3D only). */
+  dolly: number;
+}
+
+/** A camera move attached to one timeline clip. */
+export interface CameraMotion {
+  /** Preset id from `cameraMotionPresets`, or `'custom'` after manual tuning. */
+  presetId: string;
+  space: CameraMotionSpace;
+  from: CameraMotionState;
+  to: CameraMotionState;
+  easing: CameraMotionEasing;
+  /** Motion start as a fraction of the clip duration, [0,1). */
+  startRatio: number;
+  /** Motion end as a fraction of the clip duration, (startRatio,1]. */
+  endRatio: number;
+  /** Scales the offset from the neutral state. [0,2], default 1. */
+  intensity: number;
+}
+
+/** 3×3 row-major homography. For 2D moves the last row is exactly [0,0,1]. */
+export type Mat3 = readonly [
+  number, number, number,
+  number, number, number,
+  number, number, number,
+];
+
+/** Destination quad, corner order frozen as [TL, TR, BR, BL] (clockwise). */
+export type DestQuad = readonly [
+  number, number,
+  number, number,
+  number, number,
+  number, number,
+];
+
+/** One projected corner carrying its homogeneous divisor `w`. */
+export interface ProjectedCorner {
+  x: number;
+  y: number;
+  /** Homogeneous divisor before the perspective divide; > 0 when renderable. */
+  w: number;
+}
+
+/**
+ * Four projected corners in [TL, TR, BR, BL] order, `w` retained so the WebGL
+ * renderer can hand the GPU perspective-correct interpolation.
+ */
+export type PerspectiveQuad = readonly [
+  ProjectedCorner,
+  ProjectedCorner,
+  ProjectedCorner,
+  ProjectedCorner,
+];
+
+/** Canvas (or any rect) size in device pixels. */
+export interface CanvasSize {
+  width: number;
+  height: number;
 }
 
 /**

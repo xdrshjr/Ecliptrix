@@ -16,7 +16,10 @@ import {
   ADAPTIVE_WINDOW_FRAMES,
 } from './internal/constants';
 import { fitContain, type FitRect } from './internal/fitContain';
+import { affineFrom, cameraHomography, projectRect } from './CameraMotionLayer';
+import { PerspectiveQuadRenderer } from './PerspectiveQuadRenderer';
 import type {
+  CameraMotionState,
   CompositorLayer,
   CompositorStats,
   ICanvasCompositor,
@@ -89,6 +92,13 @@ export class CanvasCompositor implements ICanvasCompositor {
   private _droppedAtLastEmit = 0;
   private _onDroppedRate: ((sample: DroppedFrameRateEmit) => void) | null = null;
 
+  // 3D camera motion (timeline-camera-motion §4.2). Allocated lazily on the
+  // first `space:'3d'` layer so timelines without one never pay for a GL
+  // context; `_perspectiveUnavailable` latches a hard failure so we stop
+  // retrying every frame and quietly ride the 2D affine shadow instead.
+  private _perspective: PerspectiveQuadRenderer | null = null;
+  private _perspectiveUnavailable = false;
+
   constructor(now?: () => number) {
     this._now =
       now ??
@@ -134,6 +144,9 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._droppedAtLastEmit = 0;
     this._layerStats.clear();
     this._lastFrameDrewAny = false;
+    this._perspective?.release();
+    this._perspective = null;
+    this._perspectiveUnavailable = false;
   }
 
   setLetterbox(viewport: ICanvasViewport | null): void {
@@ -167,12 +180,16 @@ export class CanvasCompositor implements ICanvasCompositor {
     const intrinsicW = source.videoWidth || canvas.width;
     const intrinsicH = source.videoHeight || canvas.height;
 
+    // The canvas pixel ratio already equals the selected frame aspect ratio, so
+    // the video must keep its OWN intrinsic ratio here — passing
+    // targetAspectRatio would force the source to fill the frame and stretch it.
+    // Omitting it letterboxes/pillarboxes the video centered (letterboxColor
+    // fills the bars). See docs/diagnoses/preview-aspect-ratio-stretches-inner-video.
     const fit = fitContain({
       sourceWidth: intrinsicW,
       sourceHeight: intrinsicH,
       destWidth: canvas.width,
       destHeight: canvas.height,
-      targetAspectRatio: this._viewport?.aspectRatio,
     });
 
     ctx.fillStyle = this._viewport?.letterboxColor ?? DEFAULT_LETTERBOX_COLOR;
@@ -291,17 +308,36 @@ export class CanvasCompositor implements ICanvasCompositor {
     if (layer.opacity <= 0) return false;
     const intrinsicW = source.videoWidth || canvas.width;
     const intrinsicH = source.videoHeight || canvas.height;
+    // Keep the video at its OWN intrinsic ratio: the canvas pixel ratio already
+    // equals the selected frame ratio, so passing targetAspectRatio would
+    // stretch the source to fill the frame. Omitting it letterboxes/pillarboxes
+    // the video centered (letterboxColor fills the bars).
+    // See docs/diagnoses/preview-aspect-ratio-stretches-inner-video.
     const fit = fitContain({
       sourceWidth: intrinsicW,
       sourceHeight: intrinsicH,
       destWidth: canvas.width,
       destHeight: canvas.height,
-      targetAspectRatio: this._viewport?.aspectRatio,
     });
     if (fit.width <= 0 || fit.height <= 0) return false;
+
+    const motion = layer.motion;
     ctx.save();
     ctx.globalAlpha = clamp01(layer.opacity);
     try {
+      if (motion?.space === '3d' && this._drawPerspective(ctx, canvas, source, motion.state, fit)) {
+        ctx.restore();
+        return true;
+      }
+      if (motion) {
+        // `transform` (multiply), NOT `setTransform` (replace): the motion must
+        // compose with whatever base transform the host canvas already carries
+        // — e.g. the DPR scale on the panel's mini previews. See plan §4.1.
+        const affine = affineFrom(
+          cameraHomography(motion.state, { width: canvas.width, height: canvas.height }),
+        );
+        ctx.transform(affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+      }
       ctx.drawImage(source, fit.x, fit.y, fit.width, fit.height);
       ctx.restore();
       return true;
@@ -309,6 +345,48 @@ export class CanvasCompositor implements ICanvasCompositor {
       ctx.restore();
       return false;
     }
+  }
+
+  /**
+   * Draw a 3D camera-motion layer as a true perspective quad.
+   *
+   * Returns false — never throws, never leaves the canvas blank — when WebGL is
+   * unavailable or the quad is degenerate, so the caller falls through to the 2D
+   * affine shadow. Losing foreshortening is an acceptable degradation; a black
+   * frame is not (L6).
+   */
+  private _drawPerspective(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    source: HTMLVideoElement,
+    state: CameraMotionState,
+    fit: FitRect,
+  ): boolean {
+    const renderer = this._acquirePerspectiveRenderer();
+    if (!renderer) return false;
+    const size = { width: canvas.width, height: canvas.height };
+    // The quad is the VIDEO's fit-rect pushed through the canvas-space
+    // homography — the export side pushes the canvas rect through the same
+    // matrix, because normalization already baked the letterbox into its frames
+    // (plan §3.1 / R-P0-5).
+    const quad = projectRect(cameraHomography(state, size), fit);
+    const rendered = renderer.render(source, quad, size);
+    if (!rendered) return false;
+    ctx.drawImage(rendered, 0, 0);
+    return true;
+  }
+
+  /** Lazily allocate the WebGL renderer — only ever on the first 3D layer. */
+  private _acquirePerspectiveRenderer(): PerspectiveQuadRenderer | null {
+    if (this._perspectiveUnavailable) return null;
+    if (!this._perspective) this._perspective = new PerspectiveQuadRenderer();
+    if (!this._perspective.acquire()) {
+      this._perspectiveUnavailable = true;
+      this._perspective.release();
+      this._perspective = null;
+      return null;
+    }
+    return this._perspective;
   }
 
   private _drawImageLayer(

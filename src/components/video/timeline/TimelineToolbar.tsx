@@ -210,8 +210,11 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.effects,
       shortcut: t.timeline.shortcuts.effectsShortcut,
-      comingSoon: true,
-      disabled: true,
+      // Camera motion targets one clip, so the button is inert without a
+      // selection. Disabling with an explanatory tooltip beats opening an empty
+      // panel and telling the user off afterwards.
+      disabled: selectedItemsCount === 0,
+      title: selectedItemsCount === 0 ? t.timeline.cameraMotion.needSelection : undefined,
     },
     {
       id: 'transitions',
@@ -269,12 +272,15 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         aria-label={
           button.comingSoon
             ? `${button.label} — ${t.timeline.messages.featureComingSoon}`
-            : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
+            : button.title
+              ? `${button.label} — ${button.title}`
+              : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
         }
         title={
           button.comingSoon
             ? t.timeline.messages.featureComingSoon
-            : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
+            : button.title
+              ?? (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
         }
       >
         <span className={button.disabled ? 'opacity-50' : ''}>
@@ -286,7 +292,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           <div className="bg-background text-foreground text-xs px-3 py-2 rounded-md whitespace-nowrap border border-border">
             {button.comingSoon
               ? t.timeline.messages.featureComingSoon
-              : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)}
+              : button.title
+                ?? (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2">
               <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
             </div>

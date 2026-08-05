@@ -39,153 +39,12 @@ export interface Translations {
     aiModels: string;
     creativePossibilities: string;
   };
-  auth: {
-    login: string;
-    register: string;
-    loginRegister: string;
-    logout: string;
-    personalInfo: string;
-    accountSettings: string;
-    username: string;
-    password: string;
-    passwordPlaceholder: string;
-    loginButton: string;
-    registerButton: string;
-    welcomeBack: string;
-    welcomeBackMessage: string;
-    welcomeTitle: string;
-    welcomeSubtitle: string;
-    loginSuccess: string;
-    loginFailed: string;
-    invalidCredentials: string;
-    requiredFields: string;
-    loginRequiredForTasks: string;
-    loggingIn: string;
-    networkError: string;
-    networkTimeout: string;
-    // Desktop login gate (spec §6)
-    loginGateTitle: string;
-    loginGateSubtitle: string;
-    loginTagline: string;
-    usernamePlaceholder: string;
-    loginPasswordPlaceholder: string;
-    showPassword: string;
-    hidePassword: string;
-    capsLockOn: string;
-    sessionExpired: string;
-    feature1: string;
-    feature2: string;
-    feature3: string;
-  };
-  profile: {
-    title: string;
-    subtitle: string;
-    userInfo: string;
-    otherSettings: string;
-    userInfoDescription: string;
-    otherSettingsDescription: string;
-    avatar: string;
-    avatarUrlPlaceholder: string;
-    avatarUrlHelper: string;
-    username: string;
-    email: string;
-    fullName: string;
-    usernamePlaceholder: string;
-    emailPlaceholder: string;
-    fullNamePlaceholder: string;
-    save: string;
-    saving: string;
-    cancel: string;
-    noChanges: string;
-    saveSuccess: string;
-    saveError: string;
-    notifications: string;
-    emailNotifications: string;
-    emailNotificationsDesc: string;
-    pushNotifications: string;
-    pushNotificationsDesc: string;
-    marketingEmails: string;
-    marketingEmailsDesc: string;
-    privacy: string;
-    profileVisible: string;
-    profileVisibleDesc: string;
-    activityVisible: string;
-    activityVisibleDesc: string;
-    preferences: string;
-    language: string;
-    theme: string;
-    lightTheme: string;
-    darkTheme: string;
-    autoTheme: string;
-    saveSettings: string;
-    settingsSaveSuccess: string;
-    settingsSaveError: string;
-    autoSaveNote: string;
-    savingNote: string;
-    savedNote: string;
-    saveErrorNote: string;
-  };
   adminSettings: {
     title: string;
-    subtitle: string;
-    userManagement: string;
     systemSettings: string;
-    userManagementDesc: string;
     systemSettingsDesc: string;
-    registeredUsers: string;
-    totalUsers: string;
-    adminUsers: string;
-    regularUsers: string;
-    premiumUsers: string;
-    userId: string;
-    role: string;
-    status: string;
-    createdAt: string;
-    lastLogin: string;
-    active: string;
-    inactive: string;
-    actions: string;
-    edit: string;
-    delete: string;
     loading: string;
-    noUsers: string;
-    noUsersMatchFilter: string;
-    fetchError: string;
-    searchPlaceholder: string;
-    addUser: string;
-    createUser: string;
-    createUserTitle: string;
-    createUserDesc: string;
-    username: string;
-    usernamePlaceholder: string;
-    usernameRequired: string;
-    usernameMinLength: string;
-    usernameInvalidChars: string;
-    password: string;
-    passwordPlaceholder: string;
-    passwordRequired: string;
-    passwordMinLength: string;
-    fullName: string;
-    fullNamePlaceholder: string;
-    avatarUrl: string;
-    avatarUrlPlaceholder: string;
-    userRole: string;
-    userRoleAdmin: string;
-    userRoleRegular: string;
-    userRolePremium: string;
-    isAdmin: string;
-    isAdminDesc: string;
-    isActive: string;
-    isActiveDesc: string;
     cancel: string;
-    creating: string;
-    createSuccess: string;
-    createError: string;
-    usernameExists: string;
-    emailExists: string;
-    deleteUser: string;
-    deleteConfirmTitle: string;
-    deleteConfirmMessage: string;
     modelSettings: string;
     modelSettingsDesc: string;
     modelChat: string;
@@ -214,8 +73,6 @@ export interface Translations {
     modelUsingDb: string;
     modelDomestic: string;
     modelInternational: string;
-    authRequiredError: string;
-    sessionExpiredError: string;
     modelResetToDefault: string;
     modelParameters: string;
     modelSelectProvider: string;
@@ -297,87 +154,13 @@ export interface Translations {
     modelModelsFound: string;
     modelKeyNotSet: string;
     modelRequestFailed: string;
-    deleteConfirmUsername: string;
-    deleteConfirmEmail: string;
     confirmDelete: string;
     cancelDelete: string;
-    deleting: string;
-    deleteSuccess: string;
-    deleteError: string;
     // Role labels
-    roleRoot: string;
-    roleAdmin: string;
-    rolePremium: string;
-    roleRegular: string;
     // User management extras
-    superAdmin: string;
-    resetPassword: string;
-    resetPasswordTitle: string;
-    resetPasswordDesc: string;
-    resetPasswordSuccess: string;
-    resetPasswordError: string;
-    enableUser: string;
-    disableUser: string;
-    forceLogout: string;
-    forceLogoutSuccess: string;
-    forceLogoutError: string;
-    onlineUsers: string;
-    disabledUsers: string;
-    sessionInvalid: string;
-    inviteCode: string;
-    inviteCodePlaceholder: string;
-    loginHistory: string;
-    loginTime: string;
-    ipAddress: string;
-    deviceInfo: string;
-    loginResult: string;
-    loginSuccess: string;
-    loginFailed: string;
-    failureReason: string;
     // Enhanced user management UI
-    confirmPassword: string;
-    passwordMismatch: string;
-    emailPlaceholder: string;
-    emailInvalid: string;
-    editUser: string;
-    editUserTitle: string;
-    editUserDesc: string;
-    editSuccess: string;
-    editError: string;
     saving: string;
     save: string;
-    allRoles: string;
-    allStatus: string;
-    enabled: string;
-    disabled: string;
-    disableConfirmTitle: string;
-    disableConfirmMessage: string;
-    disableConfirmOnline: string;
-    forceLogoutConfirmTitle: string;
-    forceLogoutConfirmMessage: string;
-    deleteTypeUsername: string;
-    toggleStatusSuccess: string;
-    toggleStatusError: string;
-    autoGenerate: string;
-    manualSet: string;
-    generatePassword: string;
-    generatedPassword: string;
-    copyPassword: string;
-    copied: string;
-    resetPasswordWarning: string;
-    newPassword: string;
-    newPasswordPlaceholder: string;
-    confirmNewPassword: string;
-    noLoginHistory: string;
-    loginHistoryFor: string;
-    close: string;
-    previous: string;
-    next: string;
-    pageOf: string;
-    totalRecords: string;
-    perPage: string;
-    refresh: string;
-    user: string;
     // Settings panels - shared
     settingsUnsaved: string;
     settingsSaveSuccess: string;
@@ -661,6 +444,65 @@ export interface Translations {
         volumeControl: string;
         trackVolumeControl: string;
       };
+    cameraMotion: {
+      title: string;
+      subtitle: string;
+      openPanel: string;
+      needSelection: string;
+      needVideoClip: string;
+      trackLocked: string;
+      group2d: string;
+      group3d: string;
+      intensity: string;
+      easing: string;
+      easingLinear: string;
+      easingIn: string;
+      easingOut: string;
+      easingInOut: string;
+      range: string;
+      rangeStart: string;
+      rangeEnd: string;
+      reverse: string;
+      advanced: string;
+      scale: string;
+      offsetX: string;
+      offsetY: string;
+      roll: string;
+      yaw: string;
+      pitch: string;
+      dolly: string;
+      apply: string;
+      cancel: string;
+      remove: string;
+      removed: string;
+      applied: string;
+      badge: string;
+      contextAdd: string;
+      contextEdit: string;
+      contextRemove: string;
+      contextDetachAudio: string;
+      exportDegraded: string;
+      previewUnavailable: string;
+      presets: {
+        zoomIn: string;
+        zoomOut: string;
+        panLeft: string;
+        panRight: string;
+        tiltUp: string;
+        tiltDown: string;
+        rotateIn: string;
+        kenBurns: string;
+        orbitLeft: string;
+        orbitRight: string;
+        dive: string;
+        craneUp: string;
+        swingIn: string;
+        dollyIn3d: string;
+        boom: string;
+        spiral: string;
+        custom: string;
+      };
+    };
     shortcuts: {
       selectShortcut: string;
       cutShortcut: string;
@@ -2106,6 +1948,23 @@ export interface Translations {
     imageShortcutsLine1: string;
     imageShortcutsLine2: string;
     mediaShortcutsLine: string;
+    // Material preview modal redesign (docs/plans/material-preview-modal-redesign)
+    typeImage: string;
+    typeAudio: string;
+    typeVideo: string;
+    fitToScreen: string;
+    actualSize: string;
+    mute: string;
+    unmute: string;
+    seek: string;
+    volume: string;
+    download: string;
+    addToTimeline: string;
+    nowPlaying: string;
+    dialogAriaLabel: string;
+    loadFailed: string;
+    retry: string;
+    unsupportedType: string;
   };
   storyboardPack: {
     defaultTitle: string;
@@ -2562,152 +2421,12 @@ export const translations: Record<string, Translations> = {
       aiModels: 'AI Models',
       creativePossibilities: 'Creative Possibilities',
     },
-    auth: {
-      login: 'Login',
-      register: 'Register',
-      loginRegister: 'Login / Register',
-      logout: 'Logout',
-      personalInfo: 'Personal Info',
-      accountSettings: 'Account Settings',
-      username: 'Username',
-      password: 'Password',
-      passwordPlaceholder: 'Enter password (minimum 6 characters)',
-      loginButton: 'Login',
-      registerButton: 'Register',
-      welcomeBack: 'Welcome Back',
-      welcomeBackMessage: 'Welcome Back, {username}! ({role})',
-      welcomeTitle: 'Welcome to Ecliptrix',
-      welcomeSubtitle: 'Where light and shadow collide to create extraordinary content',
-      loginSuccess: 'Login successful',
-      loginFailed: 'Login failed',
-      invalidCredentials: 'Invalid username or password',
-      requiredFields: 'Username and password are required',
-      loginRequiredForTasks: 'Please sign in to use task features',
-      loggingIn: 'Logging in...',
-      networkError: 'Network error — please try again',
-      networkTimeout: 'Request timed out — please try again',
-      loginGateTitle: 'Sign in to Ecliptrix',
-      loginGateSubtitle: 'Enter your administrator account to continue',
-      loginTagline: 'Where light and shadow collide',
-      usernamePlaceholder: 'Enter your username',
-      loginPasswordPlaceholder: 'Enter your password',
-      showPassword: 'Show password',
-      hidePassword: 'Hide password',
-      capsLockOn: 'Caps Lock is on',
-      sessionExpired: 'Your session has expired. Please log in again.',
-      feature1: 'Professional video editing',
-      feature2: 'AI-powered content creation',
-      feature3: 'Creative brainstorming assistance',
-    },
-    profile: {
-      title: 'User Profile',
-      subtitle: 'Manage your account information and preferences',
-      userInfo: 'User Information',
-      otherSettings: 'Other Settings',
-      userInfoDescription: 'Update your personal information and profile details',
-      otherSettingsDescription: 'Configure notifications, privacy, and preferences',
-      avatar: 'Avatar',
-      avatarUrlPlaceholder: 'Enter avatar image URL',
-      avatarUrlHelper: 'Provide a URL to your profile image',
-      username: 'Username',
-      email: 'Email',
-      fullName: 'Full Name',
-      usernamePlaceholder: 'Enter your username',
-      emailPlaceholder: 'Enter your email address',
-      fullNamePlaceholder: 'Enter your full name',
-      save: 'Save Changes',
-      saving: 'Saving...',
-      cancel: 'Cancel',
-      noChanges: 'No changes',
-      saveSuccess: 'Profile updated successfully',
-      saveError: 'Failed to update profile',
-      notifications: 'Notifications',
-      emailNotifications: 'Email Notifications',
-      emailNotificationsDesc: 'Receive email updates about your account',
-      pushNotifications: 'Push Notifications',
-      pushNotificationsDesc: 'Receive browser push notifications',
-      marketingEmails: 'Marketing Emails',
-      marketingEmailsDesc: 'Receive promotional emails and updates',
-      privacy: 'Privacy',
-      profileVisible: 'Public Profile',
-      profileVisibleDesc: 'Allow others to view your profile',
-      activityVisible: 'Activity Visibility',
-      activityVisibleDesc: 'Show your activity to other users',
-      preferences: 'Preferences',
-      language: 'Language',
-      theme: 'Theme',
-      lightTheme: 'Light',
-      darkTheme: 'Dark',
-      autoTheme: 'Auto',
-      saveSettings: 'Save Settings',
-      settingsSaveSuccess: 'Settings saved successfully',
-      settingsSaveError: 'Failed to save settings',
-      autoSaveNote: 'Changes are saved automatically.',
-      savingNote: 'Saving…',
-      savedNote: 'Saved to your account',
-      saveErrorNote: 'Failed to save — will retry',
-    },
     adminSettings: {
       title: 'Admin Settings',
-      subtitle: 'Manage system settings and users',
-      userManagement: 'User Management',
       systemSettings: 'System Settings',
-      userManagementDesc: 'View and manage registered users',
       systemSettingsDesc: 'Configure system-wide settings',
-      registeredUsers: 'Registered Users',
-      totalUsers: 'Total Users',
-      adminUsers: 'Admin Users',
-      regularUsers: 'Users',
-      premiumUsers: 'Premium Users',
-      userId: 'User ID',
-      role: 'Role',
-      status: 'Status',
-      createdAt: 'Created',
-      lastLogin: 'Last Login',
-      active: 'Active',
-      inactive: 'Inactive',
-      actions: 'Actions',
-      edit: 'Edit',
-      delete: 'Delete',
       loading: 'Loading...',
-      noUsers: 'No users found',
-      noUsersMatchFilter: 'No users match your filters',
-      fetchError: 'Failed to fetch users',
-      searchPlaceholder: 'Search users...',
-      addUser: 'Add User',
-      createUser: 'Create User',
-      createUserTitle: 'Create New User',
-      createUserDesc: 'Fill in the form below to create a new user account',
-      username: 'Username',
-      usernamePlaceholder: 'Enter username (3-50 characters)',
-      usernameRequired: 'Username is required',
-      usernameMinLength: 'Username must be at least 3 characters',
-      usernameInvalidChars: 'Username can only contain letters, numbers, and underscores',
-      password: 'Password',
-      passwordPlaceholder: 'Enter password (minimum 6 characters)',
-      passwordRequired: 'Password is required',
-      passwordMinLength: 'Password must be at least 6 characters',
-      fullName: 'Full Name',
-      fullNamePlaceholder: 'Enter full name (optional)',
-      avatarUrl: 'Avatar URL',
-      avatarUrlPlaceholder: 'Enter avatar image URL (optional)',
-      userRole: 'User Role',
-      userRoleAdmin: 'Admin',
-      userRoleRegular: 'User',
-      userRolePremium: 'Premium',
-      isAdmin: 'Admin User',
-      isAdminDesc: 'Grant administrator privileges',
-      isActive: 'Active User',
-      isActiveDesc: 'User account is active and can log in',
       cancel: 'Cancel',
-      creating: 'Creating...',
-      createSuccess: 'User created successfully',
-      createError: 'Failed to create user',
-      usernameExists: 'Username already exists',
-      emailExists: 'Email already exists',
-      deleteUser: 'Delete User',
-      deleteConfirmTitle: 'Delete User',
-      deleteConfirmMessage: 'Are you sure you want to delete user {username}? This action cannot be undone.',
       modelSettings: 'Model Settings',
       modelSettingsDesc: 'Configure AI models for each function',
       modelChat: 'Chat',
@@ -2736,8 +2455,6 @@ export const translations: Record<string, Translations> = {
       modelUsingDb: 'Custom config active',
       modelDomestic: 'Domestic',
       modelInternational: 'International',
-      authRequiredError: 'Please log in to access Model Settings.',
-      sessionExpiredError: 'Your session has expired. Please log in again.',
       modelResetToDefault: 'Reset to Default',
       modelParameters: 'Parameters',
       modelSelectProvider: 'Select provider',
@@ -2819,87 +2536,13 @@ export const translations: Record<string, Translations> = {
       modelModelsFound: 'models found',
       modelKeyNotSet: 'Not set',
       modelRequestFailed: 'Request failed',
-      deleteConfirmUsername: 'Username',
-      deleteConfirmEmail: 'Email',
       confirmDelete: 'Delete',
       cancelDelete: 'Cancel',
-      deleting: 'Deleting...',
-      deleteSuccess: 'User deleted successfully',
-      deleteError: 'Failed to delete user',
       // Role labels
-      roleRoot: 'Super Admin',
-      roleAdmin: 'Admin',
-      rolePremium: 'Premium',
-      roleRegular: 'User',
       // User management extras
-      superAdmin: 'Super Admin',
-      resetPassword: 'Reset Password',
-      resetPasswordTitle: 'Reset Password',
-      resetPasswordDesc: 'Enter a new password for this user. Leave empty to generate a random password.',
-      resetPasswordSuccess: 'Password has been reset',
-      resetPasswordError: 'Failed to reset password',
-      enableUser: 'Enable',
-      disableUser: 'Disable',
-      forceLogout: 'Force Logout',
-      forceLogoutSuccess: 'User has been logged out',
-      forceLogoutError: 'Failed to force logout',
-      onlineUsers: 'Online Users',
-      disabledUsers: 'Disabled Users',
-      sessionInvalid: 'Your session has expired. Please log in again.',
-      inviteCode: 'Invite Code',
-      inviteCodePlaceholder: 'Enter invite code',
-      loginHistory: 'Login History',
-      loginTime: 'Login Time',
-      ipAddress: 'IP Address',
-      deviceInfo: 'Device',
-      loginResult: 'Result',
-      loginSuccess: 'Success',
-      loginFailed: 'Failed',
-      failureReason: 'Reason',
       // Enhanced user management UI
-      confirmPassword: 'Confirm Password',
-      passwordMismatch: 'Passwords do not match',
-      emailPlaceholder: 'Enter email (optional)',
-      emailInvalid: 'Invalid email format',
-      editUser: 'Edit User',
-      editUserTitle: 'Edit User',
-      editUserDesc: 'Modify user profile information',
-      editSuccess: 'User updated successfully',
-      editError: 'Failed to update user',
       saving: 'Saving...',
       save: 'Save',
-      allRoles: 'All Roles',
-      allStatus: 'All Status',
-      enabled: 'Enabled',
-      disabled: 'Disabled',
-      disableConfirmTitle: 'Disable User',
-      disableConfirmMessage: 'Are you sure you want to disable user {username}? They will not be able to log in.',
-      disableConfirmOnline: 'This user is currently online and will be logged out immediately.',
-      forceLogoutConfirmTitle: 'Force Logout',
-      forceLogoutConfirmMessage: 'Are you sure you want to force logout user {username}?',
-      deleteTypeUsername: 'Type the username to confirm:',
-      toggleStatusSuccess: 'User status updated',
-      toggleStatusError: 'Failed to update user status',
-      autoGenerate: 'Auto Generate',
-      manualSet: 'Manual Set',
-      generatePassword: 'Generate Password',
-      generatedPassword: 'Generated Password',
-      copyPassword: 'Copy',
-      copied: 'Copied!',
-      resetPasswordWarning: 'The user will be forced to log out and must use the new password to log in again.',
-      newPassword: 'New Password',
-      newPasswordPlaceholder: 'Enter new password (min 6 characters)',
-      confirmNewPassword: 'Confirm New Password',
-      noLoginHistory: 'No login history found',
-      loginHistoryFor: 'Login History for {username}',
-      close: 'Close',
-      previous: 'Previous',
-      next: 'Next',
-      pageOf: 'Page {current} of {total}',
-      totalRecords: '{count} records total',
-      perPage: 'per page',
-      refresh: 'Refresh',
-      user: 'User',
       // Settings panels - shared
       settingsUnsaved: 'Unsaved changes',
       settingsSaveSuccess: 'Settings saved successfully',
@@ -3389,6 +3032,65 @@ export const translations: Record<string, Translations> = {
         invalidJsonFile: 'Please select a JSON format project file',
         volumeControl: 'Volume Control',
         trackVolumeControl: '{type} Volume Control ({volume}%)',
+      },
+      cameraMotion: {
+        title: 'Camera Motion',
+        subtitle: '{name} · {duration}',
+        openPanel: 'Camera Motion',
+        needSelection: 'Select a video clip first, then add a camera motion',
+        needVideoClip: 'Camera motion applies to video clips only',
+        trackLocked: 'This track is locked — unlock it to edit the camera motion',
+        group2d: '2D Motion',
+        group3d: '3D Motion',
+        intensity: 'Intensity',
+        easing: 'Easing',
+        easingLinear: 'Linear',
+        easingIn: 'Ease In',
+        easingOut: 'Ease Out',
+        easingInOut: 'Ease In Out',
+        range: 'Range',
+        rangeStart: 'Start',
+        rangeEnd: 'End',
+        reverse: 'Reverse',
+        advanced: 'Advanced parameters',
+        scale: 'Scale',
+        offsetX: 'Pan X',
+        offsetY: 'Pan Y',
+        roll: 'Roll',
+        yaw: 'Yaw',
+        pitch: 'Pitch',
+        dolly: 'Dolly',
+        apply: 'Apply',
+        cancel: 'Cancel',
+        remove: 'Remove motion',
+        removed: 'Camera motion removed',
+        applied: 'Camera motion applied',
+        badge: 'Camera motion: {preset}',
+        contextAdd: 'Add camera motion...',
+        contextEdit: 'Edit camera motion...',
+        contextRemove: 'Remove camera motion',
+        contextDetachAudio: 'Detach audio',
+        exportDegraded: 'This FFmpeg build cannot animate camera motion, so the export used a fixed framing.',
+        previewUnavailable: '3D preview is unavailable on this device; showing a 2D approximation.',
+        presets: {
+          zoomIn: 'Zoom In',
+          zoomOut: 'Zoom Out',
+          panLeft: 'Pan Left',
+          panRight: 'Pan Right',
+          tiltUp: 'Tilt Up',
+          tiltDown: 'Tilt Down',
+          rotateIn: 'Rotate In',
+          kenBurns: 'Ken Burns',
+          orbitLeft: 'Orbit Left',
+          orbitRight: 'Orbit Right',
+          dive: 'Dive',
+          craneUp: 'Crane Up',
+          swingIn: 'Swing In',
+          dollyIn3d: 'Dolly In 3D',
+          boom: 'Boom',
+          spiral: 'Spiral',
+          custom: 'Custom',
+        },
       },
       shortcuts: {
         selectShortcut: 'V',
@@ -4640,6 +4342,22 @@ export const translations: Record<string, Translations> = {
       imageShortcutsLine1: 'Shortcuts: +/- zoom | 0 reset | ESC close',
       imageShortcutsLine2: 'Mouse: scroll zoom | drag to pan',
       mediaShortcutsLine: 'Shortcuts: Space play/pause | ESC close',
+      typeImage: 'Image',
+      typeAudio: 'Audio',
+      typeVideo: 'Video',
+      fitToScreen: 'Fit to screen',
+      actualSize: 'Actual size',
+      mute: 'Mute',
+      unmute: 'Unmute',
+      seek: 'Seek',
+      volume: 'Volume',
+      download: 'Download',
+      addToTimeline: 'Add to timeline',
+      nowPlaying: 'Now playing',
+      dialogAriaLabel: 'Material preview',
+      loadFailed: 'Failed to load this material',
+      retry: 'Retry',
+      unsupportedType: 'Preview not available for this type',
     },
     storyboardPack: {
       defaultTitle: 'Storyboard Pack',
@@ -5095,152 +4813,12 @@ export const translations: Record<string, Translations> = {
       aiModels: 'AI模型',
       creativePossibilities: '创意无限可能',
     },
-    auth: {
-      login: '登录',
-      register: '注册',
-      loginRegister: '登录/注册',
-      logout: '退出登录',
-      personalInfo: '个人信息',
-      accountSettings: '账号设置',
-      username: '用户名',
-      password: '密码',
-      passwordPlaceholder: '输入密码（至少6个字符）',
-      loginButton: '登录',
-      registerButton: '注册',
-      welcomeBack: '欢迎回来',
-      welcomeBackMessage: '欢迎回来，{username}！({role})',
-      welcomeTitle: '欢迎使用 Ecliptrix',
-      welcomeSubtitle: '光与影之交汇，创造非凡内容',
-      loginSuccess: '登录成功',
-      loginFailed: '登录失败',
-      invalidCredentials: '用户名或密码错误',
-      requiredFields: '用户名和密码为必填项',
-      loginRequiredForTasks: '请先登录后再使用任务功能',
-      loggingIn: '登录中...',
-      networkError: '网络异常，请稍后重试',
-      networkTimeout: '请求超时，请稍后重试',
-      loginGateTitle: '登录 Ecliptrix',
-      loginGateSubtitle: '请输入管理员账号以继续',
-      loginTagline: '光与影之交汇',
-      usernamePlaceholder: '请输入用户名',
-      loginPasswordPlaceholder: '请输入密码',
-      showPassword: '显示密码',
-      hidePassword: '隐藏密码',
-      capsLockOn: '大写锁定已开启',
-      sessionExpired: '会话已过期，请重新登录。',
-      feature1: '专业视频剪辑',
-      feature2: 'AI 智能内容创作',
-      feature3: '创意灵感辅助',
-    },
-    profile: {
-      title: '用户资料',
-      subtitle: '管理您的账户信息和偏好设置',
-      userInfo: '用户信息',
-      otherSettings: '其他设置',
-      userInfoDescription: '更新您的个人信息和资料详情',
-      otherSettingsDescription: '配置通知、隐私和偏好设置',
-      avatar: '头像',
-      avatarUrlPlaceholder: '输入头像图片链接',
-      avatarUrlHelper: '提供您的个人资料图片链接',
-      username: '用户名',
-      email: '邮箱',
-      fullName: '姓名',
-      usernamePlaceholder: '输入您的用户名',
-      emailPlaceholder: '输入您的邮箱地址',
-      fullNamePlaceholder: '输入您的姓名',
-      save: '保存更改',
-      saving: '保存中...',
-      cancel: '取消',
-      noChanges: '无变更',
-      saveSuccess: '资料更新成功',
-      saveError: '资料更新失败',
-      notifications: '通知设置',
-      emailNotifications: '邮件通知',
-      emailNotificationsDesc: '接收关于您账户的邮件更新',
-      pushNotifications: '推送通知',
-      pushNotificationsDesc: '接收浏览器推送通知',
-      marketingEmails: '营销邮件',
-      marketingEmailsDesc: '接收促销邮件和更新',
-      privacy: '隐私设置',
-      profileVisible: '公开资料',
-      profileVisibleDesc: '允许其他人查看您的资料',
-      activityVisible: '活动可见性',
-      activityVisibleDesc: '向其他用户显示您的活动',
-      preferences: '偏好设置',
-      language: '语言',
-      theme: '主题',
-      lightTheme: '浅色',
-      darkTheme: '深色',
-      autoTheme: '自动',
-      saveSettings: '保存设置',
-      settingsSaveSuccess: '设置保存成功',
-      settingsSaveError: '设置保存失败',
-      autoSaveNote: '更改会自动保存。',
-      savingNote: '正在保存…',
-      savedNote: '已保存到您的账户',
-      saveErrorNote: '保存失败，请稍后重试',
-    },
     adminSettings: {
       title: '管理员设置',
-      subtitle: '管理系统设置和用户',
-      userManagement: '用户管理',
       systemSettings: '系统设置',
-      userManagementDesc: '查看和管理注册用户',
       systemSettingsDesc: '配置系统级设置',
-      registeredUsers: '注册用户信息',
-      totalUsers: '总用户数',
-      adminUsers: '管理员用户',
-      regularUsers: '普通用户',
-      premiumUsers: '高级用户',
-      userId: '用户ID',
-      role: '角色',
-      status: '状态',
-      createdAt: '创建时间',
-      lastLogin: '最后登录',
-      active: '激活',
-      inactive: '未激活',
-      actions: '操作',
-      edit: '编辑',
-      delete: '删除',
       loading: '加载中...',
-      noUsers: '暂无用户',
-      noUsersMatchFilter: '未找到符合条件的用户',
-      fetchError: '获取用户列表失败',
-      searchPlaceholder: '搜索用户...',
-      addUser: '添加用户',
-      createUser: '创建用户',
-      createUserTitle: '创建新用户',
-      createUserDesc: '填写下方表单以创建新用户账户',
-      username: '用户名',
-      usernamePlaceholder: '输入用户名（3-50个字符）',
-      usernameRequired: '用户名为必填项',
-      usernameMinLength: '用户名至少需要3个字符',
-      usernameInvalidChars: '用户名只能包含字母、数字和下划线',
-      password: '密码',
-      passwordPlaceholder: '输入密码（至少6个字符）',
-      passwordRequired: '密码为必填项',
-      passwordMinLength: '密码至少需要6个字符',
-      fullName: '姓名',
-      fullNamePlaceholder: '输入姓名（可选）',
-      avatarUrl: '头像链接',
-      avatarUrlPlaceholder: '输入头像图片链接（可选）',
-      userRole: '用户角色',
-      userRoleAdmin: '管理员',
-      userRoleRegular: '普通用户',
-      userRolePremium: '高级用户',
-      isAdmin: '管理员用户',
-      isAdminDesc: '授予管理员权限',
-      isActive: '激活用户',
-      isActiveDesc: '用户账户已激活且可以登录',
       cancel: '取消',
-      creating: '创建中...',
-      createSuccess: '用户创建成功',
-      createError: '用户创建失败',
-      usernameExists: '用户名已存在',
-      emailExists: '邮箱已存在',
-      deleteUser: '删除用户',
-      deleteConfirmTitle: '删除用户',
-      deleteConfirmMessage: '确定要删除用户 {username} 吗？此操作无法撤销。',
       modelSettings: '模型设置',
       modelSettingsDesc: '为每个功能配置AI模型',
       modelChat: '主聊天',
@@ -5269,8 +4847,6 @@ export const translations: Record<string, Translations> = {
       modelUsingDb: '已自定义配置',
       modelDomestic: '国内',
       modelInternational: '国际',
-      authRequiredError: '请登录后访问模型设置。',
-      sessionExpiredError: '会话已过期，请重新登录。',
       modelResetToDefault: '恢复默认',
       modelParameters: '参数',
       modelSelectProvider: '选择供应商',
@@ -5352,87 +4928,13 @@ export const translations: Record<string, Translations> = {
       modelModelsFound: '个模型已获取',
       modelKeyNotSet: '未设置',
       modelRequestFailed: '请求失败',
-      deleteConfirmUsername: '用户名',
-      deleteConfirmEmail: '邮箱',
       confirmDelete: '删除',
       cancelDelete: '取消',
-      deleting: '删除中...',
-      deleteSuccess: '用户删除成功',
-      deleteError: '用户删除失败',
       // Role labels
-      roleRoot: '超级管理员',
-      roleAdmin: '管理员',
-      rolePremium: '高级用户',
-      roleRegular: '普通用户',
       // User management extras
-      superAdmin: '超级管理员',
-      resetPassword: '重置密码',
-      resetPasswordTitle: '重置密码',
-      resetPasswordDesc: '输入新密码。留空将生成随机密码。',
-      resetPasswordSuccess: '密码已重置',
-      resetPasswordError: '重置密码失败',
-      enableUser: '启用',
-      disableUser: '禁用',
-      forceLogout: '强制下线',
-      forceLogoutSuccess: '用户已下线',
-      forceLogoutError: '强制下线失败',
-      onlineUsers: '在线用户',
-      disabledUsers: '已禁用用户',
-      sessionInvalid: '您的会话已失效，请重新登录',
-      inviteCode: '邀请码',
-      inviteCodePlaceholder: '输入邀请码',
-      loginHistory: '登录历史',
-      loginTime: '登录时间',
-      ipAddress: 'IP地址',
-      deviceInfo: '设备信息',
-      loginResult: '结果',
-      loginSuccess: '成功',
-      loginFailed: '失败',
-      failureReason: '原因',
       // Enhanced user management UI
-      confirmPassword: '确认密码',
-      passwordMismatch: '两次输入的密码不一致',
-      emailPlaceholder: '输入邮箱（可选）',
-      emailInvalid: '邮箱格式不正确',
-      editUser: '编辑用户',
-      editUserTitle: '编辑用户',
-      editUserDesc: '修改用户资料信息',
-      editSuccess: '用户更新成功',
-      editError: '更新用户失败',
       saving: '保存中...',
       save: '保存',
-      allRoles: '全部角色',
-      allStatus: '全部状态',
-      enabled: '已启用',
-      disabled: '已禁用',
-      disableConfirmTitle: '禁用用户',
-      disableConfirmMessage: '确定要禁用用户 {username} 吗？该用户将无法登录。',
-      disableConfirmOnline: '该用户当前在线，禁用后将被立即下线。',
-      forceLogoutConfirmTitle: '强制下线',
-      forceLogoutConfirmMessage: '确定要强制下线用户 {username} 吗？',
-      deleteTypeUsername: '请输入用户名以确认：',
-      toggleStatusSuccess: '用户状态已更新',
-      toggleStatusError: '更新用户状态失败',
-      autoGenerate: '自动生成',
-      manualSet: '手动设置',
-      generatePassword: '生成密码',
-      generatedPassword: '生成的密码',
-      copyPassword: '复制',
-      copied: '已复制！',
-      resetPasswordWarning: '用户将被强制登出，需要使用新密码重新登录。',
-      newPassword: '新密码',
-      newPasswordPlaceholder: '输入新密码（至少6位）',
-      confirmNewPassword: '确认新密码',
-      noLoginHistory: '暂无登录历史',
-      loginHistoryFor: '{username} 的登录历史',
-      close: '关闭',
-      previous: '上一页',
-      next: '下一页',
-      pageOf: '第 {current}/{total} 页',
-      totalRecords: '共 {count} 条',
-      perPage: '每页',
-      refresh: '刷新',
-      user: '用户',
       // Settings panels - shared
       settingsUnsaved: '有未保存的更改',
       settingsSaveSuccess: '设置保存成功',
@@ -5922,6 +5424,65 @@ export const translations: Record<string, Translations> = {
         invalidJsonFile: '请选择JSON格式的项目文件',
         volumeControl: '音量控制',
         trackVolumeControl: '{type}音量控制 ({volume}%)',
+      },
+      cameraMotion: {
+        title: '运镜',
+        subtitle: '{name} · {duration}',
+        openPanel: '运镜',
+        needSelection: '请先选中一个视频片段，再添加运镜',
+        needVideoClip: '运镜只能应用于视频片段',
+        trackLocked: '该轨道已锁定，解锁后才能编辑运镜',
+        group2d: '2D 运镜',
+        group3d: '3D 运镜',
+        intensity: '强度',
+        easing: '缓动',
+        easingLinear: '匀速',
+        easingIn: '缓入',
+        easingOut: '缓出',
+        easingInOut: '缓入缓出',
+        range: '区间',
+        rangeStart: '起点',
+        rangeEnd: '终点',
+        reverse: '反转方向',
+        advanced: '高级参数',
+        scale: '缩放',
+        offsetX: '水平位移',
+        offsetY: '垂直位移',
+        roll: '画面旋转',
+        yaw: '左右摆动',
+        pitch: '俯仰',
+        dolly: '推轨距离',
+        apply: '应用',
+        cancel: '取消',
+        remove: '移除运镜',
+        removed: '已移除运镜',
+        applied: '已应用运镜',
+        badge: '运镜：{preset}',
+        contextAdd: '添加运镜…',
+        contextEdit: '编辑运镜…',
+        contextRemove: '移除运镜',
+        contextDetachAudio: '分离音频',
+        exportDegraded: '当前 FFmpeg 无法逐帧渲染运镜，导出已改用固定取景。',
+        previewUnavailable: '当前设备无法进行 3D 预览，已降级为 2D 近似效果。',
+        presets: {
+          zoomIn: '推近',
+          zoomOut: '拉远',
+          panLeft: '左摇',
+          panRight: '右摇',
+          tiltUp: '上移',
+          tiltDown: '下移',
+          rotateIn: '旋转推进',
+          kenBurns: '缓推平移',
+          orbitLeft: '环绕左',
+          orbitRight: '环绕右',
+          dive: '俯冲',
+          craneUp: '拉升',
+          swingIn: '翻页',
+          dollyIn3d: '透视推轨',
+          boom: '摇臂',
+          spiral: '螺旋',
+          custom: '自定义',
+        },
       },
       shortcuts: {
         selectShortcut: 'V',
@@ -7173,6 +6734,22 @@ export const translations: Record<string, Translations> = {
       imageShortcutsLine1: '快捷键: +/- 缩放 | 0 重置 | ESC 关闭',
       imageShortcutsLine2: '鼠标: 滚轮 缩放 | 拖拽 移动图片',
       mediaShortcutsLine: '快捷键: 空格 播放/暂停 | ESC 关闭',
+      typeImage: '图片',
+      typeAudio: '音频',
+      typeVideo: '视频',
+      fitToScreen: '适应屏幕',
+      actualSize: '原始尺寸',
+      mute: '静音',
+      unmute: '取消静音',
+      seek: '进度',
+      volume: '音量',
+      download: '下载',
+      addToTimeline: '添加到时间轴',
+      nowPlaying: '正在播放',
+      dialogAriaLabel: '素材预览',
+      loadFailed: '无法加载该素材',
+      retry: '重试',
+      unsupportedType: '该类型暂不支持预览',
     },
     storyboardPack: {
       defaultTitle: '分镜包',

@@ -29,6 +29,16 @@ export interface UISlice {
   showVolumeSlider: VolumeSliderState | null;
   editingSubtitleId: string | null;
   /**
+   * Item whose camera-motion (2D/3D 运镜) panel is open, or null when closed.
+   *
+   * Lives in the store rather than in TimelinePanel's local state because BOTH
+   * the toolbar (panel-owned) and a clip's context menu (three levels down,
+   * inside TimelineItem) open the same dialog — drilling a callback through
+   * TrackContainer and Track would couple two components that have nothing else
+   * to do with the feature. Transient; never part of the snapshot/history.
+   */
+  cameraMotionItemId: string | null;
+  /**
    * Item id flagged to be scrolled horizontally into view by the panel. Set
    * after a cross-track drag commit (fix C): autoOrganize repacks the target
    * track flush-from-0, so a short clip dropped onto a track that already holds
@@ -44,6 +54,8 @@ export interface UISlice {
   showVolumeSliderForTrack: (trackId: string, position: { x: number; y: number }) => void;
   hideVolumeSlider: () => void;
   setEditingSubtitle: (itemId: string | null) => void;
+  /** Open (or close, with null) the camera-motion panel for an item. */
+  setCameraMotionItem: (itemId: string | null) => void;
   /** Flag an item to be scrolled into view by the panel (fix C). */
   requestScrollItemIntoView: (itemId: string) => void;
   /** Clear the pending scroll-into-view request once consumed. */
@@ -65,6 +77,7 @@ export const createUISlice: StateCreator<
   isExtractingSubtitles: false,
   showVolumeSlider: null,
   editingSubtitleId: null,
+  cameraMotionItemId: null,
   pendingScrollItemId: null,
 
   setExporting: (value: boolean) => {
@@ -89,6 +102,10 @@ export const createUISlice: StateCreator<
 
   setEditingSubtitle: (itemId: string | null) => {
     set({ editingSubtitleId: itemId });
+  },
+
+  setCameraMotionItem: (itemId: string | null) => {
+    set({ cameraMotionItemId: itemId });
   },
 
   requestScrollItemIntoView: (itemId: string) => {

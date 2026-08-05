@@ -84,6 +84,16 @@ function buildTimeline(): TimelineData {
             opacity: 0.8,
             audioDetached: true,
             transitionIn: { type: 'fade', duration: 0.5 },
+            cameraMotion: {
+              presetId: 'orbit-left',
+              space: '3d' as const,
+              from: { scale: 1.1, offsetX: 0, offsetY: 0, roll: 0, yaw: -10, pitch: 0, dolly: 1 },
+              to: { scale: 1.1, offsetX: 0, offsetY: 0, roll: 0, yaw: 10, pitch: 0, dolly: 1 },
+              easing: 'ease-in-out' as const,
+              startRatio: 0,
+              endRatio: 1,
+              intensity: 1,
+            },
             isSelected: true, // must NOT persist
           },
           // split RIGHT product: clip [5,8] dur 3, with a trailing dissolve
@@ -207,6 +217,21 @@ describe('TimelineRepository persistence round-trip (spec 06)', () => {
     expect(left.opacity).toBe(0.8);
     expect(left.transitionIn).toEqual({ type: 'fade', duration: 0.5 });
     expect(right.transitionOut).toEqual({ type: 'dissolve', duration: 0.75 });
+
+    // Camera motion survives the export/import round-trip whole — dropping one
+    // nested angle would leave a 3D move rendering as a flat one, with nothing
+    // in the UI to indicate the project file lost it.
+    expect(left.cameraMotion).toEqual({
+      presetId: 'orbit-left',
+      space: '3d',
+      from: { scale: 1.1, offsetX: 0, offsetY: 0, roll: 0, yaw: -10, pitch: 0, dolly: 1 },
+      to: { scale: 1.1, offsetX: 0, offsetY: 0, roll: 0, yaw: 10, pitch: 0, dolly: 1 },
+      easing: 'ease-in-out',
+      startRatio: 0,
+      endRatio: 1,
+      intensity: 1,
+    });
+    expect(right.cameraMotion).toBeUndefined();
 
     // Detached audio item (same materialId/clip) restored on the audio track.
     const audio = byId['audio-track-1'].items[0];

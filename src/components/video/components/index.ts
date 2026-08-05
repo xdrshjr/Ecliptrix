@@ -9,6 +9,7 @@ export { ContentPolishModal } from './ContentPolishModal';
 export { ScriptGenerationModal } from './ScriptGenerationModal';
 export { ScriptGenerationProgressModal } from './ScriptGenerationProgressModal';
 export { SubtitleEditModal } from './SubtitleEditModal';
+export { CameraMotionModal, presetLabel as cameraMotionPresetLabel } from './CameraMotionModal';
 export { CreativeBrainstormingModal } from './CreativeBrainstormingModal';
 export { VideoAnalysisModal } from './VideoAnalysisModal';
 export { AIMixingProgressModal } from './AIMixingProgressModal';

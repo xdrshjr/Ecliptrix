@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useMemo } from 'react';
 import { TimelineState, Track, TimelineItem, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { SubtitleEditModal } from '../components';
+import { SubtitleEditModal, CameraMotionModal } from '../components';
 import { useVideoCache } from '../hooks/useVideoCache';
 import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
 import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
@@ -14,7 +14,9 @@ import {
   removeItemsAction,
   addItemAction,
   addTrackAction,
+  setCameraMotionAction,
 } from './store';
+import type { CameraMotionData } from './domain';
 import { useShallow } from 'zustand/react/shallow';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
@@ -120,6 +122,20 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // Subtitle edit modal state (UI-only, not in store)
   const [isSubtitleEditModalOpen, setIsSubtitleEditModalOpen] = React.useState(false);
   const [editingTrackId, setEditingTrackId] = React.useState<string | null>(null);
+
+  // Camera-motion panel target. `cameraMotionItemId` lives in the store so the
+  // toolbar and a clip's context menu can both open it; the item DATA is read
+  // here so the dialog always reflects the live clip (e.g. after an undo).
+  const cameraMotionItemId = useTimelineStore((state) => state.cameraMotionItemId);
+  const cameraMotionTracks = useTimelineStore((state) => state.tracks);
+  const cameraMotionTarget = useMemo(() => {
+    if (!cameraMotionItemId) return null;
+    for (const track of cameraMotionTracks) {
+      const hit = track.items.find((item) => item.id === cameraMotionItemId);
+      if (hit) return hit;
+    }
+    return null;
+  }, [cameraMotionItemId, cameraMotionTracks]);
 
   // Track last external update to avoid infinite loops
   const lastExternalUpdateIdRef = useRef<string | null>(null);
@@ -728,9 +744,52 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     showSuccess(t.timeline.messages.organizeMaterialsSuccess);
   }, [showSuccess, showInfo, t]);
 
+  // ---------------------------------------------------------------------------
+  // Camera motion (2D / 3D 运镜) — docs/plans/timeline-camera-motion
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Open the camera-motion panel for the current selection.
+   *
+   * Reached from the toolbar button and the `E` shortcut. The clip context menu
+   * sets `cameraMotionItemId` directly, so both entry points converge on the
+   * same store field.
+   */
   const handleAddEffect = useCallback(() => {
-    showInfo(t.timeline.messages.featureComingSoon, 3000);
+    const state = useTimelineStore.getState();
+    const targetId = state.selectedItems[0];
+    if (!targetId) {
+      showInfo(t.timeline.cameraMotion.needSelection, 3000);
+      return;
+    }
+    const found = state._aggregate.findItem(targetId);
+    if (!found || found.item.type !== 'video') {
+      showInfo(t.timeline.cameraMotion.needVideoClip, 3000);
+      return;
+    }
+    if (found.track.isLocked) {
+      showInfo(t.timeline.cameraMotion.trackLocked, 3000);
+      return;
+    }
+    useTimelineStore.getState().setCameraMotionItem(targetId);
   }, [showInfo, t]);
+
+  const handleCloseCameraMotion = useCallback(() => {
+    useTimelineStore.getState().setCameraMotionItem(null);
+  }, []);
+
+  const handleApplyCameraMotion = useCallback(
+    (motion: CameraMotionData | null) => {
+      const itemId = useTimelineStore.getState().cameraMotionItemId;
+      if (!itemId) return;
+      const changed = setCameraMotionAction(() => useTimelineStore.getState(), itemId, motion);
+      useTimelineStore.getState().setCameraMotionItem(null);
+      if (changed) {
+        showSuccess(motion ? t.timeline.cameraMotion.applied : t.timeline.cameraMotion.removed);
+      }
+    },
+    [showSuccess, t],
+  );
 
   const handleAddTransition = useCallback(() => {
     showInfo(t.timeline.messages.featureComingSoon, 3000);
@@ -1091,6 +1150,19 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         localPreviewEnabled={localPreviewEnabled}
         onRetryLocalDownload={onRetryLocalDownload}
       />
+
+      {/* 运镜面板 */}
+      {cameraMotionTarget && (
+        <CameraMotionModal
+          isOpen
+          clipName={cameraMotionTarget.name}
+          clipDuration={cameraMotionTarget.duration}
+          thumbnailUrl={cameraMotionTarget.thumbnailUrl}
+          motion={cameraMotionTarget.cameraMotion ?? null}
+          onApply={handleApplyCameraMotion}
+          onClose={handleCloseCameraMotion}
+        />
+      )}
 
       {/* 字幕编辑模态框 */}
       {editingTrackId && (

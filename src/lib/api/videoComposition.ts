@@ -26,6 +26,91 @@ export interface ClipTransitionWire {
   duration: number;
 }
 
+/**
+ * One endpoint of a camera move — wire shape mirroring the backend pydantic
+ * `CameraMotionState` and the frontend `playback/types.CameraMotionState`.
+ */
+export interface CameraMotionStateWire {
+  scale: number;
+  offset_x: number;
+  offset_y: number;
+  roll: number;
+  yaw: number;
+  pitch: number;
+  dolly: number;
+}
+
+/**
+ * 2D / 3D 运镜 applied to one clip — wire shape mirroring the backend pydantic
+ * `CameraMotionSpec`. The export filtergraph reproduces the exact geometry the
+ * preview compositor draws (docs/plans/timeline-camera-motion).
+ */
+export interface CameraMotionWire {
+  preset_id: string;
+  space: '2d' | '3d';
+  from_state: CameraMotionStateWire;
+  to_state: CameraMotionStateWire;
+  easing: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+  start_ratio: number;
+  end_ratio: number;
+  intensity: number;
+}
+
+/**
+ * Camera motion in the FRONTEND's own shape (`playback/types.CameraMotion` and
+ * the domain DTO `CameraMotionData` are both structurally this). Declared
+ * locally so the API client keeps zero dependencies on the editor modules.
+ */
+export interface CameraMotionInput {
+  presetId: string;
+  space: '2d' | '3d';
+  from: { scale: number; offsetX: number; offsetY: number; roll: number; yaw: number; pitch: number; dolly: number };
+  to: { scale: number; offsetX: number; offsetY: number; roll: number; yaw: number; pitch: number; dolly: number };
+  easing: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+  startRatio: number;
+  endRatio: number;
+  intensity: number;
+}
+
+function toStateWire(state: CameraMotionInput['from']): CameraMotionStateWire {
+  return {
+    scale: state.scale,
+    offset_x: state.offsetX,
+    offset_y: state.offsetY,
+    roll: state.roll,
+    yaw: state.yaw,
+    pitch: state.pitch,
+    dolly: state.dolly,
+  };
+}
+
+/**
+ * Map a frontend camera motion onto the wire shape.
+ *
+ * A mapper is unavoidable rather than cosmetic: `from` is a Python keyword, so
+ * the backend model cannot mirror the frontend field name. Both export payload
+ * constructors (`CompositionAdapter` and `useVideoExport`) MUST route through
+ * this one function — that is what keeps them from drifting apart.
+ *
+ * @param motion The clip's motion, or `undefined` when it has none.
+ * @returns The wire object, or `undefined` to omit the field entirely.
+ */
+export function toCameraMotionWire(
+  motion: CameraMotionInput | undefined | null,
+): CameraMotionWire | undefined {
+  if (!motion) return undefined;
+  return {
+    preset_id: motion.presetId,
+    space: motion.space,
+    from_state: toStateWire(motion.from),
+    to_state: toStateWire(motion.to),
+    easing: motion.easing,
+    start_ratio: motion.startRatio,
+    end_ratio: motion.endRatio,
+    intensity: motion.intensity,
+  };
+}
+
 export interface VideoCompositionItem {
   id: string;
   name: string;
@@ -49,6 +134,8 @@ export interface VideoCompositionItem {
   transition_in?: ClipTransitionWire;
   transition_out?: ClipTransitionWire;
   audio_detached?: boolean;
+  /** 2D/3D 运镜; omitted → no camera move, byte-identical legacy filtergraph. */
+  camera_motion?: CameraMotionWire;
   // Cache-reuse identity (optional, backward compatible). The backend uses
   // (source, source_id) to find an already-downloaded cached_materials row and
   // skip re-downloading; cache_url is a same-origin disk hint resolved to a
@@ -119,6 +206,14 @@ export interface CompositionStatusResponse {
   processing_time?: number;
   output_file_size?: number;
   error_details?: any;
+  /**
+   * Non-fatal degradations the backend hit while rendering — today only the
+   * camera-motion fallbacks (e.g. FFmpeg lacks `perspective`, so a 3D move was
+   * flattened to its 2D shadow). Composition is asynchronous, so this status
+   * document is the ONLY channel that can reach the user; a warning that is not
+   * surfaced here is a silently-wrong export.
+   */
+  warnings?: string[];
 }
 
 /**

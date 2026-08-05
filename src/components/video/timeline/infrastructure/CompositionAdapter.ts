@@ -28,6 +28,7 @@ import type {
   VideoCompositionRequest,
 } from '../domain/ports';
 import type { TrackData, MaterialData } from '../domain/types';
+import { toCameraMotionWire } from '@/lib/api/videoComposition';
 import { isLocalMediaReference } from '../../lib/selectPlaybackUrl';
 
 // ---------------------------------------------------------------------------
@@ -181,6 +182,10 @@ export class CompositionAdapter implements ICompositionPort {
           opacity: item.opacity,
           transitionIn: item.transitionIn,
           transitionOut: item.transitionOut,
+          // 2D/3D 运镜 — the preview compositor samples it per frame; the export
+          // mapping below carries the SAME object to the backend so the two
+          // renderers consume one geometry (timeline-camera-motion §1.3 L2).
+          cameraMotion: item.cameraMotion,
         };
 
         allVideoItems.push(videoSequence);
@@ -335,6 +340,7 @@ export class CompositionAdapter implements ICompositionPort {
         opacity: seq.opacity,
         transition_in: seq.transitionIn,
         transition_out: seq.transitionOut,
+        camera_motion: toCameraMotionWire(seq.cameraMotion),
       })),
       audio_sequences: audioSequences.map((seq) => ({
         id: seq.id,

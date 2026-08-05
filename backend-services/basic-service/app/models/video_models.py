@@ -116,6 +116,66 @@ class ClipTransition(BaseModel):
     duration: float = Field(..., gt=0, description="Transition duration in seconds")
 
 
+class CameraMotionState(BaseModel):
+    """One endpoint of a camera move (2D / 3D 运镜).
+
+    Mirrors the preview's `CameraMotionState`
+    (src/components/video/playback/types.ts). The neutral state — scale 1,
+    zero offsets/angles, dolly 1 — is the identity transform; `intensity` on
+    the parent spec scales the offset FROM that neutral state, so intensity 0
+    is a true no-op for every preset.
+    """
+
+    scale: float = Field(1.0, gt=0, description="Uniform zoom; 1 = fills the canvas")
+    offset_x: float = Field(0.0, ge=-4, le=4, description="Pan, normalized to canvas width")
+    offset_y: float = Field(0.0, ge=-4, le=4, description="Pan, normalized to canvas height")
+    roll: float = Field(0.0, ge=-180, le=180, description="In-plane rotation (degrees)")
+    yaw: float = Field(0.0, ge=-80, le=80, description="Rotation about the vertical axis (degrees, 3D)")
+    pitch: float = Field(0.0, ge=-80, le=80, description="Rotation about the horizontal axis (degrees, 3D)")
+    dolly: float = Field(1.0, gt=0, description="Camera distance multiplier; 1 = neutral (3D)")
+
+
+class CameraMotionSpec(BaseModel):
+    """A camera move applied to one clip.
+
+    Export reproduces the geometry the preview compositor drew, via FFmpeg
+    `perspective` fed by the Python twin of the preview's geometry kernel
+    (app/services/composition/camera_motion.py). See
+    docs/plans/timeline-camera-motion/experiment-plan.md.
+
+    `from` is a Python keyword, hence `from_state` / `to_state`; the frontend
+    maps its `from` / `to` onto these in `toCameraMotionWire`.
+    """
+
+    preset_id: str = Field("custom", description="Preset identifier, or 'custom'")
+    space: Literal["2d", "3d"] = Field(
+        ..., description="'2d' = affine only; '3d' = true perspective"
+    )
+    from_state: CameraMotionState = Field(..., description="Motion start state")
+    to_state: CameraMotionState = Field(..., description="Motion end state")
+    easing: Literal["linear", "ease-in", "ease-out", "ease-in-out"] = Field(
+        "linear", description="Easing curve (closed-form cubics, shared with the preview)"
+    )
+    start_ratio: float = Field(0.0, ge=0, le=1, description="Motion start as a fraction of the clip")
+    end_ratio: float = Field(1.0, ge=0, le=1, description="Motion end as a fraction of the clip")
+    intensity: float = Field(1.0, ge=0, le=2, description="Scales the offset from the neutral state")
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> "CameraMotionSpec":
+        """Reject an inverted / empty motion window.
+
+        A window with `end_ratio <= start_ratio` would silently freeze the move
+        at one framing, which looks like a broken effect rather than a rejected
+        request — so it is rejected at the boundary instead.
+        """
+        if self.end_ratio <= self.start_ratio:
+            raise ValueError(
+                f"camera_motion end_ratio ({self.end_ratio}) must be greater than "
+                f"start_ratio ({self.start_ratio})"
+            )
+        return self
+
+
 class VideoCompositionItem(BaseModel):
     """
     Individual video item in the composition timeline.
@@ -156,6 +216,13 @@ class VideoCompositionItem(BaseModel):
         description=(
             "When true the embedded audio of this video clip is suppressed; the "
             "detached audio plays from an independent audio item (spec 01 §2.4)."
+        ),
+    )
+    camera_motion: Optional[CameraMotionSpec] = Field(
+        None,
+        description=(
+            "2D / 3D 运镜 applied to this clip. Omitting it leaves the export "
+            "filtergraph byte-identical to the pre-feature output."
         ),
     )
 

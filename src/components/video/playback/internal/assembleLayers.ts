@@ -27,6 +27,7 @@ import {
   type TextMeasurer,
 } from '../SubtitleLayer';
 import { buildImageLayersAt, type ImageOverlayInput, type FitRect } from '../ImageOverlayLayer';
+import { motionStateAt } from '../CameraMotionLayer';
 import type { CompositorLayer, VideoTrackGroup } from '../types';
 import type { VideoSequenceItem, SubtitleSequenceItem } from '../../types';
 
@@ -63,6 +64,13 @@ export interface AssembleLayersInput {
   imageFit?: FitRect;
   /** Base z applied to subtitle/image layers so they sit ABOVE all video. */
   overlayBaseZ?: number;
+  /**
+   * Canvas width / height — read ONLY by the 2D camera-motion coverage
+   * guarantee, which depends on the canvas shape (never its pixel size). This
+   * is a scalar, so the module stays canvas-free. Clips without a camera motion
+   * never touch it.
+   */
+  canvasAspect?: number;
 }
 
 /** Default z floor for overlays — well above any realistic track z. */
@@ -85,10 +93,22 @@ function itemOpacity(clip: VideoSequenceItem): number {
  * item opacity with the transition alpha at `t` so fade-in/out and cross-
  * dissolve are honoured (the lower clip stays in the list even when an upper
  * clip is partially transparent → §6 case 8).
+ *
+ * A clip carrying a `cameraMotion` also gets the TIME stage of the 运镜 folded
+ * in here — the same seam `TransitionLayer.alphaFor` occupies. Only the scalar
+ * {@link CameraMotionState} is attached; turning it into pixels needs the canvas
+ * and the source's intrinsic size, neither of which exists at this layer
+ * (timeline-camera-motion plan §3.1 / R-P0-1).
+ *
+ * @param entries      Per-track resolved draw entries.
+ * @param t            Composition time in seconds.
+ * @param canvasAspect Canvas width / height, for the 2D coverage guarantee.
+ * @returns The video layers, in `entries` order.
  */
 export function buildVideoLayers(
   entries: readonly ActiveVideoEntry[],
   t: number,
+  canvasAspect?: number,
 ): Extract<CompositorLayer, { kind: 'video' }>[] {
   const layers: Extract<CompositorLayer, { kind: 'video' }>[] = [];
   for (const entry of entries) {
@@ -101,12 +121,26 @@ export function buildVideoLayers(
     };
     const alpha = alphaFor(transitionClip, t);
     const opacity = clamp01(itemOpacity(entry.clip) * alpha);
+    const motion = entry.clip.cameraMotion;
     layers.push({
       kind: 'video',
       id: entry.trackId,
       source: entry.source as unknown as HTMLVideoElement,
       opacity,
       z: entry.z,
+      ...(motion
+        ? {
+            motion: {
+              space: motion.space,
+              state: motionStateAt(
+                motion,
+                { startTime: entry.clip.startTime, duration: entry.clip.duration },
+                t,
+                canvasAspect,
+              ),
+            },
+          }
+        : {}),
     });
   }
   return layers;
@@ -159,7 +193,7 @@ export function buildSubtitleLayers(
  */
 export function assembleLayers(input: AssembleLayersInput): CompositorLayer[] {
   const baseZ = input.overlayBaseZ ?? DEFAULT_OVERLAY_BASE_Z;
-  const video = buildVideoLayers(input.videoEntries, input.t);
+  const video = buildVideoLayers(input.videoEntries, input.t, input.canvasAspect);
 
   const images = buildImageLayersAt(input.imageItems, input.t, input.imageFit).map(
     (layer, index) => ({ ...layer, z: baseZ + layer.z + index }),

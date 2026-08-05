@@ -9,7 +9,8 @@
  * module-level imports. Tests can substitute mock implementations.
  */
 
-import type { TimelineData, TrackData, MaterialData } from './types';
+import type { TimelineData, TrackData, MaterialData, CameraMotionData } from './types';
+import type { CameraMotionWire } from '@/lib/api/videoComposition';
 
 // ---------------------------------------------------------------------------
 // Cache state (shared across ports)
@@ -217,6 +218,11 @@ export interface VideoSequenceItem {
   transitionIn?: SequenceTransition;
   /** Fade-out / cross-dissolve on this clip's trailing edge (preview + export). */
   transitionOut?: SequenceTransition;
+  /**
+   * 2D / 3D 运镜 on this clip (docs/plans/timeline-camera-motion). Preview
+   * samples it per frame; export mirrors the same geometry in FFmpeg.
+   */
+  cameraMotion?: CameraMotionData;
 }
 
 /**
@@ -342,6 +348,8 @@ export interface VideoCompositionRequest {
     transition_in?: SequenceTransition;
     /** Trailing-edge transition (fade-out / dissolve). Spec 05 §2.4. */
     transition_out?: SequenceTransition;
+    /** 2D/3D 运镜, already mapped to the wire shape by `toCameraMotionWire`. */
+    camera_motion?: CameraMotionWire;
   }>;
   audio_sequences: Array<{
     id: string;

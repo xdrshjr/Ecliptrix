@@ -44,7 +44,8 @@ function compositorPassthroughFields(
 ): string {
   const v = seq as VideoSequenceItem;
   if (v.audioDetached === undefined && v.opacity === undefined &&
-      v.trackZ === undefined && !v.transitionIn && !v.transitionOut) {
+      v.trackZ === undefined && !v.transitionIn && !v.transitionOut &&
+      !v.cameraMotion) {
     return '';
   }
   return [
@@ -53,7 +54,27 @@ function compositorPassthroughFields(
     v.trackZ ?? '',
     v.transitionIn ? `${v.transitionIn.type}:${v.transitionIn.duration}` : '',
     v.transitionOut ? `${v.transitionOut.type}:${v.transitionOut.duration}` : '',
+    // 运镜 must be part of the signature: applying/editing a camera move changes
+    // no url/clip/timing field, so without this the composition snapshot stays
+    // stale and the preview keeps rendering the OLD move (or none at all).
+    v.cameraMotion ? cameraMotionSignature(v.cameraMotion) : '',
   ].join(',');
+}
+
+/** 折叠运镜为稳定字符串：预设、空间、缓动、区间、强度与两端状态全部纳入。 */
+function cameraMotionSignature(motion: NonNullable<VideoSequenceItem['cameraMotion']>): string {
+  const endpoint = (s: (typeof motion)['from']): string =>
+    `${s.scale}/${s.offsetX}/${s.offsetY}/${s.roll}/${s.yaw}/${s.pitch}/${s.dolly}`;
+  return [
+    motion.presetId,
+    motion.space,
+    motion.easing,
+    motion.startRatio,
+    motion.endRatio,
+    motion.intensity,
+    endpoint(motion.from),
+    endpoint(motion.to),
+  ].join('/');
 }
 
 /** 单个序列的播放签名：序列/item 字段取自 sequence，素材字段取自 live material。 */

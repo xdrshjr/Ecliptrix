@@ -50,6 +50,12 @@ export interface VideoSequenceItem {
    * video's audio (spec 01 §2.4).
    */
   audioDetached?: boolean;
+  /**
+   * 2D / 3D 运镜 attached to this clip. Preview samples it in `assembleLayers`;
+   * export mirrors the same geometry through FFmpeg `perspective`
+   * (docs/plans/timeline-camera-motion/experiment-plan.md).
+   */
+  cameraMotion?: import('../playback/types').CameraMotion;
 }
 
 /**

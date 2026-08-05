@@ -196,7 +196,9 @@ export const useVideoExport = ({
 
     try {
       // Import the video composition API
-      const { videoCompositionAPI } = await import('@/lib/api/videoComposition');
+      const { videoCompositionAPI, toCameraMotionWire } = await import(
+        '@/lib/api/videoComposition'
+      );
       
       // Process each track
       timelineState.tracks.forEach(track => {
@@ -345,6 +347,10 @@ export const useVideoExport = ({
                 transition_in: item.transitionIn,
                 transition_out: item.transitionOut,
                 audio_detached: item.audioDetached,
+                // 运镜 must be sent from BOTH payload constructors (this one and
+                // CompositionAdapter.buildCompositionRequest); wiring only one
+                // yields "preview has it, export doesn't".
+                camera_motion: toCameraMotionWire(item.cameraMotion),
                 // 缓存复用标识（命中则跳过下载，未命中回退原下载逻辑）
                 source: cacheSource,
                 source_id: cacheSourceId,
@@ -671,7 +677,7 @@ export const useVideoExport = ({
       // Poll for completion and show progress
       logger.info('开始轮询合成状态', {});
 
-      await videoCompositionAPI.pollCompositionStatus(
+      const finalStatus = await videoCompositionAPI.pollCompositionStatus(
         compositionResponse.composition_id,
         (status) => {
           const progressPercent = Math.max(30, Math.min(95, 30 + (status.progress * 65)));
@@ -686,6 +692,16 @@ export const useVideoExport = ({
       );
 
       setExportProgress(95); // 设置接近完成的进度
+
+      // Surface any non-fatal degradation the backend reported (today: a camera
+      // move that had to be rendered as a static framing). Composition is
+      // asynchronous, so this status document is the only channel it has — if we
+      // do not show it here, the user gets a subtly wrong video and no
+      // explanation. See docs/plans/timeline-camera-motion §4.3.
+      if (finalStatus?.warnings?.length) {
+        logger.warn('合成完成但存在降级警告', { warnings: finalStatus.warnings });
+        showWarning(t.timeline.cameraMotion.exportDegraded, 8000);
+      }
 
       // Download completed video
       logger.info('合成完成，开始自动下载', {});

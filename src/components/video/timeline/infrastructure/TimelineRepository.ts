@@ -20,6 +20,7 @@ import type {
   TimelineItemData,
   MaterialData,
   SequenceTransitionData,
+  CameraMotionData,
 } from '../domain/types';
 import { TimelineExportError, TimelineImportError } from './errors';
 import { isDataUrl } from '@/components/video/lib/localMaterial';
@@ -171,6 +172,8 @@ export interface TimelineExportData {
       transitionIn?: SequenceTransitionData;
       /** spec 02 §2.4 — fade/dissolve transition on the trailing edge. */
       transitionOut?: SequenceTransitionData;
+      /** timeline-camera-motion §5 — 2D/3D 运镜 attached to the clip. */
+      cameraMotion?: CameraMotionData;
     }>;
   }>;
   materials: Array<{
@@ -285,6 +288,7 @@ export class TimelineRepository implements ITimelineRepository {
               audioDetached: item.audioDetached,
               transitionIn: item.transitionIn,
               transitionOut: item.transitionOut,
+              cameraMotion: item.cameraMotion,
             })),
           };
           // image- and subtitle-tracks do not carry a volume at rest
@@ -407,6 +411,7 @@ export class TimelineRepository implements ITimelineRepository {
           audioDetached: item.audioDetached,
           transitionIn: item.transitionIn as SequenceTransitionData | undefined,
           transitionOut: item.transitionOut as SequenceTransitionData | undefined,
+          cameraMotion: item.cameraMotion as CameraMotionData | undefined,
         })),
       })),
     };

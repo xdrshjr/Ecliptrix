@@ -25,6 +25,7 @@ import type {
   MaterialData,
   TimelineItemData,
   ImagePosition,
+  CameraMotionData,
 } from '../../domain';
 import type { TimelineStore } from '../useTimelineStore';
 
@@ -59,6 +60,11 @@ export interface TimelineSlice {
   updateItemSubtitle: (itemId: string, text: string) => void;
   /** Persist an image overlay's position/scale into the authoritative store. */
   updateItemImagePosition: (itemId: string, position: ImagePosition) => void;
+  /**
+   * Attach (or clear with `null`) a 2D/3D 运镜 on a video item. Raw setter — use
+   * `setCameraMotionAction` for the undoable, guarded entry point.
+   */
+  setItemCameraMotion: (itemId: string, motion: CameraMotionData | null) => void;
   /** Shift subsequent items on the same track to close gaps after a given item. */
   consolidateTrackAfterItem: (itemId: string) => void;
   /**
@@ -392,6 +398,18 @@ export const createTimelineSlice: StateCreator<
       }
 
       found.item.imagePosition = position;
+      state._syncDerivedState();
+    },
+
+    setItemCameraMotion: (itemId: string, motion: CameraMotionData | null) => {
+      const state = get();
+      const found = state._aggregate.findItem(itemId);
+      if (!found) {
+        console.warn(`[timelineSlice] setItemCameraMotion: item "${itemId}" not found.`);
+        return;
+      }
+
+      found.item.cameraMotion = motion ?? undefined;
       state._syncDerivedState();
     },
 

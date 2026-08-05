@@ -30,6 +30,11 @@ vi.mock('@/lib/api/videoComposition', () => ({
     triggerDownload: (...args: unknown[]) => triggerDownload(...args),
     pollCompositionStatus: (...args: unknown[]) => pollCompositionStatus(...args),
   },
+  // The hook maps each clip's camera motion onto the wire shape through this
+  // helper (timeline-camera-motion). The real implementation is exercised in
+  // useVideoExport.cameraMotion.test.ts; here it only has to exist, since these
+  // fixtures carry no camera motion.
+  toCameraMotionWire: () => undefined,
 }));
 
 const showError = vi.fn();

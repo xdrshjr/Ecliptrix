@@ -15,6 +15,7 @@ import yaml
 import random
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass, replace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlparse
@@ -63,7 +64,13 @@ from app.services.composition.media_resolution import (
     NonLocalMediaError,
     resolve_local_media,
 )
-from app.services.composition.filtergraph_builder import build_filtergraph
+from app.services.composition.filtergraph_builder import (
+    FiltergraphOptions,
+    FiltergraphResult,
+    build_filtergraph,
+)
+from app.services.composition.camera_motion import CameraMotionUnsupportedError
+from app.services.composition import ffmpeg_caps
 from app.services.composition.audio_mix import AudioSource, build_audio_mix
 from app.services.composition.video_scaling import (
     build_video_filter,
@@ -82,6 +89,43 @@ from app.services.composition.media_download import (
 )
 
 logger = get_logger(__name__)
+
+#: Above this many characters the ``-filter_complex`` goes into a script file
+#: instead of an argv element. Windows funnels every argument through
+#: ``CreateProcess`` (~32767-char limit) even without a shell, and a long
+#: camera-motion graph is the only thing here that can approach it. 8 KB leaves
+#: ample headroom for the input paths and encoder flags that share the line.
+FILTER_COMPLEX_INLINE_LIMIT = 8192
+
+
+class _StaticFramingCaps:
+    """Capability view that forces the camera-motion builder to freeze the move.
+
+    Wraps whatever the probe returned instead of copying it: the caps object is
+    consumed duck-typed everywhere else, and a `dataclasses.replace` here would
+    quietly couple this retry path to one concrete class.
+    """
+
+    def __init__(self, source: Any):
+        self._source = source
+        self.perspective_supports_eval_frame = False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._source, name)
+
+
+@dataclass(frozen=True)
+class FiltergraphOutcome:
+    """Result of attempting the filtergraph composition path.
+
+    ``composited`` False means "the caller may use concat"; it is NEVER returned
+    for a failed render that involved camera motion, because concat would drop
+    the effect and report success (L11).
+    """
+
+    composited: bool
+    #: Non-fatal degradations to surface to the user via the status document.
+    warnings: List[str]
 
 
 def _is_loopback_local_reference(url: str) -> bool:
@@ -176,6 +220,58 @@ class VideoCompositionService:
         """Get FFmpeg encoding parameters for the detected encoder + quality."""
         return get_encoding_params(self._gpu_encoder, quality)
 
+    @staticmethod
+    def _request_has_camera_motion(request: VideoCompositionRequest) -> bool:
+        """Whether any clip in the request carries a 2D/3D camera motion."""
+        return any(
+            getattr(item, "camera_motion", None) is not None
+            for item in (request.video_items or [])
+        )
+
+    def _run_filtergraph(
+        self,
+        plan: FiltergraphResult,
+        input_paths: List[str],
+        output_path: Path,
+        ffmpeg_path: str,
+    ) -> subprocess.CompletedProcess:
+        """Invoke FFmpeg for one planned filtergraph.
+
+        Very large graphs are handed over as a script file rather than an argv
+        element: on Windows every argument still funnels through
+        ``CreateProcess``, whose ~32767-character command-line limit a long
+        camera-motion graph could otherwise breach with a confusing OS error
+        (L7). The script file is removed afterwards regardless of outcome.
+        """
+        cmd = [ffmpeg_path, '-y']
+        for path in input_paths:
+            cmd.extend(['-i', path])
+
+        script_path: Optional[Path] = None
+        if len(plan.filter_complex) > FILTER_COMPLEX_INLINE_LIMIT:
+            script_path = output_path.with_suffix('.filtergraph.txt')
+            script_path.write_text(plan.filter_complex, encoding='utf-8')
+            cmd.extend(['-filter_complex_script', str(script_path)])
+            logger.info(
+                "Filtergraph is %d chars; passing it as a script file (%s)",
+                len(plan.filter_complex),
+                script_path.name,
+            )
+        else:
+            cmd.extend(['-filter_complex', plan.filter_complex])
+        cmd.extend(['-map', plan.output_label])
+        cmd.extend(self._get_encoding_params("fast"))
+        cmd.append(str(output_path))
+
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True)
+        finally:
+            if script_path is not None:
+                try:
+                    script_path.unlink()
+                except OSError:
+                    logger.debug("Could not remove filtergraph script %s", script_path)
+
     def _compose_videos_filtergraph(
         self,
         request: VideoCompositionRequest,
@@ -183,25 +279,45 @@ class VideoCompositionService:
         output_path: Path,
         ffmpeg_path: str,
         output_resolution: Dict[str, int],
-    ) -> bool:
+    ) -> FiltergraphOutcome:
         """Compose normalized clips via the multi-track + transition filtergraph.
 
-        Returns True when the filtergraph path was taken AND succeeded; False
-        when the timeline is degenerate (caller falls back to concat) OR the
-        filtergraph encode failed (caller falls back to concat). This mirrors
-        the preview compositor's z-order / opacity / transition semantics
-        (spec 05 §2.4). The normalized inputs are already clip-trimmed + scaled,
-        so the builder runs with ``pre_trimmed=True``.
+        Mirrors the preview compositor's z-order / opacity / transition / camera-
+        motion semantics (spec 05 §2.4 + timeline-camera-motion). The normalized
+        inputs are already clip-trimmed + scaled, so the builder runs with
+        ``pre_trimmed=True``.
+
+        ``composited`` is False only when the caller may legitimately fall back
+        to concat — a degenerate timeline, or an encode failure on a request
+        WITHOUT camera motion (the long-standing behaviour). When camera motion
+        IS present, a failure never degrades quietly: the graph is retried once
+        with animation disabled (a static framing plus a warning), and if that
+        also fails the error is raised so the export is reported as failed.
+        Silently emitting a "successful" video with the effect missing is the
+        one outcome this feature must never produce (L11).
+
+        Raises:
+            RuntimeError: camera motion was requested but could not be rendered.
         """
-        plan = build_filtergraph(
-            list(request.video_items),
-            int(output_resolution["width"]),
-            int(output_resolution["height"]),
+        width = int(output_resolution["width"])
+        height = int(output_resolution["height"])
+        caps = ffmpeg_caps.probe(ffmpeg_path)
+        has_motion = self._request_has_camera_motion(request)
+        options = FiltergraphOptions(
             pre_trimmed=True,
+            fps=int(getattr(request, "output_fps", 30) or 30),
+            caps=caps,
         )
+
+        try:
+            plan = build_filtergraph(list(request.video_items), width, height, options)
+        except CameraMotionUnsupportedError as exc:
+            logger.error("Camera motion cannot be rendered by this FFmpeg: %s", exc)
+            raise RuntimeError(str(exc)) from exc
+
         if plan.can_use_concat:
             logger.info("Filtergraph not needed (single track, no transitions); using concat")
-            return False
+            return FiltergraphOutcome(composited=False, warnings=[])
 
         # Map the planned input order (clip ids) back to normalized file paths.
         id_to_path = {
@@ -209,30 +325,59 @@ class VideoCompositionService:
             for i, item in enumerate(request.video_items)
             if i < len(normalized_videos)
         }
-        cmd = [ffmpeg_path, '-y']
+        input_paths: List[str] = []
         for clip_id in plan.video_inputs:
             path = id_to_path.get(clip_id)
             if not path:
-                logger.warning(f"Filtergraph input '{clip_id}' has no normalized path; using concat")
-                return False
-            cmd.extend(['-i', path])
-        cmd.extend([
-            '-filter_complex', plan.filter_complex,
-            '-map', plan.output_label,
-        ])
-        cmd.extend(self._get_encoding_params("fast"))
-        cmd.append(str(output_path))
+                message = f"Filtergraph input '{clip_id}' has no normalized path"
+                if has_motion:
+                    raise RuntimeError(
+                        f"{message}; refusing to fall back to concat because this "
+                        f"export uses camera motion, which concat would drop."
+                    )
+                logger.warning("%s; using concat", message)
+                return FiltergraphOutcome(composited=False, warnings=[])
+            input_paths.append(path)
 
         logger.info("Running multi-track filtergraph composition")
         logger.info(f"Filtergraph: {plan.filter_complex}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
+        result = self._run_filtergraph(plan, input_paths, output_path, ffmpeg_path)
+        if result.returncode == 0:
+            logger.info("Multi-track filtergraph composition succeeded")
+            return FiltergraphOutcome(composited=True, warnings=list(plan.warnings))
+
+        if not has_motion:
             logger.error(
                 f"Filtergraph composition failed, falling back to concat: {result.stderr}"
             )
-            return False
-        logger.info("Multi-track filtergraph composition succeeded")
-        return True
+            return FiltergraphOutcome(composited=False, warnings=[])
+
+        logger.error(
+            "Filtergraph composition with camera motion failed; retrying with a "
+            "static framing before giving up: %s",
+            result.stderr,
+        )
+        static_caps = _StaticFramingCaps(caps)
+        retry_plan = build_filtergraph(
+            list(request.video_items), width, height, replace(options, caps=static_caps)
+        )
+        retry = self._run_filtergraph(retry_plan, input_paths, output_path, ffmpeg_path)
+        if retry.returncode == 0:
+            logger.warning("Static-framing camera-motion retry succeeded")
+            return FiltergraphOutcome(
+                composited=True,
+                warnings=list(retry_plan.warnings)
+                or [
+                    "camera_motion_static: the animated camera move could not be "
+                    "rendered, so a single fixed framing was used."
+                ],
+            )
+
+        raise RuntimeError(
+            "Camera motion could not be rendered by FFmpeg. Remove the camera "
+            f"motion from the affected clips or update FFmpeg. Details: "
+            f"{(retry.stderr or result.stderr or '').strip()[-800:]}"
+        )
 
     def _concat_videos(
         self,
@@ -1282,18 +1427,23 @@ class VideoCompositionService:
             self.compositions[composition_id]["progress"] = 0.7
 
             # Spec 05 §2.4: decide between the multi-track / transition
-            # filtergraph (overlay + fade/xfade + per-clip opacity, mirroring the
-            # preview compositor) and the lightweight concat path. The normalized
-            # clips are already trimmed + scaled to the canvas, so the composite
-            # runs with pre_trimmed=True. On any filtergraph failure we fall back
-            # to concat (spec 05 §2.4 "filter_complex failure → concat").
+            # filtergraph (overlay + fade/xfade + per-clip opacity + 2D/3D 运镜,
+            # mirroring the preview compositor) and the lightweight concat path.
+            # The normalized clips are already trimmed + scaled to the canvas, so
+            # the composite runs with pre_trimmed=True. A filtergraph failure
+            # falls back to concat ONLY when no camera motion is involved — with
+            # motion the helper raises instead, so a dropped effect can never be
+            # delivered as a successful export.
             output_resolution = request.output_resolution or self._get_aspect_ratio_info(
                 request.aspect_ratio
             )
-            composited = self._compose_videos_filtergraph(
+            outcome = self._compose_videos_filtergraph(
                 request, normalized_videos, output_path, ffmpeg_path, output_resolution
             )
-            if not composited:
+            if outcome.warnings:
+                existing = self.compositions[composition_id].get("warnings") or []
+                self.compositions[composition_id]["warnings"] = existing + outcome.warnings
+            if not outcome.composited:
                 self._concat_videos(normalized_videos, output_path, temp_dir, ffmpeg_path)
             
             # Update progress

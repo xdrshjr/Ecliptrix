@@ -240,7 +240,13 @@ async def get_composition_status(composition_id: str):
                 safe_info["error_details"] = composition_info["error_details"]
             if "error" in composition_info:
                 safe_info["error"] = composition_info["error"]
-                
+            # Non-fatal degradations (e.g. a camera move rendered as a static
+            # framing). Composition is asynchronous, so this document is the ONLY
+            # channel back to the user — dropping the key here would silently
+            # turn a warned degradation into an unexplained wrong export.
+            if composition_info.get("warnings"):
+                safe_info["warnings"] = list(composition_info["warnings"])
+
         except Exception as info_error:
             logger.error(f"Error building safe composition info: {str(info_error)}", exc_info=True)
             # Return minimal safe info

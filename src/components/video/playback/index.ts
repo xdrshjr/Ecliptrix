@@ -30,9 +30,53 @@ export { SubtitleLayer } from './SubtitleLayer';
 export { ImageOverlayLayer, buildImageLayersAt } from './ImageOverlayLayer';
 export { AudioSyncPool, computeAudioSyncActions } from './AudioSyncPool';
 export type { AudioSyncGroup, AudioSyncAction } from './AudioSyncPool';
+export {
+  NEUTRAL_STATE,
+  PERSPECTIVE_FOCAL_RATIO,
+  BACKDROP_MIN_PAD,
+  MOTION_SAMPLE_COUNT,
+  easeProgress,
+  progressAt,
+  motionStateAt,
+  ensureCoverage,
+  cameraHomography,
+  projectRect,
+  applyHomographyToRect,
+  affineFrom,
+  isRenderable,
+  quadCoversCanvas,
+  backdropMargin,
+} from './CameraMotionLayer';
+export type { MotionClipWindow, Rect, BackdropMargin } from './CameraMotionLayer';
+export {
+  CAMERA_MOTION_PRESETS,
+  CAMERA_MOTION_PRESETS_2D,
+  CAMERA_MOTION_PRESETS_3D,
+  CUSTOM_PRESET_ID,
+  DEFAULT_MOTION_WINDOW,
+  presetById,
+  motionFromPreset,
+  reverseMotion,
+} from './cameraMotionPresets';
+export type { CameraMotionPreset } from './cameraMotionPresets';
+export { PerspectiveQuadRenderer } from './PerspectiveQuadRenderer';
 export { assembleLayers, buildVideoLayers, buildSubtitleLayers } from './internal/assembleLayers';
 export type { ActiveVideoEntry, AssembleLayersInput } from './internal/assembleLayers';
-export type { CompositorLayer, VideoTrackGroup, AudioTrackGroup, SequenceTransition } from './types';
+export type {
+  CompositorLayer,
+  VideoTrackGroup,
+  AudioTrackGroup,
+  SequenceTransition,
+  CameraMotion,
+  CameraMotionState,
+  CameraMotionSpace,
+  CameraMotionEasing,
+  CanvasSize,
+  Mat3,
+  DestQuad,
+  ProjectedCorner,
+  PerspectiveQuad,
+} from './types';
 export { PlaybackClock } from './PlaybackClock';
 export type { PlaybackClockOptions } from './PlaybackClock';
 export { PlayheadController, bindToTimelineStore } from './PlayheadController';

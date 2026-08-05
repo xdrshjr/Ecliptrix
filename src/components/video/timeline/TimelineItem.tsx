@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useTimelineStore, splitAction } from './store';
+import { useTimelineStore, splitAction, setCameraMotionAction } from './store';
+import { cameraMotionPresetLabel } from '../components';
 import type { TimelineItemData } from './domain/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
 import AudioWaveformCanvas from './AudioWaveformCanvas';
@@ -108,6 +109,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const deselectAll = useTimelineStore(s => s.deselectAll);
   const setEditingSubtitle = useTimelineStore(s => s.setEditingSubtitle);
   const updateItemSubtitle = useTimelineStore(s => s.updateItemSubtitle);
+  const setCameraMotionItem = useTimelineStore(s => s.setCameraMotionItem);
 
   // ---------------------------------------------------------------------------
   // Local UI state (subtitle editing only)
@@ -115,6 +117,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 
   const isEditingSubtitle = editingSubtitleId === item.id;
   const [editingText, setEditingText] = useState('');
+  // Context-menu anchor, in item-local coordinates. Null = closed.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   // ---------------------------------------------------------------------------
   // Derived layout values — use dragPreview position when active
@@ -261,21 +265,47 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     }
   };
 
-  // Right-click on a not-yet-detached video clip triggers audio detach. The
-  // parent supplies onDetachAudio (it holds the live materials list for the
-  // has-audio gate); without it, the entry is inert and the native menu shows.
+  // Right-click opens a small menu instead of firing a destructive action
+  // outright: the previous behaviour detached audio on the first right-click
+  // with no menu, no confirmation and no way to discover it. The audio entry is
+  // only offered when the parent supplied `onDetachAudio` (it owns the live
+  // materials list needed for the has-audio gate).
   const canDetachAudio =
     !!onDetachAudio &&
     item.type === 'video' &&
     item.audioDetached !== true &&
     !isTrackLocked;
 
+  const canEditCameraMotion = item.type === 'video' && !isTrackLocked;
+  const hasCameraMotion = !!item.cameraMotion;
+
   const handleContextMenu = (e: React.MouseEvent) => {
-    if (!canDetachAudio) return;
+    if (!canDetachAudio && !canEditCameraMotion) return;
     e.preventDefault();
     e.stopPropagation();
-    onDetachAudio?.(item.id);
+    const bounds = itemRef.current?.getBoundingClientRect();
+    setContextMenu({
+      x: bounds ? e.clientX - bounds.left : 0,
+      y: bounds ? e.clientY - bounds.top : 0,
+    });
   };
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    // `pointerdown` (not click) so the menu is gone before a drag can start.
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   // ---------------------------------------------------------------------------
   // Subtitle inline editing handlers
@@ -629,6 +659,88 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
           className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-6 px-2 py-0.5 rounded text-xs font-medium text-white bg-cyan-500/90 shadow-sm whitespace-nowrap"
         >
           {t.timeline.messages.swapHint}
+        </div>
+      )}
+
+      {/* Applied-camera-motion badge — state visibility, so a clip's effect is
+          discoverable without opening the panel. Matches the download-overlay
+          badge vocabulary already used on this clip. */}
+      {hasCameraMotion && item.type === 'video' && (
+        <div
+          className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 rounded
+            bg-primary/85 px-1 py-0.5 text-[9px] font-medium leading-none text-primary-foreground
+            shadow-sm"
+          title={t.timeline.cameraMotion.badge.replace(
+            '{preset}',
+            cameraMotionPresetLabel(
+              t.timeline.cameraMotion.presets as unknown as Record<string, string>,
+              item.cameraMotion!.presetId,
+            ),
+          )}
+        >
+          <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z" />
+          </svg>
+          <span>{item.cameraMotion!.space.toUpperCase()}</span>
+        </div>
+      )}
+
+      {/* Clip context menu */}
+      {contextMenu && (
+        <div
+          role="menu"
+          aria-label={item.name}
+          className="absolute z-dropdown min-w-[150px] overflow-hidden rounded-md border border-border
+            bg-popover py-1 text-xs text-popover-foreground shadow-lg"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {canEditCameraMotion && (
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left transition-colors hover:bg-muted
+                focus-visible:outline-none focus-visible:bg-muted"
+              onClick={() => {
+                closeContextMenu();
+                selectItem(item.id);
+                setCameraMotionItem(item.id);
+              }}
+            >
+              {hasCameraMotion
+                ? t.timeline.cameraMotion.contextEdit
+                : t.timeline.cameraMotion.contextAdd}
+            </button>
+          )}
+          {canEditCameraMotion && hasCameraMotion && (
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left transition-colors hover:bg-muted
+                focus-visible:outline-none focus-visible:bg-muted"
+              onClick={() => {
+                closeContextMenu();
+                setCameraMotionAction(() => useTimelineStore.getState(), item.id, null);
+              }}
+            >
+              {t.timeline.cameraMotion.contextRemove}
+            </button>
+          )}
+          {canDetachAudio && (
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-1.5 text-left transition-colors hover:bg-muted
+                focus-visible:outline-none focus-visible:bg-muted"
+              onClick={() => {
+                closeContextMenu();
+                onDetachAudio?.(item.id);
+              }}
+            >
+              {t.timeline.cameraMotion.contextDetachAudio}
+            </button>
+          )}
         </div>
       )}
 

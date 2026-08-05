@@ -660,6 +660,34 @@ export interface ClipTransition {
   duration: number; // 转场时长（秒）
 }
 
+/**
+ * 运镜的一个端点状态。中性态 = { scale:1, offsetX:0, offsetY:0, roll:0, yaw:0,
+ * pitch:0, dolly:1 }，即恒等变换；`intensity` 缩放的是「相对中性态的偏移量」。
+ * 与 `playback/types.CameraMotionState` 结构一致（此处重声明以免全局类型文件
+ * 依赖播放模块）。
+ */
+export interface ClipCameraMotionState {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+  roll: number;
+  yaw: number;
+  pitch: number;
+  dolly: number;
+}
+
+/** 挂在单个 clip 上的 2D/3D 运镜；与 `playback/types.CameraMotion` 结构一致。 */
+export interface ClipCameraMotion {
+  presetId: string;
+  space: '2d' | '3d';
+  from: ClipCameraMotionState;
+  to: ClipCameraMotionState;
+  easing: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+  startRatio: number;
+  endRatio: number;
+  intensity: number;
+}
+
 export interface TimelineItem {
   id: string;
   name: string;
@@ -698,6 +726,11 @@ export interface TimelineItem {
   // type:'fade' 自身淡入/淡出；'dissolve' 与相邻 clip 交叉溶解，重叠时长=duration。
   transitionIn?: ClipTransition;
   transitionOut?: ClipTransition;
+
+  // 新增：2D/3D 运镜——预览(canvas 合成器)与导出(FFmpeg perspective)共用同一套
+  // 几何，可选、向后兼容（缺省=无运镜，导出滤镜串与改动前逐字符相同）。
+  // 详见 docs/plans/timeline-camera-motion/experiment-plan.md
+  cameraMotion?: ClipCameraMotion;
 
   // 新增：字幕样式属性
   subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）

@@ -31,7 +31,9 @@ proven concat path (spec 05 §2.4 fallback).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Protocol
+from typing import Any, List, Optional, Protocol
+
+from .camera_motion import build_motion_filters, plan_from_spec
 
 # Matches TransitionLayer's TIME_EPSILON (spec 01) so boundary arithmetic agrees
 # with the preview compositor.
@@ -55,6 +57,7 @@ class ClipLike(Protocol):
     track_z: Optional[int]
     transition_in: Optional[TransitionLike]
     transition_out: Optional[TransitionLike]
+    camera_motion: Optional[Any]
 
 
 @dataclass
@@ -64,6 +67,26 @@ class TrackPlan:
     track_id: str
     z: int
     clips: List[ClipLike] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FiltergraphOptions:
+    """Knobs for :func:`build_filtergraph`.
+
+    Bundled into an object rather than added as more positional parameters:
+    camera motion needs the frame rate, the FFmpeg capability probe and the
+    letterbox colour, which would have pushed the signature past this repo's
+    5-parameter ceiling.
+    """
+
+    #: Inputs were already trimmed + scaled to the canvas by normalization.
+    pre_trimmed: bool = False
+    #: Output frame rate — camera-motion expressions map frame index to time.
+    fps: int = 30
+    #: FFmpeg capability probe (see ``ffmpeg_caps``); None assumes full support.
+    caps: Any = None
+    #: Preview letterbox colour, mirrored as the transparent backdrop's RGB.
+    letterbox_color: str = "#000000"
 
 
 @dataclass(frozen=True)
@@ -79,6 +102,8 @@ class FiltergraphResult:
     output_label: str
     #: Input ordering: the clip ids in the order the caller must add ``-i``.
     video_inputs: List[str]
+    #: Non-fatal degradations to surface to the user (never swallow these).
+    warnings: List[str] = field(default_factory=list)
 
 
 def _clamp01(value: Optional[float]) -> float:
@@ -139,20 +164,34 @@ def group_tracks(clips: List[ClipLike]) -> List[TrackPlan]:
 
 
 def _build_clip_chain(
-    input_idx: int, clip: ClipLike, scale_to: str, pre_trimmed: bool
-) -> tuple[str, str]:
-    """Build the filter chain for ONE clip: trim → setpts → scale → fade → opacity.
+    input_idx: int,
+    clip: ClipLike,
+    scale_to: str,
+    options: FiltergraphOptions,
+    track_needs_alpha: bool = False,
+) -> tuple[str, str, List[str]]:
+    """Build the filter chain for ONE clip: trim → setpts → 运镜 → fade → opacity.
 
-    Returns ``(chain, out_label)`` where ``chain`` ends at ``[out_label]``.
-    ``scale_to`` is the canvas ``WxH`` (e.g. '1920x1080'); the clip is scaled to
-    fit-contain with letterbox padding (matches the compositor's fitContain).
+    Returns ``(chain, out_label, warnings)`` where ``chain`` ends at
+    ``[out_label]``. ``scale_to`` is the canvas ``WxH`` (e.g. '1920x1080'); the
+    clip is scaled to fit-contain with letterbox padding (matches the
+    compositor's fitContain).
 
-    When ``pre_trimmed`` the input has ALREADY been trimmed to its clip window
-    and scaled to the canvas by an upstream normalization pass; we then skip the
-    trim/scale steps (which would double-apply) and keep only the setpts reset +
-    transition + opacity steps. The default (``pre_trimmed=False``) emits the
-    full self-contained chain over an ORIGINAL input — the form the unit tests
-    assert (clip trim/setpts).
+    When ``options.pre_trimmed`` the input has ALREADY been trimmed to its clip
+    window and scaled to the canvas by an upstream normalization pass; we then
+    skip the trim/scale steps (which would double-apply) and keep only the setpts
+    reset + transition + opacity steps. The default emits the full self-contained
+    chain over an ORIGINAL input — the form the unit tests assert.
+
+    Camera motion is spliced in right after ``setpts`` and before ``fade``: the
+    geometry must act on canvas-space frames (which is exactly what the
+    normalization pass produced), and the transition alpha must be applied to the
+    already-transformed picture — the same order the preview uses (transform,
+    then ``globalAlpha``).
+
+    ``track_needs_alpha`` forces ``format=yuva420p`` even on clips without their
+    own motion: ``concat`` and ``xfade`` require every input on a track to share
+    a pixel format, so one moving clip promotes the whole track (L14).
     """
     clip_start = clip.clip_start if clip.clip_start is not None else 0.0
     clip_end = clip.clip_end if clip.clip_end is not None else (clip_start + clip.duration)
@@ -160,13 +199,28 @@ def _build_clip_chain(
 
     label = f"v{input_idx}"
     steps: List[str] = []
-    if not pre_trimmed:
+    warnings: List[str] = []
+    if not options.pre_trimmed:
         steps.append(f"trim=start={clip_start}:end={clip_end}")
     steps.append("setpts=PTS-STARTPTS")
-    if not pre_trimmed:
+    if not options.pre_trimmed:
         steps.append(f"scale={width}:{height}:force_original_aspect_ratio=decrease")
         steps.append(f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black")
         steps.append("setsar=1:1")
+
+    motion_plan = plan_from_spec(getattr(clip, "camera_motion", None))
+    if motion_plan is not None:
+        emitted = build_motion_filters(
+            motion_plan,
+            clip.duration,
+            (int(width), int(height)),
+            options.fps,
+            options.caps,
+        )
+        steps.extend(emitted.filters)
+        warnings.extend(emitted.warnings)
+    elif track_needs_alpha:
+        steps.append("format=yuva420p")
 
     fade_in = _effective_transition_duration(clip.transition_in, clip.duration)
     if fade_in > TIME_EPSILON:
@@ -182,7 +236,7 @@ def _build_clip_chain(
         steps.append(f"colorchannelmixer=aa={opacity}")
 
     chain = f"[{input_idx}:v]" + ",".join(steps) + f"[{label}]"
-    return chain, label
+    return chain, label, warnings
 
 
 def _has_dissolve(clip: ClipLike) -> bool:
@@ -193,8 +247,22 @@ def _has_dissolve(clip: ClipLike) -> bool:
     return t is not None and getattr(t, "type", None) == "dissolve"
 
 
+def _track_has_camera_motion(plan: TrackPlan) -> bool:
+    """Whether any clip on this track carries a camera motion."""
+    return any(getattr(clip, "camera_motion", None) is not None for clip in plan.clips)
+
+
 def _track_needs_filtergraph(plan: TrackPlan) -> bool:
-    """A track forces the filtergraph path when any clip has opacity<1 or a transition."""
+    """Whether a track must take the filtergraph path rather than plain concat.
+
+    Camera motion is a hard trigger (L1): concat copies streams untouched, so a
+    single moving clip on an otherwise degenerate timeline would export with the
+    effect silently dropped and no error anywhere — the worst failure this
+    feature can have, and invisible to anything except a human watching the
+    result.
+    """
+    if _track_has_camera_motion(plan):
+        return True
     for clip in plan.clips:
         if _clamp01(clip.opacity) < 1.0 - TIME_EPSILON:
             return True
@@ -207,22 +275,24 @@ def build_filtergraph(
     clips: List[ClipLike],
     canvas_width: int,
     canvas_height: int,
-    pre_trimmed: bool = False,
+    options: Optional[FiltergraphOptions] = None,
 ) -> FiltergraphResult:
     """Plan the composite ``-filter_complex`` for the video clips.
 
     Args:
         clips: all video composition items (any number of tracks).
-        canvas_width / canvas_height: output resolution.
-        pre_trimmed: when True the inputs were already trimmed to their clip
-            window and scaled to the canvas (e.g. by the normalization pass), so
-            the per-clip trim/scale steps are skipped. Default False emits the
-            full self-contained chain (clip trim/setpts) over original inputs.
+        canvas_width: output width in pixels.
+        canvas_height: output height in pixels.
+        options: see :class:`FiltergraphOptions`. Defaults reproduce the
+            pre-camera-motion behaviour exactly, so a timeline without motion
+            yields a byte-identical ``filter_complex`` (M5).
 
     Returns:
         A :class:`FiltergraphResult`. ``can_use_concat`` is True for the
-        degenerate single-track / no-transition case so the caller uses concat.
+        degenerate single-track / no-transition case so the caller uses concat —
+        never when a clip carries a camera motion.
     """
+    opts = options or FiltergraphOptions()
     tracks = group_tracks(clips)
     multi_track = len(tracks) > 1
     any_track_needs_fg = any(_track_needs_filtergraph(t) for t in tracks)
@@ -235,15 +305,20 @@ def build_filtergraph(
     parts: List[str] = []
     video_inputs: List[str] = []
     track_labels: List[str] = []
+    warnings: List[str] = []
 
     input_idx = 0
     for plan in tracks:
         clip_labels: List[str] = []
+        track_needs_alpha = _track_has_camera_motion(plan)
         for clip in plan.clips:
-            chain, label = _build_clip_chain(input_idx, clip, scale_to, pre_trimmed)
+            chain, label, clip_warnings = _build_clip_chain(
+                input_idx, clip, scale_to, opts, track_needs_alpha
+            )
             parts.append(chain)
             clip_labels.append(label)
             video_inputs.append(clip.id)
+            warnings.extend(clip_warnings)
             input_idx += 1
         track_label = _compose_track(parts, plan, clip_labels, scale_to)
         track_label = _position_track(parts, plan, track_label)
@@ -255,6 +330,8 @@ def build_filtergraph(
         filter_complex=";".join(parts),
         output_label=f"[{output_label}]",
         video_inputs=video_inputs,
+        # De-duplicate: one warning per distinct cause, not one per clip.
+        warnings=list(dict.fromkeys(warnings)),
     )
 
 
