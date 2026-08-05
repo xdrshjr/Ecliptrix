@@ -174,9 +174,15 @@ describe('EXPORT_RESOLUTIONS ⇄ video_scaling._ASPECT_RATIO_MAP (DD-3)', () => 
       source.indexOf('_ASPECT_RATIO_MAP'),
       source.indexOf('def get_aspect_ratio_info'),
     );
-    const parsed = [...table.matchAll(/"width":\s*(\d+),\s*"height":\s*(\d+),[^}]*?"name":\s*"([^"]+)"/g)].map(
-      (m) => ({ id: m[3], width: Number(m[1]), height: Number(m[2]) }),
-    );
+    // exec-loop rather than [...matchAll()]: this tsconfig targets below ES2015
+    // for downlevel iteration, and spreading a RegExp iterator fails tsc.
+    const entry = /"width":\s*(\d+),\s*"height":\s*(\d+),[^}]*?"name":\s*"([^"]+)"/g;
+    const parsed: { id: string; width: number; height: number }[] = [];
+    let hit: RegExpExecArray | null = entry.exec(table);
+    while (hit !== null) {
+      parsed.push({ id: hit[3], width: Number(hit[1]), height: Number(hit[2]) });
+      hit = entry.exec(table);
+    }
     expect(parsed.length, 'failed to parse the .py table — fix the parser, not the expectation').toBe(5);
     expect([...EXPORT_RESOLUTIONS]).toEqual(parsed);
   });
