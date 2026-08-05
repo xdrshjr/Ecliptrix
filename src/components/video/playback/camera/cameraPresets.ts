@@ -9,7 +9,15 @@
  * so the table stays language-neutral and serializable.
  */
 
-import { DEFAULT_KEYFRAME, type CameraKeyframe, type CameraMotion, type CameraMotionMode } from './types';
+import { expandStops, normalizeCameraKeyframes, pickKeyframe } from './keyframes';
+import {
+  DEFAULT_KEYFRAME,
+  type CameraEasing,
+  type CameraKeyframe,
+  type CameraKeyframeStop,
+  type CameraMotion,
+  type CameraMotionMode,
+} from './types';
 
 export interface CameraPreset {
   id: string;
@@ -95,12 +103,55 @@ export function applyPreset(presetId: string, mode: CameraMotionMode): CameraMot
   };
 }
 
-/** Swap `start` / `end` and drop the preset identity (panel's 「反向」, P2-5). */
+/** `easeIn ↔ easeOut`; `linear` / `easeInOut` are their own mirrors. */
+function mirrorEasing(easing: CameraEasing | undefined): CameraEasing | undefined {
+  if (easing === 'easeIn') return 'easeOut';
+  if (easing === 'easeOut') return 'easeIn';
+  return easing;
+}
+
+/**
+ * Reverse a motion (panel's 「反向」, P2-5 / §4.6).
+ *
+ * Two shapes, deliberately (D46):
+ *
+ *   · A CURVE (>2 stops) reverses properly — `at_i' = 1 − at_{n−1−i}` with the
+ *     stops in reverse order, and each SEGMENT's easing travels with its segment
+ *     and is mirrored (`easing_i' = mirror(easing_{n−2−i})`). Without the mirror,
+ *     reversing an `easeIn` would produce another `easeIn` and the rhythm would
+ *     come out backwards from what the user asked for.
+ *   · A TWO-POINT motion takes today's implementation verbatim — swap the
+ *     endpoints, leave `easing` alone. The general rule degenerates at `n = 2` to
+ *     "mirror `motion.easing`", which would make this button emit a DIFFERENT
+ *     stored JSON than it did before this feature, and G4 ① promises the exact
+ *     opposite. That two-point reverse should mirror its easing is a real, older
+ *     defect; it is filed as §13-6 and needs its own baseline update, not a free
+ *     ride on a zero-regression release.
+ */
 export function reverseCameraMotion(motion: CameraMotion): CameraMotion {
-  return {
-    ...motion,
-    presetId: 'custom',
-    start: { ...motion.end },
-    end: { ...motion.start },
-  };
+  const stops = expandStops(motion);
+  if (stops.length <= 2) {
+    return {
+      ...motion,
+      presetId: 'custom',
+      start: { ...motion.end },
+      end: { ...motion.start },
+    };
+  }
+  const count = stops.length;
+  const reversed: CameraKeyframeStop[] = stops.map((_, index) => {
+    const source = stops[count - 1 - index];
+    const stop: CameraKeyframeStop = {
+      ...pickKeyframe(source),
+      at: 1 - source.at,
+    };
+    // Segment i of the reversed curve is segment (n−2−i) of the original, run
+    // backwards — so it carries that segment's mirrored easing.
+    if (index < count - 1) {
+      const easing = mirrorEasing(stops[count - 2 - index].easing);
+      if (easing) stop.easing = easing;
+    }
+    return stop;
+  });
+  return normalizeCameraKeyframes({ ...motion, presetId: 'custom', keyframes: reversed });
 }

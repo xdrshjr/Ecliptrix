@@ -19,7 +19,7 @@ import {
   project3DCorners,
   scaleQuad,
 } from './cameraGeometry';
-import { easedProgressAt, keyframeAt } from './easing';
+import { keyframeAtTrajectory, progressAt, tauAtProgress } from './easing';
 import { isIdentityCameraMotion } from './identity';
 import type { CameraMotion, ResolvedCameraDraw } from './types';
 
@@ -34,8 +34,12 @@ export function resolveCameraDraw(
   if (!(frameAspect > 0) || !Number.isFinite(frameAspect)) return undefined;
 
   const constants = cameraMotionConstants(motion, frameAspect);
-  const e = easedProgressAt(motion, tLocal, clipDuration);
-  const k = keyframeAt(motion, e);
+  // Three steps, not two (D32): linear progress → trajectory parameter (this is
+  // where easing, per segment, is consumed) → framing. For a two-keyframe motion
+  // the pair is exactly the old `keyframeAt(motion, easedProgressAt(...))`.
+  const u = progressAt(motion, tLocal, clipDuration);
+  const tau = tauAtProgress(motion, u);
+  const k = keyframeAtTrajectory(motion, tau);
   const crop = computeCropRect(k, constants.rollPad);
 
   if (motion.mode !== '3d') {

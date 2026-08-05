@@ -11,6 +11,16 @@
  * negative (§4.2.1), which is exactly what "the window opened before this clip"
  * means — so the right half at `tLocal = 0` resolves to the same `u` the
  * original clip had at `tLocal = cutOffset`.
+ *
+ * ⚠️ A MULTI-KEYFRAME CURVE NEEDS NO REBASE OF ITS OWN (D41). Do not "finish the
+ * job" by adding one: `at` is normalized AGAINST THE MOTION WINDOW, and a split
+ * moves only the window's origin (`startOffset`) while its length (`duration`)
+ * is passed through untouched. The two halves therefore keep running the same
+ * curve and simply enter it at different points — the free dividend of v1's
+ * decision to express the window in clip-relative time. Re-timing `at` here
+ * would double-apply the shift and make the picture jump at the cut, which is
+ * the exact failure this module exists to prevent. `splitRebase.test.ts` asserts
+ * that the two halves' `keyframes` arrays are item-for-item equal.
  */
 
 import type { CameraMotion } from './types';

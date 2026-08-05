@@ -22,8 +22,8 @@
 
 import { clamp, keyframeAt } from './easing';
 import { cameraMotionFingerprint } from './fingerprint';
+import { trajectorySamples } from './keyframes';
 import {
-  CAMERA_COVER_SAMPLES,
   CAMERA_D,
   CAMERA_Z_MIN,
   EFFECTIVE_SCALE_RANGE,
@@ -67,8 +67,12 @@ export function rollCover(rollDeg: number, frameAspect: number): number {
 export function rollPadForMotion(motion: CameraMotion, frameAspect: number): number {
   if (motion.mode !== '2d') return 1;
   let need = 1;
-  for (let i = 0; i <= CAMERA_COVER_SAMPLES; i += 1) {
-    const k = keyframeAt(motion, i / CAMERA_COVER_SAMPLES);
+  // The sample SET comes from `trajectorySamples` (D43) — the loop body is
+  // unchanged. A uniform grid misses the extremum once the roll peak sits on an
+  // interior keyframe, and an under-sized `rollPad` is not a rounding error but
+  // a black corner in the rotated frame (v1 D13 measured YAVG 235 → 16).
+  for (const tau of trajectorySamples(motion)) {
+    const k = keyframeAt(motion, tau);
     const cover = rollCover(k.roll, frameAspect);
     if (cover > need) need = cover;
   }
@@ -252,8 +256,10 @@ export function scaleQuad(quad: CameraQuad, factor: number): CameraQuad {
 export function coverScaleForMotion(motion: CameraMotion, frameAspect: number): number {
   if (motion.mode !== '3d') return 1;
   let need = 1;
-  for (let i = 0; i <= CAMERA_COVER_SAMPLES; i += 1) {
-    const k = keyframeAt(motion, i / CAMERA_COVER_SAMPLES);
+  // Same sample-set swap as `rollPadForMotion` (D43): an under-sized coverScale
+  // leaves black wedges where the projected quad fails to reach the frame edge.
+  for (const tau of trajectorySamples(motion)) {
+    const k = keyframeAt(motion, tau);
     const quad = project3DCorners(k, frameAspect);
     if (!quad) return DEGENERATE;
     const cover = coverScaleForQuad(quad, frameAspect);
@@ -311,9 +317,11 @@ const constantsCache = new Map<string, CameraMotionConstants>();
 
 /**
  * `rollPad` + `coverScale` for a motion at a given aspect, memoized by
- * `(fingerprint, aspect)`. Both are 101-sample maxima with a ray/quad
- * intersection inside, so they must be computed once per motion — NEVER per
- * frame.
+ * `(fingerprint, aspect)`. Both are trajectory-wide maxima with a ray/quad
+ * intersection inside (101 samples for a two-stop motion, 7×16+1 = 113 at the
+ * eight-keyframe limit), so they must be computed once per motion — NEVER per
+ * frame. The fingerprint carries the stops (§4.2.6), which is what stops one
+ * curve from inheriting another's constants.
  */
 export function cameraMotionConstants(
   motion: CameraMotion,

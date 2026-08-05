@@ -14,11 +14,12 @@
 import type {
   CameraEasing,
   CameraKeyframe,
+  CameraKeyframeStop,
   CameraMotion,
   CameraMotionMode,
 } from '@/types';
 
-export type { CameraEasing, CameraKeyframe, CameraMotion, CameraMotionMode };
+export type { CameraEasing, CameraKeyframe, CameraKeyframeStop, CameraMotion, CameraMotionMode };
 
 // ---------------------------------------------------------------------------
 // Value ranges (§4.2.2 / §7.1) — interpolate first, clamp after.
@@ -62,6 +63,37 @@ export const CAMERA_Z_MIN = 0.05 * CAMERA_D;
 
 /** Sample count used by the motion-level `coverScale` / `rollPad` maxima. */
 export const CAMERA_COVER_SAMPLES = 100;
+
+// ---------------------------------------------------------------------------
+// Keyframe curves (camera-motion-keyframe-curves §7.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Hard cap on a motion's keyframe count (D36).
+ *
+ * This is an INTERACTION limit, not an FFmpeg one: 32 keyframes still render
+ * (measured, §4.4.5 M2), but the panel's ~420px strip cannot hold more than
+ * eight clickable diamonds.
+ */
+export const CAMERA_MAX_KEYFRAMES = 8;
+
+/**
+ * Shortest allowed distance between two keyframes on the normalized window
+ * axis. At a 4s window that is ~80ms — below it two stops are indistinguishable
+ * on the strip and the per-segment division approaches zero.
+ */
+export const MIN_KEYFRAME_GAP = 0.02;
+
+/**
+ * Minimum samples PER SEGMENT taken by {@link CAMERA_COVER_SAMPLES}'s curve-aware
+ * replacement (D43). A uniform `i/100` grid stops hitting the trajectory extrema
+ * once there are interior stops — the extremum sits ON a stop, and the shortest
+ * legal segment ({@link MIN_KEYFRAME_GAP}) spans only two grid points. Under-
+ * sampling there is not a rounding issue but a visible defect: `rollPad` comes
+ * out too small and `rotate` exposes black corners; `coverScale` comes out too
+ * small and the 3D quad leaves black wedges.
+ */
+export const CAMERA_SEGMENT_SAMPLES = 16;
 
 /** The identity keyframe — every preset omits fields that equal these. */
 export const DEFAULT_KEYFRAME: CameraKeyframe = {

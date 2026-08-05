@@ -2,17 +2,30 @@
 
 /**
  * ParameterControls — intensity / easing / window / advanced keyframes
- * (spec §4.5.2).
+ * (spec §4.5.2, camera-motion-keyframe-curves §4.5.3).
  *
  * Every control is a real form element (range, select, radio, number) so the
  * whole panel is keyboard- and screen-reader-navigable without any custom
  * widget semantics. Touching an advanced field flips `presetId` to `'custom'`,
  * because the values no longer describe a named preset.
+ *
+ * The number fields are NOT superseded by the stage's direct framing — the stage
+ * is an accelerator, these are the precise and fully accessible channel, and
+ * both write through the same `setKeyframeComponent` gate.
+ *
+ * With two keyframes this renders exactly what it always did: a "start" group
+ * and an "end" group. Only once a curve exists does it switch to editing the
+ * selected keyframe, so a user who never adds a third keyframe cannot tell this
+ * release happened (G4's interaction surface).
  */
 
 import React from 'react';
-import type { CameraKeyframe, CameraMotion } from '@/components/video/playback/camera';
-import { CAMERA_RANGES } from '@/components/video/playback/camera';
+import type {
+  CameraKeyframe,
+  CameraKeyframeStop,
+  CameraMotion,
+} from '@/components/video/playback/camera';
+import { CAMERA_RANGES, expandStops } from '@/components/video/playback/camera';
 import type { Translations } from '@/lib/i18n';
 
 type Labels = Translations['timeline']['cameraMotion'];
@@ -22,6 +35,11 @@ interface ParameterControlsProps {
   clipDuration: number;
   labels: Labels;
   onChange: (next: CameraMotion) => void;
+  /** Sets one component on one keyframe — the shared curve write gate. */
+  onKeyframeComponent: (index: number, key: keyof CameraKeyframe, value: number) => void;
+  /** Index of the keyframe the curve editor is focused on. */
+  selectedIndex: number;
+  onSelectIndex: (index: number) => void;
   onReverse: () => void;
   disabled: boolean;
 }
@@ -56,25 +74,19 @@ const ParameterControls: React.FC<ParameterControlsProps> = ({
   clipDuration,
   labels,
   onChange,
+  onKeyframeComponent,
+  selectedIndex,
+  onSelectIndex,
   onReverse,
   disabled,
 }) => {
   const isCustomWindow = motion.duration != null || (motion.startOffset ?? 0) !== 0;
   const fields = motion.mode === '3d' ? KEYS_3D : KEYS_2D;
+  const stops: CameraKeyframeStop[] = expandStops(motion);
+  const hasCurve = stops.length > 2;
+  const selected = Math.min(Math.max(selectedIndex, 0), stops.length - 1);
 
   const patch = (partial: Partial<CameraMotion>) => onChange({ ...motion, ...partial });
-
-  const patchKeyframe = (
-    edge: 'start' | 'end',
-    key: keyof CameraKeyframe,
-    value: number,
-  ) => {
-    onChange({
-      ...motion,
-      presetId: 'custom',
-      [edge]: { ...motion[edge], [key]: value },
-    });
-  };
 
   return (
     <div className="space-y-3">
@@ -101,25 +113,30 @@ const ParameterControls: React.FC<ParameterControlsProps> = ({
         </span>
       </div>
 
-      {/* Easing ---------------------------------------------------------- */}
-      <div className="flex items-center gap-3">
-        <label htmlFor="camera-motion-easing" className="w-16 shrink-0 text-xs text-muted-foreground">
-          {labels.easing}
-        </label>
-        <select
-          id="camera-motion-easing"
-          value={motion.easing}
-          disabled={disabled}
-          onChange={(e) => patch({ easing: e.target.value as CameraMotion['easing'] })}
-          className={`${inputClass} flex-1`}
-        >
-          {EASING_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {labels[option.labelKey] as string}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Easing ----------------------------------------------------------
+          Hidden once a curve exists: every segment owns its own easing on the
+          keyframe strip then, and two controls claiming to set "the" easing
+          would just leave the user guessing which one wins. */}
+      {!hasCurve && (
+        <div className="flex items-center gap-3">
+          <label htmlFor="camera-motion-easing" className="w-16 shrink-0 text-xs text-muted-foreground">
+            {labels.easing}
+          </label>
+          <select
+            id="camera-motion-easing"
+            value={motion.easing}
+            disabled={disabled}
+            onChange={(e) => patch({ easing: e.target.value as CameraMotion['easing'] })}
+            className={`${inputClass} flex-1`}
+          >
+            {EASING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {labels[option.labelKey] as string}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Window ---------------------------------------------------------- */}
       <fieldset className="space-y-2" disabled={disabled}>
@@ -191,10 +208,34 @@ const ParameterControls: React.FC<ParameterControlsProps> = ({
           {labels.advanced}
         </summary>
         <div className="mt-2 space-y-2">
-          {(['start', 'end'] as const).map((edge) => (
-            <div key={edge}>
-              <div className="mb-1 text-[11px] font-medium text-foreground">
-                {edge === 'start' ? labels.keyframeStart : labels.keyframeEnd}
+          {hasCurve ? (
+            // Curve: one group, editing whichever keyframe is selected. A field
+            // per keyframe would put 8 x 7 inputs on screen; the strip is the
+            // selector, this is the editor.
+            <div>
+              <div className="mb-1 flex items-center gap-2">
+                <label
+                  htmlFor="camera-motion-keyframe-index"
+                  className="text-[11px] font-medium text-foreground"
+                >
+                  {labels.keyframeCounter
+                    .replace('{index}', String(selected + 1))
+                    .replace('{count}', String(stops.length))}
+                </label>
+                <select
+                  id="camera-motion-keyframe-index"
+                  value={selected}
+                  disabled={disabled}
+                  aria-label={labels.keyframeEditing.replace('{index}', String(selected + 1))}
+                  onChange={(e) => onSelectIndex(Number(e.target.value))}
+                  className={`${inputClass} w-auto py-0.5 text-[10px]`}
+                >
+                  {stops.map((stop, index) => (
+                    <option key={index} value={index}>
+                      #{index + 1} · {Math.round(stop.at * 100)}%
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-4 gap-1.5">
                 {fields.map((field) => (
@@ -207,16 +248,43 @@ const ParameterControls: React.FC<ParameterControlsProps> = ({
                       step={field.step}
                       min={CAMERA_RANGES[field.key].min}
                       max={CAMERA_RANGES[field.key].max}
-                      value={motion[edge][field.key]}
+                      value={stops[selected][field.key]}
                       disabled={disabled}
-                      onChange={(e) => patchKeyframe(edge, field.key, Number(e.target.value))}
+                      onChange={(e) => onKeyframeComponent(selected, field.key, Number(e.target.value))}
                       className={`${inputClass} px-1.5`}
                     />
                   </label>
                 ))}
               </div>
             </div>
-          ))}
+          ) : (
+            (['start', 'end'] as const).map((edge, edgeIndex) => (
+              <div key={edge}>
+                <div className="mb-1 text-[11px] font-medium text-foreground">
+                  {edge === 'start' ? labels.keyframeStart : labels.keyframeEnd}
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {fields.map((field) => (
+                    <label key={field.key} className="space-y-0.5">
+                      <span className="block text-[10px] text-muted-foreground">
+                        {labels[field.labelKey] as string}
+                      </span>
+                      <input
+                        type="number"
+                        step={field.step}
+                        min={CAMERA_RANGES[field.key].min}
+                        max={CAMERA_RANGES[field.key].max}
+                        value={motion[edge][field.key]}
+                        disabled={disabled}
+                        onChange={(e) => onKeyframeComponent(edgeIndex, field.key, Number(e.target.value))}
+                        className={`${inputClass} px-1.5`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </details>
 

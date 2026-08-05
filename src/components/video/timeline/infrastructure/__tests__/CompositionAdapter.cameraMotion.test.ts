@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { CompositionAdapter } from '../CompositionAdapter';
 import { applyPreset } from '../../../playback/camera/cameraPresets';
+import { insertKeyframeAt, setKeyframeComponent } from '../../../playback/camera/keyframes';
 import type { TrackData, MaterialData } from '../../domain/types';
 
 const adapter = new CompositionAdapter();
@@ -99,5 +100,52 @@ describe('buildCompositionRequest — camera_motion wire', () => {
     const wire = adapter.buildCompositionRequest(sequences, [], {}).video_sequences[0].camera_motion!;
     expect(wire.intensity).toBe(2);
     expect(wire.end.scale).toBe(4);
+  });
+
+  // ── D38 at the assembly seam (review P2-7) ────────────────────────────────
+
+  function wireFor(motion: unknown) {
+    const sequences = adapter.extractVideoSequences(
+      [track({ cameraMotion: motion })], materials,
+    );
+    return adapter.buildCompositionRequest(sequences, [], {}).video_sequences[0].camera_motion!;
+  }
+
+  it('emits NO keyframes key for a two-keyframe motion', () => {
+    expect('keyframes' in wireFor(applyPreset('push-in', '2d'))).toBe(false);
+  });
+
+  it('emits an ascending snake_case curve when there is one', () => {
+    const curved = setKeyframeComponent(
+      insertKeyframeAt(applyPreset('orbit-left', '3d'), 0.4), 1, 'rotateY', 4,
+    );
+    const wire = wireFor(curved) as unknown as {
+      keyframes: Array<Record<string, number | string | undefined>>;
+      start: Record<string, number>;
+      end: Record<string, number>;
+    };
+    expect(wire.keyframes).toHaveLength(3);
+    expect(wire.keyframes.map((stop) => stop.at)).toEqual([0, 0.4, 1]);
+    wire.keyframes.forEach((stop) => {
+      expect(stop).toHaveProperty('rotate_y');
+      expect(stop).not.toHaveProperty('rotateY');
+    });
+    expect(wire.keyframes[0].rotate_y).toBeCloseTo(wire.start.rotate_y, 9);
+    expect(wire.keyframes[2].rotate_y).toBeCloseTo(wire.end.rotate_y, 9);
+  });
+
+  it('zeroes the 3D components inside a 2D curve as well', () => {
+    const curved = insertKeyframeAt(applyPreset('push-in', '2d'), 0.5);
+    const poisoned = {
+      ...curved,
+      keyframes: curved.keyframes!.map((stop, index) => (
+        index === 1 ? { ...stop, rotateY: 30, dolly: 0.4 } : stop
+      )),
+    };
+    const wire = wireFor(poisoned) as unknown as {
+      keyframes: Array<Record<string, number>>;
+    };
+    expect(wire.keyframes[1].rotate_y).toBe(0);
+    expect(wire.keyframes[1].dolly).toBe(0);
   });
 });

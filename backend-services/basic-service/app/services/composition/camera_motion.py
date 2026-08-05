@@ -69,6 +69,16 @@ KEYFRAME_EPSILON = 1e-6
 #: Sample count used when fitting the 3D corner trajectories.
 POLY_FIT_SAMPLES = 41
 
+#: Keyframe curves (camera-motion-keyframe-curves §7.3) — mirrored from
+#: `playback/camera/types.ts`. `CAMERA_MAX_KEYFRAMES` is the compiled-in ceiling;
+#: the effective limit is `config.max_keyframes`, enforced inside `expand_stops`.
+CAMERA_MAX_KEYFRAMES = 8
+MIN_KEYFRAME_GAP = 0.02
+CAMERA_SEGMENT_SAMPLES = 16
+_GAP_EPSILON = 1e-9
+
+EASINGS = ("linear", "easeIn", "easeOut", "easeInOut")
+
 DEGENERATE = float("inf")
 
 
@@ -108,6 +118,20 @@ class CameraMotionConfig:
     #: hurts is decoding an 8000x6000 original, and `zoompan` sits AFTER
     #: `scale=cw:ch` so it never sees the original at all.
     stills_max_source_pixels: int = 33_177_600  # 7680x4320
+    #: Character ceiling on the ASSEMBLED chain (D40). Over it, a multi-keyframe
+    #: curve collapses to a two-keyframe motion with a warning rather than
+    #: failing the export. Measured headroom is roughly 2x: a single `zoompan`
+    #: `z` expression of 8985 chars and a 15KB chain both run (§4.4.5 M2).
+    #: NOTE the gate is on the WHOLE chain, not per component: `z_expr` is
+    #: inlined into `x_expr` and `y_expr` twice each, so the scale segment string
+    #: appears FIVE times inside one zoompan and length is not linear in the
+    #: keyframe count.
+    max_expr_chars: int = 20000
+    #: Keyframe ceiling, aligned with the frontend's CAMERA_MAX_KEYFRAMES.
+    #: Enforced in `expand_stops` — neither the pydantic model nor the frontend
+    #: constant can see this file, so truncating only there would make the key a
+    #: dead knob (worse than not having it).
+    max_keyframes: int = CAMERA_MAX_KEYFRAMES
 
 
 _config_cache: Optional[CameraMotionConfig] = None
@@ -148,6 +172,14 @@ def load_camera_config(config_path: str = "config/camera-motion.yaml") -> Camera
                 stills_enabled=bool(stills.get("enabled", True)),
                 stills_max_source_pixels=int(
                     stills.get("max_source_pixels", 33_177_600) or 33_177_600
+                ),
+                # Every fallback below MUST be the dataclass default, verbatim
+                # (§14 I4 / review P1-9): a YAML that omits the key has to behave
+                # exactly like no YAML at all. T19 pins that with a trimmed-file
+                # vs no-file comparison.
+                max_expr_chars=int(section.get("max_expr_chars", 20000) or 20000),
+                max_keyframes=int(
+                    section.get("max_keyframes", CAMERA_MAX_KEYFRAMES) or CAMERA_MAX_KEYFRAMES
                 ),
             )
             logger.info("Camera motion configuration loaded successfully")
@@ -328,16 +360,210 @@ def resolve_window(motion: Any, clip_duration: float) -> Tuple[float, float]:
     return w0, wd
 
 
-def keyframe_at(motion: Any, e: float) -> Dict[str, float]:
-    """Interpolate then clamp, component-wise (§4.2.2)."""
+# ---------------------------------------------------------------------------
+# Keyframe curves — the Python mirror of `playback/camera/keyframes.ts`
+# (camera-motion-keyframe-curves §4.2.1 / §4.2.2 / §4.2.3 / §4.2.7)
+# ---------------------------------------------------------------------------
+
+
+def _stop_easing(raw: Any) -> Optional[str]:
+    return raw if raw in EASINGS else None
+
+
+def _round_at(value: float) -> float:
+    """Canonical `at` precision — the exact mirror of the TS `roundAt`.
+
+    `math.floor(x*1e6 + 0.5)` is JS's `Math.round`, deliberately NOT Python's
+    `round()` (which is banker's rounding and would disagree on ties).
+    """
+    return math.floor(value * 1e6 + 0.5) / 1e6
+
+
+def expand_stops(motion: Any, config: Optional[CameraMotionConfig] = None) -> List[Dict[str, Any]]:
+    """View any motion as a stop list. **The only place the backend reads a curve.**
+
+    Return contract (violating it is an implementation error):
+      * every item is a PLAIN dict, never a pydantic model;
+      * the seven components go through `_keyframe_dict()`, so keys are
+        snake_case (`rotate_x` / `rotate_y`) and a missing component takes its
+        DEFAULT_KEYFRAME value;
+      * plus `at: float` and `easing: Optional[str]`;
+      * length >= 2, `at` ascending, `at[0] == 0`, `at[-1] == 1`;
+      * anything past `config.max_keyframes` is dropped HERE (ends kept, the
+        middle thinned evenly).
+
+    The contract exists because `_piecewise_expr` subscripts these dicts. The
+    input may be a `CameraKeyframeStop` (attributes, not subscripts), a bare dict
+    or a dict missing components — and one `KeyError`/`TypeError` in the
+    expression builder is a 500 on `/api/video/compose`, which is the exact
+    opposite of G5's "camera motion never fails an export".
+    """
+    raw = _motion_field(motion, "keyframes", None)
+    limit = max(2, int((config or load_camera_config()).max_keyframes or CAMERA_MAX_KEYFRAMES))
+    stops: List[Dict[str, Any]] = []
+    if isinstance(raw, (list, tuple)) and len(raw) >= 2:
+        for item in raw:
+            if item is None:
+                continue
+            entry = _keyframe_dict(item)
+            at_raw = item.get("at") if isinstance(item, dict) else getattr(item, "at", None)
+            entry["at"] = _round_at(clamp(float(at_raw), 0.0, 1.0)) if isinstance(at_raw, (int, float)) else 0.0
+            easing_raw = item.get("easing") if isinstance(item, dict) else getattr(item, "easing", None)
+            entry["easing"] = _stop_easing(easing_raw)
+            stops.append(entry)
+    if len(stops) < 2:
+        # Old two-point motion: `start`/`end` ARE the endpoints (D31), so this
+        # expansion makes every downstream formula branch-free.
+        first = _keyframe_dict(_motion_field(motion, "start"))
+        first["at"] = 0.0
+        first["easing"] = _stop_easing(_motion_field(motion, "easing", None))
+        last = _keyframe_dict(_motion_field(motion, "end"))
+        last["at"] = 1.0
+        last["easing"] = None
+        return [first, last]
+
+    stops.sort(key=lambda entry: entry["at"])
+    stops[0]["at"] = 0.0
+    stops[-1]["at"] = 1.0
+
+    kept: List[Dict[str, Any]] = [stops[0]]
+    for index in range(1, len(stops)):
+        stop = stops[index]
+        if stop["at"] - kept[-1]["at"] >= MIN_KEYFRAME_GAP - _GAP_EPSILON:
+            kept.append(stop)
+            continue
+        if index != len(stops) - 1:
+            continue
+        # The final stop is pinned at 1, so anything crowding it gives way.
+        while len(kept) > 1 and stop["at"] - kept[-1]["at"] < MIN_KEYFRAME_GAP - _GAP_EPSILON:
+            kept.pop()
+        kept.append(stop)
+
+    if len(kept) > limit:
+        target = max(0, limit - 2)
+        interior = kept[1:-1]
+        if target == 0:
+            kept = [kept[0], kept[-1]]
+        else:
+            span = len(interior) - 1
+            picked: List[int] = []
+            for j in range(target):
+                index = round(span / 2) if target == 1 else round((j * span) / (target - 1))
+                index = min(span, max(0, int(index)))
+                if index not in picked:
+                    picked.append(index)
+            cursor = 0
+            while len(picked) < target and cursor <= span:
+                if cursor not in picked:
+                    picked.append(cursor)
+                cursor += 1
+            picked = sorted(picked)[:target]
+            kept = [kept[0]] + [interior[i] for i in picked] + [kept[-1]]
+
+    kept[-1]["easing"] = None
+    for stop in kept[:-1]:
+        if stop["easing"] is None:
+            stop["easing"] = _stop_easing(_motion_field(motion, "easing", None)) or "easeInOut"
+    return kept
+
+
+def _segment_index_at(stops: Sequence[Dict[str, Any]], p: float) -> int:
+    """The segment containing `p`; an exact interior `at` picks the LEFT one."""
+    last = len(stops) - 2
+    if last <= 0:
+        return 0
+    for i in range(last):
+        if p <= stops[i + 1]["at"]:
+            return i
+    return last
+
+
+def trajectory_samples(motion: Any, config: Optional[CameraMotionConfig] = None) -> List[float]:
+    """Sample positions covering the trajectory, every stop included (D43).
+
+    Two stops return `[0, 0.01, …, 1]` element for element — the exact list the
+    four call sites used to build inline — so no existing motion's `roll_pad`,
+    `cover_scale` or filter string moves by a single bit. With interior stops the
+    uniform grid stops hitting the extrema (they sit ON the stops, and the
+    shortest legal segment spans only two grid points), which shows up as black
+    corners after `rotate` and black wedges around the 3D quad.
+
+    Must stay element-for-element identical to the TS `trajectorySamples`: both
+    `roll_pad` and `cover_scale` are compared across languages at 1e-6, and a
+    different sample set means a different maximum.
+    """
+    stops = expand_stops(motion, config)
+    if len(stops) == 2:
+        return [i / CAMERA_COVER_SAMPLES for i in range(CAMERA_COVER_SAMPLES + 1)]
+    segments = len(stops) - 1
+    per = max(CAMERA_SEGMENT_SAMPLES, math.ceil(CAMERA_COVER_SAMPLES / segments))
+    out: List[float] = []
+    for i in range(segments):
+        a0 = stops[i]["at"]
+        a1 = stops[i + 1]["at"]
+        for j in range(per):
+            out.append(a0 + (j / per) * (a1 - a0))
+    out.append(1.0)
+    return out
+
+
+def tau_at_progress(motion: Any, u: float, config: Optional[CameraMotionConfig] = None) -> float:
+    """Linear progress `u` -> trajectory parameter `tau` (§4.2.2).
+
+    This is where easing — per segment — is consumed; everything after it is pure
+    geometry. A two-stop motion reduces to `ease(u, motion.easing)` exactly.
+    """
+    stops = expand_stops(motion, config)
+    p = clamp(u, 0.0, 1.0)
+    index = _segment_index_at(stops, p)
+    a0 = stops[index]["at"]
+    a1 = stops[index + 1]["at"]
+    span = a1 - a0
+    if not span > 0:
+        return a1
+    s = clamp((p - a0) / span, 0.0, 1.0)
+    return a0 + ease(s, stops[index]["easing"] or "easeInOut") * span
+
+
+def keyframe_at_trajectory(
+    motion: Any, tau: float, config: Optional[CameraMotionConfig] = None,
+) -> Dict[str, float]:
+    """Interpolate then clamp at trajectory parameter `tau` (§4.2.3).
+
+    `intensity` scales the trajectory ABOUT THE FIRST STOP (D35), so
+    `intensity = 0` holds the opening framing rather than meaning "no motion".
+    With two stops `(frm - base)` is exactly 0.0 and the expression is today's
+    `start + (end - start) * intensity * tau` with one factor re-associated —
+    equal to a few ULP, not bit for bit. Byte-level zero regression is proved on
+    the emitted STRINGS instead (T2 / C21).
+    """
+    stops = expand_stops(motion, config)
     intensity = clamp(float(_motion_field(motion, "intensity", 1.0)), 0.0, 2.0)
-    start = _keyframe_dict(_motion_field(motion, "start"))
-    end = _keyframe_dict(_motion_field(motion, "end"))
+    p = clamp(tau, 0.0, 1.0)
+    index = _segment_index_at(stops, p)
+    a0 = stops[index]["at"]
+    a1 = stops[index + 1]["at"]
+    span = a1 - a0
+    s = clamp((p - a0) / span, 0.0, 1.0) if span > 0 else 1.0
     out: Dict[str, float] = {}
     for key, (low, high) in CAMERA_RANGES.items():
-        raw = start[key] + (end[key] - start[key]) * intensity * e
+        base = stops[0][key]
+        frm = stops[index][key]
+        to = stops[index + 1][key]
+        raw = base + (frm - base + (to - frm) * s) * intensity
         out[key] = clamp(raw, low, high)
     return out
+
+
+def keyframe_at(motion: Any, e: float) -> Dict[str, float]:
+    """Interpolate then clamp, component-wise (§4.2.2).
+
+    ⚠️ `e` is the TRAJECTORY parameter, not time and not eased progress (D32).
+    The name and signature are kept because `roll_pad_for_motion`,
+    `cover_scale_for_motion`, `_needs_zoom_segment` and `_needs_roll_segment` all
+    sample "along the whole trajectory", which is precisely what this now means.
+    """
+    return keyframe_at_trajectory(motion, e)
 
 
 def roll_cover(roll_deg: float, frame_aspect: float) -> float:
@@ -348,13 +574,16 @@ def roll_cover(roll_deg: float, frame_aspect: float) -> float:
     return max(a + b / aspect, a + b * aspect)
 
 
-def roll_pad_for_motion(motion: Any, frame_aspect: float) -> float:
+def roll_pad_for_motion(
+    motion: Any, frame_aspect: float, config: Optional[CameraMotionConfig] = None,
+) -> float:
     """Motion-level `RP` (D13). 3D folds roll into Rz, so its RP is always 1."""
     if _motion_field(motion, "mode", "2d") != "2d":
         return 1.0
     need = 1.0
-    for i in range(CAMERA_COVER_SAMPLES + 1):
-        k = keyframe_at(motion, i / CAMERA_COVER_SAMPLES)
+    # Sample SET from `trajectory_samples` (D43); the loop body is unchanged.
+    for tau in trajectory_samples(motion, config):
+        k = keyframe_at_trajectory(motion, tau, config)
         need = max(need, roll_cover(k["roll"], frame_aspect))
     return clamp(need, ROLL_PAD_RANGE[0], ROLL_PAD_RANGE[1])
 
@@ -454,13 +683,16 @@ def cover_scale_for_quad(pts: Sequence[Dict[str, float]], frame_aspect: float) -
     return need
 
 
-def cover_scale_for_motion(motion: Any, frame_aspect: float) -> float:
+def cover_scale_for_motion(
+    motion: Any, frame_aspect: float, config: Optional[CameraMotionConfig] = None,
+) -> float:
     """Motion-level `coverScale` (D5) — one constant for the whole window."""
     if _motion_field(motion, "mode", "2d") != "3d":
         return 1.0
     need = 1.0
-    for i in range(CAMERA_COVER_SAMPLES + 1):
-        k = keyframe_at(motion, i / CAMERA_COVER_SAMPLES)
+    # Sample SET from `trajectory_samples` (D43); the loop body is unchanged.
+    for tau in trajectory_samples(motion, config):
+        k = keyframe_at_trajectory(motion, tau, config)
         pts = project_3d_corners(k, frame_aspect)
         if pts is None:
             return DEGENERATE
@@ -488,15 +720,33 @@ def is_identity_camera_motion(motion: Any) -> bool:
     ``pull-out`` starts at ``scale = 1.25``; intensity 0 means "hold that static
     1.25x framing", not "no motion". Treating it as no-motion would export the
     un-cropped frame while the panel showed the crop.
+
+    ⚠️ GENERALIZED TO CURVES (camera-motion-keyframe-curves §4.2.5, review P0-1).
+    ``k(tau) = S0 + (traj(tau) - S0) * I``, so the motion is the identity iff
+    ``S0`` is default AND (``I ~ 0`` OR every stop equals the default). Reading
+    only ``start``/``end`` would judge a curve whose ENDPOINTS are default but
+    whose middle keyframe pushes to 2x as "no motion" — and this function is the
+    FIRST gate in both ``build_camera_filter_chain`` and
+    ``build_still_overlay_plan``, both of which return early with NO warning
+    (the user did not ask for a motion, so there is nothing to explain). The
+    result would be a motion that plays in the panel and in the preview, is
+    absent from the render, and is mentioned nowhere. Keep this in lockstep with
+    ``identity.ts`` (C29).
+
+    Two-stop motions expand to ``[start, end]``, so this degenerates to today's
+    rule with no behaviour change at all.
     """
     if motion is None:
         return True
-    if not keyframe_equals_default(_keyframe_dict(_motion_field(motion, "start"))):
+    stops = expand_stops(motion)
+    if not keyframe_equals_default(stops[0]):
         return False
     intensity = float(_motion_field(motion, "intensity", 1.0))
     if abs(intensity) <= KEYFRAME_EPSILON:
         return True
-    return keyframe_equals_default(_keyframe_dict(_motion_field(motion, "end")))
+    # `keyframe_equals_default` only reads the seven components; the extra `at` /
+    # `easing` keys a stop carries are simply not looked at.
+    return all(keyframe_equals_default(stop) for stop in stops)
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +791,55 @@ def _component_expr(start: float, end: float, intensity: float, e_expr: str, key
     return f"clip({_num(start)}+({_num(delta)})*({e_expr}),{_num(low)},{_num(high)})"
 
 
+def _piecewise_expr(
+    stops: Sequence[Dict[str, Any]],
+    key: str,
+    intensity: float,
+    u_expr: str,
+    *,
+    low: float,
+    high: float,
+) -> str:
+    """`clip(nested-if(...), low, high)` — the expression mirror of
+    `keyframe_at_trajectory` (§4.4.2).
+
+    CORRECTNESS (check this against §4.2.2/§4.2.3 before touching anything):
+    inside segment `i`, `tau_at_progress` gives `tau = a0 + ease(s)*(a1-a0)`.
+    Feeding that back into `keyframe_at_trajectory` gives
+    `s' = (tau-a0)/(a1-a0) = ease(s)`, hence `v = v_i + (v_{i+1}-v_i)*ease(s)`.
+    Applying D35's intensity about the FIRST stop:
+
+        k = v0 + (v - v0)*I
+          = [v0 + (v_i - v0)*I] + (v_{i+1} - v_i)*I*ease(s)
+          = base_i + delta_i*ease(s)
+
+    which is exactly what `seg()` below emits.
+
+    D37: the caller guarantees `len(stops) > 2`. A two-stop motion takes
+    `_component_expr`, i.e. TODAY'S code path, so its string is character-
+    identical rather than merely "a degenerate case that happens to print the
+    same". `u_expr` is supplied by the caller because the frame variable differs
+    per filter — `zoompan`/`perspective` have `on`, `rotate` only has `n` — and
+    hard-coding one here is precisely the v1 P0-1 bug.
+    """
+    v0 = stops[0][key]
+
+    def seg(i: int) -> str:
+        a0 = stops[i]["at"]
+        a1 = stops[i + 1]["at"]
+        base = v0 + (stops[i][key] - v0) * intensity
+        delta = (stops[i + 1][key] - stops[i][key]) * intensity
+        if abs(delta) <= 1e-12 or abs(a1 - a0) <= 1e-12:
+            return _num(base)
+        local = f"clip(({u_expr}-{_num(a0)})/{_num(a1 - a0)},0,1)"
+        return f"{_num(base)}+({_num(delta)})*({_ease_expr(local, stops[i].get('easing') or 'easeInOut')})"
+
+    expr = seg(len(stops) - 2)
+    for i in range(len(stops) - 3, -1, -1):
+        expr = f"if(lt({u_expr},{_num(stops[i + 1]['at'])}),{seg(i)},{expr})"
+    return f"clip({expr},{_num(low)},{_num(high)})"
+
+
 def _horner(coeffs_low_to_high: Sequence[float], e_expr: str) -> str:
     """`a0+(E)*(a1+(E)*(a2+(E)*a3))` — short and numerically well-behaved."""
     expr = _num(coeffs_low_to_high[-1], 8)
@@ -575,7 +874,30 @@ def _even(value: float) -> int:
     return n if n % 2 == 0 else n + 1
 
 
-def _needs_zoom_segment(motion: Any, roll_pad: float) -> bool:
+def _track_expr(
+    stops: Sequence[Dict[str, Any]],
+    key: str,
+    intensity: float,
+    u_expr: str,
+    e_expr: str,
+) -> str:
+    """One component's expression, choosing the D37 branch.
+
+    Two stops go through `_component_expr` — literally the pre-curve code — so
+    every existing motion's filter string stays character-identical and the
+    zero-regression comparison (T2 / C21) keeps its meaning. Anything longer is
+    a real curve and takes the nested-`if` builder, which needs the UN-eased
+    progress because each segment carries its own easing.
+    """
+    low, high = CAMERA_RANGES[key]
+    if len(stops) == 2:
+        return _component_expr(stops[0][key], stops[1][key], intensity, e_expr, key)
+    return _piecewise_expr(stops, key, intensity, u_expr, low=low, high=high)
+
+
+def _needs_zoom_segment(
+    motion: Any, roll_pad: float, config: Optional[CameraMotionConfig] = None,
+) -> bool:
     """True when the crop is non-identity anywhere in the window.
 
     NOTE (deviation from spec §4.4.3, recorded in spec §14): this gate is mode-
@@ -585,55 +907,39 @@ def _needs_zoom_segment(motion: Any, roll_pad: float) -> bool:
     would drop the scale component of e.g. ``parallax-push`` (scale 1 → 1.08)
     from the export while the preview still shows it — a WYSIWYG break.
     """
-    for i in range(CAMERA_COVER_SAMPLES + 1):
-        k = keyframe_at(motion, i / CAMERA_COVER_SAMPLES)
+    for tau in trajectory_samples(motion, config):
+        k = keyframe_at_trajectory(motion, tau, config)
         crop = compute_crop_rect(k, roll_pad)
         if abs(crop["w"] - 1.0) > 1e-6 or abs(crop["x"]) > 1e-6 or abs(crop["y"]) > 1e-6:
             return True
     return False
 
 
-def _needs_roll_segment(motion: Any) -> bool:
+def _needs_roll_segment(motion: Any, config: Optional[CameraMotionConfig] = None) -> bool:
     if _motion_field(motion, "mode", "2d") != "2d":
         return False
-    for i in range(CAMERA_COVER_SAMPLES + 1):
-        if abs(keyframe_at(motion, i / CAMERA_COVER_SAMPLES)["roll"]) > 1e-6:
+    for tau in trajectory_samples(motion, config):
+        if abs(keyframe_at_trajectory(motion, tau, config)["roll"]) > 1e-6:
             return True
     return False
 
 
-def _build_perspective_segment(
-    motion: Any, frame_w: int, frame_h: int, fps: int, w0: float, wd: float,
-    easing: str, config: CameraMotionConfig, label: str, warnings: List[str],
-) -> Optional[str]:
-    """Fit the 3D corner trajectories and emit the `perspective` filter.
+def _fit_corner_tracks(
+    tracks: Dict[str, List[float]],
+    samples_e: Sequence[float],
+    config: CameraMotionConfig,
+    label: str,
+    warnings: List[str],
+) -> Optional[Dict[str, List[float]]]:
+    """Least-squares fit all eight corner tracks, with the configured retry.
 
-    Returns ``None`` (with a warning) when the quad degenerates or the fit is
-    worse than ``max_fit_error_px`` — the clip then keeps its 2D components.
+    Returns ``None`` (having appended a warning) when even the fallback degree
+    misses ``max_fit_error_px`` — the caller then drops to the 2D components.
     """
-    aspect = frame_w / frame_h
-    cover = cover_scale_for_motion(motion, aspect)
-    if cover == DEGENERATE:
-        warnings.append(f"{label}: 3D camera motion degenerated (corner behind camera); rendered as 2D")
-        return None
-
-    samples_e = [i / (POLY_FIT_SAMPLES - 1) for i in range(POLY_FIT_SAMPLES)]
-    tracks: Dict[str, List[float]] = {key: [] for pair in _PERSPECTIVE_KEYS for key in pair}
-    for e in samples_e:
-        pts = project_3d_corners(keyframe_at(motion, e), aspect)
-        if pts is None:
-            warnings.append(f"{label}: 3D camera motion degenerated mid-window; rendered as 2D")
-            return None
-        scaled = scale_quad(pts, cover)
-        for index, (kx, ky) in enumerate(_PERSPECTIVE_KEYS):
-            tracks[kx].append(scaled[index]["x"] * frame_w)
-            tracks[ky].append(scaled[index]["y"] * frame_h)
-
     degrees = [config.poly_degree]
     if config.poly_degree_fallback:
         degrees.append(config.poly_degree_fallback)
 
-    fitted: Optional[Dict[str, List[float]]] = None
     worst = 0.0
     for degree in degrees:
         try:
@@ -647,21 +953,126 @@ def _build_perspective_segment(
             warnings.append(f"{label}: 3D trajectory fit failed ({exc}); rendered as 2D")
             return None
         if worst <= config.max_fit_error_px:
-            fitted = candidate
-            break
+            return candidate
 
-    if fitted is None:
-        warnings.append(
-            f"{label}: 3D trajectory fit error {worst:.2f}px exceeds "
-            f"{config.max_fit_error_px}px; rendered as 2D"
-        )
+    warnings.append(
+        f"{label}: 3D trajectory fit error {worst:.2f}px exceeds "
+        f"{config.max_fit_error_px}px; rendered as 2D"
+    )
+    return None
+
+
+def _build_perspective_segment(
+    motion: Any, frame_w: int, frame_h: int, fps: int, w0: float, wd: float,
+    easing: str, config: CameraMotionConfig, label: str, warnings: List[str],
+) -> Optional[str]:
+    """Fit the 3D corner trajectories and emit the `perspective` filter.
+
+    Returns ``None`` (with a warning) when the quad degenerates or the fit is
+    worse than ``max_fit_error_px`` — the clip then keeps its 2D components.
+
+    Two shapes (D39):
+      * two stops — the whole window, one cubic per corner, exactly the v1 code,
+        so the emitted string does not move;
+      * a curve — each SEGMENT gets its own fit and they are nested with
+        ``if(lt(U, at_i), …)``. A piecewise path has corners at the keyframes, and
+        one cubic across the whole window would blow past ``max_fit_error_px``
+        every time, degrading multi-keyframe 3D to 2D as a matter of course.
+        Per segment the path is a smooth homography again, so the fit is no
+        harder than today's.
+    """
+    aspect = frame_w / frame_h
+    cover = cover_scale_for_motion(motion, aspect, config)
+    if cover == DEGENERATE:
+        warnings.append(f"{label}: 3D camera motion degenerated (corner behind camera); rendered as 2D")
         return None
 
-    # `perspective` DOES expose `on`, but only with eval=frame.
-    e_expr = _ease_expr(_progress_expr("on", fps, w0, wd), easing)
-    parts = [f"{key}='{_horner(fitted[key], e_expr)}'" for pair in _PERSPECTIVE_KEYS for key in pair]
+    stops = expand_stops(motion, config)
+    samples_e = [i / (POLY_FIT_SAMPLES - 1) for i in range(POLY_FIT_SAMPLES)]
     interpolation = config.interpolation if config.interpolation in ("linear", "cubic") else "linear"
+    u_expr = _progress_expr("on", fps, w0, wd)
+
+    def corner_tracks(tau_of: Any) -> Optional[Dict[str, List[float]]]:
+        tracks: Dict[str, List[float]] = {key: [] for pair in _PERSPECTIVE_KEYS for key in pair}
+        for sample in samples_e:
+            pts = project_3d_corners(keyframe_at_trajectory(motion, tau_of(sample), config), aspect)
+            if pts is None:
+                warnings.append(f"{label}: 3D camera motion degenerated mid-window; rendered as 2D")
+                return None
+            # `cover` stays a motion-level constant (D5) — it is the maximum over
+            # the WHOLE trajectory, so per-segment fitting cannot change it.
+            scaled = scale_quad(pts, cover)
+            for index, (kx, ky) in enumerate(_PERSPECTIVE_KEYS):
+                tracks[kx].append(scaled[index]["x"] * frame_w)
+                tracks[ky].append(scaled[index]["y"] * frame_h)
+        return tracks
+
+    if len(stops) == 2:
+        tracks = corner_tracks(lambda sample: sample)
+        if tracks is None:
+            return None
+        fitted = _fit_corner_tracks(tracks, samples_e, config, label, warnings)
+        if fitted is None:
+            return None
+        # `perspective` DOES expose `on`, but only with eval=frame.
+        e_expr = _ease_expr(u_expr, easing)
+        parts = [f"{key}='{_horner(fitted[key], e_expr)}'" for pair in _PERSPECTIVE_KEYS for key in pair]
+        return "perspective=" + ":".join(parts) + f":sense=destination:eval=frame:interpolation={interpolation}"
+
+    # Per-segment fits. The fit variable is the segment's EASED local progress,
+    # so the easing lives in the expression and the polynomial only has to
+    # describe the geometry — the same split the 2D path gets from `_ease_expr`.
+    segment_exprs: Dict[str, List[str]] = {key: [] for pair in _PERSPECTIVE_KEYS for key in pair}
+    for index in range(len(stops) - 1):
+        a0 = stops[index]["at"]
+        a1 = stops[index + 1]["at"]
+        tracks = corner_tracks(lambda sample, a0=a0, a1=a1: a0 + sample * (a1 - a0))
+        if tracks is None:
+            return None
+        fitted = _fit_corner_tracks(tracks, samples_e, config, label, warnings)
+        if fitted is None:
+            return None
+        local = f"clip(({u_expr}-{_num(a0)})/{_num(a1 - a0)},0,1)"
+        local_e = _ease_expr(local, stops[index].get("easing") or "easeInOut")
+        for key in segment_exprs:
+            segment_exprs[key].append(_horner(fitted[key], local_e))
+
+    parts: List[str] = []
+    for pair in _PERSPECTIVE_KEYS:
+        for key in pair:
+            exprs = segment_exprs[key]
+            expr = exprs[-1]
+            for index in range(len(exprs) - 2, -1, -1):
+                expr = f"if(lt({u_expr},{_num(stops[index + 1]['at'])}),{exprs[index]},{expr})"
+            parts.append(f"{key}='{expr}'")
     return "perspective=" + ":".join(parts) + f":sense=destination:eval=frame:interpolation={interpolation}"
+
+
+def _collapse_to_two_stops(motion: Any) -> Dict[str, Any]:
+    """A shallow copy of `motion` WITHOUT `keyframes` (D40's one-level degrade).
+
+    The endpoints survive on `start`/`end` thanks to the D31 mirror, so the
+    collapsed motion still opens and closes on the user's own framing — the
+    smallest possible information loss. Returning a plain dict is deliberate:
+    `_motion_field` reads dicts and models alike, and a dict cannot carry a
+    `keyframes` attribute back in by accident.
+    """
+    out: Dict[str, Any] = {
+        "version": _motion_field(motion, "version", 1),
+        "mode": _motion_field(motion, "mode", "2d"),
+        "preset_id": _motion_field(motion, "preset_id", "custom"),
+        "intensity": _motion_field(motion, "intensity", 1.0),
+        "easing": _motion_field(motion, "easing", "easeInOut"),
+        "start": _keyframe_dict(_motion_field(motion, "start")),
+        "end": _keyframe_dict(_motion_field(motion, "end")),
+    }
+    start_offset = _motion_field(motion, "start_offset", None)
+    if start_offset is not None:
+        out["start_offset"] = start_offset
+    duration = _motion_field(motion, "duration", None)
+    if duration is not None:
+        out["duration"] = duration
+    return out
 
 
 def build_camera_filter_chain(
@@ -673,6 +1084,7 @@ def build_camera_filter_chain(
     caps: Optional[CameraFilterCaps] = None,
     config: Optional[CameraMotionConfig] = None,
     label: str = "clip",
+    allow_collapse: bool = True,
 ) -> Tuple[str, List[str]]:
     """Build the FFmpeg filter chain for one clip's camera motion.
 
@@ -684,6 +1096,10 @@ def build_camera_filter_chain(
     ``frame_w``/``frame_h`` are ``scaling_params['scale_width'/'scale_height']``
     (the CONTENT rect, i.e. after scale and before pad) so the aspect matches the
     preview's fit-rect exactly (§4.2 preamble).
+
+    ``allow_collapse`` is D40's one-level degrade switch. The recursive call
+    passes ``False``; it is an explicit parameter rather than real recursion so
+    no future edit can turn "degrade once" into an unbounded loop.
     """
     warnings: List[str] = []
     config = config or load_camera_config()
@@ -703,21 +1119,24 @@ def build_camera_filter_chain(
     mode = _motion_field(motion, "mode", "2d")
     easing = str(_motion_field(motion, "easing", "easeInOut"))
     intensity = clamp(float(_motion_field(motion, "intensity", 1.0)), 0.0, 2.0)
-    start = _keyframe_dict(_motion_field(motion, "start"))
-    end = _keyframe_dict(_motion_field(motion, "end"))
+    stops = expand_stops(motion, config)
     w0, wd = resolve_window(motion, clip_duration)
     aspect = frame_w / frame_h
 
-    roll_pad = roll_pad_for_motion(motion, aspect)
-    needs_roll = _needs_roll_segment(motion)
-    needs_zoom = _needs_zoom_segment(motion, roll_pad)
+    # The config is threaded through so the maxima are taken over EXACTLY the
+    # stop list the chain is built from: `max_keyframes` truncates inside
+    # `expand_stops`, so an operator who lowers it would otherwise get a
+    # `roll_pad` computed for keyframes that no longer reach the filter.
+    roll_pad = roll_pad_for_motion(motion, aspect, config)
+    needs_roll = _needs_roll_segment(motion, config)
+    needs_zoom = _needs_zoom_segment(motion, roll_pad, config)
 
     if needs_roll and not (caps.rotate and caps.crop):
         warnings.append(f"{label}: FFmpeg lacks 'rotate'/'crop'; the roll component was dropped")
         needs_roll = False
         roll_pad = 1.0
         # Recompute: without the roll pad the crop rect changes.
-        needs_zoom = _needs_zoom_segment(motion, roll_pad)
+        needs_zoom = _needs_zoom_segment(motion, roll_pad, config)
     if needs_zoom and not caps.zoompan:
         warnings.append(f"{label}: FFmpeg has no 'zoompan'; the zoom/pan component was dropped")
         needs_zoom = False
@@ -747,14 +1166,15 @@ def build_camera_filter_chain(
 
         if needs_zoom:
             # zoompan exposes `on` (output frame number).
-            e_expr = _ease_expr(_progress_expr("on", fps, w0, wd), easing)
-            scale_expr = _component_expr(start["scale"], end["scale"], intensity, e_expr, "scale")
+            u_expr = _progress_expr("on", fps, w0, wd)
+            e_expr = _ease_expr(u_expr, easing)
+            scale_expr = _track_expr(stops, "scale", intensity, u_expr, e_expr)
             # `z` is the zoom relative to the CONTENT rect: S/RP. The RP part of
             # the magnification is delivered by the crop-back below, and the two
             # multiply back to exactly S = clamp(scale·RP, 1, 8) from §4.2.3.
             z_expr = f"clip(({scale_expr})*{_num(roll_pad)},1,8)/{_num(roll_pad)}"
-            cx_expr = _component_expr(start["x"], end["x"], intensity, e_expr, "x")
-            cy_expr = _component_expr(start["y"], end["y"], intensity, e_expr, "y")
+            cx_expr = _track_expr(stops, "x", intensity, u_expr, e_expr)
+            cy_expr = _track_expr(stops, "y", intensity, u_expr, e_expr)
             x_expr = f"clip(({cx_expr})*iw*({z_expr})-ow/2,0,iw*({z_expr})-ow)"
             y_expr = f"clip(({cy_expr})*ih*({z_expr})-oh/2,0,ih*({z_expr})-oh)"
             parts.append(
@@ -763,9 +1183,12 @@ def build_camera_filter_chain(
             )
 
         if needs_roll:
-            # ⚠️ `rotate` has NO `on` variable — use `n` (P0-1, measured).
-            roll_e = _ease_expr(_progress_expr("n", fps, w0, wd), easing)
-            roll_expr = _component_expr(start["roll"], end["roll"], intensity, roll_e, "roll")
+            # ⚠️ `rotate` has NO `on` variable — use `n` (P0-1, measured). The
+            # piecewise builder takes the frame variable through `u_expr` for
+            # exactly this reason; it must never hard-code one.
+            roll_u = _progress_expr("n", fps, w0, wd)
+            roll_e = _ease_expr(roll_u, easing)
+            roll_expr = _track_expr(stops, "roll", intensity, roll_u, roll_e)
             parts.append(f"rotate=a='({roll_expr})*PI/180':c=black:ow=iw:oh=ih")
             # Crop back the central 1/RP. `RP >= rollCover` guarantees this
             # window has no empty corner (D13; measured: a white frame's
@@ -778,7 +1201,40 @@ def build_camera_filter_chain(
     if perspective_segment:
         parts.append(perspective_segment)
 
-    return ",".join(parts), warnings
+    chain = ",".join(parts)
+
+    # D40 — the length gate, on the ASSEMBLED chain (review P2-3: `z_expr` is
+    # inlined into `x_expr` and `y_expr` twice each, so a scale curve appears
+    # five times in one zoompan and length is nowhere near linear in the stop
+    # count). Over the ceiling we drop to a two-keyframe motion — the user's
+    # opening and closing framing survive — instead of dropping the motion or,
+    # worse, failing the export (G5).
+    if allow_collapse and len(chain) > config.max_expr_chars and len(stops) > 2:
+        warnings.append(
+            f"{label}: camera curve is too complex for the export filter "
+            f"({len(chain)} chars > {config.max_expr_chars}); "
+            f"rendered as a two-keyframe motion"
+        )
+        collapsed_chain, collapsed_warnings = build_camera_filter_chain(
+            _collapse_to_two_stops(motion), frame_w, frame_h, fps, clip_duration,
+            caps=caps, config=config, label=label,
+            allow_collapse=False,
+        )
+        # ⚠️ EXTEND, never return the recursive result directly (review P0-3).
+        # The recursive call builds a FRESH warnings list, so returning it would
+        # throw away the degrade notice just appended above AND everything this
+        # call already accumulated (`no zoompan`, `3D degenerated`, `fit error`).
+        # The user would see a render that differs from the preview with nothing
+        # said about it anywhere — the exact failure G5 exists to prevent.
+        warnings.extend(collapsed_warnings)
+        return collapsed_chain, warnings
+    # If the collapsed chain is STILL over the ceiling (a few hundred characters
+    # in practice, so this cannot happen), it is returned as-is rather than
+    # degraded again: `video_composition_service` already retries without the
+    # camera chain on a non-zero return code. Returning `""` here would add one
+    # more silent path for a motion to disappear down.
+
+    return chain, warnings
 
 
 # ---------------------------------------------------------------------------

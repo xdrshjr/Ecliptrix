@@ -15,12 +15,14 @@
  */
 
 import { clamp } from './easing';
+import { normalizeCameraKeyframes } from './keyframes';
 import {
   CAMERA_INTENSITY_RANGE,
   CAMERA_RANGES,
   DEFAULT_KEYFRAME,
   type CameraEasing,
   type CameraKeyframe,
+  type CameraKeyframeStop,
   type CameraMotion,
   type CameraMotionMode,
 } from './types';
@@ -36,6 +38,12 @@ export interface CameraKeyframeWire {
   dolly: number;
 }
 
+/** Backend `CameraKeyframeStop` shape (snake_case). */
+export interface CameraKeyframeStopWire extends CameraKeyframeWire {
+  at: number;
+  easing?: CameraEasing;
+}
+
 /** Backend `CameraMotion` shape (snake_case). */
 export interface CameraMotionWire {
   version: number;
@@ -47,6 +55,8 @@ export interface CameraMotionWire {
   duration?: number | null;
   start: CameraKeyframeWire;
   end: CameraKeyframeWire;
+  /** Present ONLY for a real curve (> 2 stops) — see D38 in `toCameraMotionWire`. */
+  keyframes?: CameraKeyframeStopWire[];
 }
 
 const EASINGS: CameraEasing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
@@ -80,10 +90,19 @@ function toKeyframeWire(frame: CameraKeyframe): CameraKeyframeWire {
   };
 }
 
+function toStopWire(stop: CameraKeyframeStop, mode: CameraMotionMode): CameraKeyframeStopWire {
+  return {
+    at: clamp(typeof stop.at === 'number' ? stop.at : 0, 0, 1),
+    ...(stop.easing && EASINGS.includes(stop.easing) ? { easing: stop.easing } : {}),
+    ...toKeyframeWire(clampKeyframe(stop, mode)),
+  };
+}
+
 /** Convert a stored motion to the export wire shape. `undefined` → omitted. */
 export function toCameraMotionWire(motion?: CameraMotion): CameraMotionWire | undefined {
   if (!motion || motion.version !== 1) return undefined;
   const mode: CameraMotionMode = motion.mode === '3d' ? '3d' : '2d';
+  const stops = motion.keyframes;
   return {
     version: 1,
     mode,
@@ -94,6 +113,13 @@ export function toCameraMotionWire(motion?: CameraMotion): CameraMotionWire | un
     duration: motion.duration != null ? motion.duration : undefined,
     start: toKeyframeWire(clampKeyframe(motion.start, mode)),
     end: toKeyframeWire(clampKeyframe(motion.end, mode)),
+    // D38: a trivial two-stop mirror carries no information `start`/`end` do not
+    // already carry, so it is NOT emitted. That keeps every existing motion's
+    // request body byte-identical, which is what lets the "identical command
+    // line" comparison stay the primary zero-regression gate.
+    ...(Array.isArray(stops) && stops.length > 2
+      ? { keyframes: stops.map((stop) => toStopWire(stop, mode)) }
+      : {}),
   };
 }
 
@@ -107,9 +133,30 @@ function readKeyframe(raw: unknown): CameraKeyframe {
   return out;
 }
 
+function readKeyframeStops(raw: unknown): CameraKeyframeStop[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const stops = raw
+    .filter((item) => item != null && typeof item === 'object')
+    .map((item) => {
+      const source = item as Record<string, unknown>;
+      const at = typeof source.at === 'number' && Number.isFinite(source.at) ? source.at : 0;
+      const easing = EASINGS.includes(source.easing as CameraEasing)
+        ? (source.easing as CameraEasing)
+        : undefined;
+      return { ...readKeyframe(source), at, ...(easing ? { easing } : {}) };
+    });
+  return stops.length >= 2 ? stops : undefined;
+}
+
 /**
  * Parse an untrusted motion (project JSON). Returns `undefined` when the value
  * is absent, not an object, or carries an unrecognised `version`.
+ *
+ * A curve read from disk MUST go through `normalizeCameraKeyframes` (C23):
+ * project JSON is user-editable (R11), and an `at` array such as
+ * `[0, 0.5, 0.3, 1]` fed straight into the export would build
+ * `if(lt(U,0.5),…,if(lt(U,0.3),…))` — a branch the second segment can never be
+ * reached through.
  */
 export function sanitizeCameraMotion(raw: unknown): CameraMotion | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -128,7 +175,8 @@ export function sanitizeCameraMotion(raw: unknown): CameraMotion | undefined {
   const duration = typeof source.duration === 'number' && Number.isFinite(source.duration) && source.duration > 0
     ? source.duration
     : undefined;
-  return {
+  const stops = readKeyframeStops(source.keyframes);
+  const parsed: CameraMotion = {
     version: 1,
     mode,
     presetId: typeof source.presetId === 'string' && source.presetId ? source.presetId : 'custom',
@@ -138,5 +186,9 @@ export function sanitizeCameraMotion(raw: unknown): CameraMotion | undefined {
     duration,
     start: clampKeyframe(readKeyframe(source.start), mode),
     end: clampKeyframe(readKeyframe(source.end), mode),
+    ...(stops ? { keyframes: stops } : {}),
   };
+  // `normalizeCameraKeyframes` is a no-op (returns the same object) when there
+  // is no `keyframes` key, so a project without curves is unaffected.
+  return normalizeCameraKeyframes(parsed);
 }

@@ -4,7 +4,7 @@ Video search data models for PEXELS API integration.
 
 from typing import List, Literal, Optional, Dict
 from urllib.parse import unquote, urlparse
-from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
+from pydantic import BaseModel, Field, ConfigDict, validator, field_validator, model_validator
 from enum import Enum
 
 from .base_models import BaseResponse
@@ -133,6 +133,65 @@ class CameraKeyframe(BaseModel):
     dolly: float = Field(0.0, ge=-0.6, le=0.6, description="Dolly (3D); positive moves closer")
 
 
+#: Component ranges, mirrored from `playback/camera/types.ts` CAMERA_RANGES.
+#: Deliberately a plain table rather than the `Field` constraints above — the
+#: `keyframes` cleaner has to clamp BEFORE pydantic validates the field, so it
+#: cannot lean on field-level validation (see `CameraKeyframeStop`).
+_CAMERA_STOP_RANGES = {
+    "scale": (1.0, 4.0),
+    "x": (0.0, 1.0),
+    "y": (0.0, 1.0),
+    "roll": (-45.0, 45.0),
+    "rotate_x": (-45.0, 45.0),
+    "rotate_y": (-45.0, 45.0),
+    "dolly": (-0.6, 0.6),
+}
+_CAMERA_STOP_DEFAULTS = {
+    "scale": 1.0, "x": 0.5, "y": 0.5, "roll": 0.0,
+    "rotate_x": 0.0, "rotate_y": 0.0, "dolly": 0.0,
+}
+_CAMERA_EASINGS = ("linear", "easeIn", "easeOut", "easeInOut")
+_MIN_KEYFRAME_GAP = 0.02
+_GAP_EPSILON = 1e-9
+_MAX_KEYFRAMES = 8
+
+
+def _clamp_stop_value(raw, low: float, high: float, fallback: float) -> float:
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool) or raw != raw:
+        return fallback
+    value = float(raw)
+    return low if value < low else (high if value > high else value)
+
+
+class CameraKeyframeStop(BaseModel):
+    """One keyframe on a camera-motion curve (camera-motion-keyframe-curves §7.1).
+
+    ⚠️ DELIBERATELY NOT A SUBCLASS of :class:`CameraKeyframe`, and the seven
+    components carry NO ``ge``/``le`` (review P0-2 / D42).
+
+    `CameraKeyframe` constrains every field, and pydantic runs field-level
+    validation BEFORE ``model_validator(mode="after")``. Inheriting those
+    constraints would make a single bad keyframe — ``scale: 9``, ``at: 1.4`` —
+    raise ``ValidationError`` during field parsing, i.e. FastAPI answers 422 and
+    the ENTIRE composition request dies, which is exactly the outcome R30 exists
+    to prevent and which no "after" validator would ever get a chance to fix.
+
+    Clamping is done instead by ``CameraMotion._normalize_keyframes`` in the
+    ``mode="before"`` stage, to the same bounds listed above.
+    """
+    at: float = Field(0.0, description="Normalized instant inside the motion window, 0..1")
+    easing: Optional[Literal["linear", "easeIn", "easeOut", "easeInOut"]] = Field(
+        None, description="Easing of the segment LEAVING this keyframe; null on the last one"
+    )
+    scale: float = Field(1.0, description="Frame magnification; 1 = full frame")
+    x: float = Field(0.5, description="Normalized horizontal framing center")
+    y: float = Field(0.5, description="Normalized vertical framing center")
+    roll: float = Field(0.0, description="In-frame rotation, degrees clockwise")
+    rotate_x: float = Field(0.0, description="Tilt (3D), degrees")
+    rotate_y: float = Field(0.0, description="Pan / orbit (3D), degrees")
+    dolly: float = Field(0.0, description="Dolly (3D); positive moves closer")
+
+
 class CameraMotion(BaseModel):
     """2D / 3D camera motion for one clip (camera-motion-2d-3d §7.2).
 
@@ -160,6 +219,122 @@ class CameraMotion(BaseModel):
     )
     start: CameraKeyframe = Field(default_factory=CameraKeyframe, description="Start keyframe")
     end: CameraKeyframe = Field(default_factory=CameraKeyframe, description="End keyframe")
+    keyframes: Optional[List[CameraKeyframeStop]] = Field(
+        None,
+        description=(
+            "Optional 2-8 keyframe curve. Absent = the classic two-point motion. "
+            "keyframes[0] / [-1] mirror start / end (D31), and a trivial two-stop "
+            "mirror is never sent (D38)."
+        ),
+    )
+
+    @field_validator("keyframes", mode="before")
+    @classmethod
+    def _normalize_keyframes(cls, raw):
+        """Normalize rather than reject — a bad curve must never 422 the export.
+
+        Runs on the RAW input, before field validation, which is the whole point
+        (D42 / review P0-2): the stop model carries no range constraints, so this
+        is the only place clamping can happen, and `mode="after"` would never be
+        reached for a bad value.
+
+        Applies steps 1-7 of §4.2.4: drop non-dict entries, clamp `at` and the
+        seven components, sort by `at`, pin the endpoints at 0 and 1, merge stops
+        closer than MIN_KEYFRAME_GAP, cap at eight, clear the final easing.
+        Anything unusable (not a list, fewer than two valid entries) returns
+        None, which simply degrades the motion to its two-point form.
+
+        THIS FUNCTION MUST NOT RAISE. `start`/`end` keep their `ge`/`le` second
+        line of defence on purpose (that path is in production today and the
+        frontend has already clamped it); what changes here is only the new,
+        OPTIONAL curve — letting it kill a whole export would be wildly
+        disproportionate.
+        """
+        try:
+            if raw is None:
+                return None
+            if not isinstance(raw, (list, tuple)):
+                return None
+            stops = []
+            for item in raw:
+                if item is None:
+                    continue
+                if isinstance(item, CameraKeyframeStop):
+                    item = item.model_dump()
+                elif hasattr(item, "model_dump"):
+                    item = item.model_dump()
+                if not isinstance(item, dict):
+                    continue
+                stop = {
+                    "at": _clamp_stop_value(item.get("at"), 0.0, 1.0, 0.0),
+                    "easing": item.get("easing") if item.get("easing") in _CAMERA_EASINGS else None,
+                }
+                for key, (low, high) in _CAMERA_STOP_RANGES.items():
+                    stop[key] = _clamp_stop_value(
+                        item.get(key), low, high, _CAMERA_STOP_DEFAULTS[key]
+                    )
+                stops.append(stop)
+            if len(stops) < 2:
+                return None
+
+            stops.sort(key=lambda stop: stop["at"])
+            stops[0]["at"] = 0.0
+            stops[-1]["at"] = 1.0
+
+            kept = [stops[0]]
+            for index in range(1, len(stops)):
+                stop = stops[index]
+                if stop["at"] - kept[-1]["at"] >= _MIN_KEYFRAME_GAP - _GAP_EPSILON:
+                    kept.append(stop)
+                    continue
+                if index != len(stops) - 1:
+                    continue
+                while len(kept) > 1 and stop["at"] - kept[-1]["at"] < _MIN_KEYFRAME_GAP - _GAP_EPSILON:
+                    kept.pop()
+                kept.append(stop)
+
+            if len(kept) > _MAX_KEYFRAMES:
+                target = _MAX_KEYFRAMES - 2
+                interior = kept[1:-1]
+                span = len(interior) - 1
+                picked = []
+                for j in range(target):
+                    index = min(span, max(0, int(round((j * span) / (target - 1)))))
+                    if index not in picked:
+                        picked.append(index)
+                cursor = 0
+                while len(picked) < target and cursor <= span:
+                    if cursor not in picked:
+                        picked.append(cursor)
+                    cursor += 1
+                kept = [kept[0]] + [interior[i] for i in sorted(picked)[:target]] + [kept[-1]]
+
+            kept[-1]["easing"] = None
+            for stop in kept[:-1]:
+                if stop["easing"] is None:
+                    stop["easing"] = "easeInOut"
+            return kept
+        except Exception:  # pragma: no cover - defensive; must never 422
+            return None
+
+    @model_validator(mode="after")
+    def _mirror_endpoints(self):
+        """D31's last gate: keyframes[0] / [-1] agree with start / end.
+
+        Assignment only — everything that could fail was already handled in the
+        before stage. The mirror is what lets any code path that does not know
+        about `keyframes` (an older client, an older project file, the collapsed
+        export branch) still read a correct straight-line motion instead of a
+        broken object.
+        """
+        if self.keyframes and len(self.keyframes) >= 2:
+            for edge, stop in (("start", self.keyframes[0]), ("end", self.keyframes[-1])):
+                frame = getattr(self, edge)
+                for key in _CAMERA_STOP_RANGES:
+                    setattr(frame, key, getattr(stop, key))
+            if self.keyframes[0].easing:
+                self.easing = self.keyframes[0].easing
+        return self
 
 
 class VideoCompositionItem(BaseModel):

@@ -40,6 +40,25 @@ interface MotionPreviewStageProps {
   motion: CameraMotion | null;
   /** Clip duration in seconds — drives the window solve so timing is honest. */
   clipDuration: number;
+  /**
+   * Absolutely-positioned overlay drawn on top of the canvas (the direct-framing
+   * layer). Passed as children rather than wired through a callback ON PURPOSE
+   * (D45 / review P1-6): the draw loop below writes the playhead straight to the
+   * DOM so animation costs zero React renders, and handing the per-frame
+   * `ResolvedCameraDraw` up to a parent would re-render the whole panel subtree
+   * at 60Hz for data the overlay does not even want — what it draws is the
+   * SELECTED keyframe and the static path, both of which change only on edit.
+   */
+  children?: React.ReactNode;
+  /**
+   * The motion window as a fraction of the clip, highlighted on the scrub bar
+   * (D44 / review P1-3). The scrub bar is in CLIP time while a keyframe's `at`
+   * is normalized against the WINDOW; drawing the window makes that difference
+   * visible instead of leaving the keyframe strip mysteriously out of register.
+   */
+  windowBand?: { from: number; to: number } | null;
+  /** Accessible name for the band. */
+  windowBandLabel?: string;
   /** Poster / thumbnail for the stage texture; a gradient stands in when absent. */
   posterUrl?: string;
   /** Loop period in seconds. */
@@ -107,6 +126,9 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
   labels,
   onDegraded,
   className,
+  children,
+  windowBand,
+  windowBandLabel,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sliderRef = useRef<HTMLInputElement>(null);
@@ -291,14 +313,21 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
     };
   }, [loopSeconds, writeScrubPosition]);
 
+  const bandVisible = windowBand != null && (windowBand.from > 0.001 || windowBand.to < 0.999);
+
   return (
     <div className="space-y-1.5">
-      <canvas
-        ref={canvasRef}
-        className={className ?? 'w-full rounded-lg border border-border bg-black'}
-        style={{ aspectRatio: '16 / 9' }}
-        role="img"
-      />
+      {/* The canvas and the overlay share one positioned box so the overlay can
+          sit exactly on the picture without measuring anything. */}
+      <div className="relative">
+        <canvas
+          ref={canvasRef}
+          className={className ?? 'w-full rounded-lg border border-border bg-black'}
+          style={{ aspectRatio: '16 / 9' }}
+          role="img"
+        />
+        {children}
+      </div>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -320,18 +349,35 @@ const MotionPreviewStage: React.FC<MotionPreviewStageProps> = ({
         {/* Uncontrolled ON PURPOSE: the playhead is written straight to the DOM
             by the draw loop (see above), so an animated slider costs zero React
             renders. While paused the effect below keeps it in sync with state. */}
-        <input
-          ref={sliderRef}
-          type="range"
-          min={0}
-          max={1}
-          step={0.005}
-          defaultValue={clamp01(progress)}
-          onChange={handleScrub}
-          aria-label={labels.scrub}
-          aria-valuetext={valueText(labels.scrubValue, clamp01(progress))}
-          className="h-1.5 w-full cursor-pointer accent-primary"
-        />
+        <div className="relative flex-1">
+          {bandVisible && (
+            <div
+              className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2"
+              aria-hidden="true"
+            >
+              <div
+                className="absolute h-full rounded-full bg-primary/25"
+                title={windowBandLabel}
+                style={{
+                  left: `${windowBand!.from * 100}%`,
+                  width: `${Math.max(0, windowBand!.to - windowBand!.from) * 100}%`,
+                }}
+              />
+            </div>
+          )}
+          <input
+            ref={sliderRef}
+            type="range"
+            min={0}
+            max={1}
+            step={0.005}
+            defaultValue={clamp01(progress)}
+            onChange={handleScrub}
+            aria-label={labels.scrub}
+            aria-valuetext={valueText(labels.scrubValue, clamp01(progress))}
+            className="relative h-1.5 w-full cursor-pointer accent-primary"
+          />
+        </div>
         <span
           ref={percentRef}
           className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground"

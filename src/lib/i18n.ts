@@ -806,6 +806,25 @@ export interface Translations {
       stageScrubValue: string;
       stagePlay: string;
       stagePause: string;
+      // 多关键帧曲线与舞台直接取景（camera-motion-keyframe-curves §4.5）
+      keyframesLabel: string;
+      keyframeStripHint: string;
+      keyframeItem: string;
+      keyframeItemLocked: string;
+      keyframeAdd: string;
+      keyframeAddBlockedOutside: string;
+      keyframeAddBlockedTooClose: string;
+      keyframeAddBlockedLimit: string;
+      keyframeRemove: string;
+      keyframeRemoveBlocked: string;
+      segmentEasingAria: string;
+      curveEasingNote: string;
+      windowBandLabel: string;
+      stageOverlayLabel: string;
+      stageOverlayHint: string;
+      stageDragHint: string;
+      keyframeCounter: string;
+      keyframeEditing: string;
       presets: {
         none: string;
         pushIn: string;
@@ -3614,6 +3633,25 @@ export const translations: Record<string, Translations> = {
         stageScrubValue: 'Motion progress {percent}%',
         stagePlay: 'Play preview loop',
         stagePause: 'Pause preview loop',
+        keyframesLabel: 'Keyframes',
+        keyframeStripHint: 'Add a keyframe at the playhead, drag a diamond to re-time it',
+        keyframeItem: 'Keyframe {index} of {count}, at {percent}%',
+        keyframeItemLocked: 'Keyframe {index} of {count}, at {percent}% (fixed)',
+        keyframeAdd: 'Add a keyframe at the playhead',
+        keyframeAddBlockedOutside: 'Move the playhead inside the motion window first',
+        keyframeAddBlockedTooClose: 'There is already a keyframe here',
+        keyframeAddBlockedLimit: 'A motion can hold at most {max} keyframes',
+        keyframeRemove: 'Delete the selected keyframe',
+        keyframeRemoveBlocked: 'The first and last keyframes cannot be deleted',
+        segmentEasingAria: 'Easing from keyframe {index} to keyframe {next}',
+        curveEasingNote: 'Each segment carries its own easing while a curve exists',
+        windowBandLabel: 'Motion window',
+        stageOverlayLabel:
+          'Direct framing. Arrow keys move the framing, + and - zoom, [ and ] roll',
+        stageOverlayHint: 'Drag to reframe · scroll to zoom · Shift+drag to roll',
+        stageDragHint: 'Drag to reframe · scroll to zoom · Shift+drag to orbit / tilt',
+        keyframeCounter: 'Keyframe {index} / {count}',
+        keyframeEditing: 'Editing keyframe {index}',
         presets: {
           none: 'None',
           pushIn: 'Push In',
@@ -6226,6 +6264,24 @@ export const translations: Record<string, Translations> = {
         stageScrubValue: '运镜进度 {percent}%',
         stagePlay: '播放示意循环',
         stagePause: '暂停示意循环',
+        keyframesLabel: '关键帧',
+        keyframeStripHint: '在播放头处添加关键帧，拖动菱形可改变时刻',
+        keyframeItem: '第 {index} / {count} 个关键帧，位于 {percent}%',
+        keyframeItemLocked: '第 {index} / {count} 个关键帧，位于 {percent}%（时刻固定）',
+        keyframeAdd: '在播放头处添加关键帧',
+        keyframeAddBlockedOutside: '请先把播放头移到运镜窗口内',
+        keyframeAddBlockedTooClose: '此处已有关键帧',
+        keyframeAddBlockedLimit: '一段运镜最多 {max} 个关键帧',
+        keyframeRemove: '删除选中的关键帧',
+        keyframeRemoveBlocked: '首尾关键帧不可删除',
+        segmentEasingAria: '第 {index} 到第 {next} 个关键帧之间的缓动',
+        curveEasingNote: '存在曲线时，每一段各自选择缓动',
+        windowBandLabel: '运镜窗口',
+        stageOverlayLabel: '直接取景。方向键平移，+ / - 缩放，[ / ] 改变旋转',
+        stageOverlayHint: '拖动取景 · 滚轮缩放 · Shift+拖动改旋转',
+        stageDragHint: '拖动取景 · 滚轮缩放 · Shift+拖动环绕 / 俯仰',
+        keyframeCounter: '关键帧 {index} / {count}',
+        keyframeEditing: '正在编辑第 {index} 个关键帧',
         presets: {
           none: '无',
           pushIn: '缓慢推近',

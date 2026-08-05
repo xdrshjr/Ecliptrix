@@ -29,6 +29,7 @@ from app.services.composition.camera_motion import (
     ease,
     is_identity_camera_motion,
     keyframe_at,
+    keyframe_at_trajectory,
     load_camera_config,
     project_3d_corners,
     reset_camera_config_cache,
@@ -36,6 +37,7 @@ from app.services.composition.camera_motion import (
     roll_cover,
     roll_pad_for_motion,
     scale_quad,
+    tau_at_progress,
 )
 from app.services.composition.video_scaling import build_video_filter
 
@@ -400,13 +402,26 @@ def _load_golden():
 
 
 def _wire_from_camel(motion_camel):
-    """Golden vectors are stored in the frontend's camelCase shape."""
+    """Golden vectors are stored in the frontend's camelCase shape.
+
+    ⚠️ This is a FIELD WHITELIST, so every new field has to be added here by
+    hand. Forgetting `keyframes` would silently hand the Python side a two-point
+    motion to compare against the TypeScript side's CURVE — the comparison would
+    not error, it would just be wrong (camera-motion-keyframe-curves §5.4 #37).
+    """
     def keyframe(frame):
         return {
             "scale": frame["scale"], "x": frame["x"], "y": frame["y"], "roll": frame["roll"],
             "rotate_x": frame["rotateX"], "rotate_y": frame["rotateY"], "dolly": frame["dolly"],
         }
 
+    def stop(entry):
+        out = keyframe(entry)
+        out["at"] = entry["at"]
+        out["easing"] = entry.get("easing")
+        return out
+
+    stops = motion_camel.get("keyframes")
     return {
         "version": motion_camel["version"],
         "mode": motion_camel["mode"],
@@ -417,17 +432,26 @@ def _wire_from_camel(motion_camel):
         "duration": motion_camel.get("duration"),
         "start": keyframe(motion_camel["start"]),
         "end": keyframe(motion_camel["end"]),
+        "keyframes": [stop(entry) for entry in stops] if stops else None,
     }
 
 
 def _resolve(motion_wire, t_local, clip_duration, aspect):
-    """The Python equivalent of the TS `resolveCameraDraw`."""
+    """The Python equivalent of the TS `resolveCameraDraw`.
+
+    One of only TWO hand-written stand-ins for `resolveCameraDraw` in the repo
+    (the other is `splitRebase.test.ts`), and therefore one of the two explicit
+    exemptions from "no existing assertion may change" (C27). It has to follow
+    the same three-step path the real resolver takes —
+    `progressAt → tau_at_progress → keyframe_at_trajectory` — because a curve's
+    easing lives per segment and the old single `ease(u)` cannot express it.
+    """
     if is_identity_camera_motion(motion_wire):
         return None
     w0, wd = resolve_window(motion_wire, clip_duration)
     u = 1.0 if wd <= 0.05 else min(1.0, max(0.0, (t_local - w0) / wd))
-    e = ease(u, motion_wire["easing"])
-    k = keyframe_at(motion_wire, e)
+    tau = tau_at_progress(motion_wire, u)
+    k = keyframe_at_trajectory(motion_wire, tau)
     roll_pad = roll_pad_for_motion(motion_wire, aspect)
     crop = compute_crop_rect(k, roll_pad)
     if motion_wire["mode"] != "3d":

@@ -677,6 +677,13 @@ export interface CameraKeyframe {
   dolly: number;    // 推轨（3D），正值靠近相机，范围 [-0.6,0.6]
 }
 
+// 运镜曲线上的一个关键帧（camera-motion-keyframe-curves §7.1）：取景七分量 +
+// 运镜窗口内的归一化时刻 + 出向缓动。
+export interface CameraKeyframeStop extends CameraKeyframe {
+  at: number;            // 运镜窗口内的归一化时刻 [0,1]；首帧恒 0、末帧恒 1（D31）
+  easing?: CameraEasing; // 本帧到下一帧那一段的缓动（D34）；末帧无意义，规范化后为 undefined
+}
+
 export interface CameraMotion {
   version: 1;                 // 结构版本；sanitize 遇到未知版本直接丢弃
   mode: CameraMotionMode;
@@ -687,6 +694,12 @@ export interface CameraMotion {
   duration?: number;          // 窗口时长（秒），缺省 = clip 剩余时长
   start: CameraKeyframe;
   end: CameraKeyframe;
+  // 多关键帧曲线（camera-motion-keyframe-curves D30/D31），2–8 项，可选：
+  //  · 缺省即今天的「两点一线」运镜，老代码读到的仍是一条起止正确的直线；
+  //  · D31 不变量：keyframes[0] ≡ start、keyframes[n−1] ≡ end、at[0]=0、at[n−1]=1，
+  //    由 normalizeCameraKeyframes() 在每一次写入处强制；
+  //  · D38：恰为 start/end 的平凡 2 点镜像时该字段不落盘、不上线。
+  keyframes?: CameraKeyframeStop[];
 }
 
 export interface TimelineItem {

@@ -113,7 +113,18 @@ describe('CameraMotionModal — non-invasive editing', () => {
   });
 
   it('flips presetId to custom on any advanced-field edit', () => {
-    expect(controlsSrc).toMatch(/presetId: 'custom'/);
+    // The flip itself moved into `setKeyframeComponent` when curves arrived
+    // (C23: one write gate for keyframe data, so the panel cannot get it wrong
+    // in one branch and right in another). What this test now pins is that the
+    // number inputs really do route through that gate rather than assembling a
+    // motion object of their own.
+    expect(controlsSrc).toMatch(/onKeyframeComponent\(/);
+    expect(controlsSrc).not.toMatch(/\[edge\]: \{ \.\.\.motion\[edge\]/);
+    const gateSrc = readFileSync(
+      resolve(dir, '..', '..', 'playback', 'camera', 'keyframes.ts'), 'utf-8',
+    );
+    expect(gateSrc).toMatch(/presetId: 'custom'/);
+    expect(gateSrc).toMatch(/export function setKeyframeComponent/);
   });
 });
 

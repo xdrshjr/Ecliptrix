@@ -241,3 +241,60 @@ describe('keyframeAt / crop interaction', () => {
     expect(crop.w).toBeCloseTo(4 / 8, 9);
   });
 });
+
+/**
+ * T18 ③④ — the trajectory maxima must see interior keyframes (D43, review P1-1).
+ *
+ * A uniform `i/100` grid is EXACT for a two-point motion because a straight
+ * line's extrema are its endpoints, and 0 and 1 are both on the grid. Put the
+ * peak on an interior stop at `at = 0.505` and the grid misses it: `rollPad`
+ * comes back too small and the rotated frame shows black corners; `coverScale`
+ * comes back too small and the 3D quad leaves black wedges. Neither is caught by
+ * the ≤1px framing comparison — it compares where the crop is, not whether the
+ * corners have any picture in them.
+ */
+describe('T18 — trajectory maxima on curves', () => {
+  const curved = (stops: Array<Partial<CameraKeyframe> & { at: number }>, mode: '2d' | '3d' = '2d') =>
+    motion({
+      mode,
+      easing: 'linear',
+      start: kf(stops[0]),
+      end: kf(stops[stops.length - 1]),
+      keyframes: stops.map((stop) => ({ ...DEFAULT_KEYFRAME, ...stop })),
+    });
+
+  it('③ rollPad covers a roll peak that sits off the uniform grid', () => {
+    // `at = 0.505` is deliberately NOT an `i/100` sample.
+    const m = curved([{ at: 0, roll: 0 }, { at: 0.505, roll: 45 }, { at: 1, roll: 0 }]);
+    expect(rollPadForMotion(m, ASPECT)).toBeCloseTo(rollCover(45, ASPECT), 6);
+  });
+
+  it('③ the same curve under-samples on a plain 101-point grid', () => {
+    // Documents WHY the sample set had to change: the old grid's nearest
+    // samples (0.50 / 0.51) see roll ≈ 44.55°, so the pad comes out short.
+    const m = curved([{ at: 0, roll: 0 }, { at: 0.505, roll: 45 }, { at: 1, roll: 0 }]);
+    let uniformMax = 1;
+    for (let i = 0; i <= 100; i += 1) {
+      uniformMax = Math.max(uniformMax, rollCover(keyframeAt(m, i / 100).roll, ASPECT));
+    }
+    expect(uniformMax).toBeLessThan(rollPadForMotion(m, ASPECT));
+  });
+
+  it('④ coverScale is not under-estimated at an interior 3D stop', () => {
+    const m = curved([
+      { at: 0, rotateY: 0 }, { at: 0.505, rotateY: 40 }, { at: 1, rotateY: 0 },
+    ], '3d');
+    _clearCameraConstantsCache();
+    const peak = coverScaleForQuad(project3DCorners(kf({ rotateY: 40 }), ASPECT)!, ASPECT);
+    expect(cameraMotionConstants(m, ASPECT).coverScale).toBeGreaterThanOrEqual(peak - 1e-9);
+  });
+
+  it('leaves two-point motions on exactly today\'s numbers', () => {
+    const m = motion({ start: kf({ roll: 0 }), end: kf({ roll: 10 }) });
+    let uniformMax = 1;
+    for (let i = 0; i <= 100; i += 1) {
+      uniformMax = Math.max(uniformMax, rollCover(keyframeAt(m, i / 100).roll, ASPECT));
+    }
+    expect(rollPadForMotion(m, ASPECT)).toBe(uniformMax);
+  });
+});

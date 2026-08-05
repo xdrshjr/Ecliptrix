@@ -20,7 +20,15 @@ import path from 'node:path';
 import { resolveCameraDraw } from '../resolveCameraDraw';
 import { applyPreset, CAMERA_PRESETS, emptyCameraMotion } from '../cameraPresets';
 import { _clearCameraConstantsCache } from '../cameraGeometry';
-import { DEFAULT_KEYFRAME, type CameraMotion } from '../types';
+import { normalizeCameraKeyframes } from '../keyframes';
+import {
+  DEFAULT_KEYFRAME,
+  type CameraEasing,
+  type CameraKeyframe,
+  type CameraKeyframeStop,
+  type CameraMotion,
+  type CameraMotionMode,
+} from '../types';
 
 const FIXTURE_PATH = path.join(__dirname, 'fixtures', 'camera-golden.json');
 const FRAME = { w: 1920, h: 1080 };
@@ -135,6 +143,106 @@ function buildCases(): GoldenCase[] {
     }, CLIP_DURATION / 2, CLIP_DURATION, frame);
   });
 
+  // ── Multi-keyframe curves (camera-motion-keyframe-curves §5.4 #30) ─────────
+  // These are the only cases that exercise `tauAtProgress` past a single
+  // segment, per-segment easing and the D43 sample set, so they are what proves
+  // the Python mirror of the CURVE — the preset cases above only ever prove the
+  // two-stop degeneration. Every one is sampled at three instants, and none of
+  // them lands exactly on an interior `at` (A38 / review P2-9).
+  const curve = (
+    mode: CameraMotionMode,
+    intensity: number,
+    stops: Array<Partial<CameraKeyframe> & { at: number; easing?: CameraEasing }>,
+  ): CameraMotion => normalizeCameraKeyframes({
+    version: 1,
+    mode,
+    presetId: 'custom',
+    intensity,
+    easing: stops[0].easing ?? 'easeInOut',
+    start: { ...DEFAULT_KEYFRAME },
+    end: { ...DEFAULT_KEYFRAME },
+    keyframes: stops.map((stop) => ({ ...DEFAULT_KEYFRAME, ...stop })) as CameraKeyframeStop[],
+  });
+
+  const CURVES: Array<[string, CameraMotion]> = [
+    // 3-point 2D there-and-back: push in, then pull back out.
+    ['kf-2d-3pt-return', curve('2d', 1, [
+      { at: 0, scale: 1, easing: 'linear' },
+      { at: 0.5, scale: 1.8, easing: 'linear' },
+      { at: 1, scale: 1 },
+    ])],
+    // 4-point with a HOLD in the middle — two identical stops mean a dead
+    // segment, the shape the "stop a beat, then move" language needs.
+    ['kf-2d-4pt-hold', curve('2d', 1, [
+      { at: 0, scale: 1, x: 0.5, easing: 'easeOut' },
+      { at: 0.3, scale: 1.4, x: 0.35, easing: 'linear' },
+      { at: 0.6, scale: 1.4, x: 0.35, easing: 'easeIn' },
+      { at: 1, scale: 1.4, x: 0.7 },
+    ])],
+    // 5-point 3D orbit — exercises the per-stop quad projection AND coverScale
+    // taken over a trajectory whose extremum is an interior stop.
+    ['kf-3d-5pt-orbit', curve('3d', 1, [
+      { at: 0, rotateY: -10, easing: 'linear' },
+      { at: 0.25, rotateY: 8, dolly: 0.1, easing: 'easeInOut' },
+      { at: 0.5, rotateY: 0, rotateX: -6, easing: 'linear' },
+      { at: 0.75, rotateY: -8, dolly: 0.18, easing: 'easeOut' },
+      { at: 1, rotateY: 10 },
+    ])],
+    // Every easing on its own segment, so a mis-mapped segment index shows up.
+    ['kf-2d-mixed-easing', curve('2d', 1, [
+      { at: 0, scale: 1, y: 0.5, easing: 'easeIn' },
+      { at: 0.25, scale: 1.5, y: 0.35, easing: 'linear' },
+      { at: 0.55, scale: 1.2, y: 0.65, easing: 'easeOut' },
+      { at: 1, scale: 1.9, y: 0.4 },
+    ])],
+    // D35 at a fractional intensity: the whole trajectory scales about S₀.
+    ['kf-2d-intensity-half', curve('2d', 0.5, [
+      { at: 0, scale: 1.1, x: 0.6, easing: 'linear' },
+      { at: 0.4, scale: 2, x: 0.3, easing: 'linear' },
+      { at: 1, scale: 1.3, x: 0.55 },
+    ])],
+    // intensity 0 → parked on S₀ for the whole clip, curve or not.
+    ['kf-2d-intensity-zero', curve('2d', 0, [
+      { at: 0, scale: 1.25, x: 0.4, easing: 'linear' },
+      { at: 0.5, scale: 2, x: 0.7, easing: 'linear' },
+      { at: 1, scale: 1, x: 0.5 },
+    ])],
+    // Non-uniform `at`, including a roll peak deliberately off the i/100 grid —
+    // this is the rollPad case D43 exists for.
+    ['kf-2d-uneven-at-roll', curve('2d', 1, [
+      { at: 0, roll: 0, scale: 1.05, easing: 'easeOut' },
+      { at: 0.113, roll: 12, scale: 1.2, easing: 'linear' },
+      { at: 0.505, roll: -18, scale: 1.35, easing: 'easeIn' },
+      { at: 0.917, roll: 4, scale: 1.1, easing: 'linear' },
+      { at: 1, roll: 0, scale: 1 },
+    ])],
+    // The interaction limit, fully loaded.
+    ['kf-2d-8pt-full', curve('2d', 1, Array.from({ length: 8 }, (_, i) => ({
+      at: i / 7,
+      scale: 1 + 0.12 * (i % 3),
+      x: 0.5 + 0.12 * Math.sin((i * Math.PI) / 3.5),
+      y: 0.5 - 0.08 * Math.cos((i * Math.PI) / 3.5),
+      easing: (['linear', 'easeIn', 'easeOut', 'easeInOut'] as CameraEasing[])[i % 4],
+    })))],
+  ];
+
+  CURVES.forEach(([name, motion]) => {
+    [0.17, 0.44, 0.83].forEach((fraction) => {
+      push(`${name}-t${String(fraction).replace('.', '')}`, motion, fraction * CLIP_DURATION);
+    });
+  });
+  // One curve on a non-16:9 content rect: `rollPad` and `coverScale` are both
+  // functions of the aspect, so 16:9 agreement says nothing about a still.
+  push('kf-still-4x3-3pt-mid', CURVES[0][1], CLIP_DURATION * 0.44, CLIP_DURATION, { w: 1600, h: 1200 });
+  // A curve inside a CUSTOM window — `at` is window-relative, so a wrong window
+  // solve on either end shows up here and nowhere else.
+  push(
+    'kf-2d-3pt-window',
+    { ...CURVES[0][1], startOffset: 1, duration: 2 },
+    2.4,
+    CLIP_DURATION,
+  );
+
   return cases;
 }
 
@@ -177,6 +285,20 @@ describe('camera golden vectors', () => {
     expect(names).toContain('still-4x3-push-in-mid');
     expect(names).toContain('still-1x1-roll-mid');
     expect(names).toContain('still-9x16-orbit-mid');
+    // Multi-keyframe coverage (camera-motion-keyframe-curves §5.4 #30): at least
+    // eight distinct curves, each sampled three times.
+    const curveCases = fixture!.cases.filter((c) => c.name.startsWith('kf-'));
+    const curveMotions = new Set(curveCases.map((c) => c.name.replace(/-t\d+$/, '')));
+    expect(curveMotions.size).toBeGreaterThanOrEqual(8);
+    expect(names).toContain('kf-3d-5pt-orbit-t044');
+    expect(names).toContain('kf-2d-uneven-at-roll-t083');
+    expect(names).toContain('kf-2d-8pt-full-t017');
+    expect(names).toContain('kf-2d-3pt-window');
+    // Every stored curve really is a curve — a normalization slip that collapsed
+    // them to two points would otherwise make this whole block vacuous.
+    curveCases.forEach((stored) => {
+      expect(stored.motion.keyframes?.length, stored.name).toBeGreaterThan(2);
+    });
   });
 
   it('reproduces every stored vector from the live implementation', () => {

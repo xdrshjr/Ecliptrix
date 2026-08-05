@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { TimelineState, MaterialItem } from '@/types';
 import { applyPreset } from '../../playback/camera/cameraPresets';
+import { insertKeyframeAt, setKeyframeComponent } from '../../playback/camera/keyframes';
 
 const composeVideo = vi.fn((_req: unknown) =>
   Promise.resolve({ success: true, composition_id: 'comp-1', status: 'processing' }),
@@ -255,5 +256,56 @@ describe('useVideoExport — camera motion', () => {
     statusUpdates = [{ progress: 1, status: 'completed' }];
     await runExport(state(applyPreset('push-in', '2d')));
     expect(showWarning).not.toHaveBeenCalled();
+  });
+
+  // ── T12 / D38 — the curve is omitted unless there IS one ──────────────────
+
+  it('T12 — a two-keyframe motion sends NO keyframes key at all', async () => {
+    const request = await runExport(state(applyPreset('push-in', '2d')));
+    const wire = request!.video_items[0].camera_motion;
+    expect('keyframes' in wire).toBe(false);
+    // …and the rest of the body is field-for-field what it always was, which is
+    // what keeps "identical command line" usable as the primary release gate.
+    expect(wire).toEqual({
+      version: 1,
+      mode: '2d',
+      preset_id: 'push-in',
+      intensity: 1,
+      easing: 'easeInOut',
+      start_offset: undefined,
+      duration: undefined,
+      start: { scale: 1, x: 0.5, y: 0.5, roll: 0, rotate_x: 0, rotate_y: 0, dolly: 0 },
+      end: { scale: 1.25, x: 0.5, y: 0.5, roll: 0, rotate_x: 0, rotate_y: 0, dolly: 0 },
+    });
+  });
+
+  it('T12 — a real curve is sent, ascending, in snake_case', async () => {
+    const curved = insertKeyframeAt(
+      setKeyframeComponent(insertKeyframeAt(applyPreset('orbit-left', '3d'), 0.4), 1, 'rotateY', 4),
+      0.75,
+    );
+    expect(curved.keyframes).toHaveLength(4);
+    const request = await runExport(state(curved));
+    const wire = request!.video_items[0].camera_motion;
+    expect(wire.keyframes).toHaveLength(4);
+    const ats = wire.keyframes.map((stop: { at: number }) => stop.at);
+    expect(ats).toEqual([...ats].sort((a, b) => a - b));
+    expect(ats[0]).toBe(0);
+    expect(ats[ats.length - 1]).toBe(1);
+    // snake_case, exactly like `start` / `end`.
+    expect(wire.keyframes[1]).toHaveProperty('rotate_y');
+    expect(wire.keyframes[1]).not.toHaveProperty('rotateY');
+    // The D31 mirror survives the wire hop.
+    expect(wire.keyframes[0].rotate_y).toBeCloseTo(wire.start.rotate_y, 9);
+    expect(wire.keyframes[3].rotate_y).toBeCloseTo(wire.end.rotate_y, 9);
+    // Only the last stop has no easing (D34).
+    expect(wire.keyframes[3].easing).toBeUndefined();
+    expect(wire.keyframes[0].easing).toBeTruthy();
+  });
+
+  it('T12 — a still carries its curve too', async () => {
+    const curved = insertKeyframeAt(applyPreset('push-in', '2d'), 0.5);
+    const request = await runExport(stillState(setKeyframeComponent(curved, 1, 'scale', 2)));
+    expect(request!.image_items[0].camera_motion.keyframes).toHaveLength(3);
   });
 });

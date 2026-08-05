@@ -11,6 +11,7 @@
  * the crop — the nastiest kind of WYSIWYG drift.
  */
 
+import { expandStops } from './keyframes';
 import { DEFAULT_KEYFRAME, KEYFRAME_EPSILON, type CameraKeyframe, type CameraMotion } from './types';
 
 /** Whether a keyframe equals the identity framing, component-wise. */
@@ -23,16 +24,27 @@ export function keyframeEqualsDefault(frame: CameraKeyframe | undefined): boolea
 }
 
 /**
- * `isIdentity ⟺ start is default AND (intensity is 0 OR end is default)`.
+ * `isIdentity ⟺ S₀ is default AND (intensity is 0 OR every stop is default)`.
  *
- * Because `k(e) = start + (end − start)·intensity·e`, this is exactly the
- * necessary-and-sufficient condition for `k(e)` to equal the default keyframe
- * for every `e`.
+ * Because `k(τ) = S₀ + (traj(τ) − S₀)·I` and `traj` is the piecewise-linear path
+ * through the stops, `∀τ: k(τ) = DEFAULT` ⟺ `S₀ = DEFAULT` and (`I ≈ 0` or
+ * `traj ≡ S₀`, i.e. every stop equals `S₀`). With two stops this degenerates to
+ * "start is default AND (intensity is 0 OR end is default)" — today's rule,
+ * unchanged.
+ *
+ * ⚠️ This is the FIRST gate on both export entry points (its Python twin opens
+ * `build_camera_filter_chain` and `build_still_overlay_plan`) and it returns
+ * "nothing to do" WITHOUT a warning, on the grounds that the user did not ask
+ * for a motion. Judging a `start = end = default` curve whose middle keyframe
+ * pushes to 2× as "no motion" therefore makes the motion vanish from the preview
+ * AND from the render with nothing said about it anywhere. Keep the two
+ * implementations in lockstep (C29).
  */
 export function isIdentityCameraMotion(motion: CameraMotion | undefined): boolean {
   if (!motion) return true;
-  if (!keyframeEqualsDefault(motion.start)) return false;
+  const stops = expandStops(motion);
+  if (!keyframeEqualsDefault(stops[0])) return false;
   const intensity = motion.intensity ?? 1;
   if (Math.abs(intensity) <= KEYFRAME_EPSILON) return true;
-  return keyframeEqualsDefault(motion.end);
+  return stops.every((stop) => keyframeEqualsDefault(stop));
 }

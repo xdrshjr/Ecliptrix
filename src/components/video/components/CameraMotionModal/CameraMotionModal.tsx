@@ -12,7 +12,7 @@
  * so a stray backdrop click cannot silently discard work.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useLocale } from '@/contexts/LocaleContext';
 import {
@@ -21,15 +21,28 @@ import {
   cameraMotionFingerprint,
   cameraMotionConstants,
   emptyCameraMotion,
+  expandStops,
   hasClampedComponent,
+  insertKeyframeAt,
   isIdentityCameraMotion,
+  removeKeyframeAt,
+  resolveWindow,
+  retimeKeyframe,
   reverseCameraMotion,
+  setKeyframeComponent,
+  setSegmentEasing,
+  type CameraEasing,
+  type CameraKeyframe,
   type CameraMotion,
   type CameraMotionMode,
 } from '@/components/video/playback/camera';
 import PresetGrid from './PresetGrid';
 import MotionPreviewStage from './MotionPreviewStage';
 import ParameterControls from './ParameterControls';
+import KeyframeStrip from './KeyframeStrip';
+import StageOverlay from './StageOverlay';
+import { decideInsertAt } from './keyframeStripGeometry';
+import { atToScrub, windowBand } from './stageInteraction';
 import { presetLabel } from './presetLabels';
 import { markCameraMotionPanelOpen } from './panelPresence';
 
@@ -109,6 +122,14 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
   // looping at someone who asked the OS for less movement.
   const [stagePlaying, setStagePlaying] = useState(!reducedMotion);
   const [stageProgress, setStageProgress] = useState(reducedMotion ? 0.5 : 0);
+  /** Which keyframe the parameter fields and every stage gesture act on. */
+  const [selectedStopIndex, setSelectedStopIndex] = useState(0);
+  /**
+   * True for the whole life of a stage / strip drag. `Modal` closes on a
+   * backdrop click, and releasing the pointer outside the canvas would otherwise
+   * read as exactly that — losing the edit mid-gesture (R33).
+   */
+  const draggingRef = useRef(false);
 
   // Re-seed the draft each time the panel opens on a (possibly different) clip.
   useEffect(() => {
@@ -120,6 +141,7 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
     setWebglDegraded(!Camera3DRenderer.isSupported());
     setStagePlaying(!reducedMotion);
     setStageProgress(reducedMotion ? 0.5 : 0);
+    setSelectedStopIndex(0);
   }, [isOpen, initialMotion, reducedMotion]);
 
   // Dragging the scrub bar IS the pause gesture: nobody drags a slider hoping
@@ -196,6 +218,94 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
     setDraft((prev) => reverseCameraMotion(prev));
   }, []);
 
+  // ── Keyframe curve editing ────────────────────────────────────────────────
+  // Every one of these goes through the `keyframes.ts` gate, which re-applies
+  // the D31 mirror and drops a curve that has collapsed back to two points.
+
+  const stops = useMemo(() => expandStops(draft), [draft]);
+  const selectedStop = Math.min(Math.max(selectedStopIndex, 0), stops.length - 1);
+  const motionWindow = useMemo(
+    () => resolveWindow(draft, clipDuration),
+    [draft, clipDuration],
+  );
+  const scrubBand = useMemo(
+    () => windowBand(motionWindow.start, motionWindow.duration, clipDuration),
+    [motionWindow, clipDuration],
+  );
+  const insertDecision = useMemo(
+    () => decideInsertAt(draft, stageProgress, clipDuration),
+    [draft, stageProgress, clipDuration],
+  );
+
+  /**
+   * Park the playhead ON the keyframe being edited. Adjusting the framing at
+   * 0.4s while the stage plays 0.8s is actively misleading, so selecting or
+   * touching a keyframe freezes the loop there. The scrub position is the
+   * window→clip conversion of `at`, never `at` itself (D44).
+   */
+  const parkOnStop = useCallback((index: number) => {
+    setStagePlaying(false);
+    setDraft((prev) => {
+      const list = expandStops(prev);
+      const clamped = Math.min(Math.max(index, 0), list.length - 1);
+      const window = resolveWindow(prev, clipDuration);
+      setStageProgress(atToScrub(list[clamped].at, window.start, window.duration, clipDuration));
+      return prev;
+    });
+  }, [clipDuration]);
+
+  const handleSelectStop = useCallback((index: number) => {
+    setSelectedStopIndex(index);
+    parkOnStop(index);
+  }, [parkOnStop]);
+
+  const handleInsertKeyframe = useCallback(() => {
+    const { at } = insertDecision;
+    if (at == null) return;
+    setDraft((prev) => {
+      const next = insertKeyframeAt(prev, at);
+      const index = expandStops(next).findIndex((stop) => Math.abs(stop.at - at) < 1e-6);
+      setSelectedStopIndex(index >= 0 ? index : 1);
+      return next;
+    });
+    setStagePlaying(false);
+  }, [insertDecision]);
+
+  const handleRemoveKeyframe = useCallback((index: number) => {
+    setDraft((prev) => {
+      const next = removeKeyframeAt(prev, index);
+      setSelectedStopIndex((current) => Math.max(0, Math.min(current, expandStops(next).length - 1)));
+      return next;
+    });
+  }, []);
+
+  const handleRetimeKeyframe = useCallback((index: number, at: number) => {
+    setStagePlaying(false);
+    setDraft((prev) => retimeKeyframe(prev, index, at));
+  }, []);
+
+  const handleSegmentEasing = useCallback((index: number, easing: CameraEasing) => {
+    setDraft((prev) => setSegmentEasing(prev, index, easing));
+  }, []);
+
+  const handleKeyframeComponent = useCallback((
+    index: number, key: keyof CameraKeyframe, value: number,
+  ) => {
+    setDraft((prev) => setKeyframeComponent(prev, index, key, value));
+  }, []);
+
+  /** The stage's gestures always edit the selected keyframe. */
+  const handleStageComponent = useCallback((key: keyof CameraKeyframe, value: number) => {
+    setDraft((prev) => {
+      const index = Math.min(Math.max(selectedStopIndex, 0), expandStops(prev).length - 1);
+      return setKeyframeComponent(prev, index, key, value);
+    });
+  }, [selectedStopIndex]);
+
+  const handleStageInteractionStart = useCallback(() => {
+    parkOnStop(selectedStopIndex);
+  }, [parkOnStop, selectedStopIndex]);
+
   const itemIds = useMemo(
     () => (applyToAll ? targetItemIds : targetItemIds.slice(0, 1)),
     [applyToAll, targetItemIds],
@@ -211,6 +321,10 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
   }, [mode]);
 
   const handleRequestClose = useCallback(() => {
+    // A drag that ends outside the canvas must not be read as a backdrop click
+    // (R33) — releasing the mouse over the page while reframing would otherwise
+    // close the panel and throw the work away.
+    if (draggingRef.current) return;
     if (isDirty && typeof window !== 'undefined' && typeof window.confirm === 'function') {
       if (!window.confirm(labels.discardConfirm)) return;
     }
@@ -310,13 +424,45 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
                 pause: labels.stagePause,
               }}
               onDegraded={() => setWebglDegraded(true)}
-            />
+              windowBand={scrubBand}
+              windowBandLabel={labels.windowBandLabel}
+            >
+              {/* Direct framing (G3). Passed as children, not wired through a
+                  per-frame callback: it draws the SELECTED keyframe's framing and
+                  the static path, so it has no use for per-frame data and the
+                  stage keeps its zero-render playhead (D45). */}
+              <StageOverlay
+                motion={draft}
+                selectedIndex={selectedStop}
+                onComponentChange={handleStageComponent}
+                onInteractionStart={handleStageInteractionStart}
+                onDraggingChange={(dragging) => { draggingRef.current = dragging; }}
+                labels={{
+                  overlayLabel: labels.stageOverlayLabel,
+                  hint: mode === '3d' ? labels.stageDragHint : labels.stageOverlayHint,
+                }}
+                disabled={isNone}
+              />
+            </MotionPreviewStage>
             {mode === '3d' && webglDegraded && (
               <div className="absolute right-2 top-2 rounded-md bg-background/90 px-2 py-1 text-[10px] text-muted-foreground shadow-sm">
                 {labels.webglDegraded}
               </div>
             )}
           </div>
+
+          <KeyframeStrip
+            motion={draft}
+            selectedIndex={selectedStop}
+            onSelect={handleSelectStop}
+            onRetime={handleRetimeKeyframe}
+            onInsert={handleInsertKeyframe}
+            onRemove={handleRemoveKeyframe}
+            onSegmentEasing={handleSegmentEasing}
+            insertBlocked={insertDecision.at == null ? insertDecision.reason ?? 'outside-window' : null}
+            labels={labels}
+            disabled={isNone}
+          />
 
           {hints.length > 0 && (
             <ul className="space-y-0.5">
@@ -331,6 +477,9 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
             clipDuration={clipDuration}
             labels={labels}
             onChange={setDraft}
+            onKeyframeComponent={handleKeyframeComponent}
+            selectedIndex={selectedStop}
+            onSelectIndex={handleSelectStop}
             onReverse={handleReverse}
             disabled={isNone}
           />

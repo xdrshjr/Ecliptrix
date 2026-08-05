@@ -40,6 +40,21 @@ camera_motion:
   # 链失败的代价是整条 overlay pass（全片重编码），比视频侧高一个数量级。
   dry_run_probe: true
 
+  # ── 多关键帧曲线（camera-motion-keyframe-curves §7.4）──────────────────────
+
+  # 单条滤镜链的字符上限。超过则把分段曲线降级为两点运镜并给出 warning（D40），
+  # 而不是放弃运镜、更不是让导出失败。
+  # 实测（FFmpeg 2025-05-15 full build）：单个 zoompan z 表达式 8985 字符、
+  # 整条滤镜串 15KB 均可正常执行；20000 取约 2 倍余量。
+  # 注意闸的是「组装后的整条链」：z 表达式会被内联进 x/y 各两次，
+  # 所以 scale 的分段串在一条 zoompan 里出现 5 次，长度不是线性增长的。
+  max_expr_chars: 20000
+
+  # 关键帧数上限，与前端 CAMERA_MAX_KEYFRAMES 对齐，运维可下调。
+  # 真实执行点在 expand_stops()（截断时保留首尾、中间等距淘汰）；
+  # 前端常量与 pydantic 校验器都看不到本文件，只改那两处的话这个键就是死旋钮。
+  max_keyframes: 8
+
   # ── 静帧运镜（camera-motion-stills §7.3）────────────────────────────────
   stills:
     # 静帧运镜总开关。false 时图片按 v1 行为导出（静态叠加），并回传一条

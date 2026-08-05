@@ -9,6 +9,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TimelineRepository } from '../TimelineRepository';
 import { applyPreset } from '../../../playback/camera/cameraPresets';
+import { insertKeyframeAt, setKeyframeComponent } from '../../../playback/camera/keyframes';
+import { CAMERA_MAX_KEYFRAMES } from '../../../playback/camera/types';
 import type { TimelineData, MaterialData } from '../../domain/types';
 import type { ExportMetadata } from '../../domain/ports';
 
@@ -155,5 +157,90 @@ describe('TimelineRepository — camera motion', () => {
     expect(item.cameraMotion!.start.scale).toBe(1.5);
     expect(item.cameraMotion!.start.x).toBe(0.5);
     expect(item.cameraMotion!.end.scale).toBe(1);
+  });
+
+  /**
+   * T21 (review P2-7) — the persistence round-trip for curves.
+   *
+   * The save side is a straight pass-through (`TimelineRepository.ts:291`) and
+   * the load side runs `sanitizeCameraMotion` (`:417`). So D38's promise —
+   * "an existing project written back out is byte-identical" — rests entirely on
+   * the store never holding a trivial `keyframes` array, and until now nothing
+   * guarded that on the real persistence path.
+   */
+  describe('T21 — multi-keyframe curves', () => {
+    it('round-trips a curve item for item', async () => {
+      const curved = setKeyframeComponent(
+        insertKeyframeAt(applyPreset('zoom-pan-diagonal', '2d'), 0.42), 1, 'scale', 2,
+      );
+      expect(curved.keyframes).toHaveLength(3);
+      const { raw, item } = await roundTrip(curved);
+      expect((raw.tracks[0].items[0].cameraMotion as { keyframes: unknown[] }).keyframes)
+        .toHaveLength(3);
+      expect(item.cameraMotion).toEqual(curved);
+    });
+
+    it('writes a motion WITHOUT a curve exactly as it did before (D38 / G4 ①)', async () => {
+      const motion = applyPreset('push-in', '2d');
+      const { raw, item } = await roundTrip(motion);
+      const stored = raw.tracks[0].items[0].cameraMotion as Record<string, unknown>;
+      // No `keyframes` key at all — not `null`, not `[]`, ABSENT. Anything else
+      // changes the serialized bytes of every existing project.
+      expect('keyframes' in stored).toBe(false);
+      expect(JSON.stringify(stored)).toBe(JSON.stringify(motion));
+      expect(item.cameraMotion).toEqual(motion);
+    });
+
+    it('normalizes a hand-edited out-of-order curve instead of trusting it', async () => {
+      // Straight to FFmpeg this would build `if(lt(U,0.5),…,if(lt(U,0.3),…))`,
+      // whose second branch is unreachable for every frame.
+      const { item } = await roundTrip({
+        ...applyPreset('push-in', '2d'),
+        keyframes: [
+          { at: 0, scale: 1 },
+          { at: 0.5, scale: 2 },
+          { at: 0.3, scale: 3 },
+          { at: 1, scale: 1.2 },
+        ],
+      });
+      const stops = item.cameraMotion!.keyframes!;
+      expect(stops.map((stop) => stop.at)).toEqual([0, 0.3, 0.5, 1]);
+    });
+
+    it('caps a hand-edited over-length curve and keeps both ends', async () => {
+      const { item } = await roundTrip({
+        ...applyPreset('push-in', '2d'),
+        keyframes: Array.from({ length: 20 }, (_, i) => ({ at: i / 19, scale: 1 + i * 0.05 })),
+      });
+      const stops = item.cameraMotion!.keyframes!;
+      expect(stops.length).toBeLessThanOrEqual(CAMERA_MAX_KEYFRAMES);
+      expect(stops[0].at).toBe(0);
+      expect(stops[stops.length - 1].at).toBe(1);
+    });
+
+    it('does not throw on a garbage curve, it just drops it', async () => {
+      const { item } = await roundTrip({
+        ...applyPreset('push-in', '2d'),
+        keyframes: 'not-an-array',
+      });
+      expect(item.cameraMotion).toBeTruthy();
+      expect(item.cameraMotion!.keyframes).toBeUndefined();
+    });
+
+    it('re-mirrors start / end from the curve endpoints on load (D31)', async () => {
+      const { item } = await roundTrip({
+        ...applyPreset('push-in', '2d'),
+        // Deliberately inconsistent with `start`/`end`: the curve wins.
+        keyframes: [
+          { at: 0, scale: 1.5, x: 0.3 },
+          { at: 0.5, scale: 2 },
+          { at: 1, scale: 1.1, y: 0.8 },
+        ],
+      });
+      expect(item.cameraMotion!.start.scale).toBe(1.5);
+      expect(item.cameraMotion!.start.x).toBe(0.3);
+      expect(item.cameraMotion!.end.scale).toBe(1.1);
+      expect(item.cameraMotion!.end.y).toBe(0.8);
+    });
   });
 });

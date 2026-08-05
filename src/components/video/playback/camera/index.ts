@@ -15,10 +15,26 @@ export {
   easedProgressAt,
   hasClampedComponent,
   keyframeAt,
+  keyframeAtTrajectory,
   progressAt,
   resolveWindow,
+  tauAtProgress,
   type CameraWindow,
 } from './easing';
+export {
+  expandStops,
+  hasKeyframeCurve,
+  insertKeyframeAt,
+  normalizeCameraKeyframes,
+  pickKeyframe,
+  removeKeyframeAt,
+  retimeKeyframe,
+  segmentIndexAt,
+  setKeyframeComponent,
+  setSegmentEasing,
+  trajectoryAt,
+  trajectorySamples,
+} from './keyframes';
 export {
   DEGENERATE,
   affineApproxFromQuad,
@@ -58,6 +74,7 @@ export {
 export {
   sanitizeCameraMotion,
   toCameraMotionWire,
+  type CameraKeyframeStopWire,
   type CameraKeyframeWire,
   type CameraMotionWire,
 } from './wire';

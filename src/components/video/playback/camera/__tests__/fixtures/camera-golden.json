@@ -4045,6 +4045,2391 @@
           ]
         ]
       }
+    },
+    {
+      "name": "kf-2d-3pt-return-t017",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 1.8,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.10691823899371072,
+          0.10691823899371072,
+          0.7861635220125786,
+          0.7861635220125786
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-3pt-return-t044",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 1.8,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.20657276995305168,
+          0.20657276995305168,
+          0.5868544600938966,
+          0.5868544600938966
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-3pt-return-t083",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 1.8,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.10691823899371078,
+          0.10691823899371078,
+          0.7861635220125784,
+          0.7861635220125784
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-4pt-hold-t017",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.4,
+          "x": 0.7,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.3,
+            "scale": 1.4,
+            "x": 0.35,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.6,
+            "scale": 1.4,
+            "x": 0.35,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 1,
+            "scale": 1.4,
+            "x": 0.7,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.13435641311766677,
+          0.7312871737646665,
+          0.7312871737646665
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-4pt-hold-t044",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.4,
+          "x": 0.7,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.3,
+            "scale": 1.4,
+            "x": 0.35,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.6,
+            "scale": 1.4,
+            "x": 0.35,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 1,
+            "scale": 1.4,
+            "x": 0.7,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.14285714285714285,
+          0.7142857142857143,
+          0.7142857142857143
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-4pt-hold-t083",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeOut",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.4,
+          "x": 0.7,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.3,
+            "scale": 1.4,
+            "x": 0.35,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.6,
+            "scale": 1.4,
+            "x": 0.35,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 1,
+            "scale": 1.4,
+            "x": 0.7,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.05939542410714277,
+          0.14285714285714285,
+          0.7142857142857143,
+          0.7142857142857143
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-3d-5pt-orbit-t017",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": -10,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 10,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": -10,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.25,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 8,
+            "dolly": 0.1,
+            "easing": "easeInOut"
+          },
+          {
+            "at": 0.5,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": -6,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.75,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": -8,
+            "dolly": 0.18,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 10,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -0.07213801918246898,
+            -0.07257553952470086,
+            1.055515363873651
+          ],
+          [
+            1.0913689603247918,
+            -0.09182118678279982,
+            1.0909937854378677
+          ],
+          [
+            -0.07213801918246898,
+            1.072575539524701,
+            1.055515363873651
+          ],
+          [
+            1.0913689603247918,
+            1.0918211867827998,
+            1.0909937854378677
+          ]
+        ]
+      }
+    },
+    {
+      "name": "kf-3d-5pt-orbit-t044",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": -10,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 10,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": -10,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.25,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 8,
+            "dolly": 0.1,
+            "easing": "easeInOut"
+          },
+          {
+            "at": 0.5,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": -6,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.75,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": -8,
+            "dolly": 0.18,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 10,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -0.0318883827193146,
+            -0.029530632834494086,
+            0.9809605639594862
+          ],
+          [
+            1.0355420485258402,
+            -0.03271089255110715,
+            0.9868520255137441
+          ],
+          [
+            -0.056239580295590286,
+            1.0532990063192391,
+            1.024991703259566
+          ],
+          [
+            1.0592511495758181,
+            1.0567721062721145,
+            1.0314256541534423
+          ]
+        ]
+      }
+    },
+    {
+      "name": "kf-3d-5pt-orbit-t083",
+      "motion": {
+        "version": 1,
+        "mode": "3d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": -10,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 10,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": -10,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.25,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 8,
+            "dolly": 0.1,
+            "easing": "easeInOut"
+          },
+          {
+            "at": 0.5,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": -6,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.75,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": -8,
+            "dolly": 0.18,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 10,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "3d",
+        "crop": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "roll": 0,
+        "rollPad": 1,
+        "quad": [
+          [
+            -0.05578386045002526,
+            -0.05738229372689552,
+            1.027507348756546
+          ],
+          [
+            1.0920748082153824,
+            -0.09377761418582164,
+            1.0946003649014389
+          ],
+          [
+            -0.05578386045002526,
+            1.0573822937268957,
+            1.027507348756546
+          ],
+          [
+            1.0920748082153824,
+            1.0937776141858215,
+            1.0946003649014389
+          ]
+        ]
+      }
+    },
+    {
+      "name": "kf-2d-mixed-easing-t017",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeIn",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.9,
+          "x": 0.5,
+          "y": 0.4,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.25,
+            "scale": 1.5,
+            "x": 0.5,
+            "y": 0.35,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.55,
+            "scale": 1.2,
+            "x": 0.5,
+            "y": 0.65,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1.9,
+            "x": 0.5,
+            "y": 0.4,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.06792854575118218,
+          0.020763745751182172,
+          0.8641429084976356,
+          0.8641429084976356
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-mixed-easing-t044",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeIn",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.9,
+          "x": 0.5,
+          "y": 0.4,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.25,
+            "scale": 1.5,
+            "x": 0.5,
+            "y": 0.35,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.55,
+            "scale": 1.2,
+            "x": 0.5,
+            "y": 0.65,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1.9,
+            "x": 0.5,
+            "y": 0.4,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.11832061068702293,
+          0.15832061068702286,
+          0.7633587786259541,
+          0.7633587786259541
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-mixed-easing-t083",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeIn",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.9,
+          "x": 0.5,
+          "y": 0.4,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.25,
+            "scale": 1.5,
+            "x": 0.5,
+            "y": 0.35,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.55,
+            "scale": 1.2,
+            "x": 0.5,
+            "y": 0.65,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1.9,
+            "x": 0.5,
+            "y": 0.4,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.23150895942448485,
+          0.1449876974217414,
+          0.5369820811510303,
+          0.5369820811510303
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-intensity-half-t017",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 0.5,
+        "easing": "linear",
+        "start": {
+          "scale": 1.1,
+          "x": 0.6,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.3,
+          "x": 0.55,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.1,
+            "x": 0.6,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.4,
+            "scale": 2,
+            "x": 0.3,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1.3,
+            "x": 0.55,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.1490283155856728,
+          0.1127783155856728,
+          0.7744433688286544,
+          0.7744433688286544
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-intensity-half-t044",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 0.5,
+        "easing": "linear",
+        "start": {
+          "scale": 1.1,
+          "x": 0.6,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.3,
+          "x": 0.55,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.1,
+            "x": 0.6,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.4,
+            "scale": 2,
+            "x": 0.3,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1.3,
+            "x": 0.55,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.13082241630276564,
+          0.17248908296943233,
+          0.6550218340611353,
+          0.6550218340611353
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-intensity-half-t083",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 0.5,
+        "easing": "linear",
+        "start": {
+          "scale": 1.1,
+          "x": 0.6,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.3,
+          "x": 0.55,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.1,
+            "x": 0.6,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.4,
+            "scale": 2,
+            "x": 0.3,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1.3,
+            "x": 0.55,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.1547212422493051,
+          0.11513790891597181,
+          0.7697241821680564,
+          0.7697241821680564
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-intensity-zero-t017",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 0,
+        "easing": "linear",
+        "start": {
+          "scale": 1.25,
+          "x": 0.4,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.25,
+            "x": 0.4,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 2,
+            "x": 0.7,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.09999999999999998,
+          0.8,
+          0.8
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-intensity-zero-t044",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 0,
+        "easing": "linear",
+        "start": {
+          "scale": 1.25,
+          "x": 0.4,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.25,
+            "x": 0.4,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 2,
+            "x": 0.7,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.09999999999999998,
+          0.8,
+          0.8
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-intensity-zero-t083",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 0,
+        "easing": "linear",
+        "start": {
+          "scale": 1.25,
+          "x": 0.4,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.25,
+            "x": 0.4,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 2,
+            "x": 0.7,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.09999999999999998,
+          0.8,
+          0.8
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-uneven-at-roll-t017",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeOut",
+        "start": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.05,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.113,
+            "scale": 1.2,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 12,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.505,
+            "scale": 1.35,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": -18,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.917,
+            "scale": 1.1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 4,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.09077147927758639,
+          0.09077147927758639,
+          0.8184570414448272,
+          0.8184570414448272
+        ],
+        "roll": 7.637755102040815,
+        "rollPad": 1.5004200618506154
+      }
+    },
+    {
+      "name": "kf-2d-uneven-at-roll-t044",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeOut",
+        "start": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.05,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.113,
+            "scale": 1.2,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 12,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.505,
+            "scale": 1.35,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": -18,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.917,
+            "scale": 1.1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 4,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.12267783232264895,
+          0.12267783232264895,
+          0.7546443353547021,
+          0.7546443353547021
+        ],
+        "roll": -13.02551020408163,
+        "rollPad": 1.5004200618506154
+      }
+    },
+    {
+      "name": "kf-2d-uneven-at-roll-t083",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "easeOut",
+        "start": {
+          "scale": 1.05,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1.05,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.113,
+            "scale": 1.2,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 12,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.505,
+            "scale": 1.35,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": -18,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.917,
+            "scale": 1.1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 4,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.09259659235749829,
+          0.09259659235749829,
+          0.8148068152850034,
+          0.8148068152850034
+        ],
+        "roll": -7.201060311724705,
+        "rollPad": 1.5004200618506154
+      }
+    },
+    {
+      "name": "kf-2d-8pt-full-t017",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.42,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.12,
+          "x": 0.49999999999999994,
+          "y": 0.42,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.42,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.142857,
+            "scale": 1.12,
+            "x": 0.5938197778961636,
+            "y": 0.4501208158513013,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.285714,
+            "scale": 1.24,
+            "x": 0.6169913494618189,
+            "y": 0.5178016747165052,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.428571,
+            "scale": 1,
+            "x": 0.552066048694107,
+            "y": 0.5720775094321935,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "at": 0.571429,
+            "scale": 1.12,
+            "x": 0.44793395130589303,
+            "y": 0.5720775094321935,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.714286,
+            "scale": 1.24,
+            "x": 0.3830086505381812,
+            "y": 0.5178016747165052,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.857143,
+            "scale": 1,
+            "x": 0.4061802221038364,
+            "y": 0.4501208158513013,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1.12,
+            "x": 0.49999999999999994,
+            "y": 0.42,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 1.02,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.10779854194134719,
+          0.004484318555500744,
+          0.8922014580586528,
+          0.8922014580586528
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-8pt-full-t044",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.42,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.12,
+          "x": 0.49999999999999994,
+          "y": 0.42,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.42,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.142857,
+            "scale": 1.12,
+            "x": 0.5938197778961636,
+            "y": 0.4501208158513013,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.285714,
+            "scale": 1.24,
+            "x": 0.6169913494618189,
+            "y": 0.5178016747165052,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.428571,
+            "scale": 1,
+            "x": 0.552066048694107,
+            "y": 0.5720775094321935,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "at": 0.571429,
+            "scale": 1.12,
+            "x": 0.44793395130589303,
+            "y": 0.5720775094321935,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.714286,
+            "scale": 1.24,
+            "x": 0.3830086505381812,
+            "y": 0.5178016747165052,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.857143,
+            "scale": 1,
+            "x": 0.4061802221038364,
+            "y": 0.4501208158513013,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1.12,
+            "x": 0.49999999999999994,
+            "y": 0.42,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.0002457228303626158,
+          0.0002457228303626158,
+          0.9997542771696374,
+          0.9997542771696374
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-8pt-full-t083",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.42,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1.12,
+          "x": 0.49999999999999994,
+          "y": 0.42,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.42,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.142857,
+            "scale": 1.12,
+            "x": 0.5938197778961636,
+            "y": 0.4501208158513013,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.285714,
+            "scale": 1.24,
+            "x": 0.6169913494618189,
+            "y": 0.5178016747165052,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 0.428571,
+            "scale": 1,
+            "x": 0.552066048694107,
+            "y": 0.5720775094321935,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeInOut"
+          },
+          {
+            "at": 0.571429,
+            "scale": 1.12,
+            "x": 0.44793395130589303,
+            "y": 0.5720775094321935,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.714286,
+            "scale": 1.24,
+            "x": 0.3830086505381812,
+            "y": 0.5178016747165052,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeIn"
+          },
+          {
+            "at": 0.857143,
+            "scale": 1,
+            "x": 0.4061802221038364,
+            "y": 0.4501208158513013,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "easeOut"
+          },
+          {
+            "at": 1,
+            "scale": 1.12,
+            "x": 0.49999999999999994,
+            "y": 0.42,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 4.9799999999999995,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0,
+          0.03237695516311584,
+          0.8989129895289025,
+          0.8989129895289025
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-still-4x3-3pt-mid",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 1.8,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ]
+      },
+      "clipDuration": 6,
+      "t": 2.64,
+      "frame": {
+        "w": 1600,
+        "h": 1200
+      },
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.20657276995305168,
+          0.20657276995305168,
+          0.5868544600938966,
+          0.5868544600938966
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
+    },
+    {
+      "name": "kf-2d-3pt-window",
+      "motion": {
+        "version": 1,
+        "mode": "2d",
+        "presetId": "custom",
+        "intensity": 1,
+        "easing": "linear",
+        "start": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "end": {
+          "scale": 1,
+          "x": 0.5,
+          "y": 0.5,
+          "roll": 0,
+          "rotateX": 0,
+          "rotateY": 0,
+          "dolly": 0
+        },
+        "keyframes": [
+          {
+            "at": 0,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 0.5,
+            "scale": 1.8,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0,
+            "easing": "linear"
+          },
+          {
+            "at": 1,
+            "scale": 1,
+            "x": 0.5,
+            "y": 0.5,
+            "roll": 0,
+            "rotateX": 0,
+            "rotateY": 0,
+            "dolly": 0
+          }
+        ],
+        "startOffset": 1,
+        "duration": 2
+      },
+      "clipDuration": 6,
+      "t": 2.4,
+      "expect": {
+        "mode": "2d",
+        "crop": [
+          0.16216216216216217,
+          0.16216216216216217,
+          0.6756756756756757,
+          0.6756756756756757
+        ],
+        "roll": 0,
+        "rollPad": 1
+      }
     }
   ]
 }
