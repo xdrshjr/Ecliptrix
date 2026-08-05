@@ -483,6 +483,7 @@ export interface Translations {
       contextDetachAudio: string;
       exportDegraded: string;
       previewUnavailable: string;
+      unrenderable: string;
       presets: {
         zoomIn: string;
         zoomOut: string;
@@ -3072,6 +3073,8 @@ export const translations: Record<string, Translations> = {
         contextDetachAudio: 'Detach audio',
         exportDegraded: 'This FFmpeg build cannot animate camera motion, so the export used a fixed framing.',
         previewUnavailable: '3D preview is unavailable on this device; showing a 2D approximation.',
+        unrenderable:
+          'These advanced values turn the frame inside out. Lower the intensity, dolly, yaw or pitch until the preview looks right.',
         presets: {
           zoomIn: 'Zoom In',
           zoomOut: 'Zoom Out',
@@ -5464,6 +5467,7 @@ export const translations: Record<string, Translations> = {
         contextDetachAudio: '分离音频',
         exportDegraded: '当前 FFmpeg 无法逐帧渲染运镜，导出已改用固定取景。',
         previewUnavailable: '当前设备无法进行 3D 预览，已降级为 2D 近似效果。',
+        unrenderable: '当前高级参数会让画面翻折失真，请调低强度、推拉、偏航或俯仰后再应用。',
         presets: {
           zoomIn: '推近',
           zoomOut: '拉远',

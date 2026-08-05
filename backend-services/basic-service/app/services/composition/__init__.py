@@ -19,4 +19,12 @@ unit-testable modules:
   subtitle items to an SRT file) for the subtitle burn-in pass.
 - ``media_download`` — URL classification predicates + standalone image fetch
   used by the overlay path.
+- ``camera_motion`` — the 2D/3D 运镜 geometry kernel: the Python twin of
+  ``CameraMotionLayer.ts``, compared against it on a frozen golden-vector
+  fixture. Geometry only; nothing FFmpeg-shaped lives here.
+- ``camera_motion_filters`` — turns that geometry into ``perspective``
+  expressions (registers, raster corner order, transparent backdrop). Imports
+  ``camera_motion``; never the reverse.
+- ``ffmpeg_caps`` — per-binary capability probe driving the camera-motion
+  degradation ladder, cached for the process lifetime.
 """

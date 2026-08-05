@@ -1,0 +1,260 @@
+{
+  "metric": "M1",
+  "title": "Cross-implementation geometry parity (TS preview kernel vs Python export kernel)",
+  "thresholdPx": 0.5,
+  "canvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "cornerOrder": [
+    "TL",
+    "TR",
+    "BR",
+    "BL"
+  ],
+  "cases": 336,
+  "cornerComparisons": 1344,
+  "maxDeviationPx": 6.841313141580218e-07,
+  "meanDeviationPx": 2.229946232860073e-07,
+  "p95DeviationPx": 5.933409164138857e-07,
+  "missingPresets": [],
+  "perPreset": [
+    {
+      "presetId": "zoom-in",
+      "space": "2d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 5.084229945850415e-13,
+      "meanDeviationPx": 1.346763075179507e-13,
+      "worst": {
+        "t": "3.900000",
+        "corner": "BR",
+        "px": 5.084229945850415e-13
+      },
+      "pass": true
+    },
+    {
+      "presetId": "zoom-out",
+      "space": "2d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 5.084229945850415e-13,
+      "meanDeviationPx": 1.3196948893672366e-13,
+      "worst": {
+        "t": "1.200000",
+        "corner": "BR",
+        "px": 5.084229945850415e-13
+      },
+      "pass": true
+    },
+    {
+      "presetId": "pan-left",
+      "space": "2d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 4.602649920770331e-13,
+      "meanDeviationPx": 1.4955149977692433e-13,
+      "worst": {
+        "t": "5.100000",
+        "corner": "TR",
+        "px": 4.602649920770331e-13
+      },
+      "pass": true
+    },
+    {
+      "presetId": "pan-right",
+      "space": "2d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 4.602649920770331e-13,
+      "meanDeviationPx": 1.4955149977692426e-13,
+      "worst": {
+        "t": "0.000000",
+        "corner": "TR",
+        "px": 4.602649920770331e-13
+      },
+      "pass": true
+    },
+    {
+      "presetId": "tilt-up",
+      "space": "2d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 2.6812987050722663e-13,
+      "meanDeviationPx": 1.1196659173354221e-13,
+      "worst": {
+        "t": "0.300000",
+        "corner": "BL",
+        "px": 2.6812987050722663e-13
+      },
+      "pass": true
+    },
+    {
+      "presetId": "tilt-down",
+      "space": "2d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 2.6812987050722663e-13,
+      "meanDeviationPx": 1.1176883403261238e-13,
+      "worst": {
+        "t": "4.200000",
+        "corner": "BL",
+        "px": 2.6812987050722663e-13
+      },
+      "pass": true
+    },
+    {
+      "presetId": "rotate-in",
+      "space": "2d",
+      "easing": "ease-out",
+      "corners": 84,
+      "maxDeviationPx": 6.343288282846011e-07,
+      "meanDeviationPx": 4.2148036505248167e-07,
+      "worst": {
+        "t": "0.600000",
+        "corner": "BL",
+        "px": 6.343288282846011e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "ken-burns",
+      "space": "2d",
+      "easing": "linear",
+      "corners": 84,
+      "maxDeviationPx": 6.060920348083987e-07,
+      "meanDeviationPx": 3.463380171792316e-07,
+      "worst": {
+        "t": "3.000000",
+        "corner": "TR",
+        "px": 6.060920348083987e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "orbit-left",
+      "space": "3d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 6.802335922302127e-07,
+      "meanDeviationPx": 3.541202024516904e-07,
+      "worst": {
+        "t": "0.000000",
+        "corner": "TR",
+        "px": 6.802335922302127e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "orbit-right",
+      "space": "3d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 6.802335922302127e-07,
+      "meanDeviationPx": 3.541202015253681e-07,
+      "worst": {
+        "t": "6.000000",
+        "corner": "TR",
+        "px": 6.802335922302127e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "dive",
+      "space": "3d",
+      "easing": "ease-out",
+      "corners": 84,
+      "maxDeviationPx": 6.536603042057333e-07,
+      "meanDeviationPx": 3.7469337533791976e-07,
+      "worst": {
+        "t": "1.800000",
+        "corner": "BR",
+        "px": 6.536603042057333e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "crane-up",
+      "space": "3d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 6.841313141580218e-07,
+      "meanDeviationPx": 3.4576917718308954e-07,
+      "worst": {
+        "t": "2.400000",
+        "corner": "TR",
+        "px": 6.841313141580218e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "swing-in",
+      "space": "3d",
+      "easing": "ease-out",
+      "corners": 84,
+      "maxDeviationPx": 6.311389958139197e-07,
+      "meanDeviationPx": 3.7416872964621003e-07,
+      "worst": {
+        "t": "3.000000",
+        "corner": "TL",
+        "px": 6.311389958139197e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "dolly-in-3d",
+      "space": "3d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 5.702299333533565e-07,
+      "meanDeviationPx": 3.174444654092835e-07,
+      "worst": {
+        "t": "1.500000",
+        "corner": "TR",
+        "px": 5.702299333533565e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "boom",
+      "space": "3d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 5.644602532213574e-07,
+      "meanDeviationPx": 3.418147200019692e-07,
+      "worst": {
+        "t": "1.200000",
+        "corner": "TR",
+        "px": 5.644602532213574e-07
+      },
+      "pass": true
+    },
+    {
+      "presetId": "spiral",
+      "space": "3d",
+      "easing": "ease-in-out",
+      "corners": 84,
+      "maxDeviationPx": 6.805486535184461e-07,
+      "meanDeviationPx": 3.379639293046511e-07,
+      "worst": {
+        "t": "1.500000",
+        "corner": "TR",
+        "px": 6.805486535184461e-07
+      },
+      "pass": true
+    }
+  ],
+  "shippedSuites": {
+    "vitest_CameraMotionLayer": {
+      "exit": 0,
+      "seconds": 2.6,
+      "log": "logs/m1-vitest.log"
+    },
+    "pytest_camera_motion_geometry": {
+      "exit": 0,
+      "seconds": 5.5,
+      "log": "logs/m1-pytest.log"
+    }
+  },
+  "pass": true
+}

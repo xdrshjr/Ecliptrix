@@ -271,7 +271,9 @@ def test_static_motion_when_ffmpeg_cannot_evaluate_per_frame():
 
 def test_missing_perspective_filter_raises_instead_of_dropping_the_effect():
     """Tier 3: fail loudly rather than deliver an effect-free 'success'."""
-    from app.services.composition.camera_motion import CameraMotionUnsupportedError
+    from app.services.composition.camera_motion_filters import (
+        CameraMotionUnsupportedError,
+    )
 
     class Caps:
         has_perspective = False

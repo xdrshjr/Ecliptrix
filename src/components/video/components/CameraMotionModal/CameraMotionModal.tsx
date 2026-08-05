@@ -18,6 +18,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import {
+  isMotionRenderable,
   motionFromPreset,
   CUSTOM_PRESET_ID,
   type CameraMotion,
@@ -31,6 +32,17 @@ const DEFAULT_PRESET_ID = 'zoom-in';
 
 const LARGE_PREVIEW_WIDTH = 320;
 const LARGE_PREVIEW_HEIGHT = 180;
+
+/**
+ * Canvas the renderability check is judged against.
+ *
+ * Only the ASPECT changes the verdict — the projection scales with the canvas —
+ * so a nominal 16:9 frame stands in for the project canvas the panel does not
+ * receive. Every shipped preset clears this by a wide margin; it exists for the
+ * advanced sliders, where `intensity` can push a hand-typed dolly or yaw past
+ * the pinhole and fold the picture inside out.
+ */
+const GUARD_CANVAS = { width: 1920, height: 1080 };
 
 export interface CameraMotionModalProps {
   isOpen: boolean;
@@ -119,6 +131,13 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
   const headerSubtitle = useMemo(
     () => copy.subtitle.replace('{name}', clipName).replace('{duration}', formatDuration(clipDuration)),
     [copy.subtitle, clipName, clipDuration],
+  );
+
+  // Block the commit rather than silently rewriting the numbers the user typed:
+  // a rejected Apply with a reason is honest, a quietly clamped yaw is not.
+  const isDraftRenderable = useMemo(
+    () => (draft ? isMotionRenderable(draft, GUARD_CANVAS) : true),
+    [draft],
   );
 
   if (!isOpen || !draft) return null;
@@ -210,6 +229,15 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
             {copy.remove}
           </button>
           <div className="flex items-center gap-2">
+            {!isDraftRenderable && (
+              <p
+                id="camera-motion-unrenderable"
+                role="alert"
+                className="max-w-[26rem] text-right text-[11px] leading-snug text-destructive"
+              >
+                {copy.unrenderable}
+              </p>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -222,9 +250,11 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
             <button
               type="button"
               onClick={() => onApply(draft)}
+              disabled={!isDraftRenderable}
+              aria-describedby={isDraftRenderable ? undefined : 'camera-motion-unrenderable'}
               className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground
-                transition-colors hover:bg-primary/90 focus-visible:outline-none
-                focus-visible:ring-2 focus-visible:ring-primary/40"
+                transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               {copy.apply}
             </button>

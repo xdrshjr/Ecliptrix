@@ -1,0 +1,77 @@
+{
+  "metric": "M3",
+  "title": "Preview performance with camera motion on screen",
+  "scenario": {
+    "presets": [
+      "orbit-left",
+      "zoom-in",
+      "pan-right"
+    ],
+    "layers": 3,
+    "seconds": 30,
+    "canvas": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "thresholds": {
+    "meanDrawMs": 12.0,
+    "rafIntervalP95Ms": 20.0,
+    "targetFps": 60
+  },
+  "webgl": {
+    "available": true,
+    "perspectiveRendererAcquires": true,
+    "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+    "vendor": "Google Inc. (Intel)",
+    "renderer": "ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  },
+  "withMotion": {
+    "frames": 4682,
+    "drawMs": {
+      "count": 4682,
+      "min": 0.09999999403953552,
+      "mean": 0.8842588634902929,
+      "max": 50.30000001192093,
+      "p95": 1.2999999821186066
+    },
+    "rafIntervalMs": {
+      "count": 4681,
+      "min": 2.5,
+      "mean": 6.409527878658406,
+      "max": 188.60000002384186,
+      "p95": 6.5
+    },
+    "targetFpsObserved": [
+      60
+    ],
+    "effectiveFps": 156.05
+  },
+  "baselineNoMotion": {
+    "frames": 1605,
+    "drawMs": {
+      "count": 1605,
+      "min": 0.0,
+      "mean": 0.3717133957648946,
+      "max": 1.5,
+      "p95": 0.800000011920929
+    },
+    "rafIntervalMs": {
+      "count": 1604,
+      "min": 3.0999999940395355,
+      "mean": 6.2342269326608974,
+      "max": 18.599999994039536,
+      "p95": 6.5
+    },
+    "effectiveFps": 160.42
+  },
+  "deltaMeanDrawMs": 0.5125454677253983,
+  "checks": {
+    "meanDrawMsWithinDegradeThreshold": true,
+    "targetFpsHeldAt60": true,
+    "rafP95WithinLimit": true
+  },
+  "pass": true,
+  "captureFramesDir": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\preview",
+  "previewWebglUsedForThreeD": true
+}

@@ -22,6 +22,7 @@ import {
   cameraHomography,
   easeProgress,
   ensureCoverage,
+  isMotionRenderable,
   isRenderable,
   motionStateAt,
   progressAt,
@@ -252,6 +253,52 @@ describe('isRenderable', () => {
     // torn quad instead of being refused.
     const H = cameraHomography({ ...NEUTRAL_STATE, yaw: 89.9, dolly: 0.05 }, CANVAS);
     expect(isRenderable(H, CANVAS)).toBe(false);
+  });
+});
+
+describe('isMotionRenderable', () => {
+  it('accepts every shipped preset at every intensity the slider offers', () => {
+    for (const preset of CAMERA_MOTION_PRESETS) {
+      for (const intensity of [0, 0.5, 1, 1.5, 2]) {
+        const spec = { ...motionFromPreset(preset.id)!, intensity };
+        expect(
+          isMotionRenderable(spec, CANVAS),
+          `${preset.id} @ intensity ${intensity}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('rejects the advanced combination that puts the plane behind the pinhole', () => {
+    // Both values are on the advanced sliders (dolly floors at 0.4, yaw at ±45)
+    // and intensity 2 doubles their distance from neutral: dolly lands on -0.2,
+    // yaw on 40. This is the case the Apply button must refuse.
+    const spec = {
+      ...motionFromPreset('orbit-left')!,
+      intensity: 2,
+      from: { ...NEUTRAL_STATE, dolly: 0.4, yaw: 20 },
+      to: { ...NEUTRAL_STATE, dolly: 0.4, yaw: 20 },
+    };
+    expect(isMotionRenderable(spec, CANVAS)).toBe(false);
+  });
+
+  it('judges the whole window, not just its endpoints', () => {
+    // Endpoints are fine; the midpoint is not. Sampling only from/to would pass
+    // this and hand FFmpeg a torn frame halfway through the clip.
+    const spec = {
+      ...motionFromPreset('orbit-left')!,
+      intensity: 1,
+      easing: 'linear' as const,
+      from: { ...NEUTRAL_STATE, yaw: -40, dolly: 1 },
+      to: { ...NEUTRAL_STATE, yaw: 40, dolly: 1 },
+    };
+    const unsafeMidpoint = {
+      ...spec,
+      from: { ...spec.from, dolly: 0.05 },
+      to: { ...spec.to, dolly: 0.05 },
+    };
+    expect(isMotionRenderable(spec, CANVAS)).toBe(true);
+    expect(isMotionRenderable(unsafeMidpoint, CANVAS)).toBe(false);
   });
 });
 

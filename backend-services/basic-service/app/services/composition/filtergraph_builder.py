@@ -33,7 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Protocol
 
-from .camera_motion import build_motion_filters, plan_from_spec
+from .camera_motion import plan_from_spec
+from .camera_motion_filters import build_motion_filters
 
 # Matches TransitionLayer's TIME_EPSILON (spec 01) so boundary arithmetic agrees
 # with the preview compositor.

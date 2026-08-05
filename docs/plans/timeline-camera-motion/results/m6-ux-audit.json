@@ -1,0 +1,184 @@
+{
+  "metric": "M6",
+  "title": "Interaction quality of the camera-motion panel",
+  "i18n": {
+    "localesFound": [
+      "en",
+      "zh-CN"
+    ],
+    "referenceLocale": "en",
+    "referenceKeys": 55,
+    "perLocale": {
+      "en": {
+        "present": true,
+        "keys": 55,
+        "missingVsEn": [],
+        "extraVsEn": []
+      },
+      "zh-CN": {
+        "present": true,
+        "keys": 55,
+        "missingVsEn": [],
+        "extraVsEn": []
+      }
+    },
+    "declaredInTranslationsInterface": true,
+    "pass": true
+  },
+  "hardcodedStrings": {
+    "offenders": [],
+    "pass": true
+  },
+  "accessibilityAffordances": {
+    "checks": {
+      "radiogroup": {
+        "why": "preset grid announces as a single control",
+        "foundIn": [
+          "MotionInspector.tsx",
+          "PresetGallery.tsx"
+        ],
+        "pass": true
+      },
+      "radio_items": {
+        "why": "each preset is a radio, not a bare button",
+        "foundIn": [
+          "MotionInspector.tsx",
+          "PresetGallery.tsx"
+        ],
+        "pass": true
+      },
+      "aria_checked": {
+        "why": "selection state is exposed",
+        "foundIn": [
+          "MotionInspector.tsx",
+          "PresetGallery.tsx"
+        ],
+        "pass": true
+      },
+      "escape_closes": {
+        "why": "Esc closes the panel",
+        "foundIn": [
+          "CameraMotionModal.tsx",
+          "TimelineItem.tsx"
+        ],
+        "pass": true
+      },
+      "arrow_key_nav": {
+        "why": "preset grid is arrow-navigable",
+        "foundIn": [
+          "PresetGallery.tsx"
+        ],
+        "pass": true
+      },
+      "focus_trap": {
+        "why": "focus stays inside the modal",
+        "foundIn": [
+          "CameraMotionModal.tsx",
+          "PresetGallery.tsx",
+          "TimelineItem.tsx"
+        ],
+        "pass": true
+      },
+      "reduced_motion": {
+        "why": "system motion preference respected",
+        "foundIn": [
+          "MotionPreviewThumb.tsx",
+          "PresetGallery.tsx"
+        ],
+        "pass": true
+      },
+      "aria_valuetext": {
+        "why": "slider announces a human-readable value",
+        "foundIn": [
+          "MotionInspector.tsx"
+        ],
+        "pass": true
+      },
+      "dialog_role": {
+        "why": "the panel announces as a dialog",
+        "foundIn": [
+          "CameraMotionModal.tsx"
+        ],
+        "pass": true
+      }
+    },
+    "pass": true
+  },
+  "toolbarEntry": {
+    "effectsButtonPresent": true,
+    "stillMarkedComingSoon": false,
+    "block": "id: 'effects',\n      action: onAddEffect,\n      icon: (\n        <svg className=\"w-4 h-4\" fill=\"currentColor\" viewBox=\"0 0 24 24\">\n          <path d=\"M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z\"/>\n        </svg>\n      ),\n      label: t.timeline.toolbar.effects,\n      shortcut: t.timeline.shortcuts.effectsShortcut,\n      // Ca",
+    "pass": true
+  },
+  "fileSizeCeiling": {
+    "limit": 800,
+    "files": [
+      {
+        "file": "src/components/video/playback/CameraMotionLayer.ts",
+        "lines": 584,
+        "pass": true
+      },
+      {
+        "file": "src/components/video/playback/cameraMotionPresets.ts",
+        "lines": 211,
+        "pass": true
+      },
+      {
+        "file": "src/components/video/playback/PerspectiveQuadRenderer.ts",
+        "lines": 351,
+        "pass": true
+      },
+      {
+        "file": "src/components/video/components/CameraMotionModal/CameraMotionModal.tsx",
+        "lines": 268,
+        "pass": true
+      },
+      {
+        "file": "src/components/video/components/CameraMotionModal/PresetGallery.tsx",
+        "lines": 231,
+        "pass": true
+      },
+      {
+        "file": "src/components/video/components/CameraMotionModal/MotionInspector.tsx",
+        "lines": 251,
+        "pass": true
+      },
+      {
+        "file": "src/components/video/components/CameraMotionModal/MotionPreviewThumb.tsx",
+        "lines": 197,
+        "pass": true
+      },
+      {
+        "file": "src/components/video/timeline/store/actions/setCameraMotion.ts",
+        "lines": 68,
+        "pass": true
+      },
+      {
+        "file": "backend-services/basic-service/app/services/composition/camera_motion.py",
+        "lines": 524,
+        "pass": true
+      },
+      {
+        "file": "backend-services/basic-service/app/services/composition/camera_motion_filters.py",
+        "lines": 480,
+        "pass": true
+      },
+      {
+        "file": "backend-services/basic-service/app/services/composition/ffmpeg_caps.py",
+        "lines": 118,
+        "pass": true
+      }
+    ],
+    "pass": true,
+    "note": "节点 #4 复核修订：原审计只覆盖前端新增文件，遗漏了后端新增的 camera_motion.py（929 行，超过仓库 800 行阈值）。已按几何内核 / FFmpeg 发射器的天然接缝拆为 camera_motion.py + camera_motion_filters.py，两者均在阈值内；本表已扩为覆盖全部新增源文件。"
+  },
+  "typeCheck": {
+    "exit": 0,
+    "log": "logs/m6-typecheck.log"
+  },
+  "notRunHere": {
+    "axe": "axe-core is not a dependency of this repo; adding one for an experiment would be a worse trade than reporting the gap. Automated a11y scanning stays on the Electron desktop walkthrough checklist.",
+    "manualKeyboardWalkthrough": "Tab order and screen-reader announcements are asserted structurally here; the human walkthrough remains the acceptance gate (plan §2.5)."
+  },
+  "pass": true
+}

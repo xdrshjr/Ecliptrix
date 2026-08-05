@@ -69,7 +69,7 @@ from app.services.composition.filtergraph_builder import (
     FiltergraphResult,
     build_filtergraph,
 )
-from app.services.composition.camera_motion import CameraMotionUnsupportedError
+from app.services.composition.camera_motion_filters import CameraMotionUnsupportedError
 from app.services.composition import ffmpeg_caps
 from app.services.composition.audio_mix import AudioSource, build_audio_mix
 from app.services.composition.video_scaling import (
@@ -234,6 +234,7 @@ class VideoCompositionService:
         input_paths: List[str],
         output_path: Path,
         ffmpeg_path: str,
+        caps: Any = None,
     ) -> subprocess.CompletedProcess:
         """Invoke FFmpeg for one planned filtergraph.
 
@@ -242,13 +243,25 @@ class VideoCompositionService:
         ``CreateProcess``, whose ~32767-character command-line limit a long
         camera-motion graph could otherwise breach with a confusing OS error
         (L7). The script file is removed afterwards regardless of outcome.
+
+        The diversion is gated on the capability probe: a build without
+        ``-filter_complex_script`` would reject it as an unknown option, and the
+        camera-motion retry path would then blame ``eval=frame`` and hand the
+        user a static framing for a reason that has nothing to do with the
+        actual failure. Inlining stays correct in that case —
+        ``FILTER_COMPLEX_INLINE_LIMIT`` is a self-imposed 8 KB, a quarter of the
+        real OS ceiling.
         """
         cmd = [ffmpeg_path, '-y']
         for path in input_paths:
             cmd.extend(['-i', path])
 
+        oversized = len(plan.filter_complex) > FILTER_COMPLEX_INLINE_LIMIT
+        can_use_script = caps is None or bool(
+            getattr(caps, "supports_filter_complex_script", True)
+        )
         script_path: Optional[Path] = None
-        if len(plan.filter_complex) > FILTER_COMPLEX_INLINE_LIMIT:
+        if oversized and can_use_script:
             script_path = output_path.with_suffix('.filtergraph.txt')
             script_path.write_text(plan.filter_complex, encoding='utf-8')
             cmd.extend(['-filter_complex_script', str(script_path)])
@@ -258,6 +271,12 @@ class VideoCompositionService:
                 script_path.name,
             )
         else:
+            if oversized:
+                logger.warning(
+                    "Filtergraph is %d chars but this FFmpeg has no "
+                    "-filter_complex_script; inlining it instead",
+                    len(plan.filter_complex),
+                )
             cmd.extend(['-filter_complex', plan.filter_complex])
         cmd.extend(['-map', plan.output_label])
         cmd.extend(self._get_encoding_params("fast"))
@@ -341,7 +360,7 @@ class VideoCompositionService:
 
         logger.info("Running multi-track filtergraph composition")
         logger.info(f"Filtergraph: {plan.filter_complex}")
-        result = self._run_filtergraph(plan, input_paths, output_path, ffmpeg_path)
+        result = self._run_filtergraph(plan, input_paths, output_path, ffmpeg_path, caps)
         if result.returncode == 0:
             logger.info("Multi-track filtergraph composition succeeded")
             return FiltergraphOutcome(composited=True, warnings=list(plan.warnings))
@@ -361,7 +380,9 @@ class VideoCompositionService:
         retry_plan = build_filtergraph(
             list(request.video_items), width, height, replace(options, caps=static_caps)
         )
-        retry = self._run_filtergraph(retry_plan, input_paths, output_path, ffmpeg_path)
+        retry = self._run_filtergraph(
+            retry_plan, input_paths, output_path, ffmpeg_path, caps
+        )
         if retry.returncode == 0:
             logger.warning("Static-framing camera-motion retry succeeded")
             return FiltergraphOutcome(

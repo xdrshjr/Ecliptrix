@@ -50,7 +50,18 @@ void main() {
 /** Triangles for the [TL, TR, BR, BL] corner order. */
 const QUAD_INDICES = new Uint16Array([0, 1, 2, 0, 2, 3]);
 
-/** Texture coordinates matching the same corner order (V flipped on upload). */
+/**
+ * Texture coordinates for the same [TL, TR, BR, BL] corner order.
+ *
+ * Both the corners and these UVs are expressed in the source's own y-DOWN
+ * frame, so v = 0 must address the video's TOP row. The single y-flip the
+ * pipeline needs — canvas y-down to clip-space y-up — happens once, in
+ * {@link PerspectiveQuadRenderer._writeGeometry}. Uploading with
+ * `UNPACK_FLIP_Y_WEBGL` as well would flip a second time and render the layer
+ * upside down — invisible to jsdom, caught by the M2 orientation sentinel in
+ * docs/plans/timeline-camera-motion/results/summary.md, and pinned by
+ * __tests__/PerspectiveQuadRenderer.upload.test.ts.
+ */
 const QUAD_UVS = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
 
 interface GlBundle {
@@ -313,7 +324,11 @@ export class PerspectiveQuadRenderer {
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, bundle.texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    // Explicitly OFF, not merely left at the default: {@link QUAD_UVS} already
+    // addresses the source in its own y-down frame, and _writeGeometry performs
+    // the one y-flip the pipeline needs. Flipping on upload too renders the
+    // whole layer upside down.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
 
     gl.clearColor(0, 0, 0, 0);

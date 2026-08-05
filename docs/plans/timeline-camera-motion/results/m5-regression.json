@@ -1,0 +1,174 @@
+{
+  "metric": "M5",
+  "title": "Zero regression for timelines without a camera motion",
+  "baselineCommit": "6d0fa57^",
+  "condition1_identicalGraphs": {
+    "scenarios": [
+      {
+        "scenario": "single-track-no-transition",
+        "clips": 1,
+        "canUseConcat": true,
+        "graphChars": 0,
+        "identical": true,
+        "baselineGraph": null,
+        "currentGraph": null
+      },
+      {
+        "scenario": "single-track-with-transition",
+        "clips": 2,
+        "canUseConcat": false,
+        "graphChars": 154,
+        "identical": true,
+        "baselineGraph": null,
+        "currentGraph": null
+      },
+      {
+        "scenario": "single-track-opacity",
+        "clips": 1,
+        "canUseConcat": false,
+        "graphChars": 80,
+        "identical": true,
+        "baselineGraph": null,
+        "currentGraph": null
+      },
+      {
+        "scenario": "two-tracks-overlay",
+        "clips": 2,
+        "canUseConcat": false,
+        "graphChars": 132,
+        "identical": true,
+        "baselineGraph": null,
+        "currentGraph": null
+      },
+      {
+        "scenario": "two-tracks-transition-and-opacity",
+        "clips": 3,
+        "canUseConcat": false,
+        "graphChars": 330,
+        "identical": true,
+        "baselineGraph": null,
+        "currentGraph": null
+      }
+    ],
+    "allIdentical": true
+  },
+  "condition2_identicalRender": {
+    "graph": "two-tracks-transition-and-opacity",
+    "renders": {
+      "baseline": {
+        "exit": 0,
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\m5-baseline.mp4"
+      },
+      "current": {
+        "exit": 0,
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\m5-current.mp4"
+      }
+    },
+    "frameScores": [
+      {
+        "frameIndex": 10,
+        "ssim": 1.0
+      },
+      {
+        "frameIndex": 40,
+        "ssim": 1.0
+      },
+      {
+        "frameIndex": 80,
+        "ssim": 1.0
+      },
+      {
+        "frameIndex": 120,
+        "ssim": 1.0
+      },
+      {
+        "frameIndex": 160,
+        "ssim": 1.0
+      }
+    ],
+    "allUnity": true
+  },
+  "condition3_existingSuites": {
+    "backend_pytest": {
+      "scope": "composition or filtergraph or camera or scaling or transition",
+      "exit": 1,
+      "summary": "17 failed, 96 passed, 944 deselected, 1 error in 55.30s",
+      "failingFiles": [
+        "tests/test_video_composition.py",
+        "tests/test_video_composition_enhanced.py",
+        "tests/test_video_composition_pexels_retry.py",
+        "tests/test_video_composition_timeline.py",
+        "tests/test_video_composition_timeline_order.py"
+      ],
+      "seconds": 58.4,
+      "log": "logs/m5-pytest.log",
+      "excluded": {
+        "tests/test_content_polish_api.py": "SyntaxError: bytes can only contain ASCII literal characters (line 135)",
+        "tests/test_tts_api.py": "AttributeError: module pytest has no attribute config (pytest>=4)"
+      },
+      "atFeatureCommit": {
+        "checked": true,
+        "commit": "6d0fa57",
+        "exit": 1,
+        "summary": "18 failed, 95 passed, 1044 deselected, 1 error in 61.73s (0:01:01)",
+        "failingFiles": [
+          "tests/test_filtergraph_builder.py",
+          "tests/test_video_composition.py",
+          "tests/test_video_composition_enhanced.py",
+          "tests/test_video_composition_pexels_retry.py",
+          "tests/test_video_composition_timeline.py",
+          "tests/test_video_composition_timeline_order.py"
+        ],
+        "log": "logs/m5-pytest-feature.log"
+      },
+      "atBaselineCommit": {
+        "checked": true,
+        "commit": "6d0fa57^",
+        "exit": 1,
+        "summary": "17 failed, 49 passed, 1044 deselected, 1 error in 61.38s (0:01:01)",
+        "failingFiles": [
+          "tests/test_video_composition.py",
+          "tests/test_video_composition_enhanced.py",
+          "tests/test_video_composition_pexels_retry.py",
+          "tests/test_video_composition_timeline.py",
+          "tests/test_video_composition_timeline_order.py"
+        ],
+        "log": "logs/m5-pytest-baseline.log"
+      },
+      "introducedByFeatureCommit": [
+        "tests/test_filtergraph_builder.py"
+      ],
+      "stillFailingInWorkingTree": []
+    },
+    "frontend_vitest": {
+      "exit": 1,
+      "summary": [
+        "Test Files  2 failed | 190 passed (192)",
+        "Tests  3 failed | 1602 passed (1605)"
+      ],
+      "failingFiles": [
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+        "src/lib/api/server/__tests__/backend-proxy.test.ts"
+      ],
+      "seconds": 61.1,
+      "log": "logs/m5-vitest.log",
+      "baselineRerun": {
+        "checked": true,
+        "commit": "6d0fa57^",
+        "files": [
+          "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts",
+          "src/lib/api/server/__tests__/backend-proxy.test.ts"
+        ],
+        "exit": 1,
+        "summary": [
+          "Test Files  2 failed (2)",
+          "Tests  3 failed | 21 passed (24)"
+        ],
+        "log": "logs/m5-vitest-baseline.log",
+        "alsoFailedBeforeTheFeature": true
+      }
+    }
+  },
+  "note": "The frontend vitest total is reported as observed. Any failing file is re-run at the pre-feature commit in a detached worktree, so 'pre-existing' is a measurement rather than an assertion; see baselineRerun.",
+  "pass": true
+}

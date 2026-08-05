@@ -470,6 +470,37 @@ export function isRenderable(H: Mat3, canvas: CanvasSize): boolean {
 }
 
 /**
+ * Whether a WHOLE move stays drawable, sampled across its window.
+ *
+ * {@link isRenderable} judges one instant; a move is only safe when every
+ * instant is. This is the guard the advanced-parameter panel needs: the preset
+ * table is authored to stay well inside the safe region, but `intensity`
+ * multiplies an endpoint's distance from neutral, so a hand-typed `dolly` of
+ * 0.4 at intensity 2 lands at -0.2 and drags the clip plane behind the pinhole.
+ * The export mirror clamps identically (see `camera_motion.py::_floored`), so
+ * what this rejects is genuinely broken geometry rather than a two-renderer
+ * disagreement.
+ *
+ * Samples by PROGRESS rather than by time, so it needs no clip — the states a
+ * move passes through do not depend on when it is scheduled.
+ *
+ * @param motion Motion spec.
+ * @param canvas Canvas size; only its aspect ratio changes the verdict.
+ * @returns True when every sampled instant projects to a drawable quad.
+ */
+export function isMotionRenderable(motion: CameraMotion, canvas: CanvasSize): boolean {
+  const aspect = canvas.height > 0 ? canvas.width / canvas.height : 16 / 9;
+  const coverage = ensureCoverage(motion, aspect);
+  for (let i = 0; i < MOTION_SAMPLE_COUNT; i += 1) {
+    const p = easeProgress(motion.easing, i / (MOTION_SAMPLE_COUNT - 1));
+    const raw = applyIntensity(lerpState(motion.from, motion.to, p), motion.intensity);
+    const state = coverage > 1 ? { ...raw, scale: raw.scale * coverage } : raw;
+    if (!isRenderable(cameraHomography(state, canvas), canvas)) return false;
+  }
+  return true;
+}
+
+/**
  * Minimum transparent border, in canvas pixels, once a pad is needed at all.
  *
  * Correctness only needs the border to exist — FFmpeg replicates the outermost

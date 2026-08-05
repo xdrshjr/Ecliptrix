@@ -1,0 +1,472 @@
+{
+  "metric": "M4",
+  "title": "Export robustness across every shipped preset, plus the anti-silent-failure guardrails",
+  "fixture": {
+    "pattern": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pattern_1920x1080.png",
+    "patternSha256": "0e70a9e3088b9e9f12669493a47d7003e03261ee9e2ec59fd76938f92272ab75",
+    "clip": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\pattern_1920x1080.mp4",
+    "clipSha256": "45560efee5adfd4de08218d0919dafec558021f96136c399d5015b8d72f3fa32",
+    "durationSeconds": 6.0,
+    "fps": 30
+  },
+  "sampleFrames": [
+    15,
+    45,
+    90,
+    135,
+    165
+  ],
+  "renders": [
+    {
+      "presetId": "zoom-in",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\zoom-in.mp4",
+        "bytes": 3279494,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-in_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-in_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-in_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-in_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-in_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "zoom-out",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\zoom-out.mp4",
+        "bytes": 3339200,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-out_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-out_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-out_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-out_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\zoom-out_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "pan-left",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\pan-left.mp4",
+        "bytes": 1735767,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-left_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-left_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-left_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-left_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-left_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "pan-right",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\pan-right.mp4",
+        "bytes": 1734787,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-right_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-right_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-right_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-right_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\pan-right_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "tilt-up",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\tilt-up.mp4",
+        "bytes": 1769861,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-up_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-up_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-up_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-up_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-up_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "tilt-down",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\tilt-down.mp4",
+        "bytes": 1741919,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-down_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-down_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-down_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-down_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\tilt-down_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "rotate-in",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\rotate-in.mp4",
+        "bytes": 3331902,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\rotate-in_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\rotate-in_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\rotate-in_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\rotate-in_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\rotate-in_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "ken-burns",
+      "space": "2d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\ken-burns.mp4",
+        "bytes": 3713538,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\ken-burns_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\ken-burns_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\ken-burns_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\ken-burns_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\ken-burns_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "orbit-left",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\orbit-left.mp4",
+        "bytes": 2387467,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-left_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-left_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-left_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-left_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-left_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "orbit-right",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\orbit-right.mp4",
+        "bytes": 2386897,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-right_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-right_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-right_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-right_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\orbit-right_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "dive",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\dive.mp4",
+        "bytes": 3391890,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dive_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dive_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dive_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dive_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dive_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "crane-up",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\crane-up.mp4",
+        "bytes": 2397565,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\crane-up_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\crane-up_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\crane-up_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\crane-up_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\crane-up_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "swing-in",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\swing-in.mp4",
+        "bytes": 3068939,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\swing-in_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\swing-in_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\swing-in_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\swing-in_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\swing-in_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "dolly-in-3d",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\dolly-in-3d.mp4",
+        "bytes": 3845752,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dolly-in-3d_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dolly-in-3d_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dolly-in-3d_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dolly-in-3d_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\dolly-in-3d_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "boom",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\boom.mp4",
+        "bytes": 2592828,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\boom_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\boom_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\boom_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\boom_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\boom_f0165.png"
+      },
+      "pass": true
+    },
+    {
+      "presetId": "spiral",
+      "space": "3d",
+      "composited": true,
+      "warnings": [],
+      "error": null,
+      "output": {
+        "path": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\renders\\spiral.mp4",
+        "bytes": 3417844,
+        "width": 1920,
+        "height": 1080,
+        "frames": 180,
+        "pix_fmt": "yuv420p",
+        "duration": 6.0
+      },
+      "frames": {
+        "15": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\spiral_f0015.png",
+        "45": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\spiral_f0045.png",
+        "90": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\spiral_f0090.png",
+        "135": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\spiral_f0135.png",
+        "165": "C:\\Users\\jdqqj\\AppData\\Local\\Temp\\camera-motion-exp\\frames\\export\\spiral_f0165.png"
+      },
+      "pass": true
+    }
+  ],
+  "successRate": "16/16",
+  "guardrails": [
+    {
+      "id": "L1",
+      "title": "can_use_concat is False whenever a clip carries a camera motion",
+      "observed": {
+        "withMotion_canUseConcat": false,
+        "withoutMotion_canUseConcat": true
+      },
+      "pass": true
+    },
+    {
+      "id": "L11",
+      "title": "with a motion, an FFmpeg failure retries once then raises — never concat",
+      "observed": {
+        "filtergraphAttempts": 2,
+        "concatCalls": 0,
+        "raised": "RuntimeError: Camera motion could not be rendered by FFmpeg. Remove the camera motion from the affected clips or update FFmpeg. Details: forced failure (harness)"
+      },
+      "pass": true
+    },
+    {
+      "id": "tier-2",
+      "title": "FFmpeg without eval=frame degrades to a static framing and warns",
+      "observed": {
+        "warnings": [
+          "camera_motion_static: this FFmpeg build cannot evaluate filter expressions per frame (perspective lacks eval=frame), so the camera move was rendered as a single fixed framing."
+        ],
+        "ffmpegExit": 0,
+        "renderedBytes": 270469
+      },
+      "pass": true
+    },
+    {
+      "id": "tier-3",
+      "title": "FFmpeg without `perspective` fails the export with an actionable message",
+      "observed": {
+        "error": "This FFmpeg build has no 'perspective' filter, which camera motion requires. Install FFmpeg 4.0+ with the standard filter set, or remove the camera motion from the affected clips."
+      },
+      "pass": true
+    }
+  ],
+  "filtergraphSize": {
+    "inlineLimit": 8192,
+    "perPresetChars": {
+      "zoom-in": 1180,
+      "zoom-out": 1212,
+      "pan-left": 1040,
+      "pan-right": 1040,
+      "tilt-up": 1038,
+      "tilt-down": 1038,
+      "rotate-in": 1728,
+      "ken-burns": 976,
+      "orbit-left": 1884,
+      "orbit-right": 1884,
+      "dive": 1757,
+      "crane-up": 1807,
+      "swing-in": 1845,
+      "dolly-in-3d": 2053,
+      "boom": 1972,
+      "spiral": 4173
+    },
+    "largestPreset": "spiral",
+    "largestChars": 4173,
+    "exceedsInlineLimit": []
+  },
+  "pass": true
+}

@@ -115,7 +115,9 @@ def test_failure_with_motion_retries_static_then_raises(svc, monkeypatch, tmp_pa
     """Both attempts fail → the export must FAIL, not quietly lose the effect."""
     calls = []
 
-    def always_fail(plan, inputs, output_path, ffmpeg_path):
+    # `caps` is the last parameter: the script-file diversion is gated on the
+    # capability probe, so the runner needs the same record the planner used.
+    def always_fail(plan, inputs, output_path, ffmpeg_path, caps=None):
         calls.append(plan.filter_complex)
         return _result(1)
 
@@ -143,7 +145,7 @@ def test_static_retry_success_reports_a_warning(svc, monkeypatch, tmp_path):
     """A degraded render is acceptable; an UNREPORTED one is not."""
     attempts = {"n": 0}
 
-    def fail_then_succeed(plan, inputs, output_path, ffmpeg_path):
+    def fail_then_succeed(plan, inputs, output_path, ffmpeg_path, caps=None):
         attempts["n"] += 1
         return _result(1) if attempts["n"] == 1 else _result(0)
 
@@ -240,3 +242,38 @@ def test_small_filtergraph_stays_inline(svc, monkeypatch, tmp_path):
     svc._run_filtergraph(SmallPlan(), ["/tmp/a.mp4"], tmp_path / "out.mp4", "ffmpeg")
     assert "-filter_complex" in captured["cmd"]
     assert "-filter_complex_script" not in captured["cmd"]
+
+
+def test_large_filtergraph_inlines_when_the_build_has_no_script_option(
+    svc, monkeypatch, tmp_path
+):
+    """A build without `-filter_complex_script` must inline, not fail.
+
+    Handing an unknown option to such a build would fail the encode; with camera
+    motion present the retry ladder would then blame `eval=frame` and hand the
+    user a static framing for a reason that has nothing to do with the real
+    problem. 8 KB is our own threshold, a quarter of the OS ceiling, so inlining
+    stays correct — it just gives up the safety margin.
+    """
+    captured = {}
+
+    def capture(cmd, capture_output, text):
+        captured["cmd"] = list(cmd)
+        return _result(0)
+
+    monkeypatch.setattr(service_module.subprocess, "run", capture)
+
+    class NoScriptCaps:
+        supports_filter_complex_script = False
+
+    class BigPlan:
+        filter_complex = "x" * (service_module.FILTER_COMPLEX_INLINE_LIMIT + 1)
+        output_label = "[vout]"
+
+    svc._run_filtergraph(
+        BigPlan(), ["/tmp/a.mp4"], tmp_path / "out.mp4", "ffmpeg", NoScriptCaps()
+    )
+
+    assert "-filter_complex_script" not in captured["cmd"]
+    index = captured["cmd"].index("-filter_complex")
+    assert captured["cmd"][index + 1] == BigPlan.filter_complex

@@ -44,6 +44,7 @@ export {
   applyHomographyToRect,
   affineFrom,
   isRenderable,
+  isMotionRenderable,
   quadCoversCanvas,
   backdropMargin,
 } from './CameraMotionLayer';

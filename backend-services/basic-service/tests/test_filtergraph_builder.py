@@ -7,6 +7,7 @@ clip trim/setpts, and the no-multi-track concat fallback.
 """
 
 from app.services.composition.filtergraph_builder import (
+    FiltergraphOptions,
     build_filtergraph,
     group_tracks,
 )
@@ -72,7 +73,9 @@ def test_clip_trim_and_setpts_emitted_for_original_inputs():
 
 def test_pre_trimmed_skips_trim_and_scale():
     clips = [FakeClip("a", "t1", 0.0, 3.0, opacity=0.5)]
-    result = build_filtergraph(clips, 1920, 1080, pre_trimmed=True)
+    # `pre_trimmed` moved into FiltergraphOptions when camera motion needed to
+    # pass fps / caps / letterbox colour too; the keyword form no longer exists.
+    result = build_filtergraph(clips, 1920, 1080, FiltergraphOptions(pre_trimmed=True))
     assert "trim=" not in result.filter_complex
     assert "scale=" not in result.filter_complex
     # Opacity is still folded in (the part that survives normalization).
