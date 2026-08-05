@@ -26,7 +26,12 @@ import {
   wrapText,
   type TextMeasurer,
 } from '../SubtitleLayer';
-import { buildImageLayersAt, type ImageOverlayInput, type FitRect } from '../ImageOverlayLayer';
+import {
+  buildImageLayersAt,
+  type ExportFrame,
+  type ImageOverlayInput,
+  type FitRect,
+} from '../ImageOverlayLayer';
 import { motionStateAt } from '../CameraMotionLayer';
 import type { CompositorLayer, VideoTrackGroup } from '../types';
 import type { VideoSequenceItem, SubtitleSequenceItem } from '../../types';
@@ -71,6 +76,17 @@ export interface AssembleLayersInput {
    * never touch it.
    */
   canvasAspect?: number;
+  /**
+   * Output frame the project exports at (e.g. 1920×1080), used ONLY to snap
+   * image-overlay boxes onto the export pixel grid.
+   *
+   * Division of labour with `canvasAspect`, which is easy to conflate: this one
+   * is the IMAGE side's quantisation basis (a pixel size, and it must be the
+   * export frame — the preview canvas is a display size and cannot reproduce a
+   * 1920×1080 grid); `canvasAspect` stays the VIDEO side's coverage-guarantee
+   * input (a shape, never a size). Neither substitutes for the other.
+   */
+  exportFrame?: ExportFrame | null;
 }
 
 /** Default z floor for overlays — well above any realistic track z. */
@@ -203,6 +219,7 @@ export function assembleLayers(input: AssembleLayersInput): CompositorLayer[] {
     input.t,
     input.imageFit,
     input.canvasAspect,
+    input.exportFrame,
   ).map((layer, index) => ({ ...layer, z: baseZ + layer.z + index }));
 
   const subtitles = buildSubtitleLayers(

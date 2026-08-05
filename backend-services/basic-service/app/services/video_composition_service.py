@@ -78,6 +78,11 @@ from app.services.composition.camera_motion_overlay import (
 )
 from app.services.composition import ffmpeg_caps
 from app.services.composition.audio_mix import AudioSource, build_audio_mix
+from app.services.composition.overlay_box import (
+    DEFAULT_IMAGE_POSITION,
+    build_contain_pad_filter,
+    quantise_overlay_box,
+)
 from app.services.composition.video_scaling import (
     build_video_filter,
     calculate_video_scaling,
@@ -2610,25 +2615,21 @@ class VideoCompositionService:
         """One still's box (even-sized) and top-left corner, in output pixels.
 
         The box is what the camera move acts on, so this is also the geometry the
-        preview must agree with — `CanvasCompositor` derives the same rect from
-        the same normalized position (G4 notwithstanding, see N0).
+        preview must agree with. The rule now lives in `overlay_box.py` and the
+        preview replays that same rule through its TS twin, which is what makes
+        the two sides identical BY CONSTRUCTION rather than on a hand-picked
+        fixture (G4 / DD-1; N0's box-c read 1.166px before this).
         """
         pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
-        if not pos:
+        if pos:
+            placement = (pos.x, pos.y, pos.width, pos.height)
+        else:
             logger.warning(
                 f"No position information for image item {item.id}, using default position"
             )
-            pos = type('Position', (), {
-                'x': 0.1, 'y': 0.1, 'width': 0.3, 'height': 0.3, 'z_index': 10
-            })()
-        even_w, even_h = self._ensure_even_dimensions(
-            int(pos.width * video_width), int(pos.height * video_height)
-        )
-        return (
-            OverlayBox(width=even_w, height=even_h),
-            int(pos.x * video_width),
-            int(pos.y * video_height),
-        )
+            placement = DEFAULT_IMAGE_POSITION
+        box = quantise_overlay_box(*placement, video_width, video_height)
+        return OverlayBox(width=box.width, height=box.height), box.x, box.y
 
     def _image_overlay_filter_parts(
         self, entries: List["_OverlayEntry"]
@@ -2643,13 +2644,10 @@ class VideoCompositionService:
         parts: List[str] = []
         for index, entry in enumerate(entries):
             box = entry.box
-            # 保持图片原始比例的缩放滤镜：force_original_aspect_ratio=decrease 保证不
-            # 超出盒尺寸，pad 把它居中填充到盒尺寸并留下 **透明** 边条 —— 运镜正是
-            # 作用在这张"盒图"上，与预览的 contain-then-transform 顺序一一对应。
-            chain = (
-                f"[{index + 1}:v]scale={box.width}:{box.height}:force_original_aspect_ratio=decrease,"
-                f"pad={box.width}:{box.height}:(ow-iw)/2:(oh-ih)/2:black@0"
-            )
+            # 盒内 contain 的实现串由 `overlay_box.build_contain_pad_filter` 唯一持有，
+            # 与它旁边那份可执行规范 `contain_rect_in_box`（预览据以复刻同一张整数表）
+            # 放在一起，隔开就迟早对不上。
+            chain = f"[{index + 1}:v]" + build_contain_pad_filter(box.width, box.height)
             if entry.motion.filter_text:
                 chain += f",{entry.motion.filter_text}"
             parts.append(f"{chain}[img{index}]")

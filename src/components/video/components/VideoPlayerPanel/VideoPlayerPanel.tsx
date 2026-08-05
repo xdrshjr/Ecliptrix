@@ -17,6 +17,7 @@ import PreviewCanvas from './PreviewCanvas';
 import { useCompositionPlayback } from '../../hooks/useCompositionPlayback';
 import { useTimelineStore } from '../../timeline/store/useTimelineStore';
 import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectRatio } from './aspectRatios';
+import { resolveExportResolution } from '../../playback/exportResolutions';
 import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from './imageOverlays';
 import { useCompositionTransport, type MediaReadiness } from './useCompositionTransport';
 
@@ -185,6 +186,11 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       if (onCompositionTimeUpdate) onCompositionTimeUpdate(time);
     },
     aspectRatio: previewAspectRatio,
+    // The SAME id already drives the export hook (see `videoExport` below), so
+    // preview and export now quantise still-overlay boxes onto one grid instead
+    // of two that merely looked alike. One call — the table itself lives in
+    // `exportResolutions.ts`, not here (this file is 36 lines from the cap).
+    exportFrame: resolveExportResolution(selectedAspectRatio.id),
     enabled: true,
   });
 

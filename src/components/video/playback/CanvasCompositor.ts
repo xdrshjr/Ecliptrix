@@ -17,6 +17,7 @@ import {
 } from './internal/constants';
 import { fitContain, type FitRect } from './internal/fitContain';
 import { BoxTextureCache } from './internal/boxTextureCache';
+import { containRectInBox } from './internal/overlayBoxQuantise';
 import { drawImageWithMotion, drawWithMotion } from './internal/drawWithMotion';
 import { PerspectiveQuadRenderer } from './PerspectiveQuadRenderer';
 import type {
@@ -167,6 +168,23 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._overlays = overlays;
   }
 
+  /**
+   * Single-source draw path. **TEST-ONLY — and OUTSIDE the quantisation
+   * contract** (DD-12).
+   *
+   * It has no production caller left: the sole preview is `renderFrame`, and
+   * `drawFrame` survives only in the `types.ts` interface declaration and five
+   * test files. It is therefore NOT kept in step with the export pixel grid —
+   * {@link _drawOverlays}, which only this method calls, still stretches
+   * overlays with a plain `drawImage(img, x, y, w, h)`: no contain, no camera
+   * motion, no quantisation.
+   *
+   * Deleting it would mean touching a public interface plus five test files,
+   * which is wider than this round's remit, so it is annotated and fenced
+   * instead: a grep guard fails the build if production code ever calls
+   * `.drawFrame(` again. Do not "fix" this method to match `renderFrame` —
+   * remove it (see the handover list in the round's report).
+   */
   drawFrame(frame: PreviewFrame): void {
     if (!this._ctx || !this._canvas) return;
     const start = this._now();
@@ -298,7 +316,9 @@ export class CanvasCompositor implements ICanvasCompositor {
       case 'video':
         return this._drawVideoLayer(ctx, canvas, layer);
       case 'image':
-        return this._drawImageLayer(ctx, fit, layer);
+        // DD-5: image bounds are normalized against the CANVAS, so `fit` (the
+        // first ready video's rect) is deliberately NOT passed here.
+        return this._drawImageLayer(ctx, canvas, layer);
       case 'subtitle':
         return this._drawSubtitleLayer(ctx, canvas, fit, layer);
     }
@@ -360,17 +380,29 @@ export class CanvasCompositor implements ICanvasCompositor {
     return this._perspective;
   }
 
+  /**
+   * Draw one image overlay.
+   *
+   * DD-5 — the placement basis is the CANVAS, explicitly. It used to be the
+   * fit-rect of the first ready video layer, which equalled the canvas only
+   * because three distant conditions all happened to hold at once (a non-null
+   * `viewport`, a parseable ratio string, and `fitContain`'s equal-ratio branch
+   * winning against `EPS = 1e-6`). Any one of them lapsing would have quietly
+   * shrunk every still into the video's letterbox area, while export normalises
+   * against the whole frame forever. Naming the canvas turns that coincidence
+   * into a contract; the drawn pixels are unchanged on today's paths.
+   */
   private _drawImageLayer(
     ctx: CanvasRenderingContext2D,
-    fit: FitRect,
+    canvas: HTMLCanvasElement,
     layer: Extract<CompositorLayer, { kind: 'image' }>,
   ): boolean {
     const img = this._loadImage(layer.src);
     if (!img || !img.complete || img.naturalWidth === 0) return false;
-    const boxX = fit.x + layer.bounds.x * fit.width;
-    const boxY = fit.y + layer.bounds.y * fit.height;
-    const boxW = layer.bounds.w * fit.width;
-    const boxH = layer.bounds.h * fit.height;
+    const boxX = layer.bounds.x * canvas.width;
+    const boxY = layer.bounds.y * canvas.height;
+    const boxW = layer.bounds.w * canvas.width;
+    const boxH = layer.bounds.h * canvas.height;
     if (layer.motion && this._canvas) {
       ctx.save();
       ctx.globalAlpha = clamp01(layer.opacity);
@@ -394,7 +426,7 @@ export class CanvasCompositor implements ICanvasCompositor {
     // box exactly, matching the old `drawImage(img, x, y, w, h)` result. This is
     // the hard invariant that mirrors the React `<img object-contain>` handle, so
     // the canvas raster and the draggable handle are WYSIWYG.
-    const rect = this._containRect(img.naturalWidth, img.naturalHeight, boxX, boxY, boxW, boxH);
+    const rect = this._imageContainRect(img, layer, { x: boxX, y: boxY, w: boxW, h: boxH }, canvas);
     try {
       ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
       ctx.restore();
@@ -406,12 +438,55 @@ export class CanvasCompositor implements ICanvasCompositor {
   }
 
   /**
+   * Where to draw the picture inside its box, in PREVIEW canvas pixels.
+   *
+   * With an `exportResolution` the contain rule is FFmpeg's integer arithmetic,
+   * and P1-6 is the trap: that arithmetic must be evaluated on the export grid
+   * and only then scaled down to the preview. Evaluating it at preview size
+   * (853×480-ish) would round onto a grid the exported file never uses and land
+   * the picture whole pixels away — the rounding is the whole point, so it has
+   * to happen at the right scale. Without one, the historical float contain.
+   *
+   * @param img    The decoded picture.
+   * @param layer  The image layer (carries `bounds` + the export frame).
+   * @param box    The placement box in preview canvas pixels.
+   * @param canvas The preview canvas, for the export→preview scale factor.
+   */
+  private _imageContainRect(
+    img: HTMLImageElement,
+    layer: Extract<CompositorLayer, { kind: 'image' }>,
+    box: { x: number; y: number; w: number; h: number },
+    canvas: HTMLCanvasElement,
+  ): { x: number; y: number; w: number; h: number } {
+    const grid = layer.exportResolution;
+    if (!grid || !(grid.width > 0) || !(grid.height > 0)) {
+      return this._containRect(img.naturalWidth, img.naturalHeight, box.x, box.y, box.w, box.h);
+    }
+    // `bounds` are already on the grid, so rounding recovers the exact integers
+    // the backend will write into `scale=`/`pad=`.
+    const boxOutW = Math.round(layer.bounds.w * grid.width);
+    const boxOutH = Math.round(layer.bounds.h * grid.height);
+    const inBox = containRectInBox(img.naturalWidth, img.naturalHeight, boxOutW, boxOutH);
+    const scaleX = canvas.width / grid.width;
+    const scaleY = canvas.height / grid.height;
+    return {
+      x: box.x + inBox.x * scaleX,
+      y: box.y + inBox.y * scaleY,
+      w: inBox.w * scaleX,
+      h: inBox.h * scaleY,
+    };
+  }
+
+  /**
    * Contain-fit the image inside the box (`object-contain` parity, D2): scale by
    * the natural aspect ratio so it never stretches, then center any letterbox /
    * pillarbox gap inside the box. Returns the canvas-pixel rect to draw into.
    *
    * Degenerate inputs (non-positive natural size or box) fall back to the box
    * itself so the caller still draws something rather than nothing.
+   *
+   * Float path — used when no export frame is known. {@link _imageContainRect}
+   * is the quantised twin and the one that achieves export parity.
    */
   private _containRect(
     natW: number,
@@ -564,6 +639,13 @@ export class CanvasCompositor implements ICanvasCompositor {
     }
   }
 
+  /**
+   * Legacy overlay draw for {@link drawFrame}. **TEST-ONLY, and explicitly NOT
+   * in the quantisation contract** (DD-12) — it stretches images onto the video
+   * fit-rect with no contain, no camera motion and no export grid. The live path
+   * is {@link _drawImageLayer}. Reached only from `drawFrame`, which has no
+   * production caller; see that method's note before touching either.
+   */
   private _drawOverlays(
     ctx: CanvasRenderingContext2D,
     canvas: HTMLCanvasElement,

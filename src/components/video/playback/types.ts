@@ -135,7 +135,13 @@ export type CompositorLayer =
       kind: 'image';
       id: string;
       src: string;
-      /** Normalized [0,1] bounds against the canvas fit-rect. */
+      /**
+       * Normalized bounds against the CANVAS (DD-5 — explicitly the canvas, not
+       * the first ready video's fit-rect, which merely happened to equal it).
+       * NOT clamped to [0,1] when `exportResolution` is set: a still dragged past
+       * an edge is cropped at the frame boundary, exactly as export's `overlay`
+       * does (DD-9).
+       */
       bounds: { x: number; y: number; w: number; h: number };
       opacity: number;
       z: number;
@@ -148,6 +154,14 @@ export type CompositorLayer =
        * (G1).
        */
       motion?: LayerCameraMotion;
+      /**
+       * Output frame `bounds` were quantised against, when they were. Present ⇒
+       * `bounds × exportResolution` are the exact integers the backend will emit,
+       * so the compositor evaluates the box-contain rule on the EXPORT grid and
+       * only then scales to the preview canvas (P1-6). Absent ⇒ the legacy
+       * floating-point path, unchanged.
+       */
+      exportResolution?: { width: number; height: number };
     };
 
 /**

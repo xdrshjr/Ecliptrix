@@ -240,6 +240,12 @@ export interface UseCompositionPlaybackOptions {
   onTimeUpdate?: (t: number) => void;
   /** Letterbox aspect ratio for fixed-ratio preview, e.g. 16/9. */
   aspectRatio?: number;
+  /**
+   * Output frame the project exports at (from `resolveExportResolution`). Image
+   * overlays are snapped to this grid so the preview box and the exported box
+   * are the same integers rather than merely close ones.
+   */
+  exportFrame?: { width: number; height: number } | null;
   /** Whether the new compositor path is active (flag on). Off → fully inert. */
   enabled: boolean;
 }
@@ -278,6 +284,7 @@ export function useCompositionPlayback(
     isPlaying,
     onTimeUpdate,
     aspectRatio,
+    exportFrame,
     enabled,
   } = options;
 
@@ -412,6 +419,7 @@ export function useCompositionPlayback(
       timeline: buildTimelineFacade(),
       viewport: aspectRatio ? { aspectRatio, letterboxColor: '#000' } : null,
       measureSubtitle: host.measureSubtitle,
+      exportFrame,
     };
 
     try {
@@ -433,7 +441,10 @@ export function useCompositionPlayback(
         // ignore — already torn down
       }
     };
-  }, [enabled, aspectRatio, buildTimelineFacade, hostVersion]);
+    // `exportFrame` is safe as a dep: `resolveExportResolution` hands back an
+    // element of the frozen EXPORT_RESOLUTIONS array, so the same aspect ratio is
+    // the same object reference and the engine is not torn down every render.
+  }, [enabled, aspectRatio, exportFrame, buildTimelineFacade, hostVersion]);
 
   const play = useCallback(() => {
     engineRef.current?.play();

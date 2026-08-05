@@ -86,6 +86,11 @@ export interface MultiTrackAttachDeps {
   viewport?: ICanvasViewport | null;
   /** Subtitle text measurer (real 2d-context measure injected by the host). */
   measureSubtitle?: TextMeasurer;
+  /**
+   * Output frame this project exports at, so image-overlay boxes land on the
+   * export pixel grid instead of near it. Omitted ⇒ legacy float boxes.
+   */
+  exportFrame?: { width: number; height: number } | null;
 }
 
 const DEFAULT_SUBTITLE_MAX_WIDTH_FRACTION = 0.9;
@@ -386,6 +391,9 @@ export class MultiTrackPlaybackEngine {
       // The 2D camera-motion coverage guarantee is aspect-dependent; feeding the
       // live canvas shape keeps preview and export on the same framing.
       canvasAspect: canvas.height > 0 ? canvas.width / canvas.height : undefined,
+      // …but a still's BOX is quantised against the export frame, not the canvas:
+      // the canvas is 853×480-ish and cannot carry a 1920×1080 grid (DD-2).
+      exportFrame: this._deps.exportFrame,
     });
   }
 

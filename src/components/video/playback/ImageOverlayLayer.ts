@@ -24,7 +24,14 @@
 
 import { TIME_EPSILON } from '../timeline/domain/services/ClipTimeMapping';
 import { motionStateAt } from './CameraMotionLayer';
+import { quantiseOverlayBoxNormalised } from './internal/overlayBoxQuantise';
 import type { CameraMotion, CompositorLayer } from './types';
+
+/** The output frame a box is snapped to; `undefined` keeps the legacy path. */
+export interface ExportFrame {
+  width: number;
+  height: number;
+}
 
 /**
  * Normalized [0,1] image-overlay position against the canvas fit-rect.
@@ -125,25 +132,49 @@ export function activeImageItemsAt(
 }
 
 /**
- * Map a normalized image position onto `fit` and clamp into [0,1].
+ * Map a normalized image position onto `fit`, optionally snapping it to the
+ * export pixel grid.
  *
  * `position` is already normalized against the fit-rect (the same space the
  * `<ImageOverlay>` component used against its container). When a caller passes
  * a sub-rect `fit` (e.g. a letterboxed video area), we project the position
- * into it; with the default full-canvas rect this is an identity map. The
- * result is clamped so a draggable overlay nudged past an edge never produces
- * out-of-range bounds the compositor would mis-draw.
+ * into it; with the default full-canvas rect this is an identity map.
+ *
+ * TWO paths, deliberately:
+ *
+ * - `exportFrame` given → the box is quantised onto the export grid and returned
+ *   UNCLAMPED (DD-9). The clamp is a preview-only habit: `computeImageBounds`
+ *   used to shrink an out-of-bounds box back inside the frame
+ *   (`Math.min(w, 1 - x)`) while the backend never clamped at all and just let
+ *   `overlay` crop at the frame edge. On `x=0.7143, w=0.44, W=1920` that was a
+ *   295.5px disagreement — the preview shrank the picture to 548.5px, the file
+ *   the user downloaded showed 844px with a corner cut off. Dropping the clamp
+ *   is a visible PREVIEW BEHAVIOUR CHANGE (a still dragged past the edge is now
+ *   cropped rather than shrunk) and it is the alignment, not a regression: the
+ *   crop is what export has always produced.
+ * - no `exportFrame` → the historical clamped, floating-point behaviour, kept
+ *   byte-for-byte so existing callers that never pass a resolution are untouched.
  */
 export function computeImageBounds(
   position: ImageOverlayPosition | null | undefined,
   fit: FitRect = FULL_RECT,
+  exportFrame?: ExportFrame | null,
 ): { x: number; y: number; w: number; h: number } {
   const p = position ?? DEFAULT_POSITION;
-  const x = clamp01(fit.x + p.x * fit.w);
-  const y = clamp01(fit.y + p.y * fit.h);
+  const projected = {
+    x: fit.x + p.x * fit.w,
+    y: fit.y + p.y * fit.h,
+    width: p.width * fit.w,
+    height: p.height * fit.h,
+  };
+  if (exportFrame) {
+    return quantiseOverlayBoxNormalised(projected, exportFrame.width, exportFrame.height);
+  }
+  const x = clamp01(projected.x);
+  const y = clamp01(projected.y);
   // Width/height projected into the fit-rect, then clamped so x + w <= 1.
-  const w = clamp01(p.width * fit.w);
-  const h = clamp01(p.height * fit.h);
+  const w = clamp01(projected.width);
+  const h = clamp01(projected.height);
   return {
     x,
     y,
@@ -165,12 +196,25 @@ export function effectiveImageOpacity(opacity: number | null | undefined): numbe
  * bounds ratio scaled by the canvas ratio. The coverage guarantee is the only
  * consumer, and it reads a ratio rather than a pixel size — which is what keeps
  * this module free of any canvas dimensions (§3.1.1(b)).
+ *
+ * DD-10: once the box is quantised, its ratio is the ratio of the two INTEGERS
+ * the backend will emit, and nothing else. The live canvas ratio is a display
+ * artefact (853/480 = 1.777083 against a true 16:9 of 1.777778) and feeding it
+ * in put the move's aspect ~3.9e-4 off the box it is supposed to act on. Small,
+ * but it is exactly the class of "equal by coincidence" this round exists to
+ * remove — and free to fix now that the output frame is in hand.
  */
 function boxAspectOf(
   bounds: { w: number; h: number },
   canvasAspect: number,
+  exportFrame?: ExportFrame | null,
 ): number {
   if (!(bounds.h > 0) || !(bounds.w > 0)) return canvasAspect;
+  if (exportFrame) {
+    const boxW = Math.round(bounds.w * exportFrame.width);
+    const boxH = Math.round(bounds.h * exportFrame.height);
+    if (boxW > 0 && boxH > 0) return boxW / boxH;
+  }
   return (bounds.w / bounds.h) * canvasAspect;
 }
 
@@ -195,18 +239,21 @@ function boxAspectOf(
  * @param fit          Canvas fit-rect the bounds are projected into.
  * @param canvasAspect Canvas width / height, used only to derive each box's own
  *   aspect ratio for the (disabled by default) coverage guarantee.
+ * @param exportFrame  Output frame to snap each box to. Given ⇒ every box lands
+ *   on the exact integers export will emit (DD-2); omitted ⇒ legacy float boxes.
  */
 export function buildImageLayersAt(
   items: readonly ImageOverlayInput[],
   t: number,
   fit: FitRect = FULL_RECT,
   canvasAspect: number = 16 / 9,
+  exportFrame?: ExportFrame | null,
 ): Extract<CompositorLayer, { kind: 'image' }>[] {
   const active = activeImageItemsAt(items, t);
   const layers: Extract<CompositorLayer, { kind: 'image' }>[] = [];
   active.forEach((item, index) => {
     if (!item.src) return;
-    const bounds = computeImageBounds(item.position, fit);
+    const bounds = computeImageBounds(item.position, fit, exportFrame);
     if (bounds.w <= 0 || bounds.h <= 0) return;
     const z = item.position?.zIndex ?? index;
     const motion = item.cameraMotion;
@@ -217,6 +264,7 @@ export function buildImageLayersAt(
       bounds,
       opacity: effectiveImageOpacity(item.opacity),
       z,
+      ...(exportFrame ? { exportResolution: { width: exportFrame.width, height: exportFrame.height } } : {}),
       ...(motion
         ? {
             motion: {
@@ -225,7 +273,7 @@ export function buildImageLayersAt(
                 motion,
                 { startTime: item.startTime, duration: item.duration },
                 t,
-                boxAspectOf(bounds, canvasAspect),
+                boxAspectOf(bounds, canvasAspect, exportFrame),
                 /* enforceCoverage */ false,
               ),
             },
@@ -252,7 +300,8 @@ export class ImageOverlayLayer {
     t: number,
     fit?: FitRect,
     canvasAspect?: number,
+    exportFrame?: ExportFrame | null,
   ): Extract<CompositorLayer, { kind: 'image' }>[] {
-    return buildImageLayersAt(items, t, fit, canvasAspect);
+    return buildImageLayersAt(items, t, fit, canvasAspect, exportFrame);
   }
 }

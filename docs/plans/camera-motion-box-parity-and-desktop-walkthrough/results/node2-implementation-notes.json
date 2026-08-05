@@ -1,0 +1,120 @@
+{
+  "node": "#2 (实现)",
+  "baseline": "d4df938",
+  "planVersion": "v2",
+  "featureLocatedBy": "上游节点 #0/#1 输出的 feature= 声明（计划 §十 R0 修复）；`ls docs/plans/*/experiment-plan.md` 交叉校验得 3 个匹配（三轮各留档一份），机械套用「>1 即 fail」会让收官轮空转，故按计划改写后的规则执行",
+
+  "e0": {
+    "order": "三项探针全部先于任何代码改动执行并落档，见 results/e0-probes.json",
+    "E0-a": "PASS — node v22.18.0 / typeof WebSocket === 'function'，零新增依赖前提成立",
+    "E0-b": "PASS — 开发端 git-2025-05-15 与打包端 8.1.1 各 16/16，两张表逐值相同（W1 的跨版本复测已在此提前闭合）",
+    "E0-c": "PASS — 六步端到端全通，首次尝试即成功，**不需要** --remote-allow-origins=*；Runtime.evaluate 得 2，Page.captureScreenshot 得 77804 字符 base64。H4 成立，DoD#8 具备被诚实闭合的条件",
+    "planDefectFound": {
+      "id": "E0-b 判据",
+      "severity": "会导致假绿",
+      "detail": "计划 R5 记录的测法是 pad=black + bbox=min_val=1。实跑该写法 16 组读数**全部恰好等于盒尺寸**（agreed 1/16），因为 yuv420p 的 black 是限制范围 Y=16 > 1，pad 边条也被算作内容。另有奇数盒（321×123）在 -f null 下被 wrapped_avframe 以 Invalid argument(-22) 拒收。改为 format=gray + min_val=100 后才真正分离黑白，得 16/16。规则本身与 R5 结论一致，但**判据必须换掉**，否则下游会对着一张全是盒尺寸的表判绿。修正已写进 e0b_contain_probe.py 的模块 docstring。"
+    }
+  },
+
+  "q7Budgets": {
+    "newFilesMaxLines": {
+      "limit": 800,
+      "actual": {
+        "overlayBoxQuantise.ts": 136,
+        "exportResolutions.ts": 50,
+        "overlay_box.py": 125,
+        "overlayBoxQuantise.test.ts": 270,
+        "drawFramePathRetired.test.ts": 96,
+        "test_overlay_box.py": 147,
+        "MotionPreviewStage.test.tsx": 114
+      },
+      "pass": true
+    },
+    "existingOverThresholdFilesNetGrowth": {
+      "rule": "净行数增量 <= 0",
+      "video_composition_service.py": { "before": 3024, "after": 3022, "net": -2, "pass": true },
+      "useVideoExport.ts": { "before": 817, "after": 817, "net": 0, "note": "本轮未触碰", "pass": true }
+    },
+    "videoPlayerPanel": { "before": 764, "after": 770, "limit": 800, "pass": true },
+    "i18n": "本轮未新增/删除任何 i18n 键，en/zh 对齐关系不变",
+    "tsc": "npx tsc --noEmit exit 0"
+  },
+
+  "regression": {
+    "frontendVitest": {
+      "result": "1675 passed / 3 failed / 200 files",
+      "failingFiles": [
+        "src/lib/api/server/__tests__/backend-proxy.test.ts",
+        "src/components/video/timeline/__tests__/cachePlayback.integration.test.ts"
+      ],
+      "newFailures": 0,
+      "note": "失败文件集合与 B0 相同（Iteration 2 终审记录同为这 2 个文件 / 3 项）。passed 由 1643 → 1675，+32 恰为本轮新增的 17+11+4 条"
+    },
+    "backendPytestCompositionSlice": {
+      "selector": "-k 'composition or camera or overlay or filtergraph or scaling'",
+      "b0": "17 failed（在 d4df938 的 detached worktree 里真跑取得，未引用历史 JSON）",
+      "head": "17 failed / 137 passed",
+      "failureSetDiff": "IDENTICAL — 逐条相同，零新增（L-Q8）",
+      "cameraMotionAndOverlaySuites": "78 passed（6 个文件）+ 新增 test_overlay_box.py 11 passed"
+    }
+  },
+
+  "behaviourChanges": [
+    {
+      "id": "DD-9",
+      "what": "预览侧量化路径**取消钳制**：拖出画面边缘的静图从「被缩小塞回画面」变为「被裁掉一角」",
+      "why": "后端 _overlay_placement 从不钳制，越界部分交给 overlay 在帧边界裁掉。以 x=0.7143,w=0.44,W=1920 实算，B0 预览盒宽 548.5px vs 导出 844px，**分歧 295.5px**。裁切才是用户导出后一直看到的结果，所以这是对齐而非回归",
+      "scope": "只在传了 exportResolution 的量化路径上；未传的旧调用路径钳制行为**逐字未变**（DD-9③）",
+      "guard": "overlayBoxQuantise.test.ts『keeps a box dragged past the right edge at its full width』(844/1920) + test_overlay_box.py::test_out_of_bounds_box_is_not_clamped"
+    },
+    {
+      "id": "DD-6",
+      "what": "后端兜底默认位置 0.3/0.3 → 0.8/0.8，与前端三处统一",
+      "why": "一条沉默的、方向明确的分叉：一旦某个请求不带 position（外部调用、旧工程数据、未来批处理入口），预览按 80% 画、导出按 30% 画，运镜盒跟着差 2.67 倍",
+      "priorArtChecked": "后端测试目录内与 overlay/placement 相关的 0.3 命中数为 0，_overlay_placement 无测试引用 —— 改动无既有测试阻力（计划 P2-8 已复核，本节点复跑确认）",
+      "guard": "test_overlay_box.py::test_default_position_is_the_frontend_eighty_percent"
+    },
+    {
+      "id": "DD-5",
+      "what": "图片图层放置基准由「第一个就绪视频图层的 fit-rect」改为**显式画布矩形**",
+      "why": "旧等式靠三处远距离条件同时成立（viewport 非空、ratio 可解析、fitContain 等比分支在 EPS=1e-6 下命中）。任一失效，静图会整体缩进视频的 letterbox 区，而导出永远按整帧归一化",
+      "pixelImpact": "viewport 非空时逐像素不变（今天两者恒等）；本次未改动视频侧任何一行"
+    }
+  ],
+
+  "shouldItems": [
+    {
+      "item": "§4.2 ImageOverlay.tsx —— DOM 手柄落同一栅格",
+      "decision": "NOT DONE（计划允许降级，但要求量化残差）",
+      "reason": "ImageOverlay.tsx 的 D3 把 clampImagePosition(position) 定为「渲染 + 拖拽 + 缩放的唯一基准」，量化会与这条交互不变量以及 D2b 的手势 ref 逻辑正面冲突（ImageOverlay.interaction.test.tsx 覆盖）。为一个亚像素残差去动一条用户天天用的拖拽手势，风险/收益不划算",
+      "residual": {
+        "inBounds": "手柄矩形（浮点，clamp 后）与画布光栅（量化）之差：原点 <= containerW/outW ≈ 853/1920 ≈ 0.44 预览像素；宽高 <= 2*containerW/outW ≈ 0.89 预览像素（向上取偶所致）。肉眼不可辨",
+        "outOfBounds": "手柄仍被 clampImagePosition 钳在画面内（这是刻意的——否则用户抓不到它），而光栅按 DD-9 越界裁切。即『蓝框贴边、画面被裁』，两者不再重合；这是手柄可抓性与所见即所得之间的取舍，登记为移交项"
+      }
+    },
+    {
+      "item": "§4.2 docs/plans/timeline-camera-motion/experiments/README.md —— 过期说明",
+      "decision": "DONE — 顶部加只读归档警示，点名 build-kernel.mjs 清单缺失的三个模块（internal/drawWithMotion、internal/boxTextureCache、internal/overlayBoxQuantise）并指向各轮当前台架"
+    },
+    {
+      "item": "§4.2 CLAUDE.md —— 同步 Preview compositor 段",
+      "decision": "WRITTEN TO DISK, DELIBERATELY NOT COMMITTED",
+      "what": "新增一条 Image-overlay box quantisation 要点（画布基准、量化契约、不钳制、输出像素空间求值、drawFrame 为 test-only 且被 grep 守卫）",
+      "whyNotCommitted": "『Preview compositor (single path; playback-v2 flag removed)』这一整段本身就是**未提交的在途改动** —— d4df938 里该行仍是旧的『Playback v2 feature flag』。零上下文拆分后我的新增与那次替换落在同一个 hunk（-1/+2），无法分离：要么把在途那行一起提交（违反 §4.3 / DoD#12「不裹挟无关在途文件」，仓库有过一次 36MB 误提交的教训），要么staging 一个『旧段落 + 新要点』的、从未存在过的错乱文档状态。两者都比暂不提交更糟。",
+      "state": "工作树里文档与代码是一致的（MUST 的目的已达成），只有 HEAD 里不一致 —— 而 HEAD 里那一整段本来就因为与本轮无关的原因而过期",
+      "handover": "节点 #4 提交时若一并处理 remove-user-system 的在途文档改动，请把这一条随之带上；否则它会停留在工作树"
+    }
+  ],
+
+  "handoverResiduals": [
+    "drawFrame / _drawOverlays 这条已无生产调用点的老路径：本轮按 DD-12 只做标注 + grep 守卫（drawFramePathRetired.test.ts），删除超出收口范围",
+    "computeImageBounds 在非量化调用路径上仍保留钳制，两套语义并存（DD-9③ 的代价，换取改动面可控）",
+    "drawImageWithMotion / boxTextureCache 的**盒内** contain 仍是浮点 containInBox，且纹理按预览像素栅格化：带运镜的静图，其盒内 contain 与导出的 FFmpeg 整数 contain 仍差 <1 输出像素。本轮盒级分歧是 1.166px~295.5px 量级，盒内这条是亚像素残差；计划 §4.2 未把这两个文件列入施工单，且 L-Q9 规定动绘制缝就要重跑全部视觉指标，故未扩面。**建议节点 #3 在 Q2/Q4 里单独读一次这个残差并记录**",
+    "ImageOverlay.tsx DOM 手柄残差（见 shouldItems）"
+  ],
+
+  "notRunHere": [
+    "E1–E10 全部实验阶段（E0 除外）属节点 #3；本节点只跑了开工许可所需的 E0 三项",
+    "B3 红灯证据（results/red-on-baseline.json）属节点 #3 的 E10。本节点已确认新增守卫在 B0 上会红的**机理**：B0 的 computeImageBounds 只接受 2 个入参，第 3 个 exportFrame 被忽略，越界向量返回钳制后的 1-0.7143=0.2857 而非 844/1920，断言必红；Python 侧 overlay_box 模块在 B0 不存在，import 即失败"
+  ]
+}

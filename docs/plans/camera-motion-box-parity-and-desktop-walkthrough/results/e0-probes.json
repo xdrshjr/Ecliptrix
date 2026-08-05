@@ -1,0 +1,92 @@
+{
+  "stage": "E0 前置探针（开工许可）",
+  "host": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.7"
+  },
+  "allPass": true,
+  "probes": [
+    {
+      "probe": "E0-a",
+      "question": "Node 自带全局 WebSocket 吗（决定 walkthrough 要不要引入 playwright/ws）",
+      "command": "node -e \"console.log(process.version, typeof WebSocket)\"",
+      "rawOutput": "v22.18.0 function",
+      "nodeVersion": "v22.18.0",
+      "webSocketType": "function",
+      "verdict": "PASS",
+      "consequence": "零新增依赖成立，DD-7 的 CDP 路线可行"
+    },
+    {
+      "probe": "E0-b",
+      "question": "FFmpeg 盒内 contain 的取整规则能否被纯函数精确复现，且跨大版本同表",
+      "rule": {
+        "tmp_w": "round_half_away(box_h * nat_w / nat_h)",
+        "tmp_h": "round_half_away(box_w * nat_h / nat_w)",
+        "w": "min(box_w, tmp_w)",
+        "h": "min(box_h, tmp_h)",
+        "pad_x": "floor((box_w - w) / 2)",
+        "pad_y": "floor((box_h - h) / 2)"
+      },
+      "dev": {
+        "version": "ffmpeg version 2025-05-15-git-12b853530a-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers",
+        "agreed": 16,
+        "total": 16
+      },
+      "packaged": {
+        "version": "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+        "agreed": 16,
+        "total": 16
+      },
+      "crossVersionIdentical": true,
+      "verdict": "PASS",
+      "rawArtifacts": [
+        "results/e0b-contain-dev.json",
+        "results/e0b-contain-packaged.json"
+      ],
+      "note": "计划 R5 记录的测法（pad=black + bbox=min_val=1）在本机复跑时读出的是**假数据**：yuv420p 的 black 是限制范围 Y=16 > 1，pad 边条也被算成内容，16 组读数全部恰好等于盒尺寸。改成 format=gray + min_val=100 后才真正分得开黑白，规则本身与 R5 的结论一致（16/16），但判据必须换掉，否则下游会对着一张全是盒尺寸的表判绿。"
+    },
+    {
+      "probe": "E0-c",
+      "question": "CDP 能否在打包应用里端到端驱动页面（DoD#8 闭不闭合的唯一开关）",
+      "criterion": "六步全通：启动 → /json/version → /json/list 页面 target → WS 握手 → Runtime.evaluate 1+1=2 → Page.captureScreenshot 非空",
+      "verdict": "PASS",
+      "neededRemoteAllowOrigins": false,
+      "steps": [
+        {
+          "step": 1,
+          "name": "app launch + services healthy",
+          "ok": true
+        },
+        {
+          "step": 2,
+          "name": "GET /json/version",
+          "ok": true
+        },
+        {
+          "step": 3,
+          "name": "GET /json/list -> page target",
+          "ok": true
+        },
+        {
+          "step": 4,
+          "name": "WebSocket upgrade to page target",
+          "ok": true
+        },
+        {
+          "step": 5,
+          "name": "Runtime.evaluate 1+1 === 2",
+          "ok": true
+        },
+        {
+          "step": 6,
+          "name": "Page.captureScreenshot non-empty",
+          "ok": true
+        }
+      ],
+      "rawArtifacts": [
+        "results/e0c-cdp-probe.json"
+      ],
+      "consequence": "H4 成立：节点 #3 可以按 §8 用 CDP 真跑 walkthrough，DoD#8 有条件被诚实闭合；抓帧走 Page.captureScreenshot（DD-11）已随第 6 步一并预验"
+    }
+  ]
+}

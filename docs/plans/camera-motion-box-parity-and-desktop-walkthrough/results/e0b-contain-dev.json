@@ -1,0 +1,410 @@
+{
+  "label": "dev",
+  "ffmpeg": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe",
+  "version": "ffmpeg version 2025-05-15-git-12b853530a-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers",
+  "total": 16,
+  "agreed": 16,
+  "pass": true,
+  "cases": [
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        634,
+        356
+      ],
+      "predicted": {
+        "w": 633,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 633,
+        "h": 356,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=634:356:force_original_aspect_ratio=decrease,pad=634:356:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000002bbe36c4c00] n:0 pts:0 pts_time:0 x1:0 x2:632 y1:0 y2:355 w:633 h:356 crop=633:356:0:0 drawbox=0:0:633:356"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        434,
+        288
+      ],
+      "predicted": {
+        "w": 432,
+        "h": 288,
+        "pad_x": 1,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 432,
+        "h": 288,
+        "pad_x": 1,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=434:288:force_original_aspect_ratio=decrease,pad=434:288:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001da36864c00] n:0 pts:0 pts_time:0 x1:1 x2:432 y1:0 y2:287 w:432 h:288 crop=432:288:1:0 drawbox=1:0:432:288"
+    },
+    {
+      "natural": [
+        1234,
+        567
+      ],
+      "box": [
+        321,
+        123
+      ],
+      "predicted": {
+        "w": 268,
+        "h": 123,
+        "pad_x": 26,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 268,
+        "h": 123,
+        "pad_x": 26,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1234x567:d=1 -vf scale=321:123:force_original_aspect_ratio=decrease,pad=321:123:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 00000212ba31dcc0] n:0 pts:0 pts_time:0 x1:26 x2:293 y1:0 y2:122 w:268 h:123 crop=268:123:26:0 drawbox=26:0:268:123"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        844,
+        474
+      ],
+      "predicted": {
+        "w": 843,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 843,
+        "h": 474,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=844:474:force_original_aspect_ratio=decrease,pad=844:474:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000026407664b00] n:0 pts:0 pts_time:0 x1:0 x2:842 y1:0 y2:473 w:843 h:474 crop=843:474:0:0 drawbox=0:0:843:474"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        422,
+        238
+      ],
+      "predicted": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 422,
+        "h": 237,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=422:238:force_original_aspect_ratio=decrease,pad=422:238:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001620c2b4c00] n:0 pts:0 pts_time:0 x1:0 x2:421 y1:0 y2:236 w:422 h:237 crop=422:237:0:0 drawbox=0:0:422:237"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        640,
+        360
+      ],
+      "predicted": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 640,
+        "h": 360,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 00000237576fedc0] n:0 pts:0 pts_time:0 x1:0 x2:639 y1:0 y2:359 w:640 h:360 crop=640:360:0:0 drawbox=0:0:640:360"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        640,
+        360
+      ],
+      "predicted": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 80,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001f77bee4b00] n:0 pts:0 pts_time:0 x1:80 x2:559 y1:0 y2:359 w:480 h:360 crop=480:360:80:0 drawbox=80:0:480:360"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        476,
+        358
+      ],
+      "predicted": {
+        "w": 476,
+        "h": 357,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 476,
+        "h": 357,
+        "pad_x": 0,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=476:358:force_original_aspect_ratio=decrease,pad=476:358:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001d8c3f94b00] n:0 pts:0 pts_time:0 x1:0 x2:475 y1:0 y2:356 w:476 h:357 crop=476:357:0:0 drawbox=0:0:476:357"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        238,
+        476
+      ],
+      "predicted": {
+        "w": 238,
+        "h": 179,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "observed": {
+        "w": 238,
+        "h": 179,
+        "pad_x": 0,
+        "pad_y": 148
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=238:476:force_original_aspect_ratio=decrease,pad=238:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000021c3c648100] n:0 pts:0 pts_time:0 x1:0 x2:237 y1:148 y2:326 w:238 h:179 crop=238:179:0:148 drawbox=0:148:238:179"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        844,
+        322
+      ],
+      "predicted": {
+        "w": 483,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 483,
+        "h": 322,
+        "pad_x": 180,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=844:322:force_original_aspect_ratio=decrease,pad=844:322:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001f4355c4c00] n:0 pts:0 pts_time:0 x1:180 x2:662 y1:0 y2:321 w:483 h:322 crop=483:322:180:0 drawbox=180:0:483:322"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        240,
+        240
+      ],
+      "predicted": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "observed": {
+        "w": 240,
+        "h": 160,
+        "pad_x": 0,
+        "pad_y": 40
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=240:240:force_original_aspect_ratio=decrease,pad=240:240:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000017e6f764c00] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:40 y2:199 w:240 h:160 crop=240:160:0:40 drawbox=0:40:240:160"
+    },
+    {
+      "natural": [
+        1501,
+        1000
+      ],
+      "box": [
+        1140,
+        476
+      ],
+      "predicted": {
+        "w": 714,
+        "h": 476,
+        "pad_x": 213,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 714,
+        "h": 476,
+        "pad_x": 213,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1501x1000:d=1 -vf scale=1140:476:force_original_aspect_ratio=decrease,pad=1140:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001d92e474c00] n:0 pts:0 pts_time:0 x1:213 x2:926 y1:0 y2:475 w:714 h:476 crop=714:476:213:0 drawbox=213:0:714:476"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        240,
+        640
+      ],
+      "predicted": {
+        "w": 240,
+        "h": 135,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "observed": {
+        "w": 240,
+        "h": 135,
+        "pad_x": 0,
+        "pad_y": 252
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=240:640:force_original_aspect_ratio=decrease,pad=240:640:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001fa0a9dcc40] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:252 y2:386 w:240 h:135 crop=240:135:0:252 drawbox=0:252:240:135"
+    },
+    {
+      "natural": [
+        1920,
+        1080
+      ],
+      "box": [
+        1140,
+        240
+      ],
+      "predicted": {
+        "w": 427,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 427,
+        "h": 240,
+        "pad_x": 356,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1920x1080:d=1 -vf scale=1140:240:force_original_aspect_ratio=decrease,pad=1140:240:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 0000026ff6914c00] n:0 pts:0 pts_time:0 x1:356 x2:782 y1:0 y2:239 w:427 h:240 crop=427:240:356:0 drawbox=356:0:427:240"
+    },
+    {
+      "natural": [
+        1440,
+        1080
+      ],
+      "box": [
+        1126,
+        360
+      ],
+      "predicted": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 323,
+        "pad_y": 0
+      },
+      "observed": {
+        "w": 480,
+        "h": 360,
+        "pad_x": 323,
+        "pad_y": 0
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1440x1080:d=1 -vf scale=1126:360:force_original_aspect_ratio=decrease,pad=1126:360:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 000001df5e154b00] n:0 pts:0 pts_time:0 x1:323 x2:802 y1:0 y2:359 w:480 h:360 crop=480:360:323:0 drawbox=323:0:480:360"
+    },
+    {
+      "natural": [
+        1234,
+        567
+      ],
+      "box": [
+        240,
+        476
+      ],
+      "predicted": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
+        "pad_y": 183
+      },
+      "observed": {
+        "w": 240,
+        "h": 110,
+        "pad_x": 0,
+        "pad_y": 183
+      },
+      "match": true,
+      "command": "D:/dev-tools/ffmpeg-2025-05-15-git-12b853530a-full_build/bin/ffmpeg.exe -hide_banner -nostdin -f lavfi -i color=white:s=1234x567:d=1 -vf scale=240:476:force_original_aspect_ratio=decrease,pad=240:476:(ow-iw)/2:(oh-ih)/2:black,format=gray,bbox=min_val=100 -frames:v 1 -f null -",
+      "rawBbox": "[Parsed_bbox_3 @ 00000140144c7640] n:0 pts:0 pts_time:0 x1:0 x2:239 y1:183 y2:292 w:240 h:110 crop=240:110:0:183 drawbox=0:183:240:110"
+    }
+  ]
+}

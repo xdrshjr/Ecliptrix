@@ -1,5 +1,16 @@
 # timeline-camera-motion — 实验台架（节点 #3）
 
+> **⚠️ 只读归档（Iteration 1）。本台架已过期，不要拿它的结论当现状。**
+>
+> `build-kernel.mjs` 的模块清单停在 Iteration 1 的内核边界，此后新增的三个模块都
+> **不在**清单里：`internal/drawWithMotion`、`internal/boxTextureCache`（Iteration 2
+> 的静图运镜）、`internal/overlayBoxQuantise`（Iteration 3 的盒量化）。照原样跑，
+> 转译出的"线上内核"少了这三块，M1 的黄金向量比对会对着一个**不完整的**内核变绿。
+>
+> 各轮的当前台架请用对应目录：
+> Iteration 2 → `docs/plans/camera-motion-stills-and-desktop-gate/experiments/`；
+> Iteration 3 → `docs/plans/camera-motion-box-parity-and-desktop-walkthrough/experiments/`。
+
 对应 `docs/plans/timeline-camera-motion/experiment-plan.md` §2.2 的 M1–M6。
 `environment: local` —— 全部在本机跑，不涉及远程主机、不涉及 SSH、不涉及任何私钥。
 
