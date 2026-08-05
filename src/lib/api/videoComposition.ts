@@ -156,6 +156,38 @@ export interface AudioCompositionItem {
   volume?: number;
 }
 
+/**
+ * One image overlay in the composition request — the wire mirror of the backend
+ * pydantic `ImageCompositionItem`.
+ *
+ * Stills live on video tracks in the editor but travel in their own array,
+ * because export composites them with FFmpeg `overlay` on top of the finished
+ * video instead of splicing them into the video filtergraph.
+ */
+export interface ImageCompositionItem {
+  id: string;
+  name: string;
+  url: string;
+  start_time: number;
+  duration: number;
+  track_id: string;
+  position?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    zIndex?: number;
+  };
+  opacity?: number;
+  fade_in_duration?: number;
+  fade_out_duration?: number;
+  /**
+   * 2D/3D 运镜 on this still (Ken Burns and friends). Omitted → no camera move
+   * and a byte-identical legacy overlay chain.
+   */
+  camera_motion?: CameraMotionWire;
+}
+
 export interface SubtitleCompositionItem {
   id: string;
   name: string;
@@ -176,6 +208,7 @@ export interface VideoCompositionRequest {
   video_items: VideoCompositionItem[];
   audio_items?: AudioCompositionItem[];
   subtitle_items?: SubtitleCompositionItem[];
+  image_items?: ImageCompositionItem[];
   total_duration: number;
   output_resolution?: {
     width: number;

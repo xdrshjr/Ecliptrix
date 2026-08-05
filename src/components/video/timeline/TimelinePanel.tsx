@@ -53,6 +53,25 @@ function throttle<T extends (...args: any[]) => void>(fn: T, ms: number): T {
   }) as T;
 }
 
+/** Long edge of the nominal canvas handed to the camera-motion panel. */
+const NOMINAL_CANVAS_LONG_EDGE = 1920;
+const NOMINAL_CANVAS_SHORT_EDGE = 1080;
+
+/**
+ * A canvas with the project's ratio, in nominal pixels.
+ *
+ * Every consumer downstream (`isMotionRenderable`, `ensureCoverage`, the
+ * homography's focal length) scales with the canvas, so only the RATIO changes
+ * any verdict — which is why a nominal size is enough and the panel does not
+ * need the real output resolution.
+ */
+function canvasSizeForAspect(aspect: number): { width: number; height: number } {
+  const safe = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+  return safe >= 1
+    ? { width: NOMINAL_CANVAS_LONG_EDGE, height: Math.round(NOMINAL_CANVAS_LONG_EDGE / safe) }
+    : { width: Math.round(NOMINAL_CANVAS_SHORT_EDGE * safe), height: NOMINAL_CANVAS_SHORT_EDGE };
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -136,6 +155,26 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
     return null;
   }, [cameraMotionItemId, cameraMotionTracks]);
+
+  // The camera-motion panel judges Apply against the geometry the renderer will
+  // really use (G3). The project ratio is published by the player panel; the
+  // nominal pixel size below only has to carry that ratio, because every
+  // consumer (`isMotionRenderable`, `ensureCoverage`) is scale-invariant.
+  const projectCanvasAspect = useTimelineStore((state) => state.projectCanvasAspect);
+  const cameraMotionCanvas = useMemo(
+    () => canvasSizeForAspect(projectCanvasAspect),
+    [projectCanvasAspect],
+  );
+  // A still's move acts on its placement box, not the canvas — so the panel is
+  // handed that box and switches to still semantics (no coverage guarantee).
+  const cameraMotionBox = useMemo(() => {
+    if (!cameraMotionTarget || cameraMotionTarget.originalMaterialType !== 'image') return null;
+    // Same default as every other placement site (D1: centred 80%).
+    const position = cameraMotionTarget.imagePosition ?? { width: 0.8, height: 0.8 };
+    const width = (position.width || 0.8) * cameraMotionCanvas.width;
+    const height = (position.height || 0.8) * cameraMotionCanvas.height;
+    return width > 0 && height > 0 ? { width, height } : null;
+  }, [cameraMotionTarget, cameraMotionCanvas]);
 
   // Track last external update to avoid infinite loops
   const lastExternalUpdateIdRef = useRef<string | null>(null);
@@ -1159,6 +1198,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           clipDuration={cameraMotionTarget.duration}
           thumbnailUrl={cameraMotionTarget.thumbnailUrl}
           motion={cameraMotionTarget.cameraMotion ?? null}
+          canvasSize={cameraMotionCanvas}
+          motionBox={cameraMotionBox}
           onApply={handleApplyCameraMotion}
           onClose={handleCloseCameraMotion}
         />

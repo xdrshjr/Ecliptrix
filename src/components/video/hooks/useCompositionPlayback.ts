@@ -179,6 +179,11 @@ export function buildImageOverlayInputs(
         duration: item.duration,
         position: item.imagePosition ?? null,
         opacity: item.opacity ?? null,
+        // 运镜 must be forwarded here AND from the export payload builder
+        // (useVideoExport). Wiring only one of the two is what produced the
+        // original defect in reverse: the panel accepted the move, the timeline
+        // badged it, and the picture never budged (G1).
+        cameraMotion: item.cameraMotion ?? null,
       });
     }
   }

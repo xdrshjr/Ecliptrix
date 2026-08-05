@@ -195,9 +195,15 @@ export function assembleLayers(input: AssembleLayersInput): CompositorLayer[] {
   const baseZ = input.overlayBaseZ ?? DEFAULT_OVERLAY_BASE_Z;
   const video = buildVideoLayers(input.videoEntries, input.t, input.canvasAspect);
 
-  const images = buildImageLayersAt(input.imageItems, input.t, input.imageFit).map(
-    (layer, index) => ({ ...layer, z: baseZ + layer.z + index }),
-  );
+  // `canvasAspect` reaches the image layers too: a still's camera move is judged
+  // against ITS OWN box ratio, which is the bounds ratio scaled by the canvas
+  // ratio (§3.1.1(b)).
+  const images = buildImageLayersAt(
+    input.imageItems,
+    input.t,
+    input.imageFit,
+    input.canvasAspect,
+  ).map((layer, index) => ({ ...layer, z: baseZ + layer.z + index }));
 
   const subtitles = buildSubtitleLayers(
     input.subtitleItems,

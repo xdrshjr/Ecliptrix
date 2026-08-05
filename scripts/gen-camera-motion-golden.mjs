@@ -37,6 +37,15 @@ const OUT_FILE = path.join(
   'fixtures',
   'camera-motion-golden.json',
 );
+/** Stills (motion-box) vectors — camera-motion-stills-and-desktop-gate D1. */
+const STILLS_OUT_FILE = path.join(
+  repoRoot,
+  'docs',
+  'plans',
+  'camera-motion-stills-and-desktop-gate',
+  'fixtures',
+  'camera-motion-stills-golden.json',
+);
 
 /** Canvas the vectors are frozen against (M1 compares in canvas space). */
 const CANVAS = { width: 1920, height: 1080 };
@@ -46,6 +55,31 @@ const CLIP = { startTime: 0, duration: 6 };
 const SAMPLE_COUNT = 21;
 /** Decimal places every float is frozen at. */
 const PRECISION = 6;
+
+/**
+ * Box configurations the stills vectors are frozen against.
+ *
+ * Every box sits at the ORIGIN on purpose: the export emitter builds its corners
+ * in box space (the frame `perspective` receives starts at the box's top-left),
+ * so origin boxes are what makes these vectors comparable across the two
+ * implementations. The preview adds the box's canvas position through the same
+ * `cameraBoxHomography` translation, which is exercised by the TS suite.
+ *
+ * The five shapes are chosen to hit the paths most likely to diverge: a box that
+ * matches the canvas ratio, one that does not (4:3 inside 16:9), a small corner
+ * box, the degenerate "box == canvas" case that must reproduce the video-side
+ * geometry exactly, and a portrait project.
+ */
+const STILL_BOXES = [
+  { id: 'canvas-ratio', canvas: { width: 1920, height: 1080 }, box: { x: 0, y: 0, width: 1536, height: 864 } },
+  { id: 'four-three-box', canvas: { width: 1920, height: 1080 }, box: { x: 0, y: 0, width: 800, height: 600 } },
+  { id: 'corner-small', canvas: { width: 1920, height: 1080 }, box: { x: 0, y: 0, width: 384, height: 216 } },
+  { id: 'full-canvas', canvas: { width: 1920, height: 1080 }, box: { x: 0, y: 0, width: 1920, height: 1080 } },
+  { id: 'portrait-project', canvas: { width: 1080, height: 1920 }, box: { x: 0, y: 0, width: 972, height: 540 } },
+];
+
+/** Progress points sampled per box, inclusive of both endpoints. */
+const STILL_SAMPLE_COUNT = 5;
 
 /** The two pure kernel modules, transpiled and required as-is. */
 const KERNEL_MODULES = ['CameraMotionLayer', 'cameraMotionPresets'];
@@ -135,12 +169,66 @@ async function main() {
 
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
   fs.writeFileSync(OUT_FILE, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
+
+  const stills = buildStillsDocument(layer, presets);
+  fs.mkdirSync(path.dirname(STILLS_OUT_FILE), { recursive: true });
+  fs.writeFileSync(STILLS_OUT_FILE, `${JSON.stringify(stills, null, 2)}\n`, 'utf8');
+
   fs.rmSync(outDir, { recursive: true, force: true });
 
   const sampleTotal = cases.length * SAMPLE_COUNT;
   process.stdout.write(
     `Wrote ${path.relative(repoRoot, OUT_FILE)} — ${cases.length} presets x ${SAMPLE_COUNT} samples = ${sampleTotal} cases\n`,
   );
+  const stillTotal = stills.cases.length * STILL_BOXES.length * STILL_SAMPLE_COUNT;
+  process.stdout.write(
+    `Wrote ${path.relative(repoRoot, STILLS_OUT_FILE)} — ${stills.cases.length} presets x ${STILL_BOXES.length} boxes x ${STILL_SAMPLE_COUNT} samples = ${stillTotal} cases\n`,
+  );
+}
+
+/**
+ * Freeze the motion-BOX geometry a still overlay renders through.
+ *
+ * Two differences from the canvas vectors above, and they are the whole point:
+ * the aspect handed to the kernel is the BOX's, and the coverage guarantee is
+ * OFF. A still is an overlay — its box is padded with transparency and revealing
+ * the layer below is intended, so forcing full coverage would zoom a plain pan by
+ * 20% (§3.1.1 / L17). Freezing the vectors WITH that decision baked in is what
+ * stops it being quietly reversed later.
+ */
+function buildStillsDocument(layer, presets) {
+  const cases = presets.CAMERA_MOTION_PRESETS.map((preset) => {
+    const motion = presets.motionFromPreset(preset.id);
+    const boxes = STILL_BOXES.map((config) => {
+      const boxAspect = config.box.width / config.box.height;
+      const samples = [];
+      for (let i = 0; i < STILL_SAMPLE_COUNT; i += 1) {
+        const t = CLIP.startTime + (CLIP.duration * i) / (STILL_SAMPLE_COUNT - 1);
+        const state = layer.motionStateAt(motion, CLIP, t, boxAspect, false);
+        const quad = layer.motionBoxQuad(state, config.box);
+        samples.push({ t: serialize(t), quad: Array.from(quad, serialize) });
+      }
+      return { boxId: config.id, canvas: config.canvas, box: config.box, samples };
+    });
+    return { presetId: preset.id, space: preset.space, easing: preset.easing, boxes };
+  });
+
+  return {
+    version: 1,
+    generator: 'scripts/gen-camera-motion-golden.mjs',
+    description:
+      'Camera-motion STILLS geometry golden vectors. Each sample is the motion ' +
+      'box mapped through cameraBoxHomography(), corner order [TL,TR,BR,BL] as ' +
+      '[x,y] pairs, in BOX-LOCAL pixels (every box sits at the origin so the ' +
+      'export emitter can be compared against them directly). Floats are ' +
+      'fixed-6 strings — parse before comparing.',
+    clip: CLIP,
+    sampleCount: STILL_SAMPLE_COUNT,
+    precision: PRECISION,
+    cornerOrder: ['TL', 'TR', 'BR', 'BL'],
+    enforceCoverage: false,
+    cases,
+  };
 }
 
 await main();

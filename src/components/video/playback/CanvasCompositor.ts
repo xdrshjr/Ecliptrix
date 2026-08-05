@@ -16,10 +16,10 @@ import {
   ADAPTIVE_WINDOW_FRAMES,
 } from './internal/constants';
 import { fitContain, type FitRect } from './internal/fitContain';
-import { affineFrom, cameraHomography, projectRect } from './CameraMotionLayer';
+import { BoxTextureCache } from './internal/boxTextureCache';
+import { drawImageWithMotion, drawWithMotion } from './internal/drawWithMotion';
 import { PerspectiveQuadRenderer } from './PerspectiveQuadRenderer';
 import type {
-  CameraMotionState,
   CompositorLayer,
   CompositorStats,
   ICanvasCompositor,
@@ -99,6 +99,11 @@ export class CanvasCompositor implements ICanvasCompositor {
   private _perspective: PerspectiveQuadRenderer | null = null;
   private _perspectiveUnavailable = false;
 
+  // Box-sized, transparently padded textures for 3D 运镜 on image overlays
+  // (camera-motion-stills §3.2). Only populated when such a layer is drawn;
+  // cleared on detach with the rest of the raster state.
+  private _boxTextures = new BoxTextureCache();
+
   constructor(now?: () => number) {
     this._now =
       now ??
@@ -147,6 +152,7 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._perspective?.release();
     this._perspective = null;
     this._perspectiveUnavailable = false;
+    this._boxTextures.clear();
   }
 
   setLetterbox(viewport: ICanvasViewport | null): void {
@@ -321,59 +327,24 @@ export class CanvasCompositor implements ICanvasCompositor {
     });
     if (fit.width <= 0 || fit.height <= 0) return false;
 
-    const motion = layer.motion;
     ctx.save();
     ctx.globalAlpha = clamp01(layer.opacity);
-    try {
-      if (motion?.space === '3d' && this._drawPerspective(ctx, canvas, source, motion.state, fit)) {
-        ctx.restore();
-        return true;
-      }
-      if (motion) {
-        // `transform` (multiply), NOT `setTransform` (replace): the motion must
-        // compose with whatever base transform the host canvas already carries
-        // — e.g. the DPR scale on the panel's mini previews. See plan §4.1.
-        const affine = affineFrom(
-          cameraHomography(motion.state, { width: canvas.width, height: canvas.height }),
-        );
-        ctx.transform(affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
-      }
-      ctx.drawImage(source, fit.x, fit.y, fit.width, fit.height);
-      ctx.restore();
-      return true;
-    } catch {
-      ctx.restore();
-      return false;
-    }
-  }
-
-  /**
-   * Draw a 3D camera-motion layer as a true perspective quad.
-   *
-   * Returns false — never throws, never leaves the canvas blank — when WebGL is
-   * unavailable or the quad is degenerate, so the caller falls through to the 2D
-   * affine shadow. Losing foreshortening is an acceptable degradation; a black
-   * frame is not (L6).
-   */
-  private _drawPerspective(
-    ctx: CanvasRenderingContext2D,
-    canvas: HTMLCanvasElement,
-    source: HTMLVideoElement,
-    state: CameraMotionState,
-    fit: FitRect,
-  ): boolean {
-    const renderer = this._acquirePerspectiveRenderer();
-    if (!renderer) return false;
-    const size = { width: canvas.width, height: canvas.height };
-    // The quad is the VIDEO's fit-rect pushed through the canvas-space
-    // homography — the export side pushes the canvas rect through the same
-    // matrix, because normalization already baked the letterbox into its frames
-    // (plan §3.1 / R-P0-5).
-    const quad = projectRect(cameraHomography(state, size), fit);
-    const rendered = renderer.render(source, quad, size);
-    if (!rendered) return false;
-    ctx.drawImage(rendered, 0, 0);
-    return true;
+    // A video clip's motion box IS the canvas rect, so `cameraBoxHomography`
+    // reduces to the canvas-space homography this path has always used and the
+    // 3D quad stays the fit-rect pushed through it (R-P0-5). The equality is
+    // structural, not incidental — see `cameraBoxHomography`.
+    const painted = drawWithMotion({
+      ctx,
+      canvasSize: { width: canvas.width, height: canvas.height },
+      motion: layer.motion,
+      motionBox: { x: 0, y: 0, width: canvas.width, height: canvas.height },
+      quadRect: { x: fit.x, y: fit.y, width: fit.width, height: fit.height },
+      texture: source,
+      acquirePerspective: () => this._acquirePerspectiveRenderer(),
+      paint: (target) => target.drawImage(source, fit.x, fit.y, fit.width, fit.height),
+    });
+    ctx.restore();
+    return painted;
   }
 
   /** Lazily allocate the WebGL renderer — only ever on the first 3D layer. */
@@ -396,12 +367,27 @@ export class CanvasCompositor implements ICanvasCompositor {
   ): boolean {
     const img = this._loadImage(layer.src);
     if (!img || !img.complete || img.naturalWidth === 0) return false;
-    ctx.save();
-    ctx.globalAlpha = clamp01(layer.opacity);
     const boxX = fit.x + layer.bounds.x * fit.width;
     const boxY = fit.y + layer.bounds.y * fit.height;
     const boxW = layer.bounds.w * fit.width;
     const boxH = layer.bounds.h * fit.height;
+    if (layer.motion && this._canvas) {
+      ctx.save();
+      ctx.globalAlpha = clamp01(layer.opacity);
+      const painted = drawImageWithMotion({
+        ctx,
+        canvasSize: { width: this._canvas.width, height: this._canvas.height },
+        box: { x: boxX, y: boxY, width: boxW, height: boxH },
+        motion: layer.motion,
+        image: img,
+        textures: this._boxTextures,
+        acquirePerspective: () => this._acquirePerspectiveRenderer(),
+      });
+      ctx.restore();
+      return painted;
+    }
+    ctx.save();
+    ctx.globalAlpha = clamp01(layer.opacity);
     // D2: draw the image with `object-contain` semantics inside the bounds box —
     // the image is NEVER stretched/distorted. When the display box ratio equals
     // the image's natural ratio (D6 aligns new items to this) contain fills the

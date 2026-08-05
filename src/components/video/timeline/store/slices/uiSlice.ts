@@ -47,6 +47,20 @@ export interface UISlice {
    * never part of the snapshot/history.
    */
   pendingScrollItemId: string | null;
+  /**
+   * Aspect ratio (width / height) of the PROJECT canvas the preview renders at.
+   *
+   * Published by the player panel, which owns the ratio selector, and read by
+   * the camera-motion panel, which is its sibling three levels away in the tree.
+   * It lives here for the same reason `cameraMotionItemId` does: the alternative
+   * is drilling a scalar through the whole editor for one dialog.
+   *
+   * Why the panel needs it at all: `isMotionRenderable` and the 2D coverage
+   * guarantee both key off the ASPECT, so judging an Apply against a hard-coded
+   * 16:9 in a 9:16 project gates the user on a framing the renderer never draws
+   * (G3 / P1-9). Transient; never part of the snapshot/history.
+   */
+  projectCanvasAspect: number;
 
   setExporting: (value: boolean) => void;
   setImporting: (value: boolean) => void;
@@ -56,6 +70,8 @@ export interface UISlice {
   setEditingSubtitle: (itemId: string | null) => void;
   /** Open (or close, with null) the camera-motion panel for an item. */
   setCameraMotionItem: (itemId: string | null) => void;
+  /** Publish the project canvas ratio (width / height). Ignores junk values. */
+  setProjectCanvasAspect: (aspect: number) => void;
   /** Flag an item to be scrolled into view by the panel (fix C). */
   requestScrollItemIntoView: (itemId: string) => void;
   /** Clear the pending scroll-into-view request once consumed. */
@@ -79,6 +95,9 @@ export const createUISlice: StateCreator<
   editingSubtitleId: null,
   cameraMotionItemId: null,
   pendingScrollItemId: null,
+  // 16:9 until the player panel reports otherwise — the historical assumption,
+  // now an explicit default instead of a constant buried in the dialog.
+  projectCanvasAspect: 16 / 9,
 
   setExporting: (value: boolean) => {
     set({ isExporting: value });
@@ -106,6 +125,11 @@ export const createUISlice: StateCreator<
 
   setCameraMotionItem: (itemId: string | null) => {
     set({ cameraMotionItemId: itemId });
+  },
+
+  setProjectCanvasAspect: (aspect: number) => {
+    if (!Number.isFinite(aspect) || aspect <= 0) return;
+    set({ projectCanvasAspect: aspect });
   },
 
   requestScrollItemIntoView: (itemId: string) => {

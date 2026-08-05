@@ -135,7 +135,12 @@ def _hoist(symbol: _Sym, register: int, setup: List[str]) -> _Sym:
     return _expr(f"ld({register})")
 
 
-def _progress_expression(plan: CameraMotionPlan, clip_duration: float, fps: int) -> str:
+def _progress_expression(
+    plan: CameraMotionPlan,
+    clip_duration: float,
+    fps: float,
+    time_offset: float = 0.0,
+) -> str:
     """FFmpeg statements that leave the eased progress in register 0.
 
     Returns a ``;``-separated statement list to prepend to each coordinate
@@ -146,6 +151,16 @@ def _progress_expression(plan: CameraMotionPlan, clip_duration: float, fps: int)
 
     Uses the same closed-form cubics as :func:`ease_progress`, so the rendered
     frame at time ``t`` matches what the preview drew at that time.
+
+    Args:
+        plan: The camera move.
+        clip_duration: Clip duration in seconds.
+        fps: Frames per second of the branch this filter runs in.
+        time_offset: Seconds between the branch's frame 0 and the clip's start.
+            Zero on the video path, where the chain has already been reset with
+            ``setpts=PTS-STARTPTS``; the still's ``start_time`` on the overlay
+            path, whose time origin is the finished video's 0s (H2). Only the
+            time BASE differs between the two — the kernel does not.
     """
     rate = fps if fps and fps > 0 else 30
     duration = clip_duration if clip_duration > 0 else 0.0
@@ -158,8 +173,9 @@ def _progress_expression(plan: CameraMotionPlan, clip_duration: float, fps: int)
     # safe on any build that numbers from 0 instead: the worst case is the first
     # frame holding the start framing for one extra frame.
     elapsed = f"(on-1)/{_fmt(float(rate))}"
-    if window_start > TIME_EPSILON:
-        elapsed = f"({elapsed}-{_fmt(window_start)})"
+    origin = time_offset + window_start
+    if origin > TIME_EPSILON:
+        elapsed = f"({elapsed}-{_fmt(origin)})"
     if span <= TIME_EPSILON:
         linear = f"gte({elapsed},0)"
     else:
@@ -212,7 +228,10 @@ def _floored(symbol: _Sym, floor: float, low: float, high: float) -> _Sym:
 
 
 def _field_symbols(
-    plan: CameraMotionPlan, canvas_aspect: float, progress_ref: str
+    plan: CameraMotionPlan,
+    canvas_aspect: float,
+    progress_ref: str,
+    enforce_coverage: bool = True,
 ) -> dict:
     """Per-field ``a + b*E`` symbols for the whole motion.
 
@@ -220,10 +239,14 @@ def _field_symbols(
     the two endpoints FIRST is identical to applying it per sample — which is
     what lets every field stay linear in the eased progress and keeps the
     emitted expressions exact rather than approximated.
+
+    ``enforce_coverage`` mirrors :func:`camera_motion.state_at`: a still overlay
+    passes ``False`` so its box is not silently zoomed to cover a canvas it was
+    never meant to fill (§3.1.1 / L17).
     """
     start = _apply_intensity(plan.from_state, plan.intensity)
     end = _apply_intensity(plan.to_state, plan.intensity)
-    coverage = ensure_coverage(plan, canvas_aspect)
+    coverage = ensure_coverage(plan, canvas_aspect) if enforce_coverage else 1.0
     scale_low = start.scale * coverage
     scale_high = end.scale * coverage
     return {

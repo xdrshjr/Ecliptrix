@@ -40,6 +40,8 @@ export {
   motionStateAt,
   ensureCoverage,
   cameraHomography,
+  cameraBoxHomography,
+  motionBoxQuad,
   projectRect,
   applyHomographyToRect,
   affineFrom,

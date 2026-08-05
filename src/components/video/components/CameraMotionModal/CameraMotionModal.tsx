@@ -25,24 +25,17 @@ import {
 } from '../../playback';
 import PresetGallery, { presetLabel } from './PresetGallery';
 import MotionInspector from './MotionInspector';
-import MotionPreviewThumb from './MotionPreviewThumb';
+import MotionPreviewStage from './MotionPreviewStage';
 
 /** Preset chosen when the panel opens on a clip that has no motion yet. */
 const DEFAULT_PRESET_ID = 'zoom-in';
 
+/** Bounding box the large preview is fitted into, in CSS pixels. */
 const LARGE_PREVIEW_WIDTH = 320;
 const LARGE_PREVIEW_HEIGHT = 180;
 
-/**
- * Canvas the renderability check is judged against.
- *
- * Only the ASPECT changes the verdict — the projection scales with the canvas —
- * so a nominal 16:9 frame stands in for the project canvas the panel does not
- * receive. Every shipped preset clears this by a wide margin; it exists for the
- * advanced sliders, where `intensity` can push a hand-typed dolly or yaw past
- * the pinhole and fold the picture inside out.
- */
-const GUARD_CANVAS = { width: 1920, height: 1080 };
+/** Used only until the player panel has published the project ratio. */
+const FALLBACK_CANVAS = { width: 1920, height: 1080 };
 
 export interface CameraMotionModalProps {
   isOpen: boolean;
@@ -54,9 +47,35 @@ export interface CameraMotionModalProps {
   thumbnailUrl?: string;
   /** The clip's current motion, or null when it has none. */
   motion: CameraMotion | null;
+  /**
+   * The PROJECT canvas in pixels. Only its ratio matters, but it must be the
+   * real one: the panel used to hard-code 16:9, so in a 9:16 project the Apply
+   * gate ran a different coverage multiplier than the renderer would (G3).
+   */
+  canvasSize?: { width: number; height: number };
+  /**
+   * For a still image: the placement box its move actually acts on, in canvas
+   * pixels. Present ⇒ the clip is an overlay, so the gate is judged on the BOX
+   * ratio and the coverage guarantee is off, exactly as the compositor and the
+   * export emitter do (§3.1.1).
+   */
+  motionBox?: { width: number; height: number } | null;
   /** Commit — one history entry. `null` clears the motion. */
   onApply: (motion: CameraMotion | null) => void;
   onClose: () => void;
+}
+
+/**
+ * Fit `aspect` into the large-preview budget, keeping its ratio.
+ *
+ * A portrait project must preview portrait: a 9:16 move shown in a 16:9 letter
+ * box is the same class of lie this panel is being fixed for.
+ */
+function previewBox(aspect: number): { width: number; height: number } {
+  const safe = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+  const width = Math.min(LARGE_PREVIEW_WIDTH, LARGE_PREVIEW_HEIGHT * safe);
+  const height = Math.min(LARGE_PREVIEW_HEIGHT, LARGE_PREVIEW_WIDTH / safe);
+  return { width: Math.round(width), height: Math.round(height) };
 }
 
 const FOCUSABLE =
@@ -77,6 +96,8 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
   clipDuration,
   thumbnailUrl,
   motion,
+  canvasSize,
+  motionBox,
   onApply,
   onClose,
 }) => {
@@ -133,11 +154,22 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
     [copy.subtitle, clipName, clipDuration],
   );
 
+  // The rect the move will really act on: a still's own box, else the project
+  // canvas. `enforceCoverage` follows the same split — a still is an overlay and
+  // is allowed to reveal what is behind it (§3.1.1) — so the gate, the preview
+  // and the renderer all judge the SAME geometry.
+  const isStill = !!motionBox;
+  const motionRect = motionBox ?? canvasSize ?? FALLBACK_CANVAS;
+  const preview = useMemo(
+    () => previewBox(motionRect.height > 0 ? motionRect.width / motionRect.height : 16 / 9),
+    [motionRect.width, motionRect.height],
+  );
+
   // Block the commit rather than silently rewriting the numbers the user typed:
   // a rejected Apply with a reason is honest, a quietly clamped yaw is not.
   const isDraftRenderable = useMemo(
-    () => (draft ? isMotionRenderable(draft, GUARD_CANVAS) : true),
-    [draft],
+    () => (draft ? isMotionRenderable(draft, motionRect, !isStill) : true),
+    [draft, motionRect, isStill],
   );
 
   if (!isOpen || !draft) return null;
@@ -196,22 +228,30 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
               })
             }
             imageSrc={thumbnailUrl}
+            enforceCoverage={!isStill}
           />
 
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <MotionPreviewThumb
-                motion={draft}
-                imageSrc={thumbnailUrl}
-                width={LARGE_PREVIEW_WIDTH}
-                height={LARGE_PREVIEW_HEIGHT}
-                active
-                className="w-full border border-border"
-              />
+              <div className="flex justify-center">
+                <MotionPreviewStage
+                  motion={draft}
+                  imageSrc={thumbnailUrl}
+                  width={preview.width}
+                  height={preview.height}
+                  active
+                  enforceCoverage={!isStill}
+                />
+              </div>
               <p className="text-center text-[11px] text-muted-foreground">
                 {presetLabel(presetLabels, draft.presetId)}
                 {draft.presetId === CUSTOM_PRESET_ID ? '' : ` · ${draft.space.toUpperCase()}`}
               </p>
+              {isStill && (
+                <p className="text-center text-[11px] leading-snug text-muted-foreground/80">
+                  {copy.stillHint}
+                </p>
+              )}
             </div>
             <MotionInspector motion={draft} onChange={setDraft} />
           </div>

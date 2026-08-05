@@ -90,6 +90,18 @@ export interface SubtitleStyle {
  * `z` orders layers within their kind family and across kinds (lower draws
  * first). Layers are sorted by `z` ascending before drawing.
  */
+/**
+ * The TIME stage of a camera move, as carried on a layer.
+ *
+ * One shape for video and image layers alike: the PIXEL stage differs (a video
+ * layer's box is the canvas, a still's box is its placement rect) but the scalar
+ * sample handed across the seam does not.
+ */
+export interface LayerCameraMotion {
+  space: CameraMotionSpace;
+  state: CameraMotionState;
+}
+
 export type CompositorLayer =
   | {
       kind: 'video';
@@ -108,10 +120,7 @@ export type CompositorLayer =
        * apart is what lets the pure layer assembler stay DOM/canvas free
        * (timeline-camera-motion plan §3.1 / R-P0-1).
        */
-      motion?: {
-        space: CameraMotionSpace;
-        state: CameraMotionState;
-      };
+      motion?: LayerCameraMotion;
     }
   | {
       kind: 'subtitle';
@@ -130,6 +139,15 @@ export type CompositorLayer =
       bounds: { x: number; y: number; w: number; h: number };
       opacity: number;
       z: number;
+      /**
+       * Camera-motion (2D/3D 运镜) sample for this frame — same seam and same
+       * shape as the video variant, but the move acts on THIS layer's placement
+       * box rather than the whole canvas (camera-motion-stills §3.1). Without
+       * this field a still's motion was accepted by the panel, stored, badged in
+       * the timeline — and then silently dropped by both preview and export
+       * (G1).
+       */
+      motion?: LayerCameraMotion;
     };
 
 /**

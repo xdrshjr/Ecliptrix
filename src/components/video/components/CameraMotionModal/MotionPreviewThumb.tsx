@@ -11,9 +11,11 @@
  * never advertise a framing the render will not produce.
  *
  * Two deliberate limits:
- *   - 3D moves render through the affine shadow (`affineFrom`). A WebGL context
- *     per card would cost more than the extra fidelity is worth at 60×34 px; the
- *     large preview and the real canvas do the true perspective.
+ *   - 3D moves render through the affine shadow (`affineFrom`) — scale, pan and
+ *     roll are honest, foreshortening is dropped. A WebGL context per card would
+ *     cost more than the extra fidelity is worth at 60×34 px. The panel's large
+ *     preview ({@link MotionPreviewStage}) and the real canvas both render the
+ *     true perspective.
  *   - Animation only runs while `active`, so the gallery can cap how many cards
  *     move at once (L8) and `prefers-reduced-motion` can stop them entirely.
  */
@@ -27,9 +29,9 @@ import {
 } from '../../playback';
 
 /** Seconds for one loop of the demo animation. */
-const LOOP_SECONDS = 2.4;
+export const LOOP_SECONDS = 2.4;
 /** Pause at the end of a loop so the final framing reads before it restarts. */
-const LOOP_HOLD_SECONDS = 0.5;
+export const LOOP_HOLD_SECONDS = 0.5;
 
 export interface MotionPreviewThumbProps {
   /** The move to demonstrate. */
@@ -41,6 +43,13 @@ export interface MotionPreviewThumbProps {
   height: number;
   /** Whether the loop should run. Static first frame when false. */
   active: boolean;
+  /**
+   * Whether the 2D coverage guarantee applies — false for a still overlay,
+   * whose box is transparently padded and may legitimately reveal what is
+   * behind it (§3.1.1). Must match what the renderer will do, or the card
+   * advertises a framing the canvas will not produce.
+   */
+  enforceCoverage?: boolean;
   className?: string;
 }
 
@@ -48,7 +57,7 @@ export interface MotionPreviewThumbProps {
  * A legible stand-in when the clip has no usable thumbnail. Deliberately
  * asymmetric — a centred symmetric pattern would make pans and orbits invisible.
  */
-function drawSyntheticScene(
+export function drawSyntheticScene(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -87,6 +96,7 @@ const MotionPreviewThumb: React.FC<MotionPreviewThumbProps> = ({
   width,
   height,
   active,
+  enforceCoverage = true,
   className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -141,6 +151,7 @@ const MotionPreviewThumb: React.FC<MotionPreviewThumbProps> = ({
         { startTime: 0, duration: LOOP_SECONDS },
         localTime,
         width / height,
+        enforceCoverage,
       );
       const affine = affineFrom(cameraHomography(state, { width, height }));
 
@@ -182,7 +193,7 @@ const MotionPreviewThumb: React.FC<MotionPreviewThumbProps> = ({
       rafRef.current = null;
       startRef.current = null;
     };
-  }, [motion, width, height, active]);
+  }, [motion, width, height, active, enforceCoverage]);
 
   return (
     <canvas

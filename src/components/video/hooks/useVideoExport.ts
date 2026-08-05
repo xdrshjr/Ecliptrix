@@ -269,7 +269,12 @@ export const useVideoExport = ({
                   position: imagePosition,
                   opacity: item.opacity || 1.0,
                   fade_in_duration: 0.0,
-                  fade_out_duration: 0.0
+                  fade_out_duration: 0.0,
+                  // 运镜 on a still. Routed through the SAME mapper the video
+                  // branch below uses — a second mapper is how `from`/`from_state`
+                  // drift starts. Omitted when the clip has none, which keeps the
+                  // overlay filter chain byte-identical to the pre-feature output.
+                  camera_motion: toCameraMotionWire(item.cameraMotion),
                 });
                 
                 logger.debug('图片项目添加完成', {

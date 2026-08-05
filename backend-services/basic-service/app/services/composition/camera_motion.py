@@ -254,7 +254,11 @@ def ensure_coverage(plan: CameraMotionPlan, canvas_aspect: float) -> float:
 
 
 def state_at(
-    plan: CameraMotionPlan, clip_duration: float, local_time: float, canvas_aspect: float
+    plan: CameraMotionPlan,
+    clip_duration: float,
+    local_time: float,
+    canvas_aspect: float,
+    enforce_coverage: bool = True,
 ) -> CameraState:
     """Sample a camera move at ``local_time`` seconds into its clip.
 
@@ -263,7 +267,15 @@ def state_at(
         clip_duration: Clip duration in seconds.
         local_time: Seconds since the clip's own start (NOT composition time —
             export chains are reset with ``setpts=PTS-STARTPTS``).
-        canvas_aspect: Canvas width / height, for the 2D coverage guarantee.
+        canvas_aspect: Aspect ratio the coverage guarantee is judged against —
+            the CANVAS ratio for a full-frame clip, the BOX ratio for a still
+            overlay.
+        enforce_coverage: Whether the 2D coverage guarantee applies at all.
+            ``True`` (default) for full-frame clips, where exposing the canvas
+            edge is a defect; ``False`` for a still overlay, whose box is padded
+            with transparency and is MEANT to reveal the layer below. Mirrors
+            the TypeScript ``motionStateAt``'s fifth parameter, including its
+            default, so the video path stays bit-identical.
 
     Returns:
         The sampled state, ready for :func:`camera_homography`.
@@ -278,7 +290,7 @@ def state_at(
         p = ease_progress(plan.easing, _clamp01((local_time - window_start) / span))
 
     state = _apply_intensity(_lerp_state(plan.from_state, plan.to_state, p), plan.intensity)
-    coverage = ensure_coverage(plan, canvas_aspect)
+    coverage = ensure_coverage(plan, canvas_aspect) if enforce_coverage else 1.0
     if coverage > 1.0:
         return CameraState(
             scale=state.scale * coverage,

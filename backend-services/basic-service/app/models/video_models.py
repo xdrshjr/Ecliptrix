@@ -292,6 +292,16 @@ class ImageCompositionItem(BaseModel):
     fade_in_duration: float = Field(0.0, ge=0, description="Fade-in duration in seconds")
     fade_out_duration: float = Field(0.0, ge=0, description="Fade-out duration in seconds")
 
+    camera_motion: Optional[CameraMotionSpec] = Field(
+        None,
+        description=(
+            "2D / 3D 运镜 applied to this still (Ken Burns and friends). The move "
+            "acts on the image's own placement box, not the canvas. Omitting it "
+            "leaves the overlay filter chain byte-identical to the pre-feature "
+            "output."
+        ),
+    )
+
 
 class AspectRatio(str, Enum):
     """Supported aspect ratios for video composition."""

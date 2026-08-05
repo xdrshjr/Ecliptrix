@@ -15,6 +15,7 @@ import type { CoverAspectRatio } from '../VideoCoverModal/types';
 import { isPreviewProxyEnabled, isLocalPreviewEnabled } from '@/lib/playbackFlags';
 import PreviewCanvas from './PreviewCanvas';
 import { useCompositionPlayback } from '../../hooks/useCompositionPlayback';
+import { useTimelineStore } from '../../timeline/store/useTimelineStore';
 import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectRatio } from './aspectRatios';
 import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from './imageOverlays';
 import { useCompositionTransport, type MediaReadiness } from './useCompositionTransport';
@@ -151,6 +152,17 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     () => aspectRatioToNumber(selectedAspectRatio.ratio),
     [selectedAspectRatio.ratio],
   );
+
+  // Publish the project canvas ratio for the camera-motion panel, which lives in
+  // the timeline three levels away and otherwise has to guess (it used to assume
+  // 16:9, so a 9:16 project gated Apply on a framing the renderer never drew —
+  // G3). A scalar in the UI slice beats drilling one prop through the editor.
+  useEffect(() => {
+    // `undefined` means the ratio string was malformed; the store keeps its last
+    // good value rather than adopting a guess.
+    if (previewAspectRatio === undefined) return;
+    useTimelineStore.getState().setProjectCanvasAspect(previewAspectRatio);
+  }, [previewAspectRatio]);
 
   // 比例帧②的 contain 像素尺寸：用容器实测尺寸(①, videoContainerRef 的 ResizeObserver)
   // + 所选比例算出"长边占满、短边留边"的盒子，替代只靠 min-height:200px 的塌缩写法。

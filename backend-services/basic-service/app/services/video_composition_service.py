@@ -15,7 +15,7 @@ import yaml
 import random
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlparse
@@ -70,6 +70,12 @@ from app.services.composition.filtergraph_builder import (
     build_filtergraph,
 )
 from app.services.composition.camera_motion_filters import CameraMotionUnsupportedError
+from app.services.composition.camera_motion_overlay import (
+    OverlayBox,
+    OverlayMotion,
+    OverlayTiming,
+    overlay_motion_for_item,
+)
 from app.services.composition import ffmpeg_caps
 from app.services.composition.audio_mix import AudioSource, build_audio_mix
 from app.services.composition.video_scaling import (
@@ -112,6 +118,38 @@ class _StaticFramingCaps:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._source, name)
+
+
+@dataclass(frozen=True)
+class _OverlayEntry:
+    """One still, fully resolved for the overlay filtergraph."""
+
+    item: Any
+    #: Local file the `-i` will read.
+    path: str
+    #: Top-left of the placement box in output pixels.
+    x: int
+    y: int
+    box: OverlayBox
+    timing: OverlayTiming
+    motion: OverlayMotion
+
+
+@dataclass
+class OverlayPassContext:
+    """Everything the image-overlay / subtitle passes need beyond their items.
+
+    Bundled rather than added as three more positional parameters: the combined
+    pass already carried six, and `output_fps` (P1-10) would have made seven.
+    ``warnings`` is the return channel for non-fatal degradations — the passes
+    run several layers below the composition record, and a warning that never
+    reaches the status document is a silently-wrong export.
+    """
+
+    temp_dir: str
+    output_resolution: Dict[str, int]
+    output_fps: int = 30
+    warnings: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -1561,75 +1599,25 @@ class VideoCompositionService:
             else:
                 logger.info("No audio tracks to process")
             
-            # Process image overlays and subtitles
-            # When both exist, merge into a single FFmpeg pass to avoid redundant re-encoding
-            all_image_items = list(request.image_items)
-            has_images = bool(all_image_items)
-            has_subtitles = bool(request.subtitle_items)
+            # Process image overlays and subtitles (see _apply_overlay_passes:
+            # it owns the fallback ladder AND the no-silent-drop guard, which
+            # can only live here because this is the only frame that can still
+            # turn the composition into a `failed`).
+            overlay_context = OverlayPassContext(
+                temp_dir=temp_dir,
+                # The resolved resolution, not `request.output_resolution`: the
+                # request field is optional and the aspect-ratio fallback above
+                # is what the video was actually rendered at, so the overlay
+                # boxes have to be measured against the same frame.
+                output_resolution=output_resolution,
+                output_fps=int(getattr(request, "output_fps", 30) or 30),
+            )
+            self._apply_overlay_passes(request, output_path, overlay_context)
+            if overlay_context.warnings:
+                existing = self.compositions[composition_id].get("warnings") or []
+                self.compositions[composition_id]["warnings"] = existing + overlay_context.warnings
 
-            if has_images and has_subtitles:
-                # P0 optimization: merge image overlays + subtitles into ONE FFmpeg call
-                logger.info(f"Merging {len(all_image_items)} image overlays and {len(request.subtitle_items)} subtitles into single encoding pass")
-                try:
-                    merged_output_path = str(output_path).replace('.mp4', '_merged.mp4')
-                    success = self._process_overlays_and_subtitles_combined(
-                        all_image_items,
-                        request.subtitle_items,
-                        str(output_path),
-                        merged_output_path,
-                        temp_dir,
-                        request.output_resolution
-                    )
-                    if success and os.path.exists(merged_output_path):
-                        os.replace(merged_output_path, str(output_path))
-                        logger.info("Image overlays and subtitles added in single pass")
-                        final_size = os.path.getsize(output_path)
-                        logger.info(f"Final video file size: {final_size} bytes")
-                    else:
-                        logger.warning("Merged processing failed, falling back to sequential processing")
-                        # Fallback to sequential processing
-                        self._process_overlays_sequential(all_image_items, request, output_path, temp_dir)
-                except Exception as e:
-                    logger.error(f"Merged overlay+subtitle processing error: {str(e)}", exc_info=True)
-                    logger.warning("Falling back to sequential processing")
-                    self._process_overlays_sequential(all_image_items, request, output_path, temp_dir)
-            elif has_images:
-                logger.info(f"Processing {len(all_image_items)} image overlay tracks...")
-                try:
-                    video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
-                    success = self._process_image_overlays(
-                        all_image_items,
-                        str(output_path),
-                        video_with_images_path,
-                        temp_dir,
-                        request.output_resolution
-                    )
-                    if success and os.path.exists(video_with_images_path):
-                        os.replace(video_with_images_path, str(output_path))
-                        logger.info("Image overlays successfully added to video")
-                    else:
-                        logger.warning("Image overlay processing did not produce output file")
-                except Exception as e:
-                    logger.error(f"Image overlay processing error: {str(e)}", exc_info=True)
-            elif has_subtitles:
-                logger.info(f"Processing {len(request.subtitle_items)} subtitle tracks...")
-                try:
-                    subtitle_processed_path = self._process_subtitle_tracks(
-                        request.subtitle_items,
-                        str(output_path),
-                        temp_dir
-                    )
-                    if subtitle_processed_path and os.path.exists(subtitle_processed_path):
-                        os.replace(subtitle_processed_path, str(output_path))
-                        logger.info("Subtitles successfully added to video")
-                    else:
-                        logger.warning("Subtitle processing failed - continuing without subtitles")
-                except Exception as e:
-                    logger.error(f"Subtitle processing error: {str(e)}", exc_info=True)
-                    logger.warning("Continuing video composition without subtitles")
-            else:
-                logger.info("No image overlays or subtitle tracks to process")
-            
+
             # Final processing
             processing_time = time.time() - start_time
             file_size = output_path.stat().st_size
@@ -2496,87 +2484,383 @@ class VideoCompositionService:
         """Convert seconds to standard SRT time format (HH:MM:SS,mmm)."""
         return seconds_to_srt_time(seconds)
 
-    def _process_overlays_sequential(self, all_image_items: List, request, output_path, temp_dir: str):
-        """Fallback: process image overlays and subtitles sequentially (two encoding passes)."""
+    def _overlay_caps(self) -> Any:
+        """Camera-motion capabilities of the active FFmpeg binary (cached probe)."""
+        return ffmpeg_caps.probe(self._get_ffmpeg_path() or "ffmpeg")
+
+    def _probe_stream_fps(self, video_path: str) -> Optional[float]:
+        """Measured frame rate of a file's first video stream, or None.
+
+        `r_frame_rate` comes back as a rational (``30000/1001``); anything that
+        does not parse is reported as unknown rather than guessed, so the caller
+        can fall back explicitly and say so.
+        """
+        ffmpeg_path = self._get_ffmpeg_path() or 'ffmpeg'
+        directory = os.path.dirname(ffmpeg_path)
+        ffprobe_path = os.path.join(directory, 'ffprobe') if directory else 'ffprobe'
+        try:
+            result = subprocess.run(
+                [
+                    ffprobe_path, '-v', 'error', '-select_streams', 'v:0',
+                    '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', video_path,
+                ],
+                capture_output=True, text=True,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning(f"ffprobe frame-rate probe failed for {video_path}: {exc}")
+            return None
+        if result.returncode != 0:
+            return None
+        raw = (result.stdout or '').strip().splitlines()
+        if not raw:
+            return None
+        try:
+            numerator, _, denominator = raw[0].partition('/')
+            value = float(numerator) / float(denominator or 1)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+        return value if value > 0 else None
+
+    def _resolve_overlay_fps(self, video_path: str, requested_fps: int) -> float:
+        """Frame rate the overlay pass's `on` counter actually advances at (L3).
+
+        `on` counts frames of the overlay branch, whose rate is dictated by the
+        file being overlaid — NOT by the `output_fps` the request asked for. The
+        two are equal on the normal path, but any frame-rate negotiation earlier
+        in the pipeline makes the requested value a lie, and trusting it runs the
+        whole move uniformly fast or slow: invisible in a per-frame SSIM, obvious
+        on the timeline.
+        """
+        fallback = float(requested_fps if requested_fps and requested_fps > 0 else 30)
+        measured = self._probe_stream_fps(video_path)
+        if measured is None:
+            logger.warning(
+                f"Could not measure the overlay input frame rate for {video_path}; "
+                f"falling back to the requested output_fps={requested_fps}"
+            )
+            return fallback
+        if abs(measured - fallback) > 0.01:
+            logger.warning(
+                f"Overlay pass frame rate: measured {measured:.4f} on {video_path} but the "
+                f"request asked for {requested_fps}; using the measured value for camera motion"
+            )
+        return measured
+
+    def _prepare_image_overlay_entries(
+        self, image_items: List, video_path: str, ctx: OverlayPassContext
+    ) -> Optional[List["_OverlayEntry"]]:
+        """Resolve every still's file, placement box and camera-motion filter.
+
+        Args:
+            image_items: The composition's image items.
+            video_path: The file being overlaid (measured for the motion clock).
+            ctx: Pass context; collects warnings.
+
+        Returns:
+            One entry per usable still, or ``None`` when a still that carries a
+            camera motion had to be dropped. Dropping such a still would render
+            a "successful" export missing the very effect the user applied, so
+            L-I1 turns it into a failure of the whole pass instead.
+        """
+        video_width = ctx.output_resolution['width']
+        video_height = ctx.output_resolution['height']
+        wants_motion = any(
+            getattr(item, 'camera_motion', None) is not None for item in image_items
+        )
+        # Only pay for the probe when a move actually needs a clock; a timeline
+        # without motion must not gain a subprocess call it never had.
+        fps = self._resolve_overlay_fps(video_path, ctx.output_fps) if wants_motion else 0.0
+        caps = self._overlay_caps() if wants_motion else None
+
+        entries: List[_OverlayEntry] = []
+        for index, item in enumerate(image_items):
+            image_url = item.url
+            local_image_path = self._convert_url_to_local_path(image_url)
+            if not os.path.exists(local_image_path):
+                downloaded_image = self._download_image(image_url, ctx.temp_dir, index)
+                if downloaded_image and downloaded_image.get('success'):
+                    local_image_path = downloaded_image['output_path']
+                elif getattr(item, 'camera_motion', None) is not None:
+                    logger.error(
+                        f"Failed to download image {image_url}, which carries a camera "
+                        f"motion; failing the overlay pass instead of dropping the effect"
+                    )
+                    return None
+                else:
+                    logger.warning(f"Failed to download image {image_url}, skipping overlay")
+                    continue
+
+            box, x, y = self._overlay_placement(item, video_width, video_height)
+            timing = OverlayTiming(start_time=item.start_time, duration=item.duration)
+            motion = overlay_motion_for_item(item, box, timing, fps, caps)
+            for warning in motion.warnings:
+                if warning not in ctx.warnings:
+                    ctx.warnings.append(warning)
+            entries.append(
+                _OverlayEntry(
+                    item=item, path=local_image_path, x=x, y=y,
+                    box=box, timing=timing, motion=motion,
+                )
+            )
+        return entries
+
+    def _overlay_placement(
+        self, item: Any, video_width: int, video_height: int
+    ) -> Tuple[OverlayBox, int, int]:
+        """One still's box (even-sized) and top-left corner, in output pixels.
+
+        The box is what the camera move acts on, so this is also the geometry the
+        preview must agree with — `CanvasCompositor` derives the same rect from
+        the same normalized position (G4 notwithstanding, see N0).
+        """
+        pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
+        if not pos:
+            logger.warning(
+                f"No position information for image item {item.id}, using default position"
+            )
+            pos = type('Position', (), {
+                'x': 0.1, 'y': 0.1, 'width': 0.3, 'height': 0.3, 'z_index': 10
+            })()
+        even_w, even_h = self._ensure_even_dimensions(
+            int(pos.width * video_width), int(pos.height * video_height)
+        )
+        return (
+            OverlayBox(width=even_w, height=even_h),
+            int(pos.x * video_width),
+            int(pos.y * video_height),
+        )
+
+    def _image_overlay_filter_parts(
+        self, entries: List["_OverlayEntry"]
+    ) -> Tuple[List[str], str]:
+        """The overlay filtergraph for a prepared still list, plus its output label.
+
+        The ONE place the `scale → pad → (perspective) → overlay` chain is
+        written. Both assembly points call it, so "two組装点 produce a
+        byte-identical motion segment" holds by construction rather than by
+        review (L1 / test 27).
+        """
+        parts: List[str] = []
+        for index, entry in enumerate(entries):
+            box = entry.box
+            # 保持图片原始比例的缩放滤镜：force_original_aspect_ratio=decrease 保证不
+            # 超出盒尺寸，pad 把它居中填充到盒尺寸并留下 **透明** 边条 —— 运镜正是
+            # 作用在这张"盒图"上，与预览的 contain-then-transform 顺序一一对应。
+            chain = (
+                f"[{index + 1}:v]scale={box.width}:{box.height}:force_original_aspect_ratio=decrease,"
+                f"pad={box.width}:{box.height}:(ow-iw)/2:(oh-ih)/2:black@0"
+            )
+            if entry.motion.filter_text:
+                chain += f",{entry.motion.filter_text}"
+            parts.append(f"{chain}[img{index}]")
+
+            base_input = "[0:v]" if index == 0 else f"[v{index - 1}]"
+            start_time = entry.item.start_time
+            end_time = entry.item.start_time + entry.item.duration
+            parts.append(
+                f"{base_input}[img{index}]overlay={entry.x}:{entry.y}"
+                f":enable='between(t,{start_time},{end_time})'[v{index}]"
+            )
+        return parts, f"[v{len(entries) - 1}]"
+
+    def _apply_overlay_passes(self, request, output_path, ctx: OverlayPassContext) -> None:
+        """Run the image-overlay / subtitle passes and enforce the L-I2 guard.
+
+        The fallback ladder is unchanged (combined → sequential); what is new is
+        that its OUTCOME is judged. Before, an overlay pass that returned False
+        or threw produced one log line and the composition went on to be marked
+        `completed` — the user downloaded a video with no image on it and no
+        indication anything had gone wrong. With a camera move on the still,
+        that same path also swallows the effect they explicitly applied, which
+        is the exact failure mode L1/L11 already forbid on the video side.
+
+        Args:
+            request: The composition request.
+            output_path: The rendered video, replaced in place on success.
+            ctx: Pass context; collects user-visible warnings.
+
+        Raises:
+            RuntimeError: every rung of the ladder failed for a still that
+                carries a camera motion. The caller's handler marks the
+                composition failed, which is the only honest outcome.
+        """
+        image_items = list(request.image_items or [])
+        has_subtitles = bool(request.subtitle_items)
+
+        if image_items and has_subtitles:
+            overlays_ok = self._run_combined_overlay_pass(image_items, request, output_path, ctx)
+        elif image_items:
+            overlays_ok = self._run_image_overlay_pass(image_items, output_path, ctx)
+        else:
+            if has_subtitles:
+                self._run_subtitle_only_pass(request, output_path, ctx)
+            else:
+                logger.info("No image overlays or subtitle tracks to process")
+            return
+
+        self._guard_overlay_outcome(image_items, overlays_ok)
+
+    def _run_combined_overlay_pass(
+        self, image_items: List, request, output_path, ctx: OverlayPassContext
+    ) -> bool:
+        """Images + subtitles in ONE encode, falling back to two on any failure."""
+        logger.info(
+            f"Merging {len(image_items)} image overlays and "
+            f"{len(request.subtitle_items)} subtitles into single encoding pass"
+        )
+        merged_output_path = str(output_path).replace('.mp4', '_merged.mp4')
+        try:
+            success = self._process_overlays_and_subtitles_combined(
+                image_items, request.subtitle_items, str(output_path), merged_output_path, ctx
+            )
+            if success and os.path.exists(merged_output_path):
+                os.replace(merged_output_path, str(output_path))
+                logger.info("Image overlays and subtitles added in single pass")
+                logger.info(f"Final video file size: {os.path.getsize(output_path)} bytes")
+                return True
+            logger.warning("Merged processing failed, falling back to sequential processing")
+        except CameraMotionUnsupportedError:
+            # No ladder rung can help: the binary has no `perspective` at all.
+            raise
+        except Exception as exc:
+            logger.error(f"Merged overlay+subtitle processing error: {exc}", exc_info=True)
+            logger.warning("Falling back to sequential processing")
+        return self._process_overlays_sequential(image_items, request, output_path, ctx)
+
+    def _run_image_overlay_pass(
+        self, image_items: List, output_path, ctx: OverlayPassContext
+    ) -> bool:
+        """Images only — no subtitles in this timeline."""
+        logger.info(f"Processing {len(image_items)} image overlay tracks...")
+        video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
+        try:
+            success = self._process_image_overlays(
+                image_items, str(output_path), video_with_images_path, ctx
+            )
+        except CameraMotionUnsupportedError:
+            raise
+        except Exception as exc:
+            logger.error(f"Image overlay processing error: {exc}", exc_info=True)
+            return False
+        if success and os.path.exists(video_with_images_path):
+            os.replace(video_with_images_path, str(output_path))
+            logger.info("Image overlays successfully added to video")
+            return True
+        return False
+
+    def _run_subtitle_only_pass(self, request, output_path, ctx: OverlayPassContext) -> None:
+        """Subtitles only. Unchanged behaviour: a failure warns and carries on."""
+        logger.info(f"Processing {len(request.subtitle_items)} subtitle tracks...")
+        try:
+            subtitle_processed_path = self._process_subtitle_tracks(
+                request.subtitle_items, str(output_path), ctx.temp_dir
+            )
+            if subtitle_processed_path and os.path.exists(subtitle_processed_path):
+                os.replace(subtitle_processed_path, str(output_path))
+                logger.info("Subtitles successfully added to video")
+            else:
+                logger.warning("Subtitle processing failed - continuing without subtitles")
+        except Exception as exc:
+            logger.error(f"Subtitle processing error: {exc}", exc_info=True)
+            logger.warning("Continuing video composition without subtitles")
+
+    @staticmethod
+    def _items_with_camera_motion(image_items: List) -> List[str]:
+        """Ids of the stills carrying a camera move (L-I1 / L-I2 subject set)."""
+        return [
+            str(getattr(item, "id", "?"))
+            for item in image_items
+            if getattr(item, "camera_motion", None) is not None
+        ]
+
+    def _guard_overlay_outcome(self, image_items: List, overlays_ok: bool) -> None:
+        """Refuse to finish an export that quietly lost a camera move (L-I2).
+
+        Scoped to stills that carry a motion on purpose. Failing every image
+        overlay failure would be a much larger behaviour change than this round
+        signed up for — but the pre-existing warning is kept so the regression is
+        at least visible in the log.
+        """
+        if overlays_ok:
+            return
+        motion_ids = self._items_with_camera_motion(image_items)
+        if not motion_ids:
+            logger.warning("Image overlay processing did not produce output file")
+            return
+        raise RuntimeError(
+            "Image overlay pass failed for clips carrying camera motion "
+            f"({', '.join(motion_ids)}). Refusing to finish the export without the "
+            "effect that was applied — see the FFmpeg errors above for the cause."
+        )
+
+    def _process_overlays_sequential(
+        self, all_image_items: List, request, output_path, ctx: OverlayPassContext
+    ) -> bool:
+        """Fallback: image overlays then subtitles, in two encoding passes.
+
+        Returns:
+            Whether the IMAGE pass succeeded. Subtitles keep their historical
+            best-effort semantics; the return value exists so the caller's L-I2
+            guard can tell "recovered by the fallback" from "lost the effect on
+            every rung" — the rung that used to swallow both silently.
+        """
+        images_ok = False
         try:
             video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
             success = self._process_image_overlays(
-                all_image_items, str(output_path), video_with_images_path,
-                temp_dir, request.output_resolution
+                all_image_items, str(output_path), video_with_images_path, ctx
             )
             if success and os.path.exists(video_with_images_path):
                 os.replace(video_with_images_path, str(output_path))
                 logger.info("Image overlays added (sequential fallback)")
+                images_ok = True
+        except CameraMotionUnsupportedError:
+            raise
         except Exception as e:
             logger.error(f"Image overlay error in fallback: {e}", exc_info=True)
 
         try:
             subtitle_processed_path = self._process_subtitle_tracks(
-                request.subtitle_items, str(output_path), temp_dir
+                request.subtitle_items, str(output_path), ctx.temp_dir
             )
             if subtitle_processed_path and os.path.exists(subtitle_processed_path):
                 os.replace(subtitle_processed_path, str(output_path))
                 logger.info("Subtitles added (sequential fallback)")
         except Exception as e:
             logger.error(f"Subtitle error in fallback: {e}", exc_info=True)
+        return images_ok
 
     def _process_overlays_and_subtitles_combined(
         self, image_items: List, subtitle_items: List,
-        video_path: str, output_path: str, temp_dir: str,
-        output_resolution: Dict[str, int]
+        video_path: str, output_path: str, ctx: OverlayPassContext
     ) -> bool:
         """
         Merge image overlays and subtitle drawtext filters into a single FFmpeg encoding pass.
         This eliminates one full re-encoding compared to processing them sequentially.
+
+        The image half is assembled by the SAME helpers the no-subtitle path uses
+        (:meth:`_prepare_image_overlay_entries` /
+        :meth:`_image_overlay_filter_parts`). They used to be two hand-kept
+        copies, which is how "the camera move only works when the timeline also
+        has a subtitle" would come about — a divergence nobody would think to
+        look for (L1).
         """
+        temp_dir = ctx.temp_dir
         try:
             ffmpeg_path = self._get_ffmpeg_path()
 
+            entries = self._prepare_image_overlay_entries(image_items, video_path, ctx)
+            if entries is None:
+                return False
+
             # --- Build image overlay inputs and filter chain ---
             cmd = [ffmpeg_path, '-y', '-i', video_path]
-            valid_items = []
-            for i, item in enumerate(image_items):
-                image_url = item.url
-                local_image_path = self._convert_url_to_local_path(image_url)
-                if not os.path.exists(local_image_path):
-                    downloaded_image = self._download_image(image_url, temp_dir, i)
-                    if downloaded_image and downloaded_image.get('success'):
-                        local_image_path = downloaded_image['output_path']
-                    else:
-                        logger.warning(f"Failed to download image {image_url}, skipping")
-                        continue
-                cmd.extend(['-i', local_image_path])
-                valid_items.append(item)
+            for entry in entries:
+                cmd.extend(entry.motion.input_options)
+                cmd.extend(['-i', entry.path])
 
-            video_width = output_resolution['width']
-            video_height = output_resolution['height']
-            filter_parts = []
-            base_input = "[0:v]"
-
-            for i, item in enumerate(valid_items):
-                input_idx = i + 1
-                pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
-                if not pos:
-                    pos = type('Position', (), {
-                        'x': 0.1, 'y': 0.1, 'width': 0.3, 'height': 0.3, 'z_index': 10
-                    })()
-
-                x = int(pos.x * video_width)
-                y = int(pos.y * video_height)
-                w = int(pos.width * video_width)
-                h = int(pos.height * video_height)
-                even_w, even_h = self._ensure_even_dimensions(w, h)
-                start_time = item.start_time
-                end_time = item.start_time + item.duration
-
-                scale_filter = f"[{input_idx}:v]scale={even_w}:{even_h}:force_original_aspect_ratio=decrease,pad={even_w}:{even_h}:(ow-iw)/2:(oh-ih)/2:black@0[img{i}]"
-                filter_parts.append(scale_filter)
-
-                if i == 0:
-                    overlay_filter = f"{base_input}[img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
-                else:
-                    overlay_filter = f"[v{i-1}][img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
-                filter_parts.append(overlay_filter)
+            valid_items = [entry.item for entry in entries]
+            filter_parts, _ = self._image_overlay_filter_parts(entries)
 
             # --- Build subtitle drawtext filters ---
             srt_path = self._create_srt_from_subtitle_items(subtitle_items, temp_dir)
@@ -2655,106 +2939,55 @@ class VideoCompositionService:
             finally:
                 shutil.rmtree(text_files_dir, ignore_errors=True)
 
+        except CameraMotionUnsupportedError:
+            # Actionable and unrecoverable: swallowing it into a bare False would
+            # trade "install an FFmpeg with `perspective`" for "the overlay pass
+            # failed", and no ladder rung can fix it anyway.
+            raise
         except Exception as e:
             logger.error(f"Error in merged overlay+subtitle processing: {str(e)}", exc_info=True)
             return False
 
-    def _process_image_overlays(self, image_items: List, video_path: str, output_path: str, temp_dir: str, output_resolution: Dict[str, int]) -> bool:
+    def _process_image_overlays(
+        self, image_items: List, video_path: str, output_path: str, ctx: OverlayPassContext
+    ) -> bool:
         """
         Process image overlays and add them to the video.
-        
+
         Args:
             image_items: List of video items that are actually image overlays
             video_path: Path to the input video file
             output_path: Path for the output video with overlays
-            temp_dir: Temporary directory for processing
-            output_resolution: Video output resolution dict with 'width' and 'height'
-            
+            ctx: Pass context (temp dir, output resolution, fps, warnings)
+
         Returns:
             True if processing succeeded, False otherwise
         """
         try:
             logger.info(f"Starting image overlay processing for {len(image_items)} image items")
-            
+
             # Get FFmpeg path
             ffmpeg_path = self._get_ffmpeg_path()
-            
-            # Build FFmpeg command for image overlays
-            cmd = [ffmpeg_path, '-y', '-i', video_path]
-            
-            # Add each image as input
-            valid_items = []
-            for i, item in enumerate(image_items):
-                image_url = item.url
-                local_image_path = self._convert_url_to_local_path(image_url)
-                
-                if not os.path.exists(local_image_path):
-                    # Download image if it's a remote URL
-                    downloaded_image = self._download_image(image_url, temp_dir, i)
-                    if downloaded_image and downloaded_image.get('success'):
-                        local_image_path = downloaded_image['output_path']
-                    else:
-                        logger.warning(f"Failed to download image {image_url}, skipping overlay")
-                        continue
-                
-                cmd.extend(['-i', local_image_path])
-                valid_items.append(item)
-            
-            if len(valid_items) == 0:
+
+            entries = self._prepare_image_overlay_entries(image_items, video_path, ctx)
+            if entries is None:
+                return False
+            if len(entries) == 0:
                 logger.warning("No valid image items to overlay")
                 return False
-            
-            # Build filter complex for image overlays
-            filter_parts = []
-            base_input = "[0:v]"
-            
-            video_width = output_resolution['width']
-            video_height = output_resolution['height']
-            
-            for i, item in enumerate(valid_items):
-                input_idx = i + 1  # +1 because [0] is the video
-                
-                # Handle position from either image_position (video track items) or position (dedicated image items)
-                pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
-                if not pos:
-                    logger.warning(f"No position information for image item {item.id}, using default position")
-                    # Create default position
-                    pos = type('Position', (), {
-                        'x': 0.1, 'y': 0.1, 'width': 0.3, 'height': 0.3, 'z_index': 10
-                    })()
-                
-                # Calculate actual pixel positions
-                x = int(pos.x * video_width)
-                y = int(pos.y * video_height)
-                w = int(pos.width * video_width)
-                h = int(pos.height * video_height)
-                
-                # Ensure dimensions are even for H.264 encoding
-                even_w, even_h = self._ensure_even_dimensions(w, h)
-                
-                # Calculate time filters based on item timing
-                start_time = item.start_time
-                end_time = item.start_time + item.duration
-                
-                logger.info(f"Image overlay {i+1}: position=({x},{y}) size=({even_w}x{even_h}) time={start_time}s-{end_time}s")
-                
-                # 保持图片原始比例的缩放滤镜
-                # 使用force_original_aspect_ratio=decrease确保图片不超出指定尺寸且保持比例
-                # 然后使用pad滤镜将图片填充到目标尺寸，居中放置
-                scale_filter = f"[{input_idx}:v]scale={even_w}:{even_h}:force_original_aspect_ratio=decrease,pad={even_w}:{even_h}:(ow-iw)/2:(oh-ih)/2:black@0[img{i}]"
-                filter_parts.append(scale_filter)
-                
-                # Create overlay filter with timing
-                if i == 0:
-                    overlay_filter = f"{base_input}[img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
-                else:
-                    overlay_filter = f"[v{i-1}][img{i}]overlay={x}:{y}:enable='between(t,{start_time},{end_time})'[v{i}]"
-                filter_parts.append(overlay_filter)
-            
-            # Combine all filter parts
+
+            # Build FFmpeg command for image overlays
+            cmd = [ffmpeg_path, '-y', '-i', video_path]
+            for entry in entries:
+                # Animated stills need `-loop 1 -framerate … -t …` BEFORE their
+                # `-i`; a still image otherwise carries a single frame, so `on`
+                # never advances and eval=frame renders one frozen framing.
+                cmd.extend(entry.motion.input_options)
+                cmd.extend(['-i', entry.path])
+
+            filter_parts, final_output = self._image_overlay_filter_parts(entries)
             filter_complex = ";".join(filter_parts)
-            final_output = f"[v{len(valid_items)-1}]"
-            
+
             logger.info(f"Image overlay filter complex: {filter_complex}")
             
             cmd.extend([
@@ -2778,10 +3011,14 @@ class VideoCompositionService:
                 logger.error(f"Image overlay processing failed: {result.stderr}")
                 return False
                 
+        except CameraMotionUnsupportedError:
+            # See the combined pass: actionable, unrecoverable, must not degrade
+            # into an anonymous False.
+            raise
         except Exception as e:
             logger.error(f"Error processing image overlays: {str(e)}", exc_info=True)
             return False
-    
+
     def _download_image(self, image_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
         """Download an image file from URL into temp_dir."""
         return download_image(image_url, temp_dir, index)

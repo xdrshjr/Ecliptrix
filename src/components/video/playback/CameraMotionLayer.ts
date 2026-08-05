@@ -260,9 +260,16 @@ export function ensureCoverage(motion: CameraMotion, canvasAspect: number): numb
  * @param motion       Motion spec.
  * @param clip         The clip the motion is attached to.
  * @param t            Composition time in seconds.
- * @param canvasAspect Canvas width / height. Only the 2D coverage guarantee
- *   reads it; a wrong value cannot affect no-motion or 3D clips. Defaults to
- *   16:9 for callers that predate the parameter.
+ * @param canvasAspect Aspect ratio the coverage guarantee is judged against —
+ *   the CANVAS ratio for a full-frame clip, the BOX ratio for a still overlay
+ *   (camera-motion-stills §3.1.1(b)). A wrong value cannot affect no-motion or
+ *   3D clips. Defaults to 16:9 for callers that predate the parameter.
+ * @param enforceCoverage Whether the 2D coverage guarantee applies at all.
+ *   `true` (default) for full-frame clips, where exposing the canvas edge is a
+ *   defect. Still overlays pass `false`: their box is padded with transparency
+ *   and revealing the layer below is the intended semantics, so folding
+ *   coverage in would silently re-frame a plain pan (§3.1.1(a) / L17). The
+ *   default keeps every pre-existing caller bit-identical.
  * @returns The scalar state to hand to {@link cameraHomography}.
  */
 export function motionStateAt(
@@ -270,10 +277,11 @@ export function motionStateAt(
   clip: MotionClipWindow,
   t: number,
   canvasAspect: number = 16 / 9,
+  enforceCoverage: boolean = true,
 ): CameraMotionState {
   const p = progressAt(motion, clip, t);
   const state = applyIntensity(lerpState(motion.from, motion.to, p), motion.intensity);
-  const coverage = ensureCoverage(motion, canvasAspect);
+  const coverage = enforceCoverage ? ensureCoverage(motion, canvasAspect) : 1;
   return coverage > 1 ? { ...state, scale: state.scale * coverage } : state;
 }
 
@@ -369,6 +377,66 @@ export function cameraHomography(state: CameraMotionState, canvas: CanvasSize): 
   const w = composed[8];
   if (!Number.isFinite(w) || Math.abs(w) < MIN_HOMOGENEOUS_W) return composed;
   return composed.map((value) => value / w) as unknown as Mat3;
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2b — motion boxes (camera-motion-stills-and-desktop-gate §3.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Homography for a move that acts on an arbitrary BOX instead of the canvas.
+ *
+ * `H_box(state, box) = T(box.x, box.y) · cameraHomography(state, box size)`.
+ *
+ * Why the canvas-space `H` cannot simply be applied to a small box: it is built
+ * around the CANVAS centre, its pan is `offsetX × canvas width` and its focal
+ * length is `1.6 × canvas long edge`. Pointing that at a 0.3×0.3 box in the
+ * corner turns "push in" into "swing around the canvas centre" and pans it by
+ * three box-widths. A camera move must happen where its clip is.
+ *
+ * Why this is an identity change for video clips: their box IS the canvas rect,
+ * so `T` is the identity and the size argument is the canvas size — the result
+ * is bit-for-bit `cameraHomography(state, canvas)`. A property of the
+ * construction, not an assumption (pinned by the equivalence test).
+ *
+ * The returned matrix maps BOX-LOCAL coordinates to canvas pixels, so anything
+ * drawn through it must be expressed box-locally — that is what makes the
+ * preview's "contain into the box, then transform the box" order match the
+ * export's `scale+pad → perspective` order (L4).
+ *
+ * @param state Sampled camera state.
+ * @param box   The clip's box in canvas pixels.
+ * @returns The 3×3 row-major homography, box-local pixels → canvas pixels.
+ */
+export function cameraBoxHomography(state: CameraMotionState, box: Rect): Mat3 {
+  const local = cameraHomography(state, { width: box.width, height: box.height });
+  // Not merely an optimisation: returning the untouched matrix is what keeps the
+  // canvas-box (video) path free of any arithmetic that could perturb a bit.
+  if (box.x === 0 && box.y === 0) return local;
+  const translate: Mat3 = [1, 0, box.x, 0, 1, box.y, 0, 0, 1];
+  return multiply(translate, local);
+}
+
+/**
+ * The box's four projected corners, in canvas pixels.
+ *
+ * This is the surface the TS ⇄ Python stills parity (N1) compares: the export
+ * emitter builds the same corners in box space, so calling this with a box at
+ * the origin yields exactly what FFmpeg's `perspective` receives.
+ *
+ * @param state Sampled camera state.
+ * @param box   The clip's box in canvas pixels.
+ * @returns `[x_TL, y_TL, x_TR, y_TR, x_BR, y_BR, x_BL, y_BL]` — CLOCKWISE. The
+ *   export emitter transposes to FFmpeg's raster order; never index this
+ *   positionally into `x0..x3`.
+ */
+export function motionBoxQuad(state: CameraMotionState, box: Rect): DestQuad {
+  return applyHomographyToRect(cameraBoxHomography(state, box), {
+    x: 0,
+    y: 0,
+    width: box.width,
+    height: box.height,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -485,12 +553,22 @@ export function isRenderable(H: Mat3, canvas: CanvasSize): boolean {
  * move passes through do not depend on when it is scheduled.
  *
  * @param motion Motion spec.
- * @param canvas Canvas size; only its aspect ratio changes the verdict.
+ * @param canvas The rect the move will actually act on — the project canvas for
+ *   a full-frame clip, the still's own box for an overlay. Only its aspect ratio
+ *   changes the verdict, but it MUST be the real one: the panel used to judge
+ *   against a hard-coded 16:9, so a 9:16 project got a different coverage
+ *   multiplier here than the renderer applied (G3 / P1-9).
+ * @param enforceCoverage Must match what {@link motionStateAt} will be called
+ *   with for this clip, or the gate judges a framing the renderer never draws.
  * @returns True when every sampled instant projects to a drawable quad.
  */
-export function isMotionRenderable(motion: CameraMotion, canvas: CanvasSize): boolean {
+export function isMotionRenderable(
+  motion: CameraMotion,
+  canvas: CanvasSize,
+  enforceCoverage: boolean = true,
+): boolean {
   const aspect = canvas.height > 0 ? canvas.width / canvas.height : 16 / 9;
-  const coverage = ensureCoverage(motion, aspect);
+  const coverage = enforceCoverage ? ensureCoverage(motion, aspect) : 1;
   for (let i = 0; i < MOTION_SAMPLE_COUNT; i += 1) {
     const p = easeProgress(motion.easing, i / (MOTION_SAMPLE_COUNT - 1));
     const raw = applyIntensity(lerpState(motion.from, motion.to, p), motion.intensity);

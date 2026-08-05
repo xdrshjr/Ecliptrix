@@ -73,6 +73,12 @@ export interface PresetGalleryProps {
   onSelect: (motion: CameraMotion) => void;
   /** Clip thumbnail used by every card so the demo shows the real footage. */
   imageSrc?: string;
+  /**
+   * Whether the 2D coverage guarantee applies. False for a still overlay, so a
+   * pure pan card shows the pan the renderer will draw rather than the zoomed
+   * one the canvas rule would force (§3.1.1).
+   */
+  enforceCoverage?: boolean;
 }
 
 interface GroupProps extends PresetGalleryProps {
@@ -101,6 +107,7 @@ const PresetGroup: React.FC<GroupProps> = ({
   selectedId,
   onSelect,
   imageSrc,
+  enforceCoverage,
   animatedIds,
   onHover,
 }) => {
@@ -173,6 +180,7 @@ const PresetGroup: React.FC<GroupProps> = ({
                   width={THUMB_WIDTH}
                   height={THUMB_HEIGHT}
                   active={animatedIds.has(preset.id)}
+                  enforceCoverage={enforceCoverage}
                 />
               )}
               <span
@@ -190,7 +198,12 @@ const PresetGroup: React.FC<GroupProps> = ({
   );
 };
 
-const PresetGallery: React.FC<PresetGalleryProps> = ({ selectedId, onSelect, imageSrc }) => {
+const PresetGallery: React.FC<PresetGalleryProps> = ({
+  selectedId,
+  onSelect,
+  imageSrc,
+  enforceCoverage,
+}) => {
   const { t } = useLocale();
   const reducedMotion = usePrefersReducedMotion();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -210,7 +223,14 @@ const PresetGallery: React.FC<PresetGalleryProps> = ({ selectedId, onSelect, ima
     return ids;
   }, [reducedMotion, hoveredId, selectedId]);
 
-  const shared = { selectedId, onSelect, imageSrc, animatedIds, onHover: setHoveredId };
+  const shared = {
+    selectedId,
+    onSelect,
+    imageSrc,
+    enforceCoverage,
+    animatedIds,
+    onHover: setHoveredId,
+  };
 
   return (
     <div className="space-y-4">
