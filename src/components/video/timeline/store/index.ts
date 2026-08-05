@@ -38,6 +38,7 @@ export { splitAction } from './actions/splitItem';
 export type { SplitScope } from './actions/splitItem';
 export { detachAudioAction } from './actions/detachAudio';
 export type { DetachAudioMaterialInfo } from './actions/detachAudio';
+export { setCameraMotionAction } from './actions/setCameraMotion';
 export {
   toggleTrackLockAction,
   toggleTrackMuteAction,

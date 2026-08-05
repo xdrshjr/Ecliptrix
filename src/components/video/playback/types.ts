@@ -11,6 +11,7 @@
  */
 
 import type { VideoSequenceItem } from '../types';
+import type { ResolvedCameraDraw } from './camera/types';
 
 /**
  * One composited preview frame emitted by {@link IPlaybackClock} on each tick.
@@ -99,6 +100,12 @@ export type CompositorLayer =
       /** Effective opacity = item.opacity * transition alpha, in [0,1]. */
       opacity: number;
       z: number;
+      /**
+       * Resolved 2D / 3D camera motion for this frame (camera-motion-2d-3d
+       * §4.3.1). `undefined` — the overwhelmingly common case — means the
+       * compositor takes its existing 5-arg `drawImage` path unchanged.
+       */
+      camera?: ResolvedCameraDraw;
     }
   | {
       kind: 'subtitle';

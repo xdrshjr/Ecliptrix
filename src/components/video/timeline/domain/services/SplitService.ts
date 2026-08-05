@@ -15,6 +15,7 @@ import { Track } from '../entities/Track';
 import { TimelineItem } from '../entities/TimelineItem';
 import type { TimelineItemData } from '../types';
 import { TIME_EPSILON } from './ClipTimeMapping';
+import { rebaseCameraMotionForSplit } from '../../../playback/camera/splitRebase';
 
 /** Identifiers of the two halves produced by a successful split. */
 export interface SplitResult {
@@ -72,12 +73,21 @@ export class SplitService {
     const offset = tCut - start; // local offset of the cut inside the clip
     const splitSourceTime = clipStart + offset; // playbackRate fixed at 1 (INV-3)
 
+    // camera-motion-2d-3d §4.6 (P1-5): the `{ ...original }` spread inherits
+    // `cameraMotion` for free, but both halves would then replay the WHOLE
+    // motion and the picture would jump back to the start at the cut. Rebasing
+    // materializes the window and slides the right half's origin left, so the
+    // two halves stay frame-for-frame equivalent to the original clip. A clip
+    // without a motion gets `{}` back — the legacy behaviour, untouched.
+    const rebased = rebaseCameraMotionForSplit(original.cameraMotion, original.duration, offset);
+
     const leftData: TimelineItemData = {
       ...original,
       id: original.id,
       duration: offset,
       clipStart,
       clipEnd: splitSourceTime,
+      cameraMotion: rebased.left,
     };
 
     const rightData: TimelineItemData = {
@@ -87,6 +97,7 @@ export class SplitService {
       duration: original.duration - offset,
       clipStart: splitSourceTime,
       clipEnd,
+      cameraMotion: rebased.right,
     };
 
     // Replace the original with the two halves; addItem re-sorts the track.

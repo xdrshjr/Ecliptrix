@@ -26,6 +26,34 @@ export interface ClipTransitionWire {
   duration: number;
 }
 
+/**
+ * Camera keyframe — wire shape (camera-motion-2d-3d §6.1). Mirrors the backend
+ * pydantic `CameraKeyframe`; `rotate_x/rotate_y/dolly` are 3D-only and are
+ * forced to 0 for a '2d' motion by `toCameraMotionWire`.
+ */
+export interface CameraKeyframeWire {
+  scale: number;
+  x: number;
+  y: number;
+  roll: number;
+  rotate_x: number;
+  rotate_y: number;
+  dolly: number;
+}
+
+/** 2D / 3D camera motion — wire shape (camera-motion-2d-3d §6.1). */
+export interface CameraMotionWire {
+  version: number;
+  mode: '2d' | '3d';
+  preset_id: string;
+  intensity: number;
+  easing: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+  start_offset?: number;
+  duration?: number | null;
+  start: CameraKeyframeWire;
+  end: CameraKeyframeWire;
+}
+
 export interface VideoCompositionItem {
   id: string;
   name: string;
@@ -49,6 +77,13 @@ export interface VideoCompositionItem {
   transition_in?: ClipTransitionWire;
   transition_out?: ClipTransitionWire;
   audio_detached?: boolean;
+  /**
+   * 2D / 3D camera motion (camera-motion-2d-3d). Optional + backward
+   * compatible: omitting it renders exactly as before. The backend injects the
+   * matching zoompan / perspective / rotate chain between `scale` and `pad`, so
+   * export reproduces the preview framing.
+   */
+  camera_motion?: CameraMotionWire;
   // Cache-reuse identity (optional, backward compatible). The backend uses
   // (source, source_id) to find an already-downloaded cached_materials row and
   // skip re-downloading; cache_url is a same-origin disk hint resolved to a
@@ -108,6 +143,12 @@ export interface VideoCompositionResponse {
   output_file_size?: number;
   processing_time?: number;
   error_details?: any;
+  /**
+   * Warnings decidable in the SYNCHRONOUS request stage only (e.g. the server
+   * has camera motion disabled). Degrades that happen during normalization
+   * arrive via {@link CompositionStatusResponse.warnings} instead (D14).
+   */
+  warnings?: string[];
 }
 
 export interface CompositionStatusResponse {
@@ -119,6 +160,13 @@ export interface CompositionStatusResponse {
   processing_time?: number;
   output_file_size?: number;
   error_details?: any;
+  /**
+   * Non-fatal degrade notices raised during the ASYNC normalize stage
+   * (camera-motion-2d-3d §4.4.5 / D14) — e.g. "this clip's 3D motion fell back
+   * to 2D". This is the REAL channel: the compose response returns before
+   * normalization even starts, so warnings there are always empty.
+   */
+  warnings?: string[];
 }
 
 /**

@@ -7,6 +7,7 @@ import { VideoEditingLogger } from '../utils/logger';
 import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 import { materialCompositeKey } from '../lib/materialKey';
 import { selectPlaybackUrl, stripLocalOrigin } from '../lib/selectPlaybackUrl';
+import { toCameraMotionWire } from '../playback/camera/wire';
 
 /**
  * Resolve the z-order (track_z) for a timeline track. Lower draws first
@@ -345,6 +346,10 @@ export const useVideoExport = ({
                 transition_in: item.transitionIn,
                 transition_out: item.transitionOut,
                 audio_detached: item.audioDetached,
+                // 2D / 3D camera motion (camera-motion-2d-3d §4.4.1). The
+                // backend injects the matching filter chain between scale and
+                // pad; undefined → the key is omitted and nothing changes.
+                camera_motion: toCameraMotionWire(item.cameraMotion),
                 // 缓存复用标识（命中则跳过下载，未命中回退原下载逻辑）
                 source: cacheSource,
                 source_id: cacheSourceId,
@@ -671,6 +676,11 @@ export const useVideoExport = ({
       // Poll for completion and show progress
       logger.info('开始轮询合成状态', {});
 
+      // camera-motion-2d-3d §4.4.5 (W4) — degrade notices arrive on the STATUS
+      // channel, not on the compose response (that one returns before the
+      // normalize stage even starts). Accumulate de-duplicated so a 30-poll
+      // export does not repeat the same line 30 times.
+      const compositionWarnings: string[] = [];
       await videoCompositionAPI.pollCompositionStatus(
         compositionResponse.composition_id,
         (status) => {
@@ -681,9 +691,25 @@ export const useVideoExport = ({
             displayProgress: progressPercent.toFixed(1) + '%',
             status: status.status,
           });
+          (status.warnings ?? []).forEach((warning) => {
+            if (warning && !compositionWarnings.includes(warning)) {
+              compositionWarnings.push(warning);
+            }
+          });
           // Here you could update a progress UI
         }
       );
+
+      if (compositionWarnings.length > 0) {
+        // The export SUCCEEDED — this is a "some clips rendered differently
+        // than the preview" notice, so it must be visible (G7) but not framed
+        // as a failure.
+        logger.warn('合成过程产生降级告警', { warnings: compositionWarnings });
+        showWarning(
+          [t.videoExport.compositionWarningsTitle, ...compositionWarnings].join('\n'),
+          12000,
+        );
+      }
 
       setExportProgress(95); // 设置接近完成的进度
 

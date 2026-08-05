@@ -23,6 +23,7 @@ import type {
 } from '../domain/types';
 import { TimelineExportError, TimelineImportError } from './errors';
 import { isDataUrl } from '@/components/video/lib/localMaterial';
+import { sanitizeCameraMotion } from '../../playback/camera/wire';
 
 /**
  * Ensure legacy track names carry a numeric suffix. Older exports stored names
@@ -171,6 +172,8 @@ export interface TimelineExportData {
       transitionIn?: SequenceTransitionData;
       /** spec 02 §2.4 — fade/dissolve transition on the trailing edge. */
       transitionOut?: SequenceTransitionData;
+      /** camera-motion-2d-3d §4.6 — 2D/3D camera motion (sanitized on import). */
+      cameraMotion?: unknown;
     }>;
   }>;
   materials: Array<{
@@ -285,6 +288,7 @@ export class TimelineRepository implements ITimelineRepository {
               audioDetached: item.audioDetached,
               transitionIn: item.transitionIn,
               transitionOut: item.transitionOut,
+              cameraMotion: item.cameraMotion,
             })),
           };
           // image- and subtitle-tracks do not carry a volume at rest
@@ -407,6 +411,10 @@ export class TimelineRepository implements ITimelineRepository {
           audioDetached: item.audioDetached,
           transitionIn: item.transitionIn as SequenceTransitionData | undefined,
           transitionOut: item.transitionOut as SequenceTransitionData | undefined,
+          // Project JSON is user-editable and therefore untrusted (R11): strict
+          // whitelist + range clamp, and an unrecognised `version` is dropped
+          // outright rather than half-migrated.
+          cameraMotion: sanitizeCameraMotion(item.cameraMotion),
         })),
       })),
     };

@@ -16,6 +16,9 @@ import {
   ADAPTIVE_WINDOW_FRAMES,
 } from './internal/constants';
 import { fitContain, type FitRect } from './internal/fitContain';
+import { Camera3DRenderer } from './camera/Camera3DRenderer';
+import { fallbackCropForDraw } from './camera/resolveCameraDraw';
+import type { ResolvedCameraDraw } from './camera/types';
 import type {
   CompositorLayer,
   CompositorStats,
@@ -76,6 +79,12 @@ export class CanvasCompositor implements ICanvasCompositor {
   // frame. See docs/diagnoses/preview-seek-blackscreen-and-packaged-export-r3.
   private _lastFrameDrewAny = false;
 
+  // camera-motion-2d-3d §4.3.2/§4.3.3 — lazily created WebGL renderer for the
+  // 3D path, plus a one-shot "we degraded to the 2D approximation" flag so the
+  // UI can say so once instead of spamming (R6: never throw, always degrade).
+  private _camera3D: Camera3DRenderer | null = null;
+  private _camera3DDegradedOnce = false;
+
   // §5.4 per-track draw accounting (diagnostics only; default empty / cleared on
   // detach). Keyed by the video layer id (== track id).
   private _layerStats = new Map<string, LayerDrawStat>();
@@ -134,6 +143,11 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._droppedAtLastEmit = 0;
     this._layerStats.clear();
     this._lastFrameDrewAny = false;
+    if (this._camera3D) {
+      this._camera3D.dispose();
+      this._camera3D = null;
+    }
+    this._camera3DDegradedOnce = false;
   }
 
   setLetterbox(viewport: ICanvasViewport | null): void {
@@ -299,6 +313,9 @@ export class CanvasCompositor implements ICanvasCompositor {
       targetAspectRatio: this._viewport?.aspectRatio,
     });
     if (fit.width <= 0 || fit.height <= 0) return false;
+    if (layer.camera) {
+      return this._drawCameraVideoLayer(ctx, source, fit, layer.camera, layer.opacity, intrinsicW, intrinsicH);
+    }
     ctx.save();
     ctx.globalAlpha = clamp01(layer.opacity);
     try {
@@ -309,6 +326,112 @@ export class CanvasCompositor implements ICanvasCompositor {
       ctx.restore();
       return false;
     }
+  }
+
+  /**
+   * Camera-motion draw path (camera-motion-2d-3d §4.3.2).
+   *
+   * 2D: crop the source and paint it into a destination rect blown up by
+   * `rollPad` and CONCENTRIC with the fit-rect, then rotate about that centre.
+   * The blow-up is what keeps the rotated corners filled — shrinking only the
+   * SOURCE crop cannot cover a rotated DESTINATION rect (measured: a pure-white
+   * frame through `rotate=10°` drops its top-left 8×8 YAVG from 235 to 16). The
+   * `clip()` to the fit-rect then trims the overflow so nothing bleeds onto a
+   * neighbouring track or into the letterbox.
+   *
+   * 3D: hand the crop + projected quad to the WebGL renderer; on any failure
+   * fall back to the 2D affine approximation (D8) so the preview degrades
+   * instead of going black.
+   */
+  private _drawCameraVideoLayer(
+    ctx: CanvasRenderingContext2D,
+    source: HTMLVideoElement,
+    fit: FitRect,
+    camera: ResolvedCameraDraw,
+    opacity: number,
+    intrinsicW: number,
+    intrinsicH: number,
+  ): boolean {
+    const cx = fit.x + fit.width / 2;
+    const cy = fit.y + fit.height / 2;
+
+    if (camera.mode === '3d' && !camera.degraded && camera.quad) {
+      const renderer = this._ensureCamera3DRenderer();
+      const surface = renderer?.render(
+        source,
+        camera.crop,
+        camera.quad,
+        Math.ceil(fit.width),
+        Math.ceil(fit.height),
+      );
+      if (surface) {
+        ctx.save();
+        ctx.globalAlpha = clamp01(opacity);
+        try {
+          ctx.drawImage(surface, fit.x, fit.y, fit.width, fit.height);
+          ctx.restore();
+          return true;
+        } catch {
+          ctx.restore();
+          return false;
+        }
+      }
+      this._camera3DDegradedOnce = true;
+    }
+
+    // 2D (and the degraded-3D fallback).
+    const crop = camera.mode === '3d' ? fallbackCropForDraw(camera) : camera.crop;
+    // A 3D layer reaching this point rendered as a 2D approximation, whether
+    // because WebGL was unusable (above) or because the projection itself
+    // degenerated (`camera.degraded`, set by the math kernel). Both are the
+    // same thing to a viewer, so both must flip the flag.
+    if (camera.mode === '3d') this._camera3DDegradedOnce = true;
+    const sx = crop.x * intrinsicW;
+    const sy = crop.y * intrinsicH;
+    const sw = crop.w * intrinsicW;
+    const sh = crop.h * intrinsicH;
+    if (!(sw > 0) || !(sh > 0)) return false;
+
+    const rollPad = camera.rollPad > 1 ? camera.rollPad : 1;
+    const dw = fit.width * rollPad;
+    const dh = fit.height * rollPad;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(fit.x, fit.y, fit.width, fit.height);
+    ctx.clip();
+    ctx.globalAlpha = clamp01(opacity);
+    if (camera.roll !== 0) {
+      ctx.translate(cx, cy);
+      ctx.rotate((camera.roll * Math.PI) / 180);
+      ctx.translate(-cx, -cy);
+    }
+    try {
+      ctx.drawImage(source, sx, sy, sw, sh, cx - dw / 2, cy - dh / 2, dw, dh);
+      ctx.restore();
+      return true;
+    } catch {
+      ctx.restore();
+      return false;
+    }
+  }
+
+  /** Lazily create the WebGL renderer; `null` once WebGL proved unusable. */
+  private _ensureCamera3DRenderer(): Camera3DRenderer | null {
+    if (this._camera3D === null) {
+      this._camera3D = new Camera3DRenderer();
+    }
+    return this._camera3D.isAvailable() ? this._camera3D : null;
+  }
+
+  /**
+   * Whether a 3D camera frame ever fell back to the 2D approximation — either
+   * WebGL was unusable or the projection degenerated. Diagnostic read-out; the
+   * user-facing notice for this degrade is the panel's own badge, which probes
+   * `Camera3DRenderer.isSupported()` directly rather than waiting for a frame.
+   */
+  camera3DDegraded(): boolean {
+    return this._camera3DDegradedOnce;
   }
 
   private _drawImageLayer(

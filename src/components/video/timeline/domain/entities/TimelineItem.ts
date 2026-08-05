@@ -22,6 +22,7 @@ import type {
   ImagePosition,
   AudioSentenceSegment,
   MaterialType,
+  CameraMotionData,
 } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -99,6 +100,11 @@ export class TimelineItem {
   // avoiding double-audio. See spec 01 §2.4.
   private _audioDetached?: boolean;
 
+  // 2D / 3D camera motion for this clip (camera-motion-2d-3d §4.6). Video
+  // items only. Absent means "no motion": preview and export both take the
+  // exact code path they take today (zero regression surface).
+  private _cameraMotion?: CameraMotionData;
+
   // ------------------------------------------------------------------
   // Construction (private — use factory methods)
   // ------------------------------------------------------------------
@@ -130,6 +136,7 @@ export class TimelineItem {
     opacity: number;
     originalMaterialType?: MaterialType;
     audioDetached?: boolean;
+    cameraMotion?: CameraMotionData;
   }) {
     this.id = params.id;
     this._name = params.name;
@@ -157,6 +164,7 @@ export class TimelineItem {
     this._opacity = Math.min(1, Math.max(0, params.opacity));
     this._originalMaterialType = params.originalMaterialType;
     this._audioDetached = params.audioDetached;
+    this._cameraMotion = params.cameraMotion;
   }
 
   // ------------------------------------------------------------------
@@ -217,6 +225,9 @@ export class TimelineItem {
   get audioDetached(): boolean | undefined { return this._audioDetached; }
   set audioDetached(value: boolean | undefined) { this._audioDetached = value; }
 
+  get cameraMotion(): CameraMotionData | undefined { return this._cameraMotion; }
+  set cameraMotion(value: CameraMotionData | undefined) { this._cameraMotion = value; }
+
   // ------------------------------------------------------------------
   // Static factory methods
   // ------------------------------------------------------------------
@@ -256,6 +267,7 @@ export class TimelineItem {
       opacity: props.opacity ?? 1.0,
       originalMaterialType: props.originalMaterialType,
       audioDetached: props.audioDetached,
+      cameraMotion: props.cameraMotion,
     });
   }
 
@@ -294,6 +306,7 @@ export class TimelineItem {
       opacity: data.opacity ?? 1.0,
       originalMaterialType: data.originalMaterialType,
       audioDetached: data.audioDetached,
+      cameraMotion: data.cameraMotion,
     });
   }
 
@@ -471,6 +484,7 @@ export class TimelineItem {
     if (this._opacity !== 1.0) data.opacity = this._opacity;
     if (this._originalMaterialType != null) data.originalMaterialType = this._originalMaterialType;
     if (this._audioDetached != null) data.audioDetached = this._audioDetached;
+    if (this._cameraMotion != null) data.cameraMotion = this._cameraMotion;
 
     return data;
   }

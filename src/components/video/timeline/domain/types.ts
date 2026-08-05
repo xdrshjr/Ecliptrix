@@ -16,9 +16,18 @@ import type {
   AudioSentenceSegment,
   MaterialType,
   MaterialItem,
+  CameraMotion,
 } from '@/types';
 
-export type { SubtitleStyle, ImagePosition, AudioSentenceSegment, MaterialType };
+export type { SubtitleStyle, ImagePosition, AudioSentenceSegment, MaterialType, CameraMotion };
+
+/**
+ * Alias used by the domain DTO layer for the camera-motion payload
+ * (camera-motion-2d-3d §5.1). Structurally identical to `CameraMotion` in
+ * src/types/index.ts — the alias only keeps the DTO naming consistent with the
+ * other `*Data` shapes in this file.
+ */
+export type CameraMotionData = CameraMotion;
 
 // ---------------------------------------------------------------------------
 // TrackType union (also defined as a value-object class, but the raw literal
@@ -80,6 +89,12 @@ export interface TimelineItemData {
   transitionIn?: SequenceTransitionData;
   /** Fade-out / cross-dissolve on this clip's trailing edge (spec 02 §2.4). */
   transitionOut?: SequenceTransitionData;
+  /**
+   * 2D / 3D camera motion for this clip (camera-motion-2d-3d §4.6). Video
+   * items only; absent means "no motion" and both preview and export take
+   * today's code path verbatim.
+   */
+  cameraMotion?: CameraMotionData;
 }
 
 /**
@@ -195,6 +210,7 @@ export interface CreateItemProps {
   audioDetached?: boolean;
   transitionIn?: SequenceTransitionData;
   transitionOut?: SequenceTransitionData;
+  cameraMotion?: CameraMotionData;
 }
 
 // ---------------------------------------------------------------------------

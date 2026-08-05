@@ -53,6 +53,7 @@ import {
   type ResolveSequencePlaybackUrlOptions,
 } from '../lib/resolveSequencePlaybackUrl';
 import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
+import { cameraMotionFingerprint } from '../playback/camera/fingerprint';
 import {
   REACT_PLAYHEAD_THROTTLE_MS,
   PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC,
@@ -585,6 +586,32 @@ export function useCompositionPlayback(
     if (engine.getPhase() === 'playing') return;
     engine.seek(currentTimeRef.current ?? 0);
   }, [imageOverlaySignature, enabled, hostVersion]);
+
+  // camera-motion-2d-3d §4.3.4 — same shape as the image-overlay companion
+  // above: applying a motion while PAUSED must repaint immediately (A3), and
+  // while paused the rAF loop is stopped, so nothing else would. The signature
+  // folds every video item's motion fingerprint, so applying / editing /
+  // clearing a motion changes it while scrubs and unrelated edits do not.
+  const cameraMotionSignature = useMemo(() => {
+    if (!timelineState) return '';
+    const parts: string[] = [];
+    for (const track of timelineState.tracks) {
+      if (track.type !== 'video') continue;
+      for (const item of track.items) {
+        if (!item.cameraMotion) continue;
+        parts.push(`${item.id}:${cameraMotionFingerprint(item.cameraMotion)}`);
+      }
+    }
+    return parts.join('#');
+  }, [timelineState]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (engine.getPhase() === 'playing') return;
+    engine.seek(currentTimeRef.current ?? 0);
+  }, [cameraMotionSignature, enabled, hostVersion]);
 
   return { hostRef, play, pause, seek, getPhase, isReady };
 }

@@ -27,12 +27,21 @@ import {
   type TextMeasurer,
 } from '../SubtitleLayer';
 import { buildImageLayersAt, type ImageOverlayInput, type FitRect } from '../ImageOverlayLayer';
+import { resolveCameraDraw } from '../camera/resolveCameraDraw';
 import type { CompositorLayer, VideoTrackGroup } from '../types';
 import type { VideoSequenceItem, SubtitleSequenceItem } from '../../types';
 
-/** Minimal `<video>`-readable surface for layer assembly (decode source). */
+/**
+ * Minimal `<video>`-readable surface for layer assembly (decode source).
+ *
+ * `videoWidth`/`videoHeight` are optional and read ONLY to derive the camera
+ * motion's `frameAspect` (review P1-1). They stay optional so jsdom tests can
+ * stub the source with just `readyState`.
+ */
 export interface DrawableVideoSource {
   readonly readyState: number;
+  readonly videoWidth?: number;
+  readonly videoHeight?: number;
 }
 
 /** One track's resolved active draw source for this frame. */
@@ -101,12 +110,28 @@ export function buildVideoLayers(
     };
     const alpha = alphaFor(transitionClip, t);
     const opacity = clamp01(itemOpacity(entry.clip) * alpha);
+    // Camera motion (camera-motion-2d-3d §4.3.1). `frameAspect` is a REQUIRED
+    // input to the math kernel, so when the source's intrinsic size is not up
+    // yet (readyState < 1) we draw WITHOUT motion rather than guessing an
+    // aspect — a wrong guess is a one-frame framing jump.
+    const width = entry.source.videoWidth;
+    const height = entry.source.videoHeight;
+    const frameAspect = width && height ? width / height : undefined;
+    const camera = frameAspect
+      ? resolveCameraDraw(
+          entry.clip.cameraMotion,
+          t - entry.clip.startTime,
+          entry.clip.duration,
+          frameAspect,
+        )
+      : undefined;
     layers.push({
       kind: 'video',
       id: entry.trackId,
       source: entry.source as unknown as HTMLVideoElement,
       opacity,
       z: entry.z,
+      camera,
     });
   }
   return layers;

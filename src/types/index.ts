@@ -660,6 +660,35 @@ export interface ClipTransition {
   duration: number; // 转场时长（秒）
 }
 
+// 运镜（Camera Motion）——clip 级 2D / 3D 运镜配置。预览端（CanvasCompositor +
+// Camera3DRenderer）与导出端（FFmpeg zoompan / perspective / rotate）共用同一份
+// 数学契约，见 docs/plans/camera-motion-2d-3d/spec.md §4.2。
+export type CameraMotionMode = '2d' | '3d';
+export type CameraEasing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+
+// 单个运镜关键帧。2D 只用 scale/x/y/roll；3D 追加 rotateX/rotateY/dolly。
+export interface CameraKeyframe {
+  scale: number;    // 画面放大倍数，1 = 满画面，范围 [1,4]
+  x: number;        // 取景中心归一化横坐标 [0,1]
+  y: number;        // 取景中心归一化纵坐标 [0,1]
+  roll: number;     // 画面内旋转角（度，顺时针为正），范围 [-45,45]
+  rotateX: number;  // 俯仰（3D，度），范围 [-45,45]
+  rotateY: number;  // 偏航 / 环绕（3D，度），范围 [-45,45]
+  dolly: number;    // 推轨（3D），正值靠近相机，范围 [-0.6,0.6]
+}
+
+export interface CameraMotion {
+  version: 1;                 // 结构版本；sanitize 遇到未知版本直接丢弃
+  mode: CameraMotionMode;
+  presetId: string;           // 预设 id 或 'custom'，仅用于 UI 回显与徽标文案
+  intensity: number;          // 起终点差值倍率 [0,2]，0 = 静止在起点
+  easing: CameraEasing;
+  startOffset?: number;       // 运镜窗口在 clip 内的起点（秒），缺省 0；分割后可为负
+  duration?: number;          // 窗口时长（秒），缺省 = clip 剩余时长
+  start: CameraKeyframe;
+  end: CameraKeyframe;
+}
+
 export interface TimelineItem {
   id: string;
   name: string;
@@ -698,6 +727,10 @@ export interface TimelineItem {
   // type:'fade' 自身淡入/淡出；'dissolve' 与相邻 clip 交叉溶解，重叠时长=duration。
   transitionIn?: ClipTransition;
   transitionOut?: ClipTransition;
+
+  // 新增：运镜（camera-motion-2d-3d §4.6）。仅视频 item 可配置；缺省 = 无运镜，
+  // 预览与导出都走与今天完全相同的代码路径（零回归）。
+  cameraMotion?: CameraMotion;
 
   // 新增：字幕样式属性
   subtitleStyle?: SubtitleStyle; // 字幕样式（仅字幕类型使用）

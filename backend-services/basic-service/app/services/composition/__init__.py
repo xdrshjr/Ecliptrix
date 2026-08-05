@@ -19,4 +19,9 @@ unit-testable modules:
   subtitle items to an SRT file) for the subtitle burn-in pass.
 - ``media_download`` — URL classification predicates + standalone image fetch
   used by the overlay path.
+- ``camera_motion`` — 2D / 3D camera motion (camera-motion-2d-3d): the Python
+  mirror of the frontend math kernel, the FFmpeg ``zoompan`` / ``perspective`` /
+  ``rotate`` chain builder injected between ``scale`` and ``pad``, the filter
+  capability probe, and the 0.1s dry-run pre-flight that catches bad expressions
+  before a 4K transcode starts.
 """

@@ -80,6 +80,12 @@ from app.services.composition.media_download import (
     is_pexels_url,
     is_youtube_url,
 )
+from app.services.composition.camera_motion import (
+    build_camera_filter_chain,
+    dry_run_chain,
+    load_camera_config,
+    probe_camera_filters,
+)
 
 logger = get_logger(__name__)
 
@@ -456,6 +462,7 @@ class VideoCompositionService:
             "error": f"Video normalization failed after {max_retries + 1} attempts",
             "last_error": last_error,
             "attempts": max_retries + 1,
+            "warnings": [],
             "video_details": video_info
         }
         
@@ -696,7 +703,42 @@ class VideoCompositionService:
         
         # 计算缩放和填充参数
         scaling_params = self._calculate_video_scaling(width, height, target_width, target_height)
-        vf_params = self._build_video_filter(scaling_params)
+
+        # ── 运镜（camera-motion-2d-3d §4.4）────────────────────────────────
+        # 滤镜链注入在 scale 之后、pad 之前（D4）：此刻画面正是「内容矩形」，
+        # 与预览端的 fit-rect 同一个基准，运镜才不会被黑边污染。
+        warnings: List[str] = []
+        camera_chain = ""
+        camera_motion = video_info.get('camera_motion')
+        if camera_motion is not None:
+            clip_label = video_info.get('camera_label') or f"clip {index + 1}"
+            camera_chain, camera_warnings = build_camera_filter_chain(
+                motion=camera_motion,
+                frame_w=scaling_params['scale_width'],
+                frame_h=scaling_params['scale_height'],
+                fps=video_info['target_fps'],
+                clip_duration=clip_duration,
+                caps=self._get_camera_caps(ffmpeg_path),
+                config=self._get_camera_config(),
+                label=clip_label,
+            )
+            warnings.extend(camera_warnings)
+            # 表达式预检：用 64x36/0.1s 的 lavfi 源空跑一遍，0.1 秒内抓住
+            # 「该滤镜没有这个变量」这类必然失败（P0-1 / R13），而不是让 4K
+            # 素材跑到一半才报错。结果按 chain 字符串进程级缓存。
+            if camera_chain and self._get_camera_config().dry_run_probe:
+                ok, first_error = dry_run_chain(camera_chain, ffmpeg_path)
+                if not ok:
+                    logger.error(
+                        f"[Thread {thread_id}] Camera filter dry-run failed: {first_error}"
+                    )
+                    warnings.append(
+                        f"{clip_label}: camera motion filter check failed "
+                        f"({first_error or 'unknown error'}); rendered without motion"
+                    )
+                    camera_chain = ""
+
+        vf_params = self._build_video_filter(scaling_params, camera_chain)
         
         # 构建FFmpeg命令，包含剪辑参数
         normalize_cmd = [
@@ -732,24 +774,93 @@ class VideoCompositionService:
         try:
             logger.info(f"[Thread {thread_id}] Running FFmpeg command: {' '.join(normalize_cmd)}")
             result = subprocess.run(normalize_cmd, capture_output=True, text=True)
-            
+
+            if result.returncode != 0 and camera_chain:
+                # 运镜表达式错误是「确定性失败」，重试多少次都一样。降级必须发生在
+                # 本函数内部（评审 P1-4）：放到外层 _normalize_video_with_retry 就会
+                # 先白烧 4 次 + 2/4/8s 退避 ≈14s 才轮到降级，而外层 retry 的职责应当
+                # 只是磁盘/编码器一类的瞬时故障。
+                clip_label = video_info.get('camera_label') or f"clip {index + 1}"
+                first_line = (result.stderr or '').strip().splitlines()
+                logger.warning(
+                    f"[Thread {thread_id}] Normalization with camera motion failed; "
+                    f"retrying without it: {first_line[0] if first_line else 'unknown error'}"
+                )
+                warnings.append(
+                    f"{clip_label}: rendering the camera motion failed; "
+                    f"rendered without motion"
+                )
+                retry_cmd = [
+                    arg if arg != vf_params else self._build_video_filter(scaling_params, "")
+                    for arg in normalize_cmd
+                ]
+                result = subprocess.run(retry_cmd, capture_output=True, text=True)
+                camera_chain = ""
+
             if result.returncode != 0:
                 error_msg = f"Normalization failed: {result.stderr}"
                 logger.error(f"[Thread {thread_id}] {error_msg}")
-                return {"success": False, "error": error_msg, "index": index}
-            
+                return {"success": False, "error": error_msg, "index": index, "warnings": warnings}
+
+            # 时长守卫：zoompan 的 fps 重采样可能让片段时长漂移，破坏时间轴对齐
+            # （R3）。偏差超过 2 帧就视同失败，走同一条无运镜重跑路径。
+            if camera_chain:
+                actual = self._probe_output_duration(normalized_path)
+                tolerance = 2.0 / max(1, video_info['target_fps'])
+                if actual is not None and abs(actual - clip_duration) > tolerance:
+                    clip_label = video_info.get('camera_label') or f"clip {index + 1}"
+                    logger.warning(
+                        f"[Thread {thread_id}] Camera motion shifted clip duration "
+                        f"({actual:.3f}s vs {clip_duration:.3f}s); retrying without it"
+                    )
+                    warnings.append(
+                        f"{clip_label}: the camera motion changed the clip length; "
+                        f"rendered without motion"
+                    )
+                    retry_cmd = [
+                        arg if arg != vf_params else self._build_video_filter(scaling_params, "")
+                        for arg in normalize_cmd
+                    ]
+                    result = subprocess.run(retry_cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        error_msg = f"Normalization failed: {result.stderr}"
+                        logger.error(f"[Thread {thread_id}] {error_msg}")
+                        return {"success": False, "error": error_msg, "index": index, "warnings": warnings}
+
             logger.info(f"[Thread {thread_id}] Video {index + 1} normalized and clipped successfully")
             return {
                 "success": True,
                 "normalized_path": normalized_path,
                 "used_duration": clip_duration,
-                "index": index
+                "index": index,
+                "warnings": warnings,
             }
-            
+
         except Exception as e:
             error_msg = f"Normalization error: {str(e)}"
             logger.error(f"[Thread {thread_id}] {error_msg}")
-            return {"success": False, "error": error_msg, "index": index}
+            return {"success": False, "error": error_msg, "index": index, "warnings": warnings}
+
+    def _get_camera_config(self):
+        """Process-level camera-motion config (config/camera-motion.yaml, D10)."""
+        return load_camera_config()
+
+    def _get_camera_caps(self, ffmpeg_path: str):
+        """Process-level FFmpeg filter capability probe (§4.4.4 / R4)."""
+        return probe_camera_filters(ffmpeg_path)
+
+    def _probe_output_duration(self, video_path: str) -> Optional[float]:
+        """Read a normalized clip's duration, same source as _get_video_properties."""
+        try:
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
+            if fps and fps > 0 and frames > 0:
+                return frames / fps
+        except Exception as exc:
+            logger.warning(f"Could not probe normalized clip duration: {exc}")
+        return None
     
     def start_video_composition(self, request: VideoCompositionRequest) -> VideoCompositionResponse:
         """
@@ -785,7 +896,12 @@ class VideoCompositionService:
             "status": "processing",
             "progress": 0.0,
             "start_time": start_time,
-            "request": request
+            "request": request,
+            # camera-motion-2d-3d D14 (W2): non-fatal degrade notices raised by
+            # the ASYNC normalize stage land here and travel out through
+            # GET /compose/{id}/status. They CANNOT ride the compose response —
+            # that one returns before normalization even begins.
+            "warnings": [],
         }
         
         # Start background processing
@@ -1191,7 +1307,10 @@ class VideoCompositionService:
                     'clip_start': getattr(video_item, 'clip_start', None) or 0.0 if video_item else 0.0,
                     'clip_end': getattr(video_item, 'clip_end', None) if video_item else None,
                     # 新增：目标宽高比
-                    'target_aspect_ratio': target_aspect_ratio
+                    'target_aspect_ratio': target_aspect_ratio,
+                    # 新增：运镜配置 + 用于 warning 文案的片段名（camera-motion-2d-3d §4.4.2）
+                    'camera_motion': getattr(video_item, 'camera_motion', None) if video_item else None,
+                    'camera_label': getattr(video_item, 'name', None) if video_item else None,
                 }
                 video_tasks.append(video_info)
                 
@@ -1211,6 +1330,14 @@ class VideoCompositionService:
                 for future in as_completed(futures):
                     original_index = futures[future]
                     result = future.result()
+                    # W2: worker threads MUST NOT write the shared composition
+                    # dict — returning warnings with the result and appending
+                    # them here, on the collecting thread, is the only
+                    # thread-safe path (camera-motion-2d-3d §4.4.5).
+                    for warning in result.get('warnings') or []:
+                        bucket = self.compositions[composition_id].setdefault('warnings', [])
+                        if warning not in bucket:
+                            bucket.append(warning)
                     if result['success']:
                         norm_results[original_index] = result['normalized_path']
                         logger.info(f"Normalized video {len(norm_results)}/{len(video_tasks)} (index: {original_index})")
@@ -2188,9 +2315,14 @@ class VideoCompositionService:
             source_width, source_height, target_width, target_height
         )
 
-    def _build_video_filter(self, scaling_params: Dict[str, Any]) -> str:
-        """Build FFmpeg video filter string for aspect ratio conversion."""
-        return build_video_filter(scaling_params)
+    def _build_video_filter(self, scaling_params: Dict[str, Any], camera_chain: str = "") -> str:
+        """Build FFmpeg video filter string for aspect ratio conversion.
+
+        ``camera_chain`` (camera-motion-2d-3d D4) is injected after ``scale`` and
+        before ``pad``; an empty chain leaves the output byte-identical to the
+        pre-feature behaviour.
+        """
+        return build_video_filter(scaling_params, camera_chain)
 
     def _process_subtitle_tracks(self, subtitle_items: List[SubtitleCompositionItem], 
                                video_path: str, temp_dir: str) -> Optional[str]:

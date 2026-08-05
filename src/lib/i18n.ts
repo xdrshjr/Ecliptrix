@@ -646,6 +646,7 @@ export interface Translations {
         undo: string;
         redo: string;
         organizeMaterials: string;
+        motion: string;
         effects: string;
         transitions: string;
         subtitles: string;
@@ -669,6 +670,7 @@ export interface Translations {
       deleteShortcut: string;
       undoShortcut: string;
       redoShortcut: string;
+      motionShortcut: string;
       effectsShortcut: string;
       transitionsShortcut: string;
       subtitlesShortcut: string;
@@ -750,6 +752,74 @@ export interface Translations {
         batchTranscriptionFailed: string;
         subtitleExtractionUnknownError: string;
         swapHint: string;
+    };
+    cameraMotion: {
+      title: string;
+      openPanel: string;
+      clipLabel: string;
+      multiSelected: string;
+      applyToAllSelected: string;
+      tab2d: string;
+      tab3d: string;
+      presetsLabel: string;
+      stageTitle: string;
+      intensity: string;
+      intensityValue: string;
+      easing: string;
+      easingLinear: string;
+      easingEaseIn: string;
+      easingEaseOut: string;
+      easingEaseInOut: string;
+      range: string;
+      rangeWholeClip: string;
+      rangeCustom: string;
+      startOffset: string;
+      windowDuration: string;
+      seconds: string;
+      advanced: string;
+      keyframeStart: string;
+      keyframeEnd: string;
+      fieldScale: string;
+      fieldX: string;
+      fieldY: string;
+      fieldRoll: string;
+      fieldRotateX: string;
+      fieldRotateY: string;
+      fieldDolly: string;
+      reverse: string;
+      reverseAria: string;
+      apply: string;
+      cancel: string;
+      reset: string;
+      discardConfirm: string;
+      webglDegraded: string;
+      qualityHintCover: string;
+      qualityHintRoll: string;
+      qualityHintClamped: string;
+      disabledNoSelection: string;
+      disabledNotVideo: string;
+      disabledTrackLocked: string;
+      badgeTitle: string;
+      presets: {
+        none: string;
+        pushIn: string;
+        pullOut: string;
+        panLeft: string;
+        panRight: string;
+        panUp: string;
+        panDown: string;
+        zoomPanDiagonal: string;
+        rollSlight: string;
+        dollyIn3d: string;
+        dollyOut3d: string;
+        orbitLeft: string;
+        orbitRight: string;
+        tiltDown: string;
+        tiltUp: string;
+        parallaxPush: string;
+        sway3d: string;
+        custom: string;
+      };
     };
     subtitleEditModal: {
       title: string;
@@ -1190,6 +1260,7 @@ export interface Translations {
     exportFailedWithError: string;
     failedVideos: string;
     recoverySuggestions: string;
+    compositionWarningsTitle: string;
   };
   videoSearch: {
     enterKeyword: string;
@@ -3375,6 +3446,7 @@ export const translations: Record<string, Translations> = {
         undo: 'Undo',
         redo: 'Redo',
         organizeMaterials: 'Organize Materials',
+        motion: 'Camera Motion',
         effects: 'Effects',
         transitions: 'Transitions',
         subtitles: 'Subtitles',
@@ -3398,6 +3470,7 @@ export const translations: Record<string, Translations> = {
         deleteShortcut: 'Del',
         undoShortcut: 'Ctrl+Z',
         redoShortcut: 'Ctrl+Y',
+        motionShortcut: 'M',
         effectsShortcut: 'E',
         transitionsShortcut: 'T',
         subtitlesShortcut: 'S',
@@ -3478,6 +3551,74 @@ export const translations: Record<string, Translations> = {
         batchTranscriptionFailed: 'Batch transcription failed: {error}',
         subtitleExtractionUnknownError: 'Unknown error',
         swapHint: 'Drop to swap',
+      },
+      cameraMotion: {
+        title: 'Camera Motion',
+        openPanel: 'Camera Motion',
+        clipLabel: 'Clip: {name}',
+        multiSelected: '{count} clips selected',
+        applyToAllSelected: 'Apply to all selected',
+        tab2d: '2D Motion',
+        tab3d: '3D Motion',
+        presetsLabel: 'Motion presets',
+        stageTitle: 'Live preview',
+        intensity: 'Intensity',
+        intensityValue: '{value}x',
+        easing: 'Easing',
+        easingLinear: 'Linear',
+        easingEaseIn: 'Ease In',
+        easingEaseOut: 'Ease Out',
+        easingEaseInOut: 'Ease In-Out',
+        range: 'Range',
+        rangeWholeClip: 'Whole clip',
+        rangeCustom: 'Custom',
+        startOffset: 'Start offset',
+        windowDuration: 'Duration',
+        seconds: 's',
+        advanced: 'Advanced parameters',
+        keyframeStart: 'Start',
+        keyframeEnd: 'End',
+        fieldScale: 'Scale',
+        fieldX: 'Center X',
+        fieldY: 'Center Y',
+        fieldRoll: 'Roll',
+        fieldRotateX: 'Tilt',
+        fieldRotateY: 'Pan',
+        fieldDolly: 'Dolly',
+        reverse: 'Reverse',
+        reverseAria: 'Reverse motion direction',
+        apply: 'Apply',
+        cancel: 'Cancel',
+        reset: 'Reset',
+        discardConfirm: 'Discard unapplied changes?',
+        webglDegraded: '3D preview degraded (WebGL unavailable) - export is still full 3D',
+        qualityHintCover: 'Wide 3D angle crops more of the frame; sharpness may drop.',
+        qualityHintRoll: 'Roll crops the frame for the whole clip; sharpness may drop.',
+        qualityHintClamped: 'Some values hit their limit at this intensity - the motion stops early.',
+        disabledNoSelection: 'Select a video clip first',
+        disabledNotVideo: 'Image clips do not support camera motion yet',
+        disabledTrackLocked: 'Track is locked',
+        badgeTitle: 'Camera motion: {preset}',
+        presets: {
+          none: 'None',
+          pushIn: 'Push In',
+          pullOut: 'Pull Out',
+          panLeft: 'Pan Left',
+          panRight: 'Pan Right',
+          panUp: 'Pan Up',
+          panDown: 'Pan Down',
+          zoomPanDiagonal: 'Zoom & Drift',
+          rollSlight: 'Slight Roll',
+          dollyIn3d: '3D Dolly In',
+          dollyOut3d: '3D Dolly Out',
+          orbitLeft: 'Orbit Left',
+          orbitRight: 'Orbit Right',
+          tiltDown: 'Tilt Down',
+          tiltUp: 'Tilt Up',
+          parallaxPush: 'Parallax Push',
+          sway3d: '3D Sway',
+          custom: 'Custom',
+        },
       },
       subtitleEditModal: {
         title: 'Edit Subtitles',
@@ -3718,6 +3859,7 @@ export const translations: Record<string, Translations> = {
       exportFailedWithError: 'Video export failed:',
       failedVideos: 'Failed videos:',
       recoverySuggestions: 'Suggested solutions:',
+      compositionWarningsTitle: 'Export finished, but some clips did not render their camera motion as previewed:',
     },
     videoSearch: {
       enterKeyword: 'Please enter a search keyword',
@@ -5908,6 +6050,7 @@ export const translations: Record<string, Translations> = {
         undo: '撤销',
         redo: '重做',
         organizeMaterials: '整理轨道中素材',
+        motion: '运镜',
         effects: '特效',
         transitions: '转场',
         subtitles: '字幕',
@@ -5931,6 +6074,7 @@ export const translations: Record<string, Translations> = {
         deleteShortcut: 'Del',
         undoShortcut: 'Ctrl+Z',
         redoShortcut: 'Ctrl+Y',
+        motionShortcut: 'M',
         effectsShortcut: 'E',
         transitionsShortcut: 'T',
         subtitlesShortcut: 'S',
@@ -6012,6 +6156,74 @@ export const translations: Record<string, Translations> = {
           subtitleExtractionUnknownError: '未知错误',
           swapHint: '释放以交换位置',
         },
+      cameraMotion: {
+        title: '运镜',
+        openPanel: '运镜',
+        clipLabel: '片段：{name}',
+        multiSelected: '已选中 {count} 个片段',
+        applyToAllSelected: '应用到全部选中',
+        tab2d: '2D 运镜',
+        tab3d: '3D 运镜',
+        presetsLabel: '运镜预设',
+        stageTitle: '实时示意',
+        intensity: '强度',
+        intensityValue: '{value} 倍',
+        easing: '缓动',
+        easingLinear: '匀速',
+        easingEaseIn: '缓入',
+        easingEaseOut: '缓出',
+        easingEaseInOut: '缓入缓出',
+        range: '范围',
+        rangeWholeClip: '整个片段',
+        rangeCustom: '自定义',
+        startOffset: '起始偏移',
+        windowDuration: '持续时长',
+        seconds: '秒',
+        advanced: '高级参数',
+        keyframeStart: '起点',
+        keyframeEnd: '终点',
+        fieldScale: '缩放',
+        fieldX: '中心 X',
+        fieldY: '中心 Y',
+        fieldRoll: '旋转',
+        fieldRotateX: '俯仰',
+        fieldRotateY: '环绕',
+        fieldDolly: '推轨',
+        reverse: '反向',
+        reverseAria: '反向运镜方向',
+        apply: '应用',
+        cancel: '取消',
+        reset: '重置',
+        discardConfirm: '放弃尚未应用的修改？',
+        webglDegraded: '3D 预览已降级（WebGL 不可用），导出仍为完整 3D',
+        qualityHintCover: '3D 角度较大，裁切较多，画质可能下降。',
+        qualityHintRoll: '旋转运镜全程都有裁切，画质可能下降。',
+        qualityHintClamped: '当前强度下部分参数已达上限，运镜会提前结束。',
+        disabledNoSelection: '请先选中一个视频片段',
+        disabledNotVideo: '图片片段暂不支持运镜',
+        disabledTrackLocked: '轨道已锁定',
+        badgeTitle: '运镜：{preset}',
+        presets: {
+          none: '无',
+          pushIn: '缓慢推近',
+          pullOut: '缓慢拉远',
+          panLeft: '左移',
+          panRight: '右移',
+          panUp: '上移',
+          panDown: '下移',
+          zoomPanDiagonal: '推近并左移',
+          rollSlight: '轻微旋转',
+          dollyIn3d: '3D 推轨',
+          dollyOut3d: '3D 拉轨',
+          orbitLeft: '左环绕',
+          orbitRight: '右环绕',
+          tiltDown: '俯视下压',
+          tiltUp: '仰视上抬',
+          parallaxPush: '视差推进',
+          sway3d: '3D 轻摆',
+          custom: '自定义',
+        },
+      },
       subtitleEditModal: {
         title: '编辑字幕',
         subtitle: '编辑时间轴上每个字幕片段的文本内容',
@@ -6251,6 +6463,7 @@ export const translations: Record<string, Translations> = {
       exportFailedWithError: '视频导出失败：',
       failedVideos: '失败的视频：',
       recoverySuggestions: '建议解决方案：',
+      compositionWarningsTitle: '导出已完成，但部分片段的运镜未能按预览渲染：',
     },
     videoSearch: {
       enterKeyword: '请输入搜索关键词',

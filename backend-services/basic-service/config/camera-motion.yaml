@@ -1,0 +1,39 @@
+# 2D / 3D 运镜（Camera Motion）导出配置
+# Spec: docs/plans/camera-motion-2d-3d/spec.md §7.3
+#
+# 本文件缺失不会导致启动失败——加载器（app/services/composition/camera_motion.py
+# 的 load_camera_config）在文件不存在时使用下面这套内置默认值。
+
+camera_motion:
+  # D10 运维兜底开关。置 false 后导出不注入任何运镜滤镜，并在状态轮询里回传
+  # 一条 warning，用户能看到「运镜已在服务端禁用」而不是默默丢失效果。
+  enabled: true
+
+  # 2D 段的超采样倍数（1..3）。zoompan 的 x/y 是整数像素，慢速平移会肉眼可见地
+  # 跳格；在 supersample× 空间取整再降采样即得 1/supersample 像素精度（D7）。
+  # 实际上采样倍数 = supersample × RP（RP 是 roll 的覆盖常量）。
+  #
+  # 默认值按 §8 P6 的实测基线定为 1（spec §7.3 原写 2）。本机 4K/30fps
+  # normalize 实测：无运镜 3.01s；2D 推近 supersample=2 为 21.26s（7.07×）、
+  # supersample=1 为 6.26s（2.08×）；3D 环绕两者都约 6.2s（不含 zoompan 段）。
+  # §8 P6 规定「2D 相对无运镜劣化超过 3× 即下调为 1」，7× 已明显超标。
+  # 取舍：平移取整精度从 0.5px 退回 1px。若慢速平移出现肉眼可见的跳格，
+  # 可按需改回 2。
+  supersample: 1
+
+  # perspective 的插值质量：linear | cubic。
+  interpolation: linear
+
+  # 3D 四角轨迹的多项式拟合次数（D6）。
+  poly_degree: 3
+
+  # 二次拟合次数。留空 = 「一次拟合不过就降级为 2D」，少一条分支和一份测试
+  # （评审 P2-6）。需要更高精度时填 5。
+  poly_degree_fallback: null
+
+  # 拟合误差硬闸门（像素）。超过则该 clip 的 3D 退化为 2D 分量并回传 warning。
+  max_fit_error_px: 0.75
+
+  # 滤镜串空跑预检（§4.4.3 末）。用 64x36 / 0.1s 的 lavfi 源在 0.1 秒内抓住
+  # 表达式/变量名错误，而不是让 4K 素材跑到一半才失败。建议保持开启。
+  dry_run_probe: true

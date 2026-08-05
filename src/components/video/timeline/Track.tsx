@@ -35,6 +35,8 @@ interface TrackProps {
   localProxyStatusMap?: Map<string, LocalProxyMaskState>;
   localPreviewEnabled?: boolean;
   onRetryLocalDownload?: (materialId: string) => void;
+  /** Open the camera-motion panel for a clip (camera-motion-2d-3d §4.5.1). */
+  onOpenCameraMotion?: (itemId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +52,7 @@ const Track: React.FC<TrackProps> = ({
   localProxyStatusMap,
   localPreviewEnabled,
   onRetryLocalDownload,
+  onOpenCameraMotion,
 }) => {
   const volumeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -587,6 +590,7 @@ const Track: React.FC<TrackProps> = ({
             localProxyStatusMap={localProxyStatusMap}
             localPreviewEnabled={localPreviewEnabled}
             onRetryLocalDownload={onRetryLocalDownload}
+            onOpenCameraMotion={onOpenCameraMotion}
           />
         ))}
 

@@ -132,11 +132,29 @@ def _boxed_scale_params(
     }
 
 
-def build_video_filter(scaling_params: Dict[str, Any]) -> str:
-    """Build the FFmpeg ``-vf`` string for the given scale/pad params."""
+def build_video_filter(scaling_params: Dict[str, Any], camera_chain: str = "") -> str:
+    """Build the FFmpeg ``-vf`` string for the given scale/pad params.
+
+    ``camera_chain`` (camera-motion-2d-3d D4) is injected immediately AFTER
+    ``scale`` and BEFORE ``pad``/``setsar``. That position is the whole WYSIWYG
+    guarantee: at that point the frame is the "content rect", exactly what the
+    preview's fit-rect is, so the motion acts on the picture rather than on a
+    canvas that already has black bars baked in.
+
+    BOTH return branches inject it (review P1-3) — the no-padding branch is the
+    common case for a same-aspect source and would otherwise silently drop the
+    motion. With ``camera_chain == ""`` both branches produce output that is
+    CHARACTER-IDENTICAL to the pre-feature function (the zero-regression
+    guarantee, asserted per-branch in the tests).
+    """
+    camera_part = f",{camera_chain}" if camera_chain else ""
+
     if not scaling_params["needs_padding"]:
         # Simple scaling
-        return f'scale={scaling_params["scale_width"]}:{scaling_params["scale_height"]},setsar=1:1'
+        return (
+            f'scale={scaling_params["scale_width"]}:{scaling_params["scale_height"]}'
+            f'{camera_part},setsar=1:1'
+        )
 
     # Scale + pad for letterboxing/pillarboxing
     scale_filter = f'scale={scaling_params["scale_width"]}:{scaling_params["scale_height"]}'
@@ -145,4 +163,4 @@ def build_video_filter(scaling_params: Dict[str, Any]) -> str:
         f'{scaling_params["pad_x"]}:{scaling_params["pad_y"]}:black'
     )
 
-    return f"{scale_filter},{pad_filter},setsar=1:1"
+    return f"{scale_filter}{camera_part},{pad_filter},setsar=1:1"

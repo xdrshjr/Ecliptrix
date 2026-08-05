@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useMemo } from 'react';
 import { TimelineState, Track, TimelineItem, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { SubtitleEditModal } from '../components';
+import { SubtitleEditModal, CameraMotionModal } from '../components';
 import { useVideoCache } from '../hooks/useVideoCache';
 import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
 import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
@@ -14,6 +14,7 @@ import {
   removeItemsAction,
   addItemAction,
   addTrackAction,
+  setCameraMotionAction,
 } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import TimelineToolbar from './TimelineToolbar';
@@ -27,6 +28,8 @@ import { http, ApiError } from '@/lib/api/http-client';
 import { TimelineRepository } from './infrastructure';
 import { shouldTimelineHandleCopyShortcut } from './shortcutOwnership';
 import type { MaterialData } from './domain';
+import { canApplyCameraMotion } from '../playback/camera/eligibility';
+import type { CameraMotion } from '../playback/camera';
 
 // ---------------------------------------------------------------------------
 // Inline throttle (avoids lodash dependency)
@@ -121,6 +124,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [isSubtitleEditModalOpen, setIsSubtitleEditModalOpen] = React.useState(false);
   const [editingTrackId, setEditingTrackId] = React.useState<string | null>(null);
 
+  // Camera-motion panel state (UI-only — the panel never writes to the store
+  // until 「应用」, so Cancel is a true cancel; camera-motion-2d-3d §4.5.2).
+  const [cameraMotionTargetId, setCameraMotionTargetId] = React.useState<string | null>(null);
+
   // Track last external update to avoid infinite loops
   const lastExternalUpdateIdRef = useRef<string | null>(null);
   const lastProcessedMaterialsTimestampRef = useRef<number | undefined>(undefined);
@@ -173,6 +180,31 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   // Fix C: item flagged by a cross-track drag commit to be scrolled into view.
   const pendingScrollItemId = useTimelineStore((state) => state.pendingScrollItemId);
+
+  // Camera-motion panel inputs. Resolved from the LIVE store so re-opening the
+  // panel after an undo shows the restored motion, not a stale copy. `null`
+  // whenever the panel is closed, which is also what unmounts the modal.
+  const cameraMotionTarget = useTimelineStore((state) => {
+    if (!cameraMotionTargetId) return null;
+    for (const track of state.tracks) {
+      const item = track.items.find((candidate) => candidate.id === cameraMotionTargetId);
+      if (item) return item;
+    }
+    return null;
+  });
+  const cameraMotionTargetIds = useTimelineStore(
+    useShallow((state) => {
+      if (!cameraMotionTargetId) return [] as string[];
+      const eligible = state.selectedItems.filter((itemId) => {
+        const track = state.tracks.find((tr) => tr.items.some((it) => it.id === itemId));
+        const item = track?.items.find((it) => it.id === itemId);
+        return canApplyCameraMotion(item, track);
+      });
+      // The clip that opened the panel always leads the list, so "apply to the
+      // first target only" (checkbox off) means "the one you opened".
+      return [cameraMotionTargetId, ...eligible.filter((id) => id !== cameraMotionTargetId)];
+    }),
+  );
 
   // ---------------------------------------------------------------------------
   // Initialize store on mount
@@ -430,6 +462,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const handleCopyRef = useRef<() => void>(() => {});
   const handleExportJSONRef = useRef<() => void>(() => {});
   const handleAddEffectRef = useRef<() => void>(() => {});
+  const handleOpenCameraMotionRef = useRef<(itemId?: string) => void>(() => {});
   const handleAddTransitionRef = useRef<() => void>(() => {});
   const handleAddSubtitleRef = useRef<() => void | Promise<void>>(() => {});
 
@@ -494,6 +527,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         // Defensive short-circuit — export hook also guards synchronously via ref.
         if (useTimelineStore.getState().isExporting) return;
         handleExportJSONRef.current();
+      } else if (!ctrl && !e.shiftKey && !e.altKey && !isInteractive && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        handleOpenCameraMotionRef.current();
       } else if (!ctrl && !e.shiftKey && !e.altKey && !isInteractive && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
         handleAddEffectRef.current();
@@ -727,6 +763,52 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
     showSuccess(t.timeline.messages.organizeMaterialsSuccess);
   }, [showSuccess, showInfo, t]);
+
+  // ---------------------------------------------------------------------------
+  // Camera motion (camera-motion-2d-3d §4.5.1)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Open the panel for `itemId`, or for the first eligible selected clip when
+   * called without one (the `M` shortcut and the toolbar button). Eligibility
+   * goes through the single `canApplyCameraMotion` predicate so the toolbar,
+   * the shortcut, the double-click and the badge can never disagree.
+   */
+  const handleOpenCameraMotion = useCallback((itemId?: string) => {
+    const state = useTimelineStore.getState();
+    const findEligible = (candidateId: string): boolean => {
+      const track = state.tracks.find(tr => tr.items.some(it => it.id === candidateId));
+      const item = track?.items.find(it => it.id === candidateId);
+      return canApplyCameraMotion(item, track);
+    };
+
+    if (itemId) {
+      if (!findEligible(itemId)) return;
+      if (!state.selectedItems.includes(itemId)) {
+        state.selectItem(itemId);
+      }
+      setCameraMotionTargetId(itemId);
+      return;
+    }
+
+    const target = state.selectedItems.find(findEligible);
+    if (!target) {
+      showInfo(t.timeline.cameraMotion.disabledNoSelection, 3000);
+      return;
+    }
+    setCameraMotionTargetId(target);
+  }, [showInfo, t]);
+
+  const handleCloseCameraMotion = useCallback(() => {
+    setCameraMotionTargetId(null);
+  }, []);
+
+  const handleApplyCameraMotion = useCallback(
+    (itemIds: string[], motion: CameraMotion | null) => {
+      setCameraMotionAction(() => useTimelineStore.getState(), itemIds, motion);
+    },
+    [],
+  );
 
   const handleAddEffect = useCallback(() => {
     showInfo(t.timeline.messages.featureComingSoon, 3000);
@@ -1051,6 +1133,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   handleCopyRef.current = handleCopy;
   handleExportJSONRef.current = handleExportJSON;
   handleAddEffectRef.current = handleAddEffect;
+  handleOpenCameraMotionRef.current = handleOpenCameraMotion;
   handleAddTransitionRef.current = handleAddTransition;
   handleAddSubtitleRef.current = handleAddSubtitle;
 
@@ -1068,6 +1151,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onImportJSON={handleImportJSON}
         onOrganizeMaterials={handleOrganizeMaterials}
         onCopy={handleCopy}
+        onOpenCameraMotion={handleOpenCameraMotion}
         onAddEffect={handleAddEffect}
         onAddTransition={handleAddTransition}
         onAddSubtitle={handleAddSubtitle}
@@ -1090,7 +1174,22 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         localProxyStatusMap={localProxyStatusMap}
         localPreviewEnabled={localPreviewEnabled}
         onRetryLocalDownload={onRetryLocalDownload}
+        onOpenCameraMotion={handleOpenCameraMotion}
       />
+
+      {/* 运镜面板 */}
+      {cameraMotionTarget && (
+        <CameraMotionModal
+          isOpen={cameraMotionTargetId !== null}
+          onClose={handleCloseCameraMotion}
+          onApply={handleApplyCameraMotion}
+          clipName={cameraMotionTarget.name}
+          clipDuration={cameraMotionTarget.duration}
+          clipThumbnailUrl={cameraMotionTarget.thumbnailUrl}
+          initialMotion={cameraMotionTarget.cameraMotion}
+          targetItemIds={cameraMotionTargetIds}
+        />
+      )}
 
       {/* 字幕编辑模态框 */}
       {editingTrackId && (

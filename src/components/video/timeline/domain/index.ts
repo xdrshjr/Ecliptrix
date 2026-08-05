@@ -125,4 +125,6 @@ export type {
   ImagePosition,
   AudioSentenceSegment,
   MaterialType,
+  CameraMotion,
+  CameraMotionData,
 } from './types';

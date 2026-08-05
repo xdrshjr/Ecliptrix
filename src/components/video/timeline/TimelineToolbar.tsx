@@ -5,6 +5,8 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useTimelineStore, removeItemsAction } from './store';
 import type { TimelineToolType } from './store';
+import { cameraMotionIneligibleReason } from '../playback/camera/eligibility';
+import type { CameraIneligibleReason } from '../playback/camera/eligibility';
 import { useShallow } from 'zustand/react/shallow';
 
 interface TimelineToolbarProps {
@@ -12,6 +14,8 @@ interface TimelineToolbarProps {
   onImportJSON: (file: File) => void;
   onOrganizeMaterials: () => void;
   onCopy: () => void;
+  /** Open the camera-motion panel for the current selection (camera-motion-2d-3d §4.5.1). */
+  onOpenCameraMotion: () => void;
   onAddEffect: () => void;
   onAddTransition: () => void;
   onAddSubtitle: () => void;
@@ -22,6 +26,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   onImportJSON,
   onOrganizeMaterials,
   onCopy,
+  onOpenCameraMotion,
   onAddEffect,
   onAddTransition,
   onAddSubtitle,
@@ -179,8 +184,48 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     }
   ];
 
+  // 运镜按钮可用性：走 canApplyCameraMotion 单一判据（§4.5.1 / P2-7），并把
+  // 「为什么不可用」映射成一条解释性 tooltip，避免用户对着灰按钮猜。
+  const cameraMotionEligibility = useTimelineStore(
+    useShallow((state) => {
+      const selected = state.selectedItems;
+      if (selected.length === 0) return { enabled: false, reason: 'no-selection' as const };
+      let firstReason: CameraIneligibleReason = 'no-selection';
+      for (const itemId of selected) {
+        for (const track of state.tracks) {
+          const item = track.items.find((candidate) => candidate.id === itemId);
+          if (!item) continue;
+          const reason = cameraMotionIneligibleReason(item, track);
+          if (reason === null) return { enabled: true, reason: null };
+          firstReason = reason;
+        }
+      }
+      return { enabled: false, reason: firstReason };
+    }),
+  );
+
+  const cameraMotionDisabledHint =
+    cameraMotionEligibility.reason === 'track-locked'
+      ? t.timeline.cameraMotion.disabledTrackLocked
+      : cameraMotionEligibility.reason === 'not-video'
+        ? t.timeline.cameraMotion.disabledNotVideo
+        : t.timeline.cameraMotion.disabledNoSelection;
+
   // 高级功能按钮
   const advancedButtons = [
+    {
+      id: 'motion',
+      action: onOpenCameraMotion,
+      icon: (
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4zM10 15.5v-7l5 3.5-5 3.5z"/>
+        </svg>
+      ),
+      label: t.timeline.toolbar.motion,
+      shortcut: t.timeline.shortcuts.motionShortcut,
+      disabled: !cameraMotionEligibility.enabled,
+      disabledHint: cameraMotionDisabledHint,
+    },
     {
       id: 'export-json',
       action: onExportJSON,
@@ -274,7 +319,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         title={
           button.comingSoon
             ? t.timeline.messages.featureComingSoon
-            : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
+            : (button.disabled && button.disabledHint)
+              ? `${button.label} — ${button.disabledHint}`
+              : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
         }
       >
         <span className={button.disabled ? 'opacity-50' : ''}>
@@ -286,7 +333,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           <div className="bg-background text-foreground text-xs px-3 py-2 rounded-md whitespace-nowrap border border-border">
             {button.comingSoon
               ? t.timeline.messages.featureComingSoon
-              : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)}
+              : (button.disabled && button.disabledHint)
+                ? `${button.label} — ${button.disabledHint}`
+                : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2">
               <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
             </div>

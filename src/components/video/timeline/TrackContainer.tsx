@@ -33,6 +33,8 @@ interface TrackContainerProps {
   localProxyStatusMap?: Map<string, LocalProxyMaskState>;
   localPreviewEnabled?: boolean;
   onRetryLocalDownload?: (materialId: string) => void;
+  /** Open the camera-motion panel for a clip (camera-motion-2d-3d §4.5.1). */
+  onOpenCameraMotion?: (itemId: string) => void;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -45,6 +47,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   localProxyStatusMap,
   localPreviewEnabled,
   onRetryLocalDownload,
+  onOpenCameraMotion,
 }) => {
   const { t, locale: contextLocale } = useLocale();
 
@@ -337,6 +340,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   localProxyStatusMap={localProxyStatusMap}
                   localPreviewEnabled={localPreviewEnabled}
                   onRetryLocalDownload={onRetryLocalDownload}
+                  onOpenCameraMotion={onOpenCameraMotion}
                 />
               ))
             ) : (

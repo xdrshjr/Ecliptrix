@@ -66,3 +66,6 @@ export type {
   CompositorStats,
   PlaybackSequenceResolver,
 } from './types';
+
+// Camera motion (2D / 3D) — camera-motion-2d-3d §5.3.
+export * from './camera';

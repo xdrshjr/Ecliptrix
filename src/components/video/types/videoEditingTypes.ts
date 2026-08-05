@@ -50,6 +50,12 @@ export interface VideoSequenceItem {
    * video's audio (spec 01 §2.4).
    */
   audioDetached?: boolean;
+  /**
+   * 2D / 3D camera motion for this clip (camera-motion-2d-3d §4.3 / §4.4).
+   * Preview resolves it per frame via `resolveCameraDraw`; export forwards it
+   * as `camera_motion` so the FFmpeg filter chain reproduces the same framing.
+   */
+  cameraMotion?: import('@/types').CameraMotion;
 }
 
 /**

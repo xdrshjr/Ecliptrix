@@ -25,6 +25,7 @@ import type {
   MaterialData,
   TimelineItemData,
   ImagePosition,
+  CameraMotionData,
 } from '../../domain';
 import type { TimelineStore } from '../useTimelineStore';
 
@@ -59,6 +60,8 @@ export interface TimelineSlice {
   updateItemSubtitle: (itemId: string, text: string) => void;
   /** Persist an image overlay's position/scale into the authoritative store. */
   updateItemImagePosition: (itemId: string, position: ImagePosition) => void;
+  /** Persist (or clear, with `null`) a clip's 2D/3D camera motion. */
+  updateItemCameraMotion: (itemId: string, motion: CameraMotionData | null) => void;
   /** Shift subsequent items on the same track to close gaps after a given item. */
   consolidateTrackAfterItem: (itemId: string) => void;
   /**
@@ -392,6 +395,19 @@ export const createTimelineSlice: StateCreator<
       }
 
       found.item.imagePosition = position;
+      state._syncDerivedState();
+    },
+
+    updateItemCameraMotion: (itemId: string, motion: CameraMotionData | null) => {
+      const state = get();
+      const aggregate = state._aggregate;
+      const found = aggregate.findItem(itemId);
+      if (!found) {
+        console.warn(`[timelineSlice] updateItemCameraMotion: item "${itemId}" not found.`);
+        return;
+      }
+
+      found.item.cameraMotion = motion ?? undefined;
       state._syncDerivedState();
     },
 

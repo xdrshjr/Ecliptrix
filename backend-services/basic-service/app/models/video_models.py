@@ -116,6 +116,52 @@ class ClipTransition(BaseModel):
     duration: float = Field(..., gt=0, description="Transition duration in seconds")
 
 
+class CameraKeyframe(BaseModel):
+    """One end of a camera motion (camera-motion-2d-3d §7.1).
+
+    The ranges here are a SECOND line of defence: the frontend already clamps in
+    `toCameraMotionWire`, but timeline JSON is user-editable (R11) and these
+    numbers end up formatted into FFmpeg filter expressions, so they are
+    validated again at the boundary.
+    """
+    scale: float = Field(1.0, ge=1, le=4, description="Frame magnification; 1 = full frame")
+    x: float = Field(0.5, ge=0, le=1, description="Normalized horizontal framing center")
+    y: float = Field(0.5, ge=0, le=1, description="Normalized vertical framing center")
+    roll: float = Field(0.0, ge=-45, le=45, description="In-frame rotation, degrees clockwise")
+    rotate_x: float = Field(0.0, ge=-45, le=45, description="Tilt (3D), degrees")
+    rotate_y: float = Field(0.0, ge=-45, le=45, description="Pan / orbit (3D), degrees")
+    dolly: float = Field(0.0, ge=-0.6, le=0.6, description="Dolly (3D); positive moves closer")
+
+
+class CameraMotion(BaseModel):
+    """2D / 3D camera motion for one clip (camera-motion-2d-3d §7.2).
+
+    Export injects the matching `zoompan` / `perspective` / `rotate` chain
+    between `scale` and `pad` in `_normalize_video`, so the rendered framing
+    reproduces the editor preview frame for frame.
+    """
+    version: int = Field(1, description="Structure version; unknown versions are discarded")
+    mode: Literal["2d", "3d"] = Field("2d", description="Selects the preview renderer and export filters")
+    preset_id: Optional[str] = Field(None, description="Preset id or 'custom'; UI echo only")
+    intensity: float = Field(1.0, ge=0, le=2, description="Multiplier on the start→end delta")
+    easing: Literal["linear", "easeIn", "easeOut", "easeInOut"] = Field(
+        "easeInOut", description="Progress easing curve"
+    )
+    start_offset: Optional[float] = Field(
+        None,
+        description=(
+            "Motion window start inside the clip (seconds), default 0. MAY BE "
+            "NEGATIVE: a clip split mid-motion keeps the window that opened "
+            "before it, so the two halves stay continuous (§4.6)."
+        ),
+    )
+    duration: Optional[float] = Field(
+        None, gt=0, description="Window length in seconds; null = the rest of the clip"
+    )
+    start: CameraKeyframe = Field(default_factory=CameraKeyframe, description="Start keyframe")
+    end: CameraKeyframe = Field(default_factory=CameraKeyframe, description="End keyframe")
+
+
 class VideoCompositionItem(BaseModel):
     """
     Individual video item in the composition timeline.
@@ -156,6 +202,13 @@ class VideoCompositionItem(BaseModel):
         description=(
             "When true the embedded audio of this video clip is suppressed; the "
             "detached audio plays from an independent audio item (spec 01 §2.4)."
+        ),
+    )
+    camera_motion: Optional[CameraMotion] = Field(
+        None,
+        description=(
+            "2D / 3D camera motion (camera-motion-2d-3d). Optional and fully "
+            "backward compatible: omitting it renders exactly as before."
         ),
     )
 
@@ -323,6 +376,15 @@ class VideoCompositionResponse(BaseResponse):
     output_file_size: Optional[int] = Field(None, description="Size of the output file in bytes")
     processing_time: Optional[float] = Field(None, description="Total processing time in seconds")
     error_details: Optional[CompositionErrorDetails] = Field(None, description="Detailed error information if composition failed")
+    warnings: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Warnings decidable in the SYNCHRONOUS request stage only. Composition "
+            "is asynchronous, so degrades that happen during normalization are "
+            "reported through GET /compose/{id}/status instead "
+            "(camera-motion-2d-3d §4.4.5 / D14)."
+        ),
+    )
 
 
 class VideoDownloadRequest(BaseModel):

@@ -228,7 +228,12 @@ async def get_composition_status(composition_id: str):
                 "task_id": composition_info.get("task_id", "unknown"),
                 "status": composition_info.get("status", "unknown"),
                 "progress": composition_info.get("progress", 0.0),
-                "start_time": composition_info.get("start_time", 0)
+                "start_time": composition_info.get("start_time", 0),
+                # camera-motion-2d-3d §4.4.5 (W3). This structure is an EXPLICIT
+                # field whitelist, so a non-fatal degrade recorded by the async
+                # normalize stage never reaches the client unless it is listed
+                # here — the single easiest point in the chain to miss.
+                "warnings": composition_info.get("warnings", []),
             }
             
             # Add completion info if available

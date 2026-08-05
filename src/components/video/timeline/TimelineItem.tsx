@@ -15,6 +15,8 @@ import {
 } from '../lib/filmstrip/filmstripCache';
 import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
 import { computeItemStyles } from './timelineItemStyles';
+import { presetLabel } from '../components/CameraMotionModal/presetLabels';
+import { canApplyCameraMotion } from '../playback/camera/eligibility';
 import TimelineItemFilmstrip from './TimelineItemFilmstrip';
 import TimelineItemDownloadOverlay, {
   type LocalProxyMaskState,
@@ -57,6 +59,11 @@ interface TimelineItemProps {
    * See spec local-video-editing-refactor 01 §2.4.
    */
   onDetachAudio?: (itemId: string) => void;
+  /**
+   * Open the camera-motion panel for this clip (camera-motion-2d-3d §4.5.1).
+   * Wired by the parent; omitted → double-click and the badge are inert.
+   */
+  onOpenCameraMotion?: (itemId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +78,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   localPreviewEnabled,
   onRetryLocalDownload,
   onDetachAudio,
+  onOpenCameraMotion,
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
@@ -251,6 +259,15 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     });
   };
 
+  // camera-motion-2d-3d §4.5.1 / P2-7: eligibility goes through the SHARED
+  // `canApplyCameraMotion` predicate — the toolbar, the M shortcut, the
+  // double-click and this badge must never disagree, and re-stating the rule
+  // here is exactly how they would drift apart.
+  const cameraMotionEligible = useTimelineStore(s =>
+    canApplyCameraMotion(item, s.tracks.find(t => t.id === item.trackId)),
+  );
+  const cameraMotionEnabled = !!onOpenCameraMotion && cameraMotionEligible;
+
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -258,6 +275,12 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     if (item.type === 'subtitle') {
       setEditingText(item.text || '');
       setEditingSubtitle(item.id);
+      return;
+    }
+    // Video clips: double-click is the accelerator for the camera-motion panel
+    // (this branch was previously empty, so there is no conflict).
+    if (cameraMotionEnabled) {
+      onOpenCameraMotion?.(item.id);
     }
   };
 
@@ -606,6 +629,37 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       }
     >
       {renderItemContent()}
+
+      {/* 运镜徽标：已配置运镜的 clip 右上角一枚 12px 摄像机标，点击再次打开面板。
+          stopPropagation 防止触发 clip 拖拽。 */}
+      {item.cameraMotion && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (cameraMotionEnabled) onOpenCameraMotion?.(item.id);
+          }}
+          title={t.timeline.cameraMotion.badgeTitle.replace(
+            '{preset}',
+            presetLabel(item.cameraMotion.presetId, t.timeline.cameraMotion.presets),
+          )}
+          aria-label={t.timeline.cameraMotion.badgeTitle.replace(
+            '{preset}',
+            presetLabel(item.cameraMotion.presetId, t.timeline.cameraMotion.presets),
+          )}
+          className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5
+            text-[9px] font-medium leading-none text-white backdrop-blur-sm transition-colors hover:bg-black/80
+            focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white"
+        >
+          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+          </svg>
+          <span className="hidden sm:inline">
+            {presetLabel(item.cameraMotion.presetId, t.timeline.cameraMotion.presets)}
+          </span>
+        </button>
+      )}
 
       <TimelineItemDownloadOverlay
         item={item}

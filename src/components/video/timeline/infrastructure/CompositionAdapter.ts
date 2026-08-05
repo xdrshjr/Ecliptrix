@@ -29,6 +29,7 @@ import type {
 } from '../domain/ports';
 import type { TrackData, MaterialData } from '../domain/types';
 import { isLocalMediaReference } from '../../lib/selectPlaybackUrl';
+import { toCameraMotionWire } from '../../playback/camera/wire';
 
 // ---------------------------------------------------------------------------
 // Expanded MaterialData for composition (extends domain MaterialData)
@@ -181,6 +182,10 @@ export class CompositionAdapter implements ICompositionPort {
           opacity: item.opacity,
           transitionIn: item.transitionIn,
           transitionOut: item.transitionOut,
+          // 2D / 3D camera motion (camera-motion-2d-3d §4.3 / §4.4). Forwarded
+          // verbatim: preview resolves it per frame, export ships it to the
+          // backend so both ends run the same math.
+          cameraMotion: item.cameraMotion,
         };
 
         allVideoItems.push(videoSequence);
@@ -335,6 +340,7 @@ export class CompositionAdapter implements ICompositionPort {
         opacity: seq.opacity,
         transition_in: seq.transitionIn,
         transition_out: seq.transitionOut,
+        camera_motion: toCameraMotionWire(seq.cameraMotion),
       })),
       audio_sequences: audioSequences.map((seq) => ({
         id: seq.id,

@@ -11,6 +11,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { shiftCameraMotionWindow } from '../../../playback/camera/splitRebase';
 
 /**
  * Resize a timeline item by moving one of its edges.
@@ -31,8 +32,20 @@ export function resizeItemAction(
   // Record history (captures before-snapshot)
   state.recordAction('UPDATE_ITEM', { itemId, edge, newPosition });
 
+  // camera-motion-2d-3d §4.6: trimming the START edge moves the clip-local
+  // origin, so an EXPLICIT motion window has to travel with it (same semantics
+  // as a split). An implicit window (`duration == null`) re-flows over the new
+  // length by itself and is deliberately left alone.
+  const found = edge === 'start' ? state._aggregate.findItem(itemId) : null;
+  const motionBefore = found?.item.cameraMotion;
+  const startDelta = found ? newPosition - found.item.startTime.value : 0;
+
   // Perform the resize
   state.resizeItem(itemId, edge, newPosition);
+
+  if (motionBefore && motionBefore.duration != null && startDelta !== 0) {
+    get().updateItemCameraMotion(itemId, shiftCameraMotionWindow(motionBefore, startDelta) ?? null);
+  }
 
   // Auto-organize after resize so that any trailing gap is closed.
   get().autoOrganize();

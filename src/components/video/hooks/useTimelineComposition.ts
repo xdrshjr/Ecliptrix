@@ -5,6 +5,7 @@ import { VideoEditingLogger } from '../utils';
 import { CompositionAdapter } from '../timeline/infrastructure';
 import type { TrackData, MaterialData } from '../timeline/domain/types';
 import { findSequenceAtCompositionTime } from '../utils/timelineMapping';
+import { cameraMotionFingerprint } from '../playback/camera/fingerprint';
 
 /**
  * 折叠一个素材的「播放相关字段」为一段稳定字符串。
@@ -35,16 +36,22 @@ function materialPlaybackFields(material: MaterialItem | undefined): string {
  * 折叠视频序列上「合成相关」的透传字段（spec 02 §5）。
  *
  * 加入轨道后由 timeline item 翻转的 audioDetached / opacity / 转场 / 轨道
- * z-order，会改变合成器的叠加与转场表现，但不属于 url/clip/timing。把它们纳入
- * 签名，确保 patch-after-insert 翻转这些字段时也触发组合状态刷新。音频序列没有
- * 这些字段，返回空串。
+ * z-order / 运镜，会改变合成器的叠加、转场与取景表现，但不属于 url/clip/timing。
+ * 把它们纳入签名，确保 patch-after-insert 翻转这些字段时也触发组合状态刷新。
+ * 音频序列没有这些字段，返回空串。
+ *
+ * ⚠️ camera-motion-2d-3d D12/P0-4：下面这条 early-return 守卫**必须**同时包含
+ * `cameraMotion`。一个「只配了运镜、其余四个字段全是 undefined」的 clip 会在这里
+ * 被短路掉，此时无论 return 数组里追加什么指纹都不会生效——那正是本仓历史上反复
+ * 出现的「面板点了应用但预览不动」。
  */
 function compositorPassthroughFields(
   seq: VideoSequenceItem | AudioSequenceItem,
 ): string {
   const v = seq as VideoSequenceItem;
   if (v.audioDetached === undefined && v.opacity === undefined &&
-      v.trackZ === undefined && !v.transitionIn && !v.transitionOut) {
+      v.trackZ === undefined && !v.transitionIn && !v.transitionOut &&
+      v.cameraMotion === undefined) {
     return '';
   }
   return [
@@ -53,6 +60,7 @@ function compositorPassthroughFields(
     v.trackZ ?? '',
     v.transitionIn ? `${v.transitionIn.type}:${v.transitionIn.duration}` : '',
     v.transitionOut ? `${v.transitionOut.type}:${v.transitionOut.duration}` : '',
+    v.cameraMotion ? cameraMotionFingerprint(v.cameraMotion) : '',
   ].join(',');
 }
 
@@ -96,7 +104,7 @@ function subtitlePlaybackSignature(sub: SubtitleSequenceItem): string {
  * 以「字符串相等」而非深比较作为提交判据，更新成本低，且避免深比较带来的
  * 播放重置抖动（见 spec Risks 表）。
  */
-function computeCompositionSignature(
+export function computeCompositionSignature(
   videoSequences: VideoSequenceItem[],
   audioSequences: AudioSequenceItem[],
   subtitleSequences: SubtitleSequenceItem[],
