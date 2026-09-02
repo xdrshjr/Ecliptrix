@@ -14,12 +14,9 @@ from . import timeline_import_router
 from . import chat_router
 from . import ai_mixed_editing_router
 from . import ai_video_generate_router
-from . import auth_router
-from . import user_router
 from . import voice_clone_router
 from . import material_router
 from . import media_proxy_router
-from . import telemetry_router
 from . import config_router
 
 __all__ = [
@@ -35,11 +32,8 @@ __all__ = [
     "chat_router",
     "ai_mixed_editing_router",
     "ai_video_generate_router",
-    "auth_router",
-    "user_router",
     "voice_clone_router",
     "material_router",
     "media_proxy_router",
-    "telemetry_router",
     "config_router",
 ]

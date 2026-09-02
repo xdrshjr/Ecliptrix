@@ -14,7 +14,10 @@ interface UploadTask {
 interface UseMaterialUploadParams {
   taskId: string;
   logger: VideoEditingLogger;
-  user: { id?: string } | null | undefined;
+  /** Owner stamped on every upload. Always `LOCAL_OWNER_ID` — see
+   *  `src/lib/localOwner.ts`. Kept as a parameter (rather than imported
+   *  here) so the hook stays a pure function of its inputs in tests. */
+  ownerId: string;
   isMountedRef: MutableRefObject<boolean>;
   setMaterials: Dispatch<SetStateAction<MaterialItem[]>>;
 }
@@ -40,7 +43,7 @@ const MAX_CONCURRENT_UPLOADS = 3;
  * behaviour is unchanged.
  */
 export function useMaterialUpload(params: UseMaterialUploadParams): UseMaterialUploadReturn {
-  const { taskId, logger, user, isMountedRef, setMaterials } = params;
+  const { taskId, logger, ownerId, isMountedRef, setMaterials } = params;
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -64,8 +67,8 @@ export function useMaterialUpload(params: UseMaterialUploadParams): UseMaterialU
         formData.append('file', file);
         formData.append('task_id', taskId);
         formData.append('generate_thumbnail', 'true');
-        if (user?.id) {
-          formData.append('user_id', user.id);
+        if (ownerId) {
+          formData.append('user_id', ownerId);
         }
 
         let result: any;
@@ -121,8 +124,8 @@ export function useMaterialUpload(params: UseMaterialUploadParams): UseMaterialU
         const formData = new FormData();
         formData.append('file', file);
         formData.append('task_id', taskId);
-        if (user?.id) {
-          formData.append('user_id', user.id);
+        if (ownerId) {
+          formData.append('user_id', ownerId);
         }
 
         let result: any;
@@ -164,7 +167,7 @@ export function useMaterialUpload(params: UseMaterialUploadParams): UseMaterialU
       });
       return null;
     }
-  }, [taskId, logger, user]);
+  }, [taskId, logger, ownerId]);
 
   // 视频上传后自动触发快速解析（fire-and-forget）
   const triggerAutoAnalysis = useCallback(async (material: MaterialItem) => {

@@ -1,8 +1,6 @@
 /**
  * Vitest configuration for Ecliptrix integration tests.
  *
- * Spec: docs/plans/unified-api-auth-refactor/specs/07-testing-suite.md §2.4
- *
  * Differences from `vitest.config.ts`:
  *  - Test root is `tests/integration/**` (not `src/**`)
  *  - 90s test timeout to accommodate full-stack boot (~15-30s)

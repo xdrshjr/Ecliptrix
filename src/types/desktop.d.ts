@@ -9,11 +9,6 @@
  * possibly-undefined (`window.ecliptrixDesktop?.…` or via `isDesktop()`).
  */
 
-export interface BootstrapCredentials {
-  username: string;
-  password: string;
-}
-
 export interface DesktopWindowControls {
   /** Minimize the current window. */
   minimize(): Promise<void>;
@@ -33,8 +28,6 @@ export interface DesktopWindowControls {
 export interface EcliptrixDesktopBridge {
   version: string;
   logsPath: string;
-  /** ROOT credentials used for desktop silent auto-login (§2.2). */
-  getBootstrapCredentials(): Promise<BootstrapCredentials>;
   windowControls: DesktopWindowControls;
 }
 

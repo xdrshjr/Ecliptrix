@@ -220,20 +220,19 @@ def test_list_material_dirs_empty_when_no_thumbnails(thumb_svc):
 
 @pytest.fixture
 def thumb_client(thumb_svc):
-    """Mount only the storage_router with auth + the thumbnail service stubbed
-    to the temp-rooted ThumbnailService so we exercise the real endpoint."""
+    """Mount only the storage_router with the thumbnail service stubbed to the
+    temp-rooted ThumbnailService so we exercise the real endpoint. The routes
+    carry no auth dependency any more (single local owner), so nothing needs
+    to be overridden."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from app.routers import storage_router
-    from app.dependencies.auth import get_current_user
 
     app = FastAPI()
     app.include_router(storage_router.router, prefix="/api")
-    app.dependency_overrides[get_current_user] = lambda: MagicMock(id="test-user")
 
     with patch.object(storage_router, "thumbnail_service", thumb_svc):
         yield TestClient(app)
-    app.dependency_overrides.clear()
 
 
 def test_post_thumbnail_frame_persists_and_returns_url(thumb_client, storage_root):

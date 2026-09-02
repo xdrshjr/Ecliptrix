@@ -1,7 +1,7 @@
 /**
  * Unit tests for the backend proxy helper.
  *
- * Spec: docs/plans/unified-api-auth-refactor/specs/04-nextjs-routes-sweep.md §6
+ * Spec: docs/plans/desktop-only-refactor/spec.md §4.9 §6
  *
  * Cases T1–T20 from the spec test matrix. Each case mocks `global.fetch`
  * and constructs a minimal `NextRequest`-shaped object that exposes only
@@ -132,7 +132,7 @@ describe('T2 — POST with JSON body', () => {
     expect(res.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [calledUrl, calledOpts] = fetchMock.mock.calls[0]
-    expect(calledUrl).toBe('http://test-backend:8088/api/video/compose')
+    expect(calledUrl).toBe('http://test-backend:8088/api/video/compose?a=1&b=2')
     expect(calledOpts.method).toBe('POST')
     expect(calledOpts.body).toBe('{"x":1,"y":"two"}')
     expect((calledOpts.headers as Headers).get('Content-Type')).toBe(
@@ -216,40 +216,28 @@ describe('T3 — POST with multipart streams body unchanged', () => {
 })
 
 // ───────────────────────────────────────────────────────────────────────────
-// T4: Incoming Authorization header
+// T4: Credential headers are NOT forwarded
+//
+// The desktop build has no user system; the proxy is a dumb pipe to a backend
+// bound to 127.0.0.1. Anything credential-shaped on the incoming request is
+// dropped rather than relayed, so a stray header from an old client cannot
+// reach the backend.
 // ───────────────────────────────────────────────────────────────────────────
-describe('T4 — forwards Authorization header', () => {
-  it('forwards Authorization: Bearer xyz to backend', async () => {
+describe('T4 — drops credential headers', () => {
+  it('does not forward Authorization or x-session-token', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
     const req = makeRequest({
-      headers: { authorization: 'Bearer abc123' },
+      headers: {
+        authorization: 'Bearer abc123',
+        'x-session-token': 'legacy-token-zzz',
+      },
     })
 
     await backendProxy.get(req, '/api/video/search')
 
     const [, calledOpts] = fetchMock.mock.calls[0]
-    expect((calledOpts.headers as Headers).get('Authorization')).toBe(
-      'Bearer abc123',
-    )
-  })
-})
-
-// ───────────────────────────────────────────────────────────────────────────
-// T5: Incoming x-session-token header
-// ───────────────────────────────────────────────────────────────────────────
-describe('T5 — forwards x-session-token (legacy header)', () => {
-  it('forwards x-session-token to backend', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
-    const req = makeRequest({
-      headers: { 'x-session-token': 'legacy-token-zzz' },
-    })
-
-    await backendProxy.get(req, '/api/video/search')
-
-    const [, calledOpts] = fetchMock.mock.calls[0]
-    expect((calledOpts.headers as Headers).get('x-session-token')).toBe(
-      'legacy-token-zzz',
-    )
+    expect((calledOpts.headers as Headers).get('Authorization')).toBeNull()
+    expect((calledOpts.headers as Headers).get('x-session-token')).toBeNull()
   })
 })
 
@@ -545,16 +533,16 @@ describe('T18 — builder BackendPath resolves dynamic params', () => {
       body: '{}',
     })
     const builder: BackendPath = (p) =>
-      `/api/user/toggle-status/${p.userId as string}`
+      `/api/video-projects/${p.projectId as string}`
     const ctx: RouteContext = {
-      params: Promise.resolve({ userId: 'u-abc-123' }),
+      params: Promise.resolve({ projectId: 'p-abc-123' }),
     }
 
     await backendProxy.post(req, builder, ctx)
 
     const [calledUrl] = fetchMock.mock.calls[0]
     expect(calledUrl).toBe(
-      'http://test-backend:8088/api/user/toggle-status/u-abc-123',
+      'http://test-backend:8088/api/video-projects/p-abc-123?a=1&b=2',
     )
   })
 })

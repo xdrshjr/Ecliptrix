@@ -39,7 +39,7 @@ function makeHarness() {
   const params = {
     taskId: 'task-1',
     logger: new VideoEditingLogger({ component: 'test' }),
-    user: { id: 'u1' },
+    ownerId: 'u1',
     isMountedRef: { current: true },
     setMaterials,
   };

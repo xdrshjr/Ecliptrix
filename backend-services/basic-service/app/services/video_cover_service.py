@@ -2,9 +2,9 @@
 Service layer for the per-project video cover authoring feature.
 
 All public methods take an explicit ``user_id`` argument that the router has
-already derived from ``Depends(get_current_user)``. The service NEVER accepts
-``user_id`` from a request body. Cross-user reads return ``None`` (the router
-maps that to a 404 response — we do not leak existence with 403).
+already resolved to the ``LOCAL_OWNER_ID`` constant. The service NEVER accepts
+``user_id`` from a request body. A row owned by some other id reads back as
+``None`` (the router maps that to a 404).
 
 Storage paths follow the well-known-slot pattern:
   * Cover PNG (rendered):   ``STORAGE_ROOT/projects/<project_id>/cover.png``

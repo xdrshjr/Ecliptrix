@@ -15,15 +15,6 @@ export interface ToolContext {
    */
   apiBaseUrl: string;
   /**
-   * Session token from the incoming user request, forwarded as an
-   * `Authorization: Bearer <token>` header on every internal tool fetch so
-   * the downstream Next.js BFF routes (and the backend SessionAuthMiddleware)
-   * can identify the caller. Undefined when the incoming request carried no
-   * credentials — tools should still run but will likely see 401 from
-   * auth-protected routes.
-   */
-  authToken?: string;
-  /**
    * Owning project id when the agent is invoked from a project-bound editor
    * mount (the normal case post project-isolation refactor). Tools that
    * touch project-scoped backend resources (e.g. storyboard packs) must
@@ -171,12 +162,6 @@ export interface AgentChatRequest {
   messages: ChatMessage[];
   timelineState: TimelineState;
   materials: MaterialItem[];
-  /**
-   * Session token passed in the request body as a fallback for cases where
-   * the Authorization header is lost (observed in some dev/deploy environments).
-   * The chat route reads from header first, then falls back to this field.
-   */
-  sessionToken?: string;
   /** Owning project id of the editor session that fired this request.
    *  Forwarded into the agent's ToolContext so project-scoped tools (e.g.
    *  storyboard pack creation) include it on backend calls. */
@@ -224,12 +209,6 @@ export interface VideoEditingAgentConfig {
    * the server container.
    */
   apiBaseUrl: string;
-  /**
-   * Session token from the incoming request, forwarded to every internal
-   * tool fetch so auth-protected BFF routes and the backend
-   * SessionAuthMiddleware see the user identity.
-   */
-  authToken?: string;
   /**
    * Owning project id forwarded from the user's editor session. Tools that
    * call project-scoped backend resources rely on this to pass project_id

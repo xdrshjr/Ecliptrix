@@ -1,20 +1,18 @@
 /**
  * Vitest unit tests for `src/lib/api/http-client.ts`.
  *
- * Coverage: spec §6 cases T1-T18.
- *
- * IMPORTANT: Vitest is NOT YET INSTALLED in this repo — that is T07's job.
- * This file is valid Vitest syntax and will run as soon as `vitest` and
- * `@vitest/expect` are added to devDependencies and the vitest config wires up
- * a jsdom-like environment that exposes `window` and `localStorage`.
+ * The auth cases are gone with the auth layer (desktop-only-refactor §4.9).
+ * What remains guards the parts that are still load-bearing: timeouts, the
+ * retry policy, the same-origin path whitelist and the uniform error envelope
+ * — plus the 429 / `RateLimitError` branch, which is NEW here. That branch was
+ * previously untested despite being the one the refactor spec singles out as
+ * "must not be removed" (media_proxy_service still throttles per IP, so a 429
+ * is still reachable). An untested must-keep branch is how it got deleted by
+ * accident the first time.
  *
  * Local conventions for these tests:
  *   - We mock `fetch` via `vi.fn()` so each test fully owns the response.
  *   - We mock `window.localStorage` with an in-memory store.
- *   - We mock `window.location` so 401-redirect tests can assert the target
- *     URL without actually navigating jsdom.
- *   - We reset the module-level once-flag between tests via the
- *     `__resetSessionExpiryFlagForTests` test hook exported from the wrapper.
  */
 
 import {
@@ -30,22 +28,13 @@ import {
 import {
   http,
   ApiError,
-  ForbiddenError,
-  MissingAuthError,
-  SessionExpiredError,
+  RateLimitError,
   TimeoutError,
-  __resetSessionExpiryFlagForTests,
 } from '../http-client';
-import { SESSION_TOKEN_KEY, SESSION_USER_KEY } from '@/lib/auth/storage-keys';
 
 // ---------------------------------------------------------------------------
 // Test plumbing
 // ---------------------------------------------------------------------------
-
-interface MockLocation {
-  pathname: string;
-  href: string;
-}
 
 const STORAGE_STATE: Record<string, string> = {};
 
@@ -111,29 +100,15 @@ function makeRawResponse(
   } as unknown as Response;
 }
 
-let mockLocation: MockLocation;
-
 beforeEach(() => {
   // Reset storage
   for (const k of Object.keys(STORAGE_STATE)) delete STORAGE_STATE[k];
-
-  // Reset module-level once-flag
-  __resetSessionExpiryFlagForTests();
 
   // Mock localStorage
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     writable: true,
     value: makeStorageMock(),
-  });
-
-  // Mock window.location — vitest's jsdom env provides window, but we replace
-  // location so we can read/write `href` and `pathname` without navigating.
-  mockLocation = { pathname: '/some-protected-page', href: '' };
-  Object.defineProperty(window, 'location', {
-    configurable: true,
-    writable: true,
-    value: mockLocation,
   });
 
   // Reset fetch
@@ -148,58 +123,15 @@ function asMockFetch(): Mock {
   return globalThis.fetch as unknown as Mock;
 }
 
-function seedToken(token = 'test-session-token') {
-  STORAGE_STATE[SESSION_TOKEN_KEY] = token;
-}
-
 // ---------------------------------------------------------------------------
-// Test cases (T1 - T18 from spec §6)
+// Test cases
 // ---------------------------------------------------------------------------
 
 describe('http-client', () => {
   // -------------------------------------------------------------------------
-  // T1 — requireAuth default true, no token → MissingAuthError, no fetch
-  // -------------------------------------------------------------------------
-  it('T1: throws MissingAuthError when no token is present and requireAuth is default', async () => {
-    await expect(http.get('/api/x')).rejects.toBeInstanceOf(MissingAuthError);
-    expect(asMockFetch()).not.toHaveBeenCalled();
-  });
-
-  // -------------------------------------------------------------------------
-  // T2 — requireAuth: false bypasses auth check, no Authorization header sent
-  // -------------------------------------------------------------------------
-  it('T2: with requireAuth:false issues fetch without Authorization header', async () => {
-    asMockFetch().mockResolvedValue(makeJsonResponse(200, { ok: true }));
-
-    const result = await http.get<{ ok: boolean }>('/api/x', { requireAuth: false });
-    expect(result).toEqual({ ok: true });
-
-    expect(asMockFetch()).toHaveBeenCalledTimes(1);
-    const init = asMockFetch().mock.calls[0][1] as RequestInit;
-    const headers = init.headers as Record<string, string>;
-    expect(headers).not.toHaveProperty('Authorization');
-  });
-
-  // -------------------------------------------------------------------------
-  // T3 — token present → fetch sent with Authorization: Bearer <token>
-  // -------------------------------------------------------------------------
-  it('T3: injects Authorization: Bearer <token> when token is present', async () => {
-    seedToken('abc-123');
-    asMockFetch().mockResolvedValue(makeJsonResponse(200, { ok: true }));
-
-    await http.get('/api/x');
-
-    expect(asMockFetch()).toHaveBeenCalledTimes(1);
-    const init = asMockFetch().mock.calls[0][1] as RequestInit;
-    const headers = init.headers as Record<string, string>;
-    expect(headers['Authorization']).toBe('Bearer abc-123');
-  });
-
-  // -------------------------------------------------------------------------
   // T4 — JSON POST body and content-type
   // -------------------------------------------------------------------------
   it('T4: post serializes JSON body and sets Content-Type application/json', async () => {
-    seedToken();
     asMockFetch().mockResolvedValue(makeJsonResponse(200, { ok: true }));
 
     await http.post('/api/x', { a: 1 });
@@ -214,7 +146,6 @@ describe('http-client', () => {
   // T5 — FormData upload omits Content-Type
   // -------------------------------------------------------------------------
   it('T5: upload with FormData does NOT set Content-Type header', async () => {
-    seedToken();
     asMockFetch().mockResolvedValue(makeJsonResponse(200, { ok: true }));
 
     const fd = new FormData();
@@ -233,90 +164,78 @@ describe('http-client', () => {
   // T6 — happy path 200 → resolves with parsed body
   // -------------------------------------------------------------------------
   it('T6: resolves with parsed JSON body on 200', async () => {
-    seedToken();
     asMockFetch().mockResolvedValue(makeJsonResponse(200, { ok: true, value: 42 }));
 
     const result = await http.get<{ ok: boolean; value: number }>('/api/x');
     expect(result).toEqual({ ok: true, value: 42 });
   });
-
   // -------------------------------------------------------------------------
-  // T7 — 401 response → clears storage, fires event, redirects, throws
+  // T22 — 429 → RateLimitError carrying Retry-After, and a global event.
+  //
+  // Guards the branch the refactor spec forbids removing: the per-IP download
+  // throttle in media_proxy_service still answers 429, and dropping this
+  // branch would degrade it into an unclassified error with no countdown.
   // -------------------------------------------------------------------------
-  it('T7: 401 clears storage, dispatches event, redirects to /login, throws SessionExpiredError', async () => {
-    seedToken('about-to-expire');
-    STORAGE_STATE[SESSION_USER_KEY] = JSON.stringify({ id: 'u1' });
-    asMockFetch().mockResolvedValue(makeJsonResponse(401, { error: 'unauthorized' }));
-
-    const eventSpy = vi.fn();
-    window.addEventListener('ecliptrix:session-expired', eventSpy);
-
-    await expect(http.get('/api/x')).rejects.toBeInstanceOf(SessionExpiredError);
-
-    // Order matters: storage must be cleared BEFORE redirect.
-    expect(STORAGE_STATE[SESSION_TOKEN_KEY]).toBeUndefined();
-    expect(STORAGE_STATE[SESSION_USER_KEY]).toBeUndefined();
-
-    expect(eventSpy).toHaveBeenCalledTimes(1);
-    expect(mockLocation.href).toBe('/login?reason=session-expired');
-
-    window.removeEventListener('ecliptrix:session-expired', eventSpy);
-  });
-
-  // -------------------------------------------------------------------------
-  // T8 — 401 while already on /login → no redirect, but event still fires
-  // -------------------------------------------------------------------------
-  it('T8: 401 while on /login does NOT redirect but still clears storage and fires event', async () => {
-    seedToken('expired');
-    STORAGE_STATE[SESSION_USER_KEY] = JSON.stringify({ id: 'u1' });
-    mockLocation.pathname = '/login';
-    asMockFetch().mockResolvedValue(makeJsonResponse(401, { error: 'unauthorized' }));
-
-    const eventSpy = vi.fn();
-    window.addEventListener('ecliptrix:session-expired', eventSpy);
-
-    await expect(http.get('/api/x')).rejects.toBeInstanceOf(SessionExpiredError);
-
-    expect(STORAGE_STATE[SESSION_TOKEN_KEY]).toBeUndefined();
-    expect(STORAGE_STATE[SESSION_USER_KEY]).toBeUndefined();
-    expect(eventSpy).toHaveBeenCalledTimes(1);
-    expect(mockLocation.href).toBe(''); // no navigation
-
-    window.removeEventListener('ecliptrix:session-expired', eventSpy);
-  });
-
-  // -------------------------------------------------------------------------
-  // T9 — 403 → ForbiddenError carrying body, no logout, no redirect
-  // -------------------------------------------------------------------------
-  it('T9: 403 throws ForbiddenError carrying body details (no logout, no redirect)', async () => {
-    seedToken();
+  it('T22: 429 throws RateLimitError carrying the Retry-After seconds', async () => {
     asMockFetch().mockResolvedValue(
-      makeJsonResponse(403, {
-        error_code: 'PERMISSION_DENIED',
-        message: 'You shall not pass',
+      makeJsonResponse(429, { message: 'Slow down' }, { 'retry-after': '17' }),
+    );
+
+    let thrown: unknown;
+    try {
+      await http.get('/api/material/lookup');
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(RateLimitError);
+    expect((thrown as RateLimitError).retryAfter).toBe(17);
+    expect((thrown as RateLimitError).status).toBe(429);
+    expect((thrown as RateLimitError).code).toBe(RateLimitError.CODE);
+    // 4xx is never retried.
+    expect(asMockFetch()).toHaveBeenCalledTimes(1);
+  });
+
+  it('T23: 429 without a Retry-After header falls back to error_details.retry_after', async () => {
+    // The Next.js proxy buffers JSON 4xx bodies and drops `Retry-After`, so the
+    // body value is the only surviving source of the real countdown.
+    asMockFetch().mockResolvedValue(
+      makeJsonResponse(429, {
+        message: 'Slow down',
+        error_details: { retry_after: 9 },
       }),
     );
 
     let thrown: unknown;
     try {
-      await http.get('/api/x');
-    } catch (e) {
-      thrown = e;
+      await http.get('/api/material/lookup');
+    } catch (err) {
+      thrown = err;
     }
 
-    expect(thrown).toBeInstanceOf(ForbiddenError);
-    expect((thrown as ForbiddenError).message).toBe('You shall not pass');
-    expect((thrown as ForbiddenError).status).toBe(403);
-    // Storage NOT cleared — user is still logged in, just lacks permission.
-    expect(STORAGE_STATE[SESSION_TOKEN_KEY]).toBe('test-session-token');
-    expect(mockLocation.href).toBe('');
+    expect(thrown).toBeInstanceOf(RateLimitError);
+    expect((thrown as RateLimitError).retryAfter).toBe(9);
+  });
+
+  it('T24: 429 dispatches the global ecliptrix:rate-limited event', async () => {
+    asMockFetch().mockResolvedValue(
+      makeJsonResponse(429, { message: 'Slow down' }, { 'retry-after': '3' }),
+    );
+
+    const eventSpy = vi.fn();
+    window.addEventListener('ecliptrix:rate-limited', eventSpy);
+    await expect(http.get('/api/material/lookup')).rejects.toBeInstanceOf(
+      RateLimitError,
+    );
+    window.removeEventListener('ecliptrix:rate-limited', eventSpy);
+
+    expect(eventSpy).toHaveBeenCalledTimes(1);
   });
 
   // -------------------------------------------------------------------------
   // T10 — 500 with full error envelope → ApiError with all fields populated
   // -------------------------------------------------------------------------
   it('T10: 500 with full error envelope produces ApiError with status/code/message/details', async () => {
-    seedToken();
     asMockFetch().mockResolvedValue(
       makeJsonResponse(500, {
         error_code: 'INTERNAL_FAILURE',
@@ -344,7 +263,6 @@ describe('http-client', () => {
   // T11 — 500 with non-JSON body → ApiError with rawBodyTruncated in details
   // -------------------------------------------------------------------------
   it('T11: 500 with non-JSON body produces ApiError carrying rawBodyTruncated', async () => {
-    seedToken();
     asMockFetch().mockResolvedValue(makeRawResponse(500, '<html>oops</html>'));
 
     let thrown: unknown;
@@ -364,7 +282,6 @@ describe('http-client', () => {
   // T12 — Network error → ApiError(NETWORK_ERROR) when retries=0
   // -------------------------------------------------------------------------
   it('T12: network error throws ApiError with NETWORK_ERROR code', async () => {
-    seedToken();
     asMockFetch().mockRejectedValue(new TypeError('Failed to fetch'));
 
     let thrown: unknown;
@@ -383,7 +300,6 @@ describe('http-client', () => {
   // T13 — timeoutMs:50 with slow backend → TimeoutError
   // -------------------------------------------------------------------------
   it('T13: timeoutMs honored — slow backend produces TimeoutError', async () => {
-    seedToken();
     // Simulate a fetch that respects abort: never resolves until aborted.
     asMockFetch().mockImplementation((_url: string, init: RequestInit) => {
       return new Promise((_resolve, reject) => {
@@ -407,7 +323,6 @@ describe('http-client', () => {
   // T14 — external signal abort propagates as AbortError
   // -------------------------------------------------------------------------
   it('T14: external AbortSignal cancellation throws AbortError', async () => {
-    seedToken();
     const ctrl = new AbortController();
 
     asMockFetch().mockImplementation((_url: string, init: RequestInit) => {
@@ -441,7 +356,6 @@ describe('http-client', () => {
   // T15 — retries:2 with 500/500/200 sequence eventually succeeds
   // -------------------------------------------------------------------------
   it('T15: retries:2 succeeds on third attempt after two 500s', async () => {
-    seedToken();
     asMockFetch()
       .mockResolvedValueOnce(makeJsonResponse(500, { error: 'fail-1' }))
       .mockResolvedValueOnce(makeJsonResponse(500, { error: 'fail-2' }))
@@ -455,13 +369,13 @@ describe('http-client', () => {
   // -------------------------------------------------------------------------
   // T16 — retries:2 with 401 first → does NOT retry (4xx never retried)
   // -------------------------------------------------------------------------
-  it('T16: retries:2 with 401 first attempt does NOT retry — 4xx is never retried', async () => {
-    seedToken();
-    asMockFetch().mockResolvedValueOnce(makeJsonResponse(401, { error: 'no' }));
+  it('T16: retries:2 with a 4xx first attempt does NOT retry', async () => {
+    asMockFetch().mockResolvedValue(makeJsonResponse(403, { message: 'Forbidden' }));
 
     await expect(http.get('/api/x', { retries: 2 })).rejects.toBeInstanceOf(
-      SessionExpiredError,
+      ApiError,
     );
+    // One attempt only — 4xx is a verdict, not a blip.
     expect(asMockFetch()).toHaveBeenCalledTimes(1);
   });
 
@@ -469,7 +383,6 @@ describe('http-client', () => {
   // T17 — path starting with http:// throws synchronously, no fetch issued
   // -------------------------------------------------------------------------
   it('T17: absolute http(s) URL is rejected synchronously and no fetch is issued', async () => {
-    seedToken();
 
     await expect(http.get('http://evil.com/x')).rejects.toThrow(
       /same-origin paths starting with \//,
@@ -478,125 +391,4 @@ describe('http-client', () => {
       /same-origin paths starting with \//,
     );
     expect(asMockFetch()).not.toHaveBeenCalled();
-  });
-
-  // -------------------------------------------------------------------------
-  // T18 — Parallel 401 burst → debounced to a single redirect
-  // -------------------------------------------------------------------------
-  it('T18: 10 parallel requests all returning 401 produce a single redirect (once-flag)', async () => {
-    seedToken();
-    STORAGE_STATE[SESSION_USER_KEY] = JSON.stringify({ id: 'u1' });
-    asMockFetch().mockResolvedValue(makeJsonResponse(401, { error: 'no' }));
-
-    let assignmentCount = 0;
-    Object.defineProperty(mockLocation, 'href', {
-      configurable: true,
-      get() {
-        return this._href ?? '';
-      },
-      set(v: string) {
-        assignmentCount += 1;
-        this._href = v;
-      },
-    });
-
-    const eventSpy = vi.fn();
-    window.addEventListener('ecliptrix:session-expired', eventSpy);
-
-    const requests = Array.from({ length: 10 }, () =>
-      http.get('/api/x').catch((e) => e),
-    );
-    const results = await Promise.all(requests);
-
-    // Every request must have rejected with SessionExpiredError.
-    for (const r of results) {
-      expect(r).toBeInstanceOf(SessionExpiredError);
-    }
-    // ...but only ONE navigation happened.
-    expect(assignmentCount).toBe(1);
-    // Event also debounced — only one dispatch.
-    expect(eventSpy).toHaveBeenCalledTimes(1);
-
-    window.removeEventListener('ecliptrix:session-expired', eventSpy);
-  });
-
-  // -------------------------------------------------------------------------
-  // T19 — 401 on a public endpoint (requireAuth: false) → ApiError(401), no
-  // session-expired side-effects. Bug #1 (web-bug-report-20260509-iter2).
-  // -------------------------------------------------------------------------
-  it('T19: requireAuth:false + 401 throws ApiError(401) without clearing storage / dispatching / redirecting', async () => {
-    // No token seeded — requireAuth:false should not require one.
-    asMockFetch().mockResolvedValue(
-      makeJsonResponse(401, {
-        error_code: 'INVALID_CREDENTIALS',
-        message: 'Bad creds',
-      }),
-    );
-
-    const eventSpy = vi.fn();
-    window.addEventListener('ecliptrix:session-expired', eventSpy);
-
-    let thrown: unknown;
-    try {
-      await http.post('/api/auth/login', { username: 'a', password: 'b' }, { requireAuth: false });
-    } catch (e) {
-      thrown = e;
-    }
-
-    expect(thrown).toBeInstanceOf(ApiError);
-    expect(thrown).not.toBeInstanceOf(SessionExpiredError);
-    expect((thrown as ApiError).status).toBe(401);
-    expect((thrown as ApiError).code).toBe('INVALID_CREDENTIALS');
-    expect((thrown as ApiError).message).toBe('Bad creds');
-    // No localStorage clearing.
-    expect(STORAGE_STATE[SESSION_TOKEN_KEY]).toBeUndefined();
-    expect(STORAGE_STATE[SESSION_USER_KEY]).toBeUndefined();
-    // No navigation.
-    expect(mockLocation.href).toBe('');
-    // No event dispatch.
-    expect(eventSpy).not.toHaveBeenCalled();
-
-    window.removeEventListener('ecliptrix:session-expired', eventSpy);
-  });
-
-  // -------------------------------------------------------------------------
-  // T20 — 401 on a protected endpoint (requireAuth: true, default) still
-  // triggers the session-expired side-effects. Regression guard for T19.
-  // -------------------------------------------------------------------------
-  it('T20: default requireAuth:true + 401 still clears storage and redirects', async () => {
-    seedToken();
-    STORAGE_STATE[SESSION_USER_KEY] = JSON.stringify({ id: 'u1' });
-    asMockFetch().mockResolvedValue(makeJsonResponse(401, { error: 'unauthorized' }));
-
-    await expect(http.get('/api/protected')).rejects.toBeInstanceOf(SessionExpiredError);
-
-    expect(STORAGE_STATE[SESSION_TOKEN_KEY]).toBeUndefined();
-    expect(mockLocation.href).toBe('/login?reason=session-expired');
-  });
-
-  // -------------------------------------------------------------------------
-  // T21 — Streaming variant: 401 on a public endpoint should also throw
-  // ApiError(401), not SessionExpiredError.
-  // -------------------------------------------------------------------------
-  it('T21: stream() requireAuth:false + 401 throws ApiError(401), no session-expired path', async () => {
-    asMockFetch().mockResolvedValue(makeJsonResponse(401, { message: 'Bad creds' }));
-
-    const eventSpy = vi.fn();
-    window.addEventListener('ecliptrix:session-expired', eventSpy);
-
-    let thrown: unknown;
-    try {
-      await http.stream('/api/auth/login', { username: 'a', password: 'b' }, { requireAuth: false });
-    } catch (e) {
-      thrown = e;
-    }
-
-    expect(thrown).toBeInstanceOf(ApiError);
-    expect(thrown).not.toBeInstanceOf(SessionExpiredError);
-    expect((thrown as ApiError).status).toBe(401);
-    expect(mockLocation.href).toBe('');
-    expect(eventSpy).not.toHaveBeenCalled();
-
-    window.removeEventListener('ecliptrix:session-expired', eventSpy);
-  });
-});
+  });});

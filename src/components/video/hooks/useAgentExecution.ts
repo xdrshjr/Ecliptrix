@@ -25,7 +25,6 @@ import { OperationApplier } from '@/lib/video-editing-agent/OperationApplier';
 import type { SSEEvent } from '@/lib/video-editing-agent/types';
 import type { AgentExecutionState } from './useAgentExecutionState';
 import { useAgentExecutionState } from './useAgentExecutionState';
-import { SESSION_TOKEN_KEY } from '@/lib/auth/storage-keys';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -274,30 +273,12 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     });
 
     // 7. Start execution via useAgentExecutionState (manages SSEStreamManager lifecycle)
-    //
-    // Auth header injection: the SSE flow bypasses src/lib/api/http-client.ts
-    // (the central wrapper that normally auto-injects Authorization) because
-    // SSE needs a streaming Response. Without this header the server-side
-    // `readIncomingAuth()` returns undefined, the agent's tool context loses
-    // its `authToken`, every internal tool fetch goes unauthenticated, and
-    // every backend call comes back 401 ("未提供认证凭证 / Missing session
-    // token"). This was the 2026-04-07 incident — see backend journal at that
-    // timestamp. typeof window guard keeps this safe in any test/SSR path
-    // that might import the hook outside a browser.
-    const sessionToken =
-      typeof window !== 'undefined' ? localStorage.getItem(SESSION_TOKEN_KEY) : null;
-    const authHeaders: Record<string, string> = sessionToken
-      ? { Authorization: `Bearer ${sessionToken}` }
-      : {};
-
     startExecution({
       url: '/api/video-editing-agent/chat',
-      headers: authHeaders,
       body: {
         messages: messagesWithUser,
         timelineState: currentTL,
         materials: materialsRef.current,
-        sessionToken: sessionToken ?? undefined,
         projectId,
       },
       onEvent: (event: SSEEvent) => {

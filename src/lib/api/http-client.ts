@@ -1,40 +1,33 @@
 /**
  * Browser-side HTTP wrapper for Ecliptrix.
  *
- * This module is the single, secure-by-default entry point for every
- * browser → Next.js API call. It auto-injects the session token, handles
- * 401 by clearing the local session and redirecting to /login, and produces
- * a uniform error envelope so callers can handle errors consistently.
+ * This module is the single entry point for every browser → Next.js API
+ * call. It produces a uniform error envelope so callers can handle errors
+ * consistently.
  *
  * Hard rules enforced by this module:
  *   1. Path-only API. Calls MUST start with '/'. Absolute http(s) URLs throw
  *      synchronously (prevents leaking the backend URL into the browser).
  *   2. Browser-only. Importing this on the server throws — there is no SSR
  *      escape hatch.
- *   3. Auth is opt-out (`requireAuth` defaults to true). Forgetting the
- *      option keeps you secure. Disabling it requires an explicit
- *      `{ requireAuth: false }`.
- *   4. 401 handling is global and debounced — N parallel requests that all
- *      receive 401 produce ONE redirect, not N.
  *
- * Spec: docs/plans/unified-api-auth-refactor/specs/03-frontend-http-client-wrapper.md
+ * There is no authentication layer: the desktop build runs a local backend
+ * bound to 127.0.0.1 with a single local owner, so there is no token to
+ * inject and no session to expire. A 401/403 from the local backend surfaces
+ * as a plain `ApiError`, like any other 4xx.
+ *
+ * 429 handling is deliberately kept — `media_proxy_service` still applies its
+ * own per-IP download throttle, so `RateLimitError` and the `Retry-After`
+ * parsing below are load-bearing. Do NOT remove them.
+ *
+ * Spec: docs/plans/desktop-only-refactor/spec.md §4.9
  */
-
-import {
-  SESSION_TOKEN_KEY,
-  SESSION_USER_KEY,
-  clearSessionToken,
-} from '@/lib/auth/storage-keys';
-import { isDesktop } from '@/lib/desktop/isDesktop';
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
 export interface RequestOptions {
-  /** When true (default) the wrapper injects Authorization and throws
-   *  MissingAuthError if no token is present. */
-  requireAuth?: boolean;
   /** Timeout in milliseconds. Defaults to 30000. */
   timeoutMs?: number;
   /** External AbortSignal — when fired, the in-flight request aborts. */
@@ -49,41 +42,6 @@ export interface RequestOptions {
 // ---------------------------------------------------------------------------
 // Typed errors
 // ---------------------------------------------------------------------------
-
-export class MissingAuthError extends Error {
-  static readonly code = 'MISSING_AUTH';
-  readonly code = 'MISSING_AUTH';
-  constructor(message?: string) {
-    super(
-      message ??
-        'No session token in localStorage. Log in first, or pass {requireAuth: false} ' +
-          'if this endpoint is intentionally public.',
-    );
-    this.name = 'MissingAuthError';
-  }
-}
-
-export class SessionExpiredError extends Error {
-  static readonly code = 'SESSION_EXPIRED';
-  readonly code = 'SESSION_EXPIRED';
-  readonly status = 401;
-  constructor(message?: string) {
-    super(message ?? 'Session expired. Please log in again.');
-    this.name = 'SessionExpiredError';
-  }
-}
-
-export class ForbiddenError extends Error {
-  static readonly code = 'FORBIDDEN';
-  readonly code = 'FORBIDDEN';
-  readonly status = 403;
-  readonly details?: Record<string, unknown>;
-  constructor(message?: string, details?: Record<string, unknown>) {
-    super(message ?? 'Forbidden');
-    this.name = 'ForbiddenError';
-    this.details = details;
-  }
-}
 
 export class ApiError extends Error {
   static readonly code = 'API_ERROR';
@@ -134,65 +92,6 @@ export class RateLimitError extends ApiError {
     super(429, RateLimitError.CODE, message, details);
     this.name = 'RateLimitError';
     this.retryAfter = retryAfter;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-
-/** Module-level once-flag: ensures parallel 401s produce a single redirect. */
-let sessionExpiryHandled = false;
-
-/** Test-only: reset the once-flag between test cases. NOT exported via http. */
-export function __resetSessionExpiryFlagForTests(): void {
-  sessionExpiryHandled = false;
-}
-
-/** Reset the session expiry flag after successful re-authentication. */
-export function resetSessionExpiryFlag(): void {
-  sessionExpiryHandled = false;
-}
-
-/** Paths whose pathname must NOT trigger a redirect when 401 fires. */
-const NO_REDIRECT_PATHS = new Set(['/login', '/register']);
-
-// ---------------------------------------------------------------------------
-// Session expiry handler (debounced via once-flag)
-// ---------------------------------------------------------------------------
-
-function handleSessionExpired(): void {
-  // Always clear localStorage and dispatch the event so AuthContext stays in
-  // sync, even if multiple parallel 401s race here. The once-flag only guards
-  // the redirect side-effect.
-  try {
-    clearSessionToken();
-    window.localStorage.removeItem(SESSION_USER_KEY);
-  } catch {
-    // localStorage may be unavailable in extreme edge cases; swallow.
-  }
-
-  if (sessionExpiryHandled) {
-    return;
-  }
-  sessionExpiryHandled = true;
-
-  try {
-    window.dispatchEvent(new CustomEvent('ecliptrix:session-expired'));
-  } catch {
-    // CustomEvent unavailable — extremely rare. Swallow.
-  }
-
-  // Desktop has no meaningful /login route — AuthContext re-runs silent
-  // auto-login off the `ecliptrix:session-expired` event instead. Redirecting
-  // here would race that and flash the login page (spec §2.2d).
-  if (isDesktop()) {
-    return;
-  }
-
-  const currentPath = window.location?.pathname ?? '';
-  if (!NO_REDIRECT_PATHS.has(currentPath)) {
-    window.location.href = '/login?reason=session-expired';
   }
 }
 
@@ -283,14 +182,6 @@ function assertSameOriginPath(path: string): void {
       'HTTP client only accepts same-origin paths starting with /. ' +
         `Got: ${String(path)}`,
     );
-  }
-}
-
-function readToken(): string | null {
-  try {
-    return window.localStorage.getItem(SESSION_TOKEN_KEY);
-  } catch {
-    return null;
   }
 }
 
@@ -392,18 +283,8 @@ async function request<T>(
   assertBrowser();
   assertSameOriginPath(path);
 
-  const requireAuth = opts.requireAuth ?? true;
   const timeoutMs = opts.timeoutMs ?? 30000;
   const maxRetries = opts.retries ?? 0;
-
-  // ---- Auth injection (synchronous throw if missing) --------------------
-  let token: string | null = null;
-  if (requireAuth) {
-    token = readToken();
-    if (!token) {
-      throw new MissingAuthError();
-    }
-  }
 
   // ---- Build headers ----------------------------------------------------
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
@@ -426,10 +307,6 @@ async function request<T>(
     if (!('Content-Type' in headers) && !('content-type' in headers)) {
       headers['Content-Type'] = 'application/json';
     }
-  }
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
   }
 
   // ---- Retry loop -------------------------------------------------------
@@ -511,32 +388,6 @@ async function request<T>(
     // ---- Status handling --------------------------------------------------
     const status = response.status;
 
-    if (status === 401) {
-      // 4xx — never retried.
-      if (requireAuth) {
-        // Authenticated endpoint: token is invalid/expired → global handling.
-        handleSessionExpired();
-        throw new SessionExpiredError();
-      }
-      // Public endpoint (requireAuth: false) — caller handles credential
-      // rejection inline. Do NOT clear localStorage / redirect / dispatch.
-      const parsed = await parseErrorBody(response);
-      throw new ApiError(
-        401,
-        parsed.errorCode ?? 'UNAUTHORIZED',
-        parsed.message ?? 'Unauthorized',
-        parsed.details ??
-          (parsed.rawBodyTruncated
-            ? { rawBodyTruncated: parsed.rawBodyTruncated }
-            : undefined),
-      );
-    }
-
-    if (status === 403) {
-      const parsed = await parseErrorBody(response);
-      throw new ForbiddenError(parsed.message ?? 'Forbidden', parsed.details);
-    }
-
     if (status === 429) {
       // Rate limited — 4xx, NEVER retried. Dispatch the global event (for the
       // friendly toast) and throw a typed RateLimitError carrying retryAfter.
@@ -613,16 +464,7 @@ async function streamRequest(
   assertSameOriginPath(path);
 
   const method: HttpMethod = opts.method ?? 'POST';
-  const requireAuth = opts.requireAuth ?? true;
   const timeoutMs = opts.timeoutMs ?? 30000;
-
-  let token: string | null = null;
-  if (requireAuth) {
-    token = readToken();
-    if (!token) {
-      throw new MissingAuthError();
-    }
-  }
 
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
 
@@ -638,10 +480,6 @@ async function streamRequest(
     if (!('Content-Type' in headers) && !('content-type' in headers)) {
       headers['Content-Type'] = 'application/json';
     }
-  }
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const abortCtrl = new AbortController();
@@ -711,29 +549,6 @@ async function streamRequest(
 
   const status = response.status;
 
-  if (status === 401) {
-    if (requireAuth) {
-      handleSessionExpired();
-      throw new SessionExpiredError();
-    }
-    // Public endpoint — caller handles credential rejection inline.
-    const parsed = await parseErrorBody(response);
-    throw new ApiError(
-      401,
-      parsed.errorCode ?? 'UNAUTHORIZED',
-      parsed.message ?? 'Unauthorized',
-      parsed.details ??
-        (parsed.rawBodyTruncated
-          ? { rawBodyTruncated: parsed.rawBodyTruncated }
-          : undefined),
-    );
-  }
-
-  if (status === 403) {
-    const parsed = await parseErrorBody(response);
-    throw new ForbiddenError(parsed.message ?? 'Forbidden', parsed.details);
-  }
-
   if (status === 429) {
     // Rate limited — dispatch the global event + throw RateLimitError. No retry.
     const parsed = await parseErrorBody(response);
@@ -757,25 +572,21 @@ async function streamRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Authenticated file download — fetch the bytes via the wrapper (so the
-// Authorization header is injected), wrap in a Blob, then trigger a
-// programmatic browser download via a hidden <a download> element.
+// File download — fetch the bytes through the wrapper, wrap them in a Blob,
+// then trigger a programmatic browser download via a hidden <a download>
+// element.
 //
 // Why this exists
 // ---------------
-// `<a href="/api/.../download" download>` and `window.open('/api/.../download')`
-// both issue raw browser GETs that CANNOT carry the Authorization header that
-// the http-client wrapper would otherwise inject. After T01 strict middleware
-// shipped, every such direct browser navigation to an auth-required endpoint
-// returns 401. The dev-server test on 2026-04-07 caught this on
-// /api/video-compose/{id}/download.
-//
-// The fix is to fetch the bytes with auth, hold them as a Blob, and trigger
-// the download from a local Blob URL — local Blob URLs need no auth.
+// Going through the wrapper keeps every download on one code path: the same
+// timeout, abort-signal and 4xx/5xx error envelope as every other call. A raw
+// `<a href="/api/.../download" download>` or `window.open(...)` bypasses all
+// of it, so a failing download surfaces as a blank tab instead of a typed
+// error the caller can show.
 //
 // Caveat: this loads the entire file into memory. For very large files
-// (>~500MB) this will pressure the browser; in that case the right answer
-// is signed URLs (Risk R3 in master-plan, deferred ticket).
+// (>~500MB) this will pressure the browser; streaming straight to disk is the
+// right answer there (deferred).
 // ---------------------------------------------------------------------------
 
 interface DownloadOptions extends RequestOptions {
@@ -791,11 +602,10 @@ async function downloadFile(
   opts: DownloadOptions = {},
 ): Promise<void> {
   assertBrowser();
-  // streamRequest already handles auth, 401 redirect, 4xx/5xx envelopes —
-  // we just need the raw Response so we can call .blob() on it.
+  // streamRequest already handles the 4xx/5xx envelopes — we just need the
+  // raw Response so we can call .blob() on it.
   const response = await streamRequest(path, opts.body, {
     method: opts.method ?? 'GET',
-    requireAuth: opts.requireAuth,
     timeoutMs: opts.timeoutMs ?? 600_000, // 10 min default — large files
     signal: opts.signal,
     headers: opts.headers,
@@ -850,9 +660,9 @@ export const http = {
   },
   /**
    * Streaming request — returns the raw Response so the caller can read
-   * `response.body.getReader()` for SSE / chunked output. Auth injection and
-   * 4xx/401 handling are identical to the JSON helpers; the only difference
-   * is that 2xx responses are NOT JSON-parsed. Defaults to POST.
+   * `response.body.getReader()` for SSE / chunked output. Error handling is
+   * identical to the JSON helpers; the only difference is that 2xx responses
+   * are NOT JSON-parsed. Defaults to POST.
    */
   stream(
     path: string,
@@ -862,11 +672,10 @@ export const http = {
     return streamRequest(path, body, opts);
   },
   /**
-   * Authenticated file download — fetches `path` with the Authorization
-   * header set, then triggers the browser to save the response body as
-   * `filename` via a hidden Blob URL link. Use this in place of
-   * `window.open('/api/.../download')` or `<a href download>` for any
-   * download URL whose endpoint requires auth.
+   * File download — fetches `path` through the wrapper, then triggers the
+   * browser to save the response body as `filename` via a hidden Blob URL
+   * link. Use this in place of `window.open('/api/.../download')` or
+   * `<a href download>` so failures surface as typed errors.
    *
    * @param path     Same-origin path beginning with `/`
    * @param filename Suggested filename for the saved file

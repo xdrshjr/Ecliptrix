@@ -18,20 +18,11 @@ vi.mock('@/lib/api/http-client', () => {
       del: vi.fn(),
       upload: vi.fn(),
     },
-    SessionExpiredError: class SessionExpiredError extends Error {
-      static readonly code = 'SESSION_EXPIRED';
-      readonly code = 'SESSION_EXPIRED';
-      readonly status = 401;
-      constructor(message?: string) {
-        super(message ?? 'Session expired. Please log in again.');
-        this.name = 'SessionExpiredError';
-      }
-    },
   };
 });
 
 import { fetchLLMModels } from '../llm';
-import { http, SessionExpiredError } from '@/lib/api/http-client';
+import { http } from '@/lib/api/http-client';
 
 const sampleModels = [
   {
@@ -94,14 +85,5 @@ describe('llm.fetchLLMModels', () => {
 
     const result = await fetchLLMModels();
     expect(result).toEqual([]);
-  });
-
-  // ---------------------------------------------------------------------------
-  // C6 — propagates SessionExpiredError from http-client
-  // ---------------------------------------------------------------------------
-  it('C6: propagates SessionExpiredError from http-client', async () => {
-    (http.get as unknown as Mock).mockRejectedValueOnce(new SessionExpiredError());
-
-    await expect(fetchLLMModels()).rejects.toBeInstanceOf(SessionExpiredError);
   });
 });

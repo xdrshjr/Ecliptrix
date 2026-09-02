@@ -4,21 +4,17 @@ Handles API endpoints for exporting video URLs to Materials Management format.
 Uses Fast LLM to enhance video metadata and convert to Materials Management format.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List, Union, Dict, Any
 from app.logger import get_logger
 from app.config import get_settings
-from app.dependencies.auth import get_current_user
 from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 import json
 
 logger = get_logger(__name__)
 
-# V01-A: enforce auth on every endpoint in this router. The router is mounted
-# at root (no `/api` prefix) in main.py, so middleware prefix-matching cannot
-# be relied on; we add an explicit Depends here.
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter()
 settings = get_settings()
 
 

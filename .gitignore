@@ -40,7 +40,6 @@ tsconfig.tsbuildinfo
 **/.env.*
 !**/env.template
 !**/.env.example
-!ops/config.env
 
 # === Python ===
 *.pyd
@@ -90,3 +89,10 @@ backend-services/basic-service/static/uploads/
 
 # Windows null-device / noise file accidentally created by redirects.
 nul
+
+# === Coverage / run artifacts (docs/plans/desktop-only-refactor P0) ===
+# `coverage/` was tracked by mistake; it is a build product of `vitest --coverage`.
+coverage/
+/logs/
+.run-log/
+.claude-index/graph.json

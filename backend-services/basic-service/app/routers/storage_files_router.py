@@ -4,27 +4,25 @@ Storage files router (spec/01 §V01-C — replace anonymous StaticFiles mount).
 Replaces ``app.mount("/api/storage/files", StaticFiles(...))`` with a typed
 endpoint that:
 
-  * Requires an authenticated session (``Depends(get_current_user)``)
   * Reuses ``StorageService._validate_path`` to defeat ``..`` traversal
-  * Enforces a simple ownership model:
-      - ``cached_materials/`` prefix → public to ANY authenticated user
-        (these are pre-downloaded remote assets shared across users)
-      - Paths containing a ``user_<id>`` segment → only the owning user
-        OR an admin may read
-      - All other paths → any authenticated user (legacy fallback for
-        files written prior to per-user scoping; admin can override)
   * Streams the file via ``FileResponse`` so kernel sendfile is preserved
+  * Honours HTTP ``Range`` so ``<video>`` can seek
   * Sets ``X-Content-Type-Options: nosniff`` to neutralise MIME sniffing
+  * Forces ``attachment`` + ``text/plain`` for renderable/executable
+    extensions, killing stored XSS at the download boundary
 
 Threat model
 ------------
-CVSS 7.5 — unauthenticated remote attacker enumerates files via
-predictable paths (timestamps, sequential IDs) and exfiltrates other
-users' uploads.
+The desktop build binds to loopback and has a single local owner, so
+cross-user reads are not a thing any more; the per-owner gate this router
+used to run was removed with the user system. What remains — and what
+still matters — is that a caller must not be able to walk OUT of
+``STORAGE_ROOT`` or get active content rendered in the app origin.
 
 Tests
 -----
-See ``tests/security/test_01_auth.py`` for the access-matrix coverage.
+``tests/security/test_04_path_traversal.py`` (traversal vectors) and
+``tests/security/test_07_range_requests.py`` (206 partial content).
 """
 
 from __future__ import annotations
@@ -32,18 +30,15 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import os
-import re
 from email.utils import formatdate
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
-from app.dependencies.auth import get_current_user
 from app.logger import get_logger
-from app.models.db_models import User
 from app.security.url_guard import URLGuardError, validate_local_path_for_ffmpeg
 from app.services.local_media_resolver import (
     audio_generated_dir,
@@ -54,15 +49,6 @@ from app.services.storage_service import storage_service
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/storage", tags=["Storage Files"])
-
-
-# Path segments like "user_<id>" are emitted by StorageService._generate_storage_path.
-# We match on the first such segment encountered in the relative path.
-_USER_DIR_RE = re.compile(r"^user_([A-Za-z0-9._\-]+)$")
-
-# Path prefixes that any authenticated user may read regardless of owner.
-# These are shared/public assets (pre-downloaded Pexels/ARK videos, etc.).
-_PUBLIC_PREFIXES = ("cached_materials/",)
 
 
 # spec/04 §3.4 (V04-B defense-in-depth) — extensions whose content can be
@@ -97,24 +83,6 @@ _DANGEROUS_DOWNLOAD_EXTENSIONS = frozenset({
 def _is_dangerous_download(absolute_path: Path) -> bool:
     """Return True when ``absolute_path``'s extension is in the danger list."""
     return absolute_path.suffix.lower() in _DANGEROUS_DOWNLOAD_EXTENSIONS
-
-
-def _extract_owner_from_path(relative_path: str) -> Optional[str]:
-    """Return the user_id encoded in a path like ``video/.../user_<id>/...``.
-
-    Returns ``None`` when no ``user_<id>`` segment is present, meaning the
-    file pre-dates per-user scoping or was written by a non-user actor.
-    """
-    for segment in relative_path.split("/"):
-        m = _USER_DIR_RE.match(segment)
-        if m:
-            return m.group(1)
-    return None
-
-
-def _is_public_path(relative_path: str) -> bool:
-    """Return True when ``relative_path`` is a shared/public asset."""
-    return any(relative_path.startswith(prefix) for prefix in _PUBLIC_PREFIXES)
 
 
 # ---------------------------------------------------------------------------
@@ -310,16 +278,14 @@ def _serve_safe_media(
 async def serve_storage_file(
     file_path: str,
     request: Request,
-    current_user: User = Depends(get_current_user),
 ) -> Response:
-    """Serve a file from the storage root with ownership enforcement.
+    """Serve a file from the storage root, confined to ``STORAGE_ROOT``.
 
     Args:
         file_path: relative path under ``STORAGE_ROOT`` (e.g.
             ``video/2026/05/20/user_abc/task1/clip.mp4``).
         request: starlette request; its ``Range`` header drives ``206``
             partial-content responses for seekable media.
-        current_user: injected by ``get_current_user``.
 
     Returns:
         ``FileResponse`` (200, whole file) for non-range requests, a
@@ -328,7 +294,6 @@ async def serve_storage_file(
 
     Raises:
         HTTPException 400: malformed path / traversal attempt.
-        HTTPException 403: cross-user access by non-admin.
         HTTPException 404: file does not exist.
     """
     # 1. Reject empty paths early.
@@ -345,7 +310,7 @@ async def serve_storage_file(
     except ValueError as exc:
         logger.warning(
             "storage_files_router: path traversal attempt rejected",
-            {"path": file_path, "user_id": str(current_user.id)},
+            {"path": file_path},
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -359,29 +324,7 @@ async def serve_storage_file(
             detail="File not found",
         )
 
-    # 4. Ownership enforcement.
-    if not _is_public_path(file_path):
-        owner = _extract_owner_from_path(file_path)
-        if owner is not None and not current_user.is_admin:
-            if owner != str(current_user.id):
-                logger.warning(
-                    "storage_files_router: cross-user access denied",
-                    {
-                        "path": file_path,
-                        "owner": owner,
-                        "requester": str(current_user.id),
-                    },
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Access denied",
-                )
-        # When `owner is None` we fall through. These are legacy files
-        # written before per-user scoping (timeline exports, etc.) and
-        # are visible to any authenticated user. Admin override is implicit
-        # because admins always pass the cross-user gate above.
-
-    # 5. Serve. FileResponse uses sendfile() under the hood.
+    # 4. Serve. FileResponse uses sendfile() under the hood.
     headers = {
         # Disable MIME-sniffing — important when serving arbitrary user
         # uploads. Without this header an HTML-disguised .jpg could
@@ -405,7 +348,6 @@ async def serve_storage_file(
             {
                 "path": file_path,
                 "extension": absolute_path.suffix.lower(),
-                "user_id": str(current_user.id),
             },
         )
         return FileResponse(

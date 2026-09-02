@@ -20,7 +20,6 @@ import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/stre
 // server-side "output ≈ narration" equivalence check with one retry, so even a
 // weak model that echoes the narration cannot silently surface as the script —
 // it returns a structured `IDENTICAL_OUTPUT` failure instead.
-// See docs/plans/narration-direct-video-script-rewrite/spec.md.
 //
 // Transport: reuses the api_type-aware shared client (resolve chat model first,
 // env vars as fallback) exactly like /api/chat, /api/prompt-polish and

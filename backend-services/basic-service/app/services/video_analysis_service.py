@@ -718,7 +718,7 @@ class VideoAnalysisService:
                     # the system temp dir lets legitimate temp artefacts (professional-mode
                     # frame dirs / downloaded videos / downloaded thumbnails, all created
                     # under tempfile.gettempdir()) be cleaned while any borrowed real path is
-                    # skipped. See docs/diagnoses/local-upload-video-404-and-filmstrip-segments/analysis.md
+                    # skipped.
                     temp_root = os.path.realpath(tempfile.gettempdir())
 
                     def _is_under_temp(path: str) -> bool:

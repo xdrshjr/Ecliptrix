@@ -828,17 +828,21 @@ class StorageService:
         page_size: int = 20,
         dedupe: bool = True,
     ) -> Dict[str, Any]:
-        """List materials belonging to *user_id*, with pagination.
+        """List the local owner's materials, with pagination.
 
-        Walks the storage root searching for ``user_{user_id}`` directories
-        and collects file information.
+        Walks the storage root collecting every file under a ``user_*``
+        directory. The desktop build has exactly one owner, so *user_id* no
+        longer filters the listing — it only decides where NEW files land
+        (see ``_generate_storage_path``). Widening the match is what keeps
+        material uploaded by an older, multi-user build visible after the
+        upgrade: those files still sit under ``user_<their old uuid>/`` and
+        are never renamed or moved (spec `desktop-only-refactor` §4.6 / D13).
 
         When *dedupe* is True (default, iter5), entries with the same
         ``(name, size)`` are collapsed to the newest one — fixes the duplicate
         reference-image rows users see after the same file is uploaded under
         multiple task subdirectories.
         """
-        user_prefix = f"user_{user_id}"
         all_files: List[Dict[str, Any]] = []
 
         folders_to_scan: List[str] = []
@@ -857,8 +861,11 @@ class StorageService:
                 continue
             for dirpath, _dirnames, filenames in os.walk(folder_path):
                 dirpath_obj = Path(dirpath)
-                # Only collect files inside a matching user directory
-                if user_prefix not in dirpath_obj.parts:
+                # Collect files inside ANY owner directory (D13) — see the
+                # docstring: the single local owner owns all of them.
+                if not any(
+                    part.startswith("user_") for part in dirpath_obj.parts
+                ):
                     continue
                 for fname in filenames:
                     fpath = dirpath_obj / fname

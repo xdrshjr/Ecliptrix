@@ -132,7 +132,7 @@ class TestContentPolishAPI:
         mock_response = MagicMock()
         mock_response.ok = True
         mock_response.iter_lines.return_value = [
-            b'data: {"choices": [{"delta": {"content": "测试响应"}}]}',
+            'data: {"choices": [{"delta": {"content": "测试响应"}}]}'.encode("utf-8"),
             b'data: [DONE]'
         ]
         mock_post.return_value = mock_response

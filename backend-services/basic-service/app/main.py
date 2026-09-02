@@ -21,8 +21,6 @@ from app.logger import get_logger, setup_logging
 from app.routers import api_router
 from app.models import ErrorResponse
 from app.database import init_db, close_db
-from app.middleware.auth_middleware import SessionAuthMiddleware
-from app.middleware.rate_limit_middleware import RateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.security.log_redact import redact_headers
 
@@ -126,7 +124,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.error(f"FATAL: Database initialization failed after {MAX_DB_RETRIES} attempts")
                 raise
 
-    # Initialize system settings service (load from PostgreSQL into cache)
+    # Initialize system settings service (load from the database into cache)
     try:
         from app.services.system_settings_service import system_settings_service
 
@@ -144,16 +142,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("System settings synced to config.py Settings object")
     except Exception as e:
         logger.error(f"Failed to load system settings: {str(e)}", exc_info=True)
-
-    # Pre-warm the rate-limit config cache (spec/03 §2.3) so the first request
-    # after startup does not pay a cold DB read inside the limiter middleware.
-    try:
-        from app.services.rate_limit_config import rate_limit_config_provider
-
-        await rate_limit_config_provider.prewarm()
-        logger.info("Rate-limit config pre-warmed")
-    except Exception as e:
-        logger.error(f"Failed to pre-warm rate-limit config: {str(e)}", exc_info=True)
 
     # Schedule a background derived-file orphan-reclaim DIAGNOSTIC pass
     # (local-video-editing-refactor spec 06 §2.4). This is rate-limited and
@@ -188,25 +176,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             f"Failed to schedule derived-file reclaim: {str(e)}", exc_info=True
         )
 
-    # Playback v2 Phase 4 — flag multi-worker deployments because the
-    # in-memory metrics aggregator is process-local. Spec §3.2.7.
-    if getattr(settings, "playback_v2_aggregator_requires_single_worker", True):
-        raw_workers = (
-            os.environ.get("GUNICORN_WORKERS")
-            or os.environ.get("UVICORN_WORKERS")
-            or os.environ.get("WEB_CONCURRENCY")
-        )
-        try:
-            worker_count = int(raw_workers) if raw_workers else 1
-        except (TypeError, ValueError):
-            worker_count = 1
-        if worker_count > 1:
-            logger.warning(
-                "Playback v2 aggregator is in-memory but detected worker_count=%s; "
-                "/api/admin/playback-metrics will report degraded=true (spec §3.2.7).",
-                worker_count,
-            )
-
     logger.info("Application startup completed")
 
     yield
@@ -217,106 +186,59 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Application shutdown completed")
 
 
-# Create FastAPI application
-# spec/06 V06-C — disable interactive docs / openapi.json in production so we
-# do not hand attackers a free endpoint enumeration. Dev keeps them on so
-# `npm run dev` + `uvicorn --reload` workflows continue to work unchanged.
-_is_dev_env = (getattr(settings, "env", "production") or "production").lower() in (
-    "development",
-    "dev",
-)
+# Create FastAPI application.
+#
+# `/docs`, `/redoc` and `/openapi.json` are ALWAYS on. That is safe only
+# because this process binds to 127.0.0.1 and is reached solely by the Electron
+# renderer on the same machine — they are a local debugging asset, not a public
+# surface. If anyone ever adds port forwarding, remote debugging or LAN access
+# to the desktop shell, revisit this decision first.
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="A basic FastAPI service with comprehensive logging and configuration management",
     lifespan=lifespan,
     debug=settings.debug,
-    docs_url="/docs" if _is_dev_env else None,
-    redoc_url="/redoc" if _is_dev_env else None,
-    openapi_url="/openapi.json" if _is_dev_env else None,
 )
 
 
-# Register middlewares.
+# Register middlewares. Starlette ``add_middleware`` is LIFO: the LAST
+# registered middleware ends up OUTERMOST and runs FIRST per request, so the
+# per-request order below is
 #
-# Starlette ``add_middleware`` is LIFO: the LAST registered middleware ends up
-# OUTERMOST and runs FIRST per request. We therefore register
-# ``SessionAuthMiddleware`` BEFORE ``CORSMiddleware`` so that CORS wraps the
-# auth layer on the outside and answers preflight ``OPTIONS`` requests before
-# they ever reach the auth check.
+#     logging -> SecurityHeaders -> CORS -> router
 #
-# (The ``@app.middleware("http")`` logging decorator below is added at module
-# load time, AFTER both add_middleware calls, so it ends up as the outermost
-# wrapper of all. That is acceptable because the logger does not block
-# requests.)
+# (The ``@app.middleware("http")`` logging decorator further down is added at
+# module load time, AFTER these calls, so it wraps everything.)
 #
-# Rate limiting (spec/02 §2.5, R5 — CRITICAL ORDERING). We register
-# ``RateLimitMiddleware`` FIRST and ``SessionAuthMiddleware`` SECOND so that,
-# under Starlette LIFO, the per-request EXECUTION order is:
-#
-#     CORS (outermost) -> SessionAuth -> RateLimit -> router (innermost)
-#
-# i.e. SessionAuth runs BEFORE RateLimit and populates ``request.state.user``,
-# which RateLimitMiddleware then reads to pick the per-user vs per-IP limit.
-# Both sit INSIDE the FastAPI exception handlers and the logging wrapper, so a
-# 429 still serialises through the standard ``ErrorResponse`` shape. DO NOT
-# swap these two registration lines — doing so would run rate limiting before
-# auth and lose the user identity (R5).
-app.add_middleware(RateLimitMiddleware)
-app.add_middleware(SessionAuthMiddleware)
-
-# Add CORS middleware (spec 02 §3 V02-A — env-driven allowlist).
-#
-# Production: only origins listed in CORS_ALLOWED_ORIGINS are allowed.
-# Empty list + ENV=production = deny all cross-origin (safe default).
-# Development: localhost:3000 / :3010 / 127.0.0.1:3000 / :3010 are merged in
-# automatically so `npm run dev` against a separately-running backend keeps
-# working without touching .env.
-#
-# CORS_LEGACY_WILDCARD=1 restores the pre-fix wildcard. EMERGENCY ROLLBACK
-# ONLY — known-vulnerable configuration.
-_dev_localhost_origins = [
+# CORS is retained even though renderer traffic reaches the backend through the
+# Next.js BFF on its own origin: the frontend (:18320) and the backend (:18321)
+# ARE different origins, `npm run dev` on :3000 points at a standalone backend,
+# and media elements may link the backend directly. The allowlist comes from
+# CORS_ALLOWED_ORIGINS, which the Electron main process fills with the ACTUAL
+# frontend port it resolved — ``ports.pickPort`` shifts off 18320 when that is
+# taken, so the literals below are only the dev fallback and must never be
+# treated as the authoritative source.
+_DEV_FALLBACK_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3010",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3010",
+    "http://localhost:18320",
+    "http://127.0.0.1:18320",
 ]
-_env_marker = (getattr(settings, "env", "production") or "production").lower()
-_configured_origins = list(getattr(settings, "cors_allowed_origins", []) or [])
-if _env_marker in ("development", "dev"):
-    _cors_origins = list(dict.fromkeys(_configured_origins + _dev_localhost_origins))
-else:
-    _cors_origins = _configured_origins
+_cors_origins = list(
+    dict.fromkeys(list(settings.cors_allowed_origins) + _DEV_FALLBACK_ORIGINS)
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=bool(settings.cors_allow_credentials),
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "X-Requested-With"],
+)
 
-if getattr(settings, "cors_legacy_wildcard", False):
-    logger.warning(
-        "CORS_LEGACY_WILDCARD=1 — restoring wildcard CORS. This is a "
-        "KNOWN VULNERABILITY (V02-A). Disable as soon as the rollback "
-        "window closes."
-    )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    if _env_marker == "production" and not _cors_origins:
-        logger.warning(
-            "CORS_ALLOWED_ORIGINS is empty in production — all cross-origin "
-            "requests will be blocked. Set CORS_ALLOWED_ORIGINS in .env to "
-            "your frontend hostname(s)."
-        )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=_cors_origins,
-        allow_credentials=bool(getattr(settings, "cors_allow_credentials", True)),
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
-    )
-
-# Add security response headers middleware (spec 02 §3 V02-B).
+# Add security response headers middleware.
 # Registered AFTER CORS so it ends up OUTSIDE the CORS layer (Starlette LIFO).
 # Uses setdefault so it never overwrites a header explicitly set by a handler.
 app.add_middleware(SecurityHeadersMiddleware)
@@ -549,16 +471,6 @@ from app.routers import video_export_router
 
 app.include_router(video_export_router.router)
 
-# Import and include Authentication router
-from app.routers import auth_router
-
-app.include_router(auth_router.router, prefix="/api")
-
-# Import and include User Profile router
-from app.routers import user_router
-
-app.include_router(user_router.router, prefix="/api")
-
 # Import and include Video Understanding Script router
 from app.routers import video_understanding_script_router
 
@@ -588,13 +500,6 @@ app.include_router(model_settings_router.router, prefix="/api")
 from app.routers import system_settings_router
 
 app.include_router(system_settings_router.router, prefix="/api")
-
-# Import and include Rate Limit Settings router (spec/03 — admin-only rate-limit
-# config read/write/reset/status). The router defines prefix="/rate-limit" and
-# is router-level require_admin gated; mounted under /api -> /api/rate-limit/*.
-from app.routers import rate_limit_settings_router
-
-app.include_router(rate_limit_settings_router.router, prefix="/api")
 
 # Import and include Storyboard router
 from app.routers import storyboard_router
@@ -641,11 +546,6 @@ from app.routers import preview_proxy_router
 
 app.include_router(preview_proxy_router.router, prefix="/api")
 
-# Import and include Telemetry router (spec 08 — playback v2 batch intake)
-from app.routers import telemetry_router
-
-app.include_router(telemetry_router.router, prefix="/api")
-
 # Import and include Config router (spec 08 — runtime feature-flag resolution)
 from app.routers import config_router
 
@@ -655,11 +555,6 @@ app.include_router(config_router.router, prefix="/api")
 from app.routers import video_cover as video_cover_router
 
 app.include_router(video_cover_router.router, prefix="/api")
-
-# Import and include Admin Playback router (Phase 4 — admin-only ops endpoints)
-from app.routers import admin_playback_router
-
-app.include_router(admin_playback_router.router, prefix="/api")
 
 # Generated audio + subtitles live under the persistent, writable STORAGE_ROOT
 # (Bug B / B1). The write side (tts_service / sentence_tts_service) and the

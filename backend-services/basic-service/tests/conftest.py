@@ -20,7 +20,7 @@ runnable without touching production code:
    which imports ``cv2``; OpenCV's binary extension is broken on this box
    (recursion error during load). Because importing almost anything under
    ``app.services`` triggers that ``__init__``, even pure-logic modules like
-   ``app.services.rate_limiter`` became unimportable. We install a lightweight
+   ``app.services.thumbnail_service`` became unimportable. We install a lightweight
    ``cv2`` stub into ``sys.modules`` — but ONLY if the real ``import cv2`` fails,
    so a healthy install with a working OpenCV is never shadowed.
 

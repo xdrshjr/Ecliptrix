@@ -11,7 +11,8 @@ Range requests with a ``206 Partial Content`` slice. These tests assert that
 contract directly so the behaviour is locked in regardless of the installed
 Starlette version.
 
-The app/auth wiring mirrors ``tests/security/test_01_auth.py``.
+The router carries no authentication since `desktop-only-refactor`;
+Range handling is independent of the caller either way.
 """
 
 from __future__ import annotations
@@ -22,17 +23,17 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.middleware.auth_middleware import SessionAuthMiddleware
+from app.constants import LOCAL_OWNER_ID
+
 
 
 def _build_storage_files_app(storage_root: Path) -> FastAPI:
-    """Mount ``storage_files_router`` against a temp storage root (see test_01)."""
+    """Mount ``storage_files_router`` against a temp storage root."""
     from app.services import storage_service as storage_service_module
 
     storage_service_module.storage_service.root = storage_root
 
     app = FastAPI()
-    app.add_middleware(SessionAuthMiddleware)
 
     from app.routers import storage_files_router
 
@@ -53,17 +54,16 @@ _PAYLOAD = bytes((i % 251) for i in range(5000))
 
 @pytest.mark.asyncio
 async def test_range_prefix_returns_206_partial_content(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``Range: bytes=0-1023`` → 206 with exact 1024-byte slice + headers."""
-    user, token = await create_user(username="range_alice", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     _make_file(tmp_path, rel, _PAYLOAD)
     client = TestClient(_build_storage_files_app(tmp_path))
 
     resp = client.get(
         f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}", "Range": "bytes=0-1023"},
+        headers={"Range": "bytes=0-1023"},
     )
 
     assert resp.status_code == 206, resp.text
@@ -77,17 +77,16 @@ async def test_range_prefix_returns_206_partial_content(
 
 @pytest.mark.asyncio
 async def test_range_midfile_slice_is_exact(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """A mid-file range (the seek case) returns exactly the requested bytes."""
-    user, token = await create_user(username="range_bob", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     _make_file(tmp_path, rel, _PAYLOAD)
     client = TestClient(_build_storage_files_app(tmp_path))
 
     resp = client.get(
         f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}", "Range": "bytes=1000-1999"},
+        headers={"Range": "bytes=1000-1999"},
     )
 
     assert resp.status_code == 206, resp.text
@@ -97,17 +96,16 @@ async def test_range_midfile_slice_is_exact(
 
 @pytest.mark.asyncio
 async def test_range_open_ended_returns_to_eof(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``bytes=N-`` (the initial probe a browser sends) streams N..EOF."""
-    user, token = await create_user(username="range_carol", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     _make_file(tmp_path, rel, _PAYLOAD)
     client = TestClient(_build_storage_files_app(tmp_path))
 
     resp = client.get(
         f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}", "Range": "bytes=4000-"},
+        headers={"Range": "bytes=4000-"},
     )
 
     assert resp.status_code == 206, resp.text
@@ -117,17 +115,16 @@ async def test_range_open_ended_returns_to_eof(
 
 @pytest.mark.asyncio
 async def test_range_suffix_returns_tail(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``bytes=-N`` → the final N bytes."""
-    user, token = await create_user(username="range_dan", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     _make_file(tmp_path, rel, _PAYLOAD)
     client = TestClient(_build_storage_files_app(tmp_path))
 
     resp = client.get(
         f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}", "Range": "bytes=-500"},
+        headers={"Range": "bytes=-500"},
     )
 
     assert resp.status_code == 206, resp.text
@@ -139,18 +136,16 @@ async def test_range_suffix_returns_tail(
 
 @pytest.mark.asyncio
 async def test_range_unsatisfiable_returns_416(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """A start past EOF → 416 + ``Content-Range: bytes */size``."""
-    user, token = await create_user(username="range_erin", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     _make_file(tmp_path, rel, _PAYLOAD)
     client = TestClient(_build_storage_files_app(tmp_path))
 
     resp = client.get(
         f"/api/storage/files/{rel}",
         headers={
-            "Authorization": f"Bearer {token}",
             "Range": f"bytes={len(_PAYLOAD) + 10}-{len(_PAYLOAD) + 20}",
         },
     )
@@ -161,17 +156,16 @@ async def test_range_unsatisfiable_returns_416(
 
 @pytest.mark.asyncio
 async def test_malformed_range_falls_back_to_200(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """A non-numeric / unparsable Range is ignored → full 200 (RFC 7233)."""
-    user, token = await create_user(username="range_fay", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     _make_file(tmp_path, rel, _PAYLOAD)
     client = TestClient(_build_storage_files_app(tmp_path))
 
     resp = client.get(
         f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}", "Range": "bytes=abc"},
+        headers={"Range": "bytes=abc"},
     )
 
     assert resp.status_code == 200, resp.text
@@ -180,19 +174,15 @@ async def test_malformed_range_falls_back_to_200(
 
 @pytest.mark.asyncio
 async def test_no_range_advertises_accept_ranges(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """A plain GET (no Range) must still advertise ``Accept-Ranges: bytes``
     so the browser knows the resource is seekable on a later request."""
-    user, token = await create_user(username="range_gus", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     _make_file(tmp_path, rel, _PAYLOAD)
     client = TestClient(_build_storage_files_app(tmp_path))
 
-    resp = client.get(
-        f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    resp = client.get(f"/api/storage/files/{rel}")
 
     assert resp.status_code == 200, resp.text
     assert resp.headers.get("Accept-Ranges") == "bytes"

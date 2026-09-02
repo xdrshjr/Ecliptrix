@@ -1,7 +1,7 @@
 'use strict'
 
 const path = require('path')
-const { app, dialog, ipcMain } = require('electron')
+const { app, dialog } = require('electron')
 
 const { initUserData, saveConfig } = require('./config')
 const { loadUserEnv, backfillUserEnv } = require('./envCheck')
@@ -104,20 +104,8 @@ async function main() {
 
   // Register renderer-facing IPC BEFORE the `--dev` early-return (spec §2.3b /
   // R2). main() runs once via app.whenReady(), so these never double-register.
-  // Window controls need no env; the bootstrap handler reads state.userEnv at
-  // call time (set below in packaged mode) and falls back to the env-template
-  // defaults so dev mode still resolves a usable credential pair.
+  // Window controls need no env.
   registerWindowControlIpc(state.logger)
-  // Packaged mode: state.userEnv (the injected userData/.env) is the source of
-  // truth, and the SAME values seed the backend, so silent login matches. Dev
-  // mode never loads userEnv, so fall back to process.env.ROOT_* — the dev
-  // launcher (scripts/dev.js) injects the same pair into both the backend and
-  // this process so the credentials line up (otherwise silent login 401s and
-  // the login screen appears). The literal defaults are the last resort.
-  ipcMain.handle('auth:bootstrap-credentials', () => ({
-    username: (state.userEnv && state.userEnv.ROOT_USERNAME) || process.env.ROOT_USERNAME || 'admin',
-    password: (state.userEnv && state.userEnv.ROOT_PASSWORD) || ***REMOVED*** || 'change_me_on_first_run',
-  }))
 
   if (isDev) {
     state.logger.info('main', `dev mode — attaching to ${DEV_FRONTEND_URL}`)
@@ -255,9 +243,20 @@ function createMainWindow(url) {
     version: app.getVersion(),
     logsPath: state.logsPath,
   })
-  state.mainWindow.once('show', closeSplash)
+  state.logger.info('main', `main window created (bounds=${JSON.stringify(state.mainWindow.getBounds())})`)
+  state.mainWindow.once('show', () => {
+    state.logger.info('main', `main window shown (bounds=${JSON.stringify(state.mainWindow.getBounds())})`)
+    closeSplash()
+  })
   state.mainWindow.on('closed', () => {
+    state.logger.info('main', 'main window closed')
     state.mainWindow = null
+  })
+  state.mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    state.logger.error('main', `renderer process gone: ${JSON.stringify(details)}`)
+  })
+  state.mainWindow.webContents.on('did-finish-load', () => {
+    state.logger.info('main', `main window finished load (${url})`)
   })
 }
 

@@ -40,15 +40,6 @@ const FRONTEND_READY_TIMEOUT_MS = 120000
 const BACKEND_READY_TIMEOUT_MS = 60000
 const isWin = process.platform === 'win32'
 
-// Single source of truth for the dev ROOT identity, injected into BOTH the
-// backend (so it seeds/authenticates this account) and Electron (so the desktop
-// silent auto-login hands the frontend the matching credentials). Defaults to
-// the backend's own config default (admin/admin); override via env. Without
-// this the bootstrap IPC and the backend disagree and you land on the login
-// screen instead of being silently logged in.
-const ROOT_USERNAME = process.env.ROOT_USERNAME || 'admin'
-const ROOT_PASSWORD = ***REMOVED*** || 'admin'
-
 // Self-contained dev database: like the packaged desktop app, default to SQLite
 // so `npm run dev` needs no PostgreSQL. The backend's .env DATABASE_URL (often
 // PostgreSQL) is ignored unless the developer exports DATABASE_URL themselves.
@@ -188,9 +179,6 @@ function startBackend() {
     cwd: BACKEND_DIR,
     env: {
       ...process.env,
-      // Pin the ROOT account so it matches the desktop bootstrap credentials.
-      ROOT_USERNAME,
-      ROOT_PASSWORD,
       // Self-contained like the packaged app: SQLite by default, no PostgreSQL.
       DATABASE_URL: databaseUrl,
       // Browser talks to Next (:3000) which proxies server-side, but allow the
@@ -244,9 +232,6 @@ function launchElectron() {
   // then crashes on `app.requestSingleInstanceLock()`, no window appears, and
   // you are left with only the web frontend. Mirrors scripts/smoke-test.js.
   const env = withoutElectronRunAsNode(process.env)
-  // Bootstrap credentials for desktop silent auto-login (read by index.js).
-  env.ROOT_USERNAME = ROOT_USERNAME
-  env.ROOT_PASSWORD = ROOT_PASSWORD
   // Redirect the Electron main-process Logger into the repo-local logs dir so
   // main.log sits beside the tee'd backend/frontend/dev logs (spec §2.4.1).
   env.ECLIPTRIX_LOG_DIR = LOGS_DIR

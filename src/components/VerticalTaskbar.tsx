@@ -3,26 +3,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Tab, TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { useNotification } from '@/contexts/NotificationContext';
 
 interface VerticalTaskbarProps {
   tabs: Tab[];
   activeTabId: string | null;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  /** Creates a task of the given type. Optional so the taskbar stays usable
+   *  in isolation (tests, storybook); when absent the "new task" control is
+   *  simply not rendered. */
+  onCreateTask?: (type: TaskType) => void;
   isBlurred?: boolean;
 }
+
+const NEW_TASK_TYPES: TaskType[] = ['video', 'chat'];
 
 const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   tabs,
   onSelectTab,
   onCloseTab,
+  onCreateTask,
   isBlurred = false,
 }) => {
   const { t } = useLocale();
-  const { isAuthenticated } = useAuth();
-  const { showWarning } = useNotification();
   const [isExpanded, setIsExpanded] = useState(false);
   const taskbarRef = useRef<HTMLDivElement>(null);
   const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -113,14 +116,22 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   };
 
   const selectTab = (tab: Tab) => {
-    if (!isAuthenticated) {
-      showWarning(t.auth.loginRequiredForTasks, 4000);
-      return;
-    }
     if (!isExpanded) {
       setIsExpanded(true);
     }
     onSelectTab(tab.id);
+  };
+
+  // No new i18n key: compose the existing 'New Task' label with the existing
+  // task-type label ("New Task · Video Editing" / "新建任务 · 视频剪辑").
+  const getNewTaskLabel = (type: TaskType) =>
+    `${t.common.newTask} · ${getTaskLabel(type)}`;
+
+  const createTask = (type: TaskType) => {
+    if (!isExpanded) {
+      setIsExpanded(true);
+    }
+    onCreateTask?.(type);
   };
 
   return (
@@ -178,6 +189,38 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
             ))}
           </div>
         </div>
+
+        {/* New-task controls. Without these the taskbar can only ever show
+            tabs that already exist, so a second task type is unreachable once
+            the first tab is open. */}
+        {onCreateTask && (
+          <div className="taskbar-section new-task-section">
+            {NEW_TASK_TYPES.map((type) => (
+              <button
+                key={type}
+                type="button"
+                className="taskbar-tab new-task-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  createTask(type);
+                }}
+                aria-label={getNewTaskLabel(type)}
+                title={getNewTaskLabel(type)}
+              >
+                <div className="tab-icon" aria-hidden="true">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14M5 12h14" />
+                  </svg>
+                </div>
+                <div className={`tab-content ${isExpanded ? 'visible' : 'hidden'}`}>
+                  <span className="tab-title">
+                    {getNewTaskLabel(type)}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
 
       </div>
     </>

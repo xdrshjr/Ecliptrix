@@ -13,6 +13,11 @@ Test layers
 3. **Symlink** — Unix-only path that creates a symlink inside
    ``STORAGE_ROOT`` pointing outside, then verifies ``_validate_path``
    refuses to write to it.
+
+The user system was removed in `desktop-only-refactor`, so these endpoints
+no longer authenticate. Every traversal / MIME / overwrite vector below is
+unchanged and still asserted — those defences never depended on who the
+caller was.
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.middleware.auth_middleware import SessionAuthMiddleware
+from app.constants import LOCAL_OWNER_ID
 from app.services.storage_service import StorageService, storage_service
 
 
@@ -47,13 +52,12 @@ def _fresh_service(root: Path) -> StorageService:
 
 
 def _build_storage_upload_app(storage_root: Path) -> FastAPI:
-    """Build a minimal app with ``storage_router`` + auth middleware."""
+    """Build a minimal app with ``storage_router`` mounted."""
     # Re-point the module singleton at the test root so the router uses
     # our isolated directory.
     storage_service.root = storage_root
 
     app = FastAPI()
-    app.add_middleware(SessionAuthMiddleware)
 
     from app.routers import storage_router, storage_files_router
     app.include_router(storage_router.router, prefix="/api")
@@ -243,51 +247,55 @@ def test_V04C_sanitize_filename_normalises_unicode(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_V04A_upload_audio_requires_auth(patched_auth_factories, tmp_path):
-    """Anonymous POST /api/storage/upload-audio → 401."""
+async def test_V04A_upload_audio_needs_no_credentials(tmp_path):
+    """POST /api/storage/upload-audio with no credentials → 200.
+
+    Pins the post-`desktop-only-refactor` contract: the endpoint used to
+    answer 401 here. It must not regress into requiring a token that no
+    longer exists, and the file must still land inside STORAGE_ROOT.
+    """
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
     resp = client.post(
         "/api/storage/upload-audio",
-        files={"file": ("song.mp3", io.BytesIO(b"FAKE-MP3-DATA"), "audio/mpeg")},
-    )
-    assert resp.status_code == 401, resp.text
-
-
-@pytest.mark.asyncio
-async def test_V04A_upload_audio_authenticated_succeeds(
-    patched_auth_factories, create_user, tmp_path
-):
-    """Valid token + legitimate audio → 200 + file lands in STORAGE_ROOT."""
-    user, token = await create_user(username="alice_v04", is_active=True)
-    app = _build_storage_upload_app(tmp_path)
-    client = TestClient(app)
-    resp = client.post(
-        "/api/storage/upload-audio",
-        headers={"Authorization": f"Bearer {token}"},
         files={"file": ("song.mp3", io.BytesIO(b"\xff\xfb\x90\x00"), "audio/mpeg")},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["success"] is True, body
-    # File should live under the per-user directory
+    assert (tmp_path / body["file_path"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_V04A_upload_audio_stores_under_local_owner(
+    tmp_path
+):
+    """Legitimate audio → 200 + file lands under the local owner's dir."""
+    app = _build_storage_upload_app(tmp_path)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/storage/upload-audio",
+        files={"file": ("song.mp3", io.BytesIO(b"\xff\xfb\x90\x00"), "audio/mpeg")},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True, body
+    # File should live under the local owner's directory
     file_path = body["file_path"]
-    assert f"user_{user.id}" in file_path
+    assert f"user_{LOCAL_OWNER_ID}" in file_path
     on_disk = tmp_path / file_path
     assert on_disk.exists()
 
 
 @pytest.mark.asyncio
 async def test_V04A_upload_file_rejects_path_traversal_bucket(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``bucket_path=../../etc`` → 400."""
-    _user, token = await create_user(username="bob_v04", is_active=True)
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
     resp = client.post(
         "/api/storage/upload-file",
-        headers={"Authorization": f"Bearer {token}"},
         files={"file": ("evil.mp3", io.BytesIO(b"x"), "audio/mpeg")},
         data={"bucket_path": "../../etc"},
     )
@@ -296,15 +304,13 @@ async def test_V04A_upload_file_rejects_path_traversal_bucket(
 
 @pytest.mark.asyncio
 async def test_V04A_upload_file_rejects_absolute_bucket(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``bucket_path=/etc`` (POSIX absolute) → 400."""
-    _user, token = await create_user(username="carol_v04", is_active=True)
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
     resp = client.post(
         "/api/storage/upload-file",
-        headers={"Authorization": f"Bearer {token}"},
         files={"file": ("evil.mp3", io.BytesIO(b"x"), "audio/mpeg")},
         data={"bucket_path": "/etc"},
     )
@@ -313,15 +319,13 @@ async def test_V04A_upload_file_rejects_absolute_bucket(
 
 @pytest.mark.asyncio
 async def test_V04A_upload_file_rejects_windows_drive_bucket(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``bucket_path=C:\\Windows`` → 400 (drive prefix)."""
-    _user, token = await create_user(username="dan_v04", is_active=True)
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
     resp = client.post(
         "/api/storage/upload-file",
-        headers={"Authorization": f"Bearer {token}"},
         files={"file": ("evil.mp3", io.BytesIO(b"x"), "audio/mpeg")},
         data={"bucket_path": "C:\\Windows"},
     )
@@ -330,10 +334,9 @@ async def test_V04A_upload_file_rejects_windows_drive_bucket(
 
 @pytest.mark.asyncio
 async def test_V04A_upload_file_rejects_nullbyte_bucket(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """NUL byte in bucket_path → 400."""
-    _user, token = await create_user(username="erin_v04", is_active=True)
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
     # ``\x00`` is rejected by Starlette form parser in some versions,
@@ -341,7 +344,6 @@ async def test_V04A_upload_file_rejects_nullbyte_bucket(
     # the request outright, that's also acceptable (4xx).
     resp = client.post(
         "/api/storage/upload-file",
-        headers={"Authorization": f"Bearer {token}"},
         files={"file": ("evil.mp3", io.BytesIO(b"x"), "audio/mpeg")},
         data={"bucket_path": "foo\x00bar"},
     )
@@ -350,7 +352,7 @@ async def test_V04A_upload_file_rejects_nullbyte_bucket(
 
 @pytest.mark.asyncio
 async def test_V04B_upload_file_rejects_mime_extension_mismatch(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """Declaring ``image/png`` for a ``.html`` file → mismatch.
 
@@ -360,12 +362,10 @@ async def test_V04B_upload_file_rejects_mime_extension_mismatch(
     match ``.txt`` — returns the MIME_EXTENSION_MISMATCH error envelope
     (HTTP 200 with success=False per the existing contract).
     """
-    _user, token = await create_user(username="frank_v04", is_active=True)
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
     resp = client.post(
         "/api/storage/upload-file",
-        headers={"Authorization": f"Bearer {token}"},
         files={"file": ("evil.html", io.BytesIO(b"<script>x</script>"), "image/png")},
     )
     # The router returns the response model with success=False; the HTTP
@@ -377,7 +377,7 @@ async def test_V04B_upload_file_rejects_mime_extension_mismatch(
 
 @pytest.mark.asyncio
 async def test_V04B_uploaded_svg_filename_is_rewritten(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``evil.svg`` posted as ``image/svg+xml`` lands on disk as ``...svg.txt``.
 
@@ -387,12 +387,10 @@ async def test_V04B_uploaded_svg_filename_is_rewritten(
     attacker cannot get an inline-rendered SVG payload through the
     public download URL.
     """
-    _user, token = await create_user(username="gina_v04", is_active=True)
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
     resp = client.post(
         "/api/storage/upload-file",
-        headers={"Authorization": f"Bearer {token}"},
         files={
             "file": (
                 "evil.svg",
@@ -410,7 +408,7 @@ async def test_V04B_uploaded_svg_filename_is_rewritten(
 
 @pytest.mark.asyncio
 async def test_V04D_storage_files_router_serves_dangerous_as_attachment(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """Legacy ``.html`` files on disk MUST be downloaded as attachments.
 
@@ -419,18 +417,14 @@ async def test_V04D_storage_files_router_serves_dangerous_as_attachment(
     the download path enforces ``Content-Disposition: attachment`` and
     ``Content-Type: text/plain``.
     """
-    user, token = await create_user(username="hank_v04", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/payload.html"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/payload.html"
     target = tmp_path / rel
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"<script>alert(1)</script>")
 
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
-    resp = client.get(
-        f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    resp = client.get(f"/api/storage/files/{rel}")
     assert resp.status_code == 200, resp.text
     cd = resp.headers.get("Content-Disposition", "")
     assert "attachment" in cd.lower(), resp.headers
@@ -441,21 +435,17 @@ async def test_V04D_storage_files_router_serves_dangerous_as_attachment(
 
 @pytest.mark.asyncio
 async def test_V04D_storage_files_router_serves_safe_inline(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """``.mp4`` etc. must NOT be forced to attachment (normal inline)."""
-    user, token = await create_user(username="ivy_v04", is_active=True)
-    rel = f"video/2026/05/20/user_{user.id}/clip.mp4"
+    rel = f"video/2026/05/20/user_{LOCAL_OWNER_ID}/clip.mp4"
     target = tmp_path / rel
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"FAKEMP4")
 
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
-    resp = client.get(
-        f"/api/storage/files/{rel}",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    resp = client.get(f"/api/storage/files/{rel}")
     assert resp.status_code == 200, resp.text
     # No attachment header for safe types
     cd = resp.headers.get("Content-Disposition", "")
@@ -470,18 +460,16 @@ async def test_V04D_storage_files_router_serves_safe_inline(
 
 @pytest.mark.asyncio
 async def test_V04A_bucket_path_upload_carries_uuid_prefix(
-    patched_auth_factories, create_user, tmp_path
+    tmp_path
 ):
     """Two uploads of the same filename to the same bucket_path do NOT
     overwrite each other — uuid prefix ensures distinct on-disk paths."""
-    _user, token = await create_user(username="jake_v04", is_active=True)
     app = _build_storage_upload_app(tmp_path)
     client = TestClient(app)
 
     def _upload(content: bytes):
         return client.post(
             "/api/storage/upload-file",
-            headers={"Authorization": f"Bearer {token}"},
             files={"file": ("song.mp3", io.BytesIO(content), "audio/mpeg")},
             data={"bucket_path": "audio/shared"},
         )

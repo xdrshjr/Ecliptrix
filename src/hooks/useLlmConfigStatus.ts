@@ -15,14 +15,13 @@ const CONFIG_UPDATED_EVENT = 'ecliptrix-llm-config-updated';
 /**
  * LLM credential status for the first-run setup guide.
  *
- * `enabled=false` (unauthenticated / non-admin) keeps the hook idle at
- * 'loading' without issuing a request. Every failure mode (network error,
- * non-200, parse failure, backend `success !== true`) maps to 'unknown' —
- * fail-open so a transient backend fault never flashes the setup guide at an
- * already-configured admin (spec R4). Model-settings saves broadcast
- * 'ecliptrix-llm-config-updated' which triggers a silent refetch.
+ * Every failure mode (network error, non-200, parse failure, backend
+ * `success !== true`) maps to 'unknown' — fail-open so a transient backend
+ * fault never flashes the setup guide at an already-configured install.
+ * Model-settings saves broadcast 'ecliptrix-llm-config-updated' which
+ * triggers a silent refetch.
  */
-export function useLlmConfigStatus(enabled: boolean): {
+export function useLlmConfigStatus(): {
   status: LlmConfigStatus;
   refresh: () => void;
 } {
@@ -34,23 +33,14 @@ export function useLlmConfigStatus(enabled: boolean): {
   }, []);
 
   useEffect(() => {
-    if (!enabled) {
-      setStatus('loading');
-      return;
-    }
     let cancelled = false;
 
     const fetchStatus = async () => {
       try {
-        // Public endpoint — requireAuth:false keeps a stray 401 from routing
-        // through the global session-expired handler.
-        const body = await http.get<LlmStatusResponse>(
-          '/api/config/llm-status',
-          { requireAuth: false },
-        );
+        const body = await http.get<LlmStatusResponse>('/api/config/llm-status');
         if (cancelled) return;
         if (body?.success !== true) {
-          // R4: backend resolution fault — indeterminate, do not prompt.
+          // Backend resolution fault — indeterminate, do not prompt.
           setStatus('unknown');
           return;
         }
@@ -65,7 +55,7 @@ export function useLlmConfigStatus(enabled: boolean): {
     return () => {
       cancelled = true;
     };
-  }, [enabled, refreshKey]);
+  }, [refreshKey]);
 
   useEffect(() => {
     window.addEventListener(CONFIG_UPDATED_EVENT, refresh);

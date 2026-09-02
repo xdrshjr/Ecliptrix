@@ -1,7 +1,5 @@
 // Vitest configuration for Ecliptrix unit tests.
 //
-// Spec: docs/plans/unified-api-auth-refactor/specs/07-testing-suite.md section 2.1
-//
 // Notes:
 //  - jsdom is required because almost every dormant test under
 //    src/lib/api/__tests__/ and src/components touches window and localStorage.

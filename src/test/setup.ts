@@ -20,8 +20,6 @@
  *   3. `@testing-library/jest-dom` extends Vitest's expect with DOM matchers
  *      (`toBeInTheDocument`, etc.) — useful for any future React component
  *      tests; the import is harmless even for purely-functional tests.
- *
- * Spec: docs/plans/unified-api-auth-refactor/specs/07-testing-suite.md §2.1 #3
  */
 
 // ---------------------------------------------------------------------------
