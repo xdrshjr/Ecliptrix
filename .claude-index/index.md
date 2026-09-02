@@ -209,7 +209,7 @@ Also `desktop.d.ts` (Electron bridge typings: `version`, `logsPath`, `windowCont
 ### Models (`app/models/`, 30 files)
 `base_models.py` (`BaseResponse`, `ErrorResponse`), `db_models.py` (SQLAlchemy ORM), plus Pydantic request/response models per feature: `chat_models`, `llm_models`, `model_settings_models`, `system_settings_models`, `queue_models`, `storage_models`, `file_upload_models`, `audio_models`, `audio_search_models`, `tts_models`, `voice_clone_models`, `image_search_models`, `video_models` (~924 lines), `video_analysis`, `video_cover_models`, `video_project_models`, `video_understanding_script_models`, `ai_mixed_editing_models`, `ark_video_models`, `ark_image_models`, `storyboard_models`, `silence_removal_models`, `timeline_export_models`, `timeline_import_models`, `youtube_models`
 
-**ORM tables (`db_models.py`):** `users`, `login_history`, `model_providers`, `model_assignments`, `system_settings`, `cached_materials`, `video_project_categories`, `video_projects`, `storyboard_packs`, `project_covers`, `settings_audit_log`
+**ORM tables (`db_models.py`):** `model_providers`, `model_assignments`, `system_settings`, `cached_materials`, `video_project_categories`, `video_projects`, `storyboard_packs`, `project_covers`, `settings_audit_log`
 
 ### Schema evolution
 There are no migrations. `app/database.py:init_db()` runs `create_all` (additive
@@ -298,12 +298,17 @@ Two patterns: **backend proxy** (most routes, read server-only `BACKEND_URL`) an
 
 ---
 
-## Deployment & Operations
+## Shipping
 
-- `install.sh` / `install.ps1`, `start.sh` (DB + backend :8000 + frontend :3010), `kill.sh` — local lifecycle
-- `ops/` — `deploy.sh`, `install.sh`, `install-deps.sh`, `_sysdeps_install.sh`, `healthcheck.sh`, `status.sh`, `logs.sh`, `uninstall.sh`, `config.env`, `templates/` (systemd units + nginx), `key/`
-- `scripts/preflight.sh`, `scripts/smoke-api-auth.sh`
-- Production: nginx proxies `/api` through the Next.js layer; backend :8088, frontend :3088. Prod host has **no** `.git` — deploy by `git archive HEAD` + extract.
+There is no server deployment: Ecliptrix ships as an Electron desktop app, so
+"shipping" means building an installer, not provisioning a host.
+
+- `cd desktop && npm run build` — installer (prepare-env -> prepare-frontend -> prepare-backend -> electron-builder)
+- `cd desktop && npm run build:dir` — unpacked build, the input to the smoke test
+- `node desktop/scripts/smoke-test.js` — end-to-end gate on the packaged app
+- Dev stack: `cd desktop && npm run dev` (Electron + backend + Next dev server), or
+  `uvicorn app.main:app --host 127.0.0.1 --port 8000` from `backend-services/basic-service/`
+  plus `npm run dev` at the repo root for the browser debugging path
 
 ---
 

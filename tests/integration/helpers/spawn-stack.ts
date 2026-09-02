@@ -13,7 +13,9 @@
  *     reliable path documented in spec section 2.4 as the "simpler fallback"
  *     for Windows where Python `spawn` is flaky.
  *
- *     `start.sh --dev` is the canonical way to bring such a stack up locally.
+ *     Bring one up with `uvicorn app.main:app --host 127.0.0.1 --port 8000`
+ *     from `backend-services/basic-service/`, or with
+ *     `cd desktop && npm run dev`, which starts backend + Next.js together.
  *
  *  2. SPAWN MODE (CI / Linux / Mac)
  *     -------------------------------
@@ -25,8 +27,8 @@
  *     The Next.js dev server is intentionally NOT spawned by this helper.
  *     The integration tests call backend routes directly (which is what the
  *     proxy ultimately does anyway). For end-to-end Next.js coverage, use
- *     a pre-running `bash start.sh --dev` stack and set
- *     `INTEGRATION_FRONTEND_URL=http://localhost:3010`.
+ *     a pre-running `cd desktop && npm run dev` stack and set
+ *     `INTEGRATION_FRONTEND_URL` to the port it reports.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -287,7 +289,8 @@ export async function bootStack(): Promise<StackHandle | { skip: true; reason: s
     skip: true,
     reason:
       'No backend detected on http://localhost:8000 and INTEGRATION_SPAWN is not 1. ' +
-      'Start the dev stack with `bash start.sh --dev` (or set INTEGRATION_BACKEND_URL ' +
-      'to point at a running backend) and re-run integration tests.',
+      'Start a backend with `uvicorn app.main:app --host 127.0.0.1 --port 8000` ' +
+      'from backend-services/basic-service (or set INTEGRATION_BACKEND_URL to ' +
+      'point at a running backend) and re-run integration tests.',
   }
 }

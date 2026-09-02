@@ -4,7 +4,3 @@
 # Environment files must use LF to avoid parsing issues on Linux servers
 .env text eol=lf
 *.env text eol=lf
-# Install scripts
-install.sh text eol=lf
-start.sh text eol=lf
-kill.sh text eol=lf
