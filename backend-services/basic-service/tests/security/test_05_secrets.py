@@ -167,8 +167,8 @@ class TestGitTracking:
             if re.search(r"(^|/)\.env($|\.)", f) or f.endswith(".env")
         ]
 
-        # Templates and ops/config.env are explicitly allowed.
-        allowed_suffixes = ("env.template", ".env.example", "ops/config.env")
+        # Templates are explicitly allowed.
+        allowed_suffixes = ("env.template", ".env.example")
         offenders = [
             f for f in env_files if not any(f.endswith(s) for s in allowed_suffixes)
         ]

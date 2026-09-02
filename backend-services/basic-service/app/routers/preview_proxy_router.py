@@ -10,9 +10,8 @@ Routes
 * ``GET /api/media/preview-proxy/file?material_id=...`` — 302-redirect to
   the cached output URL, or 404 with ``preview_proxy.not_ready``.
 
-Auth: per phase-3 spec §5.3 / N6, this router does not yet wire a
-``require_admin`` dep; auth extension is deferred to Round 4 alongside
-``media_proxy_router`` and ``material_router``.
+Access: like the rest of the backend, this router is reachable only from
+the local renderer over a loopback socket and carries no authorization gate.
 """
 
 from __future__ import annotations

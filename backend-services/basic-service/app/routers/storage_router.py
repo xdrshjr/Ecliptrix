@@ -6,7 +6,6 @@ spec/04 hardening
 -----------------
 All upload endpoints in this module enforce:
 
-  * Authenticated session via ``Depends(get_current_user)``.
   * Filename sanitisation via ``storage_service._sanitize_filename`` —
     drops directory separators / NUL bytes, caps length, rewrites
     dangerous executable extensions (.html, .svg, .js, .php, .sh, ...)
@@ -27,12 +26,11 @@ from typing import List, Optional, Union
 from datetime import datetime
 
 from fastapi import (
-    APIRouter, Depends, UploadFile, File, Form, HTTPException, Query, status,
+    APIRouter, UploadFile, File, Form, HTTPException, Query, status,
 )
 from fastapi.responses import JSONResponse
 
-from app.dependencies.auth import get_current_user
-from app.models.db_models import User
+from app.constants import LOCAL_OWNER_ID
 from app.models.storage_models import (
     FileUploadResponse,
     StorageUploadResponse,
@@ -172,19 +170,17 @@ def _validate_bucket_path(bucket_path: Optional[str]) -> Optional[str]:
 )
 async def upload_audio(
     file: UploadFile = File(..., description="Audio file to upload"),
-    user_id: str = Form(default="anonymous", description="User ID (legacy; overridden by session)"),
+    user_id: str = Form(default="anonymous", description="Owner id (ignored; the local owner always wins)"),
     task_id: Optional[str] = Form(default=None, description="Task ID"),
-    current_user: User = Depends(get_current_user),
 ) -> FileUploadResponse:
     """Upload audio file to local storage.
 
-    spec/04: enforces session auth + filename sanitisation + MIME check.
-    The ``user_id`` form parameter is preserved for backward compatibility
-    but is OVERRIDDEN by the authenticated session's user id.
+    spec/04: enforces filename sanitisation + MIME check. The ``user_id``
+    form parameter is preserved for backward compatibility but is ignored —
+    every upload is owned by the single local owner.
     """
     try:
-        # Authenticated user ID always wins (V04-A).
-        effective_user_id = str(current_user.id)
+        effective_user_id = LOCAL_OWNER_ID
 
         # MIME consistency on the ORIGINAL filename (V04-B) — the
         # sanitiser below would mask spoofing by rewriting dangerous
@@ -274,13 +270,12 @@ async def upload_file(
     bucket_path: Optional[str] = Form(None, description="Target storage path"),
     task_id: Optional[str] = Form(None, description="Task ID"),
     segment_id: Optional[str] = Form(None, description="Segment ID"),
-    user_id: Optional[str] = Form(None, description="User ID (legacy; overridden by session)"),
-    current_user: User = Depends(get_current_user),
+    user_id: Optional[str] = Form(None, description="Owner id (ignored; the local owner always wins)"),
 ) -> Union[StorageUploadResponse, StorageUploadErrorResponse]:
     """Upload general file to local storage.
 
-    spec/04: enforces session auth + ``bucket_path`` validation +
-    filename sanitisation + MIME check + UUID-prefix to avoid overwrite.
+    spec/04: enforces ``bucket_path`` validation + filename sanitisation +
+    MIME check + UUID-prefix to avoid overwrite.
     """
     # Validate bucket_path BEFORE the try-block so the HTTPException
     # surfaces as a real 400 — wrapping it in the broad ``except
@@ -289,7 +284,7 @@ async def upload_file(
     validated_bucket = _validate_bucket_path(bucket_path)
 
     try:
-        effective_user_id = str(current_user.id)
+        effective_user_id = LOCAL_OWNER_ID
         # MIME / extension consistency check runs on the ORIGINAL
         # caller-declared filename (V04-B). The sanitizer rewrites
         # dangerous extensions to ``.txt`` afterwards; we still want to
@@ -405,15 +400,14 @@ async def upload_video(
     task_id: Optional[str] = Form(None, description="Task ID"),
     custom_filename: Optional[str] = Form(None, description="Custom filename"),
     generate_thumbnail: bool = Form(True, description="Whether to generate thumbnail"),
-    user_id: Optional[str] = Form(None, description="User ID (legacy; overridden by session)"),
-    current_user: User = Depends(get_current_user),
+    user_id: Optional[str] = Form(None, description="Owner id (ignored; the local owner always wins)"),
 ) -> Union[VideoUploadResponse, VideoUploadErrorResponse]:
     """Upload video file with thumbnail generation.
 
-    spec/04: enforces session auth + filename sanitisation + MIME check.
+    spec/04: enforces filename sanitisation + MIME check.
     """
     try:
-        effective_user_id = str(current_user.id)
+        effective_user_id = LOCAL_OWNER_ID
 
         logger.info("Video upload request received", {
             "filename": file.filename,
@@ -537,7 +531,14 @@ async def get_user_materials(
     material_type: Optional[str] = None,
     dedupe: bool = True,
 ):
-    """Get user materials list with pagination.
+    """List the local owner's materials with pagination.
+
+    ``user_id`` is kept in the query contract (callers pass
+    ``LOCAL_OWNER_ID``) but no longer filters anything: the desktop build has
+    a single owner, and the listing enumerates every ``user_*`` directory so
+    material written by an older multi-user build stays visible after the
+    upgrade (spec `desktop-only-refactor` §4.6 / D13). The parameter still
+    decides where NEW uploads land on disk.
 
     iter5: ``dedupe`` defaults to True — collapses duplicate uploads of the
     same ``(name, size)`` so the reference-image picker stops showing N copies
@@ -675,14 +676,13 @@ async def save_thumbnail_frame(
     zoom_tier: str = Form(..., description="Quantized zoom tier label, e.g. '1x'"),
     t_ms: int = Form(..., description="Source frame time in whole milliseconds"),
     frame: UploadFile = File(..., description="JPEG frame blob"),
-    current_user: User = Depends(get_current_user),
 ) -> ThumbnailFrameResponse:
     """Persist one filmstrip frame extracted on the frontend canvas.
 
-    spec/04: enforces session auth. The frame bytes are written through the
-    storage service path validator, so the resolved target is guaranteed to
-    stay inside ``STORAGE_ROOT``. ``material_id`` / ``zoom_tier`` are reduced
-    to path-safe segments by the thumbnail service.
+    The frame bytes are written through the storage service path validator,
+    so the resolved target is guaranteed to stay inside ``STORAGE_ROOT``.
+    ``material_id`` / ``zoom_tier`` are reduced to path-safe segments by the
+    thumbnail service.
     """
     try:
         if t_ms < 0:
@@ -754,12 +754,11 @@ async def save_thumbnail_frame(
 )
 async def list_material_thumbnails(
     material_id: str,
-    current_user: User = Depends(get_current_user),
 ) -> MaterialThumbnailsResponse:
     """List the poster and filmstrip frames persisted for ``material_id``.
 
-    spec/04: enforces session auth. Returns an empty listing (not an error)
-    for a material that has no thumbnails yet.
+    Returns an empty listing (not an error) for a material that has no
+    thumbnails yet.
     """
     try:
         listing = thumbnail_service.list_material(material_id)
@@ -800,13 +799,12 @@ _WAVEFORM_QUEUE_NAME = "waveform_generation"
 )
 async def generate_waveform(
     request: WaveformGenerateRequest,
-    current_user: User = Depends(get_current_user),
 ) -> WaveformGenerateResponse:
     """Generate or reuse the waveform peaks for ``request.material_id``.
 
-    spec/04: enforces session auth. Extraction runs under a QueueManager
-    semaphore (``WaveformConfig.max_concurrent``) so concurrent imports do not
-    spawn unbounded ffmpeg subprocesses.
+    Extraction runs under a QueueManager semaphore
+    (``WaveformConfig.max_concurrent``) so concurrent imports do not spawn
+    unbounded ffmpeg subprocesses.
     """
     try:
         await queue_manager.create_queue(
@@ -860,12 +858,11 @@ async def generate_waveform(
 )
 async def get_waveform(
     material_id: str,
-    current_user: User = Depends(get_current_user),
 ) -> WaveformDataResponse:
     """Fetch the persisted waveform peaks for ``material_id``.
 
-    spec/04: enforces session auth. Returns ``status='missing'`` (not an error)
-    when no waveform has been generated yet.
+    Returns ``status='missing'`` (not an error) when no waveform has been
+    generated yet.
     """
     try:
         result = await waveform_service.get_waveform(material_id)
@@ -913,13 +910,12 @@ async def delete_material(
     material_id: str,
     source_path: Optional[str] = None,
     extra_keys: Optional[List[str]] = Query(default=None),
-    current_user: User = Depends(get_current_user),
 ) -> MaterialDeleteResponse:
     """Delete a material and cascade-clean its derived files (spec 06).
 
-    spec/04: enforces session auth. A missing derived file is a safe no-op so
-    a double-delete cannot error. ``source_path`` is OPTIONAL (query param) —
-    shared cached_materials are deleted without removing their source.
+    A missing derived file is a safe no-op so a double-delete cannot error.
+    ``source_path`` is OPTIONAL (query param) — shared cached_materials are
+    deleted without removing their source.
     ``extra_keys`` (repeatable query param) cascades additional thumbnail dir
     keys such as the stored-file poster stem.
     """
@@ -961,13 +957,11 @@ async def delete_material(
 )
 async def reclaim_orphans(
     request: ReclaimOrphansRequest,
-    current_user: User = Depends(get_current_user),
 ) -> ReclaimOrphansResponse:
     """Reclaim orphaned derived files for the supplied reference set (spec 06).
 
-    spec/04: enforces session auth. The reclaim itself enforces the empty-set
-    safety threshold (skip), so a frontend bug that sends an empty list cannot
-    wipe derived files.
+    The reclaim itself enforces the empty-set safety threshold (skip), so a
+    frontend bug that sends an empty list cannot wipe derived files.
     """
     try:
         referenced = set(request.referenced_material_ids or [])

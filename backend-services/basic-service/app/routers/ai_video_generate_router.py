@@ -3,19 +3,15 @@ AI Video Generate router for workflow node.
 Handles API endpoints for AI-powered video timeline generation from multiple inputs.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from app.services.ai_video_generate_service import AIVideoGenerateService
-from app.dependencies.auth import get_current_user
 from app.logger import get_logger
 
 logger = get_logger(__name__)
 
-# V01-A: enforce auth on every endpoint in this router. The router is mounted
-# at root (no `/api` prefix) in main.py, so middleware prefix-matching cannot
-# be relied on; we add an explicit Depends here.
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter()
 
 
 class AIVideoGenerateInputs(BaseModel):

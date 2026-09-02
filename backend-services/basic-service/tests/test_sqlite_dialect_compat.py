@@ -1,20 +1,19 @@
 """
-SQLite dialect compatibility tests for desktop (Electron) mode.
+SQLite dialect compatibility tests.
 
-Desktop packaging (docs/plans/desktop-electron-packaging, spec §2.4 / §6.3)
-points ``DATABASE_URL`` at ``sqlite+aiosqlite`` and relies on the production
-``init_db()`` path — ``Base.metadata.create_all`` + root user seeding —
-instead of alembic. These tests pin the dialect behaviours that path
-depends on:
+The desktop build points ``DATABASE_URL`` at ``sqlite+aiosqlite`` and relies on
+the production ``init_db()`` path — ``Base.metadata.create_all`` — instead of a
+migration tool. These tests pin the dialect behaviours that path depends on:
 
-1. ``_create_engine()`` builds a SQLite engine (no QueuePool-only kwargs)
-   with WAL / busy_timeout / foreign_keys pragmas applied per connection.
-2. ``init_db()`` completes on SQLite: the PG-only ``ALTER TABLE ... IF NOT
-   EXISTS`` backfill is skipped (dialect guard), create_all already emits
-   the ``api_format`` column the backfill would have added, and the root
-   user is seeded. Re-running stays idempotent.
-3. ``ensure_defaults_seeded()`` takes the SQLite upsert branch for both the
+1. ``_create_engine()`` builds a SQLite engine (no QueuePool-only kwargs) with
+   WAL / busy_timeout / foreign_keys pragmas applied per connection.
+2. ``_resolve_database_url()`` rewrites a leftover server-era PostgreSQL DSN
+   rather than letting the process die on a driver error.
+3. ``init_db()`` completes on SQLite and stays idempotent.
+4. ``ensure_defaults_seeded()`` takes the SQLite upsert branch for both the
    first insert and the subsequent default-value refresh.
+
+Legacy-row claiming lives in ``tests/test_local_owner_claim.py``.
 """
 
 from __future__ import annotations
@@ -22,10 +21,10 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app import database
-from app.models.db_models import Base, SystemSetting, User
+from app.models.db_models import Base, SystemSetting
 
 
 def _sqlite_url(tmp_path) -> str:
@@ -56,7 +55,7 @@ class TestSqliteEngineFactory:
 
     @pytest.mark.asyncio
     async def test_create_all_on_sqlite_emits_api_format_column(self, sqlite_engine):
-        """create_all must already include the column the PG backfill adds."""
+        """create_all must emit every column; there is no backfill any more."""
         async with sqlite_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             rows = (await conn.execute(text("PRAGMA table_info(model_providers)"))).fetchall()
@@ -64,27 +63,74 @@ class TestSqliteEngineFactory:
         column_names = {row[1] for row in rows}
         assert "api_format" in column_names
 
+    def test_sqlite_url_is_passed_through(self, tmp_path, monkeypatch):
+        url = _sqlite_url(tmp_path)
+        monkeypatch.setattr(database.settings.database, "url", url)
+        assert database._resolve_database_url() == url
+
+    def test_legacy_postgres_url_falls_back_to_sqlite(self, monkeypatch):
+        """A stale server-era DSN must not take the app down on startup.
+
+        ``env.template`` shipped ``DATABASE_URL=postgresql+asyncpg://...`` for
+        the whole server era, so plenty of installs still carry it. There is no
+        PostgreSQL on a desktop machine, so honouring it would only produce a
+        driver error nobody can act on.
+        """
+        monkeypatch.setattr(
+            database.settings.database,
+            "url",
+            "postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix",
+        )
+        resolved = database._resolve_database_url()
+        assert resolved.startswith("sqlite")
+
 
 class TestInitDbOnSqlite:
     @pytest.mark.asyncio
-    async def test_init_db_succeeds_and_seeds_root_user(self, sqlite_engine, monkeypatch):
+    async def test_init_db_creates_the_full_schema(self, sqlite_engine, monkeypatch):
         session_factory = async_sessionmaker(
             sqlite_engine, class_=AsyncSession, expire_on_commit=False
         )
         monkeypatch.setattr(database, "engine", sqlite_engine)
         monkeypatch.setattr(database, "async_session_factory", session_factory)
 
-        # Exercises the dialect guard: on SQLite the PG-only ALTER is skipped,
-        # so a raised OperationalError here would be a regression.
         await database.init_db()
 
-        async with session_factory() as session:
-            result = await session.execute(select(User).where(User.is_root == True))  # noqa: E712
-            root_user = result.scalar_one()
+        async with sqlite_engine.connect() as conn:
+            for table in (
+                "video_projects",
+                "video_project_categories",
+                "storyboard_packs",
+                "project_covers",
+            ):
+                columns = (await conn.execute(text(f"PRAGMA table_info({table})"))).fetchall()
+                assert "user_id" in {row[1] for row in columns}, table
 
-        assert root_user.username == database.settings.auth.root_username
-        assert root_user.is_admin is True
-        assert root_user.is_active is True
+    @pytest.mark.asyncio
+    async def test_init_db_does_not_create_the_removed_user_tables(
+        self, sqlite_engine, monkeypatch
+    ):
+        """``users`` / ``login_history`` left the ORM; create_all must not make them.
+
+        (An EXISTING database keeps its own copies — see
+        ``test_local_owner_claim.test_legacy_user_tables_are_left_untouched``.)
+        """
+        session_factory = async_sessionmaker(
+            sqlite_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        monkeypatch.setattr(database, "engine", sqlite_engine)
+        monkeypatch.setattr(database, "async_session_factory", session_factory)
+
+        await database.init_db()
+
+        async with sqlite_engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            )
+            tables = {row[0] for row in rows.fetchall()}
+
+        assert "users" not in tables
+        assert "login_history" not in tables
 
     @pytest.mark.asyncio
     async def test_init_db_is_idempotent_on_sqlite(self, sqlite_engine, monkeypatch):
@@ -95,32 +141,13 @@ class TestInitDbOnSqlite:
         monkeypatch.setattr(database, "async_session_factory", session_factory)
 
         await database.init_db()
-        await database.init_db()  # second run must not raise nor duplicate root
+        await database.init_db()  # second run must not raise
 
-        async with session_factory() as session:
-            result = await session.execute(select(User).where(User.is_root == True))  # noqa: E712
-            assert len(result.scalars().all()) == 1
-
-    @pytest.mark.asyncio
-    async def test_init_db_pg_only_alter_fails_without_guard(self, tmp_path):
-        """Anti-regression: the raw PG ALTER genuinely errors on SQLite.
-
-        Proves the dialect guard in ``init_db()`` is load-bearing rather
-        than decorative — if someone removes it, the statement below is what
-        ``init_db()`` would execute, and it must fail on SQLite.
-        """
-        engine = create_async_engine(_sqlite_url(tmp_path))
-        try:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            with pytest.raises(Exception):
-                async with engine.begin() as conn:
-                    await conn.execute(text(
-                        "ALTER TABLE model_providers ADD COLUMN IF NOT EXISTS "
-                        "api_format VARCHAR(20) NOT NULL DEFAULT 'auto'"
-                    ))
-        finally:
-            await engine.dispose()
+        async with sqlite_engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            )
+            assert "video_projects" in {row[0] for row in rows.fetchall()}
 
 
 class TestSystemSettingsSeedingOnSqlite:

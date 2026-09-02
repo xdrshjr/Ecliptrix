@@ -1,10 +1,10 @@
 """
 Pydantic request / response models for video project list & card endpoints.
 
-User identity is always derived server-side from the authenticated session
-(see ``app.dependencies.auth.get_current_user``). The request models in this
-module **MUST NOT** include ``user_id`` — passing one would be silently ignored
-but is forbidden by the auth contract for these endpoints.
+Ownership is always injected server-side from the ``LOCAL_OWNER_ID``
+constant (``app.constants``), never read from the request. The request models in this module
+**MUST NOT** include ``user_id`` — passing one would be silently ignored, and
+accepting it would put ownership back on the wire.
 """
 
 from typing import Any, Dict, List, Optional
