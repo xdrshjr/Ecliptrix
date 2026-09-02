@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { getUserMaterials, UserMaterial } from '@/lib/api/userMaterials';
-import { useAuth } from '@/contexts/AuthContext';
+import { LOCAL_OWNER_ID } from '@/lib/localOwner';
 import { useLocale } from '@/contexts/LocaleContext';
 import { VideoEditingLogger } from '../../utils/logger';
 
@@ -19,7 +19,6 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
   onAddMaterials,
   taskId
 }) => {
-  const { user } = useAuth();
   const { t } = useLocale();
   const [logger] = useState(() => new VideoEditingLogger({ taskId, component: 'MyMaterialsModal' }));
 
@@ -36,16 +35,11 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
 
   // Load materials
   const loadMaterials = useCallback(async () => {
-    if (!user?.id) {
-      logger.error('用户未登录，无法加载素材', {});
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     logger.info('加载用户素材', {
-      userId: user.id,
+      userId: LOCAL_OWNER_ID,
       page,
       pageSize,
       filterType
@@ -53,7 +47,7 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
 
     try {
       const response = await getUserMaterials(
-        user.id,
+        LOCAL_OWNER_ID,
         page,
         pageSize,
         filterType === 'all' ? undefined : filterType
@@ -84,7 +78,7 @@ const MyMaterialsModal: React.FC<MyMaterialsModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [user, page, pageSize, filterType, logger]);
+  }, [page, pageSize, filterType, logger]);
 
   // Load materials when modal opens or page/filter changes
   useEffect(() => {

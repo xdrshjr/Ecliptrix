@@ -1,7 +1,7 @@
 /**
  * Tests for `useTheme` (desktop-header-into-titlebar §6).
  *
- * The hook was extracted from `Header` so the shared `HeaderActions` cluster
+ * The hook was extracted from `Header` so the shared `TitleBarActions` cluster
  * owns a single copy. These cover the two behaviours the spec calls out:
  * reading the initial dark state off the `<html>` `dark` class, and toggling —
  * which must flip the `dark`/`light` class and write both persisted keys

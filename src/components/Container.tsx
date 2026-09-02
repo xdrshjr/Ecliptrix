@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Task, VideoEditingTaskContent, ChatTaskContent, MaterialItem } from '@/types';
+import { Task, TaskType, VideoEditingTaskContent, ChatTaskContent, MaterialItem } from '@/types';
 import ChatInterface from './chat/ChatInterface';
 import { VideoProjectListView, VideoEditorContainer } from './video/projects';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -11,12 +11,16 @@ interface ContainerProps {
   activeTask: Task | null;
   onUpdateTask?: (taskId: string, updates: Partial<Task>) => void;
   onChatModalStateChange?: (isOpen: boolean) => void;
+  /** Creates a task from the empty state. Once the last tab is closed this
+   *  empty state is the only way back into the app, so callers that own the
+   *  tab store must pass it. */
+  onCreateTask?: (type: TaskType) => void;
   tasks?: Task[];
   tabs?: any[];
   onSelectTab?: (tabId: string) => void;
 }
 
-const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange, tasks, tabs, onSelectTab }) => {
+const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange, onCreateTask, tasks, tabs, onSelectTab }) => {
   const { t } = useLocale();
 
   const handleUpdateChatContent = (content: ChatTaskContent) => {
@@ -86,8 +90,17 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
           <p className="text-muted-foreground mb-6">
             {t.welcome.description}
           </p>
+          {/* These two cards are the app's only "new task" entry point once
+              every tab is closed, so they are real buttons: Tab-reachable,
+              Enter/Space-activatable, with a visible focus ring. */}
           <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="bg-muted rounded-md p-4">
+            <button
+              type="button"
+              onClick={() => onCreateTask?.('chat')}
+              disabled={!onCreateTask}
+              aria-label={t.tasks.aiChat}
+              className="text-left bg-muted rounded-md p-4 transition-colors hover:bg-accent disabled:cursor-default disabled:hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
               <div className="w-8 h-8 bg-accent rounded-md flex items-center justify-center mb-3">
                 <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -95,8 +108,14 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
               </div>
               <h3 className="font-medium text-foreground mb-1">{t.tasks.aiChat}</h3>
               <p className="text-muted-foreground">{t.welcome.aiChatDesc}</p>
-            </div>
-            <div className="bg-muted rounded-md p-4">
+            </button>
+            <button
+              type="button"
+              onClick={() => onCreateTask?.('video')}
+              disabled={!onCreateTask}
+              aria-label={t.tasks.videoEditing}
+              className="text-left bg-muted rounded-md p-4 transition-colors hover:bg-accent disabled:cursor-default disabled:hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
               <div className="w-8 h-8 bg-accent rounded-md flex items-center justify-center mb-3">
                 <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 002 2v8a2 2 0 002 2z" />
@@ -104,7 +123,7 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
               </div>
               <h3 className="font-medium text-foreground mb-1">{t.tasks.videoEditing}</h3>
               <p className="text-muted-foreground">{t.welcome.videoEditingDesc}</p>
-            </div>
+            </button>
           </div>
         </div>
       </div>

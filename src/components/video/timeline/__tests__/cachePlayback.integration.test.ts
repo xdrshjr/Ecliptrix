@@ -109,9 +109,13 @@ describe('integration: ingest → cache → preview URL swap', () => {
     const preview = selectPlaybackUrl(seq, { purpose: 'preview' });
     expect(preview).toBe(`${window.location.origin}${result.local_url}`);
 
-    // 5. export URL is the backend-resolvable local reference.
+    // 5. export URL is the backend-resolvable local reference, and it stays
+    //    RELATIVE: absolutising it would inject the loopback origin and trip
+    //    the backend SSRF guard (see selectPlaybackUrl's export branch and
+    //    docs/diagnoses/video-export-localhost-ssrf-block).
     const exportUrl = selectPlaybackUrl(seq, { purpose: 'export' });
-    expect(exportUrl).toBe(`${window.location.origin}${result.local_url}`);
+    expect(exportUrl).toBe(result.local_url);
+    expect(exportUrl).not.toContain(window.location.origin);
 
     // 6. The export request payload (composition request) carries
     //    the local reference as `url` without helper fields.

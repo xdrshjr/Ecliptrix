@@ -7,14 +7,11 @@
  *   - `transcribeAudioFromPath` → POST `/api/audio/transcribe-local`
  *   - `transcribeAudioFromFile` → POST `/api/audio/transcribe`
  *
- * Decision (S06 §4.3 Option A): `AudioTranscriptionErrorResponse` is no
- * longer part of the return union. Network/auth/backend failures propagate
- * as `ApiError` (or `MissingAuthError`/`SessionExpiredError`) from the HTTP
- * wrapper. The single consumer `src/components/video/ScriptPanel.tsx` is
- * updated to use try/catch. The legacy error type is still exported for
- * back-compat with any imports that have not yet migrated.
- *
- * Spec: docs/plans/unified-api-auth-refactor/specs/06-direct-browser-call-migration.md §4.3
+ * `AudioTranscriptionErrorResponse` is not part of the return union: network
+ * and backend failures propagate as `ApiError` from the HTTP wrapper, and the
+ * single consumer `src/components/video/ScriptPanel.tsx` uses try/catch. The
+ * legacy error type is still exported for back-compat with any imports that
+ * have not yet migrated.
  */
 
 import { http } from '@/lib/api/http-client';
@@ -80,8 +77,8 @@ function buildOptionsForm(
  * Convert audio to subtitles by referencing a server-side file path.
  * 使用本地文件路径将音频转换为字幕
  *
- * @throws `MissingAuthError` / `SessionExpiredError` / `ApiError` / `TimeoutError`
- *         from the HTTP wrapper. Wrap the call in try/catch.
+ * @throws `ApiError` / `TimeoutError` from the HTTP wrapper. Wrap the call in
+ *         try/catch.
  */
 export async function transcribeAudioFromPath(
   request: AudioTranscriptionRequest,
@@ -99,8 +96,8 @@ export async function transcribeAudioFromPath(
  * Convert audio to subtitles by uploading a File from the browser.
  * 通过上传文件将音频转换为字幕
  *
- * @throws `MissingAuthError` / `SessionExpiredError` / `ApiError` / `TimeoutError`
- *         from the HTTP wrapper. Wrap the call in try/catch.
+ * @throws `ApiError` / `TimeoutError` from the HTTP wrapper. Wrap the call in
+ *         try/catch.
  */
 export async function transcribeAudioFromFile(
   file: File,

@@ -138,34 +138,12 @@ async function performThinkingPhase(
 export const maxDuration = 1800; // 30 minutes (for Vercel/serverless platforms)
 
 /**
- * Read the caller's bare session token from the incoming request. Supports
- * both the canonical `Authorization: Bearer <token>` header and the legacy
- * `x-session-token` header kept for backwards compatibility. The `Bearer `
- * prefix is stripped — callers re-add it where needed (`Bearer ${token}`).
- *
- * Returns `undefined` when the request carries no credentials — callers
- * should handle that case rather than silently dropping auth.
- */
-function readIncomingAuth(request: NextRequest): string | undefined {
-  const auth = request.headers.get('authorization');
-  if (auth) {
-    return auth.startsWith('Bearer ') ? auth.slice(7) : auth;
-  }
-  const legacy = request.headers.get('x-session-token');
-  if (legacy) {
-    return legacy;
-  }
-  return undefined;
-}
-
-/**
  * Resolve the LLM credentials/model for this Agent invocation.
  *
- * Must forward the caller's session token to the backend — otherwise the
- * backend `SessionAuthMiddleware` returns 401 and `getConfig()` silently
- * falls back to `.env` defaults, which means any user-selected model from
- * `model_settings` (Kimi / GLM / Claude custom) is ignored. That bug was
- * diagnosed on 2026-04-07 alongside the main "fetch failed" incident.
+ * Reads `model_settings` from the local backend so a model the owner picked
+ * in the settings centre (Kimi / GLM / Claude custom) wins over the `.env`
+ * defaults. The backend is unauthenticated (single local owner), so this is
+ * a plain GET.
  */
 type AgentResolvedConfig = {
   apiUrl: string;
@@ -175,13 +153,9 @@ type AgentResolvedConfig = {
   apiType: LlmApiType;
 };
 
-const getConfig = async (authToken: string | undefined): Promise<AgentResolvedConfig> => {
+const getConfig = async (): Promise<AgentResolvedConfig> => {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-      headers['x-session-token'] = authToken;
-    }
     const res = await fetch(
       backendConfig.joinPath('/api/model-settings/resolve/chat'),
       {
@@ -261,7 +235,7 @@ export async function POST(request: NextRequest) {
       console.error('[VideoEditingAgent] JSON parse failed. Raw body length:', rawText.length, 'Preview:', rawText.slice(0, 500));
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
-    const { messages, timelineState, materials, sessionToken: bodyToken, projectId } = body as AgentChatRequest & { projectId?: string };
+    const { messages, timelineState, materials, projectId } = body as AgentChatRequest & { projectId?: string };
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
@@ -295,14 +269,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Last message must be a non-empty user message' }, { status: 400 });
     }
 
-    // Read auth from header first, fall back to body (belt-and-suspenders for
-    // environments where the Authorization header is silently stripped). The
-    // user/auth system was removed on feat/remove-user-system, so this is now
-    // optional and may be undefined — downstream (getConfig, createVideoEditingAgent,
-    // toolFetch) all tolerate a missing token and the backend has no auth middleware.
-    const incomingAuthToken = readIncomingAuth(request) ?? bodyToken;
-
-    const config = await getConfig(incomingAuthToken);
+    const config = await getConfig();
     const lastUserMessage = lastMessage.content;
 
     console.log(`[VideoEditingAgent] Starting agent for: "${lastUserMessage.slice(0, 100)}"`);
@@ -465,7 +432,6 @@ export async function POST(request: NextRequest) {
             materials: effectiveMaterials,
             conversationHistory: messages,
             apiBaseUrl,
-            authToken: incomingAuthToken,
             projectId,
           });
 

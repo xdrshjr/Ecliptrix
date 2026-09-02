@@ -11,7 +11,7 @@ export interface ThemeControls {
 
 /**
  * Dark/light theme toggle, extracted from the inline hook in `Header` so the
- * shared `HeaderActions` cluster can own a single copy (spec §2.1).
+ * shared `TitleBarActions` cluster can own a single copy (spec §2.1).
  *
  * Reads the initial value off the `<html>` `dark` class (set by the early boot
  * script before hydration) and writes both `ecliptrix-theme` and

@@ -99,20 +99,6 @@ export async function toolFetch(
     ...normalizedCallerHeaders,
   };
 
-  // Inject the incoming user's session token so the downstream BFF routes
-  // and backend SessionAuthMiddleware see the caller identity. Without this
-  // every Agent tool call would 401 after the auth refactor (T01/T02).
-  // Callers can still override by setting their own Authorization header.
-  if (context.authToken && !('Authorization' in headers) && !('authorization' in headers)) {
-    headers['Authorization'] = context.authToken.startsWith('Bearer ')
-      ? context.authToken
-      : `Bearer ${context.authToken}`;
-  }
-
-  if (!context.authToken) {
-    console.warn(`[toolFetch] No authToken in context for ${path} — request will be unauthenticated`);
-  }
-
   const url = apiUrl(context, path);
   const fetchInit: RequestInit = { ...restInit, headers, signal };
 

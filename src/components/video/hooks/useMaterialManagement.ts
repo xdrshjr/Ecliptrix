@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { MaterialItem, MaterialType } from '@/types';
 import { UseMaterialManagementReturn } from '../types';
 import { VideoEditingLogger } from '../utils';
-import { useAuth } from '@/contexts/AuthContext';
+import { LOCAL_OWNER_ID } from '@/lib/localOwner';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useVideoEditingStore } from '@/stores';
@@ -46,7 +46,6 @@ interface ConfirmationDialogState {
  */
 export const useMaterialManagement = (taskId: string, initialMaterials: MaterialItem[] = []): UseMaterialManagementReturn => {
   // 获取当前用户信息
-  const { user } = useAuth();
   const { t } = useLocale();
   const { showWarning } = useNotification();
   const clearMaterials = useVideoEditingStore(state => state.clearMaterials);
@@ -287,7 +286,13 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleMaterialUpload,
     handleDragUpload,
     triggerAutoAnalysis,
-  } = useMaterialUpload({ taskId, logger, isMountedRef, setMaterials });
+  } = useMaterialUpload({
+    taskId,
+    logger,
+    ownerId: LOCAL_OWNER_ID,
+    isMountedRef,
+    setMaterials,
+  });
 
   // 添加或更新素材到列表
   const addMaterials = useCallback((newMaterials: MaterialItem[]) => {
