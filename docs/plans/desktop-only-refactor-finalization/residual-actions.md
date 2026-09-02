@@ -169,6 +169,15 @@
   **打包产物**而不是这批 diff，且届时工作区已不再是唯一副本，回滚只会让唯一一份可审计的历史
   消失。处置方式是**在本文件补记结论 + runlog 记 `fail`**。唯一例外：若 smoke-test 暴露的是
   本次 diff 引入的**功能回归**，则按新缺陷立项并追加一个 `fix:` 提交，**仍然不 revert**。
+- **本轮执行结论（节点 #3 于 C 之后回填）**：**两项已跑，一过一悬**，未触发红线。
+
+  | 项 | 结果 | 说明 |
+  |----|------|------|
+  | `npm run build:dir` | **ok**（`BUILD_DIR_EXIT=0`，7.0 min） | 首跑失败于 CPython 解压，诊断为调用方 shell 的 `PATH` 顺序问题（**非重构缺陷**），已登记 RA-11；按其绕过方式重跑全绿。产物 `win-unpacked/` 0.73GB、`Ecliptrix-Setup-1.0.0.exe` 0.20GB |
+  | `node scripts/smoke-test.js` | **ok**（`SMOKE_EXIT=0`，`PASS`） | 关键断言 `unauthenticated project list ok (no auth layer, sqlite readable)` 在**真实打包产物**上通过 —— 匿名 `GET /api/video-projects` 返回 200，同时证明鉴权层已彻底移除且 SQLite 在真实 userData 目录下可读。另含 services healthy / llm-status / sqlite file / categorised logs / main window loaded / no residual processes |
+  | `npm run test:integration` | **inconclusive**（6/6 skipped） | 按 RE-12 记 `inconclusive` 而非 `ok`。默认模式因无后端而跳过；再用 `INTEGRATION_SPAWN=1` 强制拉起，后端进程启动即崩于 `ImportError: recursion is detected during loading of "cv2" binary extensions` —— 即 **RA-5** 的本机环境缺陷，与本次重构无关（pytest 能跑通只因 `tests/conftest.py` 装了 cv2 stub，真实 uvicorn 进程没有）。修好 OpenCV 后重跑即可，无需改代码 |
+
+  因此 U-3 的**自动化子集已完成**（人工子集仍按 RA-7 移交），U-2 保持未闭环并归因到 RA-5。
 
 ---
 
@@ -210,6 +219,41 @@
   # → 348（F1 修完 N-3 的两行注释后；F1 之前为 346）
   ```
 
+
+## RA-11 · 从 Git Bash 启动桌面打包必失败（`tar` 被 GNU tar 抢占）
+
+- **严重度**：P2（**不影响已落地的重构**；影响的是"谁能把包打出来"）
+- **来源**：本轮 C/V 阶段实测新发现，黑板 `F-30`
+- **现象**：`cd desktop && npm run build:dir` 在 CPython 组装阶段中止：
+
+  ```
+  [build] FAILED: Failed to extract .../cache/python-3.11.9-embed-amd64.zip (exit 128)
+  ```
+
+  zip **本身完好**（`zipfile` 校验 34 entries、`testzip()` 返回 `None`），
+  所以不是缓存损坏，删缓存重下也没用。
+- **真因**：`desktop/scripts/lib/download.js:96` 的 `extractZip()` 调
+  `spawnSync('tar', ['-xf', zipFile, '-C', destDir])`，其上一行注释（`:93`）写明
+  依赖 Windows 自带的 bsdtar —— "Windows 10+ ships bsdtar (which reads zip)"。
+  但从 Git Bash 启动时，`D:\Program Files\Git\usr\bin\tar.exe`（**GNU tar 1.35**）
+  在 `PATH` 上排在 `C:\Windows\System32\tar.exe`（bsdtar 3.8.4）**之前**，
+  而 GNU tar 读不了 zip → exit 128。从 cmd / PowerShell 启动则命中 bsdtar，一切正常，
+  所以这条陷阱**只对部分人复现**，很容易被误判成"缓存坏了"。
+- **为什么本轮不做**：范围外 —— 这是**早于本次重构**就存在的构建脚本脆弱性，
+  与桌面端收敛重构无关；本轮已用环境变量绕过并完成产物验证（`BUILD_DIR_EXIT=0`、
+  `smoke-test PASS`），没有阻塞任何判据。
+- **由谁做**：独立工作项（一行改动）。建议让 `extractZip()` 在 win32 上显式使用
+  `path.join(process.env.SystemRoot || 'C:\Windows', 'System32', 'tar.exe')`，
+  使打包结果不依赖调用方 shell 的 `PATH` 顺序；顺带把失败信息里带上实际使用的 tar 版本。
+- **验收方式**：
+  ```bash
+  # 修复前：在 Git Bash 里必失败；修复后：与 cmd 启动结果一致
+  cd desktop && npm run build:dir      # → BUILD_DIR_EXIT=0
+  # 临时绕过（本轮采用）：
+  export PATH="/c/Windows/System32:$PATH"
+  ```
+
+---
 ---
 
 ## 附：本轮 F 阶段已闭环、**无需**登记的事项
