@@ -22,7 +22,11 @@ function run(command, args, options = {}) {
  * traced-dependency and secret-stripping checks.
  */
 function prepareFrontend() {
-  console.log('[prepare-frontend] building Next.js standalone bundle (DESKTOP_BUILD=1)...')
+  console.log('[prepare-frontend] building Next.js standalone bundle...')
+  // DESKTOP_BUILD is no longer what selects `output: 'standalone'` — Electron
+  // is the only target now, so next.config.js sets it unconditionally. The
+  // variable is still exported here for any code that branches on "this is a
+  // packaging build" rather than "this is a desktop runtime".
   run('npm', ['run', 'build'], {
     cwd: REPO_ROOT,
     env: { ...process.env, DESKTOP_BUILD: '1' },
@@ -34,7 +38,7 @@ function prepareFrontend() {
   if (!fs.existsSync(serverJs)) {
     throw new Error(
       `standalone output missing server.js at ${serverJs} — ` +
-        'check the DESKTOP_BUILD conditional in next.config.js'
+        "check that next.config.js still sets output: 'standalone'"
     )
   }
 

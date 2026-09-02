@@ -73,102 +73,48 @@ function testFreshConfigDoesNotSeedSyntheticBounds() {
   )
 }
 
-function testDesktopTemplateUsesAdminAdminRootDefault() {
-  const envTemplatePath = path.resolve(__dirname, '../scripts/env.template.desktop')
-  const env = parseEnvFile(envTemplatePath)
-
-  assert.strictEqual(
-    env.ROOT_USERNAME,
-    'admin',
-    'desktop root username should match the documented first-run admin account',
-  )
-  assert.strictEqual(
-    env.ROOT_PASSWORD,
-    'admin',
-    'desktop root password should match the documented first-run admin account',
-  )
-}
-
-function testBackfillMigratesStaleFactoryRootPassword() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-root-default-'))
+// The two cases below used the old root-account env keys purely as sample
+// keys. Those keys are gone with the user system, but the contract they pin
+// is not: backfill heals ONLY placeholders, and never overwrites a value the
+// user actually set. Re-keyed onto two real credentials to keep that guard.
+function testBackfillPreservesUserEditedApiKey() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-backfill-'))
   const envPath = path.join(dir, '.env')
   const templatePath = path.join(dir, 'env.template.desktop')
 
-  fs.writeFileSync(envPath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=adminjr\nLLM_API_KEY=custom\n')
-  fs.writeFileSync(templatePath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=admin\nLLM_API_KEY=template\n')
+  fs.writeFileSync(envPath, 'LLM_API_KEY=custom-secret\nVOLCANO_TTS_API_KEY=your_volcano_tts_api_key\n')
+  fs.writeFileSync(templatePath, 'LLM_API_KEY=template-value\nVOLCANO_TTS_API_KEY=template-tts\n')
 
   const healed = backfillUserEnv(envPath, templatePath)
   const env = parseEnvFile(envPath)
 
   assert.deepStrictEqual(
     healed,
-    ['ROOT_PASSWORD'],
-    'stale factory root password should be reported as migrated',
+    ['VOLCANO_TTS_API_KEY'],
+    'only the placeholder value should be healed',
   )
-  assert.strictEqual(env.ROOT_PASSWORD, 'admin')
   assert.strictEqual(
     env.LLM_API_KEY,
-    'custom',
-    'real user-edited values must not be overwritten during root password migration',
+    'custom-secret',
+    'a value the user set must never be overwritten by the template',
   )
+  assert.strictEqual(env.VOLCANO_TTS_API_KEY, 'template-tts')
 }
 
-function testBackfillMigratesChangeMeFactoryRootPassword() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-root-default-'))
+function testBackfillLeavesEmptyAndRealValuesAlone() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-backfill-'))
   const envPath = path.join(dir, '.env')
   const templatePath = path.join(dir, 'env.template.desktop')
 
-  fs.writeFileSync(
-    envPath,
-    'ROOT_USERNAME=admin\nROOT_PASSWORD=change_me_on_first_run\nLLM_API_KEY=custom\n',
-  )
-  fs.writeFileSync(templatePath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=admin\nLLM_API_KEY=template\n')
+  fs.writeFileSync(envPath, 'LLM_API_KEY=\nLLM_API_URL=https://example.invalid/v1\n')
+  fs.writeFileSync(templatePath, 'LLM_API_KEY=template-value\nLLM_API_URL=https://template.invalid/v1\n')
 
   const healed = backfillUserEnv(envPath, templatePath)
   const env = parseEnvFile(envPath)
 
-  assert.deepStrictEqual(
-    healed,
-    ['ROOT_PASSWORD'],
-    'change_me_on_first_run factory root password should be reported as migrated',
-  )
-  assert.strictEqual(env.ROOT_PASSWORD, 'admin')
-  assert.strictEqual(
-    env.LLM_API_KEY,
-    'custom',
-    'real user-edited values must not be overwritten during root password migration',
-  )
-}
-
-function testBackfillPreservesCustomRootPassword() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-root-default-'))
-  const envPath = path.join(dir, '.env')
-  const templatePath = path.join(dir, 'env.template.desktop')
-
-  fs.writeFileSync(envPath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=custom-secret\n')
-  fs.writeFileSync(templatePath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=admin\n')
-
-  const healed = backfillUserEnv(envPath, templatePath)
-  const env = parseEnvFile(envPath)
-
-  assert.deepStrictEqual(healed, [], 'custom root passwords must not be migrated')
-  assert.strictEqual(env.ROOT_PASSWORD, 'custom-secret')
-}
-
-function testBackfillPreservesChangedRootUsername() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-root-default-'))
-  const envPath = path.join(dir, '.env')
-  const templatePath = path.join(dir, 'env.template.desktop')
-
-  fs.writeFileSync(envPath, 'ROOT_USERNAME=owner\nROOT_PASSWORD=adminjr\n')
-  fs.writeFileSync(templatePath, 'ROOT_USERNAME=admin\nROOT_PASSWORD=admin\n')
-
-  const healed = backfillUserEnv(envPath, templatePath)
-  const env = parseEnvFile(envPath)
-
-  assert.deepStrictEqual(healed, [], 'changed root usernames must preserve their password')
-  assert.strictEqual(env.ROOT_USERNAME, 'owner')
-  assert.strictEqual(env.ROOT_PASSWORD, 'adminjr')
+  assert.deepStrictEqual(healed, [], 'empty and real values are both left untouched')
+  assert.strictEqual(env.LLM_API_KEY, '')
+  assert.strictEqual(env.LLM_API_URL, 'https://example.invalid/v1')
 }
 
 testLargeDisplayUsesDefaultSize()
@@ -176,10 +122,7 @@ testSmallDisplayStartsFullscreen()
 testRealSavedBoundsArePreservedWhenTheyFit()
 testLegacySyntheticBoundsAreIgnored()
 testFreshConfigDoesNotSeedSyntheticBounds()
-testDesktopTemplateUsesAdminAdminRootDefault()
-testBackfillMigratesStaleFactoryRootPassword()
-testBackfillMigratesChangeMeFactoryRootPassword()
-testBackfillPreservesCustomRootPassword()
-testBackfillPreservesChangedRootUsername()
+testBackfillPreservesUserEditedApiKey()
+testBackfillLeavesEmptyAndRealValuesAlone()
 
 console.log('window-state tests passed')
