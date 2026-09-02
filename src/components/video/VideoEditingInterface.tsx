@@ -38,7 +38,6 @@ import VideoUnderstandingScriptModal from './components/VideoUnderstandingScript
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { useAuth } from '@/contexts/AuthContext';
 import { analyzeVideosInBatch, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
 import { http, ApiError } from '@/lib/api/http-client';
 import type { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
@@ -139,7 +138,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const { showSuccess, showError } = useNotification();
   
   // 获取用户认证信息
-  const { user } = useAuth();
   
   // Mobile device detection and warning state (not persisted - runtime state)
   const [showMobileWarning, setShowMobileWarning] = useState(false);

@@ -88,7 +88,6 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
     timelineState: localTimelineState,
     materials: config.materials,
     apiBaseUrl: config.apiBaseUrl,
-    authToken: config.authToken,
     projectId: config.projectId,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {

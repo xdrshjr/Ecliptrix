@@ -1,10 +1,9 @@
 """
 Pydantic request / response models for the per-project video cover endpoints.
 
-User identity is always derived server-side from the authenticated session
-(see ``app.dependencies.auth.get_current_user``). The request models in this
-module **MUST NOT** include ``user_id`` — it is enforced server-side and
-ignored if sent.
+Ownership is always injected server-side from the ``LOCAL_OWNER_ID``
+constant (``app.constants``), never read from the request. The request models in this module
+**MUST NOT** include ``user_id`` — it is set server-side and ignored if sent.
 
 The CoverConfig shape carried in ``cover_config`` is structurally validated:
 unknown top-level fields are rejected so frontend bugs surface immediately.

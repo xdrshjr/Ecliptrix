@@ -14,9 +14,9 @@ from pydantic import ValidationError
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies.auth import require_admin
+from app.constants import LOCAL_OWNER_NAME
 from app.database import get_db_session
-from app.models.db_models import User, SettingsAuditLog
+from app.models.db_models import SettingsAuditLog
 from app.models.system_settings_models import (
     SettingsCategoryInfo,
     SystemSettingResponse,
@@ -103,7 +103,6 @@ def _service_response_to_api(resp) -> SystemSettingResponse:
 
 @router.get("/categories", response_model=CategoriesListResponse)
 async def list_categories(
-    admin_user: User = Depends(require_admin),
 ):
     """List all available settings categories with labels and descriptions."""
     return CategoriesListResponse(
@@ -117,7 +116,6 @@ async def get_audit_log(
     category: Optional[str] = Query(None, description="Filter by category"),
     limit: int = Query(50, ge=1, le=500, description="Max entries to return"),
     offset: int = Query(0, ge=0, description="Number of entries to skip"),
-    admin_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Query the settings audit log with optional category filter and pagination."""
@@ -165,7 +163,6 @@ async def get_audit_log(
 @router.get("/{category}", response_model=CategorySettingsResponse)
 async def get_category_settings(
     category: str,
-    admin_user: User = Depends(require_admin),
 ):
     """Get all settings within a category (with values, defaults, and metadata)."""
     _validate_category(category)
@@ -187,7 +184,6 @@ async def update_setting(
     category: str,
     key: str,
     request: UpdateSettingRequest,
-    admin_user: User = Depends(require_admin),
 ):
     """Update a single setting value. The authenticated user is recorded for audit."""
     _validate_category(category)
@@ -216,7 +212,7 @@ async def update_setting(
             category=category,
             key=key,
             value=request.value,
-            updated_by=admin_user.username,
+            updated_by=LOCAL_OWNER_NAME,
         )
         return {
             "success": True,
@@ -234,7 +230,6 @@ async def update_setting(
 async def batch_update_settings(
     category: str,
     request: BatchUpdateSettingsRequest,
-    admin_user: User = Depends(require_admin),
 ):
     """Batch-update multiple settings within a category."""
     _validate_category(category)
@@ -261,7 +256,7 @@ async def batch_update_settings(
         results = await system_settings_service.update_category(
             category=category,
             settings=request.settings,
-            updated_by=admin_user.username,
+            updated_by=LOCAL_OWNER_NAME,
         )
         return {
             "success": True,
@@ -276,14 +271,13 @@ async def batch_update_settings(
 @router.post("/{category}/reset")
 async def reset_category(
     category: str,
-    admin_user: User = Depends(require_admin),
 ):
     """Reset all settings in a category to their factory default values."""
     _validate_category(category)
     try:
         results = await system_settings_service.reset_to_defaults(
             category=category,
-            updated_by=admin_user.username,
+            updated_by=LOCAL_OWNER_NAME,
         )
         return {
             "success": True,
@@ -297,12 +291,11 @@ async def reset_category(
 
 @router.post("/reset-all")
 async def reset_all(
-    admin_user: User = Depends(require_admin),
 ):
     """Reset ALL settings across all categories to their factory default values."""
     try:
         await system_settings_service.reset_all_to_defaults(
-            updated_by=admin_user.username,
+            updated_by=LOCAL_OWNER_NAME,
         )
         return {
             "success": True,

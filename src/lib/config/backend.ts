@@ -29,8 +29,6 @@ import 'server-only'
  * 2026-04-07 when the backend port changed. We will not re-introduce that
  * footgun under any circumstance, and the literal default string is forbidden
  * from appearing anywhere in this module (verified by grep at review time).
- *
- * See: docs/plans/unified-api-auth-refactor/specs/02-backend-url-config-module.md
  */
 
 /**

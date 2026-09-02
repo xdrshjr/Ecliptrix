@@ -18,8 +18,6 @@ const STARTUP_TIMEOUT_MS = 120 * 1000
 const WINDOW_LOAD_TIMEOUT_MS = 60 * 1000
 const SHUTDOWN_TIMEOUT_MS = 30 * 1000
 const PROCESS_DRAIN_TIMEOUT_MS = 10 * 1000
-const SMOKE_USERNAME = 'smokeadmin'
-const SMOKE_PASSWORD = 'smoke-test-password-1'
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -87,18 +85,12 @@ async function main() {
     fail(`Ecliptrix.exe not found at ${exePath} — run \`npm run build:dir\` first`)
   }
 
-  // Isolated userData with a ROOT-only .env — deliberately NO LLM keys.
-  // Round 3's core regression: the app must fully start, log in and read the
-  // DB with zero LLM configuration (the in-app setup guide handles the rest).
+  // Isolated userData with an EMPTY .env — deliberately no keys of any kind.
+  // The core regression this guards: the app must fully start and read the DB
+  // with zero configuration and no credentials (the in-app setup guide handles
+  // LLM keys later).
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecliptrix-smoke-'))
-  fs.writeFileSync(
-    path.join(userDataDir, '.env'),
-    [
-      `ROOT_USERNAME=${SMOKE_USERNAME}`,
-      `ROOT_PASSWORD=${SMOKE_PASSWORD}`,
-      '',
-    ].join('\n')
-  )
+  fs.writeFileSync(path.join(userDataDir, '.env'), '')
   console.log(`[smoke-test] userData: ${userDataDir}`)
 
   console.log(`[smoke-test] launching ${exePath}`)
@@ -135,19 +127,9 @@ async function main() {
     if (!healthy) fail(`services not healthy within ${STARTUP_TIMEOUT_MS / 1000}s (ports ${JSON.stringify(ports)})`)
     console.log(`[smoke-test] services healthy (frontend:${ports.frontend} backend:${ports.backend})`)
 
-    // 2. Login with the root account seeded from our .env.
-    const login = await httpRequest('POST', `http://127.0.0.1:${ports.backend}/api/auth/login`, {
-      body: { username: SMOKE_USERNAME, password: SMOKE_PASSWORD },
-    })
-    if (login.status !== 200) fail(`login returned HTTP ${login.status}: ${login.body.slice(0, 300)}`)
-    const loginBody = JSON.parse(login.body)
-    const sessionToken = loginBody.session_token || loginBody.token
-    if (!loginBody.success || !sessionToken) fail(`login response missing session token: ${login.body.slice(0, 300)}`)
-    console.log('[smoke-test] login ok')
-
-    // 2.5. Zero-config status endpoint: configured must be false (we wrote no
-    //      LLM keys), and success must be true — success:false signals a
-    //      resolution fault (R4) which is a failure here, not "unconfigured".
+    // 2. Zero-config status endpoint: configured must be false (we wrote no
+    //    LLM keys), and success must be true — success:false signals a
+    //    resolution fault, which is a failure here, not "unconfigured".
     const llmStatus = await httpRequest('GET', `http://127.0.0.1:${ports.backend}/api/config/llm-status`)
     if (llmStatus.status !== 200) {
       fail(`GET /api/config/llm-status returned HTTP ${llmStatus.status}: ${llmStatus.body.slice(0, 300)}`)
@@ -158,14 +140,15 @@ async function main() {
     }
     console.log('[smoke-test] llm-status reports unconfigured ok')
 
-    // 3. Authenticated SQLite read through the auth chain.
-    const projects = await httpRequest('GET', `http://127.0.0.1:${ports.backend}/api/video-projects`, {
-      headers: { authorization: `Bearer ${sessionToken}` },
-    })
+    // 3. SQLite read with NO credentials of any kind. This single assertion
+    //    covers two things at once: the app has no auth layer left (a 401 here
+    //    would mean one crept back in), and the SQLite database is readable
+    //    end-to-end through the router → service → DB chain.
+    const projects = await httpRequest('GET', `http://127.0.0.1:${ports.backend}/api/video-projects`)
     if (projects.status !== 200) {
       fail(`GET /api/video-projects returned HTTP ${projects.status}: ${projects.body.slice(0, 300)}`)
     }
-    console.log('[smoke-test] authenticated project list ok')
+    console.log('[smoke-test] unauthenticated project list ok (no auth layer, sqlite readable)')
 
     // 4. SQLite database file materialised in userData.
     if (!fs.existsSync(path.join(userDataDir, 'data', 'ecliptrix.db'))) {

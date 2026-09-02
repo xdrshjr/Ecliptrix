@@ -27,16 +27,7 @@ const OUTPUT_TEMPLATE = path.join(BUILD_DIR, 'env.template.desktop')
 const HARD_INJECTED_KEYS = [
   'DATABASE_URL', 'STORAGE_ROOT', 'HOST', 'PORT', 'CORS_ALLOWED_ORIGINS', 'BACKEND_URL',
 ]
-// The desktop admin login is governed by ROOT_USERNAME/ROOT_PASSWORD shipped in
-// the placeholder template (admin / change_me_on_first_run) and read by BOTH
-// the backend root seeding (config.py:928-929) and the in-app silent login
-// (index.js auth:bootstrap-credentials). The build machine's .env carries
-// ADMIN_USERNAME/ADMIN_PASSWORD instead; ROOT_* take priority in config.py, so
-// bundling ADMIN_* changes nothing functionally but would leak the dev box's
-// admin password into every installer. Excluded — see analysis.md
-// "实施过程发现的方案缺陷".
-const LOCAL_ADMIN_KEYS = ['ADMIN_USERNAME', 'ADMIN_PASSWORD']
-const EXCLUDED_KEYS = new Set([...HARD_INJECTED_KEYS, ...LOCAL_ADMIN_KEYS])
+const EXCLUDED_KEYS = new Set(HARD_INJECTED_KEYS)
 
 /**
  * Merge the two source .env maps into the bundled defaults.
@@ -45,7 +36,7 @@ const EXCLUDED_KEYS = new Set([...HARD_INJECTED_KEYS, ...LOCAL_ADMIN_KEYS])
  * matching analysis.md §7.3 — the no-UI third-party keys (ARK / Volcano /
  * Pexels / ...) exist only there. The one exception: an empty backend value
  * must not clobber a real root value (YOUTUBE_PROXY is empty in backend but set
- * in root). Hard-injected and local-admin keys are dropped last.
+ * in root). Hard-injected keys are dropped last.
  *
  * @param {Record<string,string>} rootEnv parsed repo-root .env (frontend defaults)
  * @param {Record<string,string>} backendEnv parsed backend .env (service creds)

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getUserMaterials, UserMaterial } from '@/lib/api/userMaterials';
-import { useAuth } from '@/contexts/AuthContext';
+import { LOCAL_OWNER_ID } from '@/lib/localOwner';
 import { useLocale } from '@/contexts/LocaleContext';
 
 interface MaterialLibraryGridProps {
@@ -20,7 +20,6 @@ const MaterialLibraryGrid: React.FC<MaterialLibraryGridProps> = ({
   selectedUrls = [],
   disabled = false,
 }) => {
-  const { user } = useAuth();
   const { t } = useLocale();
   const mp = t.materialsPanel;
 
@@ -33,10 +32,9 @@ const MaterialLibraryGrid: React.FC<MaterialLibraryGridProps> = ({
   const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
     setStatus('loading');
     setErrorMsg(null);
-    const res = await getUserMaterials(user.id, page, PAGE_SIZE, 'image');
+    const res = await getUserMaterials(LOCAL_OWNER_ID, page, PAGE_SIZE, 'image');
     if (res.success) {
       setMaterials(res.materials);
       setTotal(res.total);
@@ -46,13 +44,11 @@ const MaterialLibraryGrid: React.FC<MaterialLibraryGridProps> = ({
       setErrorMsg(res.message || 'Load failed');
       setStatus('error');
     }
-  }, [user?.id, page]);
+  }, [page]);
 
   useEffect(() => {
-    if (user?.id) {
-      load();
-    }
-  }, [user?.id, page, load]);
+    load();
+  }, [page, load]);
 
   const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
@@ -61,14 +57,6 @@ const MaterialLibraryGrid: React.FC<MaterialLibraryGridProps> = ({
   }, [materials, search]);
 
   const selectedSet = useMemo(() => new Set(selectedUrls), [selectedUrls]);
-
-  if (!user?.id) {
-    return (
-      <p className="text-xs text-muted-foreground text-center py-3">
-        {mp.materialLibraryLoginRequired || 'Please log in to view materials'}
-      </p>
-    );
-  }
 
   return (
     <div className="space-y-2">

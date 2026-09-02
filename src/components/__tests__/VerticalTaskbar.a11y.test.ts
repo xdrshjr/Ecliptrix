@@ -17,16 +17,42 @@ const I18N_SRC = readFileSync(
   'utf-8',
 );
 
-describe('VerticalTaskbar — Bug #4 hardcoded toast removed', () => {
-  it('VerticalTaskbar uses the new i18n key', () => {
-    expect(SRC).toMatch(/showWarning\(t\.auth\.loginRequiredForTasks, 4000\)/);
+describe('VerticalTaskbar — no login gate', () => {
+  // The sign-in warning that used to fire on tab selection is gone with the
+  // user system: a local desktop app has exactly one owner and nothing to
+  // sign in to. Selecting a tab must never be gated.
+  it('does not gate tab selection behind a sign-in check', () => {
+    expect(SRC).not.toMatch(/useAuth/);
+    expect(SRC).not.toMatch(/isAuthenticated/);
+    expect(SRC).not.toMatch(/loginRequiredForTasks/);
     expect(SRC).not.toMatch(/showWarning\('请先登录后再使用任务功能'/);
   });
 
-  it('i18n dictionary defines loginRequiredForTasks in EN + zh-CN + interface', () => {
-    expect(I18N_SRC).toMatch(/loginRequiredForTasks: string;/);
-    expect(I18N_SRC).toMatch(/loginRequiredForTasks: 'Please sign in to use task features'/);
-    expect(I18N_SRC).toMatch(/loginRequiredForTasks: '请先登录后再使用任务功能'/);
+  it('the retired i18n key is gone from all three dictionary blocks', () => {
+    expect(I18N_SRC).not.toMatch(/loginRequiredForTasks/);
+  });
+});
+
+describe('VerticalTaskbar — new-task entry point', () => {
+  // Without these controls a second task type is unreachable once the first
+  // tab exists, and the taskbar can only ever show tabs that already exist.
+  it('renders a new-task button per task type when onCreateTask is supplied', () => {
+    expect(SRC).toMatch(/onCreateTask\?: \(type: TaskType\) => void;/);
+    expect(SRC).toMatch(/NEW_TASK_TYPES\.map/);
+    expect(SRC).toMatch(/className="taskbar-tab new-task-button"/);
+  });
+
+  it('the new-task button is a real button with an accessible name', () => {
+    const block = SRC.match(/<button[\s\S]*?className="taskbar-tab new-task-button"[\s\S]*?<\/button>/);
+    expect(block).not.toBeNull();
+    expect(block![0]).toMatch(/type="button"/);
+    expect(block![0]).toMatch(/aria-label=\{getNewTaskLabel\(type\)\}/);
+    expect(block![0]).toMatch(/aria-hidden="true"/);
+  });
+
+  it('composes its label from existing i18n keys (no new key introduced)', () => {
+    expect(SRC).toMatch(/t\.common\.newTask/);
+    expect(I18N_SRC).toMatch(/newTask: string;/);
   });
 });
 

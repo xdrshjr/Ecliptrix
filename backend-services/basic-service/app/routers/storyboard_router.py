@@ -2,12 +2,11 @@
 Router for AI Storyboard generation, cropping, description, batch video,
 and video composition endpoints.
 
-Auth contract — every endpoint declares ``current_user: User =
-Depends(get_current_user)`` (matching ``video_project_router``). Project
-ownership is enforced via ``video_project_service.assert_project_writable``
-on write paths and ``storyboard_service._assert_pack_owned`` on
-pack-scoped paths. We mask 403 as 404 to avoid pack-id / project-id
-enumeration.
+Ownership contract — ``user_id`` is the ``LOCAL_OWNER_ID`` constant
+(matching ``video_project_router``). Project ownership is still enforced via
+``video_project_service.assert_project_writable`` on write paths and
+``storyboard_service._assert_pack_owned`` on pack-scoped paths, so a request
+naming another project's pack still gets a 404.
 """
 
 from typing import Optional
@@ -15,11 +14,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import LOCAL_OWNER_ID
 from app.database import get_db_session
-from app.dependencies.auth import get_current_user
 from app.logger import get_logger
 from app.models.base_models import BaseResponse
-from app.models.db_models import User
 from app.models.storyboard_models import (
     GenerateScriptRequest,
     GenerateScriptResponse,
@@ -67,13 +65,12 @@ def _require_project_id(value: Optional[str], *, where: str) -> str:
 @router.post("/generate", response_model=StoryboardGenerateResponse)
 async def generate_storyboard(
     request: StoryboardGenerateRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardGenerateResponse:
     """Generate a chained 2x2 storyboard pack. On partial failure returns
     HTTP 200 with ``data.partial = true`` and whatever frames completed.
     """
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id = _require_project_id(request.project_id, where="storyboard generation")
     request.project_id = project_id
     await video_project_service.assert_project_writable(
@@ -131,7 +128,6 @@ async def generate_storyboard(
 @router.post("/generate-script", response_model=GenerateScriptResponse)
 async def generate_storyboard_script(
     request: GenerateScriptRequest,
-    current_user: User = Depends(get_current_user),
 ) -> GenerateScriptResponse:
     """Generate an initial N-shot storyboard script from a user prompt.
 
@@ -165,7 +161,6 @@ async def generate_storyboard_script(
 @router.post("/revise-script", response_model=GenerateScriptResponse)
 async def revise_storyboard_script(
     request: ReviseScriptRequest,
-    current_user: User = Depends(get_current_user),
 ) -> GenerateScriptResponse:
     """Revise an existing storyboard script given chat history + new user instruction.
 
@@ -201,11 +196,10 @@ async def revise_storyboard_script(
 @router.post("/packs/create-from-shots", response_model=StoryboardGenerateResponse)
 async def create_pack_from_shots(
     request: StoryboardCreateFromShotsRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardGenerateResponse:
     """Create a storyboard pack from client-provided, script-bound shots."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id = _require_project_id(
         request.project_id, where="storyboard pack creation"
     )
@@ -241,11 +235,10 @@ async def list_packs(
     project_id: Optional[str] = Query(
         None, description="Filter by owning project (required)"
     ),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardListResponse:
     """List storyboard packs for the given ``project_id``, newest first."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="storyboard listing")
     await video_project_service.assert_project_writable(
         db=db, user_id=user_id, project_id=project_id_resolved
@@ -272,11 +265,10 @@ async def get_pack(
     project_id: Optional[str] = Query(
         None, description="Owning project (required, must match the pack)"
     ),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardGenerateResponse:
     """Get a single storyboard pack by ID."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="storyboard read")
     bound_project_id = await storyboard_service._assert_pack_owned(
         db=db, pack_id=pack_id, user_id=user_id
@@ -306,11 +298,10 @@ async def delete_pack(
     project_id: Optional[str] = Query(
         None, description="Owning project (required, must match the pack)"
     ),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> BaseResponse:
     """Delete a storyboard pack and all its files."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="storyboard delete")
     bound_project_id = await storyboard_service._assert_pack_owned(
         db=db, pack_id=pack_id, user_id=user_id
@@ -337,11 +328,10 @@ async def delete_pack(
 @router.post("/describe", response_model=StoryboardDescribeResponse)
 async def describe_frames(
     request: StoryboardDescribeRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardDescribeResponse:
     """Generate VL_LLM scene descriptions for storyboard frames."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     await storyboard_service._assert_pack_owned(
         db=db, pack_id=request.pack_id, user_id=user_id
     )
@@ -374,11 +364,10 @@ async def describe_frames(
 @router.post("/batch-video", response_model=StoryboardBatchVideoResponse)
 async def batch_generate_videos(
     request: StoryboardBatchVideoRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardBatchVideoResponse:
     """Submit batch video generation tasks for storyboard frames."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     await storyboard_service._assert_pack_owned(
         db=db, pack_id=request.pack_id, user_id=user_id
     )
@@ -401,7 +390,6 @@ async def batch_generate_videos(
 
 @router.get("/queue/status")
 async def get_queue_status(
-    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Return the storyboard video generation queue's current state.
 
@@ -429,11 +417,10 @@ async def get_queue_status(
 @router.get("/batch-video/status/{pack_id}", response_model=StoryboardBatchVideoStatusResponse)
 async def get_batch_video_status(
     pack_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardBatchVideoStatusResponse:
     """Query the status of all video generation tasks for a pack."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     await storyboard_service._assert_pack_owned(
         db=db, pack_id=pack_id, user_id=user_id
     )
@@ -458,11 +445,10 @@ async def get_batch_video_status(
 @router.post("/compose", response_model=StoryboardComposeResponse)
 async def compose_video(
     request: StoryboardComposeRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardComposeResponse:
     """Compose (concatenate) all storyboard videos into a single video."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     await storyboard_service._assert_pack_owned(
         db=db, pack_id=request.pack_id, user_id=user_id
     )

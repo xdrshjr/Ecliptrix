@@ -7,17 +7,17 @@ Covers:
           (ripgrep / fallback `os.walk`) assertions so the suite fails loudly
           if a future commit reintroduces an unsafe deserialisation primitive.
 
-  V06-C — FastAPI must NOT expose ``/docs``, ``/redoc`` or ``/openapi.json``
-          in production. Dev/staging keeps them on for the local workflow.
+  V06-C — FastAPI exposes ``/docs``, ``/redoc`` and ``/openapi.json``
+          unconditionally. `desktop-only-refactor` (D7) made them always-on:
+          the process binds to 127.0.0.1 and is reached only by the Electron
+          renderer on the same machine, so they are a local debugging asset,
+          not a public surface. These tests pin that they stay reachable.
 
 Strategy
 --------
-For V06-C we mirror the post-patch ``app/main.py`` flag computation in this
-test file rather than importing ``app.main`` (importing main pulls cv2 /
-ffmpeg / heavyweight routers, which is expensive for a unit test and
-unrelated to the behaviour under test). The flag computation is one line, so
-keeping a mirror here is cheap; the actual production wiring is verified by
-reading the source string and asserting the exact pattern is present.
+For V06-C we build a bare FastAPI with default kwargs rather than importing
+``app.main`` (importing main pulls cv2 / ffmpeg / heavyweight routers, which
+is expensive for a unit test and unrelated to the behaviour under test).
 
 For V06-A we shell out to ripgrep when available (matches the developer
 workflow); when ripgrep is missing we fall back to a pure-Python walk that
@@ -42,52 +42,32 @@ BACKEND_APP_DIR = BASIC_SERVICE_DIR / "app"
 
 
 # ---------------------------------------------------------------------------
-# V06-C — openapi disabled in production
+# V06-C — interactive docs are always available
 # ---------------------------------------------------------------------------
 
 
-def _build_app(env_marker: str) -> FastAPI:
-    """Build a FastAPI instance using the exact same flag rule as ``app/main.py``.
-
-    Kept in lock-step with the patch in ``app/main.py`` (see comment with
-    ``spec/06 V06-C`` marker). If main.py's rule diverges the source-pattern
-    assertion below will fail loudly first.
-    """
-    is_dev = (env_marker or "production").lower() in ("development", "dev")
-    return FastAPI(
-        title="test",
-        version="test",
-        docs_url="/docs" if is_dev else None,
-        redoc_url="/redoc" if is_dev else None,
-        openapi_url="/openapi.json" if is_dev else None,
-    )
+def _build_app() -> FastAPI:
+    """Build a FastAPI with the same (default) docs kwargs ``app/main.py`` uses."""
+    return FastAPI(title="test", version="test")
 
 
-def test_V06C_prod_disables_docs() -> None:
-    app = _build_app("production")
-    client = TestClient(app)
+def test_V06C_docs_ui_is_served() -> None:
+    client = TestClient(_build_app())
 
     resp = client.get("/docs")
-    assert resp.status_code == 404, "Expected /docs to return 404 in production"
-
-    resp = client.get("/redoc")
-    assert resp.status_code == 404, "Expected /redoc to return 404 in production"
-
-    resp = client.get("/openapi.json")
-    assert (
-        resp.status_code == 404
-    ), "Expected /openapi.json to return 404 in production"
-
-
-def test_V06C_dev_enables_docs() -> None:
-    app = _build_app("development")
-    client = TestClient(app)
-
-    resp = client.get("/docs")
-    assert resp.status_code == 200, "Expected /docs to render in development"
+    assert resp.status_code == 200, "Expected /docs to render"
     assert (
         "swagger" in resp.text.lower() or "openapi" in resp.text.lower()
-    ), "Expected the dev /docs response to contain Swagger UI markup"
+    ), "Expected the /docs response to contain Swagger UI markup"
+
+
+def test_V06C_redoc_ui_is_served() -> None:
+    client = TestClient(_build_app())
+    assert client.get("/redoc").status_code == 200
+
+
+def test_V06C_openapi_json_is_served() -> None:
+    client = TestClient(_build_app())
 
     resp = client.get("/openapi.json")
     assert resp.status_code == 200
@@ -96,31 +76,19 @@ def test_V06C_dev_enables_docs() -> None:
     assert "openapi" in body and "paths" in body
 
 
-def test_V06C_dev_alias_marker() -> None:
-    # The shorthand "dev" alias should be treated identically to "development".
-    app = _build_app("dev")
-    client = TestClient(app)
-    assert client.get("/docs").status_code == 200
-    assert client.get("/openapi.json").status_code == 200
+def test_V06C_main_py_does_not_gate_docs() -> None:
+    """Lock the source: main.py must NOT reintroduce an env gate on the docs.
 
-
-def test_V06C_main_py_uses_env_gated_docs_kwargs() -> None:
-    """Lock the source pattern: main.py must construct FastAPI with env-gated
-    ``docs_url`` / ``redoc_url`` / ``openapi_url`` kwargs.
-
-    This guards against a future refactor accidentally re-enabling docs in
-    production by dropping the kwargs.
+    The old build disabled the docs whenever ``ENV`` was not development. That
+    switch is gone along with the deployment-environment marker; a refactor
+    that brings back a ``docs_url=... if ... else None`` kwarg would silently
+    break local debugging, so fail loudly here instead.
     """
     main_src = (BACKEND_APP_DIR / "main.py").read_text(encoding="utf-8")
-    assert (
-        "docs_url=\"/docs\" if _is_dev_env else None" in main_src
-    ), "main.py must gate docs_url on _is_dev_env"
-    assert (
-        "redoc_url=\"/redoc\" if _is_dev_env else None" in main_src
-    ), "main.py must gate redoc_url on _is_dev_env"
-    assert (
-        "openapi_url=\"/openapi.json\" if _is_dev_env else None" in main_src
-    ), "main.py must gate openapi_url on _is_dev_env"
+    for kwarg in ("docs_url=", "redoc_url=", "openapi_url="):
+        assert kwarg not in main_src, (
+            f"main.py must not pass {kwarg} — the docs are unconditionally on"
+        )
 
 
 # ---------------------------------------------------------------------------

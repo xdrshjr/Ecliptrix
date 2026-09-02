@@ -115,8 +115,6 @@ class MaterialDownloadService:
             settings.database.url,
             pool_size=2,
             max_overflow=4,
-            pool_timeout=settings.database.pool_timeout,
-            pool_recycle=settings.database.pool_recycle,
             echo=False,
         )
         self._session_factory = async_sessionmaker(

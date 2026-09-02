@@ -1,11 +1,10 @@
 """
-HTTP routes for the per-user Video Editing project list & cards feature.
+HTTP routes for the Video Editing project list & cards feature.
 
-Auth contract — all endpoints declare ``current_user: User = Depends(get_current_user)``
-and derive ``user_id = str(current_user.id)`` server-side. Request bodies
-**MUST NOT** contain ``user_id`` (Pydantic models in
-``app.models.video_project_models`` enforce that). Cross-user reads return 404
-(not 403) to avoid existence leakage.
+Ownership contract — the desktop build has a single local owner, so every
+endpoint derives ``user_id = LOCAL_OWNER_ID`` server-side instead of reading
+it from the request. Request bodies **MUST NOT** contain ``user_id``
+(Pydantic models in ``app.models.video_project_models`` enforce that).
 """
 
 from typing import Optional
@@ -13,11 +12,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import LOCAL_OWNER_ID
 from app.database import get_db_session
-from app.dependencies.auth import get_current_user
 from app.logger import get_logger
 from app.models import BaseResponse
-from app.models.db_models import User
 from app.models.video_project_models import (
     CreateVideoProjectCategoryRequest,
     CreateVideoProjectRequest,
@@ -44,10 +42,9 @@ logger = get_logger(__name__)
 
 @router.get("/categories", response_model=VideoProjectCategoryListResponse)
 async def list_video_project_categories(
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectCategoryListResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     items = await video_project_service.list_categories(db=db, user_id=user_id)
     return VideoProjectCategoryListResponse(
         success=True,
@@ -59,10 +56,9 @@ async def list_video_project_categories(
 @router.post("/categories", response_model=VideoProjectCategoryResponse)
 async def create_video_project_category(
     payload: CreateVideoProjectCategoryRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectCategoryResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     record = await video_project_service.create_category(
         db=db, user_id=user_id, payload=payload
     )
@@ -80,10 +76,9 @@ async def create_video_project_category(
 async def update_video_project_category(
     category_id: str,
     payload: UpdateVideoProjectCategoryRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectCategoryResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     record = await video_project_service.update_category(
         db=db, user_id=user_id, category_id=category_id, payload=payload
     )
@@ -105,10 +100,9 @@ async def update_video_project_category(
 )
 async def delete_video_project_category(
     category_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> BaseResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     deleted = await video_project_service.delete_category(
         db=db, user_id=user_id, category_id=category_id
     )
@@ -137,10 +131,9 @@ async def list_video_projects(
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
     accept_language: Optional[str] = Header(None, alias="Accept-Language"),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectListResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     items, total = await video_project_service.list_projects(
         db=db,
         user_id=user_id,
@@ -166,10 +159,9 @@ async def list_video_projects(
 @router.post("", response_model=VideoProjectResponse)
 async def create_video_project(
     payload: CreateVideoProjectRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     record = await video_project_service.create_project(
         db=db, user_id=user_id, payload=payload
     )
@@ -183,10 +175,9 @@ async def create_video_project(
 @router.get("/{project_id}", response_model=VideoProjectResponse)
 async def get_video_project(
     project_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     record = await video_project_service.get_project(
         db=db, user_id=user_id, project_id=project_id, touch_last_opened=True
     )
@@ -206,10 +197,9 @@ async def get_video_project(
 async def update_video_project(
     project_id: str,
     payload: UpdateVideoProjectRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     record = await video_project_service.update_project(
         db=db, user_id=user_id, project_id=project_id, payload=payload
     )
@@ -228,10 +218,9 @@ async def update_video_project(
 @router.delete("/{project_id}", response_model=VideoProjectDeletedResponse)
 async def delete_video_project(
     project_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VideoProjectDeletedResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     deleted = await video_project_service.delete_project(
         db=db, user_id=user_id, project_id=project_id
     )

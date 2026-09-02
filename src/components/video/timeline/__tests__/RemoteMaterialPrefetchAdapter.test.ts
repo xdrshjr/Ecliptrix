@@ -1,12 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RemoteMaterialPrefetchAdapter } from '../infrastructure/RemoteMaterialPrefetchAdapter';
 import type { RemoteMaterialResult } from '../domain/ports';
-import {
-  MissingAuthError,
-  SessionExpiredError,
-  __resetSessionExpiryFlagForTests,
-} from '@/lib/api/http-client';
-import { SESSION_TOKEN_KEY } from '@/lib/auth/storage-keys';
 
 // Build a fake fetch that returns a queue of canned responses based on URL.
 // Keeps tests deterministic and fast (no timers, no real network).
@@ -247,23 +241,12 @@ describe('RemoteMaterialPrefetchAdapter', () => {
 
   describe('http-client integration (no fetchImpl test seam)', () => {
     // These tests verify the production code path: when fetchImpl is NOT
-    // injected, the adapter MUST route through the http-client wrapper so
-    // that Authorization is attached and 401 funnels through the global
-    // session-expired handler. Skipping http-client is what produced the
-    // /api/material/ingest 401 spam (the very bug this suite guards).
+    // injected the adapter MUST route through the http-client wrapper, so the
+    // call gets the shared timeout / abort / typed-error envelope. Skipping
+    // http-client with a bare fetch is what produced the original
+    // /api/material/ingest error spam (the very bug this suite guards).
 
-    it('throws MissingAuthError when ingest is called with no session token', async () => {
-      window.localStorage.removeItem(SESSION_TOKEN_KEY);
-      __resetSessionExpiryFlagForTests();
-      // No fetchImpl override → must go through http-client, which requires
-      // a token by default and throws synchronously when missing.
-      const adapter = new RemoteMaterialPrefetchAdapter({ sleepImpl: noopSleep });
-      await expect(adapter.ingest([KEY])).rejects.toBeInstanceOf(MissingAuthError);
-    });
-
-    it('routes ingest through http-client when fetchImpl is not provided (Authorization header attached)', async () => {
-      window.localStorage.setItem(SESSION_TOKEN_KEY, 'tok-123');
-      __resetSessionExpiryFlagForTests();
+    it('routes ingest through http-client when fetchImpl is not provided', async () => {
       const fetchSpy = vi
         .spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(
@@ -289,41 +272,9 @@ describe('RemoteMaterialPrefetchAdapter', () => {
       expect(out).toHaveLength(1);
       expect(out[0]?.status).toBe('ready');
 
-      // Verify the http-client actually injected Authorization on the wire.
+      // Same-origin path, exactly one request — the wrapper's contract.
       expect(fetchSpy).toHaveBeenCalledTimes(1);
-      const init = fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined;
-      const headers = init?.headers as Record<string, string> | undefined;
-      expect(headers?.Authorization).toBe('Bearer tok-123');
-      fetchSpy.mockRestore();
-    });
-
-    it('propagates SessionExpiredError out of pollUntilReady on 401 (no infinite retry)', async () => {
-      window.localStorage.setItem(SESSION_TOKEN_KEY, 'tok-expired');
-      __resetSessionExpiryFlagForTests();
-      // Stub window.location so the global redirect side-effect doesn't
-      // throw inside jsdom — we only care that the error surfaces.
-      const originalLocation = window.location;
-      Object.defineProperty(window, 'location', {
-        configurable: true,
-        value: { pathname: '/editor', href: '' },
-      });
-
-      const fetchSpy = vi
-        .spyOn(globalThis, 'fetch')
-        .mockResolvedValue(new Response('', { status: 401 }));
-
-      const adapter = new RemoteMaterialPrefetchAdapter({ sleepImpl: noopSleep });
-      await expect(adapter.pollUntilReady(KEY)).rejects.toBeInstanceOf(
-        SessionExpiredError,
-      );
-      // Critical: the failed-retry death loop is broken. ingest is hit
-      // exactly once and the loop bails immediately.
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-      Object.defineProperty(window, 'location', {
-        configurable: true,
-        value: originalLocation,
-      });
+      expect(fetchSpy.mock.calls[0]?.[0]).toBe('/api/material/ingest');
       fetchSpy.mockRestore();
     });
   });

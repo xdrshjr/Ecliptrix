@@ -12,81 +12,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# ---------------------------------------------------------------------------
-# Rate-limiting fallback defaults (spec/03 §2.1)
-# ---------------------------------------------------------------------------
-# Factory defaults for the `rate_limiting` SystemSetting category. They serve
-# three purposes:
-#   1. DB-missing / DB-error fallback for ``RateLimitConfigProvider`` so a
-#      config-layer fault never takes the whole API down (spec/03 §4).
-#   2. The values the admin ``POST /api/rate-limit/reset`` endpoint resets to.
-#   3. The single source of truth for the per-key validation ranges used by the
-#      ``PUT /api/rate-limit/config`` endpoint and the ``GET /config`` meta.
-#
-# Mirrors the existing ``MediaProxyConfig.per_ip_rate_limit_per_min`` style of a
-# plain int knob. These intentionally duplicate the constants in
-# ``app/services/rate_limit_config.py`` (Phase-1 seam) — the two MUST stay in
-# sync; the provider prefers these config.py values as its degrade fallback.
-RATE_LIMIT_DEFAULTS: Dict[str, Any] = {
-    "enabled": True,
-    "window_seconds": 60,
-    "default_per_user_per_min": 300,
-    "default_per_ip_per_min": 300,
-    "ai_generation_per_min": 30,
-    "auth_per_ip_per_min": 10,
-    "media_serving_per_min": 6000,
-}
-
-# Per-key value type + validation range + human description. Drives both the
-# PUT range-check (422 on out-of-range) and the GET /config ``meta`` block the
-# frontend (TODO 04) renders its form from. ``min``/``max`` are inclusive.
-# ``enabled`` is a boolean and therefore has no numeric range.
-RATE_LIMIT_META: Dict[str, Dict[str, Any]] = {
-    "enabled": {
-        "type": "boolean",
-        "min": None,
-        "max": None,
-        "description": "全局限流开关。关闭后中间件直通,不计数不拦截。",
-    },
-    "window_seconds": {
-        "type": "number",
-        "min": 10,
-        "max": 3600,
-        "description": "滑动窗口长度(秒),所有类别共用。",
-    },
-    "default_per_user_per_min": {
-        "type": "number",
-        "min": 1,
-        "max": 100000,
-        "description": "普通(normal)类别:已登录用户的每窗口请求上限。",
-    },
-    "default_per_ip_per_min": {
-        "type": "number",
-        "min": 1,
-        "max": 100000,
-        "description": "普通(normal)类别:匿名请求按 IP 的每窗口请求上限。",
-    },
-    "ai_generation_per_min": {
-        "type": "number",
-        "min": 1,
-        "max": 100000,
-        "description": "AI/生成类(ai_generation)的每窗口请求上限,耗算力故偏严格。",
-    },
-    "auth_per_ip_per_min": {
-        "type": "number",
-        "min": 1,
-        "max": 100000,
-        "description": "登录/注册(auth)按 IP 的每窗口上限,用于防爆破。",
-    },
-    "media_serving_per_min": {
-        "type": "number",
-        "min": 1,
-        "max": 1000000,
-        "description": "媒体服务(media_serving)高额度,避免视频/音频分块播放被误伤。",
-    },
-}
-
-
 class BatchTTSRetryConfig(BaseModel):
     """Batch TTS retry configuration."""
 
@@ -363,38 +288,11 @@ class StorageConfig(BaseModel):
 
 
 class DatabaseConfig(BaseModel):
-    """Database configuration."""
+    """Database configuration (SQLite only — the desktop build ships no server)."""
 
     url: str = Field(
-        default="postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix",
+        default="sqlite+aiosqlite:///./data/ecliptrix.db",
         description="Database connection URL",
-    )
-    pool_size: int = Field(default=10, description="Connection pool size")
-    max_overflow: int = Field(default=20, description="Max overflow connections")
-    pool_timeout: int = Field(default=30, description="Connection timeout in seconds")
-    pool_recycle: int = Field(
-        default=1800, description="Connection recycle time in seconds"
-    )
-
-
-class AuthConfig(BaseModel):
-    """Authentication configuration."""
-
-    admin_username: str = Field(
-        default="admin", description="Admin username (deprecated, use root_username)"
-    )
-    admin_password: str = Field(
-        default="admin", description="Admin password (deprecated, use root_password)"
-    )
-    root_username: str = Field(
-        default="admin", description="Root user username (falls back to admin_username)"
-    )
-    root_password: str = Field(
-        default="", description="Root user password (falls back to admin_password)"
-    )
-    invite_code: str = Field(
-        default="",
-        description="Invite code for self-registration (empty = registration closed)",
     )
 
 
@@ -585,11 +483,6 @@ class Settings(BaseModel):
         default_factory=DatabaseConfig, description="Database configuration"
     )
 
-    # Authentication Configuration
-    auth: AuthConfig = Field(
-        default_factory=AuthConfig, description="Authentication configuration"
-    )
-
     # Batch TTS Configuration
     batch_tts: BatchTTSConfig = BatchTTSConfig()
 
@@ -651,22 +544,11 @@ class Settings(BaseModel):
         ),
     )
 
-    # Deployment environment marker (spec 02 V02-A). Drives CORS allowlist
-    # behaviour, HSTS emission, and (future) misc env-aware switches.
-    # Read from ENV or APP_ENV; default "production" (safe-by-default).
-    env: str = Field(
-        default="production",
-        description=(
-            "Deployment environment: 'production' (default), 'development', "
-            "'dev', or 'staging'. Set via ENV or APP_ENV env var."
-        ),
-    )
-
-    # CORS configuration (spec 02 V02-A — replaces `allow_origins=['*']`).
-    # `cors_allowed_origins` is a list parsed from CORS_ALLOWED_ORIGINS env
-    # (comma-separated). EMPTY in production = deny all cross-origin
-    # (safe-by-default). In dev, localhost:3000/3010/127.0.0.1:3000/3010
-    # are merged in automatically by main.py.
+    # CORS configuration. `cors_allowed_origins` is parsed from the
+    # comma-separated CORS_ALLOWED_ORIGINS env var, which the Electron main
+    # process injects with the ACTUAL frontend port it resolved (ports may
+    # shift when 18320 is taken). main.py merges the localhost dev origins in
+    # so `npm run dev` against a standalone backend keeps working.
     cors_allowed_origins: List[str] = Field(
         default_factory=list,
         description=(
@@ -680,61 +562,6 @@ class Settings(BaseModel):
             "Whether browsers may send credentials (cookies, Authorization "
             "header) on cross-origin requests. Only meaningful for origins "
             "in `cors_allowed_origins`."
-        ),
-    )
-    cors_legacy_wildcard: bool = Field(
-        default=False,
-        description=(
-            "EMERGENCY ROLLBACK: when True, restore `allow_origins=['*']` + "
-            "`allow_credentials=True`. This is a KNOWN VULNERABILITY (V02-A). "
-            "Set CORS_LEGACY_WILDCARD=1 in .env only during incident response."
-        ),
-    )
-
-    # Default-deny enforcement switch (api-authz-rate-limiting spec/01 §5, R1).
-    #
-    # SessionAuthMiddleware always RESOLVES the session token and injects
-    # ``request.state.user`` when a valid token is present. This flag controls
-    # only the *enforcement* of default-deny for NON-allowlisted requests that
-    # arrive without a valid session:
-    #   - False (default): such requests pass through unauthenticated
-    #     (``request.state.user`` stays unset) — behaviour is unchanged from
-    #     before this flag existed, so the frontend cannot regress before the
-    #     TODO 05 token-carry audit completes.
-    #   - True: such requests are rejected with 401 UNAUTHORIZED.
-    # ``HARD_PROTECT_PATHS`` (ai-video-generate / video-export /
-    # intent-detection) are ALWAYS enforced regardless of this flag — they were
-    # locked down in the prior security hardening and MUST NOT be weakened.
-    auth_enforce_default_deny: bool = Field(
-        default=False,
-        description=(
-            "When True, SessionAuthMiddleware rejects any non-allowlisted "
-            "request that lacks a valid session token with 401 (full "
-            "default-deny). When False (default), such requests pass through "
-            "so behaviour is unchanged until the frontend token audit (TODO "
-            "05) completes. HARD_PROTECT_PATHS are always enforced. Set "
-            "AUTH_ENFORCE_DEFAULT_DENY=1 in .env to enable."
-        ),
-    )
-
-    # Playback v2 (Phase 4) — telemetry aggregation + admin observability.
-    playback_v2_telemetry_agg_window_min: int = Field(
-        default=15,
-        description="Rolling window (minutes) used by PlaybackMetricsAggregator.",
-    )
-    playback_v2_telemetry_agg_retention_hours: int = Field(
-        default=24,
-        description=(
-            "How many hours of 1-minute counter buckets the playback metrics "
-            "aggregator retains in memory."
-        ),
-    )
-    playback_v2_aggregator_requires_single_worker: bool = Field(
-        default=True,
-        description=(
-            "When true, /api/admin/playback-metrics flags responses as "
-            "degraded if more than one gunicorn/uvicorn worker is detected. "
-            "Spec Phase 4 §3.2.7 / R-P1-3."
         ),
     )
 
@@ -888,15 +715,9 @@ def get_settings() -> Settings:
     # Create Database configuration
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix",
+        "sqlite+aiosqlite:///./data/ecliptrix.db",
     )
-    database_config = DatabaseConfig(
-        url=database_url,
-        pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
-        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
-        pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "1800")),
-    )
+    database_config = DatabaseConfig(url=database_url)
 
     # Create Storyboard configuration
     # Priority for each field: new env > legacy env > YAML > default
@@ -959,22 +780,6 @@ def get_settings() -> Settings:
         timeout_seconds=int(os.getenv("WAVEFORM_TIMEOUT_SECONDS", "120")),
     )
 
-    # Create Authentication configuration
-    # ROOT_* takes priority over ADMIN_* for backward compatibility
-    admin_username = os.getenv("ADMIN_USERNAME", "admin")
-    admin_password = os.getenv("ADMIN_PASSWORD", "admin")
-    root_username = os.getenv("ROOT_USERNAME", "") or admin_username
-    root_password = os.getenv("ROOT_PASSWORD", "") or admin_password
-    invite_code = os.getenv("INVITE_CODE", "")
-
-    auth_config = AuthConfig(
-        admin_username=admin_username,
-        admin_password=admin_password,
-        root_username=root_username,
-        root_password=root_password,
-        invite_code=invite_code,
-    )
-
     # Create Media Proxy configuration (spec 05 §五)
     mp_yaml = (media_proxy_yaml_config.get("proxy", {}) or {})
     media_proxy_config = MediaProxyConfig(
@@ -1024,18 +829,6 @@ def get_settings() -> Settings:
             os.getenv("PREVIEW_PROXY_OUTPUT_DIR")
             or pp_yaml.get("output_dir", "static/uploads/preview-proxies")
         ),
-    )
-
-    # Playback v2 Phase 4 settings.
-    pv2_window = int(
-        os.getenv("PLAYBACK_V2_TELEMETRY_AGG_WINDOW_MIN") or 15
-    )
-    pv2_retention = int(
-        os.getenv("PLAYBACK_V2_TELEMETRY_AGG_RETENTION_HOURS") or 24
-    )
-    pv2_single_worker = (
-        os.getenv("PLAYBACK_V2_AGGREGATOR_REQUIRES_SINGLE_WORKER", "true").lower()
-        != "false"
     )
 
     return Settings(
@@ -1097,7 +890,6 @@ def get_settings() -> Settings:
         ark_api_key=os.getenv("ARK_API_KEY", ""),
         youtube_proxy=os.getenv("YOUTUBE_PROXY", ""),
         database=database_config,
-        auth=auth_config,
         batch_tts=batch_tts_config,
         youtube=youtube_config,
         watermark_removal=watermark_removal_config,
@@ -1112,14 +904,10 @@ def get_settings() -> Settings:
         port=int(os.getenv("PORT", "8000")),
         debug=os.getenv("DEBUG", "false").lower() == "true",
         temp_dir=os.getenv("TEMP_DIR", "temp"),
-        playback_v2_telemetry_agg_window_min=pv2_window,
-        playback_v2_telemetry_agg_retention_hours=pv2_retention,
-        playback_v2_aggregator_requires_single_worker=pv2_single_worker,
         url_guard_allow_private=(
             os.getenv("URL_GUARD_ALLOW_PRIVATE", "false").lower()
             in {"1", "true", "yes", "on"}
         ),
-        env=(os.getenv("ENV") or os.getenv("APP_ENV") or "production").strip() or "production",
         cors_allowed_origins=[
             o.strip()
             for o in (os.getenv("CORS_ALLOWED_ORIGINS") or "").split(",")
@@ -1129,23 +917,8 @@ def get_settings() -> Settings:
             os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower()
             in {"1", "true", "yes", "on"}
         ),
-        cors_legacy_wildcard=(
-            os.getenv("CORS_LEGACY_WILDCARD", "false").lower()
-            in {"1", "true", "yes", "on"}
-        ),
-        auth_enforce_default_deny=(
-            os.getenv("AUTH_ENFORCE_DEFAULT_DENY", "false").lower()
-            in {"1", "true", "yes", "on"}
-        ),
     )
 
 
 # Global settings instance
 settings = get_settings()
-
-# Startup validation: ROOT_PASSWORD (or ADMIN_PASSWORD fallback) must be explicitly set
-if not ***REMOVED***:
-    raise RuntimeError(
-        "ROOT_PASSWORD (or ADMIN_PASSWORD) is not set. "
-        "Please set ROOT_PASSWORD in your .env file. The application cannot start without it."
-    )

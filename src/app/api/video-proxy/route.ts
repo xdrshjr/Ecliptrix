@@ -5,8 +5,6 @@ import { NextRequest, NextResponse } from 'next/server'
 // `volces.com` or `bytedance.com` — that would turn this route into an open
 // proxy. Keep this list short (≤3) and document the source for each entry.
 const ALLOWED_HOSTS = [
-  // Our own OSS bucket (final storage after ffmpeg + upload finishes).
-  'ecliptrix.oss-cn-beijing.aliyuncs.com',
   // ByteDance ARK video generation CDN — used for the temporary video_url
   // returned by the ARK SDK before the backend finishes uploading to OSS.
   // Source: ark_video_service.py populates `_cdn_urls[...]['video_url']`

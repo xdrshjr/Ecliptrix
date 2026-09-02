@@ -6,15 +6,15 @@ import 'server-only'
  * SERVER-SIDE ONLY. Imports `server-only` so any accidental client import
  * crashes the build (matches the same constraint applied to `backendConfig`).
  *
- * Spec: docs/plans/unified-api-auth-refactor/specs/04-nextjs-routes-sweep.md
+ * Spec: docs/plans/desktop-only-refactor/spec.md §4.9
  *
  * Design summary:
  *  - The helper does NOT parse JSON, validate schemas, or re-shape data.
  *    It is a dumb pipe. Body shape mutation lives in client modules
  *    (`src/lib/api/*.ts`) per master plan §5.1.
- *  - Always forwards `Authorization` and the legacy `x-session-token`
- *    headers from the incoming request, so backend SessionAuthMiddleware
- *    (T01) sees the user identity on every proxied call.
+ *  - Forwards no credentials. The desktop build has no user system: the
+ *    backend is bound to 127.0.0.1 and every route is open to the single
+ *    local owner. Only headers named in `forwardHeaders` are passed through.
  *  - Forwards multipart bodies untouched by streaming the raw request
  *    body (`req.body`) and forwarding the incoming `Content-Type` header
  *    (boundary intact) and `Content-Length` if present. This preserves
@@ -39,8 +39,8 @@ import 'server-only'
  *    internally before invoking the builder.
  *  - Routes under `[*]` segments MUST use the builder form so the
  *    Next-URL → backend-URL mapping is explicit at the call site
- *    (e.g. `/api/admin/users/[userId]/toggle-status` → backend
- *    `/api/user/toggle-status/${userId}` — note the rename).
+ *    (e.g. `/api/model-settings/providers/[providerId]` → backend
+ *    `/api/model-settings/providers/${providerId}`).
  */
 
 import type { NextRequest } from 'next/server'
@@ -136,15 +136,7 @@ function buildForwardedHeaders(
 ): Headers {
   const headers = new Headers()
 
-  // Always forward Authorization
-  const auth = req.headers.get('authorization')
-  if (auth) headers.set('Authorization', auth)
-
-  // Always forward legacy x-session-token (kept for backwards compat per
-  // master plan D8)
-  const legacy = req.headers.get('x-session-token')
-  if (legacy) headers.set('x-session-token', legacy)
-
+  // No credential headers are forwarded — the local backend has no auth.
   // Forward any explicitly-requested extras
   for (const name of opts?.forwardHeaders ?? []) {
     const value = req.headers.get(name)
@@ -415,7 +407,7 @@ export const backendProxy = {
  *
  *   // Dynamic route
  *   export const { POST } = createPassthroughRoute(
- *     (p) => `/api/user/toggle-status/${p.userId}`,
+ *     (p) => `/api/model-settings/providers/${p.providerId}`,
  *   )
  *
  *   // Long-running

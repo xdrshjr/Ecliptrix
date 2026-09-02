@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useLocale } from '@/contexts/LocaleContext';
-import DesktopTitleBar from '@/components/desktop/DesktopTitleBar';
+import AppTitleBar from '@/components/shell/AppTitleBar';
 
 export default function NotFound() {
   const { t } = useLocale();
@@ -16,10 +16,10 @@ export default function NotFound() {
 
   return (
     // Frameless desktop: any route without a self-drawn title bar would have no
-    // window controls, so 404 gets one too (spec §2.3e / R3). Alt+F4 remains the
-    // ultimate fallback. On the browser DesktopTitleBar renders null.
+    // window controls, so 404 gets one too. Alt+F4 remains the ultimate
+    // fallback. Mounted prop-less, so it shows brand only — no action cluster.
     <div className="min-h-full flex flex-col">
-      <DesktopTitleBar />
+      <AppTitleBar />
       <main className="flex-1 min-h-0 flex flex-col items-center justify-center px-6 py-24 text-center">
         <h1 className="text-5xl font-bold text-foreground">404</h1>
         <p className="mt-3 text-base text-muted-foreground">{nf.title}</p>

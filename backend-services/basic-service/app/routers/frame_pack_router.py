@@ -29,11 +29,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 
+from app.constants import LOCAL_OWNER_ID
 from app.database import get_db_session
-from app.dependencies.auth import get_current_user
 from app.logger import get_logger
 from app.models.base_models import BaseResponse
-from app.models.db_models import User
 from app.services import frame_pack_service
 from app.services.video_project_service import video_project_service
 
@@ -268,7 +267,6 @@ async def create_frame_pack(
     source_material_name: str = Form(...),
     source_duration_sec: float = Form(...),
     manifest: str = Form(...),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> FramePackDetailResponse:
     """Create a frame pack from an in-browser-captured set of JPEG snapshots.
@@ -286,7 +284,7 @@ async def create_frame_pack(
     three layers (P1-4) — this handler covers the (b) ``Content-Length``
     short-circuit.
     """
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="frame pack creation")
 
     max_bytes = frame_pack_service.max_request_bytes()
@@ -347,10 +345,9 @@ async def create_frame_pack(
 @router.get("/list", response_model=FramePackListResponse)
 async def list_frame_packs(
     project_id: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> FramePackListResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="frame pack listing")
     await video_project_service.assert_project_writable(
         db=db, user_id=user_id, project_id=project_id_resolved
@@ -380,10 +377,9 @@ async def list_frame_packs(
 async def get_frame_pack(
     pack_id: str,
     project_id: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> FramePackDetailResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="frame pack read")
     bound_project_id = await frame_pack_service.assert_pack_owned(
         db=db, pack_id=pack_id, user_id=user_id
@@ -418,10 +414,9 @@ async def get_frame_pack(
 async def delete_frame_pack(
     pack_id: str,
     project_id: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> BaseResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="frame pack delete")
     bound_project_id = await frame_pack_service.assert_pack_owned(
         db=db, pack_id=pack_id, user_id=user_id
@@ -454,7 +449,6 @@ async def append_frame_pack(
     request: Request,
     project_id: str = Form(...),
     manifest: str = Form(...),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> FramePackDetailResponse:
     """Append additional in-browser-captured JPEG frames to an existing pack.
@@ -463,7 +457,7 @@ async def append_frame_pack(
     ``source_material_*`` form fields (those are inherited from the
     pack's existing ``metadata.json``).
     """
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="frame pack append")
 
     max_bytes = frame_pack_service.max_request_bytes()
@@ -550,10 +544,9 @@ async def delete_frame_from_pack(
     pack_id: str,
     index: int = Path(..., gt=0),
     project_id: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> FramePackDetailResponse:
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     project_id_resolved = _require_project_id(project_id, where="frame delete")
     bound_project_id = await frame_pack_service.assert_pack_owned(
         db=db, pack_id=pack_id, user_id=user_id

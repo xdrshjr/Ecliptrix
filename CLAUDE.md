@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, workflow automation, and creative brainstorming. It's a monorepo with a Next.js 15 frontend and a FastAPI backend service.
+Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, material management and AI generation. It ships as a **single-user Electron desktop app**: the main process launches a local FastAPI backend (SQLite) and a Next.js standalone server, both bound to `127.0.0.1`, and the renderer loads the local page. There is no server deployment, no multi-tenancy and no login — `npm run dev` in a browser exists only as a debugging path for the same product.
 
 ## Commands
 
@@ -23,28 +23,31 @@ npm run type-check   # TypeScript check (tsc --noEmit)
 ```bash
 # On Windows: source venv/Scripts/activate
 # On Linux/Mac: source venv/bin/activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000   # Dev server on :8000
-python run.py                                                # Alternative start (used by start.sh)
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000  # Dev server on :8000
+python run.py                                                # Alternative start
 pytest tests/ -v                                             # Run tests
 pytest tests/test_specific.py -v                             # Single test file
 pytest tests/ --cov=app --cov-report=html                    # Coverage report
-alembic upgrade head                                         # Run DB migrations
-alembic downgrade -1                                         # Roll back one migration
 ```
 
-### Lifecycle Scripts
+There are no migration commands: the schema is created by `create_all` at
+startup (see **Database** below).
+
+### Desktop (from `desktop/`)
 
 ```bash
-bash install.sh [--skip-db] [--skip-frontend] [--skip-backend] [--cn-mirror]
-bash start.sh [PORT] [--dev]   # Starts DB + backend(:8000) + frontend(:3010)
-bash kill.sh           # Kills processes on ports 8000, 3000, 3001, 3008, 3010
+npm run dev        # Electron + backend + Next dev server, all wired together
+npm run build      # Package the installer (prepare-env → prepare-frontend →
+                   # prepare-backend → electron-builder)
+npm run build:dir  # Unpacked build, for the smoke test
+node scripts/smoke-test.js      # End-to-end gate on the packaged app
+node main/window-state.test.js  # Main-process unit tests
 ```
 
 ### System Dependencies
 
 - **Node.js** 18+ and **npm** for the frontend
 - **Python** 3.10+ for the backend
-- **PostgreSQL** 13+ (required for production; tests use SQLite in-memory)
 - **FFmpeg** (required for video composition, cutting, watermark removal, and audio processing)
 
 ## Architecture
@@ -63,11 +66,11 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 ### Frontend Structure
 
 - **Path alias**: `@/*` maps to `./src/*`
-- **State management**: React Context API — `src/contexts/` has AuthContext, NotificationContext, LocaleContext
-- **API clients**: `src/lib/api/` — typed service clients (storage, tts, videoComposition, workflow, llm, etc.)
-- **Components by feature**: `src/components/video/` (30+ components + `timeline/`, `hooks/`, `components/` subdirs), `src/components/workflow/` (node-based visual builder), `src/components/chat/`, `src/components/ui/` (shadcn-style)
+- **State management**: React Context API — `src/contexts/` has NotificationContext, LocaleContext
+- **API clients**: `src/lib/api/` — typed service clients (storage, tts, videoComposition, material, llm, etc.), all going through the `http-client` wrapper
+- **Components by feature**: `src/components/video/` (30+ components + `timeline/`, `hooks/`, `components/` subdirs), `src/components/chat/`, `src/components/settings/` (the settings centre), `src/components/shell/` (title bar + its action cluster), `src/components/ui/` (shadcn-style)
 - **i18n**: Single large translation file at `src/lib/i18n.ts`
-- **Auth tokens**: Stored in localStorage as `ecliptrix-user` and `ecliptrix-session-token`; session validated on load and every 5 minutes
+- **Shell**: `app/page.tsx` renders title bar + task bar + workspace and opens a video-editing task straight away. `Container`'s empty state and the task bar's "new task" buttons are the ONLY ways to create a task — do not remove them.
 - **Types**: Centralized in `src/types/index.ts`
 - **Dark mode**: Class-based (`darkMode: ["class"]` in Tailwind config), colors use CSS variables
 - **UI components**: shadcn/ui (style: "new-york", RSC enabled) — see `components.json`
@@ -75,9 +78,9 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 
 ### Backend Structure
 
-- **Entry point**: `app/main.py` — registers 23 routers, CORS middleware, exception handlers, static file mounts
+- **Entry point**: `app/main.py` — registers 32 routers, CORS middleware, exception handlers, static file mounts
 - **Configuration**: `app/config.py` — manual `get_settings()` function that reads `.env` via python-dotenv then YAML from `config/`. Note: `llm_api_key` and `llm_api_url` are required with no defaults — app won't start without them.
-- **Database**: `app/database.py` — async SQLAlchemy engine (pool_size=10, max_overflow=20) with auto-create tables and admin user seeding on startup
+- **Database**: `app/database.py` — async SQLAlchemy engine with `create_all` plus an idempotent `UPDATE` that claims any pre-refactor rows for `LOCAL_OWNER_ID`. No destructive DDL, ever.
 - **Pattern**: Router → Service → (LLM/DB/External API). Each feature has a router in `app/routers/`, a service in `app/services/`, and models in `app/models/`
 - **Queue system**: `QueueManager` provides async semaphore-based concurrency limiting; `@with_simple_queue` decorator for simpler cases
 
@@ -91,14 +94,14 @@ The backend uses multiple independent LLM configurations, all using OpenAI-compa
 | `FAST_LLM_*` | Quick operations (translation, search queries) |
 | `VIDEO_CUT_LLM_*` | AI mixed editing |
 | `VL_LLM_*` | Video frame analysis (vision-language) |
-| `AGENT_LLM_API_XX_*` | Dynamic numbered configs (01, 02, ...) for workflow node builder |
+| `AGENT_LLM_API_XX_*` | Dynamic numbered configs (01, 02, ...) for the video-editing agent |
 
 ### Database
 
-- PostgreSQL 13+ with async SQLAlchemy + asyncpg
-- Migrations via Alembic (`backend-services/basic-service/alembic/`)
-- ORM models in `app/models/db_models.py` — `User` (UUID PK, session fields for single-device login), `AgentWorkflow` (JSON workflow_data)
-- Default connection: `postgresql+asyncpg://ecliptrix:ecliptrix@localhost:5432/ecliptrix`
+- SQLite with async SQLAlchemy + aiosqlite. There is no PostgreSQL and no Alembic: the desktop app owns its own database file, so the schema is built by `Base.metadata.create_all` on startup and evolved with additive changes only.
+- **Never add destructive DDL to startup** (`DROP TABLE` / `DROP COLUMN` / `ALTER … DROP`). Two production incidents came from "self-healing" DDL at boot. Removing a model is done by dropping it from the ORM and leaving the table behind as inert data.
+- ORM models in `app/models/db_models.py`. Every business table keeps a `user_id` column, but it is no longer an identity: it always holds `LOCAL_OWNER_ID` (see Auth below).
+- Default connection: `sqlite+aiosqlite:///./data/ecliptrix.db`. `app/database.py` rewrites a legacy PostgreSQL DSN to the SQLite path rather than failing, so an old `.env` still boots.
 - **Tests use SQLite in-memory** (`sqlite+aiosqlite:///:memory:`), not PostgreSQL
 - **API docs**: Available at `http://localhost:8000/docs` (Swagger) and `/redoc` when backend is running
 
@@ -130,7 +133,7 @@ YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 
 ### Storage
 
-**Primary**: Local filesystem (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by `install.sh`: `static/uploads/{video,audio,images,files}`, `static/video/{composed,thumbnails}`, `static/audio/{generated,subtitles}`, `static/timeline_exports`, `temp/`, `logs/`. As a self-contained local desktop app, all material uploads and generated artifacts are saved local-only — there is no "upload to server" / cloud-object-storage step.
+**Primary**: Local filesystem (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by the Electron main process (`initUserData()`) on first launch: `static/uploads/{video,audio,images,files}`, `static/video/{composed,thumbnails}`, `static/audio/{generated,subtitles}`, `static/timeline_exports`, `temp/`, `logs/`. As a self-contained local desktop app, all material uploads and generated artifacts are saved local-only — there is no "upload to server" / cloud-object-storage step.
 
 **Cached remote materials** (`cached_materials/<source>/<file>`): Remote video assets (Pexels, ARK, etc.) are pre-downloaded into `STORAGE_ROOT/cached_materials/<source>/<source_id>.<ext>` and tracked in the `cached_materials` table. They're served via the existing `/api/storage/files` mount — no separate static mount.
 
@@ -145,18 +148,54 @@ The frontend reads `local_url` from `/api/material/{ingest,lookup}` responses; t
 - **Async everywhere**: Backend uses `async/await` throughout — async DB sessions via `get_db_session()` dependency, async HTTP clients (httpx), async file I/O (aiofiles).
 - **Git commit style**: Messages prefixed with `[add]`, `[modify]`, `[update]`, `[refactor]`, `[fix]`.
 - **Environment files**: Frontend uses `.env.local`, backend uses `.env` in its own directory. Templates are `env.template` in each location.
-- **Auth**: bcrypt password hashing, session token stored in `User.active_session_token` column (single-device login enforcement), no JWT expiry — token validated by DB lookup.
-- **Gitignore is minimal**: The `.gitignore` only covers `/node_modules/`, `static/uploads/`, `venv/`, and `backend-services/basic-service/data/`. Notably missing: `__pycache__/`, `*.pyc`, `.next/`, `.idea/`, `.env*`. When staging files, be careful not to include `__pycache__/`, `.pyc` files, `tsconfig.tsbuildinfo`, `.next/`, or `.idea/` — they frequently show up as modified.
-- **Playback v2 feature flag**: The video editor preview pipeline is being rebuilt under a flag. Resolve via `isPlaybackV2Enabled()` from `@/lib/playbackFlags` (localStorage `ecliptrix-playback-v2` > URL query `?playback_v2=on|off` in dev/staging > sessionStorage-cached `/api/config/playback-flag` > env `NEXT_PUBLIC_PLAYBACK_V2_ENABLED`). The flag is locked at mount with `useMemo(..., [])` — toggling it requires a full editor reload. Spec: `docs/plans/video-editor-playback-optimization/`.
+- **No auth**: there is no user system, login, session or RBAC. The backend binds to `127.0.0.1` and has exactly one owner, represented by the compile-time constants `LOCAL_OWNER_ID` / `LOCAL_OWNER_NAME` in `app/constants.py`, mirrored in `src/lib/localOwner.ts` (the two `LOCAL_OWNER_ID` values MUST stay identical). Routes take no auth dependency; `http-client` injects no credentials; the proxy in `src/lib/api/server/backend-proxy.ts` forwards none. `RateLimitError` / HTTP 429 handling IS still live — `media_proxy_service` keeps its own per-IP download throttle — so do not remove it while removing "auth-looking" code.
+- **Stage precisely**: `.gitignore` covers the usual build output, but `__pycache__/`, `*.pyc`, `tsconfig.tsbuildinfo`, `.next/` and `.idea/` still surface as modified from time to time. Prefer `git add <path>` over `git add -A`, and check `git status --porcelain` before committing.
+- **Preview flags**: the playback-v2 flag is gone — the multi-track canvas compositor is the SOLE preview path. What remains in `@/lib/playbackFlags` are two independent, default-ON flags gating the preview-proxy and local-download optimizations for remote material. Spec: `docs/plans/local-video-editing-refactor/`.
 
 ## Project Index
 
 This project has a pre-generated index for quick codebase understanding.
 
 - **Location:** `.claude-index/index.md`
-- **Last Updated:** 2026-04-16
+- **Last Updated:** 2026-09-01
 - **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
 
 **Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.
 
 **Regenerate:** Say "regenerate index" or "更新索引" to update the index after major changes.
+
+## Clean Code Guidelines
+
+<!-- project-indexer:cleancode:begin v1.2.0 -->
+Google-style limits for **TypeScript, Python**. These are review gates, not lint config — exceed one only with a comment saying why.
+
+**Size**
+- File ≤ 1000 lines; method/function ≤ 60 lines; line ≤ 80 chars.
+- Parameters ≤ 5 — past that, take an options object / dataclass.
+- Cyclomatic complexity ≤ 10; nesting ≤ 4 — return early instead of indenting.
+
+**Naming**
+- Intention-revealing and searchable; no abbreviations, no type prefixes.
+- Functions are verb phrases; booleans read as predicates (`isReady`, `has_frames`).
+- One concept, one name across the repo — don't alias the same idea two ways.
+
+**Structure**
+- One responsibility per unit; extract when a function needs a section comment.
+- No duplicated logic — the third copy becomes a helper.
+- Comments explain *why*; delete commented-out code, git remembers it.
+
+**Errors**
+- Never swallow an exception: log with context or re-raise.
+- Fail fast on invalid input; no silent fallback that hides a bug.
+- No secrets, tokens or API keys in logs, messages or fixtures.
+
+**Tests**
+- Every bug fix ships with a regression test named for the behaviour it pins.
+- One assertion topic per test; never sleep for synchronisation.
+
+**Review checklist** — before calling work done: limits above respected; names honest; errors handled and logged; tests added *and actually run*; no stray debug output, TODOs or dead code; public API changes documented.
+
+**Language notes**
+- TypeScript: prefer `interface` for public API shapes; `unknown` over `any`; keep bindings `const` (`prefer-const` is an error in this repo's ESLint config).
+- Python: type-hint every public signature; keep `async`/`await` end-to-end; no import cycles between `routers/`, `services/` and `models/`.
+<!-- project-indexer:cleancode:end -->

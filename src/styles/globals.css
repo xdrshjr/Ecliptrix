@@ -333,74 +333,6 @@ html, body {
   padding-top: 12px;
 }
 
-.section-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 8px 0;
-}
-
-.taskbar-button {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: var(--sidebar-foreground);
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-  font-size: 13px;
-  font-weight: 500;
-  width: 100%;
-  text-align: left;
-  position: relative;
-}
-
-.taskbar-button:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
-
-.taskbar-button.active,
-.taskbar-button.new-task-button.active {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-.new-task-button {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-.new-task-button:hover {
-  background: var(--primary-hover);
-  color: var(--primary-foreground);
-}
-
-.button-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.button-text {
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.button-text.hidden {
-  opacity: 0;
-  width: 0;
-}
-
-.button-text.visible {
-  opacity: 1;
-  width: auto;
-}
-
 .tabs-section {
   flex: 1;
   overflow: hidden;
@@ -413,6 +345,25 @@ html, body {
   overflow-y: auto;
   max-height: 100%;
   padding-bottom: 16px;
+}
+
+.new-task-section {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* The new-task buttons reuse .taskbar-tab so they line up with the tab list;
+   these overrides only undo the <button> user-agent styles. */
+.new-task-button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  font: inherit;
+  text-align: left;
 }
 
 .taskbar-tab {

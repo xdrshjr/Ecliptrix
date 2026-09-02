@@ -13,8 +13,7 @@ import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/stre
 // so the call is api_type-aware. The previous env-only + hardcoded
 // `/chat/completions` + Bearer implementation was api_type-blind and 401'd
 // against Anthropic-compatible endpoints (e.g. the desktop default), which made
-// the narration-direct "AI 视频脚本" silently fall back to the raw narration —
-// see docs/diagnoses/narration-direct-ai-video-script-equals-narration.
+// the narration-direct "AI 视频脚本" silently fall back to the raw narration.
 // ============================================================================
 
 const LOG_PREFIX = '[Prompt Polish API]';

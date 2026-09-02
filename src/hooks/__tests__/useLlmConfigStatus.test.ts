@@ -2,9 +2,9 @@
  * Tests for `useLlmConfigStatus` (desktop-config-free-startup §4.2).
  *
  * Verifies the four-state mapping (loading / configured / unconfigured /
- * unknown), the `enabled` gate (no request for non-admins), the R4 fail-open
- * rule (backend `success:false` and network faults both map to 'unknown'),
- * and the 'ecliptrix-llm-config-updated' event-driven refetch.
+ * unknown), the fail-open rule (backend `success:false` and network faults
+ * both map to 'unknown'), and the 'ecliptrix-llm-config-updated' event-driven
+ * refetch.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -32,17 +32,11 @@ afterEach(() => {
 });
 
 describe('useLlmConfigStatus', () => {
-  it('stays at loading and never fetches when enabled=false', () => {
-    const { result } = renderHook(() => useLlmConfigStatus(false));
-    expect(result.current.status).toBe('loading');
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it('maps success:true + configured:true to configured', async () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse({ success: true, data: { configured: true, source: 'database' } }),
     );
-    const { result } = renderHook(() => useLlmConfigStatus(true));
+    const { result } = renderHook(() => useLlmConfigStatus());
     await waitFor(() => expect(result.current.status).toBe('configured'));
     expect(fetchMock.mock.calls[0][0]).toBe('/api/config/llm-status');
   });
@@ -51,13 +45,13 @@ describe('useLlmConfigStatus', () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse({ success: true, data: { configured: false, source: 'none' } }),
     );
-    const { result } = renderHook(() => useLlmConfigStatus(true));
+    const { result } = renderHook(() => useLlmConfigStatus());
     await waitFor(() => expect(result.current.status).toBe('unconfigured'));
   });
 
   it('maps a network error to unknown (fail-open, no guide)', async () => {
     fetchMock.mockRejectedValue(new Error('connection refused'));
-    const { result } = renderHook(() => useLlmConfigStatus(true));
+    const { result } = renderHook(() => useLlmConfigStatus());
     await waitFor(() => expect(result.current.status).toBe('unknown'));
   });
 
@@ -65,7 +59,7 @@ describe('useLlmConfigStatus', () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse({ detail: 'boom' }, false, 502),
     );
-    const { result } = renderHook(() => useLlmConfigStatus(true));
+    const { result } = renderHook(() => useLlmConfigStatus());
     await waitFor(() => expect(result.current.status).toBe('unknown'));
   });
 
@@ -73,7 +67,7 @@ describe('useLlmConfigStatus', () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse({ success: false, data: { configured: false, source: 'none' } }),
     );
-    const { result } = renderHook(() => useLlmConfigStatus(true));
+    const { result } = renderHook(() => useLlmConfigStatus());
     await waitFor(() => expect(result.current.status).toBe('unknown'));
   });
 
@@ -81,7 +75,7 @@ describe('useLlmConfigStatus', () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ success: true, data: { configured: false, source: 'none' } }),
     );
-    const { result } = renderHook(() => useLlmConfigStatus(true));
+    const { result } = renderHook(() => useLlmConfigStatus());
     await waitFor(() => expect(result.current.status).toBe('unconfigured'));
 
     fetchMock.mockResolvedValueOnce(
@@ -98,7 +92,7 @@ describe('useLlmConfigStatus', () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse({ success: true, data: { configured: false, source: 'none' } }),
     );
-    const { result } = renderHook(() => useLlmConfigStatus(true));
+    const { result } = renderHook(() => useLlmConfigStatus());
     await waitFor(() => expect(result.current.status).toBe('unconfigured'));
     const firstRefresh = result.current.refresh;
 

@@ -1,9 +1,9 @@
 """
 HTTP routes for the per-project Video Cover authoring feature.
 
-Auth contract — all endpoints declare ``current_user: User = Depends(get_current_user)``
-and derive ``user_id = str(current_user.id)`` server-side. Cross-user reads
-return 404 (not 403) to avoid existence leakage.
+Ownership contract — the desktop build has a single local owner, so every
+endpoint derives ``user_id = LOCAL_OWNER_ID`` server-side instead of reading
+it from the request.
 """
 
 from datetime import datetime, timezone
@@ -11,11 +11,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import LOCAL_OWNER_ID
 from app.database import get_db_session
-from app.dependencies.auth import get_current_user
 from app.logger import get_logger
 from app.models import BaseResponse
-from app.models.db_models import User
 from app.models.video_cover_models import (
     CoverStateIn,
     CoverStateResponse,
@@ -34,12 +33,11 @@ PNG_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 @router.get("/{project_id}", response_model=CoverStateResponse)
 async def get_video_cover(
     project_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> CoverStateResponse:
     """Load the cover authoring state. Returns ``data: null`` when the
     project exists but no cover has been authored yet."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     state = await video_cover_service.get_by_project(
         db=db, user_id=user_id, project_id=project_id
     )
@@ -54,11 +52,10 @@ async def get_video_cover(
 async def put_video_cover(
     project_id: str,
     payload: CoverStateIn,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> CoverStateResponse:
     """Upsert the cover authoring state for ``project_id``."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     state = await video_cover_service.upsert(
         db=db,
         user_id=user_id,
@@ -81,14 +78,13 @@ async def put_video_cover(
 async def post_video_cover_png_cache(
     project_id: str,
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PngCacheResponse:
     """Persist a freshly-rendered cover PNG and stamp ``cover_url`` with a
     cache-busted URL. The same URL is returned in the response so the client
     can update its in-memory project record without a re-fetch.
     """
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
 
     if file.content_type and file.content_type.lower() != "image/png":
         raise HTTPException(
@@ -138,12 +134,11 @@ async def post_video_cover_png_cache(
 @router.delete("/{project_id}", response_model=BaseResponse)
 async def delete_video_cover(
     project_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> BaseResponse:
     """Optional cleanup endpoint — removes the cover row + on-disk artifacts
     for a project without touching the project itself."""
-    user_id = str(current_user.id)
+    user_id = LOCAL_OWNER_ID
     # Ownership check via get_by_project (returns None if foreign or missing)
     state = await video_cover_service.get_by_project(
         db=db, user_id=user_id, project_id=project_id

@@ -1,57 +1,23 @@
 """
 SQLAlchemy ORM models for database tables.
+
+The ``users`` / ``login_history`` tables were dropped from this module by the
+`desktop-only-refactor`: the desktop build has one local owner and no login.
+The TABLES are deliberately NOT dropped from existing databases — ``create_all``
+only creates, so a legacy install keeps them as inert rows. See
+``database._claim_ownership_for_local_owner``.
 """
 
 import uuid
-from sqlalchemy import BigInteger, Column, String, Boolean, DateTime, Text, JSON, Float, Integer, ForeignKey, UniqueConstraint, Index, func
+from sqlalchemy import BigInteger, Column, String, DateTime, Text, JSON, Float, Integer, ForeignKey, UniqueConstraint, Index, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+from app.constants import LOCAL_OWNER_ID
 
 
 class Base(DeclarativeBase):
     pass
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(100), nullable=True)
-    avatar_url = Column(String(500), nullable=True)
-    is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean, default=False)
-    is_root = Column(Boolean, default=False, nullable=False)
-    user_role = Column(String(20), default="regular")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    last_login_at = Column(DateTime(timezone=True), nullable=True)
-
-    # Session fields (single-device login)
-    active_session_token = Column(String(255), nullable=True)
-    session_created_at = Column(DateTime(timezone=True), nullable=True)
-    session_device_info = Column(Text, nullable=True)
-    session_ip_address = Column(String(50), nullable=True)
-
-    # Self-service preferences (notifications, privacy, language, theme).
-    # JSON (not JSONB) for SQLite test parity; queries use ORM-level mutation
-    # (re-assign whole dict) since SQLAlchemy doesn't auto-flag JSON mutations.
-    preferences = Column(JSON, nullable=False, default=dict, server_default='{}')
-
-
-class LoginHistory(Base):
-    """Login history table for tracking authentication attempts."""
-    __tablename__ = "login_history"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    login_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    ip_address = Column(String(50), nullable=True)
-    device_info = Column(Text, nullable=True)
-    login_result = Column(String(20), nullable=False)  # "success" | "failed"
-    failure_reason = Column(String(100), nullable=True)  # e.g. "invalid_password", "account_disabled"
 
 
 class ModelProvider(Base):
@@ -166,7 +132,13 @@ class VideoProjectCategory(Base):
     __tablename__ = "video_project_categories"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(String(36), nullable=False, index=True)
+    # Local-owner tag. The user system was removed in `desktop-only-refactor`;
+    # this column is kept (not dropped) so databases written by older builds
+    # keep working — startup re-tags legacy rows, see
+    # `database._claim_ownership_for_local_owner`.
+    user_id = Column(
+        String(36), nullable=False, index=True, default=LOCAL_OWNER_ID
+    )
     name = Column(String(100), nullable=False)
     color = Column(String(20), nullable=True)  # Optional hex color tag
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
@@ -191,7 +163,13 @@ class VideoProject(Base):
     __tablename__ = "video_projects"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(String(36), nullable=False, index=True)
+    # Local-owner tag. The user system was removed in `desktop-only-refactor`;
+    # this column is kept (not dropped) so databases written by older builds
+    # keep working — startup re-tags legacy rows, see
+    # `database._claim_ownership_for_local_owner`.
+    user_id = Column(
+        String(36), nullable=False, index=True, default=LOCAL_OWNER_ID
+    )
     category_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -224,7 +202,13 @@ class StoryboardPackOwnership(Base):
 
     pack_id = Column(String(64), primary_key=True)
     project_id = Column(String(36), nullable=False)
-    user_id = Column(String(36), nullable=False)
+    # Local-owner tag. The user system was removed in `desktop-only-refactor`;
+    # this column is kept (not dropped) so databases written by older builds
+    # keep working — startup re-tags legacy rows, see
+    # `database._claim_ownership_for_local_owner`.
+    user_id = Column(
+        String(36), nullable=False, default=LOCAL_OWNER_ID
+    )
     pack_type = Column(String(32), nullable=False, default="storyboard", server_default="storyboard")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -258,7 +242,13 @@ class ProjectCover(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
-    user_id = Column(String(36), nullable=False, index=True)
+    # Local-owner tag. The user system was removed in `desktop-only-refactor`;
+    # this column is kept (not dropped) so databases written by older builds
+    # keep working — startup re-tags legacy rows, see
+    # `database._claim_ownership_for_local_owner`.
+    user_id = Column(
+        String(36), nullable=False, index=True, default=LOCAL_OWNER_ID
+    )
     template_id = Column(String(50), nullable=False)
     cover_config = Column(JSON, nullable=False)
     image_source = Column(String(20), nullable=False)

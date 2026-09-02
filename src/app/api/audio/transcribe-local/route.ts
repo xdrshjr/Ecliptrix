@@ -6,8 +6,6 @@
  *
  * The backend endpoint is synchronous — it blocks until transcription
  * completes. A 5-minute timeout gives enough headroom for long audio files.
- *
- * Spec: docs/plans/unified-api-auth-refactor/specs/06-direct-browser-call-migration.md §4.3
  */
 import { createPassthroughRoute } from '@/lib/api/server/backend-proxy'
 

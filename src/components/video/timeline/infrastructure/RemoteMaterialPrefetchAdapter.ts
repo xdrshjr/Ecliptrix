@@ -156,10 +156,10 @@ export class RemoteMaterialPrefetchAdapter implements IRemoteMaterialPrefetchPor
       })),
     };
 
-    // Production path: route through http-client so the Authorization header
-    // is injected and 401 triggers the global session-expired handler exactly
-    // once. Bypassing it (which the original adapter did with bare fetch) is
-    // what produced the 401 spam.
+    // Production path: route through http-client so this call gets the same
+    // timeout, abort and typed-error envelope as everything else. Bypassing it
+    // with a bare fetch (which the original adapter did) is what produced the
+    // unclassified error spam.
     const json = this.config.fetchImpl
       ? await this.fetchIngestRaw(payload)
       : await http.post<IngestResponse>('/api/material/ingest', payload);
@@ -296,16 +296,12 @@ export class RemoteMaterialPrefetchAdapter implements IRemoteMaterialPrefetchPor
       try {
         result = await this.lookup(key, signal);
       } catch (err) {
-        // Network blip — keep polling unless the failure is fatal. Auth
-        // failures (MissingAuth/SessionExpired) MUST propagate so the hook
-        // marks cacheStatus='failed' once and bails — looping on 401 is what
-        // produced the original error spam.
+        // Network blip — keep polling unless the failure is fatal. Aborts and
+        // timeouts MUST propagate so the hook marks cacheStatus='failed' once
+        // and bails; looping on them is what produced the original error spam.
         if (
           err instanceof Error &&
-          (err.name === 'AbortError' ||
-            err.name === 'TimeoutError' ||
-            err.name === 'MissingAuthError' ||
-            err.name === 'SessionExpiredError')
+          (err.name === 'AbortError' || err.name === 'TimeoutError')
         ) {
           throw err;
         }

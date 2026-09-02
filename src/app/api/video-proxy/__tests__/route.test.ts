@@ -41,15 +41,6 @@ describe('/api/video-proxy GET', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('proxies an allowed OSS host (200 pass-through)', async () => {
-    const res = await GET(
-      makeRequest('https://ecliptrix.oss-cn-beijing.aliyuncs.com/foo/bar.mp4'),
-    );
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe('video/mp4');
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-  });
-
   it('proxies the ARK content-generation CDN host (200 pass-through)', async () => {
     const res = await GET(
       makeRequest(
@@ -57,11 +48,22 @@ describe('/api/video-proxy GET', () => {
       ),
     );
     expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('video/mp4');
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('does NOT allow arbitrary volces.com subdomains', async () => {
     const res = await GET(makeRequest('https://attacker.volces.com/evil.mp4'));
+    expect(res.status).toBe(403);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  // Storage is local-only now, so the old OSS bucket is off the allowlist
+  // entirely — not just "other buckets are rejected", but every bucket.
+  it('does NOT allow the retired OSS host', async () => {
+    const res = await GET(
+      makeRequest('https://ecliptrix.oss-cn-beijing.aliyuncs.com/foo/bar.mp4'),
+    );
     expect(res.status).toBe(403);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });

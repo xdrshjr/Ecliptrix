@@ -1,104 +1,62 @@
 """
-Tests for CORS hardening + SecurityHeadersMiddleware (spec 02).
+Tests for the CORS allowlist + SecurityHeadersMiddleware.
 
-Covers:
-  V02-A — CORS allowlist replaces ``allow_origins=['*']`` + credentials anti-pattern.
-  V02-B — SecurityHeadersMiddleware attaches X-Content-Type-Options / X-Frame-Options /
-           Referrer-Policy / Permissions-Policy / HSTS (prod-only).
+After `desktop-only-refactor` there is no deployment-environment marker and no
+emergency wildcard switch. The allowlist is exactly
+``CORS_ALLOWED_ORIGINS`` (which the Electron main process fills with the
+frontend port it actually resolved) plus a fixed set of dev fallbacks, and the
+headers middleware emits three headers — ``X-Frame-Options`` and HSTS were
+dropped as meaningless on a loopback ``http://`` origin.
 
 Strategy
 --------
-Mirrors ``test_auth_middleware.py``: we DO NOT import ``app.main`` (it would
-pull in cv2/ffmpeg/etc.). Instead each test builds a minimal FastAPI app that
-wires up CORSMiddleware + SecurityHeadersMiddleware using the SAME helper
-that ``app.main`` will use after the spec 02 patches land (see the
-``_build_cors_origins`` helper below — kept in lock-step with the patch in the
-summary doc).
+We DO NOT import ``app.main`` (it would pull in cv2/ffmpeg/etc.). Instead each
+test builds a minimal FastAPI app wiring CORSMiddleware +
+SecurityHeadersMiddleware exactly the way ``app.main`` does. The origin list
+helper below mirrors ``app.main._DEV_FALLBACK_ORIGINS`` — the duplication is
+intentional and the two MUST stay in sync.
 """
 
 from __future__ import annotations
 
-from typing import List
-
-import pytest
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
-from app.config import settings as _settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
 
 
-# ---------------------------------------------------------------------------
-# Mirror of the helper used in app/main.py (kept in summary "main.py patches"
-# section). The duplication is intentional: importing app.main pulls cv2.
-# ---------------------------------------------------------------------------
-
-_DEV_LOCALHOST_ORIGINS: tuple[str, ...] = (
+# Mirror of ``app.main._DEV_FALLBACK_ORIGINS``.
+_DEV_FALLBACK_ORIGINS: tuple[str, ...] = (
     "http://localhost:3000",
     "http://localhost:3010",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3010",
+    "http://localhost:18320",
+    "http://127.0.0.1:18320",
 )
 
 
-def _build_cors_origins(env_marker: str, configured: list[str]) -> list[str]:
-    """Compose the final allow_origins list for CORSMiddleware.
+def _build_app(configured_origins: list[str]) -> FastAPI:
+    """Build a minimal app matching the production main.py wiring.
 
-    Production: exactly what is in CORS_ALLOWED_ORIGINS (may be empty → deny).
-    Dev/staging: also include localhost / 127.0.0.1 fallbacks.
+    Starlette ``add_middleware`` is LIFO, so the LAST added is OUTERMOST. We
+    add CORS first and SecurityHeadersMiddleware second — the same order
+    production uses — which puts the headers wrapper OUTSIDE of CORS so it
+    observes the final response and only sets headers CORS did not.
     """
-    env_lc = (env_marker or "production").lower()
-    if env_lc in ("development", "dev"):
-        merged = list(dict.fromkeys(list(configured) + list(_DEV_LOCALHOST_ORIGINS)))
-        return merged
-    return list(configured)
-
-
-def _build_app(
-    env_marker: str,
-    cors_allowed_origins: list[str],
-    *,
-    legacy_wildcard: bool = False,
-    monkeypatch: pytest.MonkeyPatch | None = None,
-) -> FastAPI:
-    """Build a minimal FastAPI app matching the post-patch main.py wiring.
-
-    Order matches the production main.py change documented in the spec 02
-    summary doc: SessionAuth (omitted here — not under test) → CORS → Security.
-    Starlette ``add_middleware`` is LIFO, so the LAST added is OUTERMOST.
-    We therefore add CORS first, then SecurityHeadersMiddleware second — the
-    same way production will register them. The headers wrapper sits OUTSIDE
-    of CORS, which is correct: it observes the final response and only sets
-    headers that CORS did not already set.
-    """
-    # The SecurityHeadersMiddleware reads settings.env at request time. Patch it
-    # for the duration of the test so we can exercise prod vs dev behavior
-    # without re-importing config.
-    if monkeypatch is not None:
-        monkeypatch.setattr(_settings, "env", env_marker, raising=False)
+    origins = list(
+        dict.fromkeys(list(configured_origins) + list(_DEV_FALLBACK_ORIGINS))
+    )
 
     app = FastAPI()
-
-    if legacy_wildcard:
-        # Rollback path — preserved for ops emergencies only.
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-    else:
-        origins = _build_cors_origins(env_marker, cors_allowed_origins)
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-            allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
-        )
-
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=["Content-Type", "X-Requested-With"],
+    )
     app.add_middleware(SecurityHeadersMiddleware)
 
     @app.get("/api/health")
@@ -107,21 +65,121 @@ def _build_app(
 
     @app.get("/docs")
     async def fake_docs():
-        # Stand-in for the Swagger UI route — used only to verify the
-        # X-Frame-Options exemption.
+        # Stand-in for the Swagger UI route, which is always mounted now.
         return {"swagger": "stand-in"}
 
     return app
 
 
 # ---------------------------------------------------------------------------
-# V02-A — CORS allowlist behavior
+# CORS allowlist behaviour
 # ---------------------------------------------------------------------------
 
 
-def test_dev_localhost_origin_preflight_succeeds(monkeypatch):
-    """Dev env: OPTIONS preflight from http://localhost:3000 must be allowed."""
-    app = _build_app("development", [], monkeypatch=monkeypatch)
+def test_injected_origin_preflight_succeeds():
+    """OPTIONS preflight from the injected frontend origin must be allowed."""
+    app = _build_app(["http://127.0.0.1:18322"])
+    client = TestClient(app)
+    resp = client.options(
+        "/api/health",
+        headers={
+            "Origin": "http://127.0.0.1:18322",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://127.0.0.1:18322"
+    assert resp.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_injected_origin_simple_get_includes_acao():
+    """An actual GET from the injected origin echoes the origin back.
+
+    The port matters: ``ports.pickPort`` shifts off 18320 when it is taken, so
+    the allowlist must come from the injected value, not a hardcoded literal.
+    """
+    app = _build_app(["http://127.0.0.1:18322"])
+    client = TestClient(app)
+    resp = client.get(
+        "/api/health",
+        headers={"Origin": "http://127.0.0.1:18322"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://127.0.0.1:18322"
+
+
+def test_dev_fallback_localhost_origin_allowed():
+    """`npm run dev` on :3000 keeps working with an empty env allowlist."""
+    app = _build_app([])
+    client = TestClient(app)
+    resp = client.get(
+        "/api/health",
+        headers={"Origin": "http://localhost:3000"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_dev_fallback_default_frontend_port_allowed():
+    """The default packaged frontend port is in the fallback list."""
+    app = _build_app([])
+    client = TestClient(app)
+    resp = client.get(
+        "/api/health",
+        headers={"Origin": "http://127.0.0.1:18320"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://127.0.0.1:18320"
+
+
+def test_unlisted_origin_blocked():
+    """An origin outside the allowlist gets NO Access-Control-Allow-Origin.
+
+    The absence of the ACAO response header is what the browser uses to block
+    the cross-origin read; the endpoint itself still answers 200 because CORS
+    is advisory.
+    """
+    app = _build_app(["http://127.0.0.1:18320"])
+    client = TestClient(app)
+    resp = client.get(
+        "/api/health",
+        headers={"Origin": "https://evil.example.com"},
+    )
+    assert resp.status_code == 200
+    assert "access-control-allow-origin" not in {
+        k.lower() for k in resp.headers.keys()
+    }
+
+
+def test_unlisted_origin_preflight_is_not_advertised():
+    """A preflight from an unlisted origin must not advertise access."""
+    app = _build_app(["http://127.0.0.1:18320"])
+    client = TestClient(app)
+    resp = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://evil.example.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert "access-control-allow-origin" not in {
+        k.lower() for k in resp.headers.keys()
+    }
+
+
+def test_same_origin_request_works():
+    """No Origin header (same-origin) — endpoint still works."""
+    app = _build_app([])
+    client = TestClient(app)
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"success": True, "status": "healthy"}
+
+
+def test_authorization_header_is_not_in_the_allowlist():
+    """``Authorization`` is gone from allow_headers — nothing sends it now."""
+    app = _build_app([])
     client = TestClient(app)
     resp = client.options(
         "/api/health",
@@ -131,122 +189,21 @@ def test_dev_localhost_origin_preflight_succeeds(monkeypatch):
             "Access-Control-Request-Headers": "Authorization",
         },
     )
-    assert resp.status_code == 200
-    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
-    assert resp.headers.get("access-control-allow-credentials") == "true"
-
-
-def test_dev_localhost_simple_get_includes_acao(monkeypatch):
-    """Dev env: actual GET from localhost:3010 echoes the origin back."""
-    app = _build_app("development", [], monkeypatch=monkeypatch)
-    client = TestClient(app)
-    resp = client.get(
-        "/api/health",
-        headers={"Origin": "http://localhost:3010"},
-    )
-    assert resp.status_code == 200
-    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3010"
-
-
-def test_prod_configured_origin_allowed(monkeypatch):
-    """Prod env: configured allowlisted origin gets ACAO echoed back."""
-    app = _build_app(
-        "production",
-        ["https://app.example.com"],
-        monkeypatch=monkeypatch,
-    )
-    client = TestClient(app)
-    resp = client.get(
-        "/api/health",
-        headers={"Origin": "https://app.example.com"},
-    )
-    assert resp.status_code == 200
-    assert resp.headers.get("access-control-allow-origin") == "https://app.example.com"
-    assert resp.headers.get("access-control-allow-credentials") == "true"
-
-
-def test_prod_unauthorized_origin_blocked(monkeypatch):
-    """Prod env: evil.com origin gets NO Access-Control-Allow-Origin header.
-
-    This is the V02-A regression test. Pre-fix code echoed ANY Origin back
-    when allow_origins=['*'] + allow_credentials=True; post-fix the absence
-    of the ACAO response header is what the browser uses to block the
-    cross-origin read.
-    """
-    app = _build_app(
-        "production",
-        ["https://app.example.com"],
-        monkeypatch=monkeypatch,
-    )
-    client = TestClient(app)
-    resp = client.get(
-        "/api/health",
-        headers={"Origin": "https://evil.example.com"},
-    )
-    # Same-origin handling: endpoint itself still returns 200 (CORS is
-    # advisory; the server processes the request but does not advertise that
-    # cross-origin reads are permitted).
-    assert resp.status_code == 200
-    assert "access-control-allow-origin" not in {
-        k.lower() for k in resp.headers.keys()
-    }
-
-
-def test_prod_empty_allowlist_denies_cross_origin(monkeypatch):
-    """Prod env with empty CORS_ALLOWED_ORIGINS: no ACAO header at all."""
-    app = _build_app("production", [], monkeypatch=monkeypatch)
-    client = TestClient(app)
-    resp = client.get(
-        "/api/health",
-        headers={"Origin": "https://app.example.com"},
-    )
-    assert resp.status_code == 200
-    assert "access-control-allow-origin" not in {
-        k.lower() for k in resp.headers.keys()
-    }
-
-
-def test_same_origin_request_works(monkeypatch):
-    """No Origin header (same-origin) — endpoint still works."""
-    app = _build_app("production", [], monkeypatch=monkeypatch)
-    client = TestClient(app)
-    resp = client.get("/api/health")
-    assert resp.status_code == 200
-    assert resp.json() == {"success": True, "status": "healthy"}
-
-
-def test_legacy_wildcard_rollback_still_works(monkeypatch):
-    """Emergency rollback path keeps the old wildcard behavior."""
-    app = _build_app(
-        "production",
-        [],
-        legacy_wildcard=True,
-        monkeypatch=monkeypatch,
-    )
-    client = TestClient(app)
-    resp = client.get(
-        "/api/health",
-        headers={"Origin": "https://anything.example.com"},
-    )
-    assert resp.status_code == 200
-    # Legacy wildcard either echoes the Origin (FastAPI behavior with
-    # credentials=True) or returns "*". Either way, it advertises CORS access.
-    acao = resp.headers.get("access-control-allow-origin")
-    assert acao is not None
+    allowed = resp.headers.get("access-control-allow-headers", "")
+    assert "authorization" not in allowed.lower()
 
 
 # ---------------------------------------------------------------------------
-# V02-B — Security response headers
+# Security response headers
 # ---------------------------------------------------------------------------
 
 
-def test_security_headers_present_on_every_response(monkeypatch):
-    """All four always-on security headers must be on every response."""
-    app = _build_app("production", [], monkeypatch=monkeypatch)
+def test_security_headers_present_on_every_response():
+    """All three always-on security headers must be on every response."""
+    app = _build_app([])
     client = TestClient(app)
     resp = client.get("/api/health")
     assert resp.headers.get("x-content-type-options") == "nosniff"
-    assert resp.headers.get("x-frame-options") == "DENY"
     assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
     assert (
         resp.headers.get("permissions-policy")
@@ -254,19 +211,17 @@ def test_security_headers_present_on_every_response(monkeypatch):
     )
 
 
-def test_hsts_only_in_production(monkeypatch):
-    """Strict-Transport-Security must only ship in production env."""
-    app = _build_app("production", [], monkeypatch=monkeypatch)
+def test_x_frame_options_is_not_emitted():
+    """X-Frame-Options was dropped — there is no hostile embedder locally."""
+    app = _build_app([])
     client = TestClient(app)
     resp = client.get("/api/health")
-    hsts = resp.headers.get("strict-transport-security")
-    assert hsts is not None
-    assert "max-age=31536000" in hsts
+    assert "x-frame-options" not in {k.lower() for k in resp.headers.keys()}
 
 
-def test_hsts_absent_in_development(monkeypatch):
-    """Dev environment must NOT emit HSTS (untrusted certs / localhost)."""
-    app = _build_app("development", [], monkeypatch=monkeypatch)
+def test_hsts_is_not_emitted():
+    """HSTS was dropped — the loopback origin is plain http, never TLS."""
+    app = _build_app([])
     client = TestClient(app)
     resp = client.get("/api/health")
     assert "strict-transport-security" not in {
@@ -274,39 +229,30 @@ def test_hsts_absent_in_development(monkeypatch):
     }
 
 
-def test_docs_path_skips_x_frame_options(monkeypatch):
-    """Swagger / ReDoc paths skip X-Frame-Options so they can iframe assets."""
-    app = _build_app("production", [], monkeypatch=monkeypatch)
+def test_docs_path_gets_the_same_headers():
+    """The docs UI is no longer a header exception — it gets the same three."""
+    app = _build_app([])
     client = TestClient(app)
     resp = client.get("/docs")
     assert resp.status_code == 200
-    # Other headers should still be present.
     assert resp.headers.get("x-content-type-options") == "nosniff"
-    # X-Frame-Options must be omitted on /docs.
-    assert "x-frame-options" not in {k.lower() for k in resp.headers.keys()}
+    assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
 
 
 # ---------------------------------------------------------------------------
-# Cross-cutting — V02-A + V02-B together
+# Cross-cutting
 # ---------------------------------------------------------------------------
 
 
-def test_cors_and_security_headers_coexist(monkeypatch):
+def test_cors_and_security_headers_coexist():
     """A single response should carry BOTH CORS and security headers cleanly."""
-    app = _build_app(
-        "production",
-        ["https://app.example.com"],
-        monkeypatch=monkeypatch,
-    )
+    app = _build_app(["http://127.0.0.1:18320"])
     client = TestClient(app)
     resp = client.get(
         "/api/health",
-        headers={"Origin": "https://app.example.com"},
+        headers={"Origin": "http://127.0.0.1:18320"},
     )
     assert resp.status_code == 200
-    # CORS
-    assert resp.headers.get("access-control-allow-origin") == "https://app.example.com"
-    # Security
+    assert resp.headers.get("access-control-allow-origin") == "http://127.0.0.1:18320"
     assert resp.headers.get("x-content-type-options") == "nosniff"
-    assert resp.headers.get("x-frame-options") == "DENY"
-    assert resp.headers.get("strict-transport-security") is not None
+    assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
