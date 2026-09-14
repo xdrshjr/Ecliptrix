@@ -1,7 +1,7 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model, KnownApi } from '@mariozechner/pi-ai';
-import type { MaterialType, TimelineState } from '@/types';
+import type { AgentMaterialData, MaterialType, TimelineState } from '@/types';
 import type { ToolContext, TimelineOperation, AgentOperation, SSEEvent, VideoEditingAgentConfig } from './types';
 import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
@@ -9,6 +9,7 @@ import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
 import { scanExploredCategories } from './historyScan';
 import { reconcileOverlapsAfterAgentOp } from './reconcile';
+import { validateOperationTargets } from './operationGuards';
 
 /**
  * Optional debug switch — when set, dumps the full final system prompt to
@@ -91,8 +92,10 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
     projectId: config.projectId,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
+      // An operation the local copy refuses is never forwarded: the client
+      // would refuse it too, after the tool already reported success.
+      if (!applyOperationLocally(toolContext.timelineState, operation)) return;
       toolContext.operations.set(toolCallId, operation);
-      applyOperationLocally(toolContext.timelineState, operation);
     },
     recordOperation: (toolCallId: string, operation: AgentOperation) => {
       toolContext.operations.set(toolCallId, operation);
@@ -340,33 +343,72 @@ export function subscribeAgentEvents(
   });
 }
 
+type AddClipOperation = Extract<TimelineOperation, { type: 'add_clip' }>;
+type MoveClipOperation = Extract<TimelineOperation, { type: 'move_clip' }>;
+
+/** Mirrors OperationApplier's add_clip so both timelines hold the same clip fields. */
+function addClipLocally(state: TimelineState, operation: AddClipOperation): void {
+  const track = state.tracks.find(t => t.id === operation.clip.trackId);
+  if (!track) return;
+  // Editing tools send `toAgentClipMaterial`, which carries the playback fields.
+  const material = operation.material as AgentMaterialData;
+  track.items.push({
+    id: operation.clip.id,
+    name: operation.material.name,
+    type: track.type,
+    startTime: operation.clip.startTime,
+    duration: operation.clip.duration,
+    trackId: operation.clip.trackId,
+    color: '',
+    materialId: operation.clip.materialId,
+    clipStart: operation.clip.clipStart,
+    clipEnd: operation.clip.clipEnd,
+    // Stills carry no source length (tools send 0).
+    ...(operation.clip.originalDuration > 0 ? { originalDuration: operation.clip.originalDuration } : {}),
+    volume: operation.clip.volume,
+    // Mirrors OperationApplier so get_timeline tells images apart.
+    originalMaterialType: (operation.material.type as MaterialType) || undefined,
+    ...(material.url ? { url: material.url } : {}),
+    ...(material.serverUrl ? { serverUrl: material.serverUrl } : {}),
+    ...(material.cacheUrl ? { cacheUrl: material.cacheUrl } : {}),
+    ...(material.storageKey ? { storageKey: material.storageKey } : {}),
+    ...(material.metadata ? { metadata: { ...material.metadata } } : {}),
+  });
+}
+
+/** Validated by the caller, so both tracks exist and hold / receive the clip. */
+function moveClipLocally(state: TimelineState, operation: MoveClipOperation): void {
+  const fromTrack = state.tracks.find(t => t.id === operation.fromTrackId);
+  const toTrack = state.tracks.find(t => t.id === operation.toTrackId);
+  const idx = fromTrack ? fromTrack.items.findIndex(i => i.id === operation.clipId) : -1;
+  if (!fromTrack || !toTrack || idx === -1) return;
+  const [clip] = fromTrack.items.splice(idx, 1);
+  clip.startTime = operation.newStartTime;
+  clip.trackId = operation.toTrackId;
+  toTrack.items.push(clip);
+}
+
 /**
- * Apply an operation to the local timeline state copy so subsequent tools see consistent state.
+ * Apply an operation to the local timeline state copy so subsequent tools
+ * see consistent state. Returns false, changing nothing, when the operation
+ * fails the same validation the client applies.
  */
-function applyOperationLocally(state: TimelineState, operation: TimelineOperation): void {
+function applyOperationLocally(state: TimelineState, operation: TimelineOperation): boolean {
+  const validation = validateOperationTargets(state, operation);
+  if (!validation.ok) {
+    console.warn('[VideoEditingAgent] refused invalid timeline operation', {
+      type: operation.type,
+      reason: validation.reason,
+      trackId: validation.trackId,
+      clipId: validation.clipId,
+    });
+    return false;
+  }
+
   switch (operation.type) {
-    case 'add_clip': {
-      const track = state.tracks.find(t => t.id === operation.clip.trackId);
-      if (track) {
-        track.items.push({
-          id: operation.clip.id,
-          name: operation.material.name,
-          type: track.type,
-          startTime: operation.clip.startTime,
-          duration: operation.clip.duration,
-          trackId: operation.clip.trackId,
-          color: '',
-          materialId: operation.clip.materialId,
-          clipStart: operation.clip.clipStart,
-          clipEnd: operation.clip.clipEnd,
-          originalDuration: operation.clip.originalDuration,
-          volume: operation.clip.volume,
-          // Mirrors OperationApplier so get_timeline tells images apart.
-          originalMaterialType: (operation.material.type as MaterialType) || undefined,
-        });
-      }
+    case 'add_clip':
+      addClipLocally(state, operation);
       break;
-    }
 
     case 'trim_clip': {
       for (const track of state.tracks) {
@@ -389,26 +431,9 @@ function applyOperationLocally(state: TimelineState, operation: TimelineOperatio
       break;
     }
 
-    case 'move_clip': {
-      const fromTrack = state.tracks.find(t => t.id === operation.fromTrackId);
-      const toTrack = state.tracks.find(t => t.id === operation.toTrackId);
-      if (fromTrack && toTrack) {
-        const idx = fromTrack.items.findIndex(i => i.id === operation.clipId);
-        if (idx !== -1) {
-          const [clip] = fromTrack.items.splice(idx, 1);
-          clip.startTime = operation.newStartTime;
-          clip.trackId = operation.toTrackId;
-          toTrack.items.push(clip);
-        }
-      } else if (fromTrack) {
-        // toTrack not found — update position in place without moving
-        const clip = fromTrack.items.find(i => i.id === operation.clipId);
-        if (clip) {
-          clip.startTime = operation.newStartTime;
-        }
-      }
+    case 'move_clip':
+      moveClipLocally(state, operation);
       break;
-    }
 
     case 'resize_clip': {
       for (const track of state.tracks) {
@@ -427,4 +452,5 @@ function applyOperationLocally(state: TimelineState, operation: TimelineOperatio
   // (e.g. check_timeline_overlaps, get_timeline) sees the same packed
   // layout the UI will end up with. Pure function — safe on the server.
   reconcileOverlapsAfterAgentOp(state, operation);
+  return true;
 }

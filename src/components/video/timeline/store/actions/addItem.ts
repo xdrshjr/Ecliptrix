@@ -11,6 +11,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 import type { MaterialData, TimelineItemData } from '../../domain';
 import { TrackSelectionService, TrackTypeUtils } from '../../domain';
 
@@ -28,6 +29,7 @@ export function addItemAction(
   material: MaterialData,
 ): TimelineItemData | null {
   const state = get();
+  if (isEditLocked(state)) return null;
 
   // 1. A refused add must not record history: an empty entry would also
   //    wipe the redo stack for nothing.

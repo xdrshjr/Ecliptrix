@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { Track } from '../../entities/Track';
 import { SplitService } from '../SplitService';
 import { TIME_EPSILON } from '../ClipTimeMapping';
+import { MIN_CLIP_DURATION_SECONDS } from '../../value-objects/Duration';
 import type { TimelineItemData } from '../../types';
 
 function videoItem(overrides: Partial<TimelineItemData> = {}): TimelineItemData {
@@ -153,5 +154,34 @@ describe('SplitService.splitItemAtTime', () => {
     expect(left.clipEnd!.value).toBe(3);
     expect(right.clipStart!.value).toBe(3);
     expect(right.clipEnd!.value).toBe(6);
+  });
+
+  it('rejects a cut that leaves a piece shorter than MIN_CLIP_DURATION_SECONDS', () => {
+    const track = buildTrack([videoItem()]); // 10 → 16
+    expect({
+      nearStart: SplitService.splitItemAtTime(track, 'clip-1', 10.0015),
+      nearEnd: SplitService.splitItemAtTime(track, 'clip-1', 16 - MIN_CLIP_DURATION_SECONDS / 2),
+      items: track.items.length,
+    }).toEqual({ nearStart: null, nearEnd: null, items: 1 });
+  });
+
+  it('accepts a cut exactly MIN_CLIP_DURATION_SECONDS from an edge', () => {
+    const track = buildTrack([videoItem({ startTime: 0.2, duration: 6, clipStart: 0, clipEnd: 6 })]);
+    expect(SplitService.splitItemAtTime(track, 'clip-1', 0.3)).not.toBeNull();
+  });
+
+  it('splitting a still keeps each clip interval equal to its duration', () => {
+    const track = buildTrack([
+      videoItem({
+        startTime: 0, duration: 6, clipStart: 0, clipEnd: 0,
+        originalDuration: undefined, originalMaterialType: 'image',
+      }),
+    ]);
+    const result = SplitService.splitItemAtTime(track, 'clip-1', 2)!;
+    const intervals = [result.leftId, result.rightId].map((id) => {
+      const half = track.findItem(id)!;
+      return [half.clipStart?.value, half.clipEnd?.value, half.duration.value];
+    });
+    expect(intervals).toEqual([[0, 2, 2], [0, 4, 4]]);
   });
 });

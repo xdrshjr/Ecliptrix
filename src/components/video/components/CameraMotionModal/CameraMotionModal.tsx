@@ -57,6 +57,11 @@ export interface CameraMotionModalProps {
   onClose: () => void;
   /** Apply to the given item ids. `null` clears the motion. */
   onApply: (itemIds: string[], motion: CameraMotion | null) => void;
+  /**
+   * The agent took the timeline while the panel was open (S9). Apply is
+   * disabled rather than hidden so the user sees why the draft can't land.
+   */
+  isEditLocked?: boolean;
   /** The clip that opened the panel (its name / poster / duration drive the UI). */
   clipName: string;
   clipDuration: number;
@@ -99,6 +104,8 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+const EDIT_LOCK_HINT_ID = 'camera-motion-edit-lock-hint';
+
 const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
   isOpen,
   onClose,
@@ -108,6 +115,7 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
   clipThumbnailUrl,
   initialMotion,
   targetItemIds,
+  isEditLocked = false,
 }) => {
   const { t } = useLocale();
   const labels = t.timeline.cameraMotion;
@@ -521,11 +529,20 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
           >
             {labels.cancel}
           </button>
+          {isEditLocked && (
+            <span id={EDIT_LOCK_HINT_ID} role="status" className="text-xs text-amber-600 dark:text-amber-400">
+              {t.timeline.messages.editLockedByAgent}
+            </span>
+          )}
           <button
             type="button"
             onClick={handleApply}
+            disabled={isEditLocked}
+            aria-describedby={isEditLocked ? EDIT_LOCK_HINT_ID : undefined}
+            title={isEditLocked ? t.timeline.messages.editLockedByAgent : undefined}
             className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground shadow-sm
-              transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+              transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+              disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary"
           >
             {labels.apply}
           </button>

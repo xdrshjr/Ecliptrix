@@ -1,12 +1,12 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning, collectClipStarts, diffClipStarts, findClip, toAgentClipMaterial, POSITION_EPSILON } from './index';
 
 const parameters = Type.Object({
   materialId: Type.String({ description: 'The ID of the material to add' }),
   trackId: Type.Optional(Type.String({ description: 'Target track ID. Auto-selected if omitted.' })),
-  startTime: Type.Optional(Type.Number({ description: 'Start position in seconds on the timeline. Defaults to end of track.' })),
+  startTime: Type.Optional(Type.Number({ description: 'Insertion point in seconds on the timeline. Defaults to end of track.' })),
 });
 type Params = Static<typeof parameters>;
 
@@ -47,7 +47,9 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
     name: 'add_to_track',
     label: 'Add to Track',
     description:
-      'Add a material from the library to a timeline track. If no track is specified, automatically selects the appropriate track based on material type. If no start time is specified, places it at the end of the track.',
+      'Add a material from the library to a timeline track. If no track is specified, automatically selects the appropriate track based on material type. If no start time is specified, places it at the end of the track. ' +
+      'Clips on video and audio tracks sit end to end: startTime is an insertion point — the clip goes before any clip starting at the same moment, then the whole track is re-packed from 0. ' +
+      'The startTime in the result is where the clip actually landed; shiftedClips lists clips that moved to make room.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -62,6 +64,12 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
           error: `Invalid materialId "${params.materialId}": this looks like a placeholder, not a real material ID. You must first call search_video / search_image / search_audio / generate_ai_image / generate_ai_video / generate_tts to obtain real materials, then pass the returned id (e.g. "pexels-12345") to add_to_track. Do NOT fabricate IDs like "system-default-*" or "default-video-*".`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+      }
+
+      // A negative start would reach the timeline store and throw inside a
+      // React effect; refuse it before any track is auto-created.
+      if (params.startTime !== undefined && !(Number.isFinite(params.startTime) && params.startTime >= 0)) {
+        return toolErrorResponse({ success: false, error: 'startTime must be a non-negative number of seconds' });
       }
 
       const material = findMaterial(context.materials, params.materialId);
@@ -113,32 +121,32 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
       const mismatchError = materialTrackMismatchError(track, material.type);
       if (mismatchError) return toolErrorResponse(mismatchError);
 
-      const startTime = params.startTime ?? getTrackEndTime(track);
+      const requestedStartTime = params.startTime ?? getTrackEndTime(track);
       const duration = material.duration || 5; // images default to 5s
 
       const newClip = {
         id: generateClipId(),
         materialId: material.id,
         trackId,
-        startTime,
+        startTime: requestedStartTime,
         duration,
         clipStart: 0,
         clipEnd: duration,
-        originalDuration: duration,
+        // Stills have no source length; 0 means "absent" to both appliers.
+        originalDuration: material.type === 'image' ? 0 : duration,
         volume: 1.0,
       };
 
+      const before = collectClipStarts(context.timelineState, [trackId]);
       context.updateTimeline(toolCallId, {
         type: 'add_clip',
         clip: newClip,
-        material: {
-          id: material.id,
-          name: material.name,
-          type: material.type,
-          url: material.url,
-          thumbnailUrl: material.thumbnailUrl,
-        },
+        // Snapshot the playback fields so the clip survives the material leaving the library.
+        material: { ...toAgentClipMaterial(material), url: material.url },
       });
+
+      const startTime = findClip(context.timelineState, newClip.id)?.item.startTime ?? requestedStartTime;
+      const shiftedClips = diffClipStarts(before, collectClipStarts(context.timelineState, [trackId]), newClip.id);
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
@@ -152,8 +160,11 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
           materialName: material.name,
           trackId,
           startTime,
+          ...(params.startTime !== undefined ? { requestedStartTime: params.startTime } : {}),
+          repositioned: Math.abs(startTime - requestedStartTime) > POSITION_EPSILON,
           duration: newClip.duration,
         },
+        ...(shiftedClips.length > 0 ? { shiftedClips } : {}),
         ...(warning ? { warning } : {}),
         ...(overlapWarning ? { overlapWarning, overlapCount: overlapReports.length } : {}),
       };

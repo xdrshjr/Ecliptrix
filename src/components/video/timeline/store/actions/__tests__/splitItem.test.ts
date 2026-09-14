@@ -122,4 +122,18 @@ describe('splitAction', () => {
     expect(video.items.length).toBe(2);
     expect(audio.items.length).toBe(1);
   });
+
+  it('a too-close cut returns too-close and records no history', () => {
+    const outcome = splitAction(() => useTimelineStore.getState(), 0.05, 'playhead');
+    expect({ outcome, canUndo: useTimelineStore.getState().canUndo }).toEqual({
+      outcome: 'too-close',
+      canUndo: false,
+    });
+  });
+
+  it('reports split when at least one clip was cut and none when the cut hits nothing', () => {
+    const missed = splitAction(() => useTimelineStore.getState(), 50, 'playhead');
+    const cut = splitAction(() => useTimelineStore.getState(), 3, 'playhead');
+    expect({ missed, cut }).toEqual({ missed: 'none', cut: 'split' });
+  });
 });

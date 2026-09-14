@@ -1,6 +1,7 @@
 import type { Message, UserMessage, AssistantMessage, ToolResultMessage, TextContent, ToolCall } from '@mariozechner/pi-ai';
 import type { ChatMessage } from '@/types';
 import type { AgentToolCallRecord } from './types';
+import { compactToolResult } from './compactToolResult';
 
 /**
  * Options for `convertToAgentMessages`.
@@ -30,19 +31,25 @@ export function convertToAgentMessages(
   const { compactExploreToolsResults = false } = options;
   const result: Message[] = [];
 
-  // Locate the LAST assistant message that was sealed as cancelled — the
-  // resume system note is emitted at most once, for the most recent
-  // cancelled assistant (spec §2.7 / P1-9). Older cancelled assistants are
-  // visible to the LLM via their cancelled toolResult; piling on a system
-  // note per-cancellation would just bloat the prompt.
+  // The resume system note is about the turn right before this one: it is
+  // emitted at most once, and only when the LAST assistant message was
+  // sealed as cancelled (spec §2.7 / P1-9). A stop several turns back, after
+  // which a later turn completed, must not keep telling the model on every
+  // request that it was just stopped. Older cancelled assistants stay
+  // visible to the LLM through their cancelled toolResult.
+  let lastAssistantIndex = -1;
   let lastCancelledAssistantIndex = -1;
   for (let i = chatMessages.length - 1; i >= 0; i--) {
     const m = chatMessages[i];
-    if (m.role === 'assistant' && m.isCancelled) {
+    if (m.role !== 'assistant') continue;
+    if (lastAssistantIndex === -1) lastAssistantIndex = i;
+    if (m.isCancelled) {
       lastCancelledAssistantIndex = i;
       break;
     }
   }
+  const lastTurnWasStopped =
+    lastCancelledAssistantIndex !== -1 && lastCancelledAssistantIndex === lastAssistantIndex;
 
   for (const msg of chatMessages) {
     if (msg.role === 'user') {
@@ -111,7 +118,7 @@ export function convertToAgentMessages(
             const text =
               compactExploreToolsResults && isExploreCall
                 ? `(explore_tools result for category "${(tc.params as Record<string, unknown>)?.category ?? 'unknown'}" — see "已加载的高级工具" section in the system prompt for full details.)`
-                : JSON.stringify(tc.result);
+                : JSON.stringify(compactToolResult(tc.result));
             const toolResult: ToolResultMessage = {
               role: 'toolResult',
               toolCallId: tc.id,
@@ -150,7 +157,7 @@ export function convertToAgentMessages(
   // appended exactly once, only when the most recent assistant in the
   // history was sealed as cancelled — limiting the note to "most recent"
   // prevents N stop/resume cycles from injecting N notes (P1-9).
-  if (lastCancelledAssistantIndex !== -1) {
+  if (lastTurnWasStopped) {
     const note: UserMessage = {
       role: 'user',
       content:

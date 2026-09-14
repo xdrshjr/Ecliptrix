@@ -1,7 +1,8 @@
 'use strict'
 
 const path = require('path')
-const { BrowserWindow, screen, shell } = require('electron')
+const { BrowserWindow, dialog, ipcMain, screen, shell } = require('electron')
+const { installCloseGuard } = require('./closeGuard')
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets')
 const DEFAULT_WINDOW_WIDTH = 1366
@@ -86,7 +87,7 @@ function resolveInitialWindowState({ savedBounds, workAreaSize }) {
  * Main application window pointed at the local Next.js server. Same-origin
  * URLs stay inside the window; everything else opens in the system browser.
  */
-function createMainWindow({ url, bounds, onBoundsChange, version, logsPath }) {
+function createMainWindow({ url, bounds, onBoundsChange, version, logsPath, logger, isQuitting }) {
   const workAreaSize = screen.getPrimaryDisplay().workAreaSize
   const initialWindowState = resolveInitialWindowState({
     savedBounds: bounds,
@@ -135,6 +136,16 @@ function createMainWindow({ url, bounds, onBoundsChange, version, logsPath }) {
     ) {
       onBoundsChange(win.getBounds())
     }
+  })
+
+  // Registered after the bounds handler, which therefore still runs on a close
+  // the guard holds back. Once the app is quitting the services are already
+  // stopped, so the guard lets the close through (RV-02).
+  installCloseGuard(win, {
+    ipcMain,
+    dialog,
+    logger,
+    shouldBypass: () => (typeof isQuitting === 'function' ? isQuitting() : false),
   })
 
   // Push maximize-state changes to the renderer so the self-drawn title bar can

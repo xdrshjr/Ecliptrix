@@ -21,15 +21,18 @@ import {
   isCommitted as isCommittedQuery,
 } from '../../domain';
 import type {
+  DragContext,
+  DragSnapshot,
   PointerDownEvent,
   PointerMoveEvent,
   PointerUpEvent,
-  MaterialData,
 } from '../../domain';
 import { DragCalculationService } from '../../domain';
 import type { TimelineStore } from '../useTimelineStore';
-import { addItemAction } from '../actions/addItem';
+import { moveItemAction } from '../actions/moveItem';
+import { resizeItemAction } from '../actions/resizeItem';
 import { swapItemsAction } from '../actions/swapItems';
+import { isEditLocked } from '../editLock';
 
 // ---------------------------------------------------------------------------
 // Drag preview shape (plain object for React)
@@ -88,10 +91,132 @@ export interface DragSlice {
   // Material drag-over actions
   setMaterialDragOver: (trackId: string, materialType: string, isCompatible: boolean) => void;
   clearMaterialDragOver: () => void;
-  dropMaterial: (trackId: string, material: MaterialData) => void;
 
   // Cleanup
   disposeDragActor: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Commit decisions (pure)
+// ---------------------------------------------------------------------------
+
+const CHANGE_EPSILON_SECONDS = 1e-6;
+
+type CommitContext = Pick<DragContext, 'trackId' | 'originalStartTime' | 'originalDuration'>;
+
+type SetStore = (partial: Partial<TimelineStore>) => void;
+
+/** The pointer finished over a different lane than the clip started on. */
+function isCrossTrackMove(preview: DragPreviewData, context: CommitContext): boolean {
+  return !!preview.targetTrackId && preview.targetTrackId !== context.trackId;
+}
+
+/** A move commit changes something: another lane, a swap, or a new start time. */
+function hasMoveChanged(
+  preview: DragPreviewData,
+  context: CommitContext,
+  swapTargetId: string | null,
+): boolean {
+  if (isCrossTrackMove(preview, context)) return true;
+  if (swapTargetId !== null && swapTargetId !== preview.itemId) return true;
+  return Math.abs(preview.startTime - context.originalStartTime) > CHANGE_EPSILON_SECONDS;
+}
+
+/** A trim commit changes the clip's start or length. */
+function hasResizeChanged(preview: DragPreviewData, context: CommitContext): boolean {
+  return (
+    Math.abs(preview.startTime - context.originalStartTime) > CHANGE_EPSILON_SECONDS ||
+    Math.abs(preview.duration - context.originalDuration) > CHANGE_EPSILON_SECONDS
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Commit
+// ---------------------------------------------------------------------------
+
+function commitCrossTrackMove(get: () => TimelineStore, preview: DragPreviewData): void {
+  const state = get();
+  const targetTrackId = preview.targetTrackId as string;
+  // Transfer the clip to the track under the pointer. moveItem guards the
+  // target (unlocked + type-compatible) and falls back to a same-track
+  // move if it can't accept, so the clip is never dropped (§8.3).
+  state.recordAction('MOVE_ITEM', {
+    itemId: preview.itemId,
+    newStartTime: preview.startTime,
+    targetTrackId,
+  });
+  state.moveItem(preview.itemId, preview.startTime, false, targetTrackId);
+  state.autoOrganize();
+  // Fix C: the clip has correctly transferred to the target track, but
+  // autoOrganize repacks that track flush-from-0, so a short clip dropped
+  // onto a track that already holds a long clip lands past the right edge of
+  // the viewport and reads as "lost". Select it and ask the panel to scroll it
+  // into view so the cross-track move is observable.
+  state.selectItem(preview.itemId);
+  state.requestScrollItemIntoView(preview.itemId);
+  get().captureNextState();
+}
+
+function commitMove(
+  get: () => TimelineStore,
+  set: SetStore,
+  context: DragContext,
+  preview: DragPreviewData,
+): void {
+  const state = get();
+  const swapTargetId = state.swapTargetItemId;
+
+  // Why: updateDrag mutated the aggregate via moveItem(…, true) on every
+  // POINTER_MOVE, so by commit the dragged item already sits at
+  // preview.startTime. Roll it back to its pre-drag startTime silently (no
+  // history, no autoOrganize) so a recorded before-snapshot captures the true
+  // pre-drag state, and so a refused or unchanged commit leaves it in place.
+  state.moveItem(preview.itemId, context.originalStartTime, false);
+
+  // Releasing at the origin is not an edit, and the agent may have taken the
+  // timeline mid-gesture.
+  if (isEditLocked(get()) || !hasMoveChanged(preview, context, swapTargetId)) return;
+
+  if (isCrossTrackMove(preview, context)) {
+    // Cross-track transfers skip the swap branch: findSwapTarget only scans
+    // the source track, so a swap target held here is stale.
+    commitCrossTrackMove(get, preview);
+  } else if (swapTargetId !== null && swapTargetId !== preview.itemId) {
+    // Dispatch as a swap; swapItemsAction records history + auto-organizes.
+    swapItemsAction(get, preview.itemId, swapTargetId);
+    set({ swapTargetItemId: null });
+  } else {
+    moveItemAction(get, preview.itemId, preview.startTime);
+  }
+}
+
+function commitResize(
+  get: () => TimelineStore,
+  context: DragContext,
+  preview: DragPreviewData,
+): void {
+  if (!hasResizeChanged(preview, context)) return;
+  const edge = context.interactionType === 'resize-start' ? 'start' : 'end';
+  const position = edge === 'start' ? preview.startTime : preview.startTime + preview.duration;
+  // resizeItemAction owns the lock check, history, trim, camera-motion window
+  // shift and auto-organize; the drag path used to bypass all of it (TL2-02).
+  resizeItemAction(get, preview.itemId, edge, position);
+}
+
+/**
+ * Apply a committed interaction. Nothing is recorded when nothing changed,
+ * and a clip that vanished mid-drag (undo, delete or an external replace
+ * landed under the gesture) is left alone (TL2-18).
+ */
+function commitInteraction(get: () => TimelineStore, set: SetStore, snapshot: DragSnapshot): void {
+  const preview = getDragPreviewQuery(snapshot);
+  if (!preview || get()._aggregate.findItem(preview.itemId) === null) return;
+  const { context } = snapshot;
+  if (context.interactionType === 'move') {
+    commitMove(get, set, context, preview);
+  } else if (context.interactionType === 'resize-start' || context.interactionType === 'resize-end') {
+    commitResize(get, context, preview);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +225,7 @@ export interface DragSlice {
 
 function ensureDragActor(
   get: () => TimelineStore,
-  set: (partial: Partial<TimelineStore>) => void,
+  set: SetStore,
 ): ActorRefFrom<typeof dragMachine> {
   const existing = get()._dragActor;
   if (existing) return existing;
@@ -109,110 +234,22 @@ function ensureDragActor(
 
   // Subscribe to state changes to sync derived fields
   actor.subscribe((snapshot) => {
-    const dragging = isDraggingQuery(snapshot);
-    const resizing = isResizingQuery(snapshot);
-    const interacting = isInteractingQuery(snapshot);
-    const preview = getDragPreviewQuery(snapshot);
-    const committed = isCommittedQuery(snapshot);
-
     set({
-      isDragging: dragging,
-      isResizing: resizing,
-      isInteracting: interacting,
-      dragPreview: preview,
+      isDragging: isDraggingQuery(snapshot),
+      isResizing: isResizingQuery(snapshot),
+      isInteracting: isInteractingQuery(snapshot),
+      dragPreview: getDragPreviewQuery(snapshot),
     });
 
-    // When the machine reaches the committed state, apply the final
-    // position to the timeline and record history, then send
-    // COMMIT_COMPLETE to reset the machine.
-    //
-    // Previously this path bypassed recordAction/captureNextState entirely,
-    // so users could not undo a drag commit. We now wrap the mutation in the
-    // same record → mutate → autoOrganize → rAF(capture) pattern used by the
-    // orchestrated actions, and branch on swapTargetItemId to dispatch a
-    // swap instead of a move when the preview center is parked on a peer.
-    if (committed && preview) {
-      const state = get();
-      const interactionType = snapshot.context.interactionType;
-      const originalStartTime = snapshot.context.originalStartTime;
-      const swapTargetId = get().swapTargetItemId;
-
-      // Cross-track move: the pointer finished over a different track than the
-      // clip started on. Cross-track transfers must skip the swap branch —
-      // findSwapTarget only scans the source track, so any swapTargetId held
-      // here is stale and must not hijack the commit (analysis constraint #3).
-      const sourceTrackId = snapshot.context.trackId;
-      const targetTrackId = preview.targetTrackId ?? null;
-      const isCrossTrackMove =
-        interactionType === 'move' && !!targetTrackId && targetTrackId !== sourceTrackId;
-
-      // Why: updateDrag mutated the aggregate via moveItem(…, true) on every
-      // POINTER_MOVE for move interactions (timelineSlice.moveItem currently
-      // ignores its isPreview flag), so by commit the dragged item already
-      // sits at preview.startTime. If we let recordAction() / swapItemsAction
-      // fire as-is, the "before" snapshot would capture the post-preview
-      // state and Undo would roll back to the drag's end position — a no-op.
-      // Roll the item back to its pre-drag startTime silently (no history,
-      // no autoOrganize) so the subsequent recordAction captures true
-      // pre-drag state. Resize paths don't hit updateDrag's mutation block
-      // (that block is gated on isDragging which returns false for resize
-      // states), so rollback is move-only.
-      if (interactionType === 'move') {
-        state.moveItem(preview.itemId, originalStartTime, false);
-      }
-
-      if (isCrossTrackMove && targetTrackId) {
-        // Transfer the clip to the track under the pointer. moveItem guards the
-        // target (unlocked + type-compatible) and falls back to a same-track
-        // move if it can't accept, so the clip is never dropped (§8.3).
-        state.recordAction('MOVE_ITEM', {
-          itemId: preview.itemId,
-          newStartTime: preview.startTime,
-          targetTrackId,
-        });
-        state.moveItem(preview.itemId, preview.startTime, false, targetTrackId);
-        state.autoOrganize();
-        // Fix C: the clip has correctly transferred to the target track, but
-        // autoOrganize repacks that track flush-from-0, so a short clip dropped
-        // onto a track that already holds a long clip (e.g. narration on
-        // audio-track-1) lands past the right edge of the viewport and reads as
-        // "lost". Select it and ask the panel to scroll it into view so the
-        // cross-track move is observable. Data already moved + non-overlapping
-        // (INV-5 preserved) — this is purely a visibility aid.
-        state.selectItem(preview.itemId);
-        state.requestScrollItemIntoView(preview.itemId);
-        get().captureNextState();
-      } else if (interactionType === 'move' && swapTargetId && swapTargetId !== preview.itemId) {
-        // Dispatch as a swap; swapItemsAction records history + auto-organizes.
-        swapItemsAction(get, preview.itemId, swapTargetId);
-        set({ swapTargetItemId: null } as Partial<TimelineStore>);
-      } else if (interactionType === 'move') {
-        state.recordAction('MOVE_ITEM', {
-          itemId: preview.itemId,
-          newStartTime: preview.startTime,
-        });
-        state.moveItem(preview.itemId, preview.startTime, false);
-        state.autoOrganize();
-        get().captureNextState();
-      } else if (interactionType === 'resize-start' || interactionType === 'resize-end') {
-        const edge = interactionType === 'resize-start' ? 'start' : 'end';
-        const position = edge === 'start' ? preview.startTime : preview.startTime + preview.duration;
-        state.recordAction('UPDATE_ITEM', {
-          itemId: preview.itemId,
-          edge,
-          newPosition: position,
-        });
-        state.resizeItem(preview.itemId, edge, position);
-        state.autoOrganize();
-        get().captureNextState();
-      }
-
-      // Always clear any lingering swap target at commit boundary.
+    // Reaching `committed` must ALWAYS end with COMMIT_COMPLETE. It used to be
+    // sent only when a preview existed, so a flick released right after the
+    // threshold parked the machine in `committed` and killed every later drag
+    // of the session (TL2-16).
+    if (isCommittedQuery(snapshot)) {
+      commitInteraction(get, set, snapshot);
       if (get().swapTargetItemId !== null) {
-        set({ swapTargetItemId: null } as Partial<TimelineStore>);
+        set({ swapTargetItemId: null });
       }
-
-      // Signal commit complete to reset the machine
       actor.send({ type: 'COMMIT_COMPLETE' });
     }
   });
@@ -241,6 +278,9 @@ export const createDragSlice: StateCreator<
   materialDragOver: null,
 
   startDrag: (event: PointerDownEvent) => {
+    // Refuse at the source: a drag started under the agent's lock would still
+    // preview-move the clip in the store even though its commit is refused.
+    if (isEditLocked(get())) return;
     const actor = ensureDragActor(get, set);
     actor.send(event);
   },
@@ -323,15 +363,6 @@ export const createDragSlice: StateCreator<
   },
 
   clearMaterialDragOver: () => {
-    set({ materialDragOver: null });
-  },
-
-  dropMaterial: (trackId: string, material: MaterialData) => {
-    // Delegate to the orchestrated addItemAction so the drop participates in
-    // history + autoOrganize, same as toolbar/panel-triggered adds. Previously
-    // this called state.addItemToTrack(...) directly, bypassing both.
-    addItemAction(get, trackId, material);
-    // Clear drag-over state
     set({ materialDragOver: null });
   },
 

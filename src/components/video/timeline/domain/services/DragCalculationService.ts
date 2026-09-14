@@ -14,7 +14,7 @@
  */
 
 import { TimePosition } from '../value-objects/TimePosition';
-import { Duration } from '../value-objects/Duration';
+import { Duration, MIN_CLIP_DURATION_SECONDS } from '../value-objects/Duration';
 import { ZoomLevel } from '../value-objects/ZoomLevel';
 import type { TrackData } from '../types';
 
@@ -28,12 +28,6 @@ import type { TrackData } from '../types';
  * Extracted from TimelineItem.tsx line 60: `const resizeThreshold = 8`.
  */
 const RESIZE_HANDLE_WIDTH = 8;
-
-/**
- * Minimum duration (in seconds) that an item can be resized to.
- * Extracted from TimelineItem.tsx lines 147 and 181.
- */
-const DEFAULT_MIN_DURATION = 0.1;
 
 /**
  * Default center-region ratio for swap hit detection. Kept in sync with
@@ -205,7 +199,7 @@ export class DragCalculationService {
     originalDuration?: number,
     clipStart?: number,
     clipEnd?: number,
-    minDuration: number = DEFAULT_MIN_DURATION,
+    minDuration: number = MIN_CLIP_DURATION_SECONDS,
   ): ResizeResult {
     const deltaTime = DragCalculationService.pixelsToTime(deltaX, zoomLevel);
     const origDur = originalDuration ?? initialDuration.value;

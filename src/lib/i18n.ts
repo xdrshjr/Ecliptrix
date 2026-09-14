@@ -323,6 +323,13 @@ export interface Translations {
     defaultPageTitle: string;
   };
   videoProjects: {
+    closeUnsavedTitle: string;
+    closeUnsavedBody: string;
+    closeSaveSlowBody: string;
+    keepOpen: string;
+    closeAnyway: string;
+    timelineRepaired: string;
+    timelineUnreadable: string;
     title: string;
     projectActions: string;
     closeMenu: string;
@@ -472,6 +479,10 @@ export interface Translations {
       localWillStream: string;
     };
     messages: {
+      externalUpdateRejected: string;
+      splitTooCloseToEdge: string;
+      incompatibleTrack: string;
+      materialNotFound: string;
       noAudioItems: string;
       noSubtitleTrack: string;
       subtitleExtractionFailed: string;
@@ -598,6 +609,49 @@ export interface Translations {
       };
     };
     subtitleEditModal: {
+      styleSettings: string;
+      editingSingle: string;
+      editingAll: string;
+      applyToAll: string;
+      presets: {
+        default: string;
+        classic: string;
+        modern: string;
+        elegant: string;
+        tech: string;
+      };
+      fonts: {
+        default: string;
+        serif: string;
+        sansSerif: string;
+        monospace: string;
+      };
+      positions: {
+        top: string;
+        upper34: string;
+        center: string;
+        lower34: string;
+        bottom: string;
+      };
+      closeAriaLabel: string;
+      discardChangesTitle: string;
+      discardChangesBody: string;
+      discardChangesConfirm: string;
+      noSubtitlesHint: string;
+      presetsHeading: string;
+      presetSample: string;
+      fontFamily: string;
+      fontSize: string;
+      fontColor: string;
+      backgroundColor: string;
+      enableBackground: string;
+      position: string;
+      stylePreview: string;
+      stylePreviewSample: string;
+      contentHeading: string;
+      contentHint: string;
+      itemPreviewFallback: string;
+      countSummary: string;
       title: string;
       subtitle: string;
       noSubtitles: string;
@@ -624,6 +678,14 @@ export interface Translations {
     };
   };
   materialsPanel: {
+    deleteConfirmTitle: string;
+    deleteConfirmBody: string;
+    deleteConfirmBodyMany: string;
+    deleteInUseBody: string;
+    deleteInUseBodyMany: string;
+    deleteBlockedLocked: string;
+    deleteConfirmAction: string;
+    deleteFailedClipsRemoved: string;
     title: string;
     aiAutoMix: string;
     upload: string;
@@ -810,6 +872,11 @@ export interface Translations {
     undoHint: string;
   };
   aiMixingProgress: {
+    errorInternal: string;
+    errorBackendUnreachable: string;
+    errorInvalidRequest: string;
+    errorImportFailed: string;
+    analysisIncomplete: string;
     title: string;
     stepAnalyze: string;
     stepPlan: string;
@@ -833,8 +900,24 @@ export interface Translations {
     errorGeneric: string;
   };
   agentUndo: {
+    blockedWhileRunning: string;
     conflict: string;
     notUndoable: string;
+  };
+  imageOverlay: {
+    done: string;
+    revert: string;
+  };
+  agentApply: {
+    notApplied: string;
+    reasons: {
+      clipNotFound: string;
+      trackNotFound: string;
+      targetTrackMissing: string;
+      invalidTime: string;
+    };
+    finishing: string;
+    finishingTimedOut: string;
   };
   batchAnalysisModal: {
     title: string;
@@ -1054,13 +1137,18 @@ export interface Translations {
     };
   };
   videoExport: {
+    nothingVisibleToExport: string;
+    missingMaterials: string;
+    degradedTitle: string;
+    degradedImageOverlay: string;
+    degradedSubtitles: string;
+    degradedAudioItem: string;
+    degradedEmbeddedAudio: string;
+    blackTailNotice: string;
+    moreItems: string;
     noContentToExport: string;
     noContentToExportDesc: string;
     noContentToExportFull: string;
-    videoTrackTooShort: string;
-    videoTrackDuration: string;
-    audioTrackDuration: string;
-    needToAdd: string;
     exportCompletedButDownloadFailed: string;
     exportTimeout: string;
     exportFailed: string;
@@ -1282,6 +1370,8 @@ export interface Translations {
   };
   videoEditing: {
     autoMix: {
+      orphansIgnored: string;
+      videoShort: string;
       noMaterials: string;
       noScriptMaterials: string;
       replaceConfirmTitle: string;
@@ -2733,6 +2823,13 @@ export const translations: Record<string, Translations> = {
       defaultPageTitle: 'Ecliptrix — Where light and shadow collide',
     },
     videoProjects: {
+      closeUnsavedTitle: "Some changes aren't saved yet",
+      closeUnsavedBody: 'Saving the project failed. If you close now, your latest changes may be lost.',
+      closeSaveSlowBody: 'The project is still saving. If you close now, your latest changes may be lost.',
+      keepOpen: 'Keep open',
+      closeAnyway: 'Close anyway',
+      timelineRepaired: '{count} clips in this project had invalid data and were repaired',
+      timelineUnreadable: "The timeline couldn't be read. A backup of the original data was kept and the project opened with an empty timeline",
       title: 'Video Projects',
       projectActions: 'Project actions',
       closeMenu: 'Close menu',
@@ -2793,6 +2890,14 @@ export const translations: Record<string, Translations> = {
       workspaceDescription: 'This is where the {type} workspace will be displayed. The specific functionality for each task type will be implemented in future iterations.',
     },
     materialsPanel: {
+      deleteConfirmTitle: 'Delete material',
+      deleteConfirmBody: 'Delete "{name}"? The file can\'t be recovered afterwards.',
+      deleteConfirmBodyMany: "Delete these {count} materials? The files can't be recovered afterwards.",
+      deleteInUseBody: '{count} clips on the timeline use "{name}". Deleting it also removes those clips. The file can\'t be recovered afterwards.',
+      deleteInUseBodyMany: "{count} clips on the timeline use these {materialCount} materials. Deleting them also removes those clips. The files can't be recovered afterwards.",
+      deleteBlockedLocked: '{count} clips using this material are on locked tracks. Unlock those tracks first',
+      deleteConfirmAction: 'Delete',
+      deleteFailedClipsRemoved: "Couldn't delete the material, so the file was kept. Press Ctrl+Z to bring the removed clips back",
       title: 'Materials Management',
       aiAutoMix: 'AI Auto Mix',
       upload: 'Upload',
@@ -2987,6 +3092,11 @@ export const translations: Record<string, Translations> = {
       undoHint: 'You can undo with Ctrl+Z afterwards',
     },
     aiMixingProgress: {
+      errorInternal: 'Something went wrong while generating the edit. Try again',
+      errorBackendUnreachable: "Can't reach the local service. Restart the app and try again",
+      errorInvalidRequest: "Some materials couldn't be sent to the editing model",
+      errorImportFailed: "The editing plan couldn't be applied to the timeline",
+      analysisIncomplete: "{count} videos couldn't be analyzed, so the plan used only their names and durations",
       title: 'AI Auto Edit',
       stepAnalyze: 'Analyze footage',
       stepPlan: 'Plan the edit',
@@ -3010,8 +3120,24 @@ export const translations: Record<string, Translations> = {
       errorGeneric: 'AI auto edit failed: {message}',
     },
     agentUndo: {
+      blockedWhileRunning: 'The agent is still working. You can undo when it finishes',
       conflict: "The timeline changed after this step, so it can't be undone on its own. Use Ctrl+Z instead",
       notUndoable: 'This step made no timeline change to undo',
+    },
+    imageOverlay: {
+      done: 'Done',
+      revert: 'Revert position',
+    },
+    agentApply: {
+      notApplied: "This step couldn't be applied to the timeline",
+      reasons: {
+        clipNotFound: 'The clip no longer exists',
+        trackNotFound: 'The track no longer exists',
+        targetTrackMissing: "The target track doesn't exist",
+        invalidTime: 'The time value is invalid',
+      },
+      finishing: 'Applying the last changes to the timeline…',
+      finishingTimedOut: 'Some changes took too long to apply. The timeline is unlocked, so check the result',
     },
     batchAnalysisModal: {
       title: 'Select Batch Analysis Mode',
@@ -3119,6 +3245,10 @@ export const translations: Record<string, Translations> = {
         localWillStream: 'Will stream',
       },
       messages: {
+        externalUpdateRejected: "An external change couldn't be applied. The timeline was left unchanged",
+        splitTooCloseToEdge: 'Too close to the clip edge to split. Each part needs at least 0.1 s',
+        incompatibleTrack: "This track can't hold this type of material",
+        materialNotFound: 'This material is no longer in the library',
         noAudioItems: 'No audio items found, please add audio to the timeline first.',
         noSubtitleTrack: 'No subtitle track found, please add a subtitle track first.',
         subtitleExtractionFailed: 'Subtitle extraction failed, no subtitle content was generated.',
@@ -3248,6 +3378,49 @@ export const translations: Record<string, Translations> = {
         },
       },
       subtitleEditModal: {
+        styleSettings: 'Style',
+        editingSingle: 'Editing one subtitle',
+        editingAll: 'Editing all subtitles',
+        applyToAll: 'Apply to all',
+        presets: {
+          default: 'Default',
+          classic: 'Classic',
+          modern: 'Modern',
+          elegant: 'Elegant',
+          tech: 'Tech',
+        },
+        fonts: {
+          default: 'Default',
+          serif: 'Serif',
+          sansSerif: 'Sans serif',
+          monospace: 'Monospace',
+        },
+        positions: {
+          top: 'Top',
+          upper34: 'Upper third',
+          center: 'Center',
+          lower34: 'Lower third',
+          bottom: 'Bottom',
+        },
+        closeAriaLabel: 'Close',
+        discardChangesTitle: 'Discard unsaved changes?',
+        discardChangesBody: "Your subtitle changes won't be saved",
+        discardChangesConfirm: 'Discard',
+        noSubtitlesHint: 'Add subtitles to the timeline first',
+        presetsHeading: 'Presets',
+        presetSample: 'Sample',
+        fontFamily: 'Font',
+        fontSize: 'Font size: {size}px',
+        fontColor: 'Font color',
+        backgroundColor: 'Background',
+        enableBackground: 'Show background',
+        position: 'Position',
+        stylePreview: 'Preview',
+        stylePreviewSample: 'This is how subtitles will look',
+        contentHeading: 'Subtitle text',
+        contentHint: 'Select a subtitle to edit it',
+        itemPreviewFallback: 'Subtitle preview',
+        countSummary: '{count} subtitles',
         title: 'Edit Subtitles',
         subtitle: 'Edit subtitle text for each timeline segment',
         noSubtitles: 'No subtitles found in the subtitle track',
@@ -3473,13 +3646,18 @@ export const translations: Record<string, Translations> = {
       },
     },
     videoExport: {
+      nothingVisibleToExport: "There's nothing visible to export. Add a video or an image first",
+      missingMaterials: '{count} clips use deleted materials ({names}). Remove those clips before exporting',
+      degradedTitle: 'Export finished, but some content is missing from the video:',
+      degradedImageOverlay: 'Images not rendered: {names}',
+      degradedSubtitles: "Subtitles couldn't be burned into the video",
+      degradedAudioItem: 'Audio not mixed in: {names}',
+      degradedEmbeddedAudio: 'Original video sound not mixed in: {names}',
+      blackTailNotice: 'The last {seconds} s of the video have no picture and will be black',
+      moreItems: 'and {count} more',
       noContentToExport: 'No content to export',
       noContentToExportDesc: 'Please add video materials to the timeline before exporting',
       noContentToExportFull: 'No content to export. Please add video materials to the timeline before exporting.',
-      videoTrackTooShort: 'Video track is too short!',
-      videoTrackDuration: 'Video track duration:',
-      audioTrackDuration: 'Audio track duration:',
-      needToAdd: 'Need to add more video content.',
       exportCompletedButDownloadFailed: 'Video export completed but download failed. Please refresh the page and try again, or contact support.',
       exportTimeout: 'Video export timed out: processing exceeded the 10-minute limit. Try reducing video duration or complexity, or try again later.',
       exportFailed: 'Video export failed',
@@ -3698,6 +3876,8 @@ export const translations: Record<string, Translations> = {
      },
    videoEditing: {
      autoMix: {
+       orphansIgnored: 'Ignored {count} materials from deleted or replaced script segments',
+       videoShort: "Segments {list} don't have enough video to cover their voice-over",
        noMaterials: 'Add video, audio, or image materials before running auto-mix.',
        noScriptMaterials: 'Auto-mix needs audio and video generated from the text-script panel — run TTS and AI video matching first.',
        replaceConfirmTitle: 'Replace existing clips?',
@@ -5157,6 +5337,13 @@ export const translations: Record<string, Translations> = {
       defaultPageTitle: 'Ecliptrix — 光影交汇之处',
     },
     videoProjects: {
+      closeUnsavedTitle: '部分修改尚未保存',
+      closeUnsavedBody: '保存项目时出错。现在关闭，最近的修改可能会丢失。',
+      closeSaveSlowBody: '项目仍在保存。现在关闭，最近的修改可能会丢失。',
+      keepOpen: '保持打开',
+      closeAnyway: '仍然关闭',
+      timelineRepaired: '项目中有 {count} 个片段的数据无效，已自动修复',
+      timelineUnreadable: '时间轴数据无法读取，已保留原始数据的备份，并以空时间轴打开',
       title: '视频项目',
       projectActions: '项目操作',
       closeMenu: '关闭菜单',
@@ -5217,6 +5404,14 @@ export const translations: Record<string, Translations> = {
       workspaceDescription: '这里将显示{type}工作区。每种任务类型的具体功能将在未来的迭代中实现。',
     },
     materialsPanel: {
+      deleteConfirmTitle: '删除素材',
+      deleteConfirmBody: '确定删除素材「{name}」吗？素材文件删除后无法恢复。',
+      deleteConfirmBodyMany: '确定删除这 {count} 个素材吗？素材文件删除后无法恢复。',
+      deleteInUseBody: '时间轴上有 {count} 个片段使用了「{name}」，删除素材会同时移除这些片段。素材文件删除后无法恢复。',
+      deleteInUseBodyMany: '时间轴上有 {count} 个片段使用了这 {materialCount} 个素材，删除会同时移除这些片段。素材文件删除后无法恢复。',
+      deleteBlockedLocked: '有 {count} 个使用该素材的片段位于锁定轨道上，请先解锁轨道再删除',
+      deleteConfirmAction: '删除',
+      deleteFailedClipsRemoved: '素材删除失败，文件仍保留；已移除的片段可按 Ctrl+Z 恢复',
       title: '素材管理',
       aiAutoMix: 'AI自动混剪',
       upload: '上传',
@@ -5411,6 +5606,11 @@ export const translations: Record<string, Translations> = {
       undoHint: '完成后可按 Ctrl+Z 撤销',
     },
     aiMixingProgress: {
+      errorInternal: '生成剪辑方案时出错，请重试',
+      errorBackendUnreachable: '无法连接本地服务，请重启应用后重试',
+      errorInvalidRequest: '部分素材信息无效，无法发送给剪辑模型',
+      errorImportFailed: '剪辑方案无法应用到时间轴',
+      analysisIncomplete: '{count} 个视频未能完成解析，方案仅参考了名称与时长',
       title: 'AI 混剪',
       stepAnalyze: '分析素材',
       stepPlan: '生成剪辑方案',
@@ -5434,8 +5634,24 @@ export const translations: Record<string, Translations> = {
       errorGeneric: 'AI 混剪失败：{message}',
     },
     agentUndo: {
+      blockedWhileRunning: 'Agent 正在执行，完成后才能撤销',
       conflict: '时间轴在该操作之后已被修改，无法单独撤销，可使用 Ctrl+Z 逐步撤销',
       notUndoable: '该步骤没有可撤销的时间轴改动',
+    },
+    imageOverlay: {
+      done: '完成',
+      revert: '还原位置',
+    },
+    agentApply: {
+      notApplied: '该步骤未能应用到时间轴',
+      reasons: {
+        clipNotFound: '片段不存在',
+        trackNotFound: '轨道不存在',
+        targetTrackMissing: '目标轨道不存在',
+        invalidTime: '时间值无效',
+      },
+      finishing: '正在把最后的修改应用到时间轴…',
+      finishingTimedOut: '部分修改应用超时，时间轴已解锁，请检查结果',
     },
     batchAnalysisModal: {
       title: '选择批量解析模式',
@@ -5543,6 +5759,10 @@ export const translations: Record<string, Translations> = {
         localWillStream: '将以流式预览',
       },
               messages: {
+          externalUpdateRejected: '外部修改无法应用，时间轴保持不变',
+          splitTooCloseToEdge: '离片段边缘太近，无法切分（每段至少 0.1 秒）',
+          incompatibleTrack: '这条轨道不能放置该类型的素材',
+          materialNotFound: '素材库中已找不到该素材',
           noAudioItems: '没有找到音频项目，请先添加音频到时间轴。',
           noSubtitleTrack: '没有找到字幕轨道，请先添加字幕轨道。',
           subtitleExtractionFailed: '字幕提取失败，没有生成任何字幕内容。',
@@ -5670,6 +5890,49 @@ export const translations: Record<string, Translations> = {
         },
       },
       subtitleEditModal: {
+        styleSettings: '样式设置',
+        editingSingle: '编辑单条字幕',
+        editingAll: '编辑全部字幕',
+        applyToAll: '应用到全部',
+        presets: {
+          default: '默认样式',
+          classic: '经典样式',
+          modern: '现代样式',
+          elegant: '优雅样式',
+          tech: '科技样式',
+        },
+        fonts: {
+          default: '默认字体',
+          serif: '衬线字体 (Serif)',
+          sansSerif: '无衬线字体 (Sans-serif)',
+          monospace: '等宽字体 (Monospace)',
+        },
+        positions: {
+          top: '顶部居中',
+          upper34: '上3/4高度',
+          center: '居中',
+          lower34: '下3/4高度',
+          bottom: '底部',
+        },
+        closeAriaLabel: '关闭',
+        discardChangesTitle: '放弃未保存的修改？',
+        discardChangesBody: '关闭后，本次对字幕的修改不会保存',
+        discardChangesConfirm: '放弃修改',
+        noSubtitlesHint: '请先在时间轴上添加字幕后再进行编辑',
+        presetsHeading: '预设样式',
+        presetSample: '示例文字',
+        fontFamily: '字体类型',
+        fontSize: '字体大小: {size}px',
+        fontColor: '字体颜色',
+        backgroundColor: '背景颜色',
+        enableBackground: '启用背景',
+        position: '字幕位置',
+        stylePreview: '样式预览',
+        stylePreviewSample: '这是字幕预览文字',
+        contentHeading: '字幕内容编辑',
+        contentHint: '点击字幕片段进行编辑',
+        itemPreviewFallback: '字幕预览',
+        countSummary: '共 {count} 个字幕片段',
         title: '编辑字幕',
         subtitle: '编辑时间轴上每个字幕片段的文本内容',
         noSubtitles: '字幕轨道中没有找到字幕',
@@ -5895,13 +6158,18 @@ export const translations: Record<string, Translations> = {
       },
     },
     videoExport: {
+      nothingVisibleToExport: '时间轴上没有可导出的画面，请先添加视频或图片',
+      missingMaterials: '有 {count} 个片段的素材已被删除（{names}），请先删除这些片段再导出',
+      degradedTitle: '导出已完成，但以下内容未写入视频：',
+      degradedImageOverlay: '图片未渲染：{names}',
+      degradedSubtitles: '字幕未能烧录到视频中',
+      degradedAudioItem: '音频未混入：{names}',
+      degradedEmbeddedAudio: '视频原声未混入：{names}',
+      blackTailNotice: '视频末尾 {seconds} 秒没有画面，将显示为黑屏',
+      moreItems: '等 {count} 个',
       noContentToExport: '没有视频内容可导出',
       noContentToExportDesc: '请先添加视频素材到时间轴',
       noContentToExportFull: '没有视频内容可导出，请先添加视频素材到时间轴',
-      videoTrackTooShort: '视频轨道长度不足！',
-      videoTrackDuration: '视频轨道时长',
-      audioTrackDuration: '音频轨道时长',
-      needToAdd: '需要增加的视频内容。',
       exportCompletedButDownloadFailed: '视频导出已完成但下载失败。请刷新页面后重试，或联系技术支持。',
       exportTimeout: '视频导出超时：处理时间超过10分钟限制。请尝试减少视频时长或复杂度，降低输出分辨率，或稍后重试。',
       exportFailed: '视频导出失败',
@@ -6120,6 +6388,8 @@ export const translations: Record<string, Translations> = {
      },
    videoEditing: {
      autoMix: {
+       orphansIgnored: '已忽略 {count} 个来自已删除或旧脚本段落的素材',
+       videoShort: '第 {list} 段的视频不足以覆盖配音',
        noMaterials: '请先添加视频、音频或图片素材后再使用自动混剪。',
        noScriptMaterials: '自动混剪需要由文本脚本生成的音频和视频素材，请先在「文本脚本」面板完成 TTS 与 AI 视频匹配。',
        replaceConfirmTitle: '替换现有片段？',

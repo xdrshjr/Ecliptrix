@@ -17,6 +17,7 @@ import type { StateCreator } from 'zustand';
 import { HistoryService } from '../../domain';
 import type { TimelineAction } from '../../domain';
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 
 // ---------------------------------------------------------------------------
 // Slice state + actions interface
@@ -44,13 +45,13 @@ export interface HistorySlice {
 
   /**
    * Undo the most recent action by restoring its before-snapshot.
-   * No-op while the external edit lock is held.
+   * No-op while the external edit lock is held or a drag is in flight.
    */
   undo: () => void;
 
   /**
    * Redo the next action by restoring its after-snapshot.
-   * No-op while the external edit lock is held.
+   * No-op while the external edit lock is held or a drag is in flight.
    */
   redo: () => void;
 
@@ -58,6 +59,29 @@ export interface HistorySlice {
    * Clear all history (e.g., after a JSON import).
    */
   clearHistory: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * History travel is refused while the agent holds the edit lock, and while a
+ * drag is in flight: restoring a snapshot under a live gesture let the release
+ * commit on top of it, leaving only the move in history and the undone step
+ * impossible to redo (TL2-18).
+ */
+function canTravelHistory(state: TimelineStore): boolean {
+  return !isEditLocked(state) && !state.isInteracting;
+}
+
+/** A restored snapshot may no longer contain the selected or edited clips (TL2-03). */
+function dropReferencesToVanishedItems(get: () => TimelineStore): void {
+  get().pruneSelection();
+  const editingId = get().editingSubtitleId;
+  if (editingId !== null && get()._aggregate.findItem(editingId) === null) {
+    get().setEditingSubtitle(null);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -104,10 +128,11 @@ export const createHistorySlice: StateCreator<
 
   undo: () => {
     const state = get();
-    if (state.externalEditLock !== null) return;
+    if (!canTravelHistory(state)) return;
     const snapshot = state._historyService.undo();
     if (snapshot) {
       state.restoreFromSnapshot(snapshot);
+      dropReferencesToVanishedItems(get);
     }
     set({
       canUndo: state._historyService.canUndo(),
@@ -117,10 +142,11 @@ export const createHistorySlice: StateCreator<
 
   redo: () => {
     const state = get();
-    if (state.externalEditLock !== null) return;
+    if (!canTravelHistory(state)) return;
     const snapshot = state._historyService.redo();
     if (snapshot) {
       state.restoreFromSnapshot(snapshot);
+      dropReferencesToVanishedItems(get);
     }
     set({
       canUndo: state._historyService.canUndo(),

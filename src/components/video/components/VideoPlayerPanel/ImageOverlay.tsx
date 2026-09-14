@@ -2,10 +2,12 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ImagePosition } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import { VideoEditingLogger } from '../../utils/logger';
 import {
   clampImagePosition,
   alignDefaultBoxToImage,
+  hasPositionChanged,
   resizeFromHandle,
   RESIZE_HANDLES,
   type HandleId,
@@ -18,12 +20,32 @@ interface ImageOverlayProps {
   position: ImagePosition;
   containerWidth: number;
   containerHeight: number;
+  /** Live, uncommitted preview while a gesture runs (and when one is reverted). */
   onPositionChange: (position: ImagePosition) => void;
+  /** A finished drag / resize that actually moved the image; the caller commits it. */
+  onGestureEnd?: (itemId: string, position: ImagePosition) => void;
+  /** First-frame fit of a default box to the image aspect — not a user edit. */
+  onAutoFit?: (itemId: string, position: ImagePosition) => void;
+  /** "Done": leave the selection. */
   onConfirm?: () => void;
+  /** "Revert position": back to where the image was when it was selected. */
   onCancel?: () => void;
   isSelected?: boolean;
   onSelect?: () => void;
   imageId: string;
+}
+
+/**
+ * A drag (handle null) or corner resize in progress. Lives in a ref so the
+ * pointermove handler identity stays stable for the whole gesture.
+ */
+interface ActiveGesture {
+  pointerId: number;
+  handle: HandleId | null;
+  /** Pointer offset inside the box at pointerdown (move only), in px. */
+  offsetX: number;
+  offsetY: number;
+  latest: ImagePosition;
 }
 
 const ImageOverlay: React.FC<ImageOverlayProps> = ({
@@ -32,30 +54,29 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   containerWidth,
   containerHeight,
   onPositionChange,
+  onGestureEnd,
+  onAutoFit,
   onConfirm,
   onCancel,
   isSelected = false,
   onSelect,
   imageId
 }) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const { t } = useLocale();
+  const [isGesturing, setIsGesturing] = useState(false);
   // 图片自然尺寸（onLoad 写入）：用于 D4 等比缩放与 D6 首帧对齐。
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   // D6 防重入：首帧对齐对单个挂载最多触发一次。
   const alignedRef = useRef(false);
-  // D2b：当前被拖的角必须用 ref 承载（非 state）——全局 mousemove 监听按回调标识
-  // 订阅，若用 state 存活动角则每次 setState 改变回调标识 → effect 重订阅 → 手势
-  // 中途丢事件/读到陈旧角。ref 不进依赖数组，回调标识稳定，手势连续。
-  const resizeHandleRef = useRef<HandleId | null>(null);
+  const gestureRef = useRef<ActiveGesture | null>(null);
+  // 手势开始时的位置：移动 / 缩放计算的基准，也是 pointercancel / Esc 的回退目标。
+  const gestureStartRef = useRef<ImagePosition | null>(null);
 
   // D3：入口钳制一次，作为渲染 + 拖拽 + 缩放的唯一基准。
   const safePosition = useMemo(() => clampImagePosition(position), [position]);
 
-  // 计算实际像素位置（基于钳制后的 safePosition）
   const pixelPosition = {
     x: safePosition.x * containerWidth,
     y: safePosition.y * containerHeight,
@@ -90,8 +111,8 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     });
   }, [captureNaturalSize, imageId]);
 
-  // D6 首帧对齐：自然尺寸与容器尺寸就绪后，仅对仍为默认 sentinel 的项一次性把显示框
-  // 归一化为图片比例并经回写链落库（alignedRef 防重入；非 sentinel 直接跳过，守 R6）。
+  // D6 首帧对齐：仅对仍为默认 sentinel 的项一次性把显示框归一化为图片比例。它不是用户编辑，
+  // 由调用方写入时间轴但不进撤销历史（ME-05）；未提供 onAutoFit 时退回本地预览。
   useEffect(() => {
     if (alignedRef.current) return;
     if (!naturalSize) return;
@@ -101,169 +122,145 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     if (!aligned) return;
     alignedRef.current = true;
     overlayLogger.debug('default-box-aligned', { imageId, aligned });
-    onPositionChange(aligned);
-  }, [naturalSize, containerWidth, containerHeight, position, onPositionChange, imageId]);
+    if (onAutoFit) {
+      onAutoFit(imageId, aligned);
+    } else {
+      onPositionChange(aligned);
+    }
+  }, [naturalSize, containerWidth, containerHeight, position, onAutoFit, onPositionChange, imageId]);
 
-  // 处理拖拽开始
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return; // 只处理左键点击
-
+  const beginGesture = useCallback((e: React.PointerEvent<HTMLElement>, handle: HandleId | null) => {
+    if (e.button !== 0) return;
+    // preventDefault suppresses the compatibility mousedown, so the preview
+    // wrapper's "press blank area to deselect" never fires for this gesture;
+    // stopPropagation keeps a corner press from also starting a move.
     e.preventDefault();
     e.stopPropagation();
-
     onSelect?.();
 
     const rect = overlayRef.current?.getBoundingClientRect();
     if (!rect) return;
+    // Capture keeps the gesture alive when the pointer leaves the preview.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    gestureStartRef.current = safePosition;
+    gestureRef.current = {
+      pointerId: e.pointerId,
+      handle,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      latest: safePosition,
+    };
+    setIsGesturing(true);
+    overlayLogger.debug('gesture-start', { imageId, handle, startPosition: safePosition });
+  }, [onSelect, safePosition, imageId]);
 
-    setIsDragging(true);
-    setDragStart({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    });
-
-    overlayLogger.debug('drag-start', {
-      imageId,
-      startPosition: safePosition,
-      mousePosition: { x: e.clientX, y: e.clientY },
-      containerSize: { width: containerWidth, height: containerHeight },
-    });
-  }, [onSelect, imageId, safePosition, containerWidth, containerHeight]);
-
-  // 处理拖拽移动（基于 safePosition，clamp 越界 → 永不溢出、永不产出负坐标）
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging && !isResizing) return;
-    if (containerWidth === 0 || containerHeight === 0) return;
-
+  const positionForPointer = useCallback((
+    gesture: ActiveGesture,
+    start: ImagePosition,
+    clientX: number,
+    clientY: number,
+  ): ImagePosition | null => {
     const containerRect = overlayRef.current?.parentElement?.getBoundingClientRect();
-    if (!containerRect) return;
-
-    if (isDragging) {
-      const base = safePosition;
-      // 计算新位置
-      const newX = (e.clientX - containerRect.left - dragStart.x) / containerWidth;
-      const newY = (e.clientY - containerRect.top - dragStart.y) / containerHeight;
-
-      // 边界检查（base.width/height 已 ∈ (0,1]，故 1-width ≥ 0，区间不反转）
-      const clampedX = Math.max(0, Math.min(1 - base.width, newX));
-      const clampedY = Math.max(0, Math.min(1 - base.height, newY));
-
-      const newPosition = clampImagePosition({
-        ...base,
-        x: clampedX,
-        y: clampedY,
-      });
-
-      onPositionChange(newPosition);
-
-      overlayLogger.debug('drag-update', {
-        imageId,
-        newPosition,
-        clampedPosition: { x: clampedX, y: clampedY },
+    if (!containerRect || containerWidth === 0 || containerHeight === 0) return null;
+    if (gesture.handle === null) {
+      const x = (clientX - containerRect.left - gesture.offsetX) / containerWidth;
+      const y = (clientY - containerRect.top - gesture.offsetY) / containerHeight;
+      // start.width/height ∈ (0,1]，1-size ≥ 0，钳制区间不反转。
+      return clampImagePosition({
+        ...start,
+        x: Math.max(0, Math.min(1 - start.width, x)),
+        y: Math.max(0, Math.min(1 - start.height, y)),
       });
     }
-  }, [isDragging, isResizing, dragStart, containerWidth, containerHeight, safePosition, onPositionChange, imageId]);
+    const imageAspect = naturalSize && naturalSize.h > 0 ? naturalSize.w / naturalSize.h : null;
+    return resizeFromHandle(
+      gesture.handle,
+      start,
+      (clientX - containerRect.left) / containerWidth,
+      (clientY - containerRect.top) / containerHeight,
+      imageAspect,
+      containerWidth / containerHeight,
+    );
+  }, [containerWidth, containerHeight, naturalSize]);
 
-  // 处理拖拽结束
-  const handleMouseUp = useCallback(() => {
-    if (isDragging || isResizing) {
-      overlayLogger.debug('drag-end', { imageId, finalPosition: safePosition });
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    const start = gestureStartRef.current;
+    if (!gesture || !start || e.pointerId !== gesture.pointerId) return;
+    const next = positionForPointer(gesture, start, e.clientX, e.clientY);
+    if (!next) return;
+    gesture.latest = next;
+    onPositionChange(next);
+  }, [positionForPointer, onPositionChange]);
+
+  /** End the gesture: commit a real change, or on cancel put the image back where it started. */
+  const finishGesture = useCallback((commit: boolean) => {
+    const gesture = gestureRef.current;
+    const start = gestureStartRef.current;
+    gestureRef.current = null;
+    gestureStartRef.current = null;
+    setIsGesturing(false);
+    if (!gesture || !start || !hasPositionChanged(start, gesture.latest)) return;
+    if (commit) {
+      onGestureEnd?.(imageId, gesture.latest);
+    } else {
+      onPositionChange(start);
     }
+    overlayLogger.debug(commit ? 'gesture-commit' : 'gesture-revert', { imageId });
+  }, [imageId, onGestureEnd, onPositionChange]);
 
-    resizeHandleRef.current = null;
-    setIsDragging(false);
-    setIsResizing(false);
-  }, [isDragging, isResizing, imageId, safePosition]);
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (gestureRef.current?.pointerId !== e.pointerId) return;
+    finishGesture(true);
+  }, [finishGesture]);
 
-  // 处理调整大小开始（D2 柯里化按角；写入活动角 ref，保留 preventDefault+stopPropagation）
-  const handleResizeMouseDown = useCallback(
-    (handle: HandleId) => (e: React.MouseEvent) => {
-      // preventDefault 抑制缩放拖动时的文本选中/图片原生拖拽残影（C6）；
-      // stopPropagation 阻断外层 wrapper 的 onMouseDown 取消选择 + 根 div 拖拽。
+  // The OS took the pointer away (touch interrupted, capture lost): the gesture
+  // never finished, so do not leave a half-dragged position behind.
+  const handlePointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (gestureRef.current?.pointerId !== e.pointerId) return;
+    finishGesture(false);
+  }, [finishGesture]);
+
+  // Escape during a gesture reverts just that gesture. Capture phase + stop so
+  // the timeline's own Escape handling does not also act on the key.
+  useEffect(() => {
+    if (!isGesturing) return undefined;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
+      finishGesture(false);
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [isGesturing, finishGesture]);
 
-      resizeHandleRef.current = handle;
-      setIsResizing(true);
-      overlayLogger.debug('resize-start', { imageId, handle });
-    },
-    [imageId],
-  );
+  // An overlay can unmount mid-gesture (its time window ends): keep what the
+  // user did instead of losing the edit silently.
+  const finishGestureRef = useRef(finishGesture);
+  useEffect(() => {
+    finishGestureRef.current = finishGesture;
+  }, [finishGesture]);
+  useEffect(() => () => {
+    if (gestureRef.current) finishGestureRef.current(true);
+  }, []);
 
-  const handleControlMouseDown = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleControlPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  const handleConfirmClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleDoneClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     onConfirm?.();
   }, [onConfirm]);
 
-  const handleCancelClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleRevertClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     onCancel?.();
   }, [onCancel]);
-
-  // 处理调整大小移动（D2/D4 多角等比缩放，基于 safePosition）
-  const handleResizeMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizing) return;
-    const handle = resizeHandleRef.current;
-    if (!handle) return;
-    if (containerWidth === 0 || containerHeight === 0) return;
-
-    const containerRect = overlayRef.current?.parentElement?.getBoundingClientRect();
-    if (!containerRect) return;
-
-    const base = safePosition;
-    // C7：组件只算归一化鼠标坐标；raw/锚点反推全在 resizeFromHandle 内完成。
-    const mouseXNorm = (e.clientX - containerRect.left) / containerWidth;
-    const mouseYNorm = (e.clientY - containerRect.top) / containerHeight;
-    const imageAspect =
-      naturalSize && naturalSize.h > 0 ? naturalSize.w / naturalSize.h : null;
-    const frameAR = containerWidth / containerHeight;
-
-    const newPosition = resizeFromHandle(
-      handle,
-      base,
-      mouseXNorm,
-      mouseYNorm,
-      imageAspect,
-      frameAR,
-    );
-
-    onPositionChange(newPosition);
-
-    overlayLogger.debug('resize-update', {
-      imageId,
-      handle,
-      newSize: { width: newPosition.width, height: newPosition.height },
-      equalRatio: !!imageAspect,
-    });
-  }, [isResizing, safePosition, naturalSize, containerWidth, containerHeight, onPositionChange, imageId]);
-
-  // 设置全局事件监听器
-  useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
-        handleMouseMove(e);
-      } else if (isResizing) {
-        handleResizeMouseMove(e);
-      }
-    };
-
-    if (isDragging || isResizing) {
-      document.addEventListener('mousemove', handleGlobalMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleGlobalMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, isResizing, handleMouseMove, handleResizeMouseMove, handleMouseUp]);
 
   if (containerWidth === 0 || containerHeight === 0) return null;
   if (pixelPosition.width === 0 || pixelPosition.height === 0) return null;
@@ -278,8 +275,13 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
         width: `${pixelPosition.width}px`,
         height: `${pixelPosition.height}px`,
         zIndex: safePosition.zIndex || 10,
+        // Pointer gestures own touch input; without this the browser pans instead.
+        touchAction: 'none',
       }}
-      onMouseDown={handleMouseDown}
+      onPointerDown={(e) => beginGesture(e, null)}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       // D1′ defense-in-depth：拦截源自叠加层的尾随 click，防御未来在祖先上新挂
       // onClick 导致选区被清（主修复已在 wrapper 改用 onMouseDown 取消选择）。
       onClick={(e) => e.stopPropagation()}
@@ -287,7 +289,7 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
       <img
         ref={imgRef}
         src={imageUrl}
-        alt="Overlay"
+        alt=""
         className="w-full h-full object-contain pointer-events-none"
         draggable={false}
         onLoad={handleImageLoad}
@@ -300,13 +302,12 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
         <div
           key={handle.id}
           className={`absolute ${handle.positionClass} ${handle.cursorClass} p-1`}
-          onMouseDown={handleResizeMouseDown(handle.id)}
+          onPointerDown={(e) => beginGesture(e, handle.id)}
         >
           <div className="w-3 h-3 bg-blue-500 pointer-events-none" />
         </div>
       ))}
 
-      {/* 显示图片边框（仅在选中时） */}
       {isSelected && (
         <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
       )}
@@ -315,23 +316,23 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
         <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
           <button
             type="button"
-            title="Confirm image position"
-            aria-label="Confirm image position"
+            title={t.imageOverlay.done}
+            aria-label={t.imageOverlay.done}
             className="flex h-6 w-6 items-center justify-center rounded bg-green-600 text-xs font-semibold text-white shadow hover:bg-green-700"
-            onMouseDown={handleControlMouseDown}
-            onClick={handleConfirmClick}
+            onPointerDown={handleControlPointerDown}
+            onClick={handleDoneClick}
           >
             ✓
           </button>
           <button
             type="button"
-            title="Cancel image position"
-            aria-label="Cancel image position"
-            className="flex h-6 w-6 items-center justify-center rounded bg-red-600 text-xs font-semibold text-white shadow hover:bg-red-700"
-            onMouseDown={handleControlMouseDown}
-            onClick={handleCancelClick}
+            title={t.imageOverlay.revert}
+            aria-label={t.imageOverlay.revert}
+            className="flex h-6 w-6 items-center justify-center rounded bg-secondary text-xs font-semibold text-secondary-foreground shadow hover:bg-accent"
+            onPointerDown={handleControlPointerDown}
+            onClick={handleRevertClick}
           >
-            ×
+            ↺
           </button>
         </div>
       )}

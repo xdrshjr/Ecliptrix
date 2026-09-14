@@ -4,17 +4,23 @@
  * Inline subtitle text and a confirmed image-overlay position used to write
  * the store directly, so Ctrl+Z skipped them and undid the step before
  * instead (with no way to redo). Both now record one history entry, and a
- * value that did not change records nothing.
+ * value that did not change records nothing. Every edit here is refused on a
+ * locked track and while the agent holds the external edit lock.
  */
 
 import type { TimelineStore } from '../useTimelineStore';
 import type { ImagePosition } from '../../domain/types';
+import { isEditLocked } from '../editLock';
 
 const POSITION_EPSILON = 1e-6;
 const POSITION_KEYS = ['x', 'y', 'width', 'height', 'zIndex'] as const;
 
-/** The item's entity, or null when it is missing or its track is locked. */
+/**
+ * The item's entity, or null when it is missing, its track is locked or the
+ * agent holds the edit lock — the single entry point for every field edit.
+ */
 function findEditableItem(get: () => TimelineStore, itemId: string) {
+  if (isEditLocked(get())) return null;
   const found = get()._aggregate.findItem(itemId);
   if (!found || found.track.isLocked) return null;
   return found.item;
@@ -63,5 +69,24 @@ export function updateImagePositionAction(
   state.recordAction('UPDATE_ITEM', { itemId, field: 'imagePosition' });
   state.updateItemImagePosition(itemId, position);
   get().captureNextState();
+  return true;
+}
+
+/**
+ * Write an image position that is not a user edit — the overlay's first
+ * auto-fit to the image's aspect ratio — without an undo entry. It still has
+ * to reach the store: export and autosave read the store, and a position that
+ * lived only in component state was later overwritten by the next edit (ME-05).
+ * @returns whether the store changed.
+ */
+export function fitImagePositionAction(
+  get: () => TimelineStore,
+  itemId: string,
+  position: ImagePosition,
+): boolean {
+  const item = findEditableItem(get, itemId);
+  if (!item || isSamePosition(item.imagePosition, position)) return false;
+
+  get().updateItemImagePosition(itemId, position);
   return true;
 }

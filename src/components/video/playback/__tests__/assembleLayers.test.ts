@@ -135,6 +135,38 @@ describe('assembleLayers — z-order across kinds', () => {
     expect(layers.every((l) => l.kind === 'video')).toBe(true);
     expect(layers).toHaveLength(1);
   });
+
+  it('a higher zIndex image draws above a later lower zIndex image', () => {
+    const layers = assembleLayers({
+      videoEntries: [],
+      subtitleItems: [],
+      imageItems: [
+        { id: 'front', src: '/a.png', startTime: 0, duration: 10, position: { x: 0, y: 0, width: 0.5, height: 0.5, zIndex: 20 } },
+        { id: 'back', src: '/b.png', startTime: 0, duration: 10, position: { x: 0, y: 0, width: 0.5, height: 0.5, zIndex: 5 } },
+      ],
+      t: 5,
+      subtitleMaxWidthPx: 800,
+      measureSubtitle: measure,
+    });
+    expect(layers.map((l) => l.id)).toEqual(['back', 'front']);
+  });
+
+  it('images stay below subtitles for any zIndex', () => {
+    const layers = assembleLayers({
+      videoEntries: [],
+      subtitleItems: [{ id: 'sub', text: 'caption', startTime: 0, duration: 10, trackId: 'st' }],
+      imageItems: [
+        { id: 'huge', src: '/a.png', startTime: 0, duration: 10, position: { x: 0, y: 0, width: 0.5, height: 0.5, zIndex: 10_000_000 } },
+        { id: 'negative', src: '/b.png', startTime: 0, duration: 10, position: { x: 0, y: 0, width: 0.5, height: 0.5, zIndex: -40 } },
+      ],
+      t: 5,
+      subtitleMaxWidthPx: 800,
+      measureSubtitle: measure,
+    });
+    const subtitleZ = layers.find((l) => l.kind === 'subtitle')!.z;
+    const imageZ = layers.filter((l) => l.kind === 'image').map((l) => l.z);
+    expect(Math.max(...imageZ)).toBeLessThan(subtitleZ);
+  });
 });
 
 describe('buildSubtitleLayers — wrapping + style', () => {

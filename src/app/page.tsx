@@ -9,6 +9,7 @@ import { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
 import SetupGuideDialog from '@/components/Onboarding/SetupGuideDialog';
 import { useTasks } from '@/hooks/useTasks';
 import { useLlmConfigStatus } from '@/hooks/useLlmConfigStatus';
+import { useDesktopCloseGuard } from '@/hooks/useDesktopCloseGuard';
 
 // Session-scoped (not localStorage): re-prompt on next launch if still
 // unconfigured, but never twice in one session.
@@ -30,6 +31,9 @@ export default function HomePage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsItem, setSettingsItem] = useState<SettingsMenuItem>('general');
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+
+  // Flush pending project autosaves before the desktop window closes (ME-08).
+  useDesktopCloseGuard();
 
   // No RBAC any more — the single local owner may always fix credentials.
   const { status: llmStatus, refresh: refreshLlmStatus } = useLlmConfigStatus();

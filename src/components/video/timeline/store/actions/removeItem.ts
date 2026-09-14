@@ -7,12 +7,14 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 
-/** Ids that exist and sit on an unlocked track. */
+/** Ids that exist and sit on an unlocked track; none while the timeline is edit-locked. */
 function filterEditableItemIds(
   get: () => TimelineStore,
   itemIds: readonly string[],
 ): string[] {
+  if (isEditLocked(get())) return [];
   const aggregate = get()._aggregate;
   return itemIds.filter(id => {
     const found = aggregate.findItem(id);

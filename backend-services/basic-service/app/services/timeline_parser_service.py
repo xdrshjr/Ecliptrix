@@ -3,9 +3,10 @@ Timeline Parser Service for converting simplified AI editing responses to full t
 Handles the conversion from simplified JSON structure to complete timeline JSON.
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Set, Tuple
 from app.logger import get_logger
 from app.models.ai_mixed_editing_models import (
     MAX_SEGMENT_VOLUME_PERCENT,
@@ -30,6 +31,12 @@ LIST_MATERIAL_TYPES = {
     "audio_segments": "audio",
     "image_segments": "image",
 }
+# Audio lanes an AI plan may use; further lanes share the last one.
+MAX_AUDIO_LANES = 4
+# Track names the model sometimes reuses for audio; they would collide with
+# the parsed timeline's own video / image track ids.
+_NON_AUDIO_TRACK_PREFIXES = ("video-track", "image-track")
+_TRAILING_NUMBER = re.compile(r"(\d+)\s*$")
 
 
 @dataclass
@@ -594,13 +601,15 @@ class TimelineParserService:
         """
         Make an LLM editing plan importable, mutating ``timeline`` in place.
 
-        Steps: move images referenced from video_segments into
-        image_segments and drop unknown / mistyped material references;
-        clamp video and audio source ranges to the material duration keeping
-        ``duration == clip_end - clip_start``; clip to total_duration and
-        drop segments shorter than MIN_SEGMENT_SECONDS; shift same-lane
-        overlaps (video, image, one lane per audio track) and clip again.
-        total_duration finally becomes the latest segment end.
+        Steps: map audio track names onto ``audio-track-n``; move images
+        referenced from video_segments into image_segments and drop unknown /
+        mistyped material references; clamp video and audio source ranges to
+        the material duration keeping ``duration == clip_end - clip_start``;
+        clip to total_duration and drop segments shorter than
+        MIN_SEGMENT_SECONDS; pack every lane (video, image, one per audio
+        track) flush from 0 so the editor's auto-organize changes nothing;
+        report audio / image running past the video lane. total_duration
+        finally becomes the latest segment end.
 
         Args:
             timeline: LLM plan to sanitise (modified in place)
@@ -614,10 +623,12 @@ class TimelineParserService:
         """
         report = SanitizeReport()
         by_id = {material.id: material for material in materials}
+        self._canonicalise_audio_tracks(timeline, report)
         self._reroute_by_material_type(timeline, by_id, report)
         self._normalise_source_range(timeline, by_id, report)
         self._clip_to_total(timeline, report)
-        self._resolve_lane_overlaps(timeline, report)
+        self._pack_lanes(timeline, report)
+        self._warn_past_video_end(timeline, report)
 
         segments = _all_segments(timeline)
         if not segments:
@@ -797,52 +808,102 @@ class TimelineParserService:
                 kept.append(segment)
             setattr(timeline, list_name, kept)
 
-    def _resolve_lane_overlaps(
+    def _canonicalise_audio_tracks(
         self, timeline: SimplifiedTimelineModel, report: SanitizeReport
     ) -> None:
-        """Shift same-lane overlaps later, then clip to total_duration again."""
-        audio_lanes: Dict[str, List[Tuple[int, AudioSegmentModel]]] = {}
-        for index, segment in enumerate(timeline.audio_segments):
-            audio_lanes.setdefault(segment.track, []).append((index, segment))
-        lanes = [
-            ("video_segments", list(enumerate(timeline.video_segments))),
-            ("image_segments", list(enumerate(timeline.image_segments))),
-            *(("audio_segments", lane) for lane in audio_lanes.values()),
-        ]
-        shifted = [
-            self._shift_lane_overlaps(list_name, lane, report)
-            for list_name, lane in lanes
-        ]
-        if any(shifted):
-            # A segment pushed later may now run past total_duration.
-            self._clip_to_total(timeline, report)
+        """Give every audio segment an ``audio-track-n`` lane (AM2-02).
 
-    def _shift_lane_overlaps(
-        self,
-        list_name: str,
-        indexed_segments: List[Tuple[int, Any]],
-        report: SanitizeReport,
-    ) -> bool:
-        """Start each segment no earlier than the previous one ends."""
-        shifted = False
-        previous_end: Optional[float] = None
-        ordered = sorted(indexed_segments, key=lambda pair: pair[1].start_time)
-        for index, segment in ordered:
-            overlaps = (
-                previous_end is not None
-                and segment.start_time < previous_end - OVERLAP_EPSILON
+        Models write "Audio Track 2", 2, "bgm", null or even "video-track-1".
+        Left as-is these collide with the video track id in the parsed
+        timeline or collapse narration and music onto one lane in the editor.
+        Numbered names keep their number; other labels get the next unused
+        lane in first-seen order; everything past MAX_AUDIO_LANES shares the
+        last lane.
+        """
+        segments = timeline.audio_segments
+        numbers = [_audio_track_number(segment.track) for segment in segments]
+        used_numbers = {number for number in numbers if number is not None}
+        label_numbers: Dict[str, int] = {}
+        for index, (segment, number) in enumerate(zip(segments, numbers)):
+            if number is None:
+                number = _number_for_label(
+                    segment.track, label_numbers, used_numbers
+                )
+            canonical = f"audio-track-{min(number, MAX_AUDIO_LANES)}"
+            if segment.track != canonical:
+                name = report.label_of(segment, f"audio_segments[{index}]")
+                report.adjusted.append(
+                    f"{name}: track {_describe_track(segment.track)} "
+                    f"mapped to {canonical}"
+                )
+            segment.track = canonical
+
+    def _pack_lanes(
+        self, timeline: SimplifiedTimelineModel, report: SanitizeReport
+    ) -> None:
+        """Lay every lane flush from 0 in start order (AM2-01 / AM2-07).
+
+        The editor re-packs every unlocked video / audio track (the image
+        track included) on each structural edit. A plan with gaps would look
+        right once and jump on the next unrelated edit, so the plan is packed
+        here with the same rule. Packing also resolves overlaps without
+        clipping anything: total_duration is recomputed afterwards.
+        """
+        lanes = [
+            ("video_segments", timeline.video_segments),
+            ("image_segments", timeline.image_segments),
+            *(
+                ("audio_segments", lane)
+                for lane in _audio_segments_by_track(timeline.audio_segments)
+            ),
+        ]
+        for list_name, segments in lanes:
+            cursor = 0.0
+            ordered = sorted(
+                enumerate(segments),
+                key=lambda pair: (pair[1].start_time, pair[0]),
             )
-            if overlaps:
+            for index, segment in ordered:
+                if abs(segment.start_time - cursor) > OVERLAP_EPSILON:
+                    name = report.label_of(segment, f"{list_name}[{index}]")
+                    reason = (
+                        "close a gap"
+                        if segment.start_time > cursor
+                        else "clear an overlap"
+                    )
+                    report.adjusted.append(
+                        f"{name}: {segment.material_id} moved from "
+                        f"{segment.start_time:.2f}s to {cursor:.2f}s "
+                        f"to {reason}"
+                    )
+                segment.start_time = cursor
+                cursor += segment.duration
+
+    def _warn_past_video_end(
+        self, timeline: SimplifiedTimelineModel, report: SanitizeReport
+    ) -> None:
+        """Report audio / image segments outlasting the video lane (AM2-06).
+
+        Nothing is modified — the export renders such a tail black — but the
+        prompt requires the video lane to be the longest, so a violation is
+        surfaced instead of silently producing a black ending.
+        """
+        if not timeline.video_segments:
+            return
+        video_end = max(
+            segment.start_time + segment.duration
+            for segment in timeline.video_segments
+        )
+        for list_name in ("audio_segments", "image_segments"):
+            for index, segment in enumerate(getattr(timeline, list_name)):
+                end = segment.start_time + segment.duration
+                if end <= video_end + OVERLAP_EPSILON:
+                    continue
                 name = report.label_of(segment, f"{list_name}[{index}]")
                 report.adjusted.append(
-                    f"{name}: {segment.material_id} overlapped "
-                    f"the previous segment, moved from "
-                    f"{segment.start_time:.2f}s to {previous_end:.2f}s"
+                    f"{name}: {segment.material_id} ends at {end:.2f}s "
+                    f"after the video lane ends at {video_end:.2f}s"
                 )
-                segment.start_time = previous_end
-                shifted = True
-            previous_end = segment.start_time + segment.duration
-        return shifted
 
 
 def _all_segments(timeline: SimplifiedTimelineModel) -> List[Any]:
@@ -859,3 +920,51 @@ def _sync_clip_end(segment: Any) -> None:
     if isinstance(segment, ImageSegmentModel):
         return
     segment.clip_end = (segment.clip_start or 0.0) + segment.duration
+
+
+def _audio_track_number(track: Any) -> Optional[int]:
+    """Lane number a track value names, or None for a free-form label.
+
+    Missing values and video / image track ids fall back to lane 1; an
+    integer or a name ending in a number ("Audio Track 2") keeps it.
+    """
+    if track is None:
+        return 1
+    if isinstance(track, bool):
+        return None
+    if isinstance(track, int):
+        return max(1, track)
+    text = str(track).strip()
+    if not text or text.lower().startswith(_NON_AUDIO_TRACK_PREFIXES):
+        return 1
+    match = _TRAILING_NUMBER.search(text)
+    return max(1, int(match.group(1))) if match else None
+
+
+def _number_for_label(
+    label: Any, label_numbers: Dict[str, int], used_numbers: Set[int]
+) -> int:
+    """Next unused lane for a free-form label; one lane per distinct label."""
+    key = str(label).strip().lower()
+    if key not in label_numbers:
+        number = 1
+        while number in used_numbers:
+            number += 1
+        used_numbers.add(number)
+        label_numbers[key] = number
+    return label_numbers[key]
+
+
+def _describe_track(track: Any) -> str:
+    """Track value as written in a sanitise warning ("bgm" quoted, 2 bare)."""
+    return f'"{track}"' if isinstance(track, str) else repr(track)
+
+
+def _audio_segments_by_track(
+    audio_segments: List[AudioSegmentModel],
+) -> List[List[AudioSegmentModel]]:
+    """Audio segments grouped per track, tracks in first-seen order."""
+    lanes: Dict[str, List[AudioSegmentModel]] = {}
+    for segment in audio_segments:
+        lanes.setdefault(str(segment.track), []).append(segment)
+    return list(lanes.values())

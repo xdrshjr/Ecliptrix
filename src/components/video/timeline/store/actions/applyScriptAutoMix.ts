@@ -4,10 +4,12 @@
  *
  * Only the lanes the plan uses are touched: the target video track and/or the
  * target audio track get their items replaced; every other track is kept as
- * is. Refusals (missing or locked target, empty plan) record no history.
+ * is. Refusals (edit lock held by the agent, missing or locked target, empty
+ * plan) record no history.
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 import { ItemPlacementService, Track } from '../../domain';
 import type { TimelineItemData, TrackData } from '../../domain';
 import { toMaterialData } from '../../domain/services/ItemPlacementService';
@@ -17,7 +19,7 @@ import type {
 } from '@/components/video/lib/aiMix/planScriptAutoMix';
 import { replaceTimelineAction } from './replaceTimeline';
 
-export type AutoMixRefusal = 'no-target-track' | 'track-locked' | 'empty-plan';
+export type AutoMixRefusal = 'edit-locked' | 'no-target-track' | 'track-locked' | 'empty-plan';
 
 export type ApplyAutoMixResult =
   | { ok: true; replacedItemCount: number }
@@ -118,6 +120,8 @@ export function applyScriptAutoMixAction(
   get: () => TimelineStore,
   plan: ScriptAutoMixPlan,
 ): ApplyAutoMixResult {
+  // S9: last line of defence; the entry point already warned the user.
+  if (isEditLocked(get())) return { ok: false, reason: 'edit-locked' };
   const data = get().exportToData();
   const check = checkAutoMixTargets(data.tracks, plan);
   if (!check.ok) return check;
@@ -133,7 +137,9 @@ export function applyScriptAutoMixAction(
       .filter((placement) => placement.lane === lane);
     return { ...track, items: buildLaneItems(track, lanePlacements) };
   });
-  // Layout is gap-free by construction, so no autoOrganize pass is needed.
+  // planScriptAutoMix guarantees each segment's videos cover its voice-over, so
+  // the layout already is a fixed point of organizeVideoAudioTracks (S8) and
+  // needs no autoOrganize pass.
   replaceTimelineAction(get, { ...data, tracks }, 'auto-mix');
   return { ok: true, replacedItemCount: check.replacedItemCount };
 }

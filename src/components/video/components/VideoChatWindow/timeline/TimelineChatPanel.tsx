@@ -20,7 +20,7 @@
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import type { ChatMessage } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
 import type { TimelineChatPanelProps, TimelineNodeData, ConnectorState } from './types';
 import { messagesToTimelineNodes } from './utils';
@@ -64,19 +64,29 @@ function getConnectorState(
 // but no message nodes exist yet for the current execution
 // ---------------------------------------------------------------------------
 
+/** The stream is open, or it ended and the last operations are still being applied. */
+function isAgentRunning(status: AgentExecutionState['status'] | undefined): boolean {
+  return status === 'executing' || status === 'retrying' || status === 'finishing';
+}
+
 interface LiveExecutionIndicatorProps {
   executionState: AgentExecutionState;
   onCancel: () => void;
+  /** Label shown while status is `finishing`. */
+  finishingLabel: string;
 }
 
 const LiveExecutionIndicator: React.FC<LiveExecutionIndicatorProps> = ({
   executionState,
   onCancel,
+  finishingLabel,
 }) => {
-  if (executionState.status !== 'executing' && executionState.status !== 'retrying') {
+  if (!isAgentRunning(executionState.status)) {
     return null;
   }
 
+  // The stream already ended: stopping would do nothing, so the button is disabled.
+  const isFinishing = executionState.status === 'finishing';
   const currentToolName = executionState.currentTool?.name ?? null;
   const completedCount = executionState.completedTools.length;
 
@@ -92,20 +102,24 @@ const LiveExecutionIndicator: React.FC<LiveExecutionIndicatorProps> = ({
       <div className="flex-1 min-w-0 pt-1">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-primary dark:text-primary/90">
-            {executionState.status === 'retrying'
-              ? `Retrying (attempt ${executionState.retryCount})...`
-              : currentToolName
-                ? `Executing: ${currentToolName}`
-                : completedCount > 0
-                  ? `Completed ${completedCount} operation${completedCount > 1 ? 's' : ''}, continuing...`
-                  : 'Agent is working...'}
+            {isFinishing
+              ? finishingLabel
+              : executionState.status === 'retrying'
+                ? `Retrying (attempt ${executionState.retryCount})...`
+                : currentToolName
+                  ? `Executing: ${currentToolName}`
+                  : completedCount > 0
+                    ? `Completed ${completedCount} operation${completedCount > 1 ? 's' : ''}, continuing...`
+                    : 'Agent is working...'}
           </span>
 
           {/* Cancel button */}
           <button
             type="button"
             onClick={onCancel}
-            className="text-xs text-muted-foreground dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors ml-auto px-2 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800/50"
+            disabled={isFinishing}
+            title={isFinishing ? finishingLabel : undefined}
+            className="text-xs text-muted-foreground dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors ml-auto px-2 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-muted-foreground disabled:hover:bg-transparent disabled:hover:border-transparent"
           >
             Cancel
           </button>
@@ -127,13 +141,22 @@ const LiveExecutionIndicator: React.FC<LiveExecutionIndicatorProps> = ({
 // TimelineChatPanel
 // ---------------------------------------------------------------------------
 
-const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
+type TimelineChatPanelComponentProps = TimelineChatPanelProps & {
+  /** Disables agent undo buttons (set while the agent runs). */
+  undoDisabled?: boolean;
+};
+
+const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   messages,
   executionState,
   onUndoAll,
   onUndoSingle,
   onCancel,
+  undoDisabled: undoDisabledProp = false,
 }) => {
+  const { t } = useLocale();
+  const isFinishing = executionState?.status === 'finishing';
+  const undoDisabled = undoDisabledProp || isAgentRunning(executionState?.status);
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -177,7 +200,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
   );
 
   useEffect(() => {
-    if (!hasStreaming && !(executionState?.status === 'executing')) return;
+    if (!hasStreaming && !isAgentRunning(executionState?.status)) return;
     const id = setInterval(() => {
       if (shouldAutoScrollRef.current) scrollToBottom();
     }, 150);
@@ -189,10 +212,13 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
   const nodes = useMemo(() => messagesToTimelineNodes(messages), [messages]);
 
   // ----- Determine if we need a live execution indicator at the end -----
+  // While finishing it is always shown: it tells the user why the timeline is
+  // still locked for a moment after the answer arrived.
   const showLiveIndicator =
     executionState != null &&
-    (executionState.status === 'executing' || executionState.status === 'retrying') &&
-    (messages.length === 0 || !messages[messages.length - 1].isStreaming);
+    (isFinishing ||
+      ((executionState.status === 'executing' || executionState.status === 'retrying') &&
+        (messages.length === 0 || !messages[messages.length - 1].isStreaming)));
 
   // ----- Determine error state -----
   const showError =
@@ -238,13 +264,14 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
               {node.kind === 'user' && <UserMessageNode node={node} />}
               {node.kind === 'thinking' && <AgentThinkingNode node={node} />}
               {node.kind === 'execution' && (
-                <AgentExecutionNode node={node} onCancel={onCancel} />
+                <AgentExecutionNode node={node} onCancel={isFinishing ? undefined : onCancel} />
               )}
               {node.kind === 'response' && (
                 <AgentResponseNode
                   node={node}
                   onUndoAll={onUndoAll}
                   onUndoSingle={onUndoSingle}
+                  undoDisabled={undoDisabled}
                 />
               )}
             </div>
@@ -256,7 +283,11 @@ const TimelineChatPanel: React.FC<TimelineChatPanelProps> = ({
       {showLiveIndicator && executionState && (
         <>
           {nodes.length > 0 && <TimelineConnector state="active" height={16} />}
-          <LiveExecutionIndicator executionState={executionState} onCancel={onCancel} />
+          <LiveExecutionIndicator
+            executionState={executionState}
+            onCancel={onCancel}
+            finishingLabel={t.agentApply.finishing}
+          />
         </>
       )}
 

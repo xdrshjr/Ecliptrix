@@ -45,10 +45,10 @@ vi.mock('@/contexts/LocaleContext', () => ({
   useLocale: () => ({
     t: {
       videoExport: {
-        videoTrackTooShort: 'too short',
-        videoTrackDuration: 'video',
-        audioTrackDuration: 'audio',
-        needToAdd: 'add',
+        nothingVisibleToExport: 'nothing visible',
+        missingMaterials: 'missing {count}: {names}',
+        blackTailNotice: 'black {seconds}',
+        moreItems: 'and {count} more',
         exportFailedWithError: 'failed:',
         exportFailed: 'failed',
         exportTimeout: 'timeout',

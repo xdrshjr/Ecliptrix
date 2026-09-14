@@ -137,14 +137,15 @@ describe('buildImageLayersAt', () => {
     expect(layers.map(l => l.id)).toEqual(['ok']);
   });
 
-  it('falls back to input-order index for z when zIndex is absent', () => {
+  it('uses the export default zIndex 10 when absent and clamps out-of-range values', () => {
+    // Input order among equal zIndex is added by assembleLayers, not here.
     const items = [
       img('a', 0, 10, { position: { x: 0, y: 0, width: 0.2, height: 0.2 } }),
-      img('b', 0, 10, { position: { x: 0.2, y: 0.2, width: 0.2, height: 0.2 } }),
+      img('b', 0, 10, { position: { x: 0.2, y: 0.2, width: 0.2, height: 0.2, zIndex: 4000 } }),
+      img('c', 0, 10, { position: { x: 0.4, y: 0.4, width: 0.2, height: 0.2, zIndex: -3 } }),
     ];
     const layers = buildImageLayersAt(items, 5);
-    expect(layers.find(l => l.id === 'a')!.z).toBe(0);
-    expect(layers.find(l => l.id === 'b')!.z).toBe(1);
+    expect(layers.map(l => [l.id, l.z])).toEqual([['a', 10], ['b', 999], ['c', 0]]);
   });
 });
 

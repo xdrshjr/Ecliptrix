@@ -18,9 +18,13 @@ import { dropVideoCacheMaterial } from './useVideoCache';
 import {
   sourcePathForDelete,
   extraThumbnailKeysForDelete,
+  materialDeleteMessage,
 } from './materialManagement/materialDeleteHelpers';
 import { useMaterialUpload } from './materialManagement/useMaterialUpload';
 import { useMaterialGeneration } from './materialManagement/useMaterialGeneration';
+import { useTimelineStore, removeItemsAction } from '../timeline/store';
+import { isEditLocked } from '../timeline/store/editLock';
+import { findTimelineUsages } from '../timeline/lib/materialUsage';
 
 // 确认对话框状态接口
 interface ConfirmationDialogState {
@@ -29,6 +33,27 @@ interface ConfirmationDialogState {
   message: string;
   onConfirm: () => void;
   type: 'danger' | 'warning' | 'info';
+}
+
+/** What deleting these materials would do to the timeline right now. */
+type MaterialDeletePlan =
+  | { kind: 'edit-locked' }
+  | { kind: 'locked-clips'; count: number }
+  | { kind: 'ready'; itemIds: string[] };
+
+/**
+ * Deleting a material in use used to leave its clips on the tracks while the
+ * source file was deleted: preview went blank and export silently dropped
+ * them. Clips using the material are removed with it (one undo step); a
+ * locked clip or the agent's edit lock refuses the delete instead.
+ */
+function planMaterialDelete(materialIds: readonly string[]): MaterialDeletePlan {
+  const timeline = useTimelineStore.getState();
+  if (isEditLocked(timeline)) return { kind: 'edit-locked' };
+  const usages = findTimelineUsages(timeline.tracks, materialIds);
+  const lockedCount = usages.reduce((sum, usage) => sum + usage.lockedItemIds.length, 0);
+  if (lockedCount > 0) return { kind: 'locked-clips', count: lockedCount };
+  return { kind: 'ready', itemIds: usages.reduce<string[]>((ids, usage) => ids.concat(usage.itemIds), []) };
 }
 
 /**
@@ -47,7 +72,7 @@ interface ConfirmationDialogState {
 export const useMaterialManagement = (taskId: string, initialMaterials: MaterialItem[] = []): UseMaterialManagementReturn => {
   // 获取当前用户信息
   const { t } = useLocale();
-  const { showWarning } = useNotification();
+  const { showWarning, showError } = useNotification();
   const clearMaterials = useVideoEditingStore(state => state.clearMaterials);
 
   // 初始化日志器
@@ -188,10 +213,11 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   // Spec 06 §2.3 — cascade-delete a material's source + derived files on the
   // backend (fire-and-forget; never blocks the local state removal). The
   // delete client never throws, so a backend error degrades to a log line.
-  const cascadeDeleteMaterial = useCallback((materialId: string) => {
+  // `survivors` stay in the library: a source file one of them still owns is kept.
+  const cascadeDeleteMaterial = useCallback((materialId: string, survivors: readonly MaterialItem[]) => {
     const material = materialsSnapshotRef.current.find(m => m.id === materialId);
-    const sourcePath = sourcePathForDelete(material);
-    const extraKeys = extraThumbnailKeysForDelete(material);
+    const sourcePath = sourcePathForDelete(material, survivors);
+    const extraKeys = extraThumbnailKeysForDelete(material, survivors);
     void deleteMaterialDerived({ materialId, sourcePath, extraKeys }).then(result => {
       if (!result.success) {
         logger.warn('素材派生文件后端清理未成功（已本地移除）', {
@@ -215,9 +241,10 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     // Spec 06 §2.3 delete-联动: evict frontend caches + cascade-delete derived
     // files on the backend BEFORE state removal so the asset leaves nothing
     // stale behind (caches keyed by materialId; backend keyed by id + stem).
+    const survivors = materialsSnapshotRef.current.filter(material => !materialIds.includes(material.id));
     materialIds.forEach(id => {
       evictMaterialCaches(id);
-      cascadeDeleteMaterial(id);
+      cascadeDeleteMaterial(id, survivors);
     });
 
     setMaterials(prev => {
@@ -240,6 +267,52 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     });
   }, [logger, evictMaterialCaches, cascadeDeleteMaterial]);
 
+  /** Shows why a delete is refused; returns true when it was. */
+  const warnIfDeleteBlocked = useCallback((plan: MaterialDeletePlan): boolean => {
+    if (plan.kind === 'edit-locked') {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return true;
+    }
+    if (plan.kind === 'locked-clips') {
+      showWarning(t.materialsPanel.deleteBlockedLocked.replace('{count}', String(plan.count)));
+      return true;
+    }
+    return false;
+  }, [showWarning, t]);
+
+  const confirmMaterialDelete = useCallback((materialIds: string[]) => {
+    setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+    // The timeline may have changed while the dialog was open: plan again.
+    const plan = planMaterialDelete(materialIds);
+    if (plan.kind !== 'ready' || warnIfDeleteBlocked(plan)) return;
+
+    logger.info('素材删除已确认', { materialIds, removedClipCount: plan.itemIds.length });
+    if (plan.itemIds.length > 0) {
+      removeItemsAction(() => useTimelineStore.getState(), plan.itemIds);
+    }
+    try {
+      executeDelete(materialIds);
+    } catch (error) {
+      if (plan.itemIds.length === 0) {
+        logger.error('素材删除失败', error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+      console.error('[materials] delete failed after removing clips', { materialIds, error });
+      showError(t.materialsPanel.deleteFailedClipsRemoved);
+    }
+  }, [executeDelete, warnIfDeleteBlocked, showError, t, logger]);
+
+  /**
+   * Drops placeholders the app itself created (e.g. clip-cut placeholders after
+   * a failed cut). They were never placed on the timeline and the user did not
+   * ask to delete anything, so no confirmation or usage plan applies.
+   */
+  const discardPendingMaterials = useCallback((materialIds: string[]) => {
+    if (materialIds.length === 0) return;
+    logger.info('Discarding pending placeholder materials', { materialIds });
+    executeDelete(materialIds);
+  }, [executeDelete, logger]);
+
   // 处理素材删除（单个或批量）
   const handleMaterialDelete = useCallback((materialIds: string[]) => {
     logger.userAction('素材删除操作', 'deleteButton', {
@@ -247,28 +320,21 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       materialCount: materialIds.length
     });
 
-    // 获取要删除的素材信息
-    const materialsToDelete = materials.filter(material => materialIds.includes(material.id));
-    const materialNames = materialsToDelete.map(m => m.name).join('、');
+    const plan = planMaterialDelete(materialIds);
+    if (plan.kind !== 'ready') {
+      warnIfDeleteBlocked(plan);
+      return;
+    }
+    const materialNames = materialIds.map(id => materials.find(material => material.id === id)?.name ?? id);
 
     setConfirmationDialog({
       isOpen: true,
-      title: '确认删除素材',
-      message: materialIds.length === 1
-        ? `确定要删除素材「${materialNames}」吗？此操作不可撤销。`
-        : `确定要删除这 ${materialIds.length} 个素材吗？此操作不可撤销。`,
+      title: t.materialsPanel.deleteConfirmTitle,
+      message: materialDeleteMessage(t, materialNames, plan.itemIds.length),
       type: 'danger',
-      onConfirm: () => {
-        logger.info('用户确认删除素材', {
-          materialIds,
-          materialCount: materialIds.length,
-          materialNames
-        });
-        executeDelete(materialIds);
-        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
-      }
+      onConfirm: () => confirmMaterialDelete(materialIds),
     });
-  }, [materials, logger, executeDelete]);
+  }, [materials, logger, t, warnIfDeleteBlocked, confirmMaterialDelete]);
 
 
   // 关闭确认对话框
@@ -358,6 +424,14 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       materialType: newMaterial.type
     });
 
+    // Local download, filmstrip and waveform caches are keyed by material id:
+    // a same-id replacement with a new file (watermark removal) would keep
+    // showing the old file unless they are evicted.
+    const previous = materialsSnapshotRef.current.find(material => material.id === newMaterial.id);
+    if (previous && previous.url !== newMaterial.url) {
+      evictMaterialCaches(newMaterial.id);
+    }
+
     setMaterials(prev => {
       const existingIndex = prev.findIndex(material => material.id === newMaterial.id);
 
@@ -385,7 +459,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     });
 
     return true;
-  }, [logger]);
+  }, [logger, evictMaterialCaches]);
 
   // AI 生成流程（视频 / 图像 / 分镜包）— 独立 hook
   const {
@@ -518,6 +592,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleMaterialSelect,
     handleMaterialBatchSelect,
     handleMaterialDelete,
+    discardPendingMaterials,
     handleMaterialUpload,
     handleDragUpload,
     addMaterials,

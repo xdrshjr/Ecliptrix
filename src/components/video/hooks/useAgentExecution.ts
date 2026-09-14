@@ -20,7 +20,10 @@ import type {
   AgentTrackPatch,
 } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { isInlineMediaUrl } from '@/lib/inlineUrl';
 import { nextExternalUpdateId } from '@/components/video/timeline/lib/externalUpdateId';
+import { useTimelineStore } from '@/components/video/timeline/store/useTimelineStore';
+import { isEditLocked } from '@/components/video/timeline/store/editLock';
 import { SSEStreamManager } from '@/lib/video-editing-agent/SSEStreamManager';
 import { AgentEventRouter } from '@/lib/video-editing-agent/AgentEventRouter';
 import { AgentStateManager } from '@/lib/video-editing-agent/AgentStateManager';
@@ -59,7 +62,7 @@ export interface UseAgentExecutionParams {
   materials: MaterialItem[];
   /** Callback to signal external timeline update (e.g. setExternalTimelineUpdateId). */
   onTimelineUpdate?: (updateId: string) => void;
-  /** Notification callback (type: 'error' | 'success', message). */
+  /** Notification callback (type: 'error' | 'warning' | 'success', message). */
   onNotification?: (type: string, message: string) => void;
   /** Agent mode state (managed externally for UI persistence). */
   agentMode: boolean;
@@ -75,7 +78,10 @@ export interface UseAgentExecutionReturn {
   executionState: AgentExecutionState;
   /** Whether agent mode is active (vs regular chat). */
   agentMode: boolean;
-  /** Whether an agent execution is currently in progress. */
+  /**
+   * Whether an agent execution is in progress, including `finishing` (the
+   * stream ended but queued operations are still being applied).
+   */
   agentIsExecuting: boolean;
   /** Toggle agent mode on/off. */
   setAgentMode: (mode: boolean) => void;
@@ -101,7 +107,7 @@ interface AgentTurn {
 
 type TurnStreamCallbacks = Pick<
   StartExecutionParams,
-  'onEvent' | 'onRestart' | 'onComplete' | 'onError'
+  'onEvent' | 'onRestart' | 'onComplete' | 'onError' | 'onCancel' | 'onFinishingTimeout'
 >;
 
 // ---------------------------------------------------------------------------
@@ -120,6 +126,23 @@ function createAgentPlaceholder(agentMessageId: string): ChatMessage {
     agentToolCalls: [],
     pendingOperations: [],
   };
+}
+
+/**
+ * Request copy of the materials without inline media: `data:` thumbnails
+ * would be re-sent (and reach tool results) on every turn, and `blob:` local
+ * proxies mean nothing outside this page.
+ */
+function stripInlineMediaForAgent(materials: readonly MaterialItem[]): MaterialItem[] {
+  return materials.map(material => {
+    if (!isInlineMediaUrl(material.thumbnailUrl) && material.localProxyUrl === undefined) {
+      return material;
+    }
+    const copy: MaterialItem = { ...material };
+    delete copy.localProxyUrl;
+    if (isInlineMediaUrl(copy.thumbnailUrl)) delete copy.thumbnailUrl;
+    return copy;
+  });
 }
 
 function markToolCallUndone(
@@ -231,9 +254,20 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   //    animation delay can no longer let later operations land first. --
   const eventChainRef = useRef<Promise<void>>(Promise.resolve());
 
-  // -- agentIsExecuting derived from executionState --
-  const agentIsExecuting =
+  // -- The SSE stream is still open (tools may still be called) --
+  const isStreamLive =
     executionState.status === 'executing' || executionState.status === 'retrying';
+  const streamLiveRef = useRef(isStreamLive);
+  streamLiveRef.current = isStreamLive;
+
+  // -- agentIsExecuting also covers `finishing`: the edit lock, the send
+  //    button and agent undo wait until queued operations are applied --
+  const agentIsExecuting = isStreamLive || executionState.status === 'finishing';
+  const agentIsExecutingRef = useRef(agentIsExecuting);
+  agentIsExecutingRef.current = agentIsExecuting;
+
+  // -- Re-entry guard for sendAgentMessage until its request has started --
+  const sendingRef = useRef(false);
 
   // -----------------------------------------------------------------------
   // triggerClipAnimation — visual feedback for timeline operations
@@ -281,14 +315,18 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // Event chain, turn patches and per-turn collaborators
   // -----------------------------------------------------------------------
 
-  /** Run `task` after every previously received event has been handled. */
+  /**
+   * Run `task` after every previously received event has been handled.
+   * Returns the new chain tail, which settles once `task` has run.
+   */
   const runAfterQueuedEvents = useCallback(
-    (task: () => void | Promise<void>, context: string): void => {
+    (task: () => void | Promise<void>, context: string): Promise<void> => {
       eventChainRef.current = eventChainRef.current
         .then(task)
         .catch((err) => {
           console.error(`[useAgentExecution] Error ${context}:`, err);
         });
+      return eventChainRef.current;
     },
     [],
   );
@@ -362,7 +400,10 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
             'restarting agent message',
           );
         },
-        onComplete: () => {
+        // The terminal callbacks return the chain tail, so the execution
+        // stays `finishing` (timeline still locked) until every queued
+        // operation has been applied.
+        onComplete: () =>
           runAfterQueuedEvents(() => {
             stateManager.finalize();
             unsubscribe();
@@ -372,20 +413,30 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
               toolCallsCount: stateManager.getToolCalls().length,
               operationsCount: stateManager.getPendingOperations().length,
             });
-          }, 'finalizing agent message');
-        },
+          }, 'finalizing agent message'),
         onError: (error) => {
           onNotification?.('error', `Agent error: ${error.message}`);
-          runAfterQueuedEvents(() => {
+          return runAfterQueuedEvents(() => {
             unsubscribe();
             // Safety: finalize the message so it doesn't stay in streaming state
             stateManager.setError(error.userMessage);
             writeFinalMessage();
           }, 'finalizing failed agent message');
         },
+        // cancelByUser queues the sealing write before cancelling the
+        // stream, so the tail read here already includes it.
+        onCancel: () => eventChainRef.current,
+        // The watchdog gave up on a step that never settled. Later turns must
+        // not queue behind it (sending awaits the chain and would wait
+        // forever); the stuck step stays on the old chain and still applies
+        // if it ever settles.
+        onFinishingTimeout: () => {
+          eventChainRef.current = Promise.resolve();
+          onNotification?.('warning', t.agentApply.finishingTimedOut);
+        },
       };
     },
-    [runAfterQueuedEvents, computeTurnPatches, onNotification],
+    [runAfterQueuedEvents, computeTurnPatches, onNotification, t],
   );
 
   /** Per-execution applier, state manager, event router and callbacks. */
@@ -420,59 +471,67 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // -----------------------------------------------------------------------
 
   const sendAgentMessage = useCallback(async (message: string) => {
-    const convId = activeConversationIdRef.current;
-    if (!convId || agentIsExecuting) return;
+    if (sendingRef.current || agentIsExecutingRef.current) return;
+    if (!activeConversationIdRef.current) return;
+    sendingRef.current = true;
+    try {
+      // Operations still queued from the previous turn must land before the
+      // new turn snapshots the timeline, or its patches would swallow them.
+      await eventChainRef.current;
 
-    const activeConversation = conversationsRef.current.find(c => c.id === convId);
-    if (!activeConversation) return;
+      const convId = activeConversationIdRef.current;
+      const activeConversation = conversationsRef.current.find(c => c.id === convId);
+      if (!convId || !activeConversation) return;
 
-    // 1. Remember where the turn starts (baseline for its track patches)
-    const currentTL = timelineStateRef.current;
-    const turnStart: TimelineState | undefined = currentTL
-      ? JSON.parse(JSON.stringify(currentTL))
-      : undefined;
-    timelineSnapshotRef.current = turnStart;
-    turnConversationIdRef.current = convId;
+      // 1. Remember where the turn starts (baseline for its track patches)
+      const currentTL = timelineStateRef.current;
+      const turnStart: TimelineState | undefined = currentTL
+        ? JSON.parse(JSON.stringify(currentTL))
+        : undefined;
+      timelineSnapshotRef.current = turnStart;
+      turnConversationIdRef.current = convId;
 
-    // 2. Add user message and the agent reply placeholder
-    const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}-user`,
-      role: 'user',
-      content: message,
-      timestamp: new Date(),
-    };
-    const messagesWithUser = [...activeConversation.messages, userMessage];
-    messagesBeforeAgentRef.current = messagesWithUser;
-    const agentMessageId = `msg-${Date.now()}-agent`;
-    updateConversationMessages(convId, [
-      ...messagesWithUser,
-      createAgentPlaceholder(agentMessageId),
-    ]);
+      // 2. Add user message and the agent reply placeholder
+      const userMessage: ChatMessage = {
+        id: `msg-${Date.now()}-user`,
+        role: 'user',
+        content: message,
+        timestamp: new Date(),
+      };
+      const messagesWithUser = [...activeConversation.messages, userMessage];
+      messagesBeforeAgentRef.current = messagesWithUser;
+      const agentMessageId = `msg-${Date.now()}-agent`;
+      updateConversationMessages(convId, [
+        ...messagesWithUser,
+        createAgentPlaceholder(agentMessageId),
+      ]);
 
-    console.log('[useAgentExecution] Sending agent message', {
-      messageLength: message.length,
-      hasTimelineState: !!currentTL,
-      materialsCount: materialsRef.current.length,
-    });
+      console.log('[useAgentExecution] Sending agent message', {
+        messageLength: message.length,
+        hasTimelineState: !!currentTL,
+        materialsCount: materialsRef.current.length,
+      });
 
-    // 3. Per-execution applier, state manager and event router
-    const callbacks = createTurnRuntime({
-      convId, agentMessageId, messagesWithUser, turnStart,
-    });
+      // 3. Per-execution applier, state manager and event router
+      const callbacks = createTurnRuntime({
+        convId, agentMessageId, messagesWithUser, turnStart,
+      });
 
-    // 4. Start execution via useAgentExecutionState (owns the SSEStreamManager)
-    startExecution({
-      url: '/api/video-editing-agent/chat',
-      body: {
-        messages: messagesWithUser,
-        timelineState: currentTL,
-        materials: materialsRef.current,
-        projectId,
-      },
-      ...callbacks,
-    });
+      // 4. Start execution via useAgentExecutionState (owns the SSEStreamManager)
+      startExecution({
+        url: '/api/video-editing-agent/chat',
+        body: {
+          messages: messagesWithUser,
+          timelineState: currentTL,
+          materials: stripInlineMediaForAgent(materialsRef.current),
+          projectId,
+        },
+        ...callbacks,
+      });
+    } finally {
+      sendingRef.current = false;
+    }
   }, [
-    agentIsExecuting,
     updateConversationMessages,
     createTurnRuntime,
     startExecution,
@@ -527,15 +586,17 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     [runAfterQueuedEvents, computeTurnPatches],
   );
 
+  // Seal first: the cancel's `finishing` phase waits for the chain tail, and
+  // that tail must already contain the sealing write.
   const cancelByUser = useCallback(() => {
-    cancelExecState();
     sealMessage({ byUser: true });
+    cancelExecState();
     console.log('[useAgentExecution] Execution cancelled by user');
   }, [cancelExecState, sealMessage]);
 
   const cancelByNavigation = useCallback(() => {
-    cancelExecState();
     sealMessage({ byUser: false });
+    cancelExecState();
     console.log('[useAgentExecution] Execution cancelled by navigation/unmount');
   }, [cancelExecState, sealMessage]);
 
@@ -548,7 +609,19 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // undoAllOperations — revert the track patches of an agent message
   // -----------------------------------------------------------------------
 
+  /**
+   * Agent undo is local-only: mid-run the server keeps editing its own copy,
+   * so its later operations would miss or delete clips and the turn's patch
+   * would contain the revert. Refused (with a notice) until the run ends.
+   */
+  const isAgentUndoBlocked = useCallback((): boolean => {
+    if (!agentIsExecutingRef.current && !isEditLocked(useTimelineStore.getState())) return false;
+    onNotification?.('warning', t.agentUndo.blockedWhileRunning);
+    return true;
+  }, [onNotification, t]);
+
   const undoAllOperations = useCallback((messageId: string) => {
+    if (isAgentUndoBlocked()) return;
     const convId = activeConversationIdRef.current;
     if (!convId) return;
 
@@ -585,13 +658,14 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         : msg
     );
     updateConversationMessages(convId, updatedMessages);
-  }, [setTimelineState, onTimelineUpdate, onNotification, updateConversationMessages, t]);
+  }, [isAgentUndoBlocked, setTimelineState, onTimelineUpdate, onNotification, updateConversationMessages, t]);
 
   // -----------------------------------------------------------------------
   // undoSingleOperation — undo one specific tool call's operation
   // -----------------------------------------------------------------------
 
   const undoSingleOperation = useCallback((messageId: string, toolCallId: string) => {
+    if (isAgentUndoBlocked()) return;
     const applier = operationApplierRef.current;
     // Read before undoing: a successful undo drops the step's records.
     const affectedTrackIds = applier?.affectedTrackIds(toolCallId) ?? [];
@@ -630,7 +704,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     }
 
     console.log('[useAgentExecution] Single operation undone:', toolCallId);
-  }, [onTimelineUpdate, onNotification, updateConversationMessages, t]);
+  }, [isAgentUndoBlocked, onTimelineUpdate, onNotification, updateConversationMessages, t]);
 
   // -----------------------------------------------------------------------
   // Cleanup stale streaming messages on mount (e.g. after page refresh)
@@ -686,8 +760,10 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // system note, per spec §2.6.2 / P1-4).
   // -----------------------------------------------------------------------
 
+  // A `finishing` turn is left alone: its stream already ended, and its
+  // remaining writes are bound to its own conversation id.
   useEffect(() => {
-    if (agentIsExecuting) {
+    if (streamLiveRef.current) {
       cancelByNavigation();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -696,13 +772,24 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // -----------------------------------------------------------------------
   // Cleanup on unmount (same nav-style teardown)
   // -----------------------------------------------------------------------
+  //
+  // Unmounting mid-stream seals the turn like a conversation switch, so its
+  // timelineTrackPatches and the last batched update are still written (the
+  // conversation owner outlives this editor). Refs keep the cleanup reading
+  // the latest callbacks without re-running the effect.
+
+  const cancelByNavigationRef = useRef(cancelByNavigation);
+  cancelByNavigationRef.current = cancelByNavigation;
 
   useEffect(() => {
     return () => {
-      cancelExecState();
+      if (streamLiveRef.current) {
+        cancelByNavigationRef.current();
+        return;
+      }
       stateManagerRef.current?.destroy();
     };
-  }, [cancelExecState]);
+  }, []);
 
   // -----------------------------------------------------------------------
   // Return

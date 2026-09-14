@@ -102,6 +102,9 @@ export interface AudioCompositionItem {
   duration: number;
   track_id: string;
   volume?: number;
+  // Source trimming window; the backend cuts [clip_start, clip_end] before mixing.
+  clip_start?: number;
+  clip_end?: number;
 }
 
 export interface SubtitleCompositionItem {
@@ -178,6 +181,25 @@ export interface CompositionErrorDetails {
   error?: string;
 }
 
+/**
+ * Composition status on the wire. The router only reports processing /
+ * completed / failed; `error` is kept for older backends whose fallback branch
+ * still returned it.
+ */
+export type CompositionStatus = 'processing' | 'completed' | 'failed' | 'error';
+
+/**
+ * Something that did not make it into a finished video (S7): an image overlay,
+ * the subtitle pass, one audio clip or a clip's original sound. Mirrors the
+ * backend `CompositionDegradation`. `reason` is backend text for the logs only.
+ */
+export interface CompositionDegradation {
+  kind: 'image_overlay' | 'subtitles' | 'audio_item' | 'embedded_audio';
+  item_ids: string[];
+  item_names: string[];
+  reason: string;
+}
+
 export interface VideoCompositionResponse {
   success: boolean;
   message: string;
@@ -199,7 +221,7 @@ export interface VideoCompositionResponse {
 export interface CompositionStatusResponse {
   composition_id: string;
   task_id: string;
-  status: 'processing' | 'completed' | 'failed';
+  status: CompositionStatus;
   progress: number;
   start_time: number;
   processing_time?: number;
@@ -217,6 +239,8 @@ export interface CompositionStatusResponse {
    * normalization even starts, so warnings there are always empty.
    */
   warnings?: string[];
+  /** Content left out of a finished video (S7); may be non-empty on `completed`. */
+  degradations?: CompositionDegradation[];
 }
 
 /**
@@ -233,13 +257,21 @@ function validateCompositionRequest(request: VideoCompositionRequest): void {
   if (!request.task_id || typeof request.task_id !== 'string') {
     throw new Error('Invalid composition request: task_id is required');
   }
-  if (!Array.isArray(request.video_items) || request.video_items.length === 0) {
+  if (!Array.isArray(request.video_items)) {
+    throw new Error('Invalid composition request: video_items must be an array');
+  }
+  if (request.image_items !== undefined && !Array.isArray(request.image_items)) {
+    throw new Error('Invalid composition request: image_items must be an array');
+  }
+  // An image + voice-over timeline has no video clips but still renders (EXO-06).
+  if (request.video_items.length === 0 && (request.image_items ?? []).length === 0) {
     throw new Error(
-      'Invalid composition request: video_items must be a non-empty array',
+      'Invalid composition request: video_items or image_items must contain at least one item',
     );
   }
   if (
     typeof request.total_duration !== 'number' ||
+    !Number.isFinite(request.total_duration) ||
     request.total_duration <= 0
   ) {
     throw new Error(
@@ -387,9 +419,14 @@ export class VideoCompositionAPI {
 
           if (status.status === 'completed') {
             finish(() => resolve(status));
-          } else if (status.status === 'failed') {
+          } else if (status.status === 'failed' || status.status === 'error') {
             const message = buildCompositionFailureMessage(status);
             finish(() => reject(new Error(message)));
+          } else if (status.status !== 'processing') {
+            // Anything else never turns into completed/failed; polling it to the
+            // cap would leave the user waiting ten minutes for nothing (EXO-08).
+            const unexpected = new Error(`Unexpected composition status "${String(status.status)}"`);
+            finish(() => reject(unexpected));
           } else if (attempts >= maxAttempts) {
             finish(() => reject(createPollingTimeoutError()));
           } else {

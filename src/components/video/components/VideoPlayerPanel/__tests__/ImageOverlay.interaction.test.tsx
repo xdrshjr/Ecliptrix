@@ -41,21 +41,19 @@ describe('ImageOverlay — selection stability + four-corner resize (D1′/D2/D2
     expect(OVERLAY).toMatch(/handle\.cursorClass/);
   });
 
-  it('curries handleResizeMouseDown by handle id, preserving preventDefault + stopPropagation', () => {
-    expect(OVERLAY).toMatch(/handleResizeMouseDown\(handle\.id\)/);
-    // Curried inner-function body: capture from the (e) => { ... }, up to its close.
-    const body = OVERLAY.match(
-      /\(handle:\s*HandleId\)\s*=>\s*\(e:\s*React\.MouseEvent\)\s*=>\s*\{([\s\S]*?)\},/,
-    );
+  it('starts corner resizes through beginGesture with preventDefault, stopPropagation and pointer capture', () => {
+    expect(OVERLAY).toMatch(/onPointerDown=\{\(e\)\s*=>\s*beginGesture\(e,\s*handle\.id\)\}/);
+    const body = OVERLAY.match(/const beginGesture = useCallback\(([\s\S]*?)\}, \[/);
     expect(body).not.toBeNull();
     expect(body![1]).toMatch(/e\.preventDefault\(\)/);
     expect(body![1]).toMatch(/e\.stopPropagation\(\)/);
+    expect(body![1]).toMatch(/setPointerCapture\(e\.pointerId\)/);
   });
 
-  it('tracks the active corner in a ref (not state) so the global mousemove never re-subscribes mid-gesture', () => {
-    expect(OVERLAY).toMatch(/resizeHandleRef\s*=\s*useRef<HandleId\s*\|\s*null>\(null\)/);
-    expect(OVERLAY).toMatch(/resizeHandleRef\.current\s*=\s*null/); // reset on mouseup
-    expect(OVERLAY).toMatch(/resizeFromHandle\(/); // move delegates to the pure helper
+  it('tracks the active gesture in a ref (not state) so pointermove never re-subscribes mid-gesture', () => {
+    expect(OVERLAY).toMatch(/gestureRef\s*=\s*useRef<ActiveGesture\s*\|\s*null>\(null\)/);
+    expect(OVERLAY).toMatch(/gestureRef\.current\s*=\s*null/); // cleared when the gesture ends
+    expect(OVERLAY).toMatch(/resizeFromHandle\(/); // resize delegates to the pure helper
   });
 });
 
@@ -65,23 +63,23 @@ describe('ImageOverlay explicit commit/cancel controls', () => {
     expect(OVERLAY).toMatch(/onCancel\?:\s*\(\)\s*=>\s*void/);
   });
 
-  it('renders selected-state confirm and cancel buttons with event isolation', () => {
-    expect(OVERLAY).toMatch(/title="Confirm image position"/);
-    expect(OVERLAY).toMatch(/aria-label="Confirm image position"/);
-    expect(OVERLAY).toMatch(/title="Cancel image position"/);
-    expect(OVERLAY).toMatch(/aria-label="Cancel image position"/);
-    expect(OVERLAY).toMatch(/handleControlMouseDown/);
-    expect(OVERLAY).toMatch(/handleConfirmClick/);
-    expect(OVERLAY).toMatch(/handleCancelClick/);
+  it('renders selected-state done and revert buttons with localized labels and event isolation', () => {
+    expect(OVERLAY).toMatch(/title=\{t\.imageOverlay\.done\}/);
+    expect(OVERLAY).toMatch(/aria-label=\{t\.imageOverlay\.done\}/);
+    expect(OVERLAY).toMatch(/title=\{t\.imageOverlay\.revert\}/);
+    expect(OVERLAY).toMatch(/aria-label=\{t\.imageOverlay\.revert\}/);
+    expect(OVERLAY).toMatch(/handleControlPointerDown/);
+    expect(OVERLAY).toMatch(/handleDoneClick/);
+    expect(OVERLAY).toMatch(/handleRevertClick/);
   });
 
-  it('VideoPlayerPanel wires commit and cancel handlers into both overlay render paths', () => {
-    const confirmMatches = PANEL.match(/onConfirm=\{\(\)\s*=>\s*handleImagePositionConfirm\(overlay\.id,\s*overlay\.position\)\}/g);
-    const cancelMatches = PANEL.match(/onCancel=\{\(\)\s*=>\s*handleImagePositionCancel\(overlay\.id\)\}/g);
-    expect(confirmMatches).not.toBeNull();
-    expect(cancelMatches).not.toBeNull();
-    expect(confirmMatches!.length).toBe(2);
-    expect(cancelMatches!.length).toBe(2);
+  it('VideoPlayerPanel wires done and revert handlers into both overlay render paths', () => {
+    expect(PANEL).toMatch(/onConfirm=\{\(\)\s*=>\s*handleImageOverlayDone\(overlay\.id\)\}/);
+    expect(PANEL).toMatch(/onCancel=\{\(\)\s*=>\s*handleImageOverlayRevert\(overlay\.id\)\}/);
+    // One shared renderer, used by the composition frame and the placeholder frame.
+    const renderCalls = PANEL.match(/\{renderImageOverlayHandles\(/g);
+    expect(renderCalls).not.toBeNull();
+    expect(renderCalls!.length).toBe(2);
   });
 });
 

@@ -1,31 +1,30 @@
-"""Multi-track + transition ``-filter_complex`` builder (spec 05 §2.4 / §2.5).
+"""Canvas compositor ``-filter_complex`` builder (round 2, S6).
 
-This is the export-side mirror of the Phase-2 preview compositor. It reproduces
-the SAME visual semantics the canvas compositor produces (spec 02 §2.2 / §2.4,
-`assembleLayers` + `TransitionLayer.alphaFor`) so export is what-you-see-is-
-what-you-get:
+The export-side mirror of the preview compositor. Every video clip is placed at
+its real timeline ``start_time`` on a black canvas as long as the timeline:
 
-  - z-order = track order (bottom track drawn first, upper tracks overlaid on
-    top), keyed by ``track_z``;
-  - per-clip opacity → ``format=rgba,colorchannelmixer=aa=<opacity>`` (the alpha
-    the overlay blends with), the FFmpeg analogue of the compositor's
-    ``globalAlpha = item.opacity``;
-  - ``fade`` transition → FFmpeg ``fade=t=in``/``fade=t=out`` over the clip's
-    leading/trailing ``duration`` seconds (the exact window
-    ``TransitionLayer.alphaFor`` ramps);
-  - ``dissolve`` transition between two temporally-adjacent clips on the SAME
-    track → ``xfade=transition=fade`` with ``duration`` = transition duration
-    (the cross-dissolve overlap);
-  - subtitles are burned in by the caller's existing drawtext chain (reused, not
-    reimplemented) — this builder only positions the produced ``[vout]`` label.
+  - clips are grouped per track and ordered bottom→top by ``track_z`` (the same
+    rule as the preview ``buildVideoTrackGroups``);
+  - inside a track, clips that touch (within half a frame) form a *contiguous
+    run*; a run is concatenated once and shifted to its first clip's start with
+    ``setpts=PTS+start/TB``;
+  - runs are overlaid on the canvas with ``eof_action=pass``, so an upper track
+    shows the lower one outside its own clips — never black before the clip,
+    never a frozen last frame after it (EXV-01);
+  - gaps inside a track and before its first clip stay black instead of being
+    collapsed (EXV-02 / EXV-09), and the canvas lasts until the timeline end,
+    not the sum of clip durations (EXV-03);
+  - per-clip opacity and ``fade`` / ``dissolve`` transitions become alpha
+    ramps (``format=rgba,fade=…:alpha=1,colorchannelmixer``). With a magnetic
+    timeline two dissolving clips never overlap, so a dissolve is "fade out +
+    fade in", exactly what ``TransitionLayer`` draws in preview. There is no
+    ``xfade`` and no ``tpad`` any more (EXV-04 / EXV-05 / EXV-06 / EXV-08).
 
-PURE string construction: no subprocess, no filesystem. The caller wires the
-``-i`` inputs in ``video_inputs`` order, passes the result as
-``-filter_complex``, and maps ``output_label``.
+Only a single track that starts at 0, has no gaps, no alpha and ends exactly at
+the timeline end reports ``can_use_concat`` — the caller then concatenates the
+planned inputs with the lightweight concat demuxer.
 
-When the timeline has no real multi-track overlay AND no transitions, the
-builder reports ``can_use_concat=True`` so the caller takes the lighter, already-
-proven concat path (spec 05 §2.4 fallback).
+PURE string construction: no subprocess, no filesystem.
 """
 
 from __future__ import annotations
@@ -70,8 +69,8 @@ class TrackPlan:
 class FiltergraphResult:
     """Outcome of planning the composite filtergraph."""
 
-    #: True when the timeline is degenerate (single track, no transitions) and
-    #: the caller should use the existing concat path instead.
+    #: True when a single gap-free, alpha-free track spans the whole timeline;
+    #: the caller concatenates ``video_inputs`` instead of running the graph.
     can_use_concat: bool
     #: The ``-filter_complex`` string (empty when can_use_concat).
     filter_complex: str
@@ -79,6 +78,8 @@ class FiltergraphResult:
     output_label: str
     #: Input ordering: the clip ids in the order the caller must add ``-i``.
     video_inputs: List[str]
+    #: Canvas duration in seconds (the timeline end).
+    timeline_end: float = 0.0
 
 
 def _clamp01(value: Optional[float]) -> float:
@@ -138,197 +139,181 @@ def group_tracks(clips: List[ClipLike]) -> List[TrackPlan]:
     return plans
 
 
-def _build_clip_chain(
-    input_idx: int, clip: ClipLike, scale_to: str, pre_trimmed: bool
-) -> tuple[str, str]:
-    """Build the filter chain for ONE clip: trim → setpts → scale → fade → opacity.
+def _clip_end(clip: ClipLike) -> float:
+    return clip.start_time + clip.duration
 
-    Returns ``(chain, out_label)`` where ``chain`` ends at ``[out_label]``.
-    ``scale_to`` is the canvas ``WxH`` (e.g. '1920x1080'); the clip is scaled to
-    fit-contain with letterbox padding (matches the compositor's fitContain).
 
-    When ``pre_trimmed`` the input has ALREADY been trimmed to its clip window
-    and scaled to the canvas by an upstream normalization pass; we then skip the
-    trim/scale steps (which would double-apply) and keep only the setpts reset +
-    transition + opacity steps. The default (``pre_trimmed=False``) emits the
-    full self-contained chain over an ORIGINAL input — the form the unit tests
-    assert (clip trim/setpts).
+def _num(value: float) -> str:
+    """Short, stable number for filter options (``0.5``, not ``0.500000``)."""
+    return f"{value:.6f}".rstrip("0").rstrip(".") or "0"
+
+
+def _needs_alpha(clip: ClipLike) -> bool:
+    """Opacity below 1 or any effective transition (fade and dissolve alike)."""
+    if _clamp01(clip.opacity) < 1.0 - TIME_EPSILON:
+        return True
+    for transition in (clip.transition_in, clip.transition_out):
+        if _effective_transition_duration(transition, clip.duration) > TIME_EPSILON:
+            return True
+    return False
+
+
+def _contiguous_runs(clips: List[ClipLike], tolerance: float) -> List[List[ClipLike]]:
+    """Split start-sorted clips wherever the next one does not touch the previous.
+
+    Overlapping (malformed) clips also start a new run, so the later clip is
+    stacked above instead of shifting everything after it.
     """
-    clip_start = clip.clip_start if clip.clip_start is not None else 0.0
-    clip_end = clip.clip_end if clip.clip_end is not None else (clip_start + clip.duration)
-    width, height = scale_to.split("x")
+    runs: List[List[ClipLike]] = []
+    for clip in clips:
+        if runs and abs(clip.start_time - _clip_end(runs[-1][-1])) <= tolerance:
+            runs[-1].append(clip)
+        else:
+            runs.append([clip])
+    return runs
 
-    label = f"v{input_idx}"
+
+def _is_plain_contiguous_single_track(
+    plans: List[TrackPlan], end: float, tolerance: float
+) -> bool:
+    if len(plans) != 1 or not plans[0].clips:
+        return False
+    clips = plans[0].clips
+    if any(_needs_alpha(clip) for clip in clips):
+        return False
+    if clips[0].start_time > tolerance:
+        return False
+    if len(_contiguous_runs(clips, tolerance)) != 1:
+        return False
+    return end - _clip_end(clips[-1]) <= tolerance
+
+
+def _append_clip_chain(
+    parts: List[str],
+    input_index: int,
+    clip: ClipLike,
+    width: int,
+    height: int,
+    pre_trimmed: bool,
+    needs_alpha: bool,
+) -> str:
+    """Filter chain for ONE clip, ending at label ``c{input_index}``.
+
+    ``pre_trimmed`` inputs were already trimmed to their clip window and scaled
+    to the canvas by the normalization pass, so only the PTS reset, the exact
+    timeline duration and the alpha steps remain.
+    """
     steps: List[str] = []
     if not pre_trimmed:
-        steps.append(f"trim=start={clip_start}:end={clip_end}")
+        clip_start = clip.clip_start if clip.clip_start is not None else 0.0
+        clip_end = clip.clip_end if clip.clip_end is not None else clip_start + clip.duration
+        steps.append(f"trim=start={_num(clip_start)}:end={_num(clip_end)}")
     steps.append("setpts=PTS-STARTPTS")
     if not pre_trimmed:
         steps.append(f"scale={width}:{height}:force_original_aspect_ratio=decrease")
         steps.append(f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black")
         steps.append("setsar=1:1")
+    steps.append(f"trim=duration={clip.duration:.6f}")
 
-    fade_in = _effective_transition_duration(clip.transition_in, clip.duration)
-    if fade_in > TIME_EPSILON:
-        steps.append(f"fade=t=in:st=0:d={fade_in}:alpha=1")
-    fade_out = _effective_transition_duration(clip.transition_out, clip.duration)
-    if fade_out > TIME_EPSILON:
-        out_start = max(0.0, clip.duration - fade_out)
-        steps.append(f"fade=t=out:st={out_start}:d={fade_out}:alpha=1")
-
-    opacity = _clamp01(clip.opacity)
-    if opacity < 1.0 - TIME_EPSILON:
+    if needs_alpha:
+        # One format for the whole run: concat needs identical pixel formats.
         steps.append("format=rgba")
-        steps.append(f"colorchannelmixer=aa={opacity}")
+        fade_in = _effective_transition_duration(clip.transition_in, clip.duration)
+        if fade_in > TIME_EPSILON:
+            steps.append(f"fade=t=in:st=0:d={_num(fade_in)}:alpha=1")
+        fade_out = _effective_transition_duration(clip.transition_out, clip.duration)
+        if fade_out > TIME_EPSILON:
+            steps.append(
+                f"fade=t=out:st={_num(max(0.0, clip.duration - fade_out))}"
+                f":d={_num(fade_out)}:alpha=1"
+            )
+        opacity = _clamp01(clip.opacity)
+        if opacity < 1.0 - TIME_EPSILON:
+            steps.append(f"colorchannelmixer=aa={_num(opacity)}")
 
-    chain = f"[{input_idx}:v]" + ",".join(steps) + f"[{label}]"
-    return chain, label
+    label = f"c{input_index}"
+    parts.append(f"[{input_index}:v]" + ",".join(steps) + f"[{label}]")
+    return label
 
 
-def _has_dissolve(clip: ClipLike) -> bool:
-    t = clip.transition_in
-    if t is not None and getattr(t, "type", None) == "dissolve":
-        return True
-    t = clip.transition_out
-    return t is not None and getattr(t, "type", None) == "dissolve"
+def _append_run_placement(
+    parts: List[str], clip_labels: List[str], start: float, run_index: int
+) -> str:
+    """Join a run's clips and shift them to the run's timeline start."""
+    label = f"r{run_index}"
+    if len(clip_labels) == 1:
+        parts.append(
+            f"[{clip_labels[0]}]settb=AVTB,setpts=PTS+{start:.6f}/TB[{label}]"
+        )
+        return label
+    inputs = "".join(f"[{clip_label}]" for clip_label in clip_labels)
+    parts.append(
+        f"{inputs}concat=n={len(clip_labels)}:v=1:a=0,"
+        f"settb=AVTB,setpts=PTS-STARTPTS+{start:.6f}/TB[{label}]"
+    )
+    return label
 
 
-def _track_needs_filtergraph(plan: TrackPlan) -> bool:
-    """A track forces the filtergraph path when any clip has opacity<1 or a transition."""
-    for clip in plan.clips:
-        if _clamp01(clip.opacity) < 1.0 - TIME_EPSILON:
-            return True
-        if clip.transition_in is not None or clip.transition_out is not None:
-            return True
-    return False
+def _overlay_runs_on_base(run_labels: List[str]) -> List[str]:
+    """Overlay runs bottom→top on ``[base]``; labels use indices, never track ids."""
+    if not run_labels:
+        return ["[base]null[vout]"]
+    parts: List[str] = []
+    current = "base"
+    for index, run_label in enumerate(run_labels):
+        out = "vout" if index == len(run_labels) - 1 else f"o{index}"
+        parts.append(
+            f"[{current}][{run_label}]overlay=0:0:eof_action=pass:format=auto[{out}]"
+        )
+        current = out
+    return parts
 
 
 def build_filtergraph(
     clips: List[ClipLike],
-    canvas_width: int,
-    canvas_height: int,
+    width: int,
+    height: int,
     pre_trimmed: bool = False,
+    fps: int = 30,
+    timeline_end: Optional[float] = None,
 ) -> FiltergraphResult:
-    """Plan the composite ``-filter_complex`` for the video clips.
+    """Plan the canvas composite for the video clips.
 
     Args:
         clips: all video composition items (any number of tracks).
-        canvas_width / canvas_height: output resolution.
-        pre_trimmed: when True the inputs were already trimmed to their clip
-            window and scaled to the canvas (e.g. by the normalization pass), so
-            the per-clip trim/scale steps are skipped. Default False emits the
-            full self-contained chain (clip trim/setpts) over original inputs.
-
-    Returns:
-        A :class:`FiltergraphResult`. ``can_use_concat`` is True for the
-        degenerate single-track / no-transition case so the caller uses concat.
+        width / height: output resolution.
+        pre_trimmed: inputs were already trimmed and scaled by normalization.
+        fps: canvas frame rate; also sets the half-frame gap tolerance.
+        timeline_end: where the timeline ends (images, audio and subtitles can
+            outlast the last video clip). The canvas is at least that long.
     """
-    tracks = group_tracks(clips)
-    multi_track = len(tracks) > 1
-    any_track_needs_fg = any(_track_needs_filtergraph(t) for t in tracks)
-    if not multi_track and not any_track_needs_fg:
+    visible = [clip for clip in clips if _clamp01(clip.opacity) > TIME_EPSILON]
+    last_end = max((_clip_end(clip) for clip in visible), default=0.0)
+    end = max(last_end, timeline_end or 0.0)
+    plans = group_tracks(visible)
+    tolerance = 0.5 / max(1, fps)
+
+    if _is_plain_contiguous_single_track(plans, end, tolerance):
         return FiltergraphResult(
-            can_use_concat=True, filter_complex="", output_label="", video_inputs=[]
+            True, "", "", [clip.id for clip in plans[0].clips], end
         )
 
-    scale_to = f"{canvas_width}x{canvas_height}"
     parts: List[str] = []
-    video_inputs: List[str] = []
-    track_labels: List[str] = []
+    inputs: List[str] = []
+    run_labels: List[str] = []
+    for plan in plans:
+        for run in _contiguous_runs(plan.clips, tolerance):
+            needs_alpha = any(_needs_alpha(clip) for clip in run)
+            clip_labels = []
+            for clip in run:
+                clip_labels.append(_append_clip_chain(
+                    parts, len(inputs), clip, width, height, pre_trimmed, needs_alpha,
+                ))
+                inputs.append(clip.id)
+            run_labels.append(_append_run_placement(
+                parts, clip_labels, run[0].start_time, len(run_labels),
+            ))
 
-    input_idx = 0
-    for plan in tracks:
-        clip_labels: List[str] = []
-        for clip in plan.clips:
-            chain, label = _build_clip_chain(input_idx, clip, scale_to, pre_trimmed)
-            parts.append(chain)
-            clip_labels.append(label)
-            video_inputs.append(clip.id)
-            input_idx += 1
-        track_label = _compose_track(parts, plan, clip_labels, scale_to)
-        track_label = _position_track(parts, plan, track_label)
-        track_labels.append(track_label)
-
-    output_label = _overlay_tracks(parts, track_labels)
-    return FiltergraphResult(
-        can_use_concat=False,
-        filter_complex=";".join(parts),
-        output_label=f"[{output_label}]",
-        video_inputs=video_inputs,
-    )
-
-
-def _position_track(parts: List[str], plan: TrackPlan, track_label: str) -> str:
-    """Delay a track's composed stream to its first clip's timeline start.
-
-    Each track is built starting at PTS 0; ``tpad`` prepends the leading
-    timeline gap so the track lands at the correct composition time before the
-    inter-track overlay (the export analogue of the compositor drawing a clip at
-    its ``startTime``).
-    """
-    if not track_label or not plan.clips:
-        return track_label
-    start = plan.clips[0].start_time
-    if start <= TIME_EPSILON:
-        return track_label
-    out_label = f"pos_{plan.track_id}"
-    parts.append(f"[{track_label}]tpad=start_duration={start}[{out_label}]")
-    return out_label
-
-
-def _compose_track(
-    parts: List[str], plan: TrackPlan, clip_labels: List[str], scale_to: str
-) -> str:
-    """Compose a track's clips into a single labelled stream.
-
-    Adjacent clips joined by a ``dissolve`` transition cross-fade via ``xfade``
-    with overlap = the transition duration (matching the preview's overlapping
-    fade windows). Non-dissolve adjacent clips concatenate. A single-clip track
-    passes through unchanged.
-    """
-    if not clip_labels:
-        return ""
-    if len(clip_labels) == 1:
-        return clip_labels[0]
-
-    width, height = scale_to.split("x")
-    current = clip_labels[0]
-    cumulative_offset = plan.clips[0].duration
-    for index in range(1, len(clip_labels)):
-        prev_clip = plan.clips[index - 1]
-        clip = plan.clips[index]
-        next_label = clip_labels[index]
-        out_label = f"trk_{plan.track_id}_{index}"
-        if _has_dissolve(clip) or _has_dissolve(prev_clip):
-            duration = _effective_transition_duration(
-                clip.transition_in or prev_clip.transition_out, clip.duration
-            )
-            offset = max(0.0, cumulative_offset - duration)
-            parts.append(
-                f"[{current}][{next_label}]"
-                f"xfade=transition=fade:duration={duration}:offset={offset}[{out_label}]"
-            )
-            cumulative_offset = offset + duration + clip.duration
-        else:
-            parts.append(f"[{current}][{next_label}]concat=n=2:v=1:a=0[{out_label}]")
-            cumulative_offset += clip.duration
-        current = out_label
-    return current
-
-
-def _overlay_tracks(parts: List[str], track_labels: List[str]) -> str:
-    """Overlay tracks bottom→top; per-clip opacity already folded into alpha."""
-    track_labels = [label for label in track_labels if label]
-    if not track_labels:
-        return ""
-    current = track_labels[0]
-    if len(track_labels) == 1:
-        out = "vout"
-        parts.append(f"[{current}]null[{out}]")
-        return out
-    for index in range(1, len(track_labels)):
-        upper = track_labels[index]
-        out = "vout" if index == len(track_labels) - 1 else f"ov_{index}"
-        parts.append(f"[{current}][{upper}]overlay=0:0:format=auto[{out}]")
-        current = out
-    return current
+    base = f"color=c=black:s={width}x{height}:r={fps}:d={end:.6f},format=yuv420p[base]"
+    graph = ";".join([base, *parts, *_overlay_runs_on_base(run_labels)])
+    return FiltergraphResult(False, graph, "[vout]", inputs, end)

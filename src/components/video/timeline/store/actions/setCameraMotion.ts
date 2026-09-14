@@ -9,6 +9,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 import type { CameraMotionData } from '../../domain';
 
 /**
@@ -29,6 +30,7 @@ export function setCameraMotionAction(
   if (!itemIds || itemIds.length === 0) return;
 
   const state = get();
+  if (isEditLocked(state)) return;
   // Pre-flight so we never record an empty entry (mirrors detachAudioAction).
   const targets = itemIds.filter((id) => state._aggregate.findItem(id) != null);
   if (targets.length === 0) return;

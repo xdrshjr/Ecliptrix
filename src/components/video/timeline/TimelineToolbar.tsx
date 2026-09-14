@@ -45,6 +45,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     selectedItemsCount,
     editableSelectedCount,
     isEditLocked,
+    isInteracting,
     activeTool,
   } = useTimelineStore(
     useShallow((state) => ({
@@ -59,6 +60,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         state.tracks.some((track) => !track.isLocked && track.items.some((item) => item.id === id)),
       ).length,
       isEditLocked: state.externalEditLock !== null,
+      // A drag in flight owns the timeline: undo/redo/delete under it would
+      // be overwritten by the release (TL2-18).
+      isInteracting: state.isInteracting,
       activeTool: state.activeTool,
     })),
   );
@@ -115,7 +119,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     ),
     label: t.timeline.toolbar.importProject,
     shortcut: '',
-    disabled: isImporting,
+    // Importing replaces the whole timeline, which the agent's lock refuses.
+    disabled: isImporting || isEditLocked,
+    disabledHint: editLockedHint,
     loading: isImporting
   };
 
@@ -160,7 +166,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.delete,
       shortcut: t.timeline.shortcuts.deleteShortcut,
-      disabled: editableSelectedCount === 0 || isEditLocked,
+      disabled: editableSelectedCount === 0 || isEditLocked || isInteracting,
       disabledHint: editLockedHint,
     }
   ];
@@ -177,7 +183,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.undo,
       shortcut: t.timeline.shortcuts.undoShortcut,
-      disabled: !canUndo || isEditLocked,
+      disabled: !canUndo || isEditLocked || isInteracting,
       disabledHint: editLockedHint,
     },
     {
@@ -190,7 +196,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.redo,
       shortcut: t.timeline.shortcuts.redoShortcut,
-      disabled: !canRedo || isEditLocked,
+      disabled: !canRedo || isEditLocked || isInteracting,
       disabledHint: editLockedHint,
     },
     {
@@ -202,7 +208,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         </svg>
       ),
       label: t.timeline.toolbar.organizeMaterials,
-      disabled: false
+      // Organizing repacks every lane, so it is an edit like any other.
+      disabled: isEditLocked,
+      disabledHint: editLockedHint,
     }
   ];
 

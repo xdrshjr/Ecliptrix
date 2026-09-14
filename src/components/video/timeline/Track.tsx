@@ -8,7 +8,6 @@ import {
   toggleTrackLockAction,
   toggleTrackVisibilityAction,
 } from './store';
-import { TrackTypeUtils } from './domain';
 import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
 import TimelineItem, { type LocalProxyMaskState } from './TimelineItem';
@@ -18,7 +17,32 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { deriveTrackDisplayName } from './trackDisplayName';
 import { pickTickIntervals } from './lib/rulerTicks';
 import { buildGridBackground } from './lib/timelineGrid';
+import { readDraggedMaterialType } from './lib/materialDragTypes';
+import { isTrackCompatibleWithMaterial } from './lib/trackForMaterial';
 import { CLIP } from './theme/timelineTheme';
+
+/**
+ * Material id + type from the materials panel's JSON drag payload, or null for
+ * any other drag source (files, text, a clip from another app).
+ */
+function readDroppedMaterial(raw: string): { id: string; type: MaterialItem['type'] } | null {
+  if (!raw) return null;
+  try {
+    const payload: unknown = JSON.parse(raw);
+    if (!payload || typeof payload !== 'object') return null;
+    const { type, material } = payload as { type?: unknown; material?: { id?: unknown; type?: unknown } };
+    if (type !== 'material' || !material || typeof material.id !== 'string') return null;
+    return { id: material.id, type: material.type as MaterialItem['type'] };
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.debug('[Track] drop-data parse failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Props — only data that cannot be read from the store
@@ -37,6 +61,12 @@ interface TrackProps {
   onRetryLocalDownload?: (materialId: string) => void;
   /** Open the camera-motion panel for a clip (camera-motion-2d-3d §4.5.1). */
   onOpenCameraMotion?: (itemId: string) => void;
+  /**
+   * A material from the materials panel was dropped here. The panel resolves
+   * the id against the library so a drop builds the same clip as "add to
+   * timeline" (playback urls, storage key, sentence segments included).
+   */
+  onMaterialDrop: (materialId: string, trackId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +83,7 @@ const Track: React.FC<TrackProps> = ({
   localPreviewEnabled,
   onRetryLocalDownload,
   onOpenCameraMotion,
+  onMaterialDrop,
 }) => {
   const volumeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -70,7 +101,6 @@ const Track: React.FC<TrackProps> = ({
   const selectAllTrackItems = useTimelineStore(s => s.selectAllTrackItems);
   const setMaterialDragOver = useTimelineStore(s => s.setMaterialDragOver);
   const clearMaterialDragOver = useTimelineStore(s => s.clearMaterialDragOver);
-  const dropMaterial = useTimelineStore(s => s.dropMaterial);
   const showVolumeSliderForTrack = useTimelineStore(s => s.showVolumeSliderForTrack);
   const hideVolumeSlider = useTimelineStore(s => s.hideVolumeSlider);
 
@@ -88,7 +118,9 @@ const Track: React.FC<TrackProps> = ({
   const trackDisplayName = deriveTrackDisplayName(track, t.timeline.track);
 
   // Derived
-  const isDragOver = materialDragOver?.trackId === trackId;
+  // A material hovering this lane; `isCompatible` already folds in the lock.
+  const dragOver = materialDragOver?.trackId === trackId ? materialDragOver : null;
+  const isDropAccepted = dragOver?.isCompatible === true;
   const allItemsSelected = track.items.length > 0 && track.items.every(item => selectedItems.includes(item.id));
   const volumeSliderOpen = showVolumeSlider?.trackId === trackId;
   const volumePopoverId = `volume-popover-${track.id}`;
@@ -97,69 +129,51 @@ const Track: React.FC<TrackProps> = ({
   // Drag-and-drop handlers (material panel -> track)
   // ---------------------------------------------------------------------------
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (track.isLocked) return;
-
-    try {
-      const data = e.dataTransfer.getData('application/json');
-      if (data) {
-        const dragData = JSON.parse(data);
-        if (dragData.type === 'material' && dragData.material) {
-          const isCompatible = TrackTypeUtils.canAcceptMaterial(track.type, dragData.material.type, track.id);
-          if (isCompatible) {
-            setMaterialDragOver(trackId, dragData.material.type, true);
-          }
-        }
-      }
-    } catch {
-      // Ignore parse errors from other drag sources
+  // dragenter / dragover can read DataTransfer.types but getData() is empty
+  // until drop, so the material type travels as a MIME type. Only an accepted
+  // drag calls preventDefault — otherwise the browser shows "no drop" and the
+  // drop event never fires, while the lane explains why.
+  const evaluateMaterialDrag = (e: React.DragEvent) => {
+    const materialType = readDraggedMaterialType(Array.from(e.dataTransfer.types));
+    if (materialType === null) return;
+    const accepts = !track.isLocked && isTrackCompatibleWithMaterial(track, materialType);
+    if (accepts) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    } else {
+      e.dataTransfer.dropEffect = 'none';
+    }
+    // dragover repeats every few ms; only write the store when the state changes.
+    const current = useTimelineStore.getState().materialDragOver;
+    if (current?.trackId !== trackId || current.isCompatible !== accepts || current.materialType !== materialType) {
+      setMaterialDragOver(trackId, materialType, accepts);
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (track.isLocked) return;
-    e.dataTransfer.dropEffect = 'copy';
-  };
-
   const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    clearMaterialDragOver();
+    // dragleave also fires when the pointer moves onto a clip inside this lane,
+    // and the next lane's dragenter arrives before this dragleave.
+    const next = e.relatedTarget;
+    if (next instanceof Node && e.currentTarget.contains(next)) return;
+    if (useTimelineStore.getState().materialDragOver?.trackId === trackId) {
+      clearMaterialDragOver();
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     clearMaterialDragOver();
-
-    if (track.isLocked) return;
-
-    try {
-      const data = e.dataTransfer.getData('application/json');
-      if (!data) return;
-
-      const dragData = JSON.parse(data);
-      if (dragData.type === 'material' && dragData.material) {
-        const material = dragData.material as MaterialItem;
-        if (!TrackTypeUtils.canAcceptMaterial(track.type, material.type, track.id)) return;
-
-        dropMaterial(trackId, {
-          id: material.id,
-          name: material.name,
-          type: material.type as 'video' | 'audio' | 'subtitle',
-          duration: material.duration || 5,
-          url: material.url,
-          thumbnailUrl: material.thumbnailUrl,
-        });
-      }
-    } catch (error) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.debug('[Track] drop-data parse failed', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+    const dropped = readDroppedMaterial(e.dataTransfer.getData('application/json'));
+    if (!dropped) return;
+    if (track.isLocked) {
+      showWarning(t.timeline.track.trackLocked);
+      return;
     }
+    if (!isTrackCompatibleWithMaterial(track, dropped.type)) {
+      showWarning(t.timeline.messages.incompatibleTrack);
+      return;
+    }
+    onMaterialDrop(dropped.id, trackId);
   };
 
   // ---------------------------------------------------------------------------
@@ -200,6 +214,11 @@ const Track: React.FC<TrackProps> = ({
     const doRemove = () => {
       const result = removeTrackAction(() => useTimelineStore.getState(), track.id);
       if (result.ok) return;
+      // The agent can take the timeline while the removal confirmation is open.
+      if (result.reason === 'EDIT_LOCKED') {
+        showWarning(t.timeline.messages.editLockedByAgent);
+        return;
+      }
       if (result.reason === 'LAST_TRACK') {
         showWarning(t.timeline.track.removeTrackLast);
         return;
@@ -560,15 +579,20 @@ const Track: React.FC<TrackProps> = ({
       {/* Track content area */}
       <div
         className={`track-content flex-1 relative ${
-          isDragOver ? 'bg-primary/10 border-2 border-primary border-dashed' : 'bg-card'
+          isDropAccepted
+            ? 'bg-primary/10 border-2 border-primary border-dashed'
+            : dragOver
+              ? 'bg-card border-2 border-border border-dashed cursor-not-allowed'
+              : 'bg-card'
         }`}
+        // Locked lanes keep pointer events: their clips stay selectable and
+        // show the lock tooltip / not-allowed cursor; edits are refused per item.
         style={{
           opacity: track.isVisible ? 1 : 0.3,
-          pointerEvents: track.isLocked ? 'none' : 'auto',
           height: trackHeight,
         }}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
+        onDragEnter={evaluateMaterialDrag}
+        onDragOver={evaluateMaterialDrag}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
@@ -597,7 +621,7 @@ const Track: React.FC<TrackProps> = ({
         {/* Empty track placeholder */}
         {track.items.length === 0 && (
           <div className={`absolute inset-0 flex items-center justify-center text-muted-foreground text-xs pointer-events-none ${
-            isDragOver ? 'text-primary' : ''
+            isDropAccepted ? 'text-primary' : ''
           } ${track.isLocked ? 'opacity-50' : ''}`}>
             <div className="flex items-center space-x-1">
               <div className="w-3 h-3">
@@ -615,15 +639,29 @@ const Track: React.FC<TrackProps> = ({
           </div>
         )}
 
-        {/* Drag-over overlay */}
-        {isDragOver && (
+        {/* Drag-over overlay: where it lands, or why it can't */}
+        {isDropAccepted && (
           <div className="absolute inset-0 flex items-center justify-center bg-primary/10 bg-opacity-90 pointer-events-none">
             <div className="bg-primary text-primary-foreground px-2 py-1 rounded">
               <div className="flex items-center space-x-1">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
                 <span className="text-xs">{t.timeline.track.dropToTrack.replace('{trackName}', trackDisplayName)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+        {dragOver && !isDropAccepted && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-card text-muted-foreground border border-border px-2 py-1 rounded shadow-sm">
+              <div className="flex items-center space-x-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M12 21a9 9 0 110-18 9 9 0 010 18z" />
+                </svg>
+                <span className="text-xs">
+                  {track.isLocked ? t.timeline.track.trackLocked : t.timeline.messages.incompatibleTrack}
+                </span>
               </div>
             </div>
           </div>

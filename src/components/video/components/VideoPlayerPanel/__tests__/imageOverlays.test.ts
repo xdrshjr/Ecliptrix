@@ -84,10 +84,16 @@ describe('selectActiveImageOverlays', () => {
 
   it('ignores non-image items and items on hidden tracks', () => {
     const video = imageItem({ id: 'v', originalMaterialType: 'video' as any });
-    expect(selectActiveImageOverlays(timeline([video]), [material()], 1)).toHaveLength(0);
+    const videoMaterial = material({ type: 'video', url: '/api/storage/files/video/v.mp4' });
+    expect(selectActiveImageOverlays(timeline([video]), [videoMaterial], 1)).toHaveLength(0);
 
     const hidden = timeline([imageItem({ id: 'i' })], false);
     expect(selectActiveImageOverlays(hidden, [material()], 1)).toHaveLength(0);
+  });
+
+  it('shows an untagged clip backed by an image material, as export renders it', () => {
+    const legacy = imageItem({ id: 'legacy', originalMaterialType: undefined });
+    expect(selectActiveImageOverlays(timeline([legacy]), [material()], 1)).toHaveLength(1);
   });
 
   it('reports a missing/urlless material via onMissing and drops the item', () => {

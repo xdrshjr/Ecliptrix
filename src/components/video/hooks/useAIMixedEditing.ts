@@ -102,15 +102,26 @@ interface AiMixPlanResponse {
 
 interface TimelineImportResponse {
   success?: boolean;
+  message?: string;
   importedData?: { timelineState?: TimelineState };
 }
 
-interface AppliedAiMix {
+interface MergedAiMix {
   hasChanges: boolean;
   /** The plan was usable but left the timeline exactly as it was. */
   isUnchanged: boolean;
   skippedLockedTracks: boolean;
+  /** Clips dropped, adjusted by the planner or moved while packing lanes. */
   warningCount: number;
+}
+
+interface AppliedAiMix extends MergedAiMix {
+  /** Videos whose analysis failed; the plan only knew their names and durations. */
+  analysisFailedCount: number;
+}
+
+interface FootageAnalysis {
+  failedCount: number;
 }
 
 type Notifier = ReturnType<typeof useNotification>;
@@ -120,7 +131,12 @@ type AiMixErrorKey =
   | 'errorModelNotConfigured'
   | 'errorUpstream'
   | 'errorUnparseable'
-  | 'errorNoMaterials';
+  | 'errorNoMaterials'
+  | 'errorInternal'
+  | 'errorTimeout'
+  | 'errorBackendUnreachable'
+  | 'errorInvalidRequest'
+  | 'errorImportFailed';
 
 const IDLE_RUN_STATE: AiMixRunState = {
   stage: 'idle',
@@ -138,25 +154,57 @@ const DONE_DISMISS_MS = 1200;
 const PLANNABLE_TYPES: ReadonlySet<string> = new Set(['video', 'audio', 'image']);
 /** Error name for "the agent took the timeline while planning" (S4). */
 const BLOCKED_BY_AGENT_ERROR = 'AiMixBlockedByAgentError';
+/**
+ * Every code the planning service or the BFF proxy can return maps to a
+ * localized sentence; backend text (English, sometimes a Python dict) never
+ * reaches the UI (AM2-03). Unknown codes fall back to errorInternal.
+ */
 const ERROR_MESSAGE_KEYS: ReadonlyMap<string, AiMixErrorKey> = new Map([
   ['AI_MIX_MODEL_NOT_CONFIGURED', 'errorModelNotConfigured'],
   ['AI_MIX_LLM_UPSTREAM_FAILED', 'errorUpstream'],
   ['AI_MIX_PLAN_UNPARSEABLE', 'errorUnparseable'],
   ['AI_MIX_INVALID_REQUEST', 'errorNoMaterials'],
+  ['AI_MIX_INTERNAL', 'errorInternal'],
+  ['BACKEND_TIMEOUT', 'errorTimeout'],
+  ['BACKEND_UNREACHABLE', 'errorBackendUnreachable'],
+  ['NETWORK_ERROR', 'errorBackendUnreachable'],
+  ['VALIDATION_ERROR', 'errorInvalidRequest'],
+  ['TIMELINE_IMPORT_INVALID', 'errorImportFailed'],
 ]);
+
+/** The plan could not be imported into a timeline; `cause` is the original failure. */
+export class AiMixImportError extends Error {
+  readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super('The AI edit plan could not be imported into the timeline');
+    this.name = 'AiMixImportError';
+    this.cause = cause;
+  }
+}
 
 /** Turn any failure into a localized, actionable sentence. */
 export function mapAiMixError(error: unknown, t: Translations): string {
   const messages = t.aiMixingProgress;
-  const key = error instanceof ApiError
-    ? ERROR_MESSAGE_KEYS.get(error.code)
-    : undefined;
-  if (key) return messages[key];
+  if (error instanceof AiMixImportError) return messages.errorImportFailed;
   if (error instanceof TimeoutError) return messages.errorTimeout;
+  if (error instanceof ApiError) {
+    return messages[ERROR_MESSAGE_KEYS.get(error.code) ?? 'errorInternal'];
+  }
+  // Client-side errors carry this hook's own, already localized wording.
   const message = error instanceof Error && error.message
     ? error.message
     : String(error);
   return messages.errorGeneric.replace('{message}', message);
+}
+
+/** Code and message for the log; an import failure reports its original error. */
+function describeRunError(error: unknown): { code?: string; message: string } {
+  const source = error instanceof AiMixImportError ? error.cause : error;
+  const code = source instanceof ApiError || source instanceof TimeoutError
+    ? source.code
+    : undefined;
+  return { code, message: source instanceof Error ? source.message : String(source) };
 }
 
 function toIsoString(value: unknown): string {
@@ -254,14 +302,18 @@ const createAbortError = (): Error =>
 const hasErrorName = (error: unknown, name: string): boolean =>
   (error as { name?: unknown } | null)?.name === name;
 
-/** Best effort: planning still works without analysis, as before. */
+/**
+ * Best effort: planning still works without analysis, but the user is told
+ * how many videos the plan could only judge by name and duration (AM2-05).
+ */
 async function analyzeFootage(
   videos: MaterialItem[],
   mode: AIMixingMode,
   signal: AbortSignal,
   taskId: string,
-): Promise<void> {
-  if (videos.length === 0) return;
+): Promise<FootageAnalysis> {
+  if (videos.length === 0) return { failedCount: 0 };
+  let failedCount = 0;
   try {
     const results = await analyzeVideosInBatch(videos, {
       maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
@@ -269,14 +321,9 @@ async function analyzeFootage(
       mode,
       signal,
     }, taskId);
-    const failedCount = results.filter((result) => !result.success).length;
-    if (failedCount > 0 && !signal.aborted) {
-      console.warn('[useAIMixedEditing] some videos were not analyzed', {
-        taskId,
-        failedCount,
-      });
-    }
+    failedCount = results.filter((result) => !result.success).length;
   } catch (error) {
+    failedCount = videos.length;
     if (!signal.aborted) {
       console.warn('[useAIMixedEditing] video analysis failed; planning anyway', {
         taskId,
@@ -285,6 +332,10 @@ async function analyzeFootage(
     }
   }
   if (signal.aborted) throw createAbortError();
+  if (failedCount > 0) {
+    console.warn('[useAIMixedEditing] some videos were not analyzed', { taskId, failedCount });
+  }
+  return { failedCount };
 }
 
 async function requestPlan(
@@ -308,23 +359,32 @@ async function importPlan(
   taskId: string,
   timelineData: AiMixTimelineData,
   signal: AbortSignal,
-  t: Translations,
 ): Promise<TimelineState> {
-  const response = await http.post<TimelineImportResponse>(
-    '/api/timeline-import',
-    {
-      taskId,
-      fileContent: JSON.stringify(timelineData),
-      fileName: `ai-mixed-editing-${Date.now()}.json`,
-      mergeMode: 'replace',
-      preserveIds: true,
-    },
-    { timeoutMs: IMPORT_TIMEOUT_MS, signal },
-  );
+  let response: TimelineImportResponse | undefined;
+  try {
+    response = await http.post<TimelineImportResponse>(
+      '/api/timeline-import',
+      {
+        taskId,
+        fileContent: JSON.stringify(timelineData),
+        fileName: `ai-mixed-editing-${Date.now()}.json`,
+        mergeMode: 'replace',
+        preserveIds: true,
+      },
+      { timeoutMs: IMPORT_TIMEOUT_MS, signal },
+    );
+  } catch (error) {
+    // Cancellation and timeouts keep their own meaning; any rejection by the
+    // import endpoint means the plan cannot be applied.
+    if (error instanceof ApiError) throw new AiMixImportError(error);
+    throw error;
+  }
   const timelineState = response?.success
     ? response.importedData?.timelineState
     : undefined;
-  if (!timelineState) throw new Error(t.aiMixingProgress.errorInvalidResponse);
+  if (!timelineState) {
+    throw new AiMixImportError(new Error(response?.message || 'Import returned no timeline'));
+  }
   return timelineState;
 }
 
@@ -333,7 +393,7 @@ function applyAiMixPlan(
   planWarningCount: number,
   materials: readonly MaterialItem[],
   t: Translations,
-): AppliedAiMix {
+): MergedAiMix {
   // The agent may have taken the timeline while the plan was generated (S4).
   if (useTimelineStore.getState().externalEditLock !== null) {
     throw createNamedError(BLOCKED_BY_AGENT_ERROR, t.aiMixingProgress.blockedByAgent);
@@ -362,7 +422,7 @@ function applyAiMixPlan(
     hasChanges,
     isUnchanged: hasUsableClips && !hasChanges,
     skippedLockedTracks,
-    warningCount: merged.droppedItems.length + planWarningCount,
+    warningCount: merged.droppedItems.length + merged.packedItemIds.length + planWarningCount,
   };
 }
 
@@ -381,6 +441,11 @@ function announceAiMixResult(
   }
   if (result.skippedLockedTracks) {
     notify.showWarning(messages.lockedTracksSkipped);
+  }
+  if (result.analysisFailedCount > 0) {
+    notify.showWarning(
+      messages.analysisIncomplete.replace('{count}', String(result.analysisFailedCount)),
+    );
   }
 }
 
@@ -421,14 +486,15 @@ interface AiMixRunContext {
 async function runAiMixStages(context: AiMixRunContext): Promise<AppliedAiMix> {
   const { taskId, signal, t, advance } = context;
   advance('analyzing');
-  await analyzeFootage(context.videos, context.mode, signal, taskId);
+  const analysis = await analyzeFootage(context.videos, context.mode, signal, taskId);
   advance('planning');
   const timelineData = await requestPlan(taskId, context.materials, signal, t);
   advance('applying');
-  const imported = await importPlan(taskId, timelineData, signal, t);
+  const imported = await importPlan(taskId, timelineData, signal);
   if (signal.aborted || !context.isCurrentRun()) throw createAbortError();
   const planWarningCount = timelineData.metadata?.warnings?.length ?? 0;
-  return applyAiMixPlan(imported, planWarningCount, context.getMaterials(), t);
+  const merged = applyAiMixPlan(imported, planWarningCount, context.getMaterials(), t);
+  return { ...merged, analysisFailedCount: analysis.failedCount };
 }
 
 interface RunFailureContext {
@@ -450,7 +516,7 @@ function reportRunFailure(error: unknown, context: RunFailureContext): AiMixStag
     notify.showWarning(t.aiMixingProgress.blockedByAgent);
     return 'error';
   }
-  console.error('[useAIMixedEditing] run failed', { taskId, stage, error });
+  console.error('[AI mix] run failed', { taskId, stage, ...describeRunError(error) });
   notify.showError(mapAiMixError(error, t));
   return 'error';
 }

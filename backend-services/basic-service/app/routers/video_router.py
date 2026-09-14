@@ -5,6 +5,7 @@ Video-related API routes for the Basic Service application.
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 from app.models import (
     VideoSearchRequest,
     VideoSearchResponse,
@@ -133,6 +134,22 @@ async def search_videos(request: VideoSearchRequest) -> VideoSearchResponse:
         )
 
 
+#: The only statuses the frontend poller knows how to finish on (EXO-08).
+_PUBLIC_COMPOSITION_STATUSES = frozenset({"processing", "completed", "failed"})
+
+
+def _public_status(info: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    """Map an internal status to a public one, plus an error for unknown values.
+
+    An unexpected value used to leak out as ``unknown`` / ``error``; the client
+    only stops on ``failed`` and then polled until its hard cap.
+    """
+    raw = info.get("status")
+    if raw in _PUBLIC_COMPOSITION_STATUSES:
+        return raw, None
+    return "failed", f"Unexpected composition status: {raw!r}"
+
+
 @router.post("/compose", response_model=VideoCompositionResponse)
 async def compose_video(request: VideoCompositionRequest) -> VideoCompositionResponse:
     """
@@ -155,11 +172,13 @@ async def compose_video(request: VideoCompositionRequest) -> VideoCompositionRes
     
     try:
         # Validate request
-        if not request.video_items:
-            logger.warning("No video items provided for composition")
+        # An image + audio timeline has no video items but is still exportable:
+        # the composer renders the images over a black canvas (EXO-06).
+        if not request.video_items and not request.image_items:
+            logger.warning("No video or image items provided for composition")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one video item is required for composition"
+                detail="At least one video or image item is required"
             )
         
         if request.total_duration <= 0:
@@ -223,10 +242,11 @@ async def get_composition_status(composition_id: str):
         
         # Return safe subset of composition info with enhanced error handling
         try:
+            public_status, status_error = _public_status(composition_info)
             safe_info = {
                 "composition_id": composition_info.get("id", composition_id),
                 "task_id": composition_info.get("task_id", "unknown"),
-                "status": composition_info.get("status", "unknown"),
+                "status": public_status,
                 "progress": composition_info.get("progress", 0.0),
                 "start_time": composition_info.get("start_time", 0),
                 # camera-motion-2d-3d §4.4.5 (W3). This structure is an EXPLICIT
@@ -234,6 +254,8 @@ async def get_composition_status(composition_id: str):
                 # normalize stage never reaches the client unless it is listed
                 # here — the single easiest point in the chain to miss.
                 "warnings": composition_info.get("warnings", []),
+                # Round 2 S7: content missing from a completed export.
+                "degradations": composition_info.get("degradations", []),
             }
             
             # Add completion info if available
@@ -245,14 +267,17 @@ async def get_composition_status(composition_id: str):
                 safe_info["error_details"] = composition_info["error_details"]
             if "error" in composition_info:
                 safe_info["error"] = composition_info["error"]
-                
+            if status_error:
+                logger.error(f"Composition {composition_id}: {status_error}")
+                safe_info.setdefault("error", status_error)
+
         except Exception as info_error:
             logger.error(f"Error building safe composition info: {str(info_error)}", exc_info=True)
             # Return minimal safe info
             safe_info = {
                 "composition_id": composition_id,
-                "task_id": "unknown", 
-                "status": "error",
+                "task_id": "unknown",
+                "status": "failed",
                 "progress": 0.0,
                 "start_time": 0,
                 "error": "Error retrieving composition details"

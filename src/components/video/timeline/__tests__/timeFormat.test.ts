@@ -35,4 +35,8 @@ describe('formatTimelineTime', () => {
   it('floors ms rather than rounding', () => {
     expect(formatTimelineTime(0.999, { showMs: true })).toBe('0:00.99');
   });
+  it('does not lose a hundredth to float error (2.3, 0.29, 4.35)', () => {
+    expect([2.3, 0.29, 4.35].map((value) => formatTimelineTime(value, { showMs: true })))
+      .toEqual(['0:02.30', '0:00.29', '0:04.35']);
+  });
 });

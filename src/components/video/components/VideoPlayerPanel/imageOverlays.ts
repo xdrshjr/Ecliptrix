@@ -8,6 +8,7 @@
  */
 
 import type { TimelineState, MaterialItem, ImagePosition } from '@/types';
+import { isStillImageItem } from '../../timeline/infrastructure/renderableTimeline';
 
 export interface ActiveImageOverlay {
   id: string;
@@ -41,9 +42,10 @@ export function getImageOverlayPlaybackTime(
 }
 
 /**
- * Select the image-overlay items active at `currentPlaybackTime`: timeline items
- * with `originalMaterialType === 'image'` on a VISIBLE track whose `[start,
- * start+duration)` window covers the time and whose material has a usable URL.
+ * Select the image-overlay items active at `currentPlaybackTime`: still-image
+ * items (`isStillImageItem`, the same rule export uses) on a VISIBLE track whose
+ * `[start, start+duration)` window covers the time and whose material has a
+ * usable URL.
  * Items whose material is missing / has no URL are reported via `onMissing` and
  * dropped (so the caller can log without the selection being impure).
  */
@@ -59,7 +61,6 @@ export function selectActiveImageOverlays(
   for (const track of timelineState.tracks) {
     if (!track.isVisible) continue;
     for (const item of track.items) {
-      if (item.originalMaterialType !== 'image') continue;
       if (
         currentPlaybackTime < item.startTime ||
         currentPlaybackTime >= item.startTime + item.duration
@@ -67,6 +68,7 @@ export function selectActiveImageOverlays(
         continue;
       }
       const material = materials.find((m) => m.id === item.materialId);
+      if (!isStillImageItem(item, material)) continue;
       if (material && material.url) {
         overlays.push({
           id: item.id,

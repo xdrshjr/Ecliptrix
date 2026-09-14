@@ -208,7 +208,11 @@ export class TimelineAggregate {
       sourceTrack.sortItems();
     }
 
-    this.recalculateTotalDuration();
+    // Duration only, no playhead clamp: a drag preview moves the clip through
+    // here on every pointer move, and clamping there pulled the playhead back
+    // for good, even for a clip released where it started. A committed move is
+    // always followed by organizeVideoAudioTracks, which does clamp.
+    this._totalDuration = this.calculateTotalDuration();
   }
 
   /**
@@ -557,6 +561,12 @@ export class TimelineAggregate {
    * Called internally after any mutation that could change item timing.
    */
   calculateTotalDuration(): Duration {
+    // Minimum duration of 0.001 to avoid zero-duration (Duration invariant > 0)
+    return Duration.create(Math.max(this.maxItemEnd(), 0.001));
+  }
+
+  /** Latest item end across all tracks; 0 when the timeline is empty. */
+  private maxItemEnd(): number {
     let maxEnd = 0;
     for (const track of this._tracks) {
       for (const item of track.items) {
@@ -566,8 +576,7 @@ export class TimelineAggregate {
         }
       }
     }
-    // Minimum duration of 0.001 to avoid zero-duration (Duration invariant > 0)
-    return Duration.create(Math.max(maxEnd, 0.001));
+    return maxEnd;
   }
 
   /**
@@ -596,20 +605,17 @@ export class TimelineAggregate {
   }
 
   /**
-   * Restore the timeline to a previously captured snapshot.
-   * This replaces all state.
+   * Restore the timeline content to a previously captured snapshot.
+   *
+   * Only the tracks (and the duration derived from them) come back. Zoom,
+   * scroll, playhead, playback rate and grid are view state the user set
+   * after the edit: restoring them made Ctrl+Z jump the view to 100% / 0 px
+   * while the DOM stayed scrolled, so ruler clicks landed on the wrong time.
    */
   restore(snapshot: TimelineSnapshot): void {
     const restored = TimelineAggregate.fromPlainObject(snapshot);
     this._tracks = [...(restored._tracks as Track[])];
-    this._currentTime = restored._currentTime;
-    this._totalDuration = restored._totalDuration;
-    this._zoomLevel = restored._zoomLevel;
-    this._playbackRate = restored._playbackRate;
-    this._isPlaying = restored._isPlaying;
-    this._snapToGrid = restored._snapToGrid;
-    this._gridSize = restored._gridSize;
-    this._scrollLeft = restored._scrollLeft;
+    this.recalculateTotalDuration();
   }
 
   // ------------------------------------------------------------------
@@ -656,10 +662,16 @@ export class TimelineAggregate {
   }
 
   /**
-   * Recalculate and update the internal totalDuration.
+   * Recalculate and update the internal totalDuration, keeping the playhead
+   * inside the content: after a delete shortened the timeline it stayed past
+   * the end (ruler aria-valuenow > aria-valuemax, black preview).
    */
   private recalculateTotalDuration(): void {
     this._totalDuration = this.calculateTotalDuration();
+    const contentEnd = this.maxItemEnd();
+    if (this._currentTime.value > contentEnd) {
+      this._currentTime = TimePosition.create(contentEnd);
+    }
   }
 
   /**

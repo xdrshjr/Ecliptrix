@@ -25,10 +25,23 @@ export interface DesktopWindowControls {
   onMaximizeChange(cb: (isMax: boolean) => void): () => void;
 }
 
+/** Renderer reply to the main process close request. */
+export type CloseReadyResult =
+  | { ok: true }
+  | { ok: false; prompt: { title: string; body: string; keepOpen: string; closeAnyway: string } };
+
+export interface DesktopAppLifecycle {
+  /** Main process is about to close the window; flush, then answer with `closeReady`. Returns an unsubscribe function. */
+  onBeforeClose(cb: (token: string) => void): () => void;
+  closeReady(token: string, result: CloseReadyResult): void;
+}
+
 export interface EcliptrixDesktopBridge {
   version: string;
   logsPath: string;
   windowControls: DesktopWindowControls;
+  /** Absent on builds whose preload predates the close handshake. */
+  app?: DesktopAppLifecycle;
 }
 
 declare global {

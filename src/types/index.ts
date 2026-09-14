@@ -124,11 +124,42 @@ export interface AgentClipData {
   volume: number;
 }
 
+/**
+ * Material snapshot carried by an agent `add_clip`. The playback fields are
+ * copied onto the new clip (as manual drops do) so the clip keeps playing,
+ * previewing and exporting even if the material leaves the library.
+ */
 export interface AgentMaterialData {
   id: string;
   name: string;
   type: string;
+  /** Never an inline data:/blob: URL — those stay out of agent traffic. */
   thumbnailUrl?: string;
+  url?: string;
+  serverUrl?: string;
+  cacheUrl?: string;
+  storageKey?: string;
+  metadata?: Pick<
+    NonNullable<MaterialItem['metadata']>,
+    'storageKind' | 'storageKey' | 'localResolvedUrl'
+  >;
+}
+
+/** Why the client could not apply an agent timeline operation. */
+export type OperationRejectReason =
+  | 'clip-not-found'
+  | 'track-not-found'
+  | 'target-track-missing'
+  | 'invalid-time';
+
+/**
+ * Attached to a tool call's `result` when the tool succeeded on the server
+ * but its operation could not be applied to the local timeline.
+ */
+export interface AgentClientApplyError {
+  reason: OperationRejectReason;
+  trackId?: string;
+  clipId?: string;
 }
 
 export type AgentTimelineOperation =
@@ -258,6 +289,8 @@ export interface VideoEditingTaskContent {
   materials?: MaterialItem[]; // 素材数据
   pendingTimelineData?: any; // 待导入的时间轴数据
   pendingMaterials?: MaterialItem[]; // 待导入的素材数据
+  // 时间轴水合修复后仍无法读取时，保留一次原始 uiState.currentTimelineState（放顶层：uiState 持久化会丢弃未知键）
+  timelineRecoveryBackup?: { savedAt: string; data: unknown };
   // Chat conversations for AI assistant
   conversations?: Conversation[];
   activeConversationId?: string | null;

@@ -5,7 +5,7 @@ Tests for the enhanced video composition service with improved audio processing.
 import os
 import tempfile
 import shutil
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 from app.services.video_composition_service import VideoCompositionService
@@ -15,6 +15,7 @@ from app.models.video_models import (
     AudioCompositionItem,
     SubtitleCompositionItem
 )
+from tests.composition_harness import FakeFfmpeg
 
 
 class TestEnhancedVideoCompositionService:
@@ -79,9 +80,7 @@ class TestEnhancedVideoCompositionService:
     def test_process_audio_tracks_single_track(self, mock_subprocess):
         """Test processing of a single audio track."""
         # Mock successful subprocess call
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_subprocess.return_value = mock_result
+        mock_subprocess.side_effect = FakeFfmpeg()
         
         # Create test request with single audio item
         audio_item = AudioCompositionItem(
@@ -101,10 +100,10 @@ class TestEnhancedVideoCompositionService:
             total_duration=10.0
         )
         
-        result = self.service._process_audio_tracks(request, self.temp_dir, "ffmpeg")
+        result = self.service._process_audio_tracks(request, self.temp_dir, "ffmpeg", 10.0)
         
-        assert result is not None
-        assert result.endswith("audio_mix.wav")
+        assert result.path is not None
+        assert result.path.endswith("audio_mix.wav")
         mock_subprocess.assert_called_once()
         
         # Verify command arguments
@@ -122,9 +121,7 @@ class TestEnhancedVideoCompositionService:
         
         try:
             # Mock successful subprocess call
-            mock_result = Mock()
-            mock_result.returncode = 0
-            mock_subprocess.return_value = mock_result
+            mock_subprocess.side_effect = FakeFfmpeg()
             
             # Create test request with server URL
             audio_item = AudioCompositionItem(
@@ -144,9 +141,9 @@ class TestEnhancedVideoCompositionService:
                 total_duration=10.0
             )
             
-            result = self.service._process_audio_tracks(request, self.temp_dir, "ffmpeg")
+            result = self.service._process_audio_tracks(request, self.temp_dir, "ffmpeg", 10.0)
             
-            assert result is not None
+            assert result.path is not None
             mock_subprocess.assert_called_once()
             
             # Verify that server URL was converted to local path

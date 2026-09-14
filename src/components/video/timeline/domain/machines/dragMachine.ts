@@ -15,6 +15,7 @@
  */
 
 import { setup, assign, createActor, type SnapshotFrom } from 'xstate';
+import { MIN_CLIP_DURATION_SECONDS } from '../value-objects/Duration';
 
 // ---------------------------------------------------------------------------
 // Constants (same as DragCalculationService)
@@ -23,30 +24,44 @@ import { setup, assign, createActor, type SnapshotFrom } from 'xstate';
 /** Width in pixels of the resize handle at each edge of an item. */
 const RESIZE_HANDLE_WIDTH = 8;
 
+/**
+ * Pixels in the middle of a clip that always start a move. Without it a clip
+ * 16px wide or narrower was all trim handle, so at 10% zoom every clip
+ * shorter than 3.2s could be trimmed but never moved.
+ */
+export const MIN_MOVE_ZONE_PX = 12;
+
 /** Base pixels-per-second ratio (matches ZoomLevel.PIXELS_PER_SECOND_BASE). */
 const PIXELS_PER_SECOND_BASE = 50;
 
-/** Minimum item duration in seconds (prevents zero-length items). */
-const MIN_DURATION = 0.1;
-
 // ---------------------------------------------------------------------------
-// Interaction type detection (inline — same logic as DragCalculationService)
+// Interaction type detection
 // ---------------------------------------------------------------------------
 
 export type InteractionType = 'move' | 'resize-start' | 'resize-end';
 
+/** Trim-handle width for a clip `itemWidth` px wide, shrunk to keep the move zone. */
+export function edgeHandleWidthPx(itemWidth: number): number {
+  return Math.min(RESIZE_HANDLE_WIDTH, Math.max(0, (itemWidth - MIN_MOVE_ZONE_PX) / 2));
+}
+
 /**
- * Determine the interaction type based on where the user clicked
- * relative to the item's left edge.
+ * Determine the interaction type based on where the user pressed relative to
+ * the item's left edge. TimelineItem's hover cursor uses the same function, so
+ * the cursor always predicts what a press will do.
  */
-function detectInteractionType(
+export function detectInteractionType(
   relativeX: number,
   itemWidth: number
 ): InteractionType {
-  if (relativeX <= RESIZE_HANDLE_WIDTH) {
+  const handleWidth = edgeHandleWidthPx(itemWidth);
+  if (handleWidth <= 0) {
+    return 'move';
+  }
+  if (relativeX <= handleWidth) {
     return 'resize-start';
   }
-  if (relativeX >= itemWidth - RESIZE_HANDLE_WIDTH) {
+  if (relativeX >= itemWidth - handleWidth) {
     return 'resize-end';
   }
   return 'move';
@@ -135,6 +150,11 @@ export type PointerMoveEvent = {
   clientY: number;
   /** Total pixel delta from the pointer-down position (clientX - downX). */
   deltaX: number;
+  /**
+   * Total vertical pixel delta. Optional: when the UI does not send it, the
+   * machine derives it from `clientY` and the pointer-down position.
+   */
+  deltaY?: number;
   /**
    * Track id under the pointer, resolved by the UI layer via hit-testing
    * (document.elementFromPoint → closest('[data-track-id]')). Null when the
@@ -233,7 +253,7 @@ function calculateResizeEndPreview(
   // Constrain: max duration limited by remaining source media after clipStart
   const maxAllowedDuration = originalMediaDuration - originalClipStart;
   const constrainedDuration = Math.max(
-    MIN_DURATION,
+    MIN_CLIP_DURATION_SECONDS,
     Math.min(requestedDuration, maxAllowedDuration)
   );
 
@@ -260,7 +280,7 @@ function calculateResizeStartPreview(
   // a still has no in-point, so it can extend all the way to time 0.
   const maxLeftExtension = isStill ? originalStartTime : originalClipStart;
   const minAllowedStartTime = Math.max(0, originalStartTime - maxLeftExtension);
-  const maxAllowedStartTime = originalEndTime - MIN_DURATION;
+  const maxAllowedStartTime = originalEndTime - MIN_CLIP_DURATION_SECONDS;
 
   // Apply constraints
   const requestedStartTime = originalStartTime + deltaTime;
@@ -276,6 +296,66 @@ function calculateResizeStartPreview(
   const finalStartTime = originalEndTime - finalDuration;
 
   return { startTime: finalStartTime, duration: finalDuration };
+}
+
+// ---------------------------------------------------------------------------
+// Helper: preview for the current pointer position
+// ---------------------------------------------------------------------------
+
+/** Vertical delta: the UI's value when sent, otherwise derived from clientY. */
+function resolveDeltaY(context: DragContext, event: PointerMoveEvent): number {
+  if (event.deltaY !== undefined) return event.deltaY;
+  return context.pointerDownPosition ? event.clientY - context.pointerDownPosition.y : 0;
+}
+
+/**
+ * Context update for a pointer move, by interaction type. Also applied on the
+ * move that crosses the drag threshold: entering dragging / resizing without a
+ * preview left a quick flick with nothing to commit (TL2-16).
+ */
+function previewFor(context: DragContext, event: PointerMoveEvent): Partial<DragContext> {
+  const currentDelta = { x: event.deltaX, y: resolveDeltaY(context, event) };
+  if (context.interactionType === 'move') {
+    return {
+      previewStartTime: calculateMovePreview(
+        context.originalStartTime,
+        event.deltaX,
+        context.zoomLevel
+      ),
+      previewDuration: context.originalDuration,
+      currentDelta,
+      // Track the hovered track so the commit path can transfer the clip.
+      // Falls back to the source track when the pointer is outside any lane.
+      targetTrackId: event.targetTrackId ?? context.trackId,
+    };
+  }
+  if (context.interactionType === 'resize-start') {
+    const result = calculateResizeStartPreview(
+      context.originalStartTime,
+      context.originalDuration,
+      event.deltaX,
+      context.zoomLevel,
+      context.originalClipStart,
+      context.originalMediaDuration,
+      context.isStill
+    );
+    return { previewStartTime: result.startTime, previewDuration: result.duration, currentDelta };
+  }
+  if (context.interactionType === 'resize-end') {
+    const result = calculateResizeEndPreview(
+      context.originalDuration,
+      event.deltaX,
+      context.zoomLevel,
+      context.originalClipStart,
+      context.originalMediaDuration
+    );
+    return {
+      previewStartTime: context.originalStartTime,
+      previewDuration: result.duration,
+      currentDelta,
+    };
+  }
+  return {};
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +386,11 @@ export const dragMachine = setup({
     exceedsThreshold: ({ context, event }) => {
       if (event.type !== 'POINTER_MOVE') return false;
       const e = event as PointerMoveEvent;
+      // A move may leave vertically (to another lane); a trim only counts
+      // horizontal travel, so a shaky hand on a handle does not start one.
+      if (context.interactionType === 'move') {
+        return Math.hypot(e.deltaX, resolveDeltaY(context, e)) > context.moveThreshold;
+      }
       return Math.abs(e.deltaX) > context.moveThreshold;
     },
     // isWithinThreshold is implied by the absence of exceedsThreshold.
@@ -333,55 +418,9 @@ export const dragMachine = setup({
       };
     }),
 
-    calculateMovePreview: assign(({ context, event }) => {
-      const e = event as PointerMoveEvent;
-      return {
-        previewStartTime: calculateMovePreview(
-          context.originalStartTime,
-          e.deltaX,
-          context.zoomLevel
-        ),
-        previewDuration: context.originalDuration,
-        currentDelta: { x: e.deltaX, y: 0 },
-        // Track the hovered track so the commit path can transfer the clip.
-        // Falls back to the source track when the pointer is outside any lane.
-        targetTrackId: (e.targetTrackId ?? context.trackId) as string | null,
-      };
-    }),
-
-    calculateResizeStartPreview: assign(({ context, event }) => {
-      const e = event as PointerMoveEvent;
-      const result = calculateResizeStartPreview(
-        context.originalStartTime,
-        context.originalDuration,
-        e.deltaX,
-        context.zoomLevel,
-        context.originalClipStart,
-        context.originalMediaDuration,
-        context.isStill
-      );
-      return {
-        previewStartTime: result.startTime,
-        previewDuration: result.duration,
-        currentDelta: { x: e.deltaX, y: 0 },
-      };
-    }),
-
-    calculateResizeEndPreview: assign(({ context, event }) => {
-      const e = event as PointerMoveEvent;
-      const result = calculateResizeEndPreview(
-        context.originalDuration,
-        e.deltaX,
-        context.zoomLevel,
-        context.originalClipStart,
-        context.originalMediaDuration
-      );
-      return {
-        previewStartTime: context.originalStartTime,
-        previewDuration: result.duration,
-        currentDelta: { x: e.deltaX, y: 0 },
-      };
-    }),
+    calculatePreview: assign(({ context, event }) =>
+      previewFor(context, event as PointerMoveEvent)
+    ),
 
     // Fix D: at pointer-up, prefer the freshly hit-tested drop-point track over
     // the last (possibly stale/throttled) POINTER_MOVE target. Falls back to the
@@ -437,6 +476,7 @@ export const dragMachine = setup({
           {
             guard: 'exceedsThreshold',
             target: 'routeByInteraction',
+            actions: 'calculatePreview',
           },
           // Stays in detecting if within threshold (implicit — no transition)
         ],
@@ -479,7 +519,7 @@ export const dragMachine = setup({
       on: {
         POINTER_MOVE: {
           target: 'previewing',
-          actions: 'calculateMovePreview',
+          actions: 'calculatePreview',
         },
         POINTER_UP: {
           target: 'committed',
@@ -500,7 +540,7 @@ export const dragMachine = setup({
         POINTER_MOVE: {
           // Allow direct POINTER_MOVE in previewing to handle rapid movement
           // without waiting for PREVIEW_APPLIED (UI can throttle sends)
-          actions: 'calculateMovePreview',
+          actions: 'calculatePreview',
         },
         POINTER_UP: {
           target: 'committed',
@@ -517,7 +557,7 @@ export const dragMachine = setup({
       on: {
         POINTER_MOVE: {
           target: 'resizePreviewing',
-          actions: 'calculateResizeStartPreview',
+          actions: 'calculatePreview',
         },
         POINTER_UP: {
           target: 'committed',
@@ -533,7 +573,7 @@ export const dragMachine = setup({
       on: {
         POINTER_MOVE: {
           target: 'resizePreviewing',
-          actions: 'calculateResizeEndPreview',
+          actions: 'calculatePreview',
         },
         POINTER_UP: {
           target: 'committed',
@@ -557,16 +597,9 @@ export const dragMachine = setup({
             target: 'resizingEnd',
           },
         ],
-        POINTER_MOVE: [
-          {
-            guard: ({ context }) => context.interactionType === 'resize-start',
-            actions: 'calculateResizeStartPreview',
-          },
-          {
-            guard: ({ context }) => context.interactionType === 'resize-end',
-            actions: 'calculateResizeEndPreview',
-          },
-        ],
+        POINTER_MOVE: {
+          actions: 'calculatePreview',
+        },
         POINTER_UP: {
           target: 'committed',
         },
@@ -580,6 +613,12 @@ export const dragMachine = setup({
     committed: {
       on: {
         COMMIT_COMPLETE: {
+          target: 'idle',
+          actions: 'resetContext',
+        },
+        // A commit the store never acknowledged must still be escapable;
+        // otherwise every later drag in the session is dead (TL2-16).
+        ESCAPE: {
           target: 'idle',
           actions: 'resetContext',
         },

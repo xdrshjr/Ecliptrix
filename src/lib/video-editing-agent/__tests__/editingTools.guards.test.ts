@@ -1,14 +1,19 @@
 /**
  * Editing tool guards: locked tracks (AG-04), track / material type
- * compatibility (AG-05) and the resize_clip source bound (AG-07).
+ * compatibility (AG-05), the resize_clip source bound (AG-07), negative
+ * start times (AG2-08), storyboard type checks (AG2-14), trim out-points and
+ * images (AG2-15) and in-use material removal (AG2-16).
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { MaterialItem, TimelineItem, Track } from '@/types';
 import type { ToolContext } from '../types';
 import { createAddToTrackTool } from '../tools/addToTrack';
+import { createComposeStoryboardTool } from '../tools/composeStoryboard';
 import { createDeleteClipTool } from '../tools/deleteClip';
 import { createMoveClipTool } from '../tools/moveClip';
+import { createRemoveMaterialTool } from '../tools/removeMaterial';
 import { createResizeClipTool } from '../tools/resizeClip';
+import { createTrimClipTool } from '../tools/trimClip';
 
 function clip(id: string, trackId: string, extra: Partial<TimelineItem> = {}): TimelineItem {
   return {
@@ -24,8 +29,13 @@ function track(id: string, type: Track['type'], items: TimelineItem[], isLocked 
   };
 }
 
+function material(id: string, type: MaterialItem['type'], duration = 3): MaterialItem {
+  return { id, name: id, type, format: 'mp4', size: 1, url: `/${id}`, duration } as MaterialItem;
+}
+
 function makeContext(tracks: Track[], materials: MaterialItem[] = []) {
   const updateTimeline = vi.fn();
+  const recordOperation = vi.fn();
   const context: ToolContext = {
     timelineState: {
       currentTime: 0, totalDuration: 10, zoomLevel: 1, selectedItems: [], tracks,
@@ -35,9 +45,9 @@ function makeContext(tracks: Track[], materials: MaterialItem[] = []) {
     apiBaseUrl: 'http://127.0.0.1:3000',
     operations: new Map(),
     updateTimeline,
-    recordOperation: vi.fn(),
+    recordOperation,
   };
-  return { context, updateTimeline };
+  return { context, updateTimeline, recordOperation };
 }
 
 describe('editing tool guards', () => {
@@ -90,6 +100,22 @@ describe('editing tool guards', () => {
     expect(updateTimeline).not.toHaveBeenCalled();
   });
 
+  it('add_to_track rejects a negative start time', async () => {
+    const { context, updateTimeline } = makeContext(
+      [track('v1', 'video', [])],
+      [material('scene', 'video')],
+    );
+
+    const result = await createAddToTrackTool(context).execute('tc-1', {
+      materialId: 'scene', trackId: 'v1', startTime: -3,
+    });
+
+    expect({ details: result.details, applied: updateTimeline.mock.calls.length }).toEqual({
+      details: { success: false, error: expect.stringContaining('non-negative') },
+      applied: 0,
+    });
+  });
+
   it('resize_clip rejects a duration past the source end', async () => {
     const { context, updateTimeline } = makeContext([
       track('v1', 'video', [clip('a', 'v1', { clipStart: 2, clipEnd: 6 })]),
@@ -106,7 +132,7 @@ describe('editing tool guards', () => {
     expect(updateTimeline).not.toHaveBeenCalled();
   });
 
-  it('resize_clip allows any length for images', async () => {
+  it('resize_clip on an image keeps duration equal to clipEnd minus clipStart', async () => {
     const { context, updateTimeline } = makeContext([
       track('v1', 'video', [
         clip('photo', 'v1', { originalMaterialType: 'image', duration: 5, clipEnd: 5, originalDuration: 5 }),
@@ -119,7 +145,89 @@ describe('editing tool guards', () => {
 
     expect(result.details).toMatchObject({ success: true });
     expect(updateTimeline).toHaveBeenCalledWith('tc-1', {
-      type: 'resize_clip', clipId: 'photo', newDuration: 60, clipEnd: undefined,
+      type: 'resize_clip', clipId: 'photo', newDuration: 60, clipEnd: 60,
+    });
+  });
+
+  it('trim_clip derives the out-point from clipStart plus duration when clipEnd is absent', async () => {
+    const { context, updateTimeline } = makeContext([
+      track('v1', 'video', [clip('a', 'v1', { clipStart: 2, clipEnd: undefined, duration: 4 })]),
+    ]);
+
+    await createTrimClipTool(context).execute('tc-1', { clipId: 'a', clipStart: 3 });
+
+    expect(updateTimeline).toHaveBeenCalledWith('tc-1', {
+      type: 'trim_clip', clipId: 'a', clipStart: 3, clipEnd: 6, duration: 3,
+    });
+  });
+
+  it('trim_clip on an image is refused with a resize hint', async () => {
+    const { context, updateTimeline } = makeContext([
+      track('v1', 'video', [
+        clip('photo', 'v1', { originalMaterialType: 'image', duration: 20, clipEnd: 20 }),
+      ]),
+    ]);
+
+    const result = await createTrimClipTool(context).execute('tc-1', { clipId: 'photo', clipStart: 1 });
+
+    expect({ details: result.details, applied: updateTimeline.mock.calls.length }).toEqual({
+      details: { success: false, error: expect.stringContaining('use resize_clip') },
+      applied: 0,
+    });
+  });
+
+  it('compose_storyboard skips non-video materials and reports them', async () => {
+    const { context, updateTimeline } = makeContext(
+      [track('video-track-1', 'video', [])],
+      [material('voice', 'audio'), material('scene', 'video')],
+    );
+
+    const result = await createComposeStoryboardTool(context).execute('tc-1', {
+      storyboard_id: 'pack-1',
+      video_materials: [
+        { scene_id: 's1', material_id: 'voice' },
+        { scene_id: 's2', material_id: 'scene' },
+      ],
+    });
+
+    expect({ details: result.details, applied: updateTimeline.mock.calls.length }).toMatchObject({
+      details: {
+        success: true,
+        clips_added: 1,
+        skipped: [{ scene_id: 's1', material_id: 'voice', reason: expect.stringContaining('cannot be placed') }],
+      },
+      applied: 1,
+    });
+  });
+
+  it('compose_storyboard leaves no auto-created track when every scene is skipped', async () => {
+    const { context } = makeContext([], [material('voice', 'audio')]);
+
+    const result = await createComposeStoryboardTool(context).execute('tc-1', {
+      storyboard_id: 'pack-1',
+      video_materials: [{ scene_id: 's1', material_id: 'voice' }],
+    });
+
+    expect({ success: (result.details as { success: boolean }).success, tracks: context.timelineState.tracks })
+      .toEqual({ success: false, tracks: [] });
+  });
+
+  it('remove_material refuses a material still used on the timeline', async () => {
+    const { context, recordOperation } = makeContext(
+      [track('v1', 'video', [clip('a', 'v1', { materialId: 'scene' })])],
+      [material('scene', 'video')],
+    );
+
+    const result = await createRemoveMaterialTool(context).execute('tc-1', { material_id: 'scene' });
+
+    expect({
+      details: result.details,
+      recorded: recordOperation.mock.calls.length,
+      library: context.materials.map(m => m.id),
+    }).toEqual({
+      details: { success: false, error: expect.stringContaining('delete those clips first'), usedByClipIds: ['a'] },
+      recorded: 0,
+      library: ['scene'],
     });
   });
 });

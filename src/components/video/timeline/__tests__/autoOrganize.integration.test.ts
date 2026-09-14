@@ -119,23 +119,12 @@ describe('autoOrganize integration', () => {
     expect(video.items[0].id).toBe('v-b');
   });
 
-  it('dropMaterial (dragSlice) triggers autoOrganize via orchestrated add', () => {
-    const material: MaterialData = {
-      id: 'm-drop', name: 'DroppedMat', type: 'video', duration: 1,
-    };
-    useTimelineStore.getState().dropMaterial('video-track-1', material);
-    const video = useTimelineStore.getState().tracks.find(t => t.id === 'video-track-1')!;
-    // 3 items: durations 3,2,1 packed flush
-    expect(video.items.map(i => i.startTime).sort((x, y) => x - y)).toEqual([0, 3, 5]);
-  });
-
-  it('dropMaterial pushes an entry onto the undo stack (regression: no longer bypassed)', () => {
-    const before = useTimelineStore.getState().canUndo;
-    expect(before).toBe(false);
+  it('addItemAction pushes an entry onto the undo stack (track drops route through it)', () => {
+    expect(useTimelineStore.getState().canUndo).toBe(false);
     const material: MaterialData = {
       id: 'm-drop2', name: 'DroppedMat', type: 'video', duration: 1,
     };
-    useTimelineStore.getState().dropMaterial('video-track-1', material);
+    addItemAction(() => useTimelineStore.getState(), 'video-track-1', material);
     expect(useTimelineStore.getState().canUndo).toBe(true);
   });
 

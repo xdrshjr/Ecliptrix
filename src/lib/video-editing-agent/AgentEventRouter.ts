@@ -9,9 +9,10 @@
  * @module AgentEventRouter
  */
 
+import type { AgentClientApplyError } from '@/types';
 import type { SSEEvent, AgentOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
 import type { AgentStateManager } from './AgentStateManager';
-import type { OperationApplier } from './OperationApplier';
+import type { ApplyOutcome, OperationApplier } from './OperationApplier';
 import { useVideoEditingStore } from '@/stores';
 
 // ---------------------------------------------------------------------------
@@ -156,12 +157,12 @@ export class AgentEventRouter {
     const resultObj = event.result as Record<string, unknown> | null;
     const batchOps = resultObj?.operations;
     if (Array.isArray(batchOps) && batchOps.length > 0 && this.isTimelineOperation(batchOps[0] as AgentOperation)) {
-      for (let i = 0; i < batchOps.length; i++) {
-        await this.operationApplier.apply(
-          batchOps[i] as import('./types').TimelineOperation,
-          `${event.toolCallId}-batch-${i}`,
-        );
-      }
+      const operations = batchOps as import('./types').TimelineOperation[];
+      // auto_fix_overlaps reports a finished re-pack, not steps to replay.
+      const outcome = event.toolName === 'auto_fix_overlaps'
+        ? this.operationApplier.applyRepack(operations, event.toolCallId)
+        : await this.operationApplier.applyBatch(operations, event.toolCallId);
+      if (this.reportRejectedApply(event, outcome)) return;
       this.onOperationApplied?.(event);
       return;
     }
@@ -172,7 +173,8 @@ export class AgentEventRouter {
 
       if (this.isTimelineOperation(op)) {
         // Timeline operations go through OperationApplier (existing path)
-        await this.operationApplier.apply(op, event.toolCallId);
+        const outcome = await this.operationApplier.apply(op, event.toolCallId);
+        if (this.reportRejectedApply(event, outcome)) return;
       } else if (this.isMaterialOperation(op)) {
         // Record pre-state for undo BEFORE applying
         this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
@@ -195,6 +197,34 @@ export class AgentEventRouter {
 
       this.onOperationApplied?.(event);
     }
+  }
+
+  /**
+   * The tool succeeded on the server but its operation could not be applied
+   * locally (clip or track gone, invalid time): turn the tool card into an
+   * error so the user never sees a success that changed nothing. The reason
+   * travels as data; the UI localises it. Returns whether it was rejected.
+   */
+  private reportRejectedApply(
+    event: SSEEvent & { type: 'tool_result' },
+    outcome: ApplyOutcome | undefined,
+  ): boolean {
+    if (outcome?.status !== 'rejected') return false;
+    const clientApplyError: AgentClientApplyError = {
+      reason: outcome.reason,
+      ...(outcome.trackId !== undefined ? { trackId: outcome.trackId } : {}),
+      ...(outcome.clipId !== undefined ? { clipId: outcome.clipId } : {}),
+    };
+    const serverResult =
+      event.result !== null && typeof event.result === 'object'
+        ? (event.result as Record<string, unknown>)
+        : {};
+    this.stateManager.updateToolStatus(event.toolCallId, 'error', {
+      ...serverResult,
+      success: false,
+      clientApplyError,
+    });
+    return true;
   }
 
   // -------------------------------------------------------------------------

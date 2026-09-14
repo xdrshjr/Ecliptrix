@@ -14,9 +14,11 @@ import asyncio
 import yaml
 import random
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Sequence, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from dataclasses import dataclass
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
 import cv2
@@ -36,7 +38,6 @@ from app.models import (
     VideoCompositionItem,
     SubtitleCompositionItem,
     AspectRatio,
-    SubtitleAddRequest,
     VideoProcessingError,
     CompositionErrorDetails,
     VideoProcessingStage
@@ -65,18 +66,25 @@ from app.services.composition.media_resolution import (
 )
 from app.services.composition.filtergraph_builder import build_filtergraph
 from app.services.composition.audio_mix import AudioSource, build_audio_mix
+from app.services.composition.composition_outcome import (
+    AudioMixResult,
+    CompositionStageError,
+    DroppedAudio,
+    SkippedImage,
+    append_degradation,
+    clip_reason,
+    frame_count_for,
+    last_stderr_line,
+    timeline_end_of,
+)
+from app.services.composition.ffmpeg_args import filter_complex_args
 from app.services.composition.video_scaling import (
     build_video_filter,
     calculate_video_scaling,
     ensure_even_dimensions,
     get_aspect_ratio_info,
 )
-from app.services.composition.subtitle_prep import (
-    create_srt_from_subtitle_items,
-    seconds_to_srt_time,
-)
 from app.services.composition.media_download import (
-    download_image,
     is_pexels_url,
     is_youtube_url,
 )
@@ -123,16 +131,66 @@ def _is_loopback_local_reference(url: str) -> bool:
     return any(path.startswith(prefix) for prefix, _root, _kind in ROUTE_PREFIXES)
 
 
-def _ffmpeg_error_line(stderr: Optional[str]) -> str:
-    """The one line of an FFmpeg stderr dump worth putting in a log message.
+#: Errors `_convert_url_to_local_path` raises for media it cannot resolve.
+_MEDIA_RESOLVE_ERRORS = (OSError, URLGuardError, LocalMediaResolveError)
+#: An image at or below this opacity is hidden on purpose and never rendered.
+_HIDDEN_IMAGE_OPACITY = 0.001
+_DEFAULT_IMAGE_Z_INDEX = 10
+_MAX_IMAGE_Z_INDEX = 999
+#: Files a stage writes next to the final output before replacing it.
+_INTERMEDIATE_SUFFIXES = (
+    "_with_audio.mp4", "_merged.mp4", "_with_images.mp4", "_with_subtitles.mp4",
+)
 
-    These composition commands run WITHOUT ``-hide_banner``, so the top of the
-    dump is the version string and the build configuration — the diagnosis is at
-    the END. Returns ``""`` rather than raising on empty output: a log line must
-    never be the thing that breaks a fallback path.
+
+def _image_stack_key(item: Any) -> int:
+    """Stacking order of an image overlay: its z-index clamped to [0, 999].
+
+    The clamp keeps every image below the subtitle layer, as in the preview
+    (RV-10). There is no Pydantic range check on purpose, so an out-of-range
+    legacy value cannot reject the whole export with a 422.
     """
-    lines = [line for line in (stderr or "").strip().splitlines() if line.strip()]
-    return lines[-1] if lines else ""
+    position = getattr(item, "position", None) or getattr(item, "image_position", None)
+    raw = getattr(position, "z_index", None) if position is not None else None
+    try:
+        z_index = int(raw)
+    except (TypeError, ValueError):
+        z_index = _DEFAULT_IMAGE_Z_INDEX
+    return min(max(z_index, 0), _MAX_IMAGE_Z_INDEX)
+
+
+def _image_opacity(item: Any) -> float:
+    """Image opacity in [0, 1]; only a missing value means opaque."""
+    raw = getattr(item, "opacity", None)
+    if raw is None:
+        return 1.0
+    return min(max(float(raw), 0.0), 1.0)
+
+
+def _intermediate_paths_for(output_path: Path) -> List[str]:
+    base = str(output_path)
+    return [base.replace(".mp4", suffix) for suffix in _INTERMEDIATE_SUFFIXES]
+
+
+def _dropped_audio(item: Any, reason: str) -> DroppedAudio:
+    item_id = str(getattr(item, "id", "") or "")
+    return DroppedAudio(
+        item_id=item_id,
+        name=str(getattr(item, "name", None) or item_id),
+        reason=clip_reason(reason) or "audio could not be processed",
+    )
+
+
+@dataclass(frozen=True)
+class _AudioMergeJob:
+    """Inputs of the audio merge stage (keeps its signature small)."""
+
+    composition_id: str
+    request: VideoCompositionRequest
+    output_path: Path
+    temp_dir: str
+    ffmpeg_path: str
+    timeline_end: float
 
 
 class VideoCompositionService:
@@ -202,56 +260,175 @@ class VideoCompositionService:
         output_path: Path,
         ffmpeg_path: str,
         output_resolution: Dict[str, int],
+        timeline_end: float,
+        temp_dir: str,
     ) -> bool:
-        """Compose normalized clips via the multi-track + transition filtergraph.
+        """Write the timeline's video stream to ``output_path`` (round 2, S6).
 
-        Returns True when the filtergraph path was taken AND succeeded; False
-        when the timeline is degenerate (caller falls back to concat) OR the
-        filtergraph encode failed (caller falls back to concat). This mirrors
-        the preview compositor's z-order / opacity / transition semantics
-        (spec 05 §2.4). The normalized inputs are already clip-trimmed + scaled,
-        so the builder runs with ``pre_trimmed=True``.
+        Plans the canvas composite. A plain single gap-free track uses the concat
+        demuxer over the planned inputs (returns False); everything else runs
+        the canvas graph (returns True). A failed composite raises
+        :class:`CompositionStageError`: it never falls back to concatenating
+        every track, which produced a longer, wrong video reported as success
+        (EXV-07). The seven inputs are the stage's real dependencies.
         """
         plan = build_filtergraph(
             list(request.video_items),
             int(output_resolution["width"]),
             int(output_resolution["height"]),
             pre_trimmed=True,
+            fps=int(request.output_fps),
+            timeline_end=timeline_end,
         )
+        planned_paths = self._planned_input_paths(request, normalized_videos, plan.video_inputs)
         if plan.can_use_concat:
-            logger.info("Filtergraph not needed (single track, no transitions); using concat")
+            logger.info("Single contiguous track: composing with the concat demuxer")
+            self._concat_videos(planned_paths, output_path, temp_dir, ffmpeg_path)
             return False
 
-        # Map the planned input order (clip ids) back to normalized file paths.
-        id_to_path = {
-            item.id: normalized_videos[i]
-            for i, item in enumerate(request.video_items)
-            if i < len(normalized_videos)
-        }
         cmd = [ffmpeg_path, '-y']
-        for clip_id in plan.video_inputs:
-            path = id_to_path.get(clip_id)
-            if not path:
-                logger.warning(f"Filtergraph input '{clip_id}' has no normalized path; using concat")
-                return False
+        for path in planned_paths:
             cmd.extend(['-i', path])
-        cmd.extend([
-            '-filter_complex', plan.filter_complex,
-            '-map', plan.output_label,
-        ])
+        cmd.extend(filter_complex_args(plan.filter_complex, temp_dir, ffmpeg_path))
+        cmd.extend(['-map', plan.output_label])
         cmd.extend(self._get_encoding_params("fast"))
         cmd.append(str(output_path))
 
-        logger.info("Running multi-track filtergraph composition")
-        logger.info(f"Filtergraph: {plan.filter_complex}")
+        logger.info(
+            f"Running canvas composition: {len(planned_paths)} inputs, "
+            f"timeline_end={plan.timeline_end:.3f}s"
+        )
+        logger.debug(f"Filtergraph: {plan.filter_complex}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            logger.error(
-                f"Filtergraph composition failed, falling back to concat: {result.stderr}"
-            )
-            return False
-        logger.info("Multi-track filtergraph composition succeeded")
+            summary = last_stderr_line(result.stderr)
+            logger.error(f"Canvas composition failed: {summary}")
+            raise CompositionStageError("compose", summary)
+        logger.info("Canvas composition succeeded")
         return True
+
+    @staticmethod
+    def _planned_input_paths(
+        request: VideoCompositionRequest,
+        normalized_videos: List[str],
+        clip_ids: List[str],
+    ) -> List[str]:
+        """The normalized file of every planned input, in plan order."""
+        id_to_path = {
+            item.id: normalized_videos[index]
+            for index, item in enumerate(request.video_items)
+            if index < len(normalized_videos)
+        }
+        paths: List[str] = []
+        for clip_id in clip_ids:
+            path = id_to_path.get(clip_id)
+            if not path:
+                raise CompositionStageError("compose", f"normalized clip missing for {clip_id}")
+            paths.append(path)
+        return paths
+
+    def _fail_composition(
+        self, composition_id: str, *, error_details: Dict[str, Any], progress: float,
+    ) -> None:
+        """Mark a composition failed IN PLACE (EXO-13).
+
+        Replacing the whole status dict dropped ``task_id``, ``start_time``,
+        ``warnings`` and ``degradations``, so the status endpoint reported an
+        anonymous failure.
+        """
+        info = self.compositions.setdefault(composition_id, {"id": composition_id})
+        info.update(
+            status="failed",
+            progress=progress,
+            error_details=error_details,
+            error=error_details.get("error_summary"),
+            failed_at=datetime.utcnow(),
+        )
+
+    def _composition_failure_response(
+        self, composition_id: str, request: VideoCompositionRequest, stage: str, summary: str,
+    ) -> VideoCompositionResponse:
+        """Fail the composition with a readable summary and build the response."""
+        error_details = CompositionErrorDetails(
+            failed_videos=[],
+            total_videos=len(request.video_items),
+            successful_videos=0,
+            composition_stage=stage,
+            error_summary=summary,
+            recovery_suggestions=[
+                "Check if all video files are accessible and not corrupted",
+                "Verify that FFmpeg is properly configured",
+                "Ensure there is enough disk space and memory",
+                "Try simplifying the composition or reducing video quality",
+                "Contact support if the issue persists"
+            ]
+        )
+        progress = float(self.compositions.get(composition_id, {}).get("progress", 0.0))
+        self._fail_composition(
+            composition_id, error_details=error_details.model_dump(mode="json"), progress=progress,
+        )
+        return VideoCompositionResponse(
+            success=False,
+            message=summary,
+            composition_id=composition_id,
+            status="failed",
+            progress=progress,
+            error_details=error_details
+        )
+
+    def _record_degradation(
+        self, composition_id: Optional[str], kind: str, items: Sequence[Any], reason: str,
+    ) -> None:
+        """Record content that did not reach the export (S7). Logged, never silent."""
+        info = self.compositions.get(composition_id) if composition_id else None
+        if info is None:
+            logger.warning(f"Untracked composition lost {kind} content: {clip_reason(reason)}")
+            return
+        entry = append_degradation(info.setdefault("degradations", []), kind, items, reason)
+        if entry is not None:
+            logger.warning(
+                f"Composition {composition_id} degraded ({kind}) for "
+                f"{entry['item_names']}: {entry['reason']}"
+            )
+
+    def _record_skipped_images(
+        self, composition_id: Optional[str], skipped: Sequence[SkippedImage],
+    ) -> None:
+        for skipped_image in skipped:
+            self._record_degradation(
+                composition_id, "image_overlay", [skipped_image.item], skipped_image.reason
+            )
+
+    @staticmethod
+    def _remove_intermediates(paths: Sequence[str], output_path: Path) -> None:
+        """Delete files a stage left next to the output; the output itself stays."""
+        for path in paths:
+            if path == str(output_path) or not os.path.exists(path):
+                continue
+            try:
+                os.remove(path)
+            except OSError as exc:
+                logger.warning(f"Could not remove intermediate file {path}: {exc}")
+
+    @staticmethod
+    def _validate_clip_windows(request: VideoCompositionRequest) -> List[float]:
+        """Source window length of every video item; an empty window is invalid."""
+        durations: List[float] = []
+        for i, video_item in enumerate(request.video_items):
+            clip_start = getattr(video_item, 'clip_start', None) or 0.0
+            clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
+            if clip_start < 0:
+                logger.warning(f"Video {i+1}: Invalid clip_start {clip_start}, setting to 0.0")
+                clip_start = 0.0
+            if clip_end <= clip_start:
+                logger.warning(f"Video {i+1}: Invalid clip_end {clip_end} <= clip_start {clip_start}, using full duration")
+                clip_end = video_item.duration
+            clipped_duration = clip_end - clip_start
+            if clipped_duration <= 0:
+                logger.error(f"Video {i+1}: Invalid clipped duration {clipped_duration}s, this will cause composition failure")
+                raise ValueError(f"Video item {video_item.id} has invalid clipping parameters: start={clip_start}s, end={clip_end}s")
+            durations.append(clipped_duration)
+        return durations
 
     def _concat_videos(
         self,
@@ -260,7 +437,12 @@ class VideoCompositionService:
         temp_dir: str,
         ffmpeg_path: str,
     ) -> None:
-        """Concatenate normalized clips (legacy single-track path / fallback)."""
+        """Concatenate normalized clips with the concat demuxer (the fast path).
+
+        A failure is a compose-stage error summarised by the last FFmpeg stderr
+        line, exactly like a failed canvas composite. Raising the whole stderr
+        put the version banner and build configuration in ``error_summary``.
+        """
         concat_list_path = os.path.join(temp_dir, "concat_list.txt")
         with open(concat_list_path, 'w', encoding='utf-8') as f:
             for video in normalized_videos:
@@ -286,7 +468,9 @@ class VideoCompositionService:
             ] + self._get_encoding_params("fast") + [str(output_path)]
             result = subprocess.run(concat_cmd, capture_output=True, text=True)
             if result.returncode != 0:
-                raise Exception(f"Video concatenation failed: {result.stderr}")
+                summary = last_stderr_line(result.stderr)
+                logger.error(f"Video concatenation failed: {summary}")
+                raise CompositionStageError("compose", summary)
 
     def _ensure_even_dimensions(self, width: int, height: int) -> Tuple[int, int]:
         """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
@@ -774,6 +958,10 @@ class VideoCompositionService:
         normalize_cmd.extend([
             '-vf', vf_params,
             '-r', str(video_info['target_fps']),
+            # `-t` alone rounds up to whole frames and drifts clip after clip (EXV-10).
+            '-frames:v', str(frame_count_for(
+                video_info.get('timeline_start') or 0.0, clip_duration, video_info['target_fps'],
+            )),
             '-an',  # Strip audio - video audio handled separately via _extract_video_audio_tracks
         ])
         # Use ultrafast preset for normalization (intermediate files, will be re-encoded later if needed)
@@ -953,6 +1141,8 @@ class VideoCompositionService:
             # GET /compose/{id}/status. They CANNOT ride the compose response —
             # that one returns before normalization even begins.
             "warnings": [],
+            # Round 2 S7: content that did not reach a completed export.
+            "degradations": [],
         }
         
         # Start background processing
@@ -991,12 +1181,11 @@ class VideoCompositionService:
             error_msg = f"Async video composition failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            if composition_id in self.compositions:
-                self.compositions[composition_id].update({
-                    "status": "failed",
-                    "error_details": {"error": error_msg},
-                    "failed_at": datetime.utcnow()
-                })
+            self._fail_composition(
+                composition_id,
+                error_details={"error_summary": error_msg, "composition_stage": "request"},
+                progress=float(self.compositions.get(composition_id, {}).get("progress", 0.0)),
+            )
         finally:
             self._composition_semaphore.release()
             logger.info(f"Composition {composition_id} released semaphore")
@@ -1011,47 +1200,17 @@ class VideoCompositionService:
         logger.info(f"Video items: {len(request.video_items)}, Audio items: {len(request.audio_items)}, Subtitle items: {len(request.subtitle_items)}, Image items: {len(request.image_items)}")
         logger.info(f"Frontend provided total duration: {request.total_duration}s")
         
-        # Calculate actual total duration from clipped video segments
-        actual_total_duration = 0
-        clipped_video_durations = []
-        
-        for i, video_item in enumerate(request.video_items):
-            # Safely get clipping parameters with proper defaults
-            clip_start = getattr(video_item, 'clip_start', None) or 0.0
-            clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
-            
-            # Validate clipping parameters
-            if clip_start < 0:
-                logger.warning(f"Video {i+1}: Invalid clip_start {clip_start}, setting to 0.0")
-                clip_start = 0.0
-                
-            if clip_end <= clip_start:
-                logger.warning(f"Video {i+1}: Invalid clip_end {clip_end} <= clip_start {clip_start}, using full duration")
-                clip_end = video_item.duration
-            
-            clipped_duration = clip_end - clip_start
-            
-            # Validate calculated duration
-            if clipped_duration <= 0:
-                logger.error(f"Video {i+1}: Invalid clipped duration {clipped_duration}s, this will cause composition failure")
-                raise ValueError(f"Video item {video_item.id} has invalid clipping parameters: start={clip_start}s, end={clip_end}s")
-            
-            clipped_video_durations.append(clipped_duration)
-            actual_total_duration += clipped_duration
-            
-            logger.info(f"Video {i+1} duration calculation: "
-                       f"clip_start={clip_start}s, clip_end={clip_end}s, "
-                       f"clipped_duration={clipped_duration}s, "
-                       f"original_duration={getattr(video_item, 'original_duration', 'N/A')}s")
-        
-        logger.info(f"Duration calculation summary: "
-                   f"frontend_total={request.total_duration}s, "
-                   f"actual_clipped_total={actual_total_duration}s, "
-                   f"difference={actual_total_duration - request.total_duration}s")
-        
-        # Use actual_total_duration for all processing instead of request.total_duration
-        # This ensures the final video and audio match the actual clipped content
-        
+        # Invalid clip windows are rejected up front (unchanged behaviour).
+        clipped_video_durations = self._validate_clip_windows(request)
+        # The export lasts until the timeline ends — not the sum of clip lengths,
+        # which ignored overlapping tracks, gaps and images or audio running past
+        # the last video (EXV-03).
+        timeline_end = max(request.total_duration or 0.0, timeline_end_of(request))
+        logger.info(
+            f"Timeline end: {timeline_end:.3f}s "
+            f"(frontend total_duration={request.total_duration}s)"
+        )
+
         # 前端已确保正确的时间轴顺序，后端直接按接收到的顺序处理
         # 记录接收到的项目顺序以便调试
         logger.info("接收到的视频项目顺序（前端已排序）", extra={
@@ -1145,17 +1304,20 @@ class VideoCompositionService:
                                    
         logger.info(f"裁剪统计: {trimmed_video_count}/{len(request.video_items)} 视频片段被裁剪, "
                    f"{trimmed_audio_count}/{len(request.audio_items)} 音频片段被裁剪, "
-                   f"将使用实际裁剪总时长: {actual_total_duration}s")
+                   f"时间轴终点: {timeline_end}s")
         
+        temp_dir = os.path.join(tempfile.gettempdir(), f"video_compose_{composition_id}")
+        output_filename = f"composed_{composition_id}.{request.output_format}"
+        output_path = self.output_dir / output_filename
+        # Every file a stage may leave next to the output; removed in `finally`
+        # together with the temp dir, on success and on failure (EXO-13).
+        intermediate_paths = _intermediate_paths_for(output_path)
+
+        # One orchestration method on purpose: source-level contract tests pin the
+        # stages it wires (normalize payload, overlay warning sinks).
         try:
-            # Create temporary directory
-            temp_dir = os.path.join(tempfile.gettempdir(), f"video_compose_{composition_id}")
             os.makedirs(temp_dir, exist_ok=True)
-            
-            # Output file path
-            output_filename = f"composed_{composition_id}.{request.output_format}"
-            output_path = self.output_dir / output_filename
-            
+
             logger.info(f"Temp directory: {temp_dir}")
             logger.info(f"Output path: {output_path}")
             
@@ -1203,7 +1365,8 @@ class VideoCompositionService:
             # can skip the network download entirely. Must populate
             # url_to_downloaded_path BEFORE submitting downloads so we don't
             # re-fetch already-cached assets.
-            material_svc = get_material_download_service()
+            # An image/audio-only export has no video to resolve (EXO-06).
+            material_svc = get_material_download_service() if unique_urls else None
             # Spec 05 §2.3: the export pipeline is LOCAL-ONLY. Each unique URL
             # must resolve to a local file via the persistent cache OR the local
             # media resolver. There is NO silent download fallback — a URL that
@@ -1269,13 +1432,12 @@ class VideoCompositionService:
 
                 # Return detailed error response
                 logger.error(f"Video composition failed: {len(failed_downloads)} videos could not be resolved locally")
-                self.compositions[composition_id] = {
-                    "status": "failed", 
-                    "progress": 0.3,
-                    "error": error_details.error_summary,
-                    "error_details": error_details
-                }
-                
+                self._fail_composition(
+                    composition_id,
+                    error_details=error_details.model_dump(mode="json"),
+                    progress=0.3,
+                )
+
                 return VideoCompositionResponse(
                     success=False,
                     message=error_details.error_summary,
@@ -1311,15 +1473,21 @@ class VideoCompositionService:
             # Verify all videos are assigned
             missing_videos = [i for i, path in enumerate(downloaded_videos) if path is None]
             if missing_videos:
-                logger.error(f"Missing downloaded videos for indices: {missing_videos}")
+                message = f"Internal error: missing downloaded videos for indices {missing_videos}"
+                logger.error(message)
+                self._fail_composition(
+                    composition_id,
+                    error_details={"error_summary": message, "composition_stage": "media_resolution"},
+                    progress=0.3,
+                )
                 return VideoCompositionResponse(
                     success=False,
-                    message=f"Internal error: missing downloaded videos for indices {missing_videos}",
+                    message=message,
                     composition_id=composition_id,
                     status="failed",
                     progress=0.3
                 )
-                    
+
             logger.info(f"Video download completed with URL deduplication", extra={
                 "total_videos": total_videos,
                 "unique_downloads": unique_count,
@@ -1357,6 +1525,8 @@ class VideoCompositionService:
                     # 新增：剪辑参数 - 使用安全的属性访问
                     'clip_start': getattr(video_item, 'clip_start', None) or 0.0 if video_item else 0.0,
                     'clip_end': getattr(video_item, 'clip_end', None) if video_item else None,
+                    # 时间轴起点：帧数按累积边界取整，连续片段段不累计漂移（EXV-10）
+                    'timeline_start': getattr(video_item, 'start_time', 0.0) if video_item else 0.0,
                     # 新增：目标宽高比
                     'target_aspect_ratio': target_aspect_ratio,
                     # 新增：运镜配置 + 用于 warning 文案的片段名（camera-motion-2d-3d §4.4.2）
@@ -1429,13 +1599,12 @@ class VideoCompositionService:
                     
                     # Return detailed error response
                     logger.error(f"Video composition failed: {len(failed_normalizations)} videos failed to normalize")
-                    self.compositions[composition_id] = {
-                        "status": "failed", 
-                        "progress": 0.6,
-                        "error": error_details.error_summary,
-                        "error_details": error_details
-                    }
-                    
+                    self._fail_composition(
+                        composition_id,
+                        error_details=error_details.model_dump(mode="json"),
+                        progress=0.6,
+                    )
+
                     return VideoCompositionResponse(
                         success=False,
                         message=error_details.error_summary,
@@ -1459,115 +1628,37 @@ class VideoCompositionService:
             # Update progress
             self.compositions[composition_id]["progress"] = 0.7
 
-            # Spec 05 §2.4: decide between the multi-track / transition
-            # filtergraph (overlay + fade/xfade + per-clip opacity, mirroring the
-            # preview compositor) and the lightweight concat path. The normalized
-            # clips are already trimmed + scaled to the canvas, so the composite
-            # runs with pre_trimmed=True. On any filtergraph failure we fall back
-            # to concat (spec 05 §2.4 "filter_complex failure → concat").
+            # Round 2 S6: one canvas composite places every clip at its real
+            # start on a black canvas as long as the timeline. Only a plain
+            # single track uses the concat demuxer, and a failed composite fails
+            # the export instead of concatenating every track (EXV-07).
             output_resolution = request.output_resolution or self._get_aspect_ratio_info(
                 request.aspect_ratio
             )
-            composited = self._compose_videos_filtergraph(
-                request, normalized_videos, output_path, ffmpeg_path, output_resolution
+            self._compose_videos_filtergraph(
+                request, normalized_videos, output_path, ffmpeg_path,
+                output_resolution, timeline_end, temp_dir,
             )
-            if not composited:
-                self._concat_videos(normalized_videos, output_path, temp_dir, ffmpeg_path)
-            
+
             # Update progress
             self.compositions[composition_id]["progress"] = 0.9
-            
+
             # Extract embedded audio from video tracks
-            video_audio_paths = self._extract_video_audio_tracks(request, temp_dir, ffmpeg_path)
+            video_audio_paths = self._extract_video_audio_tracks(
+                request, temp_dir, ffmpeg_path, composition_id=composition_id
+            )
 
             # Handle audio if present (independent audio tracks or video embedded audio)
             if request.audio_items or video_audio_paths:
-                logger.info("Processing audio tracks...")
-                try:
-                    # Create audio mix from audio items using actual video duration
-                    audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
-
-                    processed_audio_path = self._process_audio_tracks(request, temp_dir, ffmpeg_path, actual_total_duration, extra_audio_paths=video_audio_paths)
-
-                    if processed_audio_path:
-                        logger.info("Adding mixed audio to video...")
-                        video_with_audio_path = str(output_path).replace('.mp4', '_with_audio.mp4')
-
-                        audio_video_cmd = [
-                            ffmpeg_path,
-                            '-y',
-                            '-i', str(output_path),
-                            '-i', processed_audio_path,
-                            '-c:v', 'copy',
-                            '-c:a', 'aac',
-                            '-map', '0:v:0',  # Map video from first input
-                            '-map', '1:a:0',  # Map audio from second input (our processed audio)
-                            # Removed '-shortest' to prevent video truncation when audio is shorter
-                            # Audio is already processed to match video duration via total_duration
-                            video_with_audio_path
-                        ]
-
-                        logger.info(f"Running audio-video merge command: {' '.join(audio_video_cmd)}")
-                        logger.info(f"Input video: {output_path} (exists: {os.path.exists(output_path)})")
-                        logger.info(f"Input audio: {processed_audio_path} (exists: {os.path.exists(processed_audio_path)})")
-                        logger.info(f"Output path: {video_with_audio_path}")
-
-                        result = subprocess.run(audio_video_cmd, capture_output=True, text=True)
-
-                        logger.info(f"Audio-video merge result: returncode={result.returncode}")
-                        if result.stdout:
-                            logger.info(f"FFmpeg stdout: {result.stdout}")
-                        if result.stderr:
-                            logger.info(f"FFmpeg stderr: {result.stderr}")
-
-                        if result.returncode == 0:
-                            # Check if the output file was created and has content
-                            if os.path.exists(video_with_audio_path):
-                                output_size = os.path.getsize(video_with_audio_path)
-                                logger.info(f"Audio-video merge output file created: {output_size} bytes")
-
-                                # Replace original video with audio version
-                                os.replace(video_with_audio_path, str(output_path))
-                                logger.info("Audio successfully added to video")
-
-                                # Verify final file
-                                final_size = os.path.getsize(output_path)
-                                logger.info(f"Final video file size: {final_size} bytes")
-                            else:
-                                raise RuntimeError(
-                                    "Audio-video merge output file was not created "
-                                    f"(expected at {video_with_audio_path})"
-                                )
-                        else:
-                            raise RuntimeError(
-                                f"FFmpeg audio-video merge failed (returncode={result.returncode}): "
-                                f"{result.stderr.strip() if result.stderr else 'no stderr'}"
-                            )
-                    else:
-                        # _process_audio_tracks returned None — the silent
-                        # short-circuit that previously produced an audio-less
-                        # MP4 while marking the composition completed. Surface
-                        # it as a hard error so the outer handler marks the
-                        # composition failed and the user actually sees it.
-                        audio_count = len(request.audio_items) if request.audio_items else 0
-                        extra_count = len(video_audio_paths) if video_audio_paths else 0
-                        raise RuntimeError(
-                            "Audio merge skipped: _process_audio_tracks returned None "
-                            f"(audio_items={audio_count}, video_audio_paths={extra_count}). "
-                            "See earlier logs for FileNotFoundError or FFmpeg stderr details."
-                        )
-
-                except Exception as e:
-                    # Promote audio failures from silent warnings to hard errors:
-                    # without audio the export is incorrect, so let the outer
-                    # handler mark the composition as failed and propagate the
-                    # error to the client instead of silently shipping a video
-                    # with no sound.
-                    logger.error(f"Audio processing error: {str(e)}", exc_info=True)
-                    raise
+                self._mix_audio_into_output(
+                    _AudioMergeJob(
+                        composition_id, request, output_path, temp_dir, ffmpeg_path, timeline_end,
+                    ),
+                    video_audio_paths,
+                )
             else:
                 logger.info("No audio tracks to process")
-            
+
             # Process image overlays and subtitles
             # When both exist, merge into a single FFmpeg pass to avoid redundant re-encoding
             all_image_items = list(request.image_items)
@@ -1586,109 +1677,82 @@ class VideoCompositionService:
                         merged_output_path,
                         temp_dir,
                         request.output_resolution,
-                        target_fps
+                        target_fps,
+                        composition_id=composition_id,
                     )
                     # Still-motion warnings share the normalization bucket (W2)
                     # so they reach the user through the same status poll.
                     self._record_composition_warnings(composition_id, overlay_warnings)
-                    if success and os.path.exists(merged_output_path):
-                        os.replace(merged_output_path, str(output_path))
-                        logger.info("Image overlays and subtitles added in single pass")
-                        final_size = os.path.getsize(output_path)
-                        logger.info(f"Final video file size: {final_size} bytes")
+                    if success:
+                        if os.path.exists(merged_output_path):
+                            os.replace(merged_output_path, str(output_path))
+                            logger.info("Image overlays and subtitles added in single pass")
                     else:
                         logger.warning("Merged processing failed, falling back to sequential processing")
                         # Fallback to sequential processing — its warnings must
-                        # come back too (P1-1): this is the path that most needs
-                        # to explain itself, not the one that can stay silent.
+                        # come back too (P1-1), and each pass that still fails is
+                        # recorded as a degradation inside it.
                         self._record_composition_warnings(
                             composition_id,
-                            self._process_overlays_sequential(all_image_items, request, output_path, temp_dir),
+                            self._process_overlays_sequential(
+                                all_image_items, request, output_path, temp_dir,
+                                composition_id=composition_id,
+                            ),
                         )
                 except Exception as e:
                     logger.error(f"Merged overlay+subtitle processing error: {str(e)}", exc_info=True)
                     logger.warning("Falling back to sequential processing")
                     self._record_composition_warnings(
                         composition_id,
-                        self._process_overlays_sequential(all_image_items, request, output_path, temp_dir),
+                        self._process_overlays_sequential(
+                            all_image_items, request, output_path, temp_dir,
+                            composition_id=composition_id,
+                        ),
                     )
             elif has_images:
                 logger.info(f"Processing {len(all_image_items)} image overlay tracks...")
+                video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
                 try:
-                    video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
                     success, overlay_warnings = self._process_image_overlays(
                         all_image_items,
                         str(output_path),
                         video_with_images_path,
                         temp_dir,
                         request.output_resolution,
-                        target_fps
+                        target_fps,
+                        composition_id=composition_id,
                     )
                     self._record_composition_warnings(composition_id, overlay_warnings)
                     if success and os.path.exists(video_with_images_path):
                         os.replace(video_with_images_path, str(output_path))
                         logger.info("Image overlays successfully added to video")
-                    else:
-                        logger.warning("Image overlay processing did not produce output file")
-                except Exception as e:
-                    logger.error(f"Image overlay processing error: {str(e)}", exc_info=True)
+                except OSError as e:
+                    logger.error(f"Image overlay output could not replace the video: {e}", exc_info=True)
+                    self._record_degradation(composition_id, "image_overlay", all_image_items, str(e))
             elif has_subtitles:
                 logger.info(f"Processing {len(request.subtitle_items)} subtitle tracks...")
-                try:
-                    subtitle_processed_path = self._process_subtitle_tracks(
-                        request.subtitle_items,
-                        str(output_path),
-                        temp_dir
-                    )
-                    if subtitle_processed_path and os.path.exists(subtitle_processed_path):
-                        os.replace(subtitle_processed_path, str(output_path))
-                        logger.info("Subtitles successfully added to video")
-                    else:
-                        logger.warning("Subtitle processing failed - continuing without subtitles")
-                except Exception as e:
-                    logger.error(f"Subtitle processing error: {str(e)}", exc_info=True)
-                    logger.warning("Continuing video composition without subtitles")
+                self._burn_subtitles_into_output(
+                    composition_id, request.subtitle_items, output_path, temp_dir
+                )
             else:
                 logger.info("No image overlays or subtitle tracks to process")
-            
+
             # Final processing
             processing_time = time.time() - start_time
             file_size = output_path.stat().st_size
-
-            # Update composition info
-            composition_update = {
+            self.compositions[composition_id].update({
                 "status": "completed",
                 "progress": 1.0,
                 "output_file_path": str(output_path),
                 "output_file_size": file_size,
                 "processing_time": processing_time,
                 "completed_at": datetime.utcnow(),
-            }
-            self.compositions[composition_id].update(composition_update)
-            
+            })
+
             logger.info(f"Video composition completed: {output_filename}")
             logger.info(f"File size: {file_size / 1024 / 1024:.2f}MB")
             logger.info(f"Processing time: {processing_time:.2f}s")
-            
-            # Update composition status for successful completion
-            if composition_id in self.compositions:
-                final_update = {
-                    "status": "completed",
-                    "progress": 1.0,
-                    "output_file_path": str(output_path),
-                    "output_file_size": file_size,
-                    "processing_time": processing_time,
-                    "completed_at": datetime.utcnow(),
-                }
-                self.compositions[composition_id].update(final_update)
-            
-            # Clean up temp directory
-            try:
-                shutil.rmtree(temp_dir)
-                logger.info(f"Cleaned up temp directory: {temp_dir}")
-            except Exception as e:
-                logger.warning(f"Failed to clean temp directory: {str(e)}")
-            
+
             return VideoCompositionResponse(
                 success=True,
                 message="Video composition completed successfully",
@@ -1699,51 +1763,22 @@ class VideoCompositionService:
                 output_file_size=file_size,
                 processing_time=processing_time
             )
-            
+
+        except CompositionStageError as e:
+            logger.error(f"Video composition failed in stage '{e.stage}': {e.summary}")
+            return self._composition_failure_response(composition_id, request, e.stage, e.summary)
         except Exception as e:
             error_msg = f"Video composition failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            
-            # Create proper error details
-            error_details = CompositionErrorDetails(
-                failed_videos=[],
-                total_videos=len(request.video_items),
-                successful_videos=0,
-                composition_stage="finalization",
-                error_summary=error_msg,
-                recovery_suggestions=[
-                    "Check if all video files are accessible and not corrupted",
-                    "Verify that FFmpeg is properly configured",
-                    "Ensure there is enough disk space and memory",
-                    "Try simplifying the composition or reducing video quality",
-                    "Contact support if the issue persists"
-                ]
+            return self._composition_failure_response(
+                composition_id, request, "finalization", error_msg
             )
-            
-            # Update composition info
-            self.compositions[composition_id].update({
-                "status": "failed",
-                "error": error_msg,
-                "error_details": error_details,
-                "failed_at": datetime.utcnow()
-            })
-            
-            # Clean up temp directory on error
-            if 'temp_dir' in locals():
-                try:
-                    shutil.rmtree(temp_dir)
-                except Exception:
-                    pass
-            
-            return VideoCompositionResponse(
-                success=False,
-                message=error_msg,
-                composition_id=composition_id,
-                status="failed",
-                progress=0.0,
-                error_details=error_details
-            )
-    
+        finally:
+            # Temp inputs, graph scripts and every intermediate go on success and
+            # failure alike (EXO-13).
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            self._remove_intermediates(intermediate_paths, output_path)
+
     def get_composition_status(self, composition_id: str) -> Optional[Dict[str, Any]]:
         """Get the status of a composition."""
         return self.compositions.get(composition_id)
@@ -1959,103 +1994,183 @@ class VideoCompositionService:
 
         return local_path
 
-    def _extract_video_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str) -> list:
+    def _mix_audio_into_output(self, job: _AudioMergeJob, video_audio_paths: list) -> None:
+        """Mix every audio source and mux the mix into the output video.
+
+        Audio items that cannot be mixed are reported as degradations (EXO-03).
+        Losing ALL audio still fails the export: a video without its sound is not
+        a usable result.
+        """
+        logger.info("Processing audio tracks...")
+        mix = self._process_audio_tracks(
+            job.request, job.temp_dir, job.ffmpeg_path, job.timeline_end,
+            extra_audio_paths=video_audio_paths,
+        )
+        for dropped in mix.dropped:
+            self._record_degradation(
+                job.composition_id, "audio_item",
+                [SimpleNamespace(id=dropped.item_id, name=dropped.name)], dropped.reason,
+            )
+        if not mix.path:
+            audio_count = len(job.request.audio_items) if job.request.audio_items else 0
+            extra_count = len(video_audio_paths) if video_audio_paths else 0
+            raise RuntimeError(
+                "Audio merge skipped: no audio could be mixed "
+                f"(audio_items={audio_count}, video_audio_paths={extra_count}). "
+                "See earlier logs for FileNotFoundError or FFmpeg stderr details."
+            )
+
+        logger.info("Adding mixed audio to video...")
+        output_path = str(job.output_path)
+        video_with_audio_path = output_path.replace('.mp4', '_with_audio.mp4')
+        audio_video_cmd = [
+            job.ffmpeg_path,
+            '-y',
+            '-i', output_path,
+            '-i', mix.path,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-map', '0:v:0',  # Map video from first input
+            '-map', '1:a:0',  # Map audio from second input (our processed audio)
+            # No '-shortest': the mix already lasts until the timeline end, and
+            # -shortest used to truncate the video when the audio was shorter.
+            video_with_audio_path
+        ]
+        logger.info(f"Running audio-video merge command: {' '.join(audio_video_cmd)}")
+        result = subprocess.run(audio_video_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"FFmpeg audio-video merge failed (returncode={result.returncode}): "
+                f"{last_stderr_line(result.stderr) or 'no stderr'}"
+            )
+        if not os.path.exists(video_with_audio_path):
+            raise RuntimeError(
+                "Audio-video merge output file was not created "
+                f"(expected at {video_with_audio_path})"
+            )
+        os.replace(video_with_audio_path, output_path)
+        logger.info("Audio successfully added to video")
+
+    def _extract_video_audio_tracks(
+        self,
+        request: VideoCompositionRequest,
+        temp_dir: str,
+        ffmpeg_path: str,
+        composition_id: Optional[str] = None,
+    ) -> list:
         """
         Extract embedded audio from video items that have audio streams.
         Returns a list of dicts matching processed_audio_paths format:
         [{'path': str, 'start_time': float, 'name': str, 'track_id': str}]
+
+        A clip whose file cannot be probed or extracted is reported as an
+        ``embedded_audio`` degradation; a clip without an audio stream is simply
+        silent (EXO-03).
         """
         video_audio_paths = []
 
         for i, video_item in enumerate(request.video_items):
-            try:
-                # Spec 01 §2.4 / spec 05 §2.4: a detached video clip contributes
-                # NO embedded audio — its audio plays from the derived
-                # independent audio item, so extracting here would double it.
-                if getattr(video_item, 'audio_detached', None):
-                    logger.info(
-                        f"Video {i+1} ({video_item.name}) audio is detached; "
-                        f"skipping embedded-audio extraction"
-                    )
-                    continue
-
-                local_path = self._convert_url_to_local_path(video_item.url)
-
-                # Use ffprobe to check if the video has an audio stream
-                ffprobe_path = os.path.join(os.path.dirname(ffmpeg_path), 'ffprobe') if os.path.dirname(ffmpeg_path) else 'ffprobe'
-                probe_cmd = [
-                    ffprobe_path,
-                    '-v', 'error',
-                    '-select_streams', 'a',
-                    '-show_entries', 'stream=codec_type',
-                    '-of', 'csv=p=0',
-                    local_path
-                ]
-                probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
-
-                if probe_result.returncode != 0 or not probe_result.stdout.strip():
-                    logger.info(f"Video {i+1} ({video_item.name}) has no audio stream, skipping")
-                    continue
-
-                logger.info(f"Video {i+1} ({video_item.name}) has audio stream, extracting with volume={video_item.volume}")
-
-                # Get clipping parameters
-                clip_start = getattr(video_item, 'clip_start', None) or 0.0
-                clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
-                clip_duration = clip_end - clip_start
-
-                # Volume: model stores 0-2 (already a multiplier)
-                vol = video_item.volume if video_item.volume is not None else 1.0
-
-                extracted_path = os.path.join(temp_dir, f"video_audio_{i}.wav")
-
-                extract_cmd = [ffmpeg_path, '-y']
-                if clip_start > 0:
-                    extract_cmd.extend(['-ss', str(clip_start)])
-                extract_cmd.extend([
-                    '-i', local_path,
-                    '-t', str(clip_duration),
-                    '-vn',
-                    '-af', f'volume={vol}',
-                    '-ar', '44100',
-                    '-ac', '2',
-                    extracted_path
-                ])
-
-                logger.info(f"Extracting video audio: {' '.join(extract_cmd)}")
-                result = subprocess.run(extract_cmd, capture_output=True, text=True)
-
-                if result.returncode != 0:
-                    logger.warning(f"Failed to extract audio from video {i+1}: {result.stderr}")
-                    continue
-
-                video_audio_paths.append({
-                    'path': extracted_path,
-                    'start_time': video_item.start_time,
-                    'name': f'{video_item.name} (embedded audio)',
-                    'track_id': video_item.track_id
-                })
-
-                logger.info(f"Successfully extracted audio from video {i+1}: {video_item.name}")
-
-            except Exception as e:
-                logger.warning(f"Failed to extract audio from video item {video_item.name}: {str(e)}")
+            # Spec 01 §2.4 / spec 05 §2.4: a detached video clip contributes
+            # NO embedded audio — its audio plays from the derived
+            # independent audio item, so extracting here would double it.
+            if getattr(video_item, 'audio_detached', None):
+                logger.info(
+                    f"Video {i+1} ({video_item.name}) audio is detached; "
+                    f"skipping embedded-audio extraction"
+                )
                 continue
+            try:
+                entry, failure = self._extract_one_video_audio(i, video_item, temp_dir, ffmpeg_path)
+            except OSError as exc:
+                entry, failure = None, str(exc)
+            if failure:
+                logger.warning(f"Failed to extract audio from video item {video_item.name}: {failure}")
+                self._record_degradation(composition_id, "embedded_audio", [video_item], failure)
+            elif entry:
+                video_audio_paths.append(entry)
+                logger.info(f"Successfully extracted audio from video {i+1}: {video_item.name}")
 
         logger.info(f"Extracted {len(video_audio_paths)} audio tracks from {len(request.video_items)} video items")
         return video_audio_paths
 
-    def _process_audio_tracks(self, request: VideoCompositionRequest, temp_dir: str, ffmpeg_path: str, actual_total_duration: float, extra_audio_paths: Optional[list] = None) -> Optional[str]:
-        """
-        Process multiple audio tracks and create a mixed audio file.
-        Returns the path to the mixed audio file, or None if processing failed.
+    def _extract_one_video_audio(
+        self, index: int, video_item: VideoCompositionItem, temp_dir: str, ffmpeg_path: str,
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """``(entry, None)``; ``(None, None)`` without an audio stream; ``(None, reason)``."""
+        try:
+            local_path = self._convert_url_to_local_path(video_item.url)
+        except _MEDIA_RESOLVE_ERRORS as exc:
+            return None, str(exc)
+
+        # Use ffprobe to check if the video has an audio stream
+        ffprobe_path = os.path.join(os.path.dirname(ffmpeg_path), 'ffprobe') if os.path.dirname(ffmpeg_path) else 'ffprobe'
+        probe_cmd = [
+            ffprobe_path,
+            '-v', 'error',
+            '-select_streams', 'a',
+            '-show_entries', 'stream=codec_type',
+            '-of', 'csv=p=0',
+            local_path
+        ]
+        probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+        if probe_result.returncode != 0:
+            # An unreadable file is not a silent clip: its sound would go missing.
+            return None, last_stderr_line(probe_result.stderr) or "the audio stream could not be probed"
+        if not probe_result.stdout.strip():
+            logger.info(f"Video {index+1} ({video_item.name}) has no audio stream, skipping")
+            return None, None
+
+        logger.info(f"Video {index+1} ({video_item.name}) has audio stream, extracting with volume={video_item.volume}")
+        clip_start = getattr(video_item, 'clip_start', None) or 0.0
+        clip_end = getattr(video_item, 'clip_end', None) or video_item.duration
+        # Volume: model stores 0-2 (already a multiplier)
+        vol = video_item.volume if video_item.volume is not None else 1.0
+        extracted_path = os.path.join(temp_dir, f"video_audio_{index}.wav")
+
+        extract_cmd = [ffmpeg_path, '-y']
+        if clip_start > 0:
+            extract_cmd.extend(['-ss', str(clip_start)])
+        extract_cmd.extend([
+            '-i', local_path,
+            '-t', str(clip_end - clip_start),
+            '-vn',
+            '-af', f'volume={vol}',
+            '-ar', '44100',
+            '-ac', '2',
+            extracted_path
+        ])
+        logger.info(f"Extracting video audio: {' '.join(extract_cmd)}")
+        result = subprocess.run(extract_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return None, last_stderr_line(result.stderr) or "the embedded audio could not be extracted"
+        return {
+            'path': extracted_path,
+            'start_time': video_item.start_time,
+            'name': f'{video_item.name} (embedded audio)',
+            'track_id': video_item.track_id
+        }, None
+
+    def _process_audio_tracks(
+        self,
+        request: VideoCompositionRequest,
+        temp_dir: str,
+        ffmpeg_path: str,
+        timeline_end: float,
+        extra_audio_paths: Optional[list] = None,
+    ) -> AudioMixResult:
+        """Mix the request's audio items (plus extracted clip audio) into one file.
+
+        Returns the mixed file (``path=None`` when nothing could be mixed) and
+        every audio item that had to be left out, so the caller reports it
+        instead of shipping a silently incomplete export (EXO-03). The mix lasts
+        until ``timeline_end`` (EXV-03).
         """
         has_audio_items = bool(request.audio_items)
         has_extra_audio = bool(extra_audio_paths)
 
         if not has_audio_items and not has_extra_audio:
             logger.info("No audio items to process")
-            return None
+            return AudioMixResult(path=None)
 
         if has_audio_items:
             logger.info(f"Processing {len(request.audio_items)} audio tracks", {
@@ -2073,298 +2188,225 @@ class VideoCompositionService:
             })
         if has_extra_audio:
             logger.info(f"Also processing {len(extra_audio_paths)} extra audio tracks (from video embedded audio)")
-        
+
         audio_mix_path = os.path.join(temp_dir, "audio_mix.wav")
-        
         try:
-            total_audio_count = len(request.audio_items) if has_audio_items else 0
-            total_audio_count += len(extra_audio_paths) if has_extra_audio else 0
-
-            if total_audio_count == 1 and has_audio_items and len(request.audio_items) == 1 and not has_extra_audio:
-                # Single audio item with no video embedded audio - process it directly
-                audio_item = request.audio_items[0]
-                # Mirrors the per-item try/except in the multi-audio branch below.
-                # Without it any FileNotFoundError from _convert_url_to_local_path
-                # bubbled to the outer try and used to be swallowed silently.
-                try:
-                    local_audio_path = self._convert_url_to_local_path(audio_item.url)
-                except Exception as resolve_exc:
-                    logger.error(
-                        f"Failed to resolve single audio path for '{audio_item.name}': {resolve_exc}",
-                        exc_info=True,
-                    )
-                    return None
-
-                logger.info(f"Processing single audio track: {audio_item.name} at {audio_item.start_time}s")
-                logger.info(f"Audio item details: duration={audio_item.duration}s, volume={audio_item.volume}")
-                # 安全获取音频裁剪参数
-                audio_clip_start = getattr(audio_item, 'clip_start', None) or 0.0
-                audio_clip_end = getattr(audio_item, 'clip_end', None) or audio_item.duration
-                logger.info(f"Audio clipping: start={audio_clip_start}s, end={audio_clip_end}s")
-                logger.info(f"Actual video duration: {actual_total_duration}s (was {request.total_duration}s from frontend)")
-                
-                # Calculate the actual duration we need
-                if audio_item.start_time > 0:
-                    # Audio starts later, need to pad with silence at the beginning
-                    logger.info("Audio starts after video beginning, creating padded audio track")
-                    
-                    # First create the audio segment with clipping
-                    temp_audio_path = os.path.join(temp_dir, "temp_audio.wav")
-                    audio_segment_cmd = [
-                        ffmpeg_path,
-                        '-y'
-                    ]
-                    
-                    # 添加音频剪辑参数
-                    if audio_clip_start > 0:
-                        audio_segment_cmd.extend(['-ss', str(audio_clip_start)])
-                    
-                    audio_segment_cmd.extend([
-                        '-i', local_audio_path
-                    ])
-                    
-                    # 计算实际的音频时长（考虑剪辑）
-                    clip_duration = audio_clip_end - audio_clip_start
-                    actual_duration = min(audio_item.duration, clip_duration)
-                    
-                    audio_segment_cmd.extend([
-                        '-t', str(actual_duration),
-                        '-af', f'volume={audio_item.volume}',
-                        '-ar', '44100',
-                        '-ac', '2',
-                        temp_audio_path
-                    ])
-                    
-                    logger.info(f"Creating audio segment: {' '.join(audio_segment_cmd)}")
-                    result = subprocess.run(audio_segment_cmd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        logger.error(f"Audio segment creation failed: {result.stderr}")
-                        return None
-                    
-                    # Then create silence and combine
-                    silence_duration = audio_item.start_time
-                    final_cmd = [
-                        ffmpeg_path,
-                        '-y',
-                        '-f', 'lavfi',
-                        '-i', f'anullsrc=r=44100:cl=stereo',
-                        '-i', temp_audio_path,
-                        '-filter_complex', f'[0:a]atrim=duration={silence_duration}[silence];[silence][1:a]concat=n=2:v=0:a=1[out]',
-                        '-map', '[out]',
-                        '-t', str(actual_total_duration),
-                        audio_mix_path
-                    ]
-                else:
-                    # Audio starts at the beginning, simpler processing with clipping
-                    final_cmd = [
-                        ffmpeg_path,
-                        '-y'
-                    ]
-                    
-                    # 添加音频剪辑参数
-                    if audio_clip_start > 0:
-                        final_cmd.extend(['-ss', str(audio_clip_start)])
-                    
-                    final_cmd.extend([
-                        '-i', local_audio_path
-                    ])
-                    
-                    # 计算实际的音频时长（考虑剪辑）
-                    clip_duration = audio_clip_end - audio_clip_start
-                    actual_duration = min(actual_total_duration, clip_duration)
-                    
-                    final_cmd.extend([
-                        '-af', f'volume={audio_item.volume}',
-                        '-ar', '44100',
-                        '-ac', '2',
-                        '-t', str(actual_duration),  # Use clipped duration
-                        audio_mix_path
-                    ])
-                
-                logger.info(f"Running final audio command: {' '.join(final_cmd)}")
-                result = subprocess.run(final_cmd, capture_output=True, text=True)
-                
-                logger.info(f"Audio processing result: returncode={result.returncode}")
-                if result.stdout:
-                    logger.info(f"Audio FFmpeg stdout: {result.stdout}")
-                if result.stderr:
-                    logger.info(f"Audio FFmpeg stderr: {result.stderr}")
-                
-                if result.returncode != 0:
-                    logger.error(f"Single audio processing failed", {
-                        'command': ' '.join(final_cmd),
-                        'stderr': result.stderr,
-                        'stdout': result.stdout
-                    })
-                    return None
-                else:
-                    # Verify the output file
-                    if os.path.exists(audio_mix_path):
-                        audio_size = os.path.getsize(audio_mix_path)
-                        logger.info(f"Single audio track processed successfully, output size: {audio_size} bytes")
-                        return audio_mix_path
-                    else:
-                        logger.error("Audio processing completed but output file not found")
-                        return None
-                    
-            else:
-                # Multiple audio sources - create proper parallel mix
-                logger.info(f"Mixing {total_audio_count} audio tracks with independent volume control")
-                
-                # Pre-process each audio item individually to apply volume and clipping
-                processed_audio_paths = []
-                for i, audio_item in enumerate(request.audio_items):
-                    try:
-                        local_audio_path = self._convert_url_to_local_path(audio_item.url)
-                        processed_path = os.path.join(temp_dir, f"processed_audio_{i}.wav")
-                        
-                        # 安全获取音频裁剪参数
-                        audio_clip_start = getattr(audio_item, 'clip_start', None) or 0.0
-                        audio_clip_end = getattr(audio_item, 'clip_end', None) or audio_item.duration
-                        
-                        logger.info(f"Pre-processing audio {i+1}/{len(request.audio_items)}: {audio_item.name}", {
-                            'volume': audio_item.volume,
-                            'start_time': audio_item.start_time,
-                            'clip_start': audio_clip_start,
-                            'clip_end': audio_clip_end,
-                            'track_id': audio_item.track_id
-                        })
-                        
-                        # Calculate clipped duration for this audio item
-                        clip_duration = audio_clip_end - audio_clip_start
-                        
-                        # Pre-process this audio item with volume and clipping
-                        process_cmd = [
-                            ffmpeg_path,
-                            '-y'
-                        ]
-                        
-                        # Add clipping parameters for the audio input
-                        if audio_clip_start > 0:
-                            process_cmd.extend(['-ss', str(audio_clip_start)])
-                        
-                        process_cmd.extend([
-                            '-i', local_audio_path,
-                            '-af', f'volume={audio_item.volume}',
-                            '-t', str(clip_duration),
-                            '-ar', '44100',
-                            '-ac', '2',
-                            processed_path
-                        ])
-                        
-                        logger.info(f"Pre-processing audio command: {' '.join(process_cmd)}")
-                        result = subprocess.run(process_cmd, capture_output=True, text=True)
-                        
-                        if result.returncode != 0:
-                            logger.error(f"Audio pre-processing failed for item {i+1}", {
-                                'command': ' '.join(process_cmd),
-                                'stderr': result.stderr,
-                                'audio_item': audio_item.name
-                            })
-                            continue
-                        
-                        processed_audio_paths.append({
-                            'path': processed_path,
-                            'start_time': audio_item.start_time,
-                            'name': audio_item.name,
-                            'track_id': audio_item.track_id
-                        })
-                        
-                        logger.info(f"Successfully pre-processed audio: {audio_item.name}")
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to pre-process audio item {audio_item.name}: {str(e)}")
-                        continue
-                
-                # Merge extra audio paths (from video embedded audio)
-                if has_extra_audio:
-                    processed_audio_paths.extend(extra_audio_paths)
-                    logger.info(f"Merged {len(extra_audio_paths)} video embedded audio tracks into mix")
-
-                if not processed_audio_paths:
-                    logger.error("No audio tracks were successfully pre-processed")
-                    return None
-
-                # Now create the final mix using all processed audio files
-                logger.info(f"Creating final mix with {len(processed_audio_paths)} processed audio tracks")
-                
-                # Log detailed timing information for debugging
-                for i, audio_info in enumerate(processed_audio_paths):
-                    logger.info(f"Audio track {i+1} timing details", {
-                        'name': audio_info['name'],
-                        'start_time': audio_info['start_time'],
-                        'track_id': audio_info['track_id'],
-                        'processed_path': audio_info['path']
-                    })
-                
-                logger.info(f"Total video duration for audio mixing: {actual_total_duration}s")
-                
-                # Build the complex FFmpeg command for mixing
-                mix_cmd = [ffmpeg_path, '-y']
-                
-                # Add all processed audio inputs
-                for audio_info in processed_audio_paths:
-                    mix_cmd.extend(['-i', audio_info['path']])
-                
-                # Build the mixing filtergraph via the shared composition module.
-                # Volume and routing (mute / audio_detached drop) are already
-                # applied upstream — the pre-processing pass bakes volume into
-                # each file and muted/detached sources never reach this list —
-                # so the builder only positions (adelay) + pads + mixes + trims.
-                mix_sources = [
-                    AudioSource(start_time=audio_info['start_time'])
-                    for audio_info in processed_audio_paths
-                ]
-                mix_filter = build_audio_mix(mix_sources, actual_total_duration).filter_complex
-
-                mix_cmd.extend([
-                    '-filter_complex', mix_filter,
-                    '-map', '[out]',
-                    '-t', str(actual_total_duration),
-                    '-ar', '44100',
-                    '-ac', '2',
-                    audio_mix_path
-                ])
-                
-                logger.info(f"Running final mix command: {' '.join(mix_cmd)}")
-                logger.info(f"Filter complex: {mix_filter}")
-                
-                result = subprocess.run(mix_cmd, capture_output=True, text=True)
-                
-                logger.info(f"Audio mixing result: returncode={result.returncode}")
-                if result.stdout:
-                    logger.info(f"Audio mixing stdout: {result.stdout}")
-                if result.stderr:
-                    logger.info(f"Audio mixing stderr: {result.stderr}")
-                
-                # Clean up processed audio files
-                for audio_info in processed_audio_paths:
-                    try:
-                        if os.path.exists(audio_info['path']):
-                            os.remove(audio_info['path'])
-                    except Exception as e:
-                        logger.warning(f"Failed to clean up processed audio file {audio_info['path']}: {str(e)}")
-                
-                if result.returncode != 0:
-                    logger.error(f"Audio mixing failed", {
-                        'command': ' '.join(mix_cmd),
-                        'stderr': result.stderr,
-                        'stdout': result.stdout
-                    })
-                    return None
-                else:
-                    # Verify the output file
-                    if os.path.exists(audio_mix_path):
-                        audio_size = os.path.getsize(audio_mix_path)
-                        logger.info(f"Audio mixing completed successfully, output size: {audio_size} bytes")
-                        return audio_mix_path
-                    else:
-                        logger.error("Audio mixing completed but output file not found")
-                        return None
-                    
+            if has_audio_items and len(request.audio_items) == 1 and not has_extra_audio:
+                return self._mix_single_audio_item(
+                    request.audio_items[0], audio_mix_path, temp_dir, ffmpeg_path, timeline_end
+                )
+            return self._mix_audio_sources(
+                request, list(extra_audio_paths or []), audio_mix_path, ffmpeg_path, timeline_end
+            )
         except Exception as e:
-            logger.error(f"Audio processing failed with exception: {str(e)}")
-            return None 
+            logger.error(f"Audio processing failed with exception: {str(e)}", exc_info=True)
+            return AudioMixResult(path=None)
+
+    def _mix_single_audio_item(
+        self, audio_item: Any, audio_mix_path: str, temp_dir: str, ffmpeg_path: str,
+        timeline_end: float,
+    ) -> AudioMixResult:
+        """One audio item and no clip audio: position it without an amix graph."""
+        try:
+            local_audio_path = self._convert_url_to_local_path(audio_item.url)
+        except _MEDIA_RESOLVE_ERRORS as resolve_exc:
+            logger.error(
+                f"Failed to resolve single audio path for '{audio_item.name}': {resolve_exc}",
+                exc_info=True,
+            )
+            return AudioMixResult(path=None, dropped=[_dropped_audio(audio_item, str(resolve_exc))])
+
+        logger.info(f"Processing single audio track: {audio_item.name} at {audio_item.start_time}s")
+        logger.info(f"Audio item details: duration={audio_item.duration}s, volume={audio_item.volume}")
+        # 安全获取音频裁剪参数
+        audio_clip_start = getattr(audio_item, 'clip_start', None) or 0.0
+        audio_clip_end = getattr(audio_item, 'clip_end', None) or audio_item.duration
+        clip_duration = audio_clip_end - audio_clip_start
+        logger.info(f"Audio clipping: start={audio_clip_start}s, end={audio_clip_end}s; timeline end {timeline_end}s")
+
+        if audio_item.start_time > 0:
+            # Audio starts later: clip it, then prepend silence up to its start.
+            logger.info("Audio starts after video beginning, creating padded audio track")
+            temp_audio_path = os.path.join(temp_dir, "temp_audio.wav")
+            audio_segment_cmd = [ffmpeg_path, '-y']
+            if audio_clip_start > 0:
+                audio_segment_cmd.extend(['-ss', str(audio_clip_start)])
+            audio_segment_cmd.extend([
+                '-i', local_audio_path,
+                '-t', str(min(audio_item.duration, clip_duration)),
+                '-af', f'volume={audio_item.volume}',
+                '-ar', '44100',
+                '-ac', '2',
+                temp_audio_path
+            ])
+            logger.info(f"Creating audio segment: {' '.join(audio_segment_cmd)}")
+            result = subprocess.run(audio_segment_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(f"Audio segment creation failed: {result.stderr}")
+                return AudioMixResult(
+                    path=None, dropped=[_dropped_audio(audio_item, last_stderr_line(result.stderr))]
+                )
+            final_cmd = [
+                ffmpeg_path,
+                '-y',
+                '-f', 'lavfi',
+                '-i', 'anullsrc=r=44100:cl=stereo',
+                '-i', temp_audio_path,
+                '-filter_complex', f'[0:a]atrim=duration={audio_item.start_time}[silence];[silence][1:a]concat=n=2:v=0:a=1[out]',
+                '-map', '[out]',
+                '-t', str(timeline_end),
+                audio_mix_path
+            ]
+        else:
+            final_cmd = [ffmpeg_path, '-y']
+            if audio_clip_start > 0:
+                final_cmd.extend(['-ss', str(audio_clip_start)])
+            final_cmd.extend([
+                '-i', local_audio_path,
+                '-af', f'volume={audio_item.volume}',
+                '-ar', '44100',
+                '-ac', '2',
+                '-t', str(min(timeline_end, clip_duration)),  # Use clipped duration
+                audio_mix_path
+            ])
+
+        logger.info(f"Running final audio command: {' '.join(final_cmd)}")
+        result = subprocess.run(final_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error("Single audio processing failed", {
+                'command': ' '.join(final_cmd),
+                'stderr': result.stderr,
+            })
+            return AudioMixResult(
+                path=None, dropped=[_dropped_audio(audio_item, last_stderr_line(result.stderr))]
+            )
+        if not os.path.exists(audio_mix_path):
+            logger.error("Audio processing completed but output file not found")
+            return AudioMixResult(
+                path=None, dropped=[_dropped_audio(audio_item, "the mixed audio file was not created")]
+            )
+        logger.info(f"Single audio track processed successfully, output size: {os.path.getsize(audio_mix_path)} bytes")
+        return AudioMixResult(path=audio_mix_path)
+
+    def _mix_audio_sources(
+        self, request: VideoCompositionRequest, extra_audio_paths: list, audio_mix_path: str,
+        ffmpeg_path: str, timeline_end: float,
+    ) -> AudioMixResult:
+        """Pre-process every audio item, then position and mix all sources with amix."""
+        temp_dir = os.path.dirname(audio_mix_path)
+        total_audio_count = len(request.audio_items) + len(extra_audio_paths)
+        logger.info(f"Mixing {total_audio_count} audio tracks with independent volume control")
+
+        processed_audio_paths: List[Dict[str, Any]] = []
+        dropped: List[DroppedAudio] = []
+        for i, audio_item in enumerate(request.audio_items):
+            processed_path = os.path.join(temp_dir, f"processed_audio_{i}.wav")
+            label = f"{i+1}/{len(request.audio_items)}"
+            entry, failure = self._preprocess_audio_item(audio_item, processed_path, ffmpeg_path, label)
+            if failure:
+                dropped.append(_dropped_audio(audio_item, failure))
+            elif entry:
+                processed_audio_paths.append(entry)
+
+        # Merge extra audio paths (from video embedded audio)
+        if extra_audio_paths:
+            processed_audio_paths.extend(extra_audio_paths)
+            logger.info(f"Merged {len(extra_audio_paths)} video embedded audio tracks into mix")
+
+        if not processed_audio_paths:
+            logger.error("No audio tracks were successfully pre-processed")
+            return AudioMixResult(path=None, dropped=dropped)
+
+        # Volume and routing (mute / audio_detached drop) are already applied
+        # upstream, so the shared builder only positions + pads + mixes + trims.
+        mix_filter = build_audio_mix(
+            [AudioSource(start_time=info['start_time']) for info in processed_audio_paths],
+            timeline_end,
+        ).filter_complex
+        mix_cmd = [ffmpeg_path, '-y']
+        for audio_info in processed_audio_paths:
+            mix_cmd.extend(['-i', audio_info['path']])
+        mix_cmd.extend(filter_complex_args(mix_filter, temp_dir, ffmpeg_path))
+        mix_cmd.extend([
+            '-map', '[out]',
+            '-t', str(timeline_end),
+            '-ar', '44100',
+            '-ac', '2',
+            audio_mix_path
+        ])
+        logger.info(f"Running final mix command: {' '.join(mix_cmd)}")
+        result = subprocess.run(mix_cmd, capture_output=True, text=True)
+        self._remove_preprocessed_audio(processed_audio_paths)
+
+        if result.returncode != 0:
+            logger.error("Audio mixing failed", {
+                'command': ' '.join(mix_cmd),
+                'stderr': result.stderr,
+            })
+            return AudioMixResult(path=None, dropped=dropped)
+        if not os.path.exists(audio_mix_path):
+            logger.error("Audio mixing completed but output file not found")
+            return AudioMixResult(path=None, dropped=dropped)
+        logger.info(f"Audio mixing completed successfully, output size: {os.path.getsize(audio_mix_path)} bytes")
+        return AudioMixResult(path=audio_mix_path, dropped=dropped)
+
+    def _preprocess_audio_item(
+        self, audio_item: Any, processed_path: str, ffmpeg_path: str, label: str,
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """Bake volume and clip window into one file: ``(entry, None)`` or ``(None, reason)``."""
+        try:
+            local_audio_path = self._convert_url_to_local_path(audio_item.url)
+        except _MEDIA_RESOLVE_ERRORS as exc:
+            logger.error(f"Failed to pre-process audio item {audio_item.name}: {exc}")
+            return None, str(exc)
+
+        # 安全获取音频裁剪参数
+        audio_clip_start = getattr(audio_item, 'clip_start', None) or 0.0
+        audio_clip_end = getattr(audio_item, 'clip_end', None) or audio_item.duration
+        logger.info(f"Pre-processing audio {label}: {audio_item.name}", {
+            'volume': audio_item.volume,
+            'start_time': audio_item.start_time,
+            'clip_start': audio_clip_start,
+            'clip_end': audio_clip_end,
+            'track_id': audio_item.track_id
+        })
+
+        process_cmd = [ffmpeg_path, '-y']
+        if audio_clip_start > 0:
+            process_cmd.extend(['-ss', str(audio_clip_start)])
+        process_cmd.extend([
+            '-i', local_audio_path,
+            '-af', f'volume={audio_item.volume}',
+            '-t', str(audio_clip_end - audio_clip_start),
+            '-ar', '44100',
+            '-ac', '2',
+            processed_path
+        ])
+        logger.info(f"Audio pre-process command: {' '.join(process_cmd)}")
+        result = subprocess.run(process_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"Audio pre-processing failed for {audio_item.name}", {
+                'command': ' '.join(process_cmd),
+                'stderr': result.stderr,
+            })
+            return None, last_stderr_line(result.stderr) or "audio pre-processing failed"
+
+        logger.info(f"Successfully pre-processed audio: {audio_item.name}")
+        return {
+            'path': processed_path,
+            'start_time': audio_item.start_time,
+            'name': audio_item.name,
+            'track_id': audio_item.track_id
+        }, None
+
+    @staticmethod
+    def _remove_preprocessed_audio(processed_audio_paths: List[Dict[str, Any]]) -> None:
+        for audio_info in processed_audio_paths:
+            try:
+                if os.path.exists(audio_info['path']):
+                    os.remove(audio_info['path'])
+            except OSError as e:
+                logger.warning(f"Failed to clean up processed audio file {audio_info['path']}: {str(e)}")
 
     def _get_aspect_ratio_info(self, aspect_ratio: AspectRatio) -> Dict[str, Any]:
         """Get aspect ratio information including resolution and ratio value."""
@@ -2389,179 +2431,106 @@ class VideoCompositionService:
         """
         return build_video_filter(scaling_params, camera_chain)
 
-    def _process_subtitle_tracks(self, subtitle_items: List[SubtitleCompositionItem], 
+    def _process_subtitle_tracks(self, subtitle_items: List[SubtitleCompositionItem],
                                video_path: str, temp_dir: str) -> Optional[str]:
+        """Burn subtitle items into ``video_path``, each item in its own style.
+
+        Returns the subtitled file written next to ``video_path``, or None when
+        no item has text to burn. Raises :class:`CompositionStageError` when the
+        burn-in fails; callers record a ``subtitles`` degradation (S7). There is
+        no fixed timeout: a long export must not lose its subtitles (EXO-16).
         """
-        Process subtitle tracks and add them to the video.
-        
-        Based on the verified test script test_subtitle_aspect_ratio.py,
-        this method uses consistent parameters for proper subtitle rendering
-        with aspect ratio adaptation.
-        
-        Args:
-            subtitle_items: List of subtitle items from the timeline
-            video_path: Path to the video file to add subtitles to
-            temp_dir: Temporary directory for processing
-            
-        Returns:
-            Path to the video with subtitles added, or None if failed
-        """
-        try:
-            logger.info(f"Starting subtitle processing for {len(subtitle_items)} subtitle items")
-            logger.info(f"Using enhanced subtitle parameters based on test_subtitle_aspect_ratio.py")
-            
-            # Log subtitle details for debugging
-            for i, subtitle in enumerate(subtitle_items):
-                logger.info(f"Subtitle {i+1}: '{subtitle.text}' at {subtitle.start_time}s for {subtitle.duration}s")
-                logger.debug(f"  Font size: {getattr(subtitle, 'font_size', 'default')}, "
-                           f"Font color: {getattr(subtitle, 'font_color', 'default')}, "
-                           f"Background color: {getattr(subtitle, 'background_color', 'default')}, "
-                           f"Position: {getattr(subtitle, 'position', 'default')}")
-            
-            # Create SRT file from subtitle items
-            srt_path = self._create_srt_from_subtitle_items(subtitle_items, temp_dir)
-            
-            if not srt_path or not os.path.exists(srt_path):
-                logger.error("Failed to create SRT file from subtitle items")
-                return None
-            
-            logger.info(f"Created SRT file: {srt_path}")
-            
-            # Use the first subtitle item's properties, with proper defaults from frontend
-            first_subtitle = subtitle_items[0]
-            
-            # Get font size from frontend (respect user settings)
-            font_family = getattr(first_subtitle, 'font_family', 'default')
-            font_size = getattr(first_subtitle, 'font_size', 24)  # Use frontend value or standard default
-            font_color = getattr(first_subtitle, 'font_color', '#FFFFFF')
-            background_color = getattr(first_subtitle, 'background_color', None)
-            position = getattr(first_subtitle, 'position', 'bottom')
-            
-            # Log the font size to verify it's being used correctly
-            logger.info(f"Using subtitle font size from frontend: {font_size}px (user setting: {hasattr(first_subtitle, 'font_size')})")
-            
-            # Use semi-transparent black background as default (from test script)
-            if not background_color:
-                background_color = "#000000@0.5"
-                logger.info("Using default semi-transparent black background for subtitles")
-            
-            # Create subtitle addition request with parameters matching test script
-            subtitle_request = SubtitleAddRequest(
-                video_file_path=video_path,
-                subtitle_file_path=srt_path,
-                font_family=font_family,
-                font_size=font_size,
-                font_color=font_color,
-                background_color=background_color,
-                border_width=2,  # Verified in test script
-                border_color="#000000",  # Verified in test script
-                position=position,
-                margin_vertical=50,  # Verified in test script
-                margin_horizontal=50  # Verified in test script
+        width, height, _fps = self._get_video_properties(video_path)
+        if not width or not height:
+            raise CompositionStageError(
+                "subtitles", f"cannot read the video size of {os.path.basename(video_path)}"
             )
-            
-            logger.info(f"Subtitle request configuration (enhanced): "
-                       f"font_family={subtitle_request.font_family}, "
-                       f"font_size={subtitle_request.font_size}, "
-                       f"font_color={subtitle_request.font_color}, "
-                       f"background_color={subtitle_request.background_color}, "
-                       f"position={subtitle_request.position}, "
-                       f"border_width={subtitle_request.border_width}, "
-                       f"border_color={subtitle_request.border_color}, "
-                       f"margin_vertical={subtitle_request.margin_vertical}, "
-                       f"margin_horizontal={subtitle_request.margin_horizontal}")
-            
-            # Add subtitles to video using SubtitleService
-            # Note: SubtitleService.add_subtitles is async, but we're in a sync context
-            # We need to run it in an event loop
-            import asyncio
-            try:
-                # Try to get the current event loop
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # If we're already in an event loop, we need to use run_in_executor
-                    # But for now, let's use a simpler approach by creating a new thread
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(asyncio.run, self.subtitle_service.add_subtitles(subtitle_request))
-                        result = future.result()
-                else:
-                    # If no event loop is running, we can use asyncio.run
-                    result = asyncio.run(self.subtitle_service.add_subtitles(subtitle_request))
-            except RuntimeError:
-                # If we can't get an event loop, create a new one
-                result = asyncio.run(self.subtitle_service.add_subtitles(subtitle_request))
-            
-            if result.success:
-                logger.info(f"Subtitle addition successful: {result.output_video_path}")
-                logger.info(f"Processed {result.subtitle_count} subtitles in {result.processing_time:.2f}s")
-                logger.info(f"Video dimensions: {result.video_width}x{result.video_height}")
-                
-                # Add aspect ratio information for better tracking
-                if result.video_width and result.video_height:
-                    aspect_ratio = result.video_width / result.video_height
-                    video_type = "portrait" if aspect_ratio < 1.0 else "landscape"
-                    logger.info(f"Video type: {video_type} (aspect ratio: {aspect_ratio:.2f})")
-                
-                logger.info(f"Output file size: {result.file_size} bytes")
-                return result.output_video_path
-            else:
-                logger.error(f"Subtitle addition failed: {result.message}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error processing subtitle tracks: {str(e)}", exc_info=True)
+        text_files_dir = os.path.join(temp_dir, "subtitle_text")
+        os.makedirs(text_files_dir, exist_ok=True)
+        filters = self.subtitle_service.build_drawtext_filters_for_items(
+            subtitle_items, width, height, text_files_dir
+        )
+        if not filters:
+            logger.info("No subtitle item has text to burn in")
             return None
-    
-    def _create_srt_from_subtitle_items(self, subtitle_items: List[SubtitleCompositionItem],
-                                      temp_dir: str) -> Optional[str]:
-        """Create an SRT file from subtitle items."""
-        return create_srt_from_subtitle_items(subtitle_items, temp_dir)
+        subtitled_path = video_path.replace('.mp4', '_with_subtitles.mp4')
+        self.subtitle_service.burn_drawtext_filters(
+            video_path, subtitled_path, filters, temp_dir, timeout=None
+        )
+        return subtitled_path
 
-    def _seconds_to_srt_time(self, seconds: float) -> str:
-        """Convert seconds to standard SRT time format (HH:MM:SS,mmm)."""
-        return seconds_to_srt_time(seconds)
+    def _burn_subtitles_into_output(
+        self, composition_id: Optional[str], subtitle_items: List[SubtitleCompositionItem],
+        output_path: Path, temp_dir: str,
+    ) -> None:
+        """Replace the output with its subtitled version; a failure is a degradation."""
+        try:
+            subtitled_path = self._process_subtitle_tracks(subtitle_items, str(output_path), temp_dir)
+            if subtitled_path and os.path.exists(subtitled_path):
+                os.replace(subtitled_path, str(output_path))
+                logger.info("Subtitles successfully added to video")
+        except CompositionStageError as exc:
+            self._record_degradation(composition_id, "subtitles", subtitle_items, exc.summary)
+        except OSError as exc:
+            logger.error(f"Subtitle burn-in output could not be written: {exc}", exc_info=True)
+            self._record_degradation(composition_id, "subtitles", subtitle_items, str(exc))
 
-    def _process_overlays_sequential(self, all_image_items: List, request, output_path, temp_dir: str) -> List[str]:
+    def _process_overlays_sequential(
+        self, all_image_items: List, request, output_path, temp_dir: str,
+        composition_id: Optional[str] = None,
+    ) -> List[str]:
         """Fallback: process image overlays and subtitles sequentially (two encoding passes).
 
         Returns the overlay warnings so the caller can put them in the status
         bucket (camera-motion-stills P1-1 / R28). This is the path a user reaches
         only after the merged pass already failed — i.e. exactly the path that
         most needs to explain itself — so swallowing warnings here would leave
-        them with a silently motion-less export and no clue why.
+        them with a silently motion-less export and no clue why. A pass that
+        fails here as well is recorded as a degradation (S7).
         """
         warnings: List[str] = []
+        video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
         try:
-            video_with_images_path = str(output_path).replace('.mp4', '_with_images.mp4')
             success, overlay_warnings = self._process_image_overlays(
                 all_image_items, str(output_path), video_with_images_path,
-                temp_dir, request.output_resolution, request.output_fps
+                temp_dir, request.output_resolution, request.output_fps,
+                composition_id=composition_id,
             )
             warnings.extend(overlay_warnings)
             if success and os.path.exists(video_with_images_path):
                 os.replace(video_with_images_path, str(output_path))
                 logger.info("Image overlays added (sequential fallback)")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Image overlay error in fallback: {e}", exc_info=True)
+            self._record_degradation(composition_id, "image_overlay", all_image_items, str(e))
 
-        try:
-            subtitle_processed_path = self._process_subtitle_tracks(
-                request.subtitle_items, str(output_path), temp_dir
-            )
-            if subtitle_processed_path and os.path.exists(subtitle_processed_path):
-                os.replace(subtitle_processed_path, str(output_path))
-                logger.info("Subtitles added (sequential fallback)")
-        except Exception as e:
-            logger.error(f"Subtitle error in fallback: {e}", exc_info=True)
-
+        self._burn_subtitles_into_output(
+            composition_id, request.subtitle_items, output_path, temp_dir
+        )
         return warnings
+
+    def _resolve_overlay_image(self, url: str) -> Tuple[Optional[str], Optional[str]]:
+        """``(local_path, None)`` or ``(None, reason)`` — never downloads (EXO-18).
+
+        Export is local-only: a remote image is reported instead of fetched with
+        an unbounded ``requests.get``, and one bad image no longer aborts the
+        whole overlay batch (EXO-04).
+        """
+        try:
+            local_path = self._convert_url_to_local_path(url)
+        except _MEDIA_RESOLVE_ERRORS as exc:
+            return None, str(exc)
+        if local_path.startswith(("http://", "https://")):
+            return None, "remote image is not available locally"
+        if not os.path.exists(local_path):
+            return None, "image file not found"
+        return local_path, None
 
     def _build_still_overlay_inputs(
         self, image_items: List, video_path: str, temp_dir: str,
         output_resolution: Dict[str, int], output_fps: int, ffmpeg_path: str,
         *, disable_camera: bool = False,
-    ) -> Tuple[List[str], List[Dict[str, Any]], List[str]]:
+    ) -> Tuple[List[str], List[Dict[str, Any]], List[str], List[SkippedImage]]:
         """Resolve every image and lay out the FFmpeg inputs in ONE pass (D27).
 
         The pass has to be single because ``-loop`` / ``-t`` / ``-framerate`` are
@@ -2569,36 +2538,42 @@ class VideoCompositionService:
         modify. The previous two-pass shape (resolve + ``-i`` first, geometry and
         timing later) left no place to put them — appending them on the second
         pass would attach them to the NEXT input, or to the output, rewriting the
-        whole command's meaning (R26). Merging the passes also puts
-        ``_probe_image_size`` after the download (remote images only exist on
-        disk from the first pass on) and keeps the entry index — which becomes
-        ``[k:v]`` / ``[imgN]`` — in lockstep with input order.
+        whole command's meaning (R26). Merging the passes also keeps the entry
+        index — which becomes ``[k:v]`` / ``[imgN]`` — in lockstep with input
+        order.
 
-        Returns ``(cmd_prefix, entries, warnings)`` where ``cmd_prefix`` already
-        holds the base video plus every image input, and ``entries`` carries the
-        per-image plan and pixel position for the filtergraph step.
+        Images are laid out by z-index, then request order — the order the
+        preview draws them (EXO-02). A fully transparent image is left out on
+        purpose; an image that cannot be resolved locally is returned in
+        ``skipped`` so the caller reports it.
+
+        Returns ``(cmd_prefix, entries, warnings, skipped)`` where ``cmd_prefix``
+        already holds the base video plus every image input, and ``entries``
+        carries the per-image plan and pixel position for the filtergraph step.
         """
         cmd: List[str] = [ffmpeg_path, '-y', '-i', video_path]
         entries: List[Dict[str, Any]] = []
         warnings: List[str] = []
+        skipped: List[SkippedImage] = []
 
         video_width = output_resolution['width']
         video_height = output_resolution['height']
         caps = self._get_camera_caps(ffmpeg_path)
         config = self._get_camera_config()
+        stacking = sorted(
+            enumerate(image_items), key=lambda pair: (_image_stack_key(pair[1]), pair[0])
+        )
 
-        for i, item in enumerate(image_items):
-            image_url = item.url
-            local_image_path = self._convert_url_to_local_path(image_url)
-
-            if not os.path.exists(local_image_path):
-                # Download image if it's a remote URL
-                downloaded_image = self._download_image(image_url, temp_dir, i)
-                if downloaded_image and downloaded_image.get('success'):
-                    local_image_path = downloaded_image['output_path']
-                else:
-                    logger.warning(f"Failed to download image {image_url}, skipping overlay")
-                    continue
+        for i, item in stacking:
+            opacity = _image_opacity(item)
+            if opacity <= _HIDDEN_IMAGE_OPACITY:
+                logger.info(f"Image overlay {item.id} is fully transparent; not rendered")
+                continue
+            local_image_path, skip_reason = self._resolve_overlay_image(item.url)
+            if skip_reason:
+                logger.warning(f"Image overlay {item.id} skipped: {clip_reason(skip_reason)}")
+                skipped.append(SkippedImage(item=item, reason=skip_reason))
+                continue
 
             # Handle position from either image_position (video track items) or position (dedicated image items)
             pos = getattr(item, 'image_position', None) or getattr(item, 'position', None)
@@ -2633,29 +2608,31 @@ class VideoCompositionService:
                 label=getattr(item, 'name', None) or f"image {i + 1}",
                 ffmpeg_path=ffmpeg_path,
                 config=config,
+                opacity=opacity,
             )
             warnings.extend(plan.warnings)
 
             logger.info(
                 f"Image overlay {len(entries) + 1}: position=({x},{y}) "
                 f"size=({even_w}x{even_h}) time={item.start_time}s-"
-                f"{item.start_time + item.duration}s camera={'yes' if plan.animated else 'no'}"
+                f"{item.start_time + item.duration}s opacity={opacity} "
+                f"camera={'yes' if plan.animated else 'no'}"
             )
 
             cmd.extend(plan.input_args)          # must stay adjacent to its -i
             cmd.extend(['-i', local_image_path])
             entries.append({'item': item, 'plan': plan, 'x': x, 'y': y})
 
-        return cmd, entries, warnings
+        return cmd, entries, warnings, skipped
 
     def _build_still_overlay_filters(
         self, entries: List[Dict[str, Any]],
     ) -> Tuple[List[str], str]:
         """Filtergraph fragments for the image inputs laid out by the single pass.
 
-        With no camera motion every fragment is character-identical to the inline
-        f-strings this replaced — that is the whole point of routing both call
-        sites through one constructor (D16 / C11).
+        With no camera motion every image chain is character-identical to the
+        inline f-strings this replaced (D16 / C11). The overlay window is
+        half-open, so two adjacent images never share a boundary frame (RV-09).
         """
         filter_parts: List[str] = []
         base_input = "[0:v]"
@@ -2671,7 +2648,7 @@ class VideoCompositionService:
             previous = base_input if i == 0 else f"[v{i-1}]"
             filter_parts.append(
                 f"{previous}[img{i}]overlay={entry['x']}:{entry['y']}"
-                f":enable='between(t,{start_time},{end_time})'{plan.overlay_suffix}[v{i}]"
+                f":enable='gte(t,{start_time})*lt(t,{end_time})'{plan.overlay_suffix}[v{i}]"
             )
         final_output = f"[v{len(entries)-1}]" if entries else ""
         return filter_parts, final_output
@@ -2688,141 +2665,120 @@ class VideoCompositionService:
     def _process_overlays_and_subtitles_combined(
         self, image_items: List, subtitle_items: List,
         video_path: str, output_path: str, temp_dir: str,
-        output_resolution: Dict[str, int], output_fps: int = 30
+        output_resolution: Dict[str, int], output_fps: int = 30,
+        *, composition_id: Optional[str] = None,
     ) -> Tuple[bool, List[str]]:
         """
         Merge image overlays and subtitle drawtext filters into a single FFmpeg encoding pass.
         This eliminates one full re-encoding compared to processing them sequentially.
 
-        Returns ``(success, warnings)``. Camera motion is injected here through
+        Returns ``(success, warnings)``; ``success`` with no output file means
+        there was nothing to render. Camera motion is injected here through
         exactly the same constructor as the image-only branch (D16): if only one
         of the two branches knew about motion, adding a subtitle would silently
-        delete every still's camera motion (H3 / R17).
+        delete every still's camera motion (H3 / R17). Every subtitle keeps its
+        own style (EXO-01) and unresolvable images are recorded, not fatal.
         """
         warnings: List[str] = []
         try:
             ffmpeg_path = self._get_ffmpeg_path()
 
             # --- Build image overlay inputs and filter chain (single pass, D27) ---
-            cmd, entries, plan_warnings = self._build_still_overlay_inputs(
+            cmd, entries, plan_warnings, skipped = self._build_still_overlay_inputs(
                 image_items, video_path, temp_dir, output_resolution,
                 output_fps, ffmpeg_path,
             )
             warnings.extend(plan_warnings)
+            self._record_skipped_images(composition_id, skipped)
             filter_parts, last_overlay_output = self._build_still_overlay_filters(entries)
-            valid_items = [entry['item'] for entry in entries]
 
-            # --- Build subtitle drawtext filters ---
-            srt_path = self._create_srt_from_subtitle_items(subtitle_items, temp_dir)
-            if not srt_path or not os.path.exists(srt_path):
-                logger.error("Failed to create SRT file for merged processing")
-                return False, warnings
-
-            first_subtitle = subtitle_items[0]
-            font_family = getattr(first_subtitle, 'font_family', 'default')
-            font_size = getattr(first_subtitle, 'font_size', 24)
-            font_color = getattr(first_subtitle, 'font_color', '#FFFFFF')
-            background_color = getattr(first_subtitle, 'background_color', None)
-            position = getattr(first_subtitle, 'position', 'bottom')
-            if not background_color:
-                background_color = "#000000@0.5"
-
-            subtitle_request = SubtitleAddRequest(
-                video_file_path=video_path,
-                subtitle_file_path=srt_path,
-                font_family=font_family,
-                font_size=font_size,
-                font_color=font_color,
-                background_color=background_color,
-                border_width=2,
-                border_color="#000000",
-                position=position,
-                margin_vertical=50,
-                margin_horizontal=50
+            # --- Build subtitle drawtext filters straight from the items ---
+            text_files_dir = os.path.join(temp_dir, "merged_subtitle_text")
+            os.makedirs(text_files_dir, exist_ok=True)
+            drawtext_filters = self.subtitle_service.build_drawtext_filters_for_items(
+                subtitle_items, output_resolution['width'], output_resolution['height'],
+                text_files_dir,
             )
+            if not drawtext_filters and not entries:
+                logger.info("Nothing to overlay: no renderable image and no subtitle text")
+                return True, warnings
 
-            text_files_dir = tempfile.mkdtemp(prefix="ecliptrix_merged_subs_")
-            try:
-                drawtext_filters, _, _ = self.subtitle_service.build_drawtext_filters(
-                    subtitle_request, text_files_dir
-                )
+            def assemble(cmd_prefix: List[str], parts: List[str], last_label: str) -> List[str]:
+                """Tail of the command for a given set of image inputs.
 
-                if not drawtext_filters and not valid_items:
-                    return False, warnings
-
-                def assemble(cmd_prefix: List[str], parts: List[str], last_label: str) -> List[str]:
-                    """Tail of the command for a given set of image inputs.
-
-                    A motion-free retry (D22) changes the INPUT ARGUMENTS too, not
-                    just one filter string, so the whole command has to be rebuilt
-                    — the video side's "swap the single -vf element" trick does not
-                    apply here.
-                    """
-                    if not drawtext_filters:
-                        logger.warning("No drawtext filters generated, proceeding with image overlays only")
-                        merged_complex = ";".join(parts)
-                        merged_output = last_label
-                    elif parts:
-                        # Merge: chain drawtext filters onto the last overlay output
-                        merged_parts = list(parts)
-                        merged_parts.append(f"{last_label}{','.join(drawtext_filters)}[vout]")
-                        merged_complex = ";".join(merged_parts)
-                        merged_output = "[vout]"
-                    else:
-                        # No valid image items but have subtitles - use drawtext only via filter_complex
-                        merged_complex = f"[0:v]{','.join(drawtext_filters)}[vout]"
-                        merged_output = "[vout]"
-                    full = list(cmd_prefix)
-                    full.extend([
-                        '-filter_complex', merged_complex,
-                        '-map', merged_output,
-                        '-map', '0:a?',
-                        '-c:a', 'copy',
-                    ])
-                    full.extend(self._get_encoding_params("fast"))
-                    full.append(output_path)
-                    return full
-
-                cmd = assemble(cmd, filter_parts, last_overlay_output)
-
-                logger.info(f"Running merged overlay+subtitle command")
-                result = subprocess.run(cmd, capture_output=True, text=True)
-
-                if result.returncode != 0 and any(e['plan'].animated for e in entries):
-                    # D22 / G4: camera motion is a garnish — it must never be the
-                    # reason an export fails. Rebuild the entire command with the
-                    # motion stripped and try exactly once more.
-                    logger.warning(
-                        "Merged overlay pass with camera motion failed; retrying "
-                        f"without motion: {_ffmpeg_error_line(result.stderr)}"
-                    )
-                    retry_cmd, retry_entries, _ = self._build_still_overlay_inputs(
-                        image_items, video_path, temp_dir, output_resolution,
-                        output_fps, ffmpeg_path, disable_camera=True,
-                    )
-                    retry_parts, retry_last = self._build_still_overlay_filters(retry_entries)
-                    retry_result = subprocess.run(
-                        assemble(retry_cmd, retry_parts, retry_last),
-                        capture_output=True, text=True,
-                    )
-                    if retry_result.returncode == 0:
-                        warnings.extend(self._camera_retry_warnings(entries))
-                    result = retry_result
-
-                if result.returncode == 0:
-                    logger.info("Merged overlay+subtitle processing completed successfully")
-                    return True, warnings
+                A motion-free retry (D22) changes the INPUT ARGUMENTS too, not
+                just one filter string, so the whole command has to be rebuilt
+                — the video side's "swap the single -vf element" trick does not
+                apply here.
+                """
+                if not drawtext_filters:
+                    logger.warning("No drawtext filters generated, proceeding with image overlays only")
+                    merged_complex = ";".join(parts)
+                    merged_output = last_label
+                elif parts:
+                    # Merge: chain drawtext filters onto the last overlay output
+                    merged_parts = list(parts)
+                    merged_parts.append(f"{last_label}{','.join(drawtext_filters)}[vout]")
+                    merged_complex = ";".join(merged_parts)
+                    merged_output = "[vout]"
                 else:
-                    logger.error(f"Merged processing failed: {result.stderr}")
-                    return False, warnings
-            finally:
-                shutil.rmtree(text_files_dir, ignore_errors=True)
+                    # No valid image items but have subtitles - use drawtext only via filter_complex
+                    merged_complex = f"[0:v]{','.join(drawtext_filters)}[vout]"
+                    merged_output = "[vout]"
+                full = list(cmd_prefix)
+                full.extend(filter_complex_args(merged_complex, temp_dir, ffmpeg_path))
+                full.extend([
+                    '-map', merged_output,
+                    '-map', '0:a?',
+                    '-c:a', 'copy',
+                ])
+                full.extend(self._get_encoding_params("fast"))
+                full.append(output_path)
+                return full
+
+            cmd = assemble(cmd, filter_parts, last_overlay_output)
+
+            logger.info(f"Running merged overlay+subtitle command")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0 and any(e['plan'].animated for e in entries):
+                # D22 / G4: camera motion is a garnish — it must never be the
+                # reason an export fails. Rebuild the entire command with the
+                # motion stripped and try exactly once more.
+                logger.warning(
+                    "Merged overlay pass with camera motion failed; retrying "
+                    f"without motion: {last_stderr_line(result.stderr)}"
+                )
+                retry_cmd, retry_entries, _, _ = self._build_still_overlay_inputs(
+                    image_items, video_path, temp_dir, output_resolution,
+                    output_fps, ffmpeg_path, disable_camera=True,
+                )
+                retry_parts, retry_last = self._build_still_overlay_filters(retry_entries)
+                retry_result = subprocess.run(
+                    assemble(retry_cmd, retry_parts, retry_last),
+                    capture_output=True, text=True,
+                )
+                if retry_result.returncode == 0:
+                    warnings.extend(self._camera_retry_warnings(entries))
+                result = retry_result
+
+            if result.returncode == 0:
+                logger.info("Merged overlay+subtitle processing completed successfully")
+                return True, warnings
+            logger.error(f"Merged processing failed: {last_stderr_line(result.stderr)}")
+            return False, warnings
 
         except Exception as e:
+            # The caller falls back to the sequential passes, which record any
+            # loss that persists as a degradation.
             logger.error(f"Error in merged overlay+subtitle processing: {str(e)}", exc_info=True)
             return False, warnings
 
-    def _process_image_overlays(self, image_items: List, video_path: str, output_path: str, temp_dir: str, output_resolution: Dict[str, int], output_fps: int = 30) -> Tuple[bool, List[str]]:
+    def _process_image_overlays(
+        self, image_items: List, video_path: str, output_path: str, temp_dir: str,
+        output_resolution: Dict[str, int], output_fps: int = 30,
+        *, composition_id: Optional[str] = None,
+    ) -> Tuple[bool, List[str]]:
         """
         Process image overlays and add them to the video.
 
@@ -2833,11 +2789,13 @@ class VideoCompositionService:
             temp_dir: Temporary directory for processing
             output_resolution: Video output resolution dict with 'width' and 'height'
             output_fps: Composition frame rate; the loop rate of animated stills
+            composition_id: Status entry that receives image degradations
 
         Returns:
             ``(success, warnings)`` — the warnings explain any still whose camera
             motion was degraded, and the caller forwards them to the status
-            channel so the user sees WHY the picture is not moving.
+            channel so the user sees WHY the picture is not moving. Images that
+            could not be rendered are recorded as ``image_overlay`` degradations.
         """
         warnings: List[str] = []
         try:
@@ -2847,14 +2805,15 @@ class VideoCompositionService:
             ffmpeg_path = self._get_ffmpeg_path()
 
             # Resolve, probe, plan and lay out every input in one pass (D27)
-            cmd, entries, plan_warnings = self._build_still_overlay_inputs(
+            cmd, entries, plan_warnings, skipped = self._build_still_overlay_inputs(
                 image_items, video_path, temp_dir, output_resolution,
                 output_fps, ffmpeg_path,
             )
             warnings.extend(plan_warnings)
+            self._record_skipped_images(composition_id, skipped)
 
             if len(entries) == 0:
-                logger.warning("No valid image items to overlay")
+                logger.warning("No renderable image items to overlay")
                 return False, warnings
 
             # Build filter complex for image overlays
@@ -2862,8 +2821,8 @@ class VideoCompositionService:
 
             def assemble(cmd_prefix: List[str], parts: List[str], last_label: str) -> List[str]:
                 full = list(cmd_prefix)
+                full.extend(filter_complex_args(";".join(parts), temp_dir, ffmpeg_path))
                 full.extend([
-                    '-filter_complex', ";".join(parts),
                     '-map', last_label,
                     '-map', '0:a?',  # Copy audio if it exists
                     '-c:a', 'copy',  # Copy audio codec
@@ -2875,7 +2834,7 @@ class VideoCompositionService:
             cmd = assemble(cmd, filter_parts, final_output)
 
             logger.info(f"Image overlay filter complex: {';'.join(filter_parts)}")
-            logger.info(f"Running image overlay command: {' '.join(cmd)}")
+            logger.info(f"Running image overlay command with {len(entries)} images")
 
             result = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -2885,9 +2844,9 @@ class VideoCompositionService:
                 # too (`-loop 1 -t ...` disappears), not just one filter string.
                 logger.warning(
                     "Image overlay pass with camera motion failed; retrying "
-                    f"without motion: {_ffmpeg_error_line(result.stderr)}"
+                    f"without motion: {last_stderr_line(result.stderr)}"
                 )
-                retry_cmd, retry_entries, _ = self._build_still_overlay_inputs(
+                retry_cmd, retry_entries, _, _ = self._build_still_overlay_inputs(
                     image_items, video_path, temp_dir, output_resolution,
                     output_fps, ffmpeg_path, disable_camera=True,
                 )
@@ -2902,16 +2861,15 @@ class VideoCompositionService:
 
             if result.returncode == 0:
                 logger.info(f"Image overlay processing completed successfully")
-                logger.info(f"Output file: {output_path} (size: {os.path.getsize(output_path)} bytes)")
                 return True, warnings
-            else:
-                logger.error(f"Image overlay processing failed: {result.stderr}")
-                return False, warnings
+            reason = last_stderr_line(result.stderr)
+            logger.error(f"Image overlay processing failed: {reason}")
+            self._record_degradation(
+                composition_id, "image_overlay", [entry['item'] for entry in entries], reason
+            )
+            return False, warnings
 
         except Exception as e:
             logger.error(f"Error processing image overlays: {str(e)}", exc_info=True)
+            self._record_degradation(composition_id, "image_overlay", image_items, str(e))
             return False, warnings
-    
-    def _download_image(self, image_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
-        """Download an image file from URL into temp_dir."""
-        return download_image(image_url, temp_dir, index)

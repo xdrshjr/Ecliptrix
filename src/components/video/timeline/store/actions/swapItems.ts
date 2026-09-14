@@ -9,12 +9,14 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 
 /**
  * Whether the aggregate would accept the swap. Checked BEFORE recording, so
  * a refused swap leaves no empty history entry behind.
  */
 function canSwap(get: () => TimelineStore, aId: string, bId: string): boolean {
+  if (isEditLocked(get())) return false;
   const aggregate = get()._aggregate;
   const a = aggregate.findItem(aId);
   const b = aggregate.findItem(bId);

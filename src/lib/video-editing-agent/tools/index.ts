@@ -1,5 +1,6 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core';
-import type { TimelineState, Track, TimelineItem, MaterialItem } from '@/types';
+import type { TimelineState, Track, TimelineItem, MaterialItem, AgentMaterialData } from '@/types';
+import { isInlineMediaUrl } from '@/lib/inlineUrl';
 import type { ToolContext } from '../types';
 import { ToolRegistry, CATEGORY_IDS, createDefaultCategories } from '../registry';
 import { createGetTimelineTool } from './getTimeline';
@@ -55,6 +56,12 @@ export function findClip(
     }
   }
   return null;
+}
+
+/** Still image clip: tagged by `originalMaterialType`, or backed by an image material. */
+export function isStillClip(item: TimelineItem, materials: MaterialItem[]): boolean {
+  if (item.originalMaterialType === 'image') return true;
+  return item.materialId ? findMaterial(materials, item.materialId)?.type === 'image' : false;
 }
 
 export function getDefaultTrackForType(
@@ -186,6 +193,89 @@ export function generateClipId(): string {
   return `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Where a clip sits, keyed by clip id in `collectClipStarts`. */
+export interface ClipPosition {
+  trackId: string;
+  startTime: number;
+}
+
+export interface ShiftedClip {
+  clipId: string;
+  from: number;
+  to: number;
+}
+
+/**
+ * Positions closer than this are the same place: float noise, neither a
+ * shifted clip nor a repositioned one.
+ */
+export const POSITION_EPSILON = 1e-6;
+
+/** Start time of every clip on the given tracks. */
+export function collectClipStarts(
+  state: TimelineState,
+  trackIds: readonly string[],
+): Map<string, ClipPosition> {
+  const positions = new Map<string, ClipPosition>();
+  for (const track of state.tracks) {
+    if (!trackIds.includes(track.id)) continue;
+    for (const item of track.items) {
+      positions.set(item.id, { trackId: track.id, startTime: item.startTime });
+    }
+  }
+  return positions;
+}
+
+/**
+ * Clips (other than the one the tool operated on) whose start time changed,
+ * so the model learns what the reconcile pass moved on its behalf.
+ */
+export function diffClipStarts(
+  before: ReadonlyMap<string, ClipPosition>,
+  after: ReadonlyMap<string, ClipPosition>,
+  excludeClipId: string,
+): ShiftedClip[] {
+  const shifted: ShiftedClip[] = [];
+  after.forEach((position, clipId) => {
+    if (clipId === excludeClipId) return;
+    const previous = before.get(clipId);
+    if (!previous) return;
+    if (Math.abs(previous.startTime - position.startTime) <= POSITION_EPSILON) return;
+    shifted.push({ clipId, from: previous.startTime, to: position.startTime });
+  });
+  return shifted;
+}
+
+/**
+ * Material snapshot for an agent `add_clip`: the same playback fields a
+ * manual drop copies onto a clip (`toMaterialData`), without inline media.
+ */
+export function toAgentClipMaterial(material: MaterialItem): AgentMaterialData {
+  const metadata = material.metadata;
+  const storageMetadata: AgentMaterialData['metadata'] = {
+    ...(metadata?.storageKind ? { storageKind: metadata.storageKind } : {}),
+    ...(metadata?.storageKey ? { storageKey: metadata.storageKey } : {}),
+    ...(metadata?.localResolvedUrl ? { localResolvedUrl: metadata.localResolvedUrl } : {}),
+  };
+  return {
+    id: material.id,
+    name: material.name,
+    type: material.type,
+    ...(material.thumbnailUrl && !isInlineMediaUrl(material.thumbnailUrl)
+      ? { thumbnailUrl: material.thumbnailUrl }
+      : {}),
+    ...(material.url ? { url: material.url } : {}),
+    ...(material.serverUrl ? { serverUrl: material.serverUrl } : {}),
+    ...(material.cacheUrl ? { cacheUrl: material.cacheUrl } : {}),
+    ...(material.storageKey ? { storageKey: material.storageKey } : {}),
+    ...(Object.keys(storageMetadata).length > 0 ? { metadata: storageMetadata } : {}),
+  };
+}
+
+/**
+ * Material as the model sees it. Inline `data:` / `blob:` thumbnails are left
+ * out: one would bloat every tool result and every replayed turn.
+ */
 export function serializeMaterial(m: MaterialItem) {
   return {
     id: m.id,
@@ -198,7 +288,7 @@ export function serializeMaterial(m: MaterialItem) {
     size: m.size,
     description: m.description,
     tags: m.tags,
-    thumbnailUrl: m.thumbnailUrl,
+    ...(isInlineMediaUrl(m.thumbnailUrl) ? {} : { thumbnailUrl: m.thumbnailUrl }),
     sentenceSegments: m.sentenceSegments ? {
       segment_id: m.sentenceSegments.segment_id,
       total_duration: m.sentenceSegments.total_duration,

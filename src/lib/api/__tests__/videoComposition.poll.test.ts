@@ -74,6 +74,28 @@ describe('videoComposition pollCompositionStatus', () => {
     });
   });
 
+  it('stops polling on error status', async () => {
+    const get = vi.spyOn(httpModule.http, 'get').mockResolvedValue(
+      statusOf({ status: 'error', error: 'Async composition failed' }) as never,
+    );
+
+    await expect(api.pollCompositionStatus('comp-1')).rejects.toMatchObject({
+      message: 'Composition failed: Async composition failed',
+    });
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an unknown status instead of polling to the cap', async () => {
+    const get = vi.spyOn(httpModule.http, 'get').mockResolvedValue(
+      statusOf({ status: 'unknown' as never }) as never,
+    );
+
+    await expect(api.pollCompositionStatus('comp-1')).rejects.toMatchObject({
+      message: 'Unexpected composition status "unknown"',
+    });
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
   it('stops polling when aborted', async () => {
     const get = vi
       .spyOn(httpModule.http, 'get')

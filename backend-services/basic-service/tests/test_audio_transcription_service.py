@@ -17,6 +17,7 @@ import gzip
 import json
 import os
 import struct
+from types import SimpleNamespace
 from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,6 +25,7 @@ import pytest
 
 from app.services.audio_transcription_service import (
     AudioTranscriptionService,
+    map_subtitles_to_timeline,
 )
 from app.services.volcano_ws_protocol import (
     COMPRESSION_GZIP,
@@ -256,3 +258,82 @@ async def test_aprocess_volcano_error_frame_surfaces_failure(tmp_path):
     assert result["error_code"] == "ASR_AUTH_FAILED"
     assert result["error_details"]["volcano_code"] == 45000001
     assert "logid" in result["error_details"]
+
+
+# --------------------------------------- ME-03: clip window → timeline time
+
+AUDIO_URL = "/api/storage/files/audio/voice.mp3"
+
+
+def _subtitle(start_ms: int, end_ms: int, text: str) -> SimpleNamespace:
+    return SimpleNamespace(start_time=start_ms, end_time=end_ms, text=text)
+
+
+def _timeline_triples(subtitles) -> list:
+    return [(s["start_time"], s["end_time"], s["text"]) for s in subtitles]
+
+
+async def _transcribe_items(tmp_path, items, source_subtitles) -> list:
+    """Run the batch facade with ASR stubbed to return ``source_subtitles``."""
+    audio = tmp_path / "voice.mp3"
+    audio.write_bytes(b"data")
+    svc = _make_service()
+    asr = AsyncMock(return_value={"success": True, "subtitles": source_subtitles})
+    with patch.object(svc, "_resolve_local_path", return_value=str(audio)), \
+         patch.object(svc, "aprocess_audio_file", asr):
+        return await svc.atranscribe_audio_urls(items)
+
+
+def test_subtitles_are_mapped_through_clip_window():
+    # The clip sits at 5s on the timeline and plays source 10-14s.
+    mapped = map_subtitles_to_timeline(
+        [_subtitle(0, 2000, "intro"), _subtitle(12000, 14000, "kept")],
+        clip_start_s=10.0,
+        clip_end_s=14.0,
+        timeline_start_s=5.0,
+    )
+
+    assert _timeline_triples(mapped) == [(7000, 9000, "kept")]
+
+
+def test_subtitle_crossing_the_window_is_cut_and_slivers_are_dropped():
+    mapped = map_subtitles_to_timeline(
+        [_subtitle(9000, 11000, "edge"), _subtitle(13950, 16000, "sliver")],
+        clip_start_s=10.0,
+        clip_end_s=14.0,
+        timeline_start_s=0.0,
+    )
+
+    assert _timeline_triples(mapped) == [(0, 1000, "edge")]
+
+
+@pytest.mark.asyncio
+async def test_split_halves_do_not_duplicate_subtitles(tmp_path):
+    halves = [
+        {"id": "left", "url": AUDIO_URL, "start_time": 0.0, "duration": 5.0,
+         "clip_start": 0.0, "clip_end": 5.0},
+        {"id": "right", "url": AUDIO_URL, "start_time": 5.0, "duration": 5.0,
+         "clip_start": 5.0, "clip_end": 10.0},
+    ]
+    source = [_subtitle(1000, 3000, "first"), _subtitle(6000, 8000, "second")]
+
+    results = await _transcribe_items(tmp_path, halves, source)
+
+    assert [_timeline_triples(r["subtitles"]) for r in results] == [
+        [(1000, 3000, "first")],
+        [(6000, 8000, "second")],
+    ]
+    assert "00:00:06,000 --> 00:00:08,000" in results[1]["srt_content"]
+
+
+@pytest.mark.asyncio
+async def test_missing_clip_end_uses_clip_start_plus_duration(tmp_path):
+    item = {"id": "a", "url": AUDIO_URL, "start_time": 20.0, "duration": 3.0,
+            "clip_start": 2.0, "clip_end": None}
+    source = [_subtitle(2500, 4500, "inside"), _subtitle(5500, 7000, "after")]
+
+    results = await _transcribe_items(tmp_path, [item], source)
+
+    assert _timeline_triples(results[0]["subtitles"]) == [
+        (20500, 22500, "inside")
+    ]

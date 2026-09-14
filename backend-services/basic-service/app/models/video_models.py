@@ -93,12 +93,20 @@ class VideoSearchResponse(BaseResponse):
 
 class ImagePosition(BaseModel):
     """Position and size configuration for image overlays."""
+    # The frontend sends camelCase `zIndex`; without the alias Pydantic silently
+    # dropped it and every image stacked by start time (EXO-02). No range check:
+    # an out-of-range legacy value must not 422 the whole export — the composer
+    # clamps it to [0, 999] when ordering.
+    model_config = ConfigDict(populate_by_name=True)
+
     x: float = Field(..., description="X position as percentage (0.0 to 1.0)")
     y: float = Field(..., description="Y position as percentage (0.0 to 1.0)")
     width: float = Field(..., description="Width as percentage (0.0 to 1.0)")
     height: float = Field(..., description="Height as percentage (0.0 to 1.0)")
     rotation: float = Field(0.0, description="Rotation angle in degrees")
-    z_index: Optional[int] = Field(10, description="Layer order for multiple image overlays")
+    z_index: Optional[int] = Field(
+        10, alias="zIndex", description="Layer order for multiple image overlays"
+    )
 
 
 class ClipTransition(BaseModel):
@@ -107,8 +115,9 @@ class ClipTransition(BaseModel):
     Shared visual-semantics contract with the preview compositor
     (`TransitionLayer`, spec 02 §2.4): `fade` ramps this clip's own alpha;
     `dissolve` cross-fades with the temporally-adjacent clip on the same track
-    over `duration` seconds. Export (spec 05) reproduces these same curves with
-    FFmpeg `fade` / `xfade` so the rendered video matches the preview.
+    over `duration` seconds. Export composes every clip onto a black canvas and
+    renders both families as alpha `fade` ramps (a dissolve is the outgoing
+    clip fading out and the incoming one fading in), matching the preview.
     """
     type: Literal["fade", "dissolve"] = Field(
         ..., description="Transition family: fade (self alpha ramp) or dissolve (cross-fade)"
@@ -507,6 +516,18 @@ class CompositionErrorDetails(BaseModel):
     composition_stage: str = Field(..., description="Overall composition stage where failure occurred")
     error_summary: str = Field(..., description="Human-readable summary of what went wrong")
     recovery_suggestions: List[str] = Field(default_factory=list, description="Suggestions for resolving the issues")
+
+
+class CompositionDegradation(BaseModel):
+    """Content that did not make it into a completed export (S7).
+
+    Non-fatal losses keep the export completed, but each one is returned through
+    GET /compose/{id}/status so the user learns what is missing and why.
+    """
+    kind: Literal["image_overlay", "subtitles", "audio_item", "embedded_audio"]
+    item_ids: List[str] = Field(default_factory=list)
+    item_names: List[str] = Field(default_factory=list)
+    reason: str
 
 
 class VideoCompositionRequest(BaseModel):

@@ -4,7 +4,10 @@
  * rendering TimelinePanel.
  */
 
-import type { TrackData } from '../domain';
+import type { MaterialItem } from '@/types';
+import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
+import type { TimelineItemData, TrackData } from '../domain';
+import { isTrackRendered } from '../infrastructure/renderableTimeline';
 
 export type SubtitleReplacementBlocker = 'extracting' | 'confirm-pending' | 'track-locked';
 
@@ -54,4 +57,63 @@ export function getSubtitleCommitBlocker(
   if (!input.subtitleTrack) return 'track-missing';
   if (input.subtitleTrack.isLocked) return 'track-locked';
   return null;
+}
+
+/** One entry of `POST /api/audio/batch-transcribe` `audio_items` (field names are the API's). */
+export interface TranscriptionItemRequest {
+  id: string;
+  name: string;
+  url: string;
+  start_time: number;
+  duration: number;
+  track_id: string;
+  clip_start: number;
+  clip_end: number;
+}
+
+type TranscribableItem = Pick<
+  TimelineItemData,
+  'id' | 'name' | 'type' | 'materialId' | 'startTime' | 'duration' | 'clipStart' | 'clipEnd'
+>;
+
+export type TranscribableTrack = Pick<TrackData, 'id' | 'type' | 'isVisible' | 'isMuted'> & {
+  items: readonly TranscribableItem[];
+};
+
+function transcriptionUrlFor(material: MaterialItem | undefined): string {
+  // Backend transcription can never fetch a blob: URL (it dies with the page).
+  const resolved = material ? selectAudioPlaybackUrl(material) : null;
+  return resolved && !resolved.startsWith('blob:') ? resolved : (material?.serverUrl || '');
+}
+
+/**
+ * Audio clips to transcribe: only tracks that are actually heard (a muted BGM
+ * lane's lyrics must not become subtitles), each with its trimmed source
+ * window so the backend maps only the kept part onto the timeline.
+ */
+export function collectTranscriptionItems(
+  tracks: readonly TranscribableTrack[],
+  materials: readonly MaterialItem[],
+): TranscriptionItemRequest[] {
+  const materialsById = new Map(materials.map((material) => [material.id, material]));
+  const requests: TranscriptionItemRequest[] = [];
+  for (const track of tracks) {
+    if (track.type !== 'audio' || !isTrackRendered(track)) continue;
+    for (const item of track.items) {
+      if (item.type !== 'audio' || !item.materialId) continue;
+      // `??`, not `||`: a clip trimmed to start at 0 s is not "missing" a start.
+      const clipStart = item.clipStart ?? 0;
+      requests.push({
+        id: item.id,
+        name: item.name,
+        url: transcriptionUrlFor(materialsById.get(item.materialId)),
+        start_time: item.startTime,
+        duration: item.duration,
+        track_id: track.id,
+        clip_start: clipStart,
+        clip_end: item.clipEnd ?? clipStart + item.duration,
+      });
+    }
+  }
+  return requests;
 }

@@ -7,7 +7,7 @@ export const VIDEO_ANALYSIS_CONFIG = {
   DEFAULT_THREAD_COUNT: 5,
   MAX_RETRY_ATTEMPTS: 1,
   RETRY_DELAY_MS: 1000,
-  REQUEST_TIMEOUT_MS: 120000, // 120 seconds for batch analysis
+  REQUEST_TIMEOUT_MS: 120000, // 120 s per single-video request; batches use batchAnalysisTimeoutMs
 } as const;
 
 // Types
@@ -470,6 +470,22 @@ async function blobUrlToBase64(blobUrl: string): Promise<string | null> {
   }
 }
 
+/** The /api/video/batch-analyze BFF route aborts at 600 s; stay just under it. */
+const BATCH_ANALYSIS_MAX_TIMEOUT_MS = 590_000;
+const BATCH_ANALYSIS_MIN_TIMEOUT_MS = 120_000;
+const BATCH_ANALYSIS_BASE_MS = 60_000;
+
+/**
+ * Client budget for one batch request (AM2-05). A fixed 120 s cut large
+ * professional batches off while the backend was still extracting frames, so
+ * the budget grows with the batch size and the per-video cost of the mode.
+ */
+export function batchAnalysisTimeoutMs(videoCount: number, mode: 'quick' | 'professional'): number {
+  const perVideoMs = mode === 'quick' ? 15_000 : 45_000;
+  const scaled = BATCH_ANALYSIS_BASE_MS + Math.max(0, videoCount) * perVideoMs;
+  return Math.min(BATCH_ANALYSIS_MAX_TIMEOUT_MS, Math.max(BATCH_ANALYSIS_MIN_TIMEOUT_MS, scaled));
+}
+
 /**
  * Analyze multiple videos using batch analysis API
  * This is the recommended approach for AI mixed editing as it uses optimized two-phase processing:
@@ -601,8 +617,9 @@ export async function analyzeVideosInBatch(
     });
 
     // Create request with timeout; the caller's signal aborts it as well.
+    const timeoutMs = batchAnalysisTimeoutMs(videoMaterials.length, options.mode.type);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const forwardCallerAbort = () => controller.abort();
     if (options.signal?.aborted) {
       controller.abort();
@@ -613,7 +630,7 @@ export async function analyzeVideosInBatch(
     let batchResult: BatchVideoAnalysisResponse;
     try {
       batchResult = await http.post<BatchVideoAnalysisResponse>('/api/video/batch-analyze', requestBody, {
-        timeoutMs: VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS,
+        timeoutMs,
         signal: controller.signal,
       });
     } catch (httpError) {

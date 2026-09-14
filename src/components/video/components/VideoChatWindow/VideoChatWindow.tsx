@@ -168,9 +168,14 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     [onUndoSingle],
   );
 
+  // `finishing`: the stream already ended and the last operations are being
+  // applied, so there is nothing left to stop.
+  const isFinishing = executionState?.status === 'finishing';
+
   const handleCancel = useCallback(() => {
+    if (isFinishing) return;
     onCancel?.();
-  }, [onCancel]);
+  }, [onCancel, isFinishing]);
 
   const handleConvertMessageToScript = useCallback(
     (content: string) => {
@@ -207,6 +212,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           onUndoAll={handleUndoAll}
           onUndoSingle={handleUndoSingle}
           onCancel={handleCancel}
+          undoDisabled={agentIsExecuting}
         />
       ) : (
         <div className="flex-1 min-h-0" />
@@ -273,11 +279,27 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       {/* Agent busy status bar — narrow strip that appears between the
           action-buttons bar and the input form while the agent is
           executing. Conditionally rendered so idle-state DOM is unchanged. */}
-      {agentIsExecuting && (
+      {agentIsExecuting && !isFinishing && (
         <AgentBusyBar
           executionState={executionState}
           onCancel={handleCancel}
         />
+      )}
+      {isFinishing && (
+        <div
+          data-testid="agent-finishing-bar"
+          role="status"
+          aria-live="polite"
+          className="flex-shrink-0 flex items-center gap-2 h-[22px] px-3 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border-y border-amber-200 dark:border-amber-900"
+        >
+          <span className="relative inline-flex h-2 w-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75 animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+          </span>
+          <span className="truncate" title={t.agentApply.finishing}>
+            {t.agentApply.finishing}
+          </span>
+        </div>
       )}
 
       {/* Input Area */}
@@ -319,9 +341,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             <button
               type="button"
               onClick={handleCancel}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors flex items-center justify-center shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-              title={t.videoChatWindow.stopAgentTooltip}
-              aria-label={t.videoChatWindow.stopAgentTooltip}
+              disabled={isFinishing}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors flex items-center justify-center shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-600"
+              title={isFinishing ? t.agentApply.finishing : t.videoChatWindow.stopAgentTooltip}
+              aria-label={isFinishing ? t.agentApply.finishing : t.videoChatWindow.stopAgentTooltip}
               data-testid="agent-stop-button"
               style={{ width: '32px', height: '32px' }}
             >

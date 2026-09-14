@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useTimelineStore } from '../../useTimelineStore';
 import { addItemAction } from '../addItem';
-import { updateImagePositionAction, updateSubtitleTextAction } from '../updateItemFields';
+import {
+  fitImagePositionAction,
+  updateImagePositionAction,
+  updateSubtitleTextAction,
+} from '../updateItemFields';
 import type { ImagePosition, TimelineData } from '../../../domain';
 
 const get = () => useTimelineStore.getState();
@@ -126,5 +130,28 @@ describe('locked tracks', () => {
       position: updateImagePositionAction(get, 'image-1', { ...INITIAL_POSITION, x: 0.3 }),
       canUndo: get().canUndo,
     }).toEqual({ text: false, position: false, canUndo: false });
+  });
+
+  it('image position edits are refused while the agent edit lock is set', () => {
+    get().setExternalEditLock('agent');
+    expect({
+      applied: updateImagePositionAction(get, 'image-1', { ...INITIAL_POSITION, x: 0.3 }),
+      x: findItem('image-1')?.imagePosition?.x,
+      canUndo: get().canUndo,
+    }).toEqual({ applied: false, x: 0.1, canUndo: false });
+  });
+});
+
+describe('fitImagePositionAction', () => {
+  it('writes an auto-fit position into the store without an undo entry', () => {
+    const applied = fitImagePositionAction(get, 'image-1', { ...INITIAL_POSITION, width: 0.5 });
+    expect({ applied, width: findItem('image-1')?.imagePosition?.width, canUndo: get().canUndo })
+      .toEqual({ applied: true, width: 0.5, canUndo: false });
+  });
+
+  it('skips while the agent edit lock is set', () => {
+    get().setExternalEditLock('agent');
+    const applied = fitImagePositionAction(get, 'image-1', { ...INITIAL_POSITION, width: 0.5 });
+    expect({ applied, width: findItem('image-1')?.imagePosition?.width }).toEqual({ applied: false, width: 0.8 });
   });
 });

@@ -8,14 +8,106 @@ import shutil
 import subprocess
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 import cv2
 
 from app.logger import get_logger
 from app.models import SubtitleAddRequest, SubtitleAddResponse
+from app.services.composition.composition_outcome import (
+    CompositionStageError,
+    last_stderr_line,
+)
+from app.services.composition.ffmpeg_args import video_filter_args
 
 logger = get_logger(__name__)
+
+#: The standalone /add-subtitles burn keeps a bound; the composition passes
+#: ``timeout=None`` so a long export never loses its subtitles to it (EXO-16).
+SUBTITLE_BURN_TIMEOUT_SECONDS = 300
+
+_HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+
+
+@dataclass(frozen=True)
+class SubtitleDrawStyle:
+    """How one subtitle is drawn; colors are already FFmpeg colors."""
+
+    font_family: str = "default"
+    font_size: int = 24
+    font_color: str = "#FFFFFF"
+    #: None = no background box (EXO-10: no implicit translucent black box).
+    background_color: Optional[str] = None
+    position: str = "bottom"
+    border_width: int = 2
+    border_color: str = "#000000"
+    margin_vertical: int = 50
+    margin_horizontal: int = 50
+    max_line_width: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class SubtitleCue:
+    """One subtitle's text and half-open ``[start, end)`` window in seconds."""
+
+    index: int
+    text: str
+    start: float
+    end: float
+
+
+@dataclass(frozen=True)
+class DrawCanvas:
+    """The frame drawtext filters target and where their text files go."""
+
+    width: int
+    height: int
+    text_files_dir: str
+    #: 'standard' (landscape / square) or 'centered' (portrait). Logging only:
+    #: both layouts centre every wrapped line individually.
+    layout: str
+
+
+def to_ffmpeg_color(value: Optional[str]) -> Optional[str]:
+    """Frontend color → FFmpeg color, or None for "no color".
+
+    ``None`` / ``''`` / ``transparent`` → None; ``#RGB`` → ``#RRGGBB``;
+    ``#RRGGBB`` unchanged; ``#RRGGBBAA`` → ``0xRRGGBB@alpha``; a value that
+    already carries ``@`` is an FFmpeg color and passes through. Anything else
+    is logged and ignored rather than breaking the whole drawtext pass.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() == "transparent":
+        return None
+    if "@" in text:
+        return text
+    match = _HEX_COLOR.match(text)
+    if not match:
+        logger.warning(f"Unsupported subtitle color {text!r}; ignoring it")
+        return None
+    digits = match.group(1)
+    if len(digits) == 3:
+        return "#" + "".join(channel * 2 for channel in digits)
+    if len(digits) == 6:
+        return text
+    alpha = int(digits[6:], 16) / 255
+    return f"0x{digits[:6]}@{alpha:.3f}"
+
+
+def resolve_draw_style(item: Any) -> SubtitleDrawStyle:
+    """The style of ONE composition subtitle item, defaults for missing fields."""
+    defaults = SubtitleDrawStyle()
+    font_size = getattr(item, "font_size", None)
+    return SubtitleDrawStyle(
+        font_family=getattr(item, "font_family", None) or defaults.font_family,
+        font_size=int(font_size) if font_size else defaults.font_size,
+        font_color=to_ffmpeg_color(getattr(item, "font_color", None)) or defaults.font_color,
+        background_color=to_ffmpeg_color(getattr(item, "background_color", None)),
+        position=getattr(item, "position", None) or defaults.position,
+    )
 
 
 class SubtitleEntry:
@@ -559,43 +651,78 @@ class SubtitleService:
             logger.error(f"Failed to convert time '{time_str}' to seconds: {str(e)}")
             return 0.0
     
-    def build_drawtext_filters(
+    def build_drawtext_filters_for_items(
         self,
-        request: SubtitleAddRequest,
-        text_files_dir: str
-    ) -> Tuple[List[str], int, int]:
+        items: Sequence[Any],
+        video_width: int,
+        video_height: int,
+        text_files_dir: str,
+    ) -> List[str]:
+        """Drawtext filters for composition subtitle items, each in its OWN style.
+
+        Reads the items directly. The old SRT round trip applied the first
+        item's style to every subtitle (EXO-01), dropped all text after a blank
+        line (EXO-11) and burned the item name for an empty subtitle.
         """
-        Build drawtext filter strings for subtitle burning without running FFmpeg.
-        Used by VideoCompositionService to merge subtitle filters with image overlays.
+        is_portrait = bool(video_height) and video_width / video_height < 1.0
+        canvas = DrawCanvas(
+            video_width, video_height, text_files_dir, "centered" if is_portrait else "standard"
+        )
+        ordered = sorted(
+            enumerate(items), key=lambda pair: (float(pair[1].start_time), pair[0])
+        )
+        filters: List[str] = []
+        for position, item in ordered:
+            text = (getattr(item, "text", None) or "").strip()
+            if not text:
+                continue
+            start = float(item.start_time)
+            cue = SubtitleCue(position + 1, text, start, start + float(item.duration))
+            filters.extend(
+                self._drawtext_filters_for_entry(cue, resolve_draw_style(item), canvas)
+            )
+        logger.info(
+            f"Built {len(filters)} drawtext filters for {len(items)} subtitle items "
+            f"({canvas.layout} layout)"
+        )
+        return filters
 
-        Args:
-            request: Subtitle request parameters
-            text_files_dir: Directory to store temporary text files for ffmpeg textfile= params
+    def burn_drawtext_filters(
+        self,
+        video_path: str,
+        output_path: str,
+        filters: List[str],
+        temp_dir: str,
+        timeout: Optional[float],
+    ) -> None:
+        """Burn ``filters`` into ``video_path``; raises CompositionStageError on failure.
 
-        Returns:
-            Tuple of (list of drawtext filter strings, video_width, video_height)
+        The composition passes ``timeout=None``: a long export must not lose its
+        subtitles to a fixed wall-clock limit (EXO-16). A long chain reaches
+        FFmpeg through a script file (EXO-05).
         """
-        video_width, video_height, fps = self._get_video_properties(request.video_file_path)
-        if video_width is None:
-            return [], 0, 0
-
-        subtitles = self._parse_srt_file(request.subtitle_file_path)
-        if not subtitles:
-            return [], 0, 0
-
-        aspect_ratio = video_width / video_height
-        is_portrait = aspect_ratio < 1.0
-
-        if is_portrait:
-            filters = self._build_multiline_centered_drawtext_filters(
-                subtitles, request, video_width, video_height, text_files_dir
-            )
-        else:
-            filters = self._build_standard_drawtext_filters(
-                subtitles, request, video_width, video_height, text_files_dir
-            )
-
-        return filters, video_width, video_height
+        cmd = [
+            "ffmpeg", "-y", "-i", video_path,
+            *video_filter_args(",".join(filters), temp_dir, "ffmpeg"),
+            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            "-c:a", "copy",
+            output_path,
+        ]
+        logger.info(f"Burning {len(filters)} subtitle drawtext filters into {video_path}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            logger.error(f"Subtitle burn-in timed out after {timeout}s")
+            raise CompositionStageError(
+                "subtitles", f"subtitle burn-in timed out after {timeout}s"
+            ) from exc
+        except OSError as exc:
+            logger.error(f"Subtitle burn-in could not start: {exc}")
+            raise CompositionStageError("subtitles", str(exc)) from exc
+        if result.returncode != 0:
+            summary = last_stderr_line(result.stderr)
+            logger.error(f"Subtitle burn-in failed: {summary}")
+            raise CompositionStageError("subtitles", summary)
 
     def _build_ffmpeg_command(
         self,
@@ -607,50 +734,38 @@ class SubtitleService:
         video_height: int,
         text_files_dir: str
     ) -> List[str]:
+        """Build the ffmpeg command of the standalone /add-subtitles burn-in.
+
+        A long drawtext chain is passed through a script file in
+        ``text_files_dir`` so the Windows command-line limit cannot drop it
+        (EXO-05).
         """
-        Build ffmpeg command for adding subtitles.
-        
-        Args:
-            input_video: Path to input video
-            output_video: Path to output video
-            subtitles: List of subtitle entries
-            request: Subtitle request parameters
-            video_width: Video width
-            video_height: Video height
-            
-        Returns:
-            ffmpeg command as list of strings
-        """
-        # Calculate aspect ratio to detect portrait/vertical videos
         aspect_ratio = video_width / video_height
         is_portrait = aspect_ratio < 1.0
-        
+
         logger.info(f"Video aspect ratio: {aspect_ratio:.2f} ({video_width}x{video_height})")
-        
+
         if is_portrait:
             logger.info("Portrait video detected - using multi-line centered subtitle rendering for optimal display")
-            # Use special handling for portrait videos to ensure each line is centered
             drawtext_filters = self._build_multiline_centered_drawtext_filters(
                 subtitles, request, video_width, video_height, text_files_dir
             )
         else:
             logger.info("Landscape video detected - using standard subtitle rendering")
-            # Use standard handling for landscape videos
             drawtext_filters = self._build_standard_drawtext_filters(
                 subtitles, request, video_width, video_height, text_files_dir
             )
-        
+
         if not drawtext_filters:
             logger.warning("No valid subtitle filters created")
             return []
-        
+
         logger.info(f"Generated {len(drawtext_filters)} drawtext filters for subtitle rendering")
-        
-        # Build complete ffmpeg command with explicit video encoding
-        cmd = [
+
+        return [
             'ffmpeg',
             '-i', input_video,
-            '-vf', ','.join(drawtext_filters),
+            *video_filter_args(','.join(drawtext_filters), text_files_dir, 'ffmpeg'),
             '-c:v', 'libx264',
             '-preset', 'veryfast',
             '-pix_fmt', 'yuv420p',
@@ -659,8 +774,6 @@ class SubtitleService:
             output_video
         ]
 
-        return cmd
-    
     def _build_standard_drawtext_filters(
         self,
         subtitles: List[SubtitleEntry],
@@ -669,116 +782,9 @@ class SubtitleService:
         video_height: int,
         text_files_dir: str
     ) -> List[str]:
-        """
-        Build standard drawtext filters for landscape/square videos.
-
-        Each wrapped line is emitted as its own horizontally-centered drawtext
-        (x=(w-text_w)/2 per line), exactly like the portrait path. A single
-        multi-line drawtext box would NOT center the wrapped lines: ffmpeg's
-        drawtext left-aligns every line inside the box (text_w is the widest
-        line), so a short wrapped line would sit flush-left under a longer one
-        instead of centered. Per-line filters keep every wrapped line centered
-        for any line count and any aspect ratio. (ffmpeg's text_align=center
-        would also work but only exists in ffmpeg >= 7.0; production ships 6.x.)
-
-        Args:
-            subtitles: List of subtitle entries
-            request: Subtitle request parameters
-            video_width: Video width
-            video_height: Video height
-
-        Returns:
-            List of drawtext filter strings
-        """
-        # Calculate max line width if not provided
-        max_line_width = request.max_line_width
-        if max_line_width is None:
-            max_line_width = self._calculate_max_line_width(
-                video_width, request.font_size, request.margin_horizontal, video_height
-            )
-
-        logger.info(f"Standard subtitle max line width: {max_line_width} characters")
-
-        # Build drawtext filters for each subtitle
-        drawtext_filters = []
-
-        for subtitle in subtitles:
-            # Wrap text into multiple lines
-            wrapped_lines = self._wrap_text(subtitle.text, max_line_width)
-            if not wrapped_lines:
-                continue
-
-            # Convert times to seconds
-            start_time = self._convert_time_to_seconds(subtitle.start_time)
-            end_time = self._convert_time_to_seconds(subtitle.end_time)
-
-            # Approximate line height (font size + small padding). Needed because
-            # each line is drawn by its own drawtext, so the block must be
-            # positioned numerically — a single ffmpeg text_h would only describe
-            # one line, not the wrapped block.
-            line_height = request.font_size + 5
-            total_text_height = len(wrapped_lines) * line_height
-
-            # Starting Y position for the whole block, mirroring the portrait path.
-            if request.position == "top":
-                start_y = request.margin_vertical
-            elif request.position == "upper-3/4":
-                start_y = int(video_height * 0.25 - total_text_height // 2)
-            elif request.position == "center":
-                start_y = (video_height - total_text_height) // 2
-            elif request.position == "lower-3/4":
-                start_y = int(video_height * 0.75 - total_text_height // 2)
-            else:  # bottom
-                start_y = video_height - total_text_height - request.margin_vertical
-
-            logger.info(f"Standard subtitle positioning: position={request.position}, start_y={start_y}, total_height={total_text_height}, lines={len(wrapped_lines)}, max_line_width={max_line_width}")
-
-            # Resolve font once per subtitle (same text → same font for every line).
-            font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
-            if request.background_color:
-                logger.info(f"Adding background color {request.background_color} to subtitle: '{subtitle.text[:20]}...'")
-
-            # Emit one individually-centered drawtext per wrapped line.
-            for line_index, line_text in enumerate(wrapped_lines):
-                if not line_text.strip():
-                    continue
-
-                # Y position for this line within the block.
-                line_y = start_y + (line_index * line_height)
-
-                # Write this line to a temp file so ffmpeg reads it via textfile=,
-                # bypassing all filter-graph escaping issues (apostrophes, colons, etc.).
-                text_file_path = os.path.join(text_files_dir, f"sub_{subtitle.index}_line_{line_index}.txt")
-                with open(text_file_path, 'w', encoding='utf-8') as f:
-                    f.write(line_text)  # single line, no newline needed
-
-                # Escape path separators and colons for ffmpeg filter syntax
-                escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
-                drawtext_filter = f"drawtext=textfile='{escaped_path}'"
-
-                # Add font file if available
-                if font_path:
-                    # Escape backslashes for ffmpeg
-                    escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
-                    drawtext_filter += f":fontfile='{escaped_font_path}'"
-
-                drawtext_filter += (
-                    f":fontsize={request.font_size}"
-                    f":fontcolor={request.font_color}"
-                    f":borderw={request.border_width}"
-                    f":bordercolor={request.border_color}"
-                    f":x=(w-text_w)/2"  # Center each line individually
-                    f":y={line_y}"
-                    f":enable='between(t,{start_time},{end_time})'"
-                )
-
-                # Add background if specified
-                if request.background_color:
-                    drawtext_filter += f":box=1:boxcolor={request.background_color}:boxborderw=5"
-
-                drawtext_filters.append(drawtext_filter)
-
-        return drawtext_filters
+        """Landscape / square drawtext filters for SRT entries."""
+        canvas = DrawCanvas(video_width, video_height, text_files_dir, "standard")
+        return self._drawtext_filters_for_srt(subtitles, request, canvas)
 
     def _build_multiline_centered_drawtext_filters(
         self,
@@ -788,116 +794,125 @@ class SubtitleService:
         video_height: int,
         text_files_dir: str
     ) -> List[str]:
-        """
-        Build multi-line centered drawtext filters for portrait videos.
-        This ensures each line of subtitle is horizontally centered.
-        
-        Args:
-            subtitles: List of subtitle entries
-            request: Subtitle request parameters
-            video_width: Video width
-            video_height: Video height
-            
-        Returns:
-            List of drawtext filter strings
-        """
-        logger.info("Building multi-line centered drawtext filters for portrait video")
-        
-        # Calculate max line width if not provided
-        max_line_width = request.max_line_width
-        if max_line_width is None:
-            max_line_width = self._calculate_max_line_width(
-                video_width, request.font_size, request.margin_horizontal, video_height
-            )
-        
-        logger.info(f"Portrait video max line width: {max_line_width} characters")
-        
-        # Build drawtext filters for each subtitle
-        drawtext_filters = []
-        
-        for subtitle in subtitles:
-            # Wrap text into multiple lines
-            wrapped_lines = self._wrap_text(subtitle.text, max_line_width)
-            if not wrapped_lines:
-                continue
-            
-            logger.info(f"Portrait subtitle '{subtitle.text[:30]}...' wrapped into {len(wrapped_lines)} lines")
-            
-            # Convert times to seconds
-            start_time = self._convert_time_to_seconds(subtitle.start_time)
-            end_time = self._convert_time_to_seconds(subtitle.end_time)
-            
-            # Calculate line height (approximate)
-            line_height = request.font_size + 5  # Font size + small padding
-            
-            # Calculate total text block height
-            total_text_height = len(wrapped_lines) * line_height
-            
-            # Calculate starting Y position to center the entire text block
-            if request.position == "top":
-                start_y = request.margin_vertical
-                logger.debug(f"Using TOP position: margin_vertical={request.margin_vertical}")
-            elif request.position == "upper-3/4":
-                start_y = int(video_height * 0.25 - total_text_height // 2)
-                logger.debug(f"Using UPPER-3/4 position: 25% of height ({video_height * 0.25}) minus half text height")
-            elif request.position == "center":
-                start_y = (video_height - total_text_height) // 2
-                logger.debug(f"Using CENTER position: centered vertically")
-            elif request.position == "lower-3/4":
-                start_y = int(video_height * 0.75 - total_text_height // 2)
-                logger.debug(f"Using LOWER-3/4 position: 75% of height ({video_height * 0.75}) minus half text height")
-            else:  # bottom
-                start_y = video_height - total_text_height - request.margin_vertical
-                logger.debug(f"Using BOTTOM position: video_height - total_text_height - margin_vertical")
-            
-            logger.info(f"Portrait subtitle positioning: position={request.position}, start_y={start_y}, total_height={total_text_height}, lines={len(wrapped_lines)}, video_height={video_height}")
-            
-            # Create a separate drawtext filter for each line to ensure proper centering
-            for line_index, line_text in enumerate(wrapped_lines):
-                if not line_text.strip():
-                    continue
-                
-                # Calculate Y position for this line
-                line_y = start_y + (line_index * line_height)
-                
-                # Write this line to a temp file so ffmpeg reads it via textfile=,
-                # bypassing all filter-graph escaping issues.
-                text_file_path = os.path.join(text_files_dir, f"sub_{subtitle.index}_line_{line_index}.txt")
-                with open(text_file_path, 'w', encoding='utf-8') as f:
-                    f.write(line_text)  # single line, no newline needed
+        """Portrait drawtext filters for SRT entries (every line centred)."""
+        canvas = DrawCanvas(video_width, video_height, text_files_dir, "centered")
+        return self._drawtext_filters_for_srt(subtitles, request, canvas)
 
-                escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
-                drawtext_filter = f"drawtext=textfile='{escaped_path}'"
-                
-                # Add font file if available
-                font_path = self._get_font_path(getattr(request, 'font_family', 'default'), subtitle.text)
-                if font_path:
-                    # Escape backslashes for ffmpeg
-                    escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
-                    drawtext_filter += f":fontfile='{escaped_font_path}'"
-                
-                # Each line is individually centered horizontally
-                drawtext_filter += (
-                    f":fontsize={request.font_size}"
-                    f":fontcolor={request.font_color}"
-                    f":borderw={request.border_width}"
-                    f":bordercolor={request.border_color}"
-                    f":x=(w-text_w)/2"  # Center each line individually
-                    f":y={line_y}"
-                    f":enable='between(t,{start_time},{end_time})'"
-                )
-                
-                # Add background if specified
-                if request.background_color:
-                    drawtext_filter += f":box=1:boxcolor={request.background_color}:boxborderw=5"
-                
-                drawtext_filters.append(drawtext_filter)
-                
-                logger.debug(f"Portrait line {line_index + 1}/{len(wrapped_lines)}: '{line_text}' at y={line_y}")
-        
-        logger.info(f"Generated {len(drawtext_filters)} individual line filters for portrait video multi-line centering")
-        return drawtext_filters
-    
+    def _drawtext_filters_for_srt(
+        self,
+        subtitles: List[SubtitleEntry],
+        request: SubtitleAddRequest,
+        canvas: DrawCanvas,
+    ) -> List[str]:
+        """SRT entries of the standalone burn-in, all in the request's single style."""
+        style = SubtitleDrawStyle(
+            font_family=getattr(request, 'font_family', None) or "default",
+            font_size=request.font_size,
+            font_color=request.font_color,
+            background_color=request.background_color or None,
+            position=request.position,
+            border_width=request.border_width,
+            border_color=request.border_color,
+            margin_vertical=request.margin_vertical,
+            margin_horizontal=request.margin_horizontal,
+            max_line_width=request.max_line_width,
+        )
+        filters: List[str] = []
+        for subtitle in subtitles:
+            cue = SubtitleCue(
+                subtitle.index,
+                subtitle.text,
+                self._convert_time_to_seconds(subtitle.start_time),
+                self._convert_time_to_seconds(subtitle.end_time),
+            )
+            filters.extend(self._drawtext_filters_for_entry(cue, style, canvas))
+        return filters
+
+    def _drawtext_filters_for_entry(
+        self, cue: SubtitleCue, style: SubtitleDrawStyle, canvas: DrawCanvas,
+    ) -> List[str]:
+        """One horizontally centred drawtext per wrapped line of ``cue``.
+
+        A single multi-line drawtext would left-align the wrapped lines inside
+        its box (``text_align=center`` needs FFmpeg >= 7.0, production ships
+        6.x), so every line is its own filter. Line text goes through
+        ``textfile=`` to bypass filter-graph escaping of quotes and colons;
+        blank lines keep their vertical slot.
+        """
+        max_line_width = style.max_line_width or self._calculate_max_line_width(
+            canvas.width, style.font_size, style.margin_horizontal, canvas.height
+        )
+        wrapped_lines = self._wrap_text(cue.text, max_line_width)
+        if not wrapped_lines:
+            return []
+
+        line_height = style.font_size + 5
+        start_y = self._block_start_y(style, canvas.height, len(wrapped_lines) * line_height)
+        font_path = self._get_font_path(style.font_family, cue.text)
+        logger.info(
+            f"{canvas.layout} subtitle {cue.index}: position={style.position}, "
+            f"start_y={start_y}, lines={len(wrapped_lines)}, max_line_width={max_line_width}"
+        )
+
+        filters: List[str] = []
+        for line_index, line_text in enumerate(wrapped_lines):
+            if not line_text.strip():
+                continue
+            text_file_path = os.path.join(
+                canvas.text_files_dir, f"sub_{cue.index}_line_{line_index}.txt"
+            )
+            with open(text_file_path, 'w', encoding='utf-8') as text_file:
+                text_file.write(line_text)
+            line_y = start_y + line_index * line_height
+            filters.append(
+                self._drawtext_line_filter(text_file_path, font_path, style, line_y, cue)
+            )
+        return filters
+
+    @staticmethod
+    def _block_start_y(style: SubtitleDrawStyle, video_height: int, block_height: int) -> int:
+        """Top of the wrapped text block for the subtitle position."""
+        if style.position == "top":
+            return style.margin_vertical
+        if style.position == "upper-3/4":
+            return int(video_height * 0.25 - block_height // 2)
+        if style.position == "center":
+            return (video_height - block_height) // 2
+        if style.position == "lower-3/4":
+            return int(video_height * 0.75 - block_height // 2)
+        return video_height - block_height - style.margin_vertical
+
+    @staticmethod
+    def _drawtext_line_filter(
+        text_file_path: str,
+        font_path: Optional[str],
+        style: SubtitleDrawStyle,
+        line_y: int,
+        cue: SubtitleCue,
+    ) -> str:
+        """The drawtext filter for one wrapped line."""
+        escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
+        drawtext_filter = f"drawtext=textfile='{escaped_path}'"
+        if font_path:
+            escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
+            drawtext_filter += f":fontfile='{escaped_font_path}'"
+        drawtext_filter += (
+            f":fontsize={style.font_size}"
+            f":fontcolor={style.font_color}"
+            f":borderw={style.border_width}"
+            f":bordercolor={style.border_color}"
+            # Subtitle text is literal. The default expansion rejects a stray
+            # "%" ("50% off") and drops the whole line, and eats backslashes.
+            ":expansion=none"
+            f":x=(w-text_w)/2"  # Center each line individually
+            f":y={line_y}"
+            # Half-open window: adjacent subtitles never share a frame (EXO-17).
+            f":enable='gte(t,{cue.start:.3f})*lt(t,{cue.end:.3f})'"
+        )
+        if style.background_color:
+            drawtext_filter += f":box=1:boxcolor={style.background_color}:boxborderw=5"
+        return drawtext_filter
+
     async def add_subtitles(self, request: SubtitleAddRequest) -> SubtitleAddResponse:
         """
         Add subtitles to a video file.
@@ -978,7 +993,7 @@ class SubtitleService:
                         ffmpeg_cmd,
                         capture_output=True,
                         text=True,
-                        timeout=300  # 5 minute timeout
+                        timeout=SUBTITLE_BURN_TIMEOUT_SECONDS
                     )
 
                     if result.returncode != 0:

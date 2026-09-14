@@ -9,6 +9,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 import type { MaterialType } from '../../domain';
 
 /**
@@ -49,6 +50,7 @@ export function detachAudioAction(
   if (!canDetachAudio(material)) return;
 
   const state = get();
+  if (isEditLocked(state)) return;
   const found = state._aggregate.findItem(itemId);
   // Pre-flight the domain no-op conditions so we never record an empty entry.
   if (!found || found.item.type !== 'video' || found.item.audioDetached === true) {

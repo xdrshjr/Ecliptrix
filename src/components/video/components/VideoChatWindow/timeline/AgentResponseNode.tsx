@@ -16,6 +16,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MarkdownRenderer from '@/components/chat/MarkdownRenderer';
+import { useLocale } from '@/contexts/LocaleContext';
 import { UNDOABLE_TOOL_NAMES } from '@/lib/video-editing-agent/trackPatch';
 import type { AgentResponseNodeData } from './types';
 import { formatTimestamp, getToolDisplayName } from './utils';
@@ -34,21 +35,32 @@ interface AgentResponseNodeProps {
   onUndoSingle?: (messageId: string, toolCallId: string) => void;
   /** Whether this response is still streaming (shows blinking cursor). */
   isStreaming?: boolean;
+  /**
+   * Disables the undo buttons while the agent runs: the server keeps editing
+   * its own copy, so a local revert would fork the timeline.
+   */
+  undoDisabled?: boolean;
 }
+
+const UNDO_BUTTON_CLASS =
+  'flex items-center gap-1 text-xs text-muted-foreground dark:text-zinc-400 hover:text-foreground dark:hover:text-zinc-200 transition-colors px-2 py-1 rounded-md hover:bg-accent dark:hover:bg-zinc-700 border border-transparent hover:border-border dark:hover:border-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:hover:border-transparent';
 
 const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
   node,
   onUndoAll,
   onUndoSingle,
   isStreaming: isStreamingProp = false,
+  undoDisabled = false,
 }) => {
+  const { t } = useLocale();
   const isStreaming = node.isStreaming ?? isStreamingProp;
   const [showUndoMenu, setShowUndoMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const isUndoMenuOpen = showUndoMenu && !undoDisabled;
 
   // Close dropdown on outside click
   useEffect(() => {
-    if (!showUndoMenu) return;
+    if (!isUndoMenuOpen) return;
 
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -58,19 +70,21 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
 
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [showUndoMenu]);
+  }, [isUndoMenuOpen]);
 
   const handleUndoAll = useCallback(() => {
-    onUndoAll?.(node.messageId);
     setShowUndoMenu(false);
-  }, [onUndoAll, node.messageId]);
+    if (undoDisabled) return;
+    onUndoAll?.(node.messageId);
+  }, [onUndoAll, node.messageId, undoDisabled]);
 
   const handleUndoSingle = useCallback(
     (toolCallId: string) => {
-      onUndoSingle?.(node.messageId, toolCallId);
       setShowUndoMenu(false);
+      if (undoDisabled) return;
+      onUndoSingle?.(node.messageId, toolCallId);
     },
-    [onUndoSingle, node.messageId],
+    [onUndoSingle, node.messageId, undoDisabled],
   );
 
   const iconVariant = node.isUndone ? 'undone' : 'response';
@@ -81,6 +95,7 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
     (tc) => tc.status === 'completed' && UNDOABLE_TOOL_NAMES.has(tc.name)
   );
   const hasUndoableTools = undoableToolCalls.length > 0;
+  const blockedTitle = undoDisabled ? t.agentUndo.blockedWhileRunning : undefined;
 
   return (
     <motion.div
@@ -135,8 +150,9 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
             <button
               type="button"
               onClick={handleUndoAll}
-              className="flex items-center gap-1 text-xs text-muted-foreground dark:text-zinc-400 hover:text-foreground dark:hover:text-zinc-200 transition-colors px-2 py-1 rounded-md hover:bg-accent dark:hover:bg-zinc-700 border border-transparent hover:border-border dark:hover:border-zinc-600"
-              title="Undo all operations in this response"
+              disabled={undoDisabled}
+              className={UNDO_BUTTON_CLASS}
+              title={blockedTitle ?? 'Undo all operations in this response'}
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
@@ -150,8 +166,10 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowUndoMenu((v) => !v)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground dark:text-zinc-400 hover:text-foreground dark:hover:text-zinc-200 transition-colors px-2 py-1 rounded-md hover:bg-accent dark:hover:bg-zinc-700 border border-transparent hover:border-border dark:hover:border-zinc-600"
-                  aria-expanded={showUndoMenu}
+                  disabled={undoDisabled}
+                  className={UNDO_BUTTON_CLASS}
+                  title={blockedTitle}
+                  aria-expanded={isUndoMenuOpen}
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -161,7 +179,7 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
 
                 {/* Dropdown menu — enhanced with shared dropdownVariants */}
                 <AnimatePresence>
-                  {showUndoMenu && (
+                  {isUndoMenuOpen && (
                     <motion.div
                       variants={dropdownVariants}
                       initial="initial"

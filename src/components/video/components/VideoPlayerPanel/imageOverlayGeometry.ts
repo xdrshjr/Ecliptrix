@@ -61,6 +61,19 @@ export function clampImagePosition(p: ImagePosition): ImagePosition {
   };
 }
 
+/** 手势起止位置的比较容差（归一化单位）：低于它的抖动不算一次编辑，不入库也不写历史。 */
+export const POSITION_CHANGE_TOLERANCE = 1e-4;
+
+const GEOMETRY_KEYS = ['x', 'y', 'width', 'height'] as const;
+
+/** 两个位置是否实质不同（几何超出容差或层级不同）。 */
+export function hasPositionChanged(a: ImagePosition, b: ImagePosition): boolean {
+  if (GEOMETRY_KEYS.some((key) => Math.abs(a[key] - b[key]) > POSITION_CHANGE_TOLERANCE)) {
+    return true;
+  }
+  return (a.zIndex ?? DEFAULT_IMAGE_POSITION.zIndex) !== (b.zIndex ?? DEFAULT_IMAGE_POSITION.zIndex);
+}
+
 /** 该位置是否仍为新建默认 sentinel（仅比对几何，zIndex 不影响视觉对齐判定）。 */
 export function isDefaultSentinel(p: ImagePosition): boolean {
   return (

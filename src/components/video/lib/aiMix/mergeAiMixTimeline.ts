@@ -4,6 +4,9 @@
  * Pure (no React, no store). Only tracks the plan targets are replaced; subtitles, unused
  * audio tracks and extra user video tracks come back untouched and never receive copies of
  * AI clips (AM-01 / AM-02). Each imported audio track keeps its own lane (AM-03).
+ *
+ * Every AI lane is packed flush from 0 (S8 "a write is stable"): the result is a fixed
+ * point of organizeVideoAudioTracks, so the next unrelated edit cannot move AI clips.
  */
 
 import type { TimelineData, TimelineItemData, TrackData } from '@/components/video/timeline/domain';
@@ -11,8 +14,8 @@ import type { TimelineState } from '@/types';
 
 export const MIN_AI_CLIP_SECONDS = 0.1;
 
-/** Clips touching within a millisecond do not count as overlapping. */
-const OVERLAP_TOLERANCE_SECONDS = 1e-3;
+/** Clips that move less than a millisecond while packing are not reported. */
+const PACK_REPORT_TOLERANCE_SECONDS = 1e-3;
 const AUDIO_TRACK_NUMBER_PATTERN = /audio-track-(\d+)$/;
 
 export interface AiMixMergeInput {
@@ -30,6 +33,7 @@ export interface AiMixMergeResult {
   skippedLockedTrackIds: string[]; // locked targets left untouched
   droppedItems: Array<{ itemId: string; reason: AiMixDropReason }>;
   renamedItemIds: Record<string, string>; // original id → collision-free id
+  packedItemIds: string[]; // AI clips moved to close a gap or an overlap
 }
 
 /** The part of the timeline an AI track feeds. */
@@ -66,13 +70,39 @@ function createLaneTrack(
   const id = lane === 'audio' ? `audio-track-${audioNumber}` : `${lane}-track-1`;
   const order = tracks.reduce((max, track) => Math.max(max, track.order), -1) + 1;
   const type = lane === 'audio' ? 'audio' : 'video';
-  return { ...source, id, type, order, volume: 100, isLocked: false, items: [] };
+  // No name (AM2-08): the backend's English label would show in every locale,
+  // while an empty name lets the track header derive a localized one.
+  return { ...source, id, type, name: '', order, volume: 100, isLocked: false, items: [] };
 }
 
-const audioNumberOf = (track: Pick<TrackData, 'id'>): number => {
+const numberedAudioLane = (track: Pick<TrackData, 'id'>): number | null => {
   const match = AUDIO_TRACK_NUMBER_PATTERN.exec(track.id);
-  return match ? Math.max(1, Number(match[1])) : 1;
+  return match ? Math.max(1, Number(match[1])) : null;
 };
+
+/**
+ * AM2-02: `audio-track-n` keeps n; any other imported audio lane id (e.g. a
+ * "bgm" lane) takes the lowest number no imported lane uses, instead of
+ * collapsing onto audio-track-1 with the narration.
+ */
+function assignAudioLaneNumbers(sources: readonly TrackData[]): Map<TrackData, number> {
+  const numbers = new Map<TrackData, number>();
+  const taken = new Set<number>();
+  sources.forEach((source) => {
+    const number = numberedAudioLane(source);
+    if (number === null) return;
+    numbers.set(source, number);
+    taken.add(number);
+  });
+  let next = 1;
+  sources.forEach((source) => {
+    if (numbers.has(source)) return;
+    while (taken.has(next)) next += 1;
+    numbers.set(source, next);
+    taken.add(next);
+  });
+  return numbers;
+}
 
 /**
  * R3: whether `track` belongs to another AI audio lane — already claimed by
@@ -96,13 +126,14 @@ function routeImportedTracks(current: readonly TrackData[], imported: readonly T
   const routes = new Map<string, TrackRoute>();
   const skipped = new Set<string>();
   const sources = imported.filter((source) => getAiMixLane(source) && source.items?.length);
-  const importedAudioNumbers = new Set(sources
-    .filter((source) => getAiMixLane(source) === 'audio')
-    .map(audioNumberOf));
+  const audioNumbers = assignAudioLaneNumbers(
+    sources.filter((source) => getAiMixLane(source) === 'audio'),
+  );
+  const importedAudioNumbers = new Set(audioNumbers.values());
   const claimedBy = new Map<string, number>(); // audio track id → AI lane number
   for (const source of sources) {
     const lane = getAiMixLane(source) as AiMixLane;
-    const audioNumber = lane === 'audio' ? audioNumberOf(source) : 1;
+    const audioNumber = lane === 'audio' ? audioNumbers.get(source) ?? 1 : 1;
     let existing = findAiMixTargetTrack(working, lane, audioNumber);
     if (existing && lane === 'audio'
       && isOwnedByOtherAudioLane(existing, audioNumber, claimedBy, importedAudioNumbers)) {
@@ -160,15 +191,24 @@ function assignUniqueIds(
   });
 }
 
-/** R6: a clip starting inside its predecessor moves to that clip's end. */
-function removeOverlaps(items: readonly TimelineItemData[]): TimelineItemData[] {
-  let previousEnd = 0;
-  return [...items].sort((a, b) => a.startTime - b.startTime).map((item) => {
-    const overlaps = item.startTime < previousEnd - OVERLAP_TOLERANCE_SECONDS;
-    const startTime = overlaps ? previousEnd : item.startTime;
-    previousEnd = startTime + item.duration;
-    return overlaps ? { ...item, startTime } : item;
-  });
+/**
+ * R6 (S8): order by startTime (ties keep plan order) and lay the clips end to
+ * end from 0 — the same rule organizeVideoAudioTracks applies after every edit,
+ * so neither a gap nor an overlap survives to be "fixed" by the next edit.
+ */
+function packLane(items: readonly TimelineItemData[], packedItemIds: string[]): TimelineItemData[] {
+  let cursor = 0;
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => a.item.startTime - b.item.startTime || a.index - b.index)
+    .map(({ item }) => {
+      const startTime = cursor;
+      cursor += item.duration;
+      if (Math.abs(startTime - item.startTime) > PACK_REPORT_TOLERANCE_SECONDS) {
+        packedItemIds.push(item.id);
+      }
+      return startTime === item.startTime ? item : { ...item, startTime };
+    });
 }
 
 /** R7: total duration spans every track; view settings are kept from `current`. */
@@ -200,9 +240,10 @@ export function mergeAiMixTimeline(input: AiMixMergeInput): AiMixMergeResult {
     .filter((track) => targetIds.indexOf(track.id) === -1)
     .reduce<string[]>((ids, track) => ids.concat(track.items.map((item) => item.id)), []));
   const renamedItemIds: Record<string, string> = {};
+  const packedItemIds: string[] = [];
   const itemsByTrack = new Map(filled.map(({ route, items }) => [
     route.track.id,
-    removeOverlaps(assignUniqueIds(items, takenIds, renamedItemIds)),
+    packLane(assignUniqueIds(items, takenIds, renamedItemIds), packedItemIds),
   ] as const));
   const withItems = (track: TrackData): TrackData => {
     const items = itemsByTrack.get(track.id);
@@ -217,5 +258,6 @@ export function mergeAiMixTimeline(input: AiMixMergeInput): AiMixMergeResult {
     skippedLockedTrackIds,
     droppedItems,
     renamedItemIds,
+    packedItemIds,
   };
 }

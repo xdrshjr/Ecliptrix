@@ -22,17 +22,20 @@
 import type {
   TimelineState,
   AgentTimelineOperation,
+  AgentMaterialData,
   AgentTrackPatch,
   MaterialItem,
   MaterialType,
+  OperationRejectReason,
   TimelineItem,
   Track,
 } from '@/types';
 import type { AgentOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import { useVideoEditingStore } from '@/stores';
-import { reconcileOverlapsAfterAgentOp } from './reconcile';
+import { packOverlappingTracks, reconcileOverlapsAfterAgentOp } from './reconcile';
 import { diffTimelineTracks, revertTrackPatches } from './trackPatch';
+import { validateOperationTargets, type OperationValidation } from './operationGuards';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,7 +44,7 @@ import { diffTimelineTracks, revertTrackPatches } from './trackPatch';
 export interface OperationRecord {
   /** The toolCallId that produced this operation. */
   toolCallId: string;
-  /** The operation that was applied. */
+  /** The operation that was applied (for a re-pack, the first of its moves). */
   operation: AgentTimelineOperation;
   /**
    * Tracks this operation changed (before/after, inline thumbnails dropped).
@@ -54,6 +57,17 @@ export interface OperationRecord {
 export type AgentUndoResult =
   | { ok: true }
   | { ok: false; reason: 'not-found' | 'conflict' };
+
+/**
+ * What applying one agent operation (or batch) did to the timeline. Only
+ * `rejected` is a failure the tool card must show: `skipped` respects a
+ * lock the user set, `noop` means the timeline already matched.
+ */
+export type ApplyOutcome =
+  | { status: 'applied' }
+  | { status: 'noop'; reason: 'no-change' }
+  | { status: 'skipped'; reason: 'locked-track'; trackId: string }
+  | { status: 'rejected'; reason: OperationRejectReason; trackId?: string; clipId?: string };
 
 /**
  * Undo record for non-timeline operations (material, script, storyboard).
@@ -114,6 +128,10 @@ export class OperationApplier {
   /**
    * Apply a timeline operation and record the tracks it changed.
    *
+   * The operation is validated against the live timeline first: a clip or
+   * track that is gone, or an invalid time, is `rejected` without touching
+   * anything (a move to a missing track used to delete the clip).
+   *
    * For delete_clip operations the animation is triggered BEFORE the
    * state mutation so the clip element still exists in the DOM for the
    * CSS animation. For all other operations the animation fires AFTER.
@@ -121,8 +139,20 @@ export class OperationApplier {
   async apply(
     operation: AgentTimelineOperation,
     toolCallId: string,
-  ): Promise<void> {
+  ): Promise<ApplyOutcome> {
     const current = this.ensureTimelineState();
+    const validation = validateOperationTargets(current, operation);
+    if (!validation.ok) {
+      console.warn('[OperationApplier] rejected operation', {
+        type: operation.type,
+        toolCallId,
+        reason: validation.reason,
+        trackId: validation.trackId,
+        clipId: validation.clipId,
+      });
+      return toRejectedOutcome(validation);
+    }
+
     const lockedTrackId = findLockedTrackId(current, operation);
     if (lockedTrackId !== null) {
       // The tools already refuse locked tracks; this also covers batched
@@ -131,7 +161,7 @@ export class OperationApplier {
         type: operation.type,
         trackId: lockedTrackId,
       });
-      return;
+      return { status: 'skipped', reason: 'locked-track', trackId: lockedTrackId };
     }
 
     if (operation.type === 'delete_clip') {
@@ -153,11 +183,72 @@ export class OperationApplier {
     const after = this.config.getTimelineState();
     const patches = after ? diffTimelineTracks(before, after) : [];
     if (patches.length === 0) {
-      // No timeline effect (e.g. the clip was already gone): nothing to undo.
-      return;
+      // No timeline effect (e.g. already at that position): nothing to undo.
+      return { status: 'noop', reason: 'no-change' };
     }
     this.operations.push({ toolCallId, operation, patches });
     this.config.onTimelineUpdate?.();
+    return { status: 'applied' };
+  }
+
+  /**
+   * Apply a tool's batch (compose_storyboard, auto_fix_overlaps) all or
+   * nothing: every operation is first validated against a simulated
+   * timeline, and one rejection applies none of them, so a storyboard never
+   * lands half composed. Records are keyed `${toolCallId}-batch-${i}`.
+   */
+  async applyBatch(
+    operations: AgentTimelineOperation[],
+    toolCallId: string,
+  ): Promise<ApplyOutcome> {
+    const rejection = this.findBatchRejection(operations, toolCallId);
+    if (rejection) return rejection;
+
+    const outcomes: ApplyOutcome[] = [];
+    for (let i = 0; i < operations.length; i++) {
+      outcomes.push(await this.apply(operations[i], `${toolCallId}-batch-${i}`));
+    }
+    return summarizeBatchOutcomes(outcomes);
+  }
+
+  /**
+   * Apply `auto_fix_overlaps` in one step: the tracks its moves touch are
+   * re-packed with the same `packOverlappingTracks` the tool ran. The moves
+   * are final positions, not steps to replay — replaying them one at a time
+   * re-packs the track after each move while the clips not yet moved still
+   * overlap, which reorders them (a, b@2, c@3, d@4 landed as c, d, b).
+   */
+  applyRepack(
+    operations: AgentTimelineOperation[],
+    toolCallId: string,
+  ): ApplyOutcome {
+    const rejection = this.findBatchRejection(operations, toolCallId);
+    if (rejection) return rejection;
+
+    const current = this.ensureTimelineState();
+    const trackIds = Array.from(new Set(operations.flatMap(op => touchedTrackIds(current, op))));
+    const state = deepClone(current);
+    const { fixedTrackIds } = packOverlappingTracks(state, undefined, { trackIds });
+    if (fixedTrackIds.length === 0) {
+      const lockedTrackId = operations
+        .map(operation => findLockedTrackId(current, operation))
+        .find((trackId): trackId is string => trackId !== null);
+      return lockedTrackId
+        ? { status: 'skipped', reason: 'locked-track', trackId: lockedTrackId }
+        : { status: 'noop', reason: 'no-change' };
+    }
+
+    state.totalDuration = Math.max(computeTimelineEnd(state), state.totalDuration);
+    this.config.setTimelineState(state);
+    operations.forEach(operation => this.config.onTriggerAnimation?.(operation));
+    // One record, so undoing the tool call reverts the whole re-pack.
+    this.operations.push({
+      toolCallId,
+      operation: operations[0],
+      patches: diffTimelineTracks(current, state),
+    });
+    this.config.onTimelineUpdate?.();
+    return { status: 'applied' };
   }
 
   /**
@@ -424,6 +515,32 @@ export class OperationApplier {
     );
   }
 
+  /** First invalid operation of a batch, replayed on a private copy of the timeline. */
+  private findBatchRejection(
+    operations: AgentTimelineOperation[],
+    toolCallId: string,
+  ): ApplyOutcome | null {
+    const working = deepClone(this.ensureTimelineState());
+    for (const operation of operations) {
+      const validation = validateOperationTargets(working, operation);
+      if (!validation.ok) {
+        console.warn('[OperationApplier] rejected batch', {
+          toolCallId,
+          type: operation.type,
+          reason: validation.reason,
+          trackId: validation.trackId,
+          clipId: validation.clipId,
+        });
+        return toRejectedOutcome(validation);
+      }
+      // apply() skips operations on locked tracks, so the simulation does too.
+      if (findLockedTrackId(working, operation) !== null) continue;
+      applyOperationToState(working, operation);
+      reconcileOverlapsAfterAgentOp(working, operation);
+    }
+    return null;
+  }
+
   private ensureTimelineState(): TimelineState {
     const current = this.config.getTimelineState();
     if (current) return current;
@@ -518,14 +635,51 @@ function addClipToState(state: TimelineState, operation: AddClipOperation): void
     materialId: clip.materialId || '',
     clipStart: clip.clipStart || 0,
     clipEnd: clip.clipEnd || 0,
-    originalDuration: clip.originalDuration || 0,
+    // Stills carry no source length (tools send 0).
+    ...(clip.originalDuration > 0 ? { originalDuration: clip.originalDuration } : {}),
     volume: isNaN(clip.volume) ? 1.0 : clip.volume,
     opacity: 1,
     thumbnailUrl: material.thumbnailUrl || '',
     // The canvas preview tells images from videos on a video track by this
     // field; without it agent-added images were never drawn.
     originalMaterialType: (material.type as MaterialType) || undefined,
+    ...clipPlaybackFields(material),
   });
+}
+
+/**
+ * Playback fields copied onto the clip, as a manual drop does
+ * (`toMaterialData`): the clip keeps previewing and exporting even after
+ * its material leaves the library. Mirrored by agent.ts on the server.
+ */
+function clipPlaybackFields(
+  material: AgentMaterialData,
+): Pick<TimelineItem, 'url' | 'serverUrl' | 'cacheUrl' | 'storageKey' | 'metadata'> {
+  return {
+    ...(material.url ? { url: material.url } : {}),
+    ...(material.serverUrl ? { serverUrl: material.serverUrl } : {}),
+    ...(material.cacheUrl ? { cacheUrl: material.cacheUrl } : {}),
+    ...(material.storageKey ? { storageKey: material.storageKey } : {}),
+    ...(material.metadata ? { metadata: { ...material.metadata } } : {}),
+  };
+}
+
+function toRejectedOutcome(
+  validation: Extract<OperationValidation, { ok: false }>,
+): ApplyOutcome {
+  return {
+    status: 'rejected',
+    reason: validation.reason,
+    ...(validation.trackId !== undefined ? { trackId: validation.trackId } : {}),
+    ...(validation.clipId !== undefined ? { clipId: validation.clipId } : {}),
+  };
+}
+
+/** A batch counts as applied when any of its operations changed the timeline. */
+function summarizeBatchOutcomes(outcomes: readonly ApplyOutcome[]): ApplyOutcome {
+  if (outcomes.some(outcome => outcome.status === 'applied')) return { status: 'applied' };
+  return outcomes.find(outcome => outcome.status === 'skipped')
+    ?? { status: 'noop', reason: 'no-change' };
 }
 
 /** Auto-create a track to match the server-side addToTrack auto-creation. */
@@ -553,17 +707,19 @@ function createTrackForMaterial(
   return track;
 }
 
+/** Callers validate first; the target is looked up before the clip leaves its track. */
 function moveClipInState(state: TimelineState, operation: MoveClipOperation): void {
   const fromTrack = state.tracks.find(t => t.id === operation.fromTrackId);
+  const toTrack = state.tracks.find(t => t.id === operation.toTrackId);
   const idx = fromTrack
     ? fromTrack.items.findIndex(i => i.id === operation.clipId)
     : -1;
-  if (!fromTrack || idx === -1) return;
+  if (!fromTrack || !toTrack || idx === -1) return;
 
   const [clip] = fromTrack.items.splice(idx, 1);
   clip.startTime = operation.newStartTime;
   clip.trackId = operation.toTrackId;
-  state.tracks.find(t => t.id === operation.toTrackId)?.items.push(clip);
+  toTrack.items.push(clip);
 }
 
 function findClipInState(

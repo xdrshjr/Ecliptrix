@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { useTimelineStore, splitAction } from './store';
 import { updateSubtitleTextAction } from './store/actions/updateItemFields';
 import type { TimelineItemData } from './domain/types';
@@ -9,6 +10,11 @@ import SentenceSegmentBar from './SentenceSegmentBar';
 import AudioWaveformCanvas from './AudioWaveformCanvas';
 import { formatTimelineTime } from './timeFormat';
 import { ZoomLevel } from './domain/value-objects/ZoomLevel';
+import {
+  detectInteractionType,
+  edgeHandleWidthPx,
+  type InteractionType,
+} from './domain/machines/dragMachine';
 import {
   filmstripCache,
   type FilmstripItem,
@@ -83,6 +89,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
+  const { showInfo } = useNotification();
 
   // ---------------------------------------------------------------------------
   // Store reads (selector pattern for render perf)
@@ -91,6 +98,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const isSelected = useTimelineStore(s => s.selectedItems.includes(item.id));
   const isDragging = useTimelineStore(s => s.isDragging);
   const isResizing = useTimelineStore(s => s.isResizing);
+  // From press to release, including the pre-threshold detecting phase.
+  const isInteracting = useTimelineStore(s => s.isInteracting);
   const dragPreview = useTimelineStore(s =>
     s.dragPreview?.itemId === item.id ? s.dragPreview : null,
   );
@@ -123,6 +132,9 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 
   const isEditingSubtitle = editingSubtitleId === item.id;
   const [editingText, setEditingText] = useState('');
+  // Which zone the pointer hovers (trim edge vs body). Drives the cursor and
+  // the trim handles, so the user sees that a press will trim before pressing.
+  const [hoverZone, setHoverZone] = useState<InteractionType>('move');
 
   // ---------------------------------------------------------------------------
   // Derived layout values — use dragPreview position when active
@@ -230,7 +242,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     if (activeTool === 'cut' && !isTrackLocked) {
       const tCut = item.startTime + relativeX / pixelsPerSecond;
       selectItem(item.id);
-      splitAction(() => useTimelineStore.getState(), tCut, 'selected');
+      const outcome = splitAction(() => useTimelineStore.getState(), tCut, 'selected');
+      if (outcome === 'too-close') {
+        showInfo(t.timeline.messages.splitTooCloseToEdge);
+      }
       return;
     }
 
@@ -268,6 +283,21 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         : (item.originalDuration ?? Number.POSITIVE_INFINITY),
       isStill,
     });
+  };
+
+  const handleHoverMove = (e: React.PointerEvent) => {
+    // From press to release the drag machine owns the gesture. Re-detecting
+    // while the pointer drifts inside the drag threshold would flip a trim
+    // started near the handle's inner edge to "grab" for the whole trim.
+    if (isInteracting || isTrackLocked) return;
+    const rect = itemRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const zone = detectInteractionType(e.clientX - rect.left, width);
+    if (zone !== hoverZone) setHoverZone(zone);
+  };
+
+  const handleHoverLeave = () => {
+    if (!isInteracting) setHoverZone('move');
   };
 
   // camera-motion-2d-3d §4.5.1 / P2-7: eligibility goes through the SHARED
@@ -385,6 +415,24 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   // Styles + filmstrip render — delegated to sibling modules (computeItemStyles
   // / TimelineItemFilmstrip) so this renderer stays lean; visuals unchanged.
   // ---------------------------------------------------------------------------
+
+  // A press with the cut tool splits wherever it lands, so the edges must not
+  // advertise a trim there.
+  const visibleHoverZone: InteractionType = activeTool === 'cut' ? 'move' : hoverZone;
+
+  // Locked lanes keep click-to-select, so they say "not allowed" (IM-05);
+  // otherwise the cursor predicts what a press does at this spot (TL2-06).
+  const itemCursor = isTrackLocked
+    ? 'not-allowed'
+    : isThisItemDragging
+      ? 'grabbing'
+      : visibleHoverZone === 'move' ? 'grab' : 'ew-resize';
+
+  // The visible handles are exactly the drag machine's hit zones, and they
+  // shrink (to nothing) on narrow clips so a 12px move zone always survives.
+  const trimHandleWidth = edgeHandleWidthPx(width);
+  const showTrimHandles =
+    !isTrackLocked && trimHandleWidth > 0 && (isSelected || visibleHoverZone !== 'move');
 
   const getItemStyles = () =>
     computeItemStyles({
@@ -629,8 +677,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         `${isSelected ? ` (${t.timeline.track.selected})` : ''}` +
         `${isTrackLocked ? ` (${t.timeline.track.trackLocked})` : ''}`
       }
-      style={isTrackLocked ? { ...getItemStyles(), cursor: 'not-allowed' } : getItemStyles()}
+      style={{ ...getItemStyles(), cursor: itemCursor }}
       onPointerDown={handlePointerDown}
+      onPointerMove={handleHoverMove}
+      onPointerLeave={handleHoverLeave}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onKeyDown={handleItemKeyDown}
@@ -700,17 +750,17 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         </div>
       )}
 
-      {/* Resize handles — DaVinci-style trim brackets. Hit area (w-1.5,
-          left/right, cursor-ew-resize) is unchanged; only the look is crisper. */}
-      {isSelected && !isTrackLocked && (
+      {/* Resize handles — DaVinci-style trim brackets, sized from the same
+          edgeHandleWidthPx the drag machine hit-tests with. */}
+      {showTrimHandles && (
         <>
           <div
-            className="absolute left-0 top-0 w-1.5 h-full cursor-ew-resize bg-white/70 hover:bg-white transition-colors"
-            style={{ borderRadius: '4px 0 0 4px' }}
+            className="absolute left-0 top-0 h-full cursor-ew-resize bg-white/70 hover:bg-white transition-colors"
+            style={{ width: `${trimHandleWidth}px`, borderRadius: '4px 0 0 4px' }}
           />
           <div
-            className="absolute right-0 top-0 w-1.5 h-full cursor-ew-resize bg-white/70 hover:bg-white transition-colors"
-            style={{ borderRadius: '0 4px 4px 0' }}
+            className="absolute right-0 top-0 h-full cursor-ew-resize bg-white/70 hover:bg-white transition-colors"
+            style={{ width: `${trimHandleWidth}px`, borderRadius: '0 4px 4px 0' }}
           />
         </>
       )}

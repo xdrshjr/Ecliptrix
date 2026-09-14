@@ -16,12 +16,17 @@
  * - **No UI coupling**: this hook knows nothing about chat messages, timeline
  *   operations, or conversation IDs. It only manages stream lifecycle and
  *   exposes raw SSE events via the `onEvent` callback in params.
+ * - **Finishing before terminal**: when the stream ends (complete, error or
+ *   cancel) the status is `finishing` until the consumer's terminal callback
+ *   settles — the consumer still applies queued operations then, so the edit
+ *   lock and the send button must not be released yet. A watchdog bounds the
+ *   wait so a stuck step can never lock the timeline forever.
  *
  * @module useAgentExecutionState
  */
 
-import { useCallback, useRef, useState } from 'react';
-import { SSEStreamManager, type SSEStreamManagerConfig } from '@/lib/video-editing-agent/SSEStreamManager';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { SSEStreamManager } from '@/lib/video-editing-agent/SSEStreamManager';
 import type { StreamError } from '@/lib/video-editing-agent/errorRecovery';
 import type { SSEEvent } from '@/lib/video-editing-agent/types';
 
@@ -33,6 +38,8 @@ export type AgentExecutionStatus =
   | 'idle'
   | 'executing'
   | 'retrying'
+  /** The stream ended; queued operations are still being applied. */
+  | 'finishing'
   | 'error'
   | 'cancelled'
   | 'completed';
@@ -76,9 +83,50 @@ const INITIAL_STATE: AgentExecutionState = {
   isThinking: false,
 };
 
+/**
+ * Longest the `finishing` phase may wait for the consumer's terminal
+ * callback. Past it the execution ends anyway (and the consumer is told),
+ * because an event chain that never settles would otherwise keep the
+ * timeline locked until reload.
+ */
+export const FINISHING_WATCHDOG_MS = 15_000;
+
+type SettleResult = 'settled' | 'timed-out';
+
+interface BoundedWait {
+  /** 'settled' once `work` settles (fulfilled or rejected), 'timed-out' after `ms`. */
+  result: Promise<SettleResult>;
+  /** Clears the watchdog timer; `result` then resolves only if `work` settles. */
+  cancel: () => void;
+}
+
+/** Wait for `work`, but no longer than `ms`. */
+function settleWithin(work: Promise<unknown>, ms: number): BoundedWait {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<SettleResult>(resolve => {
+    timer = setTimeout(() => resolve('timed-out'), ms);
+  });
+  const settled = work.then(
+    (): SettleResult => 'settled',
+    (error: unknown): SettleResult => {
+      console.error('[useAgentExecutionState] terminal callback failed', { error });
+      return 'settled';
+    },
+  );
+  const cancel = (): void => clearTimeout(timer);
+  const result = Promise.race([settled, timeout]).then(outcome => {
+    cancel();
+    return outcome;
+  });
+  return { result, cancel };
+}
+
 // ---------------------------------------------------------------------------
 // Params for startExecution
 // ---------------------------------------------------------------------------
+
+/** A terminal callback; a returned promise keeps the status at `finishing` until it settles. */
+type TerminalCallback = () => void | Promise<void>;
 
 export interface StartExecutionParams {
   /** The URL to POST to (defaults to '/api/video-editing-agent/chat'). */
@@ -106,10 +154,14 @@ export interface StartExecutionParams {
    * events to message state, timeline operations, etc.
    */
   onEvent?: (event: SSEEvent) => void;
-  /** Called when the stream completes normally. */
-  onComplete?: () => void;
-  /** Called when the stream fails terminally. */
-  onError?: (error: StreamError) => void;
+  /** Called when the stream completes normally; the status stays `finishing` until it settles. */
+  onComplete?: TerminalCallback;
+  /** Called when the stream fails terminally; the status stays `finishing` until it settles. */
+  onError?: (error: StreamError) => void | Promise<void>;
+  /** Called after the user cancelled; the status stays `finishing` until it settles. */
+  onCancel?: TerminalCallback;
+  /** Called when a terminal callback did not settle within FINISHING_WATCHDOG_MS. */
+  onFinishingTimeout?: () => void;
   /**
    * Called when the stream manager reconnects. A reconnect re-runs the whole
    * turn on the server, so the consumer must drop the text, thinking content
@@ -127,6 +179,25 @@ export function useAgentExecutionState() {
   const managerRef = useRef<SSEStreamManager | null>(null);
   // Ref to track accumulated text so we don't depend on stale closures
   const accumulatedTextRef = useRef('');
+  // Params of the running execution: cancel needs its terminal callbacks.
+  const paramsRef = useRef<StartExecutionParams | null>(null);
+  // Bumped per execution so a late finish never overwrites a newer one.
+  const executionIdRef = useRef(0);
+  // False once unmounted: a finish then runs no watchdog, status write or
+  // timeout notice (the consumer's unmount cleanup may still cancel).
+  const isMountedRef = useRef(false);
+  // Clears the watchdog timer of each pending `finishing` wait.
+  const pendingWatchdogsRef = useRef(new Set<() => void>());
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const pendingWatchdogs = pendingWatchdogsRef.current;
+    return () => {
+      isMountedRef.current = false;
+      pendingWatchdogs.forEach(cancelWatchdog => cancelWatchdog());
+      pendingWatchdogs.clear();
+    };
+  }, []);
 
   // ---- helpers ----
 
@@ -140,6 +211,43 @@ export function useAgentExecutionState() {
       return next;
     });
   }, []);
+
+  /**
+   * `finishing` → wait for the terminal callback (bounded by the watchdog)
+   * → the terminal status. A timed-out wait still ends the execution; later
+   * agent writes remain allowed and undoable, so nothing is lost.
+   */
+  const finishExecution = useCallback(
+    async (
+      terminalCallback: TerminalCallback | undefined,
+      terminal: Partial<AgentExecutionState>,
+      onFinishingTimeout: (() => void) | undefined,
+    ): Promise<void> => {
+      const work = Promise.resolve().then(() => terminalCallback?.());
+      if (!isMountedRef.current) {
+        await work.catch((error: unknown) => {
+          console.error('[useAgentExecutionState] terminal callback failed', { error });
+        });
+        return;
+      }
+      const executionId = executionIdRef.current;
+      updateState({ status: 'finishing' });
+      const wait = settleWithin(work, FINISHING_WATCHDOG_MS);
+      pendingWatchdogsRef.current.add(wait.cancel);
+      const drained = await wait.result;
+      pendingWatchdogsRef.current.delete(wait.cancel);
+      if (!isMountedRef.current || executionIdRef.current !== executionId) return;
+      if (drained === 'timed-out') {
+        console.error('[useAgentExecutionState] event chain did not drain before the watchdog', {
+          status: terminal.status,
+          watchdogMs: FINISHING_WATCHDOG_MS,
+        });
+        onFinishingTimeout?.();
+      }
+      updateState(terminal);
+    },
+    [updateState],
+  );
 
   // ---- handleEvent: update execution state from SSE events ----
 
@@ -236,6 +344,8 @@ export function useAgentExecutionState() {
 
       // Reset accumulated text
       accumulatedTextRef.current = '';
+      paramsRef.current = params;
+      executionIdRef.current += 1;
 
       // Reset state
       const now = Date.now();
@@ -256,13 +366,15 @@ export function useAgentExecutionState() {
         onEvent: (event) => handleEvent(event, params.onEvent),
 
         onComplete: () => {
-          updateState({ status: 'completed' });
-          params.onComplete?.();
+          void finishExecution(params.onComplete, { status: 'completed' }, params.onFinishingTimeout);
         },
 
         onError: (error) => {
-          updateState({ status: 'error', error });
-          params.onError?.(error);
+          void finishExecution(
+            () => params.onError?.(error),
+            { status: 'error', error },
+            params.onFinishingTimeout,
+          );
         },
 
         onRetry: (attempt, reason) => {
@@ -288,7 +400,7 @@ export function useAgentExecutionState() {
         console.error('[useAgentExecutionState] Unexpected manager error:', err);
       });
     },
-    [handleEvent, updateState],
+    [handleEvent, updateState, finishExecution],
   );
 
   // ---- cancelExecution ----
@@ -300,8 +412,13 @@ export function useAgentExecutionState() {
     managerRef.current.cancel();
     managerRef.current = null;
     accumulatedTextRef.current = '';
-    updateState({ status: 'cancelled', error: null });
-  }, [updateState]);
+    const params = paramsRef.current;
+    void finishExecution(
+      params?.onCancel,
+      { status: 'cancelled', error: null },
+      params?.onFinishingTimeout,
+    );
+  }, [finishExecution]);
 
   // ---- retryExecution ----
 
@@ -330,6 +447,7 @@ export function useAgentExecutionState() {
     }
     managerRef.current = null;
     accumulatedTextRef.current = '';
+    executionIdRef.current += 1;
     setState(INITIAL_STATE);
   }, []);
 

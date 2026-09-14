@@ -1268,17 +1268,34 @@ def contain_fit(nat_w: int, nat_h: int, box_w: int, box_h: int) -> Tuple[int, in
     return (_even(nat_w * k), _even(nat_h * k))
 
 
-def still_static_chain(box_w: int, box_h: int) -> str:
+#: At or above this the image is treated as fully opaque (no alpha filters).
+OPAQUE_THRESHOLD = 0.999
+
+
+def _opacity_filter(opacity: float) -> str:
+    """Multiply the image alpha; the overlay blends with it (EXO-02)."""
+    return f"colorchannelmixer=aa={opacity:.4f}"
+
+
+def still_static_chain(box_w: int, box_h: int, opacity: float = 1.0) -> str:
     """The legacy, motion-free image filter chain — character for character.
 
     This is the zero-regression contract (D16 / C11): the string between the
-    ``[k:v]`` and ``[imgN]`` labels for an image WITHOUT camera motion must be
-    byte-identical to the inline f-strings this constructor replaced, so "no
-    motion" is provably free rather than merely believed to be.
+    ``[k:v]`` and ``[imgN]`` labels for an OPAQUE image WITHOUT camera motion
+    must be byte-identical to the inline f-strings this constructor replaced,
+    so "no motion" is provably free rather than merely believed to be. A
+    translucent image converts to RGBA first so the padding stays transparent
+    and the opacity multiplies a real alpha channel.
     """
+    if opacity >= OPAQUE_THRESHOLD:
+        return (
+            f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease,"
+            f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:black@0"
+        )
     return (
-        f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease,"
-        f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:black@0"
+        f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease,format=rgba,"
+        f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:color=black@0,"
+        f"{_opacity_filter(opacity)}"
     )
 
 
@@ -1298,10 +1315,12 @@ class StillOverlayPlan:
     animated: bool
 
 
-def _static_plan(box_w: int, box_h: int, warnings: List[str]) -> StillOverlayPlan:
+def _static_plan(
+    box_w: int, box_h: int, warnings: List[str], opacity: float = 1.0,
+) -> StillOverlayPlan:
     return StillOverlayPlan(
         input_args=[],
-        chain=still_static_chain(box_w, box_h),
+        chain=still_static_chain(box_w, box_h, opacity),
         overlay_suffix="",
         warnings=warnings,
         animated=False,
@@ -1322,8 +1341,12 @@ def build_still_overlay_plan(
     label: str,
     ffmpeg_path: str,
     config: Optional[CameraMotionConfig] = None,
+    opacity: float = 1.0,
 ) -> StillOverlayPlan:
     """Build the overlay branch for ONE image (camera-motion-stills §4.4.2).
+
+    ``opacity`` below :data:`OPAQUE_THRESHOLD` multiplies the image alpha on
+    every branch, static or animated (round 2, EXO-02).
 
     The single constructor behind both image-overlay call sites (D16 / H3):
     injecting the motion in only one of them would make camera motion vanish as
@@ -1343,20 +1366,20 @@ def build_still_overlay_plan(
 
     # The user did not ask for motion — nothing to explain.
     if motion is None or is_identity_camera_motion(motion):
-        return _static_plan(box_w, box_h, warnings)
+        return _static_plan(box_w, box_h, warnings, opacity)
 
     if not config.stills_enabled:
         warnings.append(
             f"{label}: still-image camera motion is disabled on the server; "
             f"rendered without motion"
         )
-        return _static_plan(box_w, box_h, warnings)
+        return _static_plan(box_w, box_h, warnings, opacity)
 
     if nat_w <= 0 or nat_h <= 0:
         warnings.append(
             f"{label}: could not read the image dimensions; rendered without camera motion"
         )
-        return _static_plan(box_w, box_h, warnings)
+        return _static_plan(box_w, box_h, warnings, opacity)
 
     if nat_w * nat_h > config.stills_max_source_pixels:
         warnings.append(
@@ -1364,7 +1387,7 @@ def build_still_overlay_plan(
             f"{config.stills_max_source_pixels}px camera-motion limit; "
             f"rendered without motion"
         )
-        return _static_plan(box_w, box_h, warnings)
+        return _static_plan(box_w, box_h, warnings, opacity)
 
     cw, ch = contain_fit(nat_w, nat_h, box_w, box_h)
     if cw <= 0 or ch <= 0:
@@ -1372,7 +1395,7 @@ def build_still_overlay_plan(
             f"{label}: the image frame is too small for camera motion; "
             f"rendered without motion"
         )
-        return _static_plan(box_w, box_h, warnings)
+        return _static_plan(box_w, box_h, warnings, opacity)
 
     # The math kernel is shared with video verbatim — stills only feed it the
     # right "content rect" (§4.2). No new geometry, no second implementation.
@@ -1402,7 +1425,7 @@ def build_still_overlay_plan(
             chain = ""
 
     if not chain:
-        return _static_plan(box_w, box_h, warnings)
+        return _static_plan(box_w, box_h, warnings, opacity)
 
     # D18: contain-scale → camera → pad. The motion acts on the content rect,
     # exactly like the preview, instead of on a box already padded with
@@ -1413,8 +1436,10 @@ def build_still_overlay_plan(
         f"scale={cw}:{ch}:flags=bicubic",
         chain,
         f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:black@0",
-        f"setpts=PTS-STARTPTS+{_num(start_time)}/TB",
     ]
+    if opacity < OPAQUE_THRESHOLD:
+        parts.extend(["format=rgba", _opacity_filter(opacity)])
+    parts.append(f"setpts=PTS-STARTPTS+{_num(start_time)}/TB")
     return StillOverlayPlan(
         # D17: only an animated image becomes a stream. `zoompan=d=1` emits a
         # single frame for a single-frame input; measured 1 frame vs exactly 90

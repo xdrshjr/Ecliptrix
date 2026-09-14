@@ -153,3 +153,78 @@ describe('OperationApplier — track patch undo', () => {
       .toEqual({ items: ['a'], undoable: false });
   });
 });
+
+describe('OperationApplier — apply outcomes (AG2-02 / AG2-08 / AG2-16)', () => {
+  it('move_clip to a missing track leaves the clip and reports target-track-missing', async () => {
+    const state = { value: makeState() };
+
+    const outcome = await makeApplier(state).apply(
+      { type: 'move_clip', clipId: 'a', fromTrackId: 'v1', toTrackId: 'nowhere', newStartTime: 0 },
+      'tc-1',
+    );
+
+    expect({ outcome, items: itemIds(state.value) }).toEqual({
+      outcome: { status: 'rejected', reason: 'target-track-missing', trackId: 'nowhere', clipId: 'a' },
+      items: ['a'],
+    });
+  });
+
+  it('delete_clip of a missing clip reports clip-not-found', async () => {
+    const state = { value: makeState() };
+
+    const outcome = await makeApplier(state).apply(
+      { type: 'delete_clip', clipId: 'ghost', trackId: 'v1' },
+      'tc-1',
+    );
+
+    expect(outcome).toEqual({ status: 'rejected', reason: 'clip-not-found', trackId: 'v1', clipId: 'ghost' });
+  });
+
+  it('add_clip with a negative start leaves the timeline untouched', async () => {
+    const state = { value: makeState() };
+    const before = JSON.stringify(state.value);
+
+    const outcome = await makeApplier(state).apply(addClip('b', -3, 2), 'tc-1');
+
+    expect({ status: outcome.status, unchanged: JSON.stringify(state.value) === before })
+      .toEqual({ status: 'rejected', unchanged: true });
+  });
+
+  it('add_clip snapshots the material playback urls onto the item', async () => {
+    const state = { value: makeState() };
+    const operation = addClip('b', 5, 2);
+    if (operation.type === 'add_clip') {
+      operation.material = {
+        id: 'm-b', name: 'b', type: 'video',
+        url: '/api/storage/files/video/b.mp4',
+        serverUrl: '/api/storage/files/video/b.mp4',
+        cacheUrl: '/api/storage/files/video/b.mp4',
+        storageKey: 'video/b.mp4',
+        metadata: { storageKind: 'local', storageKey: 'video/b.mp4', localResolvedUrl: '/api/storage/files/video/b.mp4' },
+      };
+    }
+
+    await makeApplier(state).apply(operation, 'tc-1');
+
+    expect(state.value.tracks[0].items.find(i => i.id === 'b')).toMatchObject({
+      url: '/api/storage/files/video/b.mp4',
+      serverUrl: '/api/storage/files/video/b.mp4',
+      cacheUrl: '/api/storage/files/video/b.mp4',
+      storageKey: 'video/b.mp4',
+      metadata: { storageKind: 'local', storageKey: 'video/b.mp4' },
+    });
+  });
+
+  it('a batch with one rejected operation applies nothing', async () => {
+    const state = { value: makeState() };
+    const applier = makeApplier(state);
+
+    const outcome = await applier.applyBatch(
+      [addClip('scene-1', 5, 2), { type: 'delete_clip', clipId: 'ghost', trackId: 'v1' }],
+      'tc-9',
+    );
+
+    expect({ outcome: outcome.status, items: itemIds(state.value), undoable: applier.hasUndoableRecord('tc-9') })
+      .toEqual({ outcome: 'rejected', items: ['a'], undoable: false });
+  });
+});

@@ -15,6 +15,7 @@ import { Track } from '../entities/Track';
 import { TimelineItem } from '../entities/TimelineItem';
 import type { TimelineItemData } from '../types';
 import { TIME_EPSILON } from './ClipTimeMapping';
+import { MIN_CLIP_DURATION_SECONDS } from '../value-objects/Duration';
 import { rebaseCameraMotionForSplit } from '../../../playback/camera/splitRebase';
 
 /** Identifiers of the two halves produced by a successful split. */
@@ -39,6 +40,19 @@ function resolveClipBounds(data: TimelineItemData): { clipStart: number; clipEnd
   return { clipStart, clipEnd };
 }
 
+/** Slack so a cut exactly MIN_CLIP_DURATION_SECONDS from an edge survives float error (0.3 − 0.2). */
+const LENGTH_TOLERANCE_SECONDS = 1e-9;
+
+/**
+ * Whether cutting [start, end) at `tCut` leaves two pieces of at least
+ * MIN_CLIP_DURATION_SECONDS. A 1.5 ms sliver used to be accepted: invisible on
+ * the timeline and impossible to grab again.
+ */
+export function cutLeavesValidPieces(start: number, end: number, tCut: number): boolean {
+  const minimum = MIN_CLIP_DURATION_SECONDS - LENGTH_TOLERANCE_SECONDS;
+  return tCut - start >= minimum && end - tCut >= minimum;
+}
+
 export class SplitService {
   /** Prevent instantiation — all methods are static. */
   private constructor() {}
@@ -47,9 +61,10 @@ export class SplitService {
    * Split the item identified by `itemId` on `track` at track-timeline time
    * `tCut`.
    *
-   * No-op (returns null) when the item is absent, or when `tCut` does not fall
+   * No-op (returns null) when the item is absent, when `tCut` does not fall
    * strictly inside the item interval (startTime, endTime) with an epsilon
-   * margin — splitting exactly at an edge would yield a zero-length half.
+   * margin, or when either half would be shorter than
+   * MIN_CLIP_DURATION_SECONDS.
    *
    * @param track   The track owning the item; mutated in place on success.
    * @param itemId  The clip to split.
@@ -65,6 +80,9 @@ export class SplitService {
 
     // Strictly-inside check with epsilon margin (edge / out-of-range → no-op).
     if (tCut <= start + TIME_EPSILON || tCut >= end - TIME_EPSILON) {
+      return null;
+    }
+    if (!cutLeavesValidPieces(start, end, tCut)) {
       return null;
     }
 
@@ -83,12 +101,16 @@ export class SplitService {
 
     // The cut is a hard edge: the left half keeps only the leading transition
     // and the right half only the trailing one, so no fade appears mid-clip.
+    // A still has no source range: each half's interval is [0, its duration]
+    // (INV-3). Deriving it from the stored clip fields produced a reversed
+    // interval for agent-added images that carry clipEnd = 0.
+    const isStill = original.originalMaterialType === 'image';
     const leftData: TimelineItemData = {
       ...original,
       id: original.id,
       duration: offset,
-      clipStart,
-      clipEnd: splitSourceTime,
+      clipStart: isStill ? 0 : clipStart,
+      clipEnd: isStill ? offset : splitSourceTime,
       cameraMotion: rebased.left,
       transitionOut: undefined,
     };
@@ -98,8 +120,8 @@ export class SplitService {
       id: generateItemId(),
       startTime: tCut,
       duration: original.duration - offset,
-      clipStart: splitSourceTime,
-      clipEnd,
+      clipStart: isStill ? 0 : splitSourceTime,
+      clipEnd: isStill ? original.duration - offset : clipEnd,
       cameraMotion: rebased.right,
       transitionIn: undefined,
     };

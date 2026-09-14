@@ -6,9 +6,14 @@ import { resetVideoEditingStore } from '@/stores/videoEditingStore';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { getVideoProject } from '@/lib/api/videoProjects';
-import type { Conversation, VideoEditingTaskContent } from '@/types';
+import type { Conversation, MaterialItem, VideoEditingTaskContent } from '@/types';
 import { useProjectAutosave } from './hooks/useProjectAutosave';
-import { hydrateTimelineFromProjectData } from './hydrateTimeline';
+import {
+  hydrateTimelineFromProjectData,
+  withTimelineRecoveryBackup,
+  type HydrationResult,
+} from './hydrateTimeline';
+import { repairDerivedMaterialIdentity } from '../lib/derivedMaterial';
 
 /** Render a project's `updated_at` ISO string for the editor top strip.
  *  Mirrors ProjectCard's relative formatting so list ↔ editor agree. */
@@ -64,6 +69,16 @@ function rehydrateConversations(raw: unknown): Conversation[] | undefined {
   });
 }
 
+/** Derived materials saved before ME-01 still point at their original's file;
+ *  rebuild their storage identity so preview, export and delete use their own. */
+function repairProjectMaterials(data: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(data.materials)) return data;
+  const { materials, repairedIds } = repairDerivedMaterialIdentity(data.materials as MaterialItem[]);
+  if (repairedIds.length === 0) return data;
+  console.info('[project] repaired derived material identity', { count: repairedIds.length });
+  return { ...data, materials };
+}
+
 interface VideoEditorContainerProps {
   /** The persisted project ID to load and bind to. */
   projectId: string;
@@ -80,7 +95,8 @@ interface VideoEditorContainerProps {
  *  Lifecycle on `projectId` change:
  *    1. Reset the Zustand store so prior project state cannot leak (R-F).
  *    2. Fetch the project record from the backend (touches last_opened_at).
- *    3. Hydrate local `content` from `project_data`.
+ *    3. Hydrate local `content` from `project_data` (repairing what cannot be
+ *       read, and backing up a timeline that still cannot — RV-01).
  *    4. Mount `VideoEditingInterface` with `key={projectId}` so it remounts.
  *    5. Autosave fires on every content change (R-C debounce contract).
  */
@@ -90,18 +106,31 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
   onCloseProject,
 }) => {
   const { t } = useLocale();
-  const { showError } = useNotification();
+  const { showError, showWarning } = useNotification();
   const [content, setContent] = useState<VideoEditingTaskContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectMeta, setProjectMeta] = useState<{ name: string; updatedAt: string } | null>(null);
   const lastShownErrorRef = useRef<string | null>(null);
+  // Read by the load effect, which must not refetch the project on a locale change.
+  const translationsRef = useRef(t);
+  translationsRef.current = t;
 
   // Reset Zustand state BEFORE hydration on every project switch (R-F).
   useEffect(() => {
     resetVideoEditingStore();
   }, [projectId]);
+
+  const announceHydration = useCallback((hydration: HydrationResult) => {
+    const messages = translationsRef.current.videoProjects;
+    if (hydration.status === 'repaired') {
+      const count = hydration.report.clampedItemIds.length + hydration.report.droppedItemIds.length;
+      showWarning(messages.timelineRepaired.replace('{count}', String(count)));
+    } else if (hydration.status === 'failed') {
+      showError(messages.timelineUnreadable);
+    }
+  }, [showError, showWarning]);
 
   // Fetch the project on mount / projectId change.
   useEffect(() => {
@@ -115,13 +144,14 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
         const record = await getVideoProject(projectId);
         if (cancelled) return;
         setProjectMeta({ name: record.name, updatedAt: record.updated_at });
-        const data = (record.project_data ?? {}) as Record<string, unknown>;
+        const persisted = (record.project_data ?? {}) as Record<string, unknown>;
         // Hydrate the timeline store BEFORE setContent. setContent triggers
         // VideoEditingInterface mount → TimelinePanel mount; the panel checks
         // `tracks.length === 0` to decide whether to seed defaults. By
         // importing persisted tracks here, the default-init branch only
         // fires for fresh projects.
-        hydrateTimelineFromProjectData(data);
+        const hydration = hydrateTimelineFromProjectData(persisted);
+        const data = repairProjectMaterials(withTimelineRecoveryBackup(persisted, hydration));
         // Re-hydrate the lastModified date if it was persisted as ISO string.
         // Spread first so explicit overrides (Date object, default markdown)
         // win over the persisted string form.
@@ -138,18 +168,20 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
         } as VideoEditingTaskContent;
         setContent(hydrated);
         setLoading(false);
+        announceHydration(hydration);
       } catch (err) {
         if (cancelled) return;
         console.error('[VideoEditorContainer] Failed to load project', err);
-        setError(t.videoProjects.loadError);
+        const loadError = translationsRef.current.videoProjects.loadError;
+        setError(loadError);
         setLoading(false);
-        showError(t.videoProjects.loadError);
+        showError(loadError);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [projectId, showError, t.videoProjects.loadError]);
+  }, [projectId, showError, announceHydration]);
 
   const handleUpdateContent = useCallback(
     (next: VideoEditingTaskContent) => {

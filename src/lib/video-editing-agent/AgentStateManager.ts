@@ -14,6 +14,7 @@
 
 import type { ChatMessage, AgentToolCallRecord, AgentTimelineOperation } from '@/types';
 import type { AgentOperation } from './types';
+import { compactToolResult } from './compactToolResult';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,7 +109,11 @@ export class AgentStateManager {
     this.scheduleFlush();
   }
 
-  /** Update a tool call's status and result. */
+  /**
+   * Update a tool call's status and result. The result is stored without
+   * inline media: it is persisted with the conversation and replayed to the
+   * model on every later turn.
+   */
   updateToolStatus(
     toolCallId: string,
     status: 'completed' | 'error' | 'cancelled',
@@ -119,7 +124,7 @@ export class AgentStateManager {
       this.toolCalls[idx] = {
         ...this.toolCalls[idx],
         status,
-        result,
+        result: compactToolResult(result),
       };
     } else {
       // Tool result arrived before tool_call event (unlikely but defensive)

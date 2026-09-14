@@ -14,6 +14,7 @@ import type { MaterialItem, TimelineState } from '@/types';
 import type { TimelineData, TrackData } from '../../timeline/domain';
 import { useTimelineStore } from '../../timeline/store/useTimelineStore';
 import {
+  AiMixImportError,
   mapAiMixError,
   toAiMixMaterialDtos,
   useAIMixedEditing,
@@ -372,6 +373,92 @@ describe('useAIMixedEditing', () => {
       isOpen: result.current.isModeModalOpen,
       errors: notify.showError.mock.calls,
     }).toEqual({ isOpen: false, errors: [[en.aiMixingProgress.errorNoMaterials]] });
+  });
+
+  it('shows errorImportFailed when the import endpoint rejects the plan', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    post.mockImplementation((path: string) => (path === '/api/ai-mixed-editing'
+      ? Promise.resolve({ success: true, timelineData: { metadata: { warnings: [] } } })
+      : Promise.reject(new ApiError(400, 'HTTP_400', "{'errors': ['tracks[2].id duplicated']}"))));
+    const { result } = renderHook(() => useAIMixedEditing(hookOptions()));
+
+    await act(async () => { await result.current.start(QUICK); });
+
+    expect(notify.showError.mock.calls).toEqual([[en.aiMixingProgress.errorImportFailed]]);
+  });
+
+  it('counts packed items in the partial warning', async () => {
+    const gapped: TimelineState = {
+      ...importedPlan,
+      tracks: importedPlan.tracks.map((track) => ({
+        ...track,
+        items: track.items.map((item) => ({ ...item, startTime: 2 })),
+      })),
+    };
+    post.mockImplementation((path: string) => Promise.resolve(
+      path === '/api/ai-mixed-editing'
+        ? { success: true, timelineData: { metadata: { warnings: [] } } }
+        : { success: true, importedData: { timelineState: gapped } },
+    ));
+    const { result } = renderHook(() => useAIMixedEditing(hookOptions()));
+
+    await act(async () => { await result.current.start(QUICK); });
+
+    expect({
+      warnings: notify.showWarning.mock.calls,
+      start: currentTimeline().tracks[0].items[0].startTime,
+    }).toEqual({
+      warnings: [[en.aiMixingProgress.partialWarning.replace('{count}', '1')]],
+      start: 0,
+    });
+  });
+
+  it('warns when footage analysis failed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    respondWithPlan();
+    analyzeVideosInBatch.mockResolvedValue([{ success: false }]);
+    const { result } = renderHook(() => useAIMixedEditing(hookOptions()));
+
+    await act(async () => { await result.current.start(QUICK); });
+
+    expect(notify.showWarning.mock.calls)
+      .toEqual([[en.aiMixingProgress.analysisIncomplete.replace('{count}', '1')]]);
+  });
+});
+
+describe('mapAiMixError · every code (AM2-03)', () => {
+  const backendText = "{'detail': 'Traceback (most recent call last): KeyError'}";
+  const expectations: Array<[string, string]> = [
+    ['AI_MIX_MODEL_NOT_CONFIGURED', en.aiMixingProgress.errorModelNotConfigured],
+    ['AI_MIX_LLM_UPSTREAM_FAILED', en.aiMixingProgress.errorUpstream],
+    ['AI_MIX_PLAN_UNPARSEABLE', en.aiMixingProgress.errorUnparseable],
+    ['AI_MIX_INVALID_REQUEST', en.aiMixingProgress.errorNoMaterials],
+    ['AI_MIX_INTERNAL', en.aiMixingProgress.errorInternal],
+    ['BACKEND_TIMEOUT', en.aiMixingProgress.errorTimeout],
+    ['BACKEND_UNREACHABLE', en.aiMixingProgress.errorBackendUnreachable],
+    ['NETWORK_ERROR', en.aiMixingProgress.errorBackendUnreachable],
+    ['VALIDATION_ERROR', en.aiMixingProgress.errorInvalidRequest],
+    ['TIMELINE_IMPORT_INVALID', en.aiMixingProgress.errorImportFailed],
+    ['HTTP_500', en.aiMixingProgress.errorInternal],
+  ];
+
+  it('maps every AI_MIX_* and proxy error code to a localized message without backend text', () => {
+    const mapped = expectations
+      .map(([code]) => mapAiMixError(new ApiError(500, code, backendText), en));
+
+    expect({
+      mapped,
+      leaksBackendText: mapped.some((message) => message.includes('Traceback')),
+    }).toEqual({
+      mapped: expectations.map(([, message]) => message),
+      leaksBackendText: false,
+    });
+  });
+
+  it('maps import failures to errorImportFailed', () => {
+    const error = new AiMixImportError(new ApiError(400, 'HTTP_400', backendText));
+
+    expect(mapAiMixError(error, en)).toBe(en.aiMixingProgress.errorImportFailed);
   });
 });
 

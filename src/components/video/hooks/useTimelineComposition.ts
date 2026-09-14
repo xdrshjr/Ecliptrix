@@ -6,6 +6,12 @@ import { CompositionAdapter } from '../timeline/infrastructure';
 import type { TrackData, MaterialData } from '../timeline/domain/types';
 import { findSequenceAtCompositionTime } from '../utils/timelineMapping';
 import { cameraMotionFingerprint } from '../playback/camera/fingerprint';
+import {
+  collectRenderSpans,
+  computeRenderEnd,
+  indexMaterialsById,
+  type RenderSpan,
+} from '../timeline/infrastructure/renderableTimeline';
 
 /**
  * 折叠一个素材的「播放相关字段」为一段稳定字符串。
@@ -109,6 +115,7 @@ export function computeCompositionSignature(
   audioSequences: AudioSequenceItem[],
   subtitleSequences: SubtitleSequenceItem[],
   materials: MaterialItem[],
+  renderSignature = '',
 ): string {
   const materialsById = new Map(materials.map(m => [m.id, m] as const));
   const videoPart = videoSequences
@@ -120,7 +127,20 @@ export function computeCompositionSignature(
   const subtitlePart = subtitleSequences
     .map(subtitlePlaybackSignature)
     .join('#');
-  return `V:${videoPart}||A:${audioPart}||S:${subtitlePart}`;
+  const signature = `V:${videoPart}||A:${audioPart}||S:${subtitlePart}`;
+  return renderSignature ? `${signature}||R:${renderSignature}` : signature;
+}
+
+/**
+ * ME-07：图片不在视频/音频/字幕序列里，但图片的增删改与时间轴终点变化同样要触发
+ * 组合状态刷新（否则「图片 + 配音」时间轴改了图片时长，预览终点仍停在旧值）。
+ */
+export function computeRenderSignature(spans: readonly RenderSpan[], totalDuration: number): string {
+  const imagePart = spans
+    .filter(span => span.kind === 'image')
+    .map(span => `${span.itemId}:${span.start}:${span.end}`)
+    .join('|');
+  return `${imagePart}#${totalDuration}`;
 }
 
 /**
@@ -204,13 +224,18 @@ export const useTimelineComposition = (
     const videoSequences = getVideoSequencesFromTimeline(timelineState);
     const audioSequences = getAudioSequencesFromTimeline(timelineState);
     const subtitleSequences = getSubtitleSequencesFromTimeline(timelineState);
-    const totalDuration = videoSequences.reduce((total, seq) => total + seq.duration, 0);
+    // ME-07 / S5：预览终点 = 最晚的渲染条目结束时间（与导出 total_duration 同一口径），
+    // 不是视频片段时长之和；只要有任何可渲染条目（含仅图片 + 配音）就进入合成预览。
+    const spans = collectRenderSpans(timelineState.tracks, indexMaterialsById(materials));
+    const totalDuration = computeRenderEnd(spans);
+    const isCompositionMode = spans.length > 0;
 
     // R-5：先比对（廉价的）字符串签名，签名未变则连 setState 都不触发，
     // 避免 materials 频繁换引用时的播放重置抖动。签名纳入字幕序列，字幕新增/
     // 改文本/改样式同样触发刷新。
     const nextSignature = computeCompositionSignature(
       videoSequences, audioSequences, subtitleSequences, materials,
+      computeRenderSignature(spans, totalDuration),
     );
     if (nextSignature === compositionSignatureRef.current) {
       return;
@@ -221,7 +246,9 @@ export const useTimelineComposition = (
       videoSequencesCount: videoSequences.length,
       audioSequencesCount: audioSequences.length,
       subtitleSequencesCount: subtitleSequences.length,
-      isCompositionMode: videoSequences.length > 0
+      renderSpanCount: spans.length,
+      totalDuration,
+      isCompositionMode,
     });
 
     setCompositionPlayback(prev => {
@@ -241,7 +268,7 @@ export const useTimelineComposition = (
         audioSequences,
         subtitleSequences,
         totalCompositionDuration: totalDuration,
-        isCompositionMode: videoSequences.length > 0,
+        isCompositionMode,
         currentSequenceIndex: nextSequenceIndex
       };
     });

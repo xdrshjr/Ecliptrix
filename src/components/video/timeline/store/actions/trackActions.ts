@@ -6,6 +6,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 import { clampVolume, getDefaultTrackHeight, type TrackKind } from '../../constants';
 
 /**
@@ -15,6 +16,7 @@ export function toggleTrackLockAction(
   get: () => TimelineStore,
   trackId: string,
 ): void {
+  if (isEditLocked(get())) return;
   const state = get();
   state.recordAction('TRACK_LOCK', { trackId });
   state.toggleTrackLock(trackId);
@@ -28,6 +30,7 @@ export function toggleTrackMuteAction(
   get: () => TimelineStore,
   trackId: string,
 ): void {
+  if (isEditLocked(get())) return;
   const state = get();
   state.recordAction('TRACK_MUTE', { trackId });
   state.toggleTrackMute(trackId);
@@ -41,6 +44,7 @@ export function toggleTrackVisibilityAction(
   get: () => TimelineStore,
   trackId: string,
 ): void {
+  if (isEditLocked(get())) return;
   const state = get();
   state.recordAction('TRACK_VISIBILITY', { trackId });
   state.toggleTrackVisibility(trackId);
@@ -57,6 +61,7 @@ export function setTrackVolumeAction(
   trackId: string,
   volume: number,
 ): void {
+  if (isEditLocked(get())) return;
   const clamped = clampVolume(volume);
   const state = get();
   state.recordAction('TRACK_VOLUME', { trackId, volume: clamped });
@@ -81,6 +86,7 @@ export function setTrackVolumePreviewAction(
   trackId: string,
   volume: number,
 ): void {
+  if (isEditLocked(get())) return;
   get().setTrackVolume(trackId, clampVolume(volume));
 }
 
@@ -96,7 +102,9 @@ export function setTrackVolumePreviewAction(
  * would jump to a mid-gesture frame instead of the pre-gesture value. To keep
  * "one gesture = one clean undo", first restore the pre-gesture value (no
  * history), then record the history entry for the final value — so the
- * before-snapshot reflects the true start of the gesture.
+ * before-snapshot reflects the true start of the gesture. A gesture the
+ * agent's edit lock interrupted ends at the pre-gesture value with no entry,
+ * rather than leaving an unrecorded preview value in the store.
  *
  * @param preGestureVolume  track.volume captured before the gesture started.
  * @param finalVolume       The released value to commit (percentage, 0-200).
@@ -108,6 +116,7 @@ export function commitTrackVolumeAction(
   finalVolume: number,
 ): void {
   get().setTrackVolume(trackId, clampVolume(preGestureVolume));
+  if (isEditLocked(get())) return;
   setTrackVolumeAction(get, trackId, finalVolume);
 }
 
@@ -124,7 +133,8 @@ export interface AddTrackParams {
 }
 
 export interface AddTrackResult {
-  trackId: string;
+  /** null when the edit was refused because the agent holds the edit lock. */
+  trackId: string | null;
 }
 
 /**
@@ -139,6 +149,7 @@ export function addTrackAction(
   get: () => TimelineStore,
   { type, baseTrackName }: AddTrackParams,
 ): AddTrackResult {
+  if (isEditLocked(get())) return { trackId: null };
   const state = get();
   const existingIds = state.tracks.map(tr => tr.id);
 
@@ -237,7 +248,8 @@ export type RemoveTrackResult =
   | { ok: true }
   | { ok: false; reason: 'LAST_TRACK' }
   | { ok: false; reason: 'LAST_OF_GROUP'; group: RemoveTrackGroupKey }
-  | { ok: false; reason: 'NOT_FOUND' };
+  | { ok: false; reason: 'NOT_FOUND' }
+  | { ok: false; reason: 'EDIT_LOCKED' };
 
 /**
  * Remove a track.
@@ -253,6 +265,7 @@ export function removeTrackAction(
   get: () => TimelineStore,
   trackId: string,
 ): RemoveTrackResult {
+  if (isEditLocked(get())) return { ok: false, reason: 'EDIT_LOCKED' };
   const state = get();
   const tracks = state.tracks;
 

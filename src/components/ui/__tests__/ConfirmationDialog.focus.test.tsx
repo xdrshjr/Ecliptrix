@@ -6,13 +6,14 @@ import ts from 'typescript';
 // @ts-expect-error -- Vite resolves ?raw imports; this repo has no ambient typing for them
 import dialogSource from '../ConfirmationDialog.tsx?raw';
 import type { ConfirmationDialogProps } from '../ConfirmationDialog';
+import * as focusTrap from '../focusTrap';
 import { shouldTimelineHandleKeyEvent } from '@/components/video/timeline/shortcutOwnership';
 
 /**
  * tsconfig keeps JSX as `preserve`, which Vitest's esbuild honours, so the
  * component cannot be imported directly (and `fs` is externalised under
- * jsdom). Compile its raw source with the TypeScript API — its only runtime
- * import is React — and render the real component.
+ * jsdom). Compile its raw source with the TypeScript API — its runtime
+ * imports are React and the shared focus trap — and render the real component.
  */
 function loadConfirmationDialog(): React.FC<ConfirmationDialogProps> {
   const { outputText } = ts.transpileModule(String(dialogSource), {
@@ -23,7 +24,11 @@ function loadConfirmationDialog(): React.FC<ConfirmationDialogProps> {
       esModuleInterop: true,
     },
   });
-  const modules: Record<string, unknown> = { react: React, 'react/jsx-runtime': jsxRuntime };
+  const modules: Record<string, unknown> = {
+    react: React,
+    'react/jsx-runtime': jsxRuntime,
+    './focusTrap': focusTrap,
+  };
   const compiled = { exports: {} as { default?: React.FC<ConfirmationDialogProps> } };
   const requireModule = (id: string) => {
     if (id in modules) return modules[id];

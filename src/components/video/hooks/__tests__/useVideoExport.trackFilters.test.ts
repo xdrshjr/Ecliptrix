@@ -51,10 +51,10 @@ vi.mock('@/contexts/LocaleContext', () => ({
   useLocale: () => ({
     t: {
       videoExport: {
-        videoTrackTooShort: 'too short',
-        videoTrackDuration: 'video',
-        audioTrackDuration: 'audio',
-        needToAdd: 'add',
+        nothingVisibleToExport: 'nothing visible',
+        missingMaterials: 'missing {count}: {names}',
+        blackTailNotice: 'black {seconds}',
+        moreItems: 'and {count} more',
         exportFailedWithError: 'failed:',
         exportFailed: 'failed',
         exportTimeout: 'timeout',
@@ -200,9 +200,9 @@ describe('useVideoExport track filters', () => {
     }).toEqual({ video: ['video-1'], audio: ['audio-1'] });
   });
 
-  it('counts locked video tracks when validating export duration', async () => {
-    // Previously a locked video track counted as 0s, so any audio made the
-    // "video track too short" check fail.
+  it('counts locked video tracks as rendered picture', async () => {
+    // A locked video track renders; it must neither be reported as "nothing
+    // visible" nor produce a black-tail notice for audio of the same length.
     await runExport(
       [
         track('v', 'video', [clip('video-1', 'video', 'mv')], { isLocked: true }),
@@ -211,7 +211,8 @@ describe('useVideoExport track filters', () => {
       [material('mv', 'video'), material('ma', 'audio')],
     );
 
-    expect(showError).not.toHaveBeenCalled();
+    expect({ errors: showError.mock.calls, warnings: showWarning.mock.calls })
+      .toEqual({ errors: [], warnings: [] });
   });
 
   it('skips muted audio tracks on export', async () => {

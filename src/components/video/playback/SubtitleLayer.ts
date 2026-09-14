@@ -80,7 +80,9 @@ function positionToVAnchor(position: unknown): number {
 }
 
 /**
- * Subtitle items covering timeline time `t` (half-open interval with epsilon).
+ * Subtitle items covering timeline time `t`: half-open `[start, end)` with the
+ * same epsilon cushion as image overlays. Adjacent subtitles therefore never
+ * share a boundary frame, matching the export's `gte(t,s)*lt(t,e)` window.
  * Items are NOT required to be sorted; subtitle tracks may overlap.
  */
 export function activeSubtitlesAt(
@@ -91,7 +93,7 @@ export function activeSubtitlesAt(
   for (const item of items) {
     const start = item.startTime;
     const end = item.startTime + item.duration;
-    if (t >= start - TIME_EPSILON && t <= end + TIME_EPSILON) {
+    if (t >= start - TIME_EPSILON && t < end - TIME_EPSILON) {
       hits.push(item);
     }
   }

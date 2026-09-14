@@ -9,6 +9,7 @@
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+import { isEditLocked } from '../editLock';
 
 /**
  * Move a timeline item to a new start time.
@@ -25,6 +26,7 @@ export function moveItemAction(
   isPreview: boolean = false,
 ): void {
   const state = get();
+  if (isEditLocked(state)) return;
 
   if (!isPreview) {
     // Record history (captures before-snapshot)

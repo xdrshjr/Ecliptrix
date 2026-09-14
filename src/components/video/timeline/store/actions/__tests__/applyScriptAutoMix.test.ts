@@ -3,12 +3,14 @@ import type { MaterialItem } from '@/types';
 import { useTimelineStore } from '../../useTimelineStore';
 import type { TimelineData, TrackData } from '../../../domain';
 import { planScriptAutoMix } from '@/components/video/lib/aiMix/planScriptAutoMix';
+import { findOrganizeDrift } from '@/test/organizeFixedPoint';
 import { applyScriptAutoMixAction } from '../applyScriptAutoMix';
 
 function scriptMaterial(
   id: string,
   type: 'audio' | 'video',
   duration: number,
+  segment = 1,
 ): MaterialItem {
   return {
     id,
@@ -19,7 +21,7 @@ function scriptMaterial(
     duration,
     url: `/api/storage/files/${id}`,
     createdAt: new Date('2026-09-01T00:00:00Z'),
-    metadata: { segment_id: 'segment-1', segment_number: 1 },
+    metadata: { segment_id: `segment-${segment}`, segment_number: segment },
   };
 }
 
@@ -65,6 +67,7 @@ function seedTimeline(tracks: TrackData[]): void {
     scrollLeft: 0,
     tracks,
   };
+  useTimelineStore.getState().setExternalEditLock(null);
   useTimelineStore.getState().initTimeline(data);
   useTimelineStore.getState().clearHistory();
 }
@@ -142,6 +145,40 @@ describe('applyScriptAutoMixAction', () => {
 
     expect({ result, canUndo: get().canUndo }).toEqual({
       result: { ok: false, reason: 'no-target-track' },
+      canUndo: false,
+    });
+  });
+
+  it('keeps segment boundaries aligned after an unrelated edit repacks the tracks', () => {
+    // 10.05 s of voice-over over a 10 s video used to leave a 0.05 s hole that
+    // the next edit's auto-organize closed, pulling segment 2 early.
+    const twoSegments = planScriptAutoMix([
+      scriptMaterial('tts-1', 'audio', 10.05, 1),
+      scriptMaterial('video-1', 'video', 10, 1),
+      scriptMaterial('tts-2', 'audio', 3, 2),
+      scriptMaterial('video-2', 'video', 5, 2),
+    ]);
+    applyScriptAutoMixAction(get, twoSegments);
+    const drift = findOrganizeDrift(get().exportToData());
+    get().autoOrganize();
+    // Rounded: the store's own packing sums floats (9.95 + 0.1 = 10.049999…).
+    const segmentTwoStarts = get().exportToData().tracks
+      .slice(0, 2)
+      .map((lane) => lane.items.find((item) => item.materialId?.endsWith('-2'))?.startTime)
+      .map((start) => (start === undefined ? start : Math.round(start * 1e6) / 1e6));
+
+    expect({ drift, segmentTwoStarts }).toEqual({ drift: [], segmentTwoStarts: [10.05, 10.05] });
+  });
+
+  it('refuses with edit-locked while the agent holds the lock', () => {
+    get().setExternalEditLock('agent');
+    const before = get().exportToData().tracks;
+
+    const result = applyScriptAutoMixAction(get, plan);
+
+    expect({ result, tracks: get().exportToData().tracks, canUndo: get().canUndo }).toEqual({
+      result: { ok: false, reason: 'edit-locked' },
+      tracks: before,
       canUndo: false,
     });
   });

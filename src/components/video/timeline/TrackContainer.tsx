@@ -35,6 +35,8 @@ interface TrackContainerProps {
   onRetryLocalDownload?: (materialId: string) => void;
   /** Open the camera-motion panel for a clip (camera-motion-2d-3d §4.5.1). */
   onOpenCameraMotion?: (itemId: string) => void;
+  /** A material dragged from the materials panel was dropped on a lane. */
+  onMaterialDrop: (materialId: string, trackId: string) => void;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -48,6 +50,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   localPreviewEnabled,
   onRetryLocalDownload,
   onOpenCameraMotion,
+  onMaterialDrop,
 }) => {
   const { t, locale: contextLocale } = useLocale();
 
@@ -341,6 +344,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   localPreviewEnabled={localPreviewEnabled}
                   onRetryLocalDownload={onRetryLocalDownload}
                   onOpenCameraMotion={onOpenCameraMotion}
+                  onMaterialDrop={onMaterialDrop}
                 />
               ))
             ) : (

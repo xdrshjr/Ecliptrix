@@ -14,6 +14,9 @@ export {
   isInteracting,
   isCommitted,
   getDragPreview,
+  detectInteractionType,
+  edgeHandleWidthPx,
+  MIN_MOVE_ZONE_PX,
 } from './dragMachine';
 
 export type {

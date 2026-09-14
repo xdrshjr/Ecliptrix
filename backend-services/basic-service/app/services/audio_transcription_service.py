@@ -32,12 +32,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import subprocess
 import tempfile
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import aiofiles
 import websockets
@@ -85,6 +86,81 @@ def _format_srt_time(milliseconds: int) -> str:
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{ms:03d}"
+
+
+# A subtitle cut below this by the clip window is a sliver of speech from
+# outside the kept range, not something worth showing.
+_MIN_MAPPED_SUBTITLE_MS = 100
+
+
+def map_subtitles_to_timeline(
+    subtitles: Sequence[Any],
+    *,
+    clip_start_s: float,
+    clip_end_s: float,
+    timeline_start_s: float,
+    min_duration_ms: int = _MIN_MAPPED_SUBTITLE_MS,
+) -> List[Dict[str, Any]]:
+    """源文件时间（毫秒）→ 时间轴时间（毫秒）。
+
+    Only the part of each subtitle inside the played source window
+    ``[clip_start, clip_end)`` is kept, clipped to that window and shifted by
+    ``timeline_start - clip_start``: trimmed-away speech never shows up and
+    the two halves of a split clip never duplicate each other.
+    """
+    window_start = round(clip_start_s * 1000)
+    window_end = round(clip_end_s * 1000)
+    offset = round((timeline_start_s - clip_start_s) * 1000)
+    mapped: List[Dict[str, Any]] = []
+    for subtitle in subtitles:
+        start = max(int(subtitle.start_time), window_start)
+        end = min(int(subtitle.end_time), window_end)
+        if end - start < min_duration_ms:
+            continue
+        mapped.append(
+            {
+                "start_time": start + offset,
+                "end_time": end + offset,
+                "text": subtitle.text,
+            }
+        )
+    return mapped
+
+
+def _finite_float(value: Any) -> Optional[float]:
+    """``value`` as a finite float; None when missing or not a number."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _clip_window(item: Dict[str, Any], duration_s: float) -> Tuple[float, float]:
+    """Source range ``[clip_start, clip_end)`` a timeline item plays (seconds).
+
+    A missing or reversed ``clip_end`` means "``duration`` seconds from
+    ``clip_start``" — the same rule the timeline applies to its items.
+    """
+    clip_start = max(0.0, _finite_float(item.get("clip_start")) or 0.0)
+    clip_end = _finite_float(item.get("clip_end"))
+    if clip_end is None or clip_end <= clip_start:
+        clip_end = clip_start + duration_s
+    return clip_start, clip_end
+
+
+def _subtitles_to_srt(subtitles: Sequence[Dict[str, Any]]) -> str:
+    """Timeline-mapped subtitle dicts → SRT text (empty string when none)."""
+    lines: List[str] = []
+    for index, subtitle in enumerate(subtitles, 1):
+        lines.append(str(index))
+        lines.append(
+            f"{_format_srt_time(subtitle['start_time'])} --> "
+            f"{_format_srt_time(subtitle['end_time'])}"
+        )
+        lines.append(subtitle["text"])
+        lines.append("")
+    return "\n".join(lines)
 
 
 class VolcanoAsrError(RuntimeError):
@@ -656,6 +732,8 @@ class AudioTranscriptionService:
             )
         return results
 
+    # Over 60 lines: one try/finally owns temp-file cleanup for every return
+    # path; ME-03 moved its subtitle mapping and SRT building into helpers.
     async def _transcribe_single_item(
         self,
         item: Dict[str, Any],
@@ -724,30 +802,17 @@ class AudioTranscriptionService:
                         ) or transcription_result.get("error") or "转录失败",
                     }
 
-                # Adjust timestamps to the timeline origin.
-                offset_ms = int(timeline_start_time * 1000)
-                adjusted_subtitles: List[Dict[str, Any]] = []
-                for subtitle in transcription_result.get("subtitles", []) or []:
-                    adjusted_subtitles.append(
-                        {
-                            "start_time": subtitle.start_time + offset_ms,
-                            "end_time": subtitle.end_time + offset_ms,
-                            "text": subtitle.text,
-                        }
-                    )
-
-                srt_content = ""
-                if adjusted_subtitles:
-                    srt_lines: List[str] = []
-                    for idx, sub in enumerate(adjusted_subtitles, 1):
-                        srt_lines.append(str(idx))
-                        srt_lines.append(
-                            f"{_format_srt_time(sub['start_time'])} --> "
-                            f"{_format_srt_time(sub['end_time'])}"
-                        )
-                        srt_lines.append(sub["text"])
-                        srt_lines.append("")
-                    srt_content = "\n".join(srt_lines)
+                # ME-03: ASR transcribes the whole source file, but a trimmed
+                # clip only plays part of it — keep that part, then move it
+                # to where the clip sits on the timeline.
+                clip_start_s, clip_end_s = _clip_window(item, timeline_duration)
+                adjusted_subtitles = map_subtitles_to_timeline(
+                    transcription_result.get("subtitles", []) or [],
+                    clip_start_s=clip_start_s,
+                    clip_end_s=clip_end_s,
+                    timeline_start_s=timeline_start_time,
+                )
+                srt_content = _subtitles_to_srt(adjusted_subtitles)
 
                 return {
                     "audio_item_id": audio_item_id,

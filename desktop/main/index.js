@@ -242,6 +242,9 @@ function createMainWindow(url) {
     },
     version: app.getVersion(),
     logsPath: state.logsPath,
+    logger: state.logger,
+    // Once before-quit has stopped the services a flush can only fail (RV-02).
+    isQuitting: () => state.quitting,
   })
   state.logger.info('main', `main window created (bounds=${JSON.stringify(state.mainWindow.getBounds())})`)
   state.mainWindow.once('show', () => {

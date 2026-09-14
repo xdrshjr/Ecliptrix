@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { AgentEventRouter } from '../AgentEventRouter';
+import { AgentStateManager } from '../AgentStateManager';
+import { OperationApplier } from '../OperationApplier';
 import { createAutoFixOverlapsTool } from '../tools/autoFixOverlaps';
 import type { ToolContext, AgentOperation, TimelineOperation } from '../types';
 import type { TimelineState, TimelineItem } from '@/types';
@@ -116,15 +119,85 @@ describe('auto_fix_overlaps tool', () => {
       { id: 'v1', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
         items: [
           item('a', 5, 3, 'v1'),
-          item('b', 1, 2, 'v1'),
+          item('b', 1, 6, 'v1'), // 1–7 overlaps a
           item('c', 8, 2, 'v1'),
         ] },
     ]);
     const d = await run(ctx);
-    // After packing in startTime order: b->0, a->2, c->5
+    // After packing in startTime order: b->0, a->6, c->9
     const moves = d.operations.filter((o): o is Extract<TimelineOperation, { type: 'move_clip' }> => o.type === 'move_clip');
     const ids = moves.map(m => m.clipId).sort();
-    // 'a' moved 5->2, 'b' moved 1->0, 'c' moved 8->5
     expect(ids).toEqual(['a', 'b', 'c']);
+  });
+
+  it('auto_fix_overlaps leaves tracks without overlaps untouched', async () => {
+    const ctx = makeContext([
+      { id: 'v1', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
+        items: [item('a', 0, 5, 'v1'), item('b', 3, 4, 'v1')] },
+      // Narration that starts at 3 s (aligned to subtitles) has no overlap.
+      { id: 'a1', name: 'a', type: 'audio', height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1,
+        items: [item('voice', 3, 2, 'a1', 'audio')] },
+    ]);
+    const d = await run(ctx) as Awaited<ReturnType<typeof run>> & {
+      fixedTrackIds: string[];
+      shiftedClips?: Array<{ clipId: string; from: number; to: number }>;
+    };
+    expect({
+      fixedTrackIds: d.fixedTrackIds,
+      shiftedClips: d.shiftedClips,
+      voiceStart: ctx.timelineState.tracks[1].items[0].startTime,
+    }).toEqual({
+      fixedTrackIds: ['v1'],
+      shiftedClips: [{ clipId: 'b', from: 3, to: 5 }],
+      voiceStart: 3,
+    });
+  });
+
+  describe('client replay', () => {
+    function overlappingTrack(): TimelineState['tracks'] {
+      return [
+        { id: 'v1', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
+          items: [item('a', 0, 5, 'v1'), item('b', 2, 2, 'v1'), item('c', 3, 3, 'v1'), item('d', 4, 5, 'v1')] },
+      ];
+    }
+
+    function startsById(state: TimelineState): Record<string, number> {
+      return Object.fromEntries(state.tracks[0].items.map(i => [i.id, i.startTime]));
+    }
+
+    /** Runs the tool on one copy and routes its result to a client applier holding another. */
+    async function fixOnToolAndClient() {
+      const tool = makeContext(overlappingTrack());
+      const result = await run(tool);
+      const client = { value: makeContext(overlappingTrack()).timelineState };
+      const applier = new OperationApplier({
+        getTimelineState: () => client.value,
+        setTimelineState: next => { client.value = next; },
+      });
+      const router = new AgentEventRouter({
+        stateManager: new AgentStateManager('msg-1'),
+        operationApplier: applier,
+      });
+      await router.handleEvent({
+        type: 'tool_result', toolCallId: 'tc-1', toolName: 'auto_fix_overlaps', result, operation: null,
+      });
+      return { tool, client, applier };
+    }
+
+    it('the client lands on the layout auto_fix_overlaps reported', async () => {
+      const { tool, client } = await fixOnToolAndClient();
+
+      expect({ tool: startsById(tool.timelineState), client: startsById(client.value) })
+        .toEqual({ tool: { a: 0, b: 5, c: 7, d: 10 }, client: { a: 0, b: 5, c: 7, d: 10 } });
+    });
+
+    it('undoing auto_fix_overlaps restores the overlapping layout in one step', async () => {
+      const { client, applier } = await fixOnToolAndClient();
+
+      const undo = applier.undoOperation('tc-1');
+
+      expect({ undo, client: startsById(client.value) })
+        .toEqual({ undo: { ok: true }, client: { a: 0, b: 2, c: 3, d: 4 } });
+    });
   });
 });

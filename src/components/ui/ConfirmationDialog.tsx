@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { trapTabKey } from './focusTrap';
 
 export interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -80,29 +81,11 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     }
   };
 
-  // Tab wraps between the dialog's buttons (also from the dialog element
-  // itself), so keyboard focus can never walk out to the editor behind it.
-  const trapTabFocus = (e: React.KeyboardEvent) => {
-    const root = dialogRef.current;
-    if (!root) return;
-    const focusables: HTMLElement[] = Array.prototype.slice.call(
-      root.querySelectorAll('button:not([disabled])'),
-    );
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = document.activeElement as HTMLElement | null;
-    const isOnButton = active !== null && focusables.indexOf(active) >= 0;
-    const edge = e.shiftKey ? first : last;
-    if (!isOnButton || active === edge) {
-      e.preventDefault();
-      (e.shiftKey ? last : first).focus();
-    }
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Tab') {
-      trapTabFocus(e);
+      // Tab wraps between the dialog's buttons (also from the dialog element
+      // itself), so keyboard focus can never walk out to the editor behind it.
+      trapTabKey(e, dialogRef.current);
     } else if (e.key === 'Escape') {
       handleCancel();
     } else if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) {

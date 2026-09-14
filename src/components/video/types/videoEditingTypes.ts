@@ -187,6 +187,8 @@ export interface UseMaterialManagementReturn {
   handleMaterialSelect: (id: string, selected: boolean) => void;
   handleMaterialBatchSelect: (materialIds: string[], isSelected: boolean) => void;
   handleMaterialDelete: (materialIds: string[]) => void;
+  /** Removes app-created placeholders (never on the timeline) without a confirmation. */
+  discardPendingMaterials: (materialIds: string[]) => void;
   handleMaterialUpload: () => void;
   handleDragUpload: (files: FileList) => Promise<void>; // 新增：拖拽文件上传
   addMaterials: (materials: MaterialItem[]) => boolean;

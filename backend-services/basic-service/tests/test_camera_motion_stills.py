@@ -136,6 +136,22 @@ class TestZeroRegression:
         assert _plan(None).warnings == []
         assert _plan(IDENTITY).warnings == []
 
+    def test_opaque_still_chain_is_byte_identical(self):
+        assert still_static_chain(960, 540, opacity=1.0) == LEGACY_960x540
+        assert _plan(None, opacity=1.0).chain == LEGACY_960x540
+
+    def test_translucent_still_chain_multiplies_alpha(self):
+        """Round 2 EXO-02: image opacity used to be dropped on export."""
+        assert _plan(None, opacity=0.5).chain == (
+            "scale=960:540:force_original_aspect_ratio=decrease,format=rgba,"
+            "pad=960:540:(ow-iw)/2:(oh-ih)/2:color=black@0,colorchannelmixer=aa=0.5000"
+        )
+
+    def test_translucent_animated_still_multiplies_alpha_before_placement(self):
+        plan = _plan(PUSH_IN, opacity=0.5)
+        assert plan.animated is True
+        assert "format=rgba,colorchannelmixer=aa=0.5000,setpts=PTS-STARTPTS+" in plan.chain
+
 
 # ---------------------------------------------------------------------------
 # D18 / D17 / D25 — the animated branch
@@ -319,13 +335,14 @@ class TestSinglePassAssembly:
         moving, static = two_images
         items = [_Item("moving.png", moving, PUSH_IN), _Item("static.png", static)]
 
-        cmd, entries, warnings = service._build_still_overlay_inputs(
+        cmd, entries, warnings, skipped = service._build_still_overlay_inputs(
             items, "base.mp4", os.path.dirname(moving),
             {"width": 1920, "height": 1080}, 30, "ffmpeg",
         )
 
         assert [e['plan'].animated for e in entries] == [True, False]
         assert warnings == []
+        assert skipped == []
 
         for entry, path in zip(entries, (moving, static)):
             k = cmd.index(path)
@@ -344,7 +361,7 @@ class TestSinglePassAssembly:
     def test_labels_follow_input_order(self, service, two_images):
         moving, static = two_images
         items = [_Item("moving.png", moving, PUSH_IN), _Item("static.png", static)]
-        _, entries, _ = service._build_still_overlay_inputs(
+        _, entries, _, _ = service._build_still_overlay_inputs(
             items, "base.mp4", os.path.dirname(moving),
             {"width": 1920, "height": 1080}, 30, "ffmpeg",
         )
@@ -361,7 +378,7 @@ class TestSinglePassAssembly:
     def test_disable_camera_reproduces_the_pre_feature_command(self, service, two_images):
         moving, static = two_images
         items = [_Item("moving.png", moving, PUSH_IN), _Item("static.png", static)]
-        cmd, entries, _ = service._build_still_overlay_inputs(
+        cmd, entries, _, _ = service._build_still_overlay_inputs(
             items, "base.mp4", os.path.dirname(moving),
             {"width": 1920, "height": 1080}, 30, "ffmpeg", disable_camera=True,
         )
@@ -372,17 +389,19 @@ class TestSinglePassAssembly:
             "[1:v]scale=1920:1080:force_original_aspect_ratio=decrease,"
             "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black@0[img0]"
         )
-        assert parts[1] == "[0:v][img0]overlay=0:0:enable='between(t,1.6,9.6)'[v0]"
+        # Round 2 RV-09: half-open window, adjacent images never share a frame.
+        assert parts[1] == "[0:v][img0]overlay=0:0:enable='gte(t,1.6)*lt(t,9.6)'[v0]"
 
     def test_an_unresolvable_image_is_skipped_without_shifting_labels(self, service, two_images):
         moving, _ = two_images
         items = [_Item("gone.png", "/nope/gone.png", PUSH_IN), _Item("moving.png", moving, PUSH_IN)]
-        service._download_image = lambda url, temp_dir, index: {"success": False}
-        cmd, entries, _ = service._build_still_overlay_inputs(
+        cmd, entries, _, skipped = service._build_still_overlay_inputs(
             items, "base.mp4", os.path.dirname(moving),
             {"width": 1920, "height": 1080}, 30, "ffmpeg",
         )
         assert len(entries) == 1
+        # Reported to the caller as a degradation, never downloaded (EXO-04 / EXO-18).
+        assert [s.item.url for s in skipped] == ["/nope/gone.png"]
         k = cmd.index(moving)
         assert cmd[k - 1] == '-i'
         assert cmd[k - 1 - 6:k - 1] == entries[0]['plan'].input_args

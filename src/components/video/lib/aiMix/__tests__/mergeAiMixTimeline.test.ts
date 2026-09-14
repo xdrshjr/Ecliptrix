@@ -5,6 +5,7 @@ import type {
   TrackData,
 } from '@/components/video/timeline/domain';
 import type { TimelineState } from '@/types';
+import { findOrganizeDrift } from '@/test/organizeFixedPoint';
 import { mergeAiMixTimeline } from '../mergeAiMixTimeline';
 
 function clip(
@@ -252,5 +253,74 @@ describe('mergeAiMixTimeline', () => {
     );
 
     expect(result.timeline.totalDuration).toBe(30);
+  });
+
+  it('packs every AI lane so a later auto-organize changes nothing', () => {
+    const image = { materialId: 'material-image', originalMaterialType: 'image' as const };
+    const result = merge(
+      [lane('video-track-1', [], { order: 0 }),
+        lane('audio-track-1', [], { order: 1 }),
+        lane('audio-track-2', [], { order: 2 })],
+      [lane('video-track-1', [
+        clip('v1', 'video-track-1', 0, 30.5),
+        clip('v2', 'video-track-1', 35, 25),
+      ]),
+      lane('image-track-1', [clip('image', 'image-track-1', 55.5, 5, image)]),
+      lane('audio-track-1', [
+        clip('voice-1', 'audio-track-1', 0, 55.5),
+        clip('voice-2', 'audio-track-1', 60, 5),
+      ]),
+      lane('audio-track-2', [clip('bgm', 'audio-track-2', 2, 61)])],
+    );
+
+    expect(findOrganizeDrift(result.timeline)).toEqual([]);
+  });
+
+  it('reports packed item ids', () => {
+    const result = merge(
+      [lane('video-track-1')],
+      [lane('video-track-1', [
+        clip('ai-1', 'video-track-1', 0, 4),
+        clip('ai-2', 'video-track-1', 6, 2),
+      ])],
+    );
+
+    expect({
+      packed: result.packedItemIds,
+      starts: trackById(result.timeline, 'video-track-1')?.items
+        .map((item) => [item.id, item.startTime]),
+    }).toEqual({ packed: ['ai-2'], starts: [['ai-1', 0], ['ai-2', 4]] });
+  });
+
+  it('gives a non-numbered AI audio track its own lane', () => {
+    const result = merge(
+      [lane('audio-track-1', [], { order: 0 }),
+        lane('audio-track-2', [], { order: 1 })],
+      [lane('audio-track-1', [clip('voice', 'audio-track-1', 0, 8)]),
+        lane('audio-track-bgm', [clip('bgm', 'audio-track-bgm', 0, 8)])],
+    );
+
+    const ids = result.timeline.tracks
+      .map((track) => [track.id, track.items.map((item) => item.id)]);
+    expect(ids).toEqual([
+      ['audio-track-1', ['voice']],
+      ['audio-track-2', ['bgm']],
+    ]);
+  });
+
+  it('creates AI lanes without a hard-coded track name', () => {
+    const result = merge(
+      [lane('video-track-1')],
+      [lane('image-track-1',
+        [clip('ai-image', 'image-track-1', 0, 5,
+          { materialId: 'material-image', originalMaterialType: 'image' })],
+        { name: 'Image Track' }),
+      lane('audio-track-2',
+        [clip('bgm', 'audio-track-2', 0, 5)],
+        { name: 'Audio Track bgm' })],
+    );
+
+    expect(result.createdTrackIds.map((id) => trackById(result.timeline, id)?.name))
+      .toEqual(['', '']);
   });
 });

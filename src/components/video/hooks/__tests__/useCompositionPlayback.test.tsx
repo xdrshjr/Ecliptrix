@@ -305,6 +305,22 @@ describe('buildImageOverlayInputs', () => {
     } as unknown as TimelineState;
     expect(buildImageOverlayInputs(timeline, [])).toEqual([]);
   });
+
+  it('includes an untagged clip backed by an image material, as export renders it', () => {
+    const timeline = {
+      tracks: [
+        {
+          isVisible: true,
+          items: [{ id: 'legacy', materialId: 'mat-img', startTime: 0, duration: 2 }],
+        },
+      ],
+    } as unknown as TimelineState;
+    const materials = [
+      { id: 'mat-img', type: 'image', url: '/api/storage/files/images/x.png' } as MaterialItem,
+    ];
+    const ids = buildImageOverlayInputs(timeline, materials).map((input) => input.id);
+    expect(ids).toEqual(['legacy']);
+  });
 });
 
 describe('isCompositionReady (readiness gate)', () => {

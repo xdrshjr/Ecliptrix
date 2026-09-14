@@ -3,7 +3,7 @@ AI Mixed Editing models for automatic video editing.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 
 
 class VideoFrameAnalysis(BaseModel):
@@ -98,7 +98,9 @@ class AudioSegmentModel(BaseModel):
     material_id: str = Field(..., description="Material ID reference")
     start_time: float = Field(..., description="Start time in timeline (seconds)")
     duration: float = Field(..., description="Duration of the segment (seconds)")
-    track: str = Field(default="audio-track-1", description="Target audio track ID")
+    # LLMs answer 2, "Audio Track 2", "bgm" or null; sanitising maps every
+    # value onto an ``audio-track-n`` lane instead of failing the plan.
+    track: Optional[Union[str, int]] = Field(default="audio-track-1", description="Target audio track ID")
     volume: float = Field(default=100.0, description="百分比 0-200，100=原音量")
     clip_start: Optional[float] = Field(default=0.0, description="Start time within the source material (seconds)")
     clip_end: Optional[float] = Field(default=None, description="End time within the source material (seconds)")

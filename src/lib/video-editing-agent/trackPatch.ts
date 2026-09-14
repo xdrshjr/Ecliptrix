@@ -25,6 +25,7 @@ import type {
 } from '@/types';
 import { Track as TrackEntity } from '@/components/video/timeline/domain/entities/Track';
 import type { TrackData } from '@/components/video/timeline/domain/types';
+import { isInlineMediaUrl } from '@/lib/inlineUrl';
 
 export type { AgentTrackPatch } from '@/types';
 
@@ -129,13 +130,6 @@ export function semanticTrackKey(track: Track | null | undefined): string {
   });
 }
 
-function isInlineThumbnail(url: string | undefined): boolean {
-  return (
-    typeof url === 'string' &&
-    (url.startsWith('data:') || url.startsWith('blob:'))
-  );
-}
-
 /**
  * Copy a track for storage in a patch. Patches are persisted with the
  * conversation, so inline `data:` / `blob:` thumbnails are dropped (the same
@@ -144,7 +138,7 @@ function isInlineThumbnail(url: string | undefined): boolean {
 export function slimTrackForPatch(track: Track): Track {
   const copy = deepClone(track);
   for (const item of copy.items) {
-    if (isInlineThumbnail(item.thumbnailUrl)) delete item.thumbnailUrl;
+    if (isInlineMediaUrl(item.thumbnailUrl)) delete item.thumbnailUrl;
   }
   return copy;
 }

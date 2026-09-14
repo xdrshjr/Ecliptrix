@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, trackEditError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findClip, trackEditError, toolErrorResponse, isStillClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to resize' }),
@@ -30,14 +30,14 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
       const lockError = trackEditError(context.timelineState, found.trackId);
       if (lockError) return toolErrorResponse(lockError);
 
-      if (params.newDuration <= 0) {
+      if (!(Number.isFinite(params.newDuration) && params.newDuration > 0)) {
         const err = { success: false, error: 'Duration must be positive' };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
 
       // Stills have no source range; everything else plays its source from
       // the fixed in-point, so the source end caps the duration.
-      const isStill = found.item.originalMaterialType === 'image';
+      const isStill = isStillClip(found.item, context.materials);
       const clipStart = found.item.clipStart ?? 0;
       const sourceDuration = found.item.originalDuration ?? 0;
       const maxDuration = !isStill && sourceDuration > 0
@@ -56,8 +56,10 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
         type: 'resize_clip',
         clipId: params.clipId,
         newDuration: params.newDuration,
-        // Moving the out-point keeps duration === clipEnd - clipStart.
-        clipEnd: isStill ? undefined : clipStart + params.newDuration,
+        // Moving the out-point keeps duration === clipEnd - clipStart, for
+        // stills too: a stale out-point let a later trim shrink a
+        // stretched image back to its original length.
+        clipEnd: clipStart + params.newDuration,
       });
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);

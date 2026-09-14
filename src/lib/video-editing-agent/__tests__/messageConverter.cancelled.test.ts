@@ -95,6 +95,27 @@ describe('convertToAgentMessages — cancelled tool branch', () => {
     expect(hasNote).toBe(false);
   });
 
+  it('does not inject the stopped note when a later assistant turn completed', () => {
+    const stopped: AgentToolCallRecord[] = [
+      { id: 'tc-a', name: 'add_to_track', params: {}, status: 'cancelled' },
+    ];
+    const completed: AgentToolCallRecord[] = [
+      { id: 'tc-b', name: 'search_materials', params: {}, status: 'completed', result: { ok: true } },
+    ];
+    const history: ChatMessage[] = [
+      userMsg('u1'),
+      assistantWithTools('a1', stopped, { isCancelled: true }),
+      userMsg('u2'),
+      assistantWithTools('a2', completed, { content: 'done' }),
+    ];
+
+    const result = convertToAgentMessages(history);
+    const hasNote = result.some(
+      (m) => m.role === 'user' && typeof (m as { content: string }).content === 'string' && (m as { content: string }).content.startsWith('[System note]'),
+    );
+    expect(hasNote).toBe(false);
+  });
+
   it('emits at most ONE system-note even across multiple cancelled assistants (P1-9)', () => {
     const tools1: AgentToolCallRecord[] = [
       { id: 'tc-a', name: 'search_materials', params: {}, status: 'cancelled' },

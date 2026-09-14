@@ -9,12 +9,9 @@ import { TimelinePanel, useTimelineStore } from './timeline';
 import { shouldGlobalSpaceTogglePlayback } from './timeline/shortcutOwnership';
 import { updateImagePositionAction } from './timeline/store/actions/updateItemFields';
 import { nextExternalUpdateId } from './timeline/lib/externalUpdateId';
-import {
-  applyScriptAutoMixAction,
-  checkAutoMixTargets,
-  type AutoMixRefusal,
-} from './timeline/store/actions/applyScriptAutoMix';
-import { planScriptAutoMix, type ScriptAutoMixPlan } from './lib/aiMix/planScriptAutoMix';
+import { isEditLocked } from './timeline/store/editLock';
+import { useScriptAutoMix, toScriptSegmentRefs } from './hooks/useScriptAutoMix';
+import { buildDerivedMaterial } from './lib/derivedMaterial';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import '../../styles/video-editing.css';
 import { shouldRestrictVideoEditing, getDeviceType, getDeviceInfo } from '@/lib/utils/deviceDetection';
@@ -145,7 +142,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const { locale, t } = useLocale();
   
   // 获取通知上下文
-  const { showSuccess, showError, showWarning, showInfo } = useNotification();
+  const { showSuccess, showError, showWarning } = useNotification();
   
   // 获取用户认证信息
   
@@ -201,14 +198,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     targetTrackId?: string, 
     timestamp: number 
   } | undefined>(undefined);
-
-  // AI自动混剪替换确认（内存态，不持久化）。关闭后保留 plan/数量，
-  // 让退场动画期间的文案保持不变。
-  const [autoMixConfirm, setAutoMixConfirm] = useState<{
-    isOpen: boolean;
-    plan: ScriptAutoMixPlan | null;
-    replacedItemCount: number;
-  }>({ isOpen: false, plan: null, replacedItemCount: 0 });
 
   // 视频剪切弹窗状态
   const [videoCutModal, setVideoCutModal] = useState<{
@@ -1202,6 +1191,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 处理添加素材到时间轴
   const handleAddMaterialToTimeline = useCallback((material: MaterialItem) => {
+    // S9：Agent 执行期间由它独占时间轴；明确提示，而不是让点击静默失效
+    if (isEditLocked(useTimelineStore.getState())) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     console.log(`[VideoEditingInterface] 添加素材到时间轴`, {
       taskId,
       materialId: material.id,
@@ -1243,7 +1237,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setTimeout(() => {
       setMaterialsToAddToTimeline(undefined);
     }, 100);
-  }, [taskId]);
+  }, [taskId, showWarning, t]);
 
   // 处理创意构思弹窗
   const handleCreativeBrainstormingClick = useCallback(() => {
@@ -1331,33 +1325,35 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       // 首先创建带有加载状态的临时素材项
       const tempClipMaterials: MaterialItem[] = [];
       clips.forEach((clip, index) => {
+        // ME-01：切片是新文件，存储身份（storageKey / cacheUrl / localResolvedUrl）
+        // 一律不继承原片，预览、导出与删除都不会落到原文件上
         const tempClipMaterial: MaterialItem = {
-          id: `${originalMaterial.id}_clip_${clip.id}`,
-          name: `${originalMaterial.name} - ${clip.name}`,
+          ...buildDerivedMaterial(
+            originalMaterial,
+            { url: '', duration: clip.duration, thumbnailUrl: originalMaterial.thumbnailUrl }, // url 临时为空，后续更新
+            {
+              id: `${originalMaterial.id}_clip_${clip.id}`,
+              name: `${originalMaterial.name} - ${clip.name}`,
+              metadata: {
+                ...originalMaterial.metadata,
+                isClip: true,
+                originalMaterialId: originalMaterial.id,
+                originalMaterialDuration: originalMaterial.duration, // 保存原始素材的时长
+                clipStartTime: clip.startTime,
+                clipEndTime: clip.endTime,
+                clipDuration: clip.duration,
+                clipIndex: index + 1,
+                totalClips: clips.length
+              }
+            },
+          ),
           type: 'video' as const,
           format: originalMaterial.format || 'mp4',
           size: 0, // 临时设置为0，后续更新
-          duration: clip.duration,
-          width: originalMaterial.width,
-          height: originalMaterial.height,
-          thumbnailUrl: originalMaterial.thumbnailUrl,
-          url: '', // 临时为空，后续更新
-          serverUrl: '',
-          createdAt: new Date(),
           description: `从"${originalMaterial.name}"剪切的片段，时间范围：${formatTime(clip.startTime)} - ${formatTime(clip.endTime)}`,
+          analysisResult: undefined, // 原片的解析描述的是整段视频，不适用于切片
           uploadStatus: 'uploading', // 复用素材进度状态，表示本地切分保存中
           uploadProgress: 0,
-          metadata: {
-            ...originalMaterial.metadata,
-            isClip: true,
-            originalMaterialId: originalMaterial.id,
-            originalMaterialDuration: originalMaterial.duration, // 保存原始素材的时长
-            clipStartTime: clip.startTime,
-            clipEndTime: clip.endTime,
-            clipDuration: clip.duration,
-            clipIndex: index + 1,
-            totalClips: clips.length
-          }
         };
         tempClipMaterials.push(tempClipMaterial);
       });
@@ -1408,24 +1404,31 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       if (cutResponse.success && cutResponse.clips.length > 0) {
         // 成功切分，更新素材项
         cutResponse.clips.forEach((cutClip, index) => {
+          const tempMaterial = tempClipMaterials[index];
+          // 按切分结果重建存储身份：本地引用与存储键都指向切片自身的文件（ME-01）
           const updatedMaterial: MaterialItem = {
-            ...tempClipMaterials[index],
-            url: cutClip.video_url,
-            serverUrl: cutClip.video_url,
-            cacheUrl: cutClip.video_url,
-            thumbnailUrl: cutClip.thumbnail_url || tempClipMaterials[index].thumbnailUrl,
+            ...buildDerivedMaterial(
+              originalMaterial,
+              {
+                url: cutClip.video_url,
+                thumbnailUrl: cutClip.thumbnail_url || tempMaterial.thumbnailUrl,
+                duration: tempMaterial.duration,
+              },
+              {
+                id: tempMaterial.id,
+                name: tempMaterial.name,
+                metadata: { ...tempMaterial.metadata, cutClipResult: cutClip },
+              },
+            ),
+            type: 'video' as const,
+            description: tempMaterial.description,
+            analysisResult: undefined,
             size: cutClip.file_size,
             width: cutClip.width,
             height: cutClip.height,
             format: cutClip.format,
             uploadStatus: 'completed',
             uploadProgress: 100,
-            metadata: {
-              ...tempClipMaterials[index].metadata,
-              storageKind: 'local',
-              localResolvedUrl: cutClip.video_url,
-              cutClipResult: cutClip
-            }
           };
 
           // 替换临时素材
@@ -1444,7 +1447,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       } else {
                  // 切分失败，移除临时素材并显示错误
          const tempMaterialIds = tempClipMaterials.map(m => m.id);
-         materialManagement.handleMaterialDelete(tempMaterialIds);
+         // 占位素材由应用自己创建且从未上轨：不弹删除确认
+         materialManagement.discardPendingMaterials(tempMaterialIds);
 
         console.error(`[VideoEditingInterface] 视频切分失败`, {
           taskId,
@@ -1462,11 +1466,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
              // 移除临时素材
        const tempIds = clips.map(clip => `${originalMaterial.id}_clip_${clip.id}`);
-       materialManagement.handleMaterialDelete(tempIds);
+       materialManagement.discardPendingMaterials(tempIds);
 
       showError(`视频切分处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
-  }, [taskId, materialManagement.addOrReplaceMaterial, materialManagement.handleMaterialDelete, showSuccess, showError]);
+  }, [taskId, materialManagement.addOrReplaceMaterial, materialManagement.discardPendingMaterials, showSuccess, showError]);
 
   // 格式化时间显示（用于切片描述）
   const formatTime = useCallback((seconds: number) => {
@@ -1871,92 +1875,32 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [timelineComposition]);
 
   const handleImagePositionConfirm = useCallback((itemId: string, position: ImagePosition) => {
+    // S9: the store refuses as well; the warning tells the user why nothing stuck.
+    if (isEditLocked(useTimelineStore.getState())) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     // One undoable step; the live drag preview above stays out of history.
     updateImagePositionAction(() => useTimelineStore.getState(), itemId, position);
-  }, []);
+  }, [showWarning, t]);
 
-  // AI自动混剪：按脚本段落把最新配音与匹配视频一次性排到视频轨 1 / 音频轨 1，
-  // 其余轨道保持不变；整次排布是一步可撤销操作。
-  const reportAutoMixRefusal = useCallback((reason: AutoMixRefusal) => {
-    if (reason === 'track-locked') {
-      showWarning(t.videoEditing.autoMix.trackLocked);
-    } else if (reason === 'no-target-track') {
-      showError(t.videoEditing.autoMix.noTargetTrack);
-    } else {
-      showError(t.videoEditing.autoMix.noScriptMaterials, 6000);
-    }
-  }, [showError, showWarning, t]);
-
-  const applyAutoMixPlan = useCallback((plan: ScriptAutoMixPlan) => {
-    // The agent owns the timeline while it runs (same lock as keyboard edits);
-    // re-checked here because the lock may engage while the prompt is open.
-    if (useTimelineStore.getState().externalEditLock !== null) {
-      showWarning(t.timeline.messages.editLockedByAgent);
-      return;
-    }
-    // Targets are re-checked inside the action as well: the timeline may have
-    // changed while the confirmation was open.
-    const result = applyScriptAutoMixAction(() => useTimelineStore.getState(), plan);
-    if (!result.ok) {
-      reportAutoMixRefusal(result.reason);
-      return;
-    }
-    const skippedSegments = plan.segments
-      .filter(segment => segment.status === 'skipped-no-audio')
-      .map(segment => segment.segmentNumber);
-    showSuccess(t.videoEditing.autoMix.applied
-      .replace('{segments}', String(plan.segments.length - skippedSegments.length)));
-    if (skippedSegments.length > 0) {
-      showWarning(t.videoEditing.autoMix.skippedNoAudio
-        .replace('{list}', skippedSegments.join(locale === 'zh-CN' ? '、' : ', ')));
-    }
-    if (plan.ignoredDuplicateMaterialIds.length > 0) {
-      showInfo(t.videoEditing.autoMix.duplicatesIgnored
-        .replace('{count}', String(plan.ignoredDuplicateMaterialIds.length)));
-    }
-    logger.info('Script auto-mix applied', {
-      taskId,
-      placements: plan.placements.length,
-      segments: plan.segments.length,
-      skippedSegments,
-      replacedItemCount: result.replacedItemCount,
-    });
-  }, [locale, logger, reportAutoMixRefusal, showInfo, showSuccess, showWarning, t, taskId]);
-
-  const handleAutoMixAudio = useCallback(() => {
-    if (materialManagement.allMaterials.length === 0) {
-      showError(t.videoEditing.autoMix.noMaterials, 5000);
-      return;
-    }
-    if (useTimelineStore.getState().externalEditLock !== null) {
-      showWarning(t.timeline.messages.editLockedByAgent);
-      return;
-    }
-    // 使用 allMaterials：排布需要全部音频与视频，不受素材面板类型筛选影响
-    const plan = planScriptAutoMix(materialManagement.allMaterials);
-    // Missing or locked target tracks are reported BEFORE asking to replace,
-    // so the user is never asked to confirm an edit that will be refused.
-    const check = checkAutoMixTargets(useTimelineStore.getState().tracks, plan);
-    if (!check.ok) {
-      reportAutoMixRefusal(check.reason);
-      return;
-    }
-    if (check.replacedItemCount > 0) {
-      setAutoMixConfirm({ isOpen: true, plan, replacedItemCount: check.replacedItemCount });
-      return;
-    }
-    applyAutoMixPlan(plan);
-  }, [materialManagement.allMaterials, applyAutoMixPlan, reportAutoMixRefusal, showError, showWarning, t]);
-
-  const handleAutoMixConfirm = useCallback(() => {
-    const plan = autoMixConfirm.plan;
-    setAutoMixConfirm(current => ({ ...current, isOpen: false }));
-    if (plan) applyAutoMixPlan(plan);
-  }, [autoMixConfirm.plan, applyAutoMixPlan]);
-
-  const handleAutoMixCancel = useCallback(() => {
-    setAutoMixConfirm(current => ({ ...current, isOpen: false }));
-  }, []);
+  // AI自动混剪：按当前脚本把最新配音与匹配视频一次性排到视频轨 1 / 音频轨 1，其余轨道不变。
+  // 编排、确认时按最新数据重新排布与结果提示均在 useScriptAutoMix（AS2-02 / AS2-04）。
+  // 使用 allMaterials：排布需要全部音频与视频，不受素材面板类型筛选影响；
+  // 脚本只取 content.scriptSegments，从不使用展示用的 mock 段落。
+  const getAutoMixMaterials = useCallback(
+    () => materialManagement.allMaterials,
+    [materialManagement.allMaterials],
+  );
+  const getAutoMixScriptSegments = useCallback(
+    () => toScriptSegmentRefs(content?.scriptSegments),
+    [content?.scriptSegments],
+  );
+  const scriptAutoMix = useScriptAutoMix({
+    taskId,
+    getMaterials: getAutoMixMaterials,
+    getScriptSegments: getAutoMixScriptSegments,
+  });
 
 
   // 清除添加素材请求状态，避免重复处理
@@ -2088,6 +2032,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     onTimelineUpdate: (id) => setExternalTimelineUpdateId(id),
     onNotification: (type, message) => {
       if (type === 'error') showError(message);
+      // 「执行中不可撤销」「应用超时」等是警告，不能显示成成功提示
+      else if (type === 'warning') showWarning(message);
       else showSuccess(message);
     },
     agentMode,
@@ -2311,7 +2257,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onSearchAudios={audioSearch.openSearchModal}
             onSearchImages={imageSearch.openSearchModal}
             onAIMixedEditing={aiMix.openModeModal}
-            onAutoMixAudio={handleAutoMixAudio}
+            onAutoMixAudio={scriptAutoMix.requestAutoMix}
             onVideoAnalysis={handleVideoAnalysis}
             onBatchVideoAnalysis={handleBatchVideoAnalysis}
             getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
@@ -2326,7 +2272,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         </div>
 
         {/* 下方时间轴面板 - 在右侧区域的下方，全宽度 */}
-        <div className="video-editing-timeline-section border-t border-border bg-muted relative">
+        {/* S9：Agent 执行期间 inert 一次性移除时间轴区域的指针与 Tab 路径（含轨道头、添加轨道）；
+            文档级快捷键（空格播放、导出）不受影响 */}
+        <div
+          className="video-editing-timeline-section border-t border-border bg-muted relative"
+          inert={agent.agentIsExecuting ? true : undefined}
+        >
           {agent.agentIsExecuting && (
             <div className="agent-timeline-lock-overlay" />
           )}
@@ -2494,16 +2445,16 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       {/* AI混剪进度弹窗：分阶段步骤条，可取消，无伪进度 */}
       <AIMixingProgressModal runState={aiMix.runState} onCancel={aiMix.cancel} />
 
-      {/* AI自动混剪替换确认：锁定/缺轨已在打开前检查 */}
+      {/* AI自动混剪替换确认：锁定/缺轨已在打开前检查；确认时按最新素材与脚本重新排布 */}
       <ConfirmationDialog
-        isOpen={autoMixConfirm.isOpen}
+        isOpen={scriptAutoMix.confirmState.isOpen}
         type="warning"
         title={t.videoEditing.autoMix.replaceConfirmTitle}
-        message={t.videoEditing.autoMix.replaceConfirmBody.replace('{count}', String(autoMixConfirm.replacedItemCount))}
+        message={t.videoEditing.autoMix.replaceConfirmBody.replace('{count}', String(scriptAutoMix.confirmState.replacedItemCount))}
         confirmText={t.videoEditing.autoMix.confirm}
         cancelText={t.videoEditing.autoMix.cancel}
-        onConfirm={handleAutoMixConfirm}
-        onCancel={handleAutoMixCancel}
+        onConfirm={scriptAutoMix.confirmAutoMix}
+        onCancel={scriptAutoMix.cancelAutoMix}
       />
 
       {/* 视频剪切弹窗 */}

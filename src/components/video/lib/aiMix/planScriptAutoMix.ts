@@ -2,16 +2,24 @@
  * planScriptAutoMix — arrange script voice-overs and matched videos.
  *
  * Pure and deterministic. The voice-over is the timing spine (AS-02): a
- * segment lasts exactly as long as its newest TTS audio and its videos are
- * trimmed or looped to cover that span, so segment k+1 starts in sync on
- * both lanes and neither lane has a hole for autoOrganize to close.
+ * segment lasts exactly as long as its current TTS audio and its videos are
+ * trimmed or looped to cover that span without a hole (AS2-03), so segment
+ * k+1 starts in sync on both lanes and the layout already is what
+ * autoOrganize would produce (S8).
  *
- * "Newest" means the latest segment write (AS-01 / RV-07): the
- * `segment_assigned_at` stamp ScriptPanel writes on every match and TTS,
- * else the position in the library array. createdAt is never used (a
- * re-matched video is a copy that keeps the SOURCE material's createdAt),
- * and position alone is not enough: a match that reuses a library id is
- * replaced in place, so the newer match can sit before an older one.
+ * Which materials count:
+ *  · With the current script (`options.segments`) the script decides segment
+ *    order, numbering and membership. Materials of segments no longer in it,
+ *    and voice-overs whose text hash no longer matches their segment (RV-07),
+ *    are orphaned (AS2-02). A segment's videos are the ones it lists (AS2-01).
+ *  · Without a script (legacy data) materials group by `segment_id` in
+ *    `segment_number` order, and only the latest match batch of a segment
+ *    counts, so slots of an earlier, larger match do not linger (AS2-01).
+ *
+ * "Newest" means the latest segment write: the `segment_assigned_at` stamp
+ * ScriptPanel writes on every match and TTS, else the position in the library
+ * array. createdAt is never used (a re-matched video is a copy that keeps the
+ * SOURCE material's createdAt).
  */
 
 import type { MaterialItem } from '@/types';
@@ -29,34 +37,57 @@ export interface AutoMixPlacement {
 export interface AutoMixSegmentReport {
   segmentNumber: number;
   segmentId: string;
-  status: 'placed' | 'skipped-no-audio' | 'video-reused' | 'video-looped';
+  /** 'video-short' wins over the others: the video lane has a hole under the voice-over. */
+  status: 'placed' | 'skipped-no-audio' | 'video-reused' | 'video-looped' | 'video-short';
   reusedFromSegment?: number;
+}
+
+/** The current script, as far as the planner needs it. */
+export interface ScriptSegmentRef {
+  id: string;
+  /** Videos matched to the segment, in slot order. */
+  videos?: ReadonlyArray<Pick<MaterialItem, 'id'>>;
+  /** segmentTextHash of the text the segment's voice-over should say. */
+  textHash?: string;
+}
+
+export interface PlanScriptAutoMixOptions {
+  /** The current script; omitted → legacy grouping by segment_number. */
+  segments?: readonly ScriptSegmentRef[];
 }
 
 export interface ScriptAutoMixPlan {
   placements: AutoMixPlacement[];
   segments: AutoMixSegmentReport[];
   ignoredDuplicateMaterialIds: string[]; // older TTS / matches superseded
+  orphanedMaterialIds: string[]; // removed segments' materials and stale voice-overs
   totalDuration: number;
 }
 
 const MIN_CLIP_SECONDS = 0.1;
-/** Cap on looped clips per segment, so bad durations cannot spin. */
-const MAX_LOOPED_CLIPS = 20;
+/** Slack for comparisons between times rounded to microseconds. */
+const TIME_EPSILON = 1e-9;
 
 interface SegmentVersions {
   segmentId: string;
   segmentNumber: number;
   firstIndex: number;
   audios: MaterialItem[]; // library order; keepNewest picks the current one
-  videosBySlot: Map<number, MaterialItem[]>;
+  videos: MaterialItem[]; // library order
+  listedVideoIds?: readonly string[]; // the script's own match, when known
 }
 
 interface Segment {
   segmentId: string;
   segmentNumber: number;
   audio: MaterialItem | null;
-  videos: MaterialItem[]; // newest per video_index_in_segment, playable
+  videos: MaterialItem[]; // current match, playable, slot order
+}
+
+interface Coverage {
+  placements: AutoMixPlacement[];
+  looped: boolean;
+  covered: boolean;
 }
 
 const roundTime = (seconds: number) => Math.round(seconds * 1e6) / 1e6;
@@ -65,52 +96,155 @@ const assignedAt = (material: MaterialItem): number => {
   const stamp: unknown = material.metadata?.segment_assigned_at;
   return typeof stamp === 'number' && Number.isFinite(stamp) ? stamp : -Infinity;
 };
+const slotOf = (material: MaterialItem): number => {
+  const slot: unknown = material.metadata?.video_index_in_segment;
+  return typeof slot === 'number' && Number.isFinite(slot) ? slot : 1;
+};
 const isPlayable = (material: MaterialItem) =>
   (material.duration ?? 0) >= MIN_CLIP_SECONDS;
 
-/** Group script audio / video by segment_id, keeping library order. */
-function collectSegments(materials: readonly MaterialItem[]): SegmentVersions[] {
+/** The script segment a TTS audio or matched video was written for. */
+function scriptSegmentIdOf(material: MaterialItem): string | null {
+  if (material.type !== 'audio' && material.type !== 'video') return null;
+  const segmentId: unknown = material.metadata?.segment_id;
+  return typeof segmentId === 'string' && segmentId !== '' ? segmentId : null;
+}
+
+function addVersion(segment: SegmentVersions, material: MaterialItem): void {
+  (material.type === 'audio' ? segment.audios : segment.videos).push(material);
+}
+
+/** Legacy: group script audio / video by segment_id, keeping library order. */
+function collectLegacySegments(materials: readonly MaterialItem[]): SegmentVersions[] {
   const segments = new Map<string, SegmentVersions>();
   materials.forEach((material, index) => {
-    const segmentId: unknown = material.metadata?.segment_id;
+    const segmentId = scriptSegmentIdOf(material);
     const segmentNumber: unknown = material.metadata?.segment_number;
-    if (material.type !== 'audio' && material.type !== 'video') return;
-    if (typeof segmentId !== 'string' || segmentId === '') return;
+    if (!segmentId) return;
     if (typeof segmentNumber !== 'number' || !Number.isFinite(segmentNumber)) return;
     const segment: SegmentVersions = segments.get(segmentId) ?? {
-      segmentId, segmentNumber, firstIndex: index, audios: [], videosBySlot: new Map(),
+      segmentId, segmentNumber, firstIndex: index, audios: [], videos: [],
     };
     segment.segmentNumber = segmentNumber; // the latest write is current
-    if (material.type === 'audio') {
-      segment.audios.push(material);
-    } else {
-      const rawSlot: unknown = material.metadata?.video_index_in_segment;
-      const slot = typeof rawSlot === 'number' && Number.isFinite(rawSlot) ? rawSlot : 1;
-      segment.videosBySlot.set(slot, (segment.videosBySlot.get(slot) ?? []).concat(material));
-    }
+    addVersion(segment, material);
     segments.set(segmentId, segment);
   });
   return Array.from(segments.values()).sort((a, b) =>
     a.segmentNumber - b.segmentNumber || a.firstIndex - b.firstIndex);
 }
 
-/** AS-01: keep the newest audio and the newest video per slot. */
-function resolveSegment(versions: SegmentVersions, ignored: string[]): Segment {
-  const keepNewest = (list: readonly MaterialItem[]): MaterialItem => {
-    // Highest stamp wins; ties and unstamped (older) materials fall back to
-    // library order, where the later entry is the more recent write.
-    const newest = list.reduce((latest, material) =>
-      (assignedAt(material) >= assignedAt(latest) ? material : latest));
-    list.forEach((material) => {
-      if (material.id !== newest.id) ignored.push(material.id);
+/** RV-07: a voice-over stamped with a different text than the segment's current one. */
+function isStaleVoiceOver(material: MaterialItem, ref: ScriptSegmentRef): boolean {
+  const stamped: unknown = material.metadata?.segment_text_hash;
+  // Voice-overs written before the stamp existed carry no hash and still count.
+  return material.type === 'audio'
+    && typeof ref.textHash === 'string'
+    && typeof stamped === 'string'
+    && stamped !== ref.textHash;
+}
+
+interface CollectedSegments {
+  versions: SegmentVersions[];
+  /** A voice-over was dropped as stale, so the script is meant to be narrated. */
+  hasStaleVoiceOver: boolean;
+}
+
+/** AS2-02: the current script decides segment order, numbers and membership. */
+function collectScriptSegments(
+  materials: readonly MaterialItem[],
+  refs: readonly ScriptSegmentRef[],
+  orphaned: string[],
+): CollectedSegments {
+  let hasStaleVoiceOver = false;
+  const byId = new Map<string, { ref: ScriptSegmentRef; versions: SegmentVersions }>();
+  refs.forEach((ref) => {
+    if (byId.has(ref.id)) return; // a duplicated id keeps its first position
+    const position = byId.size;
+    byId.set(ref.id, {
+      ref,
+      versions: {
+        segmentId: ref.id,
+        segmentNumber: position + 1,
+        firstIndex: position,
+        audios: [],
+        videos: [],
+        listedVideoIds: ref.videos?.map((video) => video.id),
+      },
     });
-    return newest;
-  };
-  const audio = versions.audios.length > 0 ? keepNewest(versions.audios) : null;
-  const videos = Array.from(versions.videosBySlot.entries())
+  });
+  materials.forEach((material) => {
+    const segmentId = scriptSegmentIdOf(material);
+    if (!segmentId) return;
+    const entry = byId.get(segmentId);
+    const isStale = !!entry && isStaleVoiceOver(material, entry.ref);
+    if (!entry || isStale) {
+      orphaned.push(material.id);
+      hasStaleVoiceOver = hasStaleVoiceOver || isStale;
+      return;
+    }
+    addVersion(entry.versions, material);
+  });
+  return { versions: Array.from(byId.values(), (entry) => entry.versions), hasStaleVoiceOver };
+}
+
+/** Highest stamp wins; ties and unstamped (older) materials fall back to library order. */
+function keepNewest(list: readonly MaterialItem[], ignored: string[]): MaterialItem {
+  const newest = list.reduce((latest, material) =>
+    (assignedAt(material) >= assignedAt(latest) ? material : latest));
+  list.forEach((material) => {
+    if (material.id !== newest.id) ignored.push(material.id);
+  });
+  return newest;
+}
+
+/** The newest video per video_index_in_segment, in slot order. */
+function newestPerSlot(videos: readonly MaterialItem[], ignored: string[]): MaterialItem[] {
+  const bySlot = new Map<number, MaterialItem[]>();
+  videos.forEach((video) => {
+    bySlot.set(slotOf(video), (bySlot.get(slotOf(video)) ?? []).concat(video));
+  });
+  return Array.from(bySlot.entries())
     .sort(([slotA], [slotB]) => slotA - slotB)
-    .map(([, list]) => keepNewest(list))
-    .filter(isPlayable);
+    .map(([, list]) => keepNewest(list, ignored));
+}
+
+/**
+ * AS2-01: a re-match replaces the whole previous match. The script's own list
+ * wins when known (looked up by id: a library copy re-matched to a later
+ * segment is still the video this segment shows); otherwise only the latest
+ * stamped batch counts.
+ */
+function pickSegmentVideos(
+  versions: SegmentVersions,
+  library: ReadonlyMap<string, MaterialItem>,
+  ignored: string[],
+): MaterialItem[] {
+  const listed = versions.listedVideoIds;
+  if (listed && listed.length > 0) {
+    const chosen = listed
+      .map((id) => library.get(id))
+      .filter((material): material is MaterialItem => material?.type === 'video');
+    const chosenIds = new Set(chosen.map((video) => video.id));
+    versions.videos.forEach((video) => {
+      if (!chosenIds.has(video.id)) ignored.push(video.id);
+    });
+    return chosen;
+  }
+  const latest = versions.videos.reduce((max, video) => Math.max(max, assignedAt(video)), -Infinity);
+  if (!Number.isFinite(latest)) return newestPerSlot(versions.videos, ignored);
+  versions.videos.forEach((video) => {
+    if (assignedAt(video) !== latest) ignored.push(video.id);
+  });
+  return newestPerSlot(versions.videos.filter((video) => assignedAt(video) === latest), ignored);
+}
+
+function resolveSegment(
+  versions: SegmentVersions,
+  library: ReadonlyMap<string, MaterialItem>,
+  ignored: string[],
+): Segment {
+  const audio = versions.audios.length > 0 ? keepNewest(versions.audios, ignored) : null;
+  const videos = pickSegmentVideos(versions, library, ignored).filter(isPlayable);
   const { segmentId, segmentNumber } = versions;
   return { segmentId, segmentNumber, audio, videos };
 }
@@ -134,12 +268,13 @@ function planVideoOnly(segments: readonly Segment[]) {
   const placements: AutoMixPlacement[] = [];
   let cursor = 0;
   segments.forEach(({ videos, segmentNumber }) => videos.forEach((video) => {
-    const length = video.duration ?? 0;
+    const length = roundTime(video.duration ?? 0);
     placements.push(place(video, 'video', cursor, length, segmentNumber));
-    cursor += length;
+    cursor = roundTime(cursor + length);
   }));
-  const reports = segments.map(({ segmentId, segmentNumber }):
-    AutoMixSegmentReport => ({ segmentId, segmentNumber, status: 'placed' }));
+  const reports = segments.map(({ segmentId, segmentNumber, videos }): AutoMixSegmentReport => ({
+    segmentId, segmentNumber, status: videos.length > 0 ? 'placed' : 'skipped-no-audio',
+  }));
   return { placements, reports, cursor };
 }
 
@@ -151,25 +286,63 @@ function pickVideoSource(segments: readonly Segment[], index: number) {
     ?? segments.slice(index + 1).filter(hasVideos)[0];
 }
 
-/** Fill [start, start + span) with the videos, trimming and looping. */
+/**
+ * Fill [start, start + span) with the videos, trimming and looping, without a
+ * hole (AS2-03). Clips never end with a sub-0.1 s residue: the previous clip is
+ * shortened to leave a full 0.1 s, and a residue that still remains is taken
+ * from the last clip's unused source. The loop bound is finite because every
+ * playable video lasts at least 0.1 s.
+ */
 function coverWithVideos(
   videos: readonly MaterialItem[],
   start: number,
   span: number,
   segmentNumber: number,
-) {
+): Coverage {
   const placements: AutoMixPlacement[] = [];
+  if (videos.length === 0) {
+    return { placements, looped: false, covered: span < MIN_CLIP_SECONDS };
+  }
+  const shortest = Math.min(...videos.map((video) => video.duration ?? 0));
+  const maxClips = videos.length + Math.ceil(span / shortest) + 1;
   let remaining = span;
   let looped = false;
-  for (let index = 0; videos.length > 0 && remaining >= MIN_CLIP_SECONDS; index += 1) {
-    if (index >= videos.length + MAX_LOOPED_CLIPS) break;
+  for (let index = 0; index < maxClips && remaining >= MIN_CLIP_SECONDS - TIME_EPSILON; index += 1) {
     looped = looped || index >= videos.length;
     const video = videos[index % videos.length];
-    const take = Math.min(video.duration ?? 0, remaining);
+    let take = Math.min(video.duration ?? 0, remaining);
+    const leftover = remaining - take;
+    if (leftover > TIME_EPSILON && leftover < MIN_CLIP_SECONDS - TIME_EPSILON
+      && remaining - MIN_CLIP_SECONDS >= MIN_CLIP_SECONDS - TIME_EPSILON) {
+      take = remaining - MIN_CLIP_SECONDS; // leave the next clip a whole 0.1 s
+    }
+    take = roundTime(take);
     placements.push(place(video, 'video', start + span - remaining, take, segmentNumber));
-    remaining -= take;
+    remaining = roundTime(remaining - take);
   }
-  return { placements, looped };
+  const last = placements[placements.length - 1];
+  if (remaining > TIME_EPSILON && last
+    && (last.material.duration ?? 0) - last.duration >= remaining - TIME_EPSILON) {
+    last.duration = roundTime(last.duration + remaining);
+    last.clipEnd = roundTime(last.clipEnd + remaining);
+    remaining = 0;
+  }
+  return { placements, looped, covered: remaining <= TIME_EPSILON };
+}
+
+function coverageReport(
+  segment: Segment,
+  source: Segment | undefined,
+  coverage: Coverage,
+): AutoMixSegmentReport {
+  const { segmentId, segmentNumber } = segment;
+  if (!coverage.covered) return { segmentId, segmentNumber, status: 'video-short' };
+  if (source && source !== segment) {
+    return {
+      segmentId, segmentNumber, status: 'video-reused', reusedFromSegment: source.segmentNumber,
+    };
+  }
+  return { segmentId, segmentNumber, status: coverage.looped ? 'video-looped' : 'placed' };
 }
 
 /** AS-02: the voice-over sets each segment's span; no audio → skipped. */
@@ -183,36 +356,56 @@ function planVoiceOver(segments: readonly Segment[]) {
       reports.push({ segmentId, segmentNumber, status: 'skipped-no-audio' });
       return;
     }
-    const span = audio.duration ?? 0;
+    const span = roundTime(audio.duration ?? 0);
     const source = pickVideoSource(segments, index);
-    const cover = coverWithVideos(source?.videos ?? [], cursor, span, segmentNumber);
-    placements.push(place(audio, 'audio', cursor, span, segmentNumber), ...cover.placements);
-    if (source && source !== segment) {
-      const reusedFromSegment = source.segmentNumber;
-      reports.push({ segmentId, segmentNumber, status: 'video-reused', reusedFromSegment });
-    } else {
-      const status = cover.looped ? 'video-looped' : 'placed';
-      reports.push({ segmentId, segmentNumber, status });
-    }
-    cursor += span;
+    const coverage = coverWithVideos(source?.videos ?? [], cursor, span, segmentNumber);
+    placements.push(place(audio, 'audio', cursor, span, segmentNumber), ...coverage.placements);
+    reports.push(coverageReport(segment, source, coverage));
+    cursor = roundTime(cursor + span);
   });
   return { placements, reports, cursor };
 }
 
+/**
+ * Ids a current segment uses. An AI match lists library videos without
+ * re-tagging them, so a video can carry another (or a deleted) segment's id
+ * while still being shown; it must not be reported as ignored or orphaned.
+ */
+function chosenMaterialIds(segments: readonly Segment[]): ReadonlySet<string> {
+  const ids = new Set<string>();
+  segments.forEach(({ audio, videos }) => {
+    if (audio) ids.add(audio.id);
+    videos.forEach((video) => ids.add(video.id));
+  });
+  return ids;
+}
+
 export function planScriptAutoMix(
   materials: readonly MaterialItem[],
+  options: PlanScriptAutoMixOptions = {},
 ): ScriptAutoMixPlan {
   const ignoredDuplicateMaterialIds: string[] = [];
-  const segments = collectSegments(materials)
-    .map((versions) => resolveSegment(versions, ignoredDuplicateMaterialIds));
-  const hasVoiceOver = segments.some((segment) => segment.audio !== null);
+  const orphanedMaterialIds: string[] = [];
+  const collected: CollectedSegments = options.segments
+    ? collectScriptSegments(materials, options.segments, orphanedMaterialIds)
+    : { versions: collectLegacySegments(materials), hasStaleVoiceOver: false };
+  const library = new Map(materials.map((material) => [material.id, material] as const));
+  const segments = collected.versions
+    .map((segment) => resolveSegment(segment, library, ignoredDuplicateMaterialIds));
+  // Stale voice-overs still mean "narrated": laying the videos end to end
+  // instead would quietly drop the narration the user is waiting to regenerate.
+  const hasVoiceOver = collected.hasStaleVoiceOver
+    || segments.some((segment) => segment.audio !== null);
   const { placements, reports, cursor } = hasVoiceOver
     ? planVoiceOver(segments)
     : planVideoOnly(segments);
+  const chosen = chosenMaterialIds(segments);
+  const isUnused = (id: string) => !chosen.has(id);
   return {
     placements,
     segments: reports,
-    ignoredDuplicateMaterialIds,
+    ignoredDuplicateMaterialIds: ignoredDuplicateMaterialIds.filter(isUnused),
+    orphanedMaterialIds: orphanedMaterialIds.filter(isUnused),
     totalDuration: roundTime(cursor),
   };
 }

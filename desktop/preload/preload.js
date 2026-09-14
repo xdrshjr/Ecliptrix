@@ -25,4 +25,14 @@ contextBridge.exposeInMainWorld('ecliptrixDesktop', {
       return () => ipcRenderer.removeListener('window:maximize-changed', listener)
     },
   },
+  // Close handshake (ME-08): the main process asks the renderer to flush
+  // pending autosaves before the window closes.
+  app: {
+    onBeforeClose: (cb) => {
+      const listener = (_e, token) => cb(token)
+      ipcRenderer.on('app:before-close', listener)
+      return () => ipcRenderer.removeListener('app:before-close', listener)
+    },
+    closeReady: (token, result) => ipcRenderer.send('app:close-ready', token, result),
+  },
 })

@@ -68,27 +68,27 @@ describe('trailing-edge selection conventions (intentional, documented divergenc
     expect(activeImageItemsAt(items, 5 - TIME_EPSILON * 2).map((i) => i.id)).toEqual(['img']);
   });
 
-  it('activeSubtitlesAt: a subtitle stays visible THROUGH its exact end (closed interval)', () => {
+  it('activeSubtitlesAt: a subtitle is dropped at its exact end (half-open, like overlays and export)', () => {
     const items: SubtitleSequenceItem[] = [
       { id: 's', text: 'caption', startTime: 0, duration: 5, trackId: 't' },
     ];
-    // Closed at the trailing edge so a caption does not blink out one frame early.
-    expect(activeSubtitlesAt(items, 5).map((s) => s.id)).toEqual(['s']);
-    expect(activeSubtitlesAt(items, 5 + TIME_EPSILON / 2).map((s) => s.id)).toEqual(['s']);
-    expect(activeSubtitlesAt(items, 5 + TIME_EPSILON * 2)).toEqual([]);
+    // EXO-17: export burns captions with gte(t,s)*lt(t,e); the old closed window
+    // drew two adjacent captions on their shared boundary frame.
+    expect(activeSubtitlesAt(items, 5)).toEqual([]);
+    expect(activeSubtitlesAt(items, 5 - TIME_EPSILON * 2).map((s) => s.id)).toEqual(['s']);
   });
 
-  it('the three selectors genuinely DIVERGE at the exact end of a single item (regression guard)', () => {
+  it('only the clip selector keeps a single item at its exact end (regression guard)', () => {
     const t = 5;
     const clip = [{ id: 'a', startTime: 0, duration: 5 }];
     const image: ImageOverlayInput[] = [{ id: 'a', src: '/x.png', startTime: 0, duration: 5 }];
     const subtitle: SubtitleSequenceItem[] = [
       { id: 'a', text: 'x', startTime: 0, duration: 5, trackId: 't' },
     ];
-    // clip (last): inclusive → selected. image: strict → dropped. subtitle: closed → selected.
+    // clip (last): inclusive → selected. image and subtitle: half-open → dropped.
     expect(activeClipAt(clip, t)).not.toBeNull();
     expect(activeImageItemsAt(image, t)).toEqual([]);
-    expect(activeSubtitlesAt(subtitle, t)).toHaveLength(1);
+    expect(activeSubtitlesAt(subtitle, t)).toEqual([]);
   });
 });
 

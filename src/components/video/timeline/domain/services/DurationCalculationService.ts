@@ -11,15 +11,12 @@
  * Pure static methods — no external dependencies (React, DOM, etc.).
  */
 
-import { Track } from '../entities/Track';
-import { Duration } from '../value-objects/Duration';
+import type { Track } from '../entities/Track';
+import { Duration, MIN_CLIP_DURATION_SECONDS } from '../value-objects/Duration';
 import type { TrackData } from '../types';
 
-// ---------------------------------------------------------------------------
-// Minimum floor duration — ensures the timeline always has a non-zero length
-// even when empty. Matches the spec: Duration.create(0.1).
-// ---------------------------------------------------------------------------
-export const MIN_DURATION_SECONDS = 0.1;
+// The empty-timeline floor reuses the shortest clip length so the timeline is
+// never shorter than the shortest thing it can hold (one constant, one name).
 
 // ---------------------------------------------------------------------------
 // DurationCalculationService
@@ -59,7 +56,7 @@ export class DurationCalculationService {
     // Floor: never return zero/negative — the timeline should always have
     // at least a minimal visible length.
     if (maxEnd <= 0) {
-      return Duration.create(MIN_DURATION_SECONDS);
+      return Duration.create(MIN_CLIP_DURATION_SECONDS);
     }
 
     return Duration.create(maxEnd);
@@ -78,7 +75,7 @@ export class DurationCalculationService {
   static calculateTrackDuration(track: Track): Duration {
     const items = track.items;
     if (items.length === 0) {
-      return Duration.create(MIN_DURATION_SECONDS);
+      return Duration.create(MIN_CLIP_DURATION_SECONDS);
     }
 
     let maxEnd = 0;
@@ -89,7 +86,7 @@ export class DurationCalculationService {
       }
     }
 
-    return Duration.create(Math.max(MIN_DURATION_SECONDS, maxEnd));
+    return Duration.create(Math.max(MIN_CLIP_DURATION_SECONDS, maxEnd));
   }
 
   /**
@@ -114,7 +111,7 @@ export class DurationCalculationService {
     }
 
     if (maxEnd <= 0) {
-      return Duration.create(MIN_DURATION_SECONDS);
+      return Duration.create(MIN_CLIP_DURATION_SECONDS);
     }
 
     return Duration.create(maxEnd);

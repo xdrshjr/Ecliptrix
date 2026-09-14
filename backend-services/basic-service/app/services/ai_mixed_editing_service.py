@@ -131,11 +131,16 @@ class AIMixedEditingService:
         """
         Create simplified JSON example for LLM prompt.
 
+        Models copy the example's shape, so it must obey the prompt's own
+        rules (AM2-06): every lane starts at 0 and is contiguous, narration
+        and music sit on separate audio tracks, and the video lane is the
+        longest.
+
         Returns:
             str: Simplified JSON example as string
         """
         example = {
-            "total_duration": 90.5,
+            "total_duration": 61.0,
             "video_segments": [
                 {
                     "material_id": "video_001",
@@ -147,9 +152,9 @@ class AIMixedEditingService:
                 {
                     "material_id": "video_002",
                     "start_time": 30.5,
-                    "duration": 25.0,
+                    "duration": 30.5,
                     "clip_start": 5.0,
-                    "clip_end": 30.0,
+                    "clip_end": 35.5,
                 },
             ],
             "audio_segments": [
@@ -164,16 +169,16 @@ class AIMixedEditingService:
                 },
                 {
                     "material_id": "audio_002",
-                    "start_time": 60.0,
-                    "duration": 30.5,
-                    "track": "audio-track-1",
+                    "start_time": 0,
+                    "duration": 60.0,
+                    "track": "audio-track-2",
                     "volume": 30,
                     "clip_start": 0.0,
-                    "clip_end": 30.5,
+                    "clip_end": 60.0,
                 },
             ],
             "image_segments": [
-                {"material_id": "image_001", "start_time": 55.5, "duration": 5.0}
+                {"material_id": "image_001", "start_time": 0, "duration": 5.0}
             ],
         }
         return json.dumps(example, indent=2, ensure_ascii=False)
@@ -396,26 +401,27 @@ class AIMixedEditingService:
 请按照以下要求生成简化的剪辑配置：
 
 1. **总时长计算**：
-   - 根据素材安排计算合理的total_duration
+   - total_duration 等于最后一段视频的结束时间
    - 确保所有片段都在总时长范围内
 
 2. **视频片段安排** (video_segments)：
    - 使用提供的视频素材ID作为material_id
-   - 设定合理的start_time（开始时间）和duration（持续时间）
+   - 设定合理的duration（持续时间）
    - 可以设置clip_start和clip_end来截取视频的特定片段
-   - 按时间顺序排列，避免重叠
+   - 从 0 秒开始按顺序首尾相接、不留空隙、不重叠：下一段的 start_time = 上一段的 start_time + duration
 
 3. **音频片段安排** (audio_segments)：
    - 使用提供的音频素材ID作为material_id
-   - 设定合理的start_time和duration
-   - 默认使用audio-track-1，如需要可以使用audio-track-2
+   - 设定合理的duration
+   - 旁白/配音放在 audio-track-1，背景音乐放在 audio-track-2；track 只能是 audio-track-1 至 audio-track-4
+   - 同一音频轨上的片段从 0 秒开始首尾相接、不留空隙
    - volume 为百分比（0-200），100 表示原音量；旁白/配音用 100，背景音乐建议 20-40
    - 可以设置clip_start和clip_end来截取音频的特定片段
 
 4. **图片片段安排** (image_segments)：
    - 使用提供的图片素材ID作为material_id
    - 每个图片建议显示3-8秒（duration）
-   - 设定合理的start_time
+   - 图片轨上的片段同样从 0 秒开始首尾相接、不留空隙
 
 5. **输出要求**：
    - 严格按照示例JSON的结构和字段名

@@ -12,6 +12,7 @@ import os
 import json
 from unittest.mock import patch, MagicMock
 from app.services.video_composition_service import VideoCompositionService
+from tests.composition_harness import FakeFfmpeg
 from app.models.video_models import (
     VideoCompositionRequest, 
     AudioCompositionItem, 
@@ -70,6 +71,7 @@ class TestAudioVolumeConsistency:
     def composition_request(self, sample_audio_items):
         """创建视频合成请求"""
         return VideoCompositionRequest(
+            task_id="test_task",
             video_items=[],
             audio_items=sample_audio_items,
             subtitle_items=[],
@@ -93,9 +95,8 @@ class TestAudioVolumeConsistency:
                     f.write('mock audio content')
             
             # 模拟 FFmpeg 命令执行成功
-            with patch('subprocess.run') as mock_run:
-                # 配置 subprocess.run 的返回值
-                mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+            # 模拟 FFmpeg 成功，并写出每条命令的输出文件
+            with patch('subprocess.run', side_effect=FakeFfmpeg()) as mock_run:
                 
                 # 调用音频处理方法
                 result = service._process_audio_tracks(
@@ -105,8 +106,7 @@ class TestAudioVolumeConsistency:
                     10.0
                 )
                 
-                # 验证结果不为空
-                assert result is not None
+                assert result.path is not None
                 
                 # 验证 FFmpeg 被调用的次数
                 # 应该调用 3 次用于预处理 + 1 次用于最终混合
@@ -144,6 +144,7 @@ class TestAudioVolumeConsistency:
         确保单音频轨道的音量设置正确应用
         """
         single_audio_request = VideoCompositionRequest(
+            task_id="test_task",
             video_items=[],
             audio_items=[
                 AudioCompositionItem(
@@ -171,8 +172,7 @@ class TestAudioVolumeConsistency:
                 f.write('mock single audio content')
             
             # 模拟 FFmpeg 命令执行成功
-            with patch('subprocess.run') as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+            with patch('subprocess.run', side_effect=FakeFfmpeg()) as mock_run:
                 
                 result = service._process_audio_tracks(
                     single_audio_request,
@@ -181,16 +181,12 @@ class TestAudioVolumeConsistency:
                     8.0
                 )
                 
-                # 验证结果不为空
-                assert result is not None
-                
-                # 验证 FFmpeg 被调用（单音频情况下调用次数较少）
-                assert mock_run.call_count >= 1
-                
-                # 检查命令包含正确的音量设置
-                final_cmd = mock_run.call_args_list[-1][0][0]  # 最后一个调用的命令
-                cmd_str = ' '.join(final_cmd)
-                assert 'volume=0.7' in cmd_str
+                assert result.path is not None
+
+                # 起点 2 s：音量烘焙在读取源文件的片段命令里，最后一条命令只补前置静音
+                segment_cmd = ' '.join(mock_run.call_args_list[0][0][0])
+                assert 'single-test.mp3' in segment_cmd
+                assert 'volume=0.7' in segment_cmd
     
     def test_audio_track_timing_preservation(self, service, composition_request):
         """
@@ -206,8 +202,7 @@ class TestAudioVolumeConsistency:
                 with open(mock_audio_path, 'w') as f:
                     f.write('mock audio content')
             
-            with patch('subprocess.run') as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+            with patch('subprocess.run', side_effect=FakeFfmpeg()) as mock_run:
                 
                 result = service._process_audio_tracks(
                     composition_request,
@@ -216,7 +211,7 @@ class TestAudioVolumeConsistency:
                     10.0
                 )
                 
-                assert result is not None
+                assert result.path is not None
                 
                 # 检查最终混合命令的延迟设置
                 final_mix_cmd = mock_run.call_args_list[-1][0][0]
@@ -234,6 +229,7 @@ class TestAudioVolumeConsistency:
         确保剪辑的音频片段正确应用音量设置
         """
         clipped_audio_request = VideoCompositionRequest(
+            task_id="test_task",
             video_items=[],
             audio_items=[
                 AudioCompositionItem(
@@ -260,8 +256,7 @@ class TestAudioVolumeConsistency:
             with open(mock_audio_path, 'w') as f:
                 f.write('mock clipped audio content')
             
-            with patch('subprocess.run') as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+            with patch('subprocess.run', side_effect=FakeFfmpeg()) as mock_run:
                 
                 result = service._process_audio_tracks(
                     clipped_audio_request,
@@ -270,18 +265,14 @@ class TestAudioVolumeConsistency:
                     6.0
                 )
                 
-                assert result is not None
-                
-                # 验证命令包含剪辑参数
-                final_cmd = mock_run.call_args_list[-1][0][0]
-                cmd_str = ' '.join(final_cmd)
-                
-                # 检查剪辑开始时间
-                assert '-ss 2.0' in cmd_str or '-ss' in cmd_str
-                # 检查音量设置
-                assert 'volume=1.5' in cmd_str
-                # 检查时长设置（clip_end - clip_start = 3.0）
-                assert '-t 3.0' in cmd_str or '-t' in cmd_str
+                assert result.path is not None
+
+                # 起点 1 s：剪辑窗口与音量都在读取源文件的片段命令里
+                segment_cmd = ' '.join(mock_run.call_args_list[0][0][0])
+                assert '-ss 2.0' in segment_cmd
+                assert 'volume=1.5' in segment_cmd
+                # 时长 = clip_end - clip_start = 3.0
+                assert '-t 3.0' in segment_cmd
     
     def test_error_handling_invalid_audio_file(self, service):
         """
@@ -289,6 +280,7 @@ class TestAudioVolumeConsistency:
         确保当音频文件不存在或无效时，服务能够正确处理错误
         """
         invalid_audio_request = VideoCompositionRequest(
+            task_id="test_task",
             video_items=[],
             audio_items=[
                 AudioCompositionItem(
@@ -327,7 +319,7 @@ class TestAudioVolumeConsistency:
                 )
                 
                 # 当音频处理失败时，应该返回 None
-                assert result is None
+                assert result.path is None
     
     def test_logging_volume_information(self, service, composition_request):
         """
@@ -343,8 +335,7 @@ class TestAudioVolumeConsistency:
                 with open(mock_audio_path, 'w') as f:
                     f.write('mock audio content')
             
-            with patch('subprocess.run') as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+            with patch('subprocess.run', side_effect=FakeFfmpeg()) as mock_run:
                 
                 # 使用 patch 来捕获日志记录
                 with patch('app.services.video_composition_service.logger') as mock_logger:
@@ -355,7 +346,7 @@ class TestAudioVolumeConsistency:
                         10.0
                     )
                     
-                    assert result is not None
+                    assert result.path is not None
                     
                     # 验证日志记录了音量信息
                     # 检查是否记录了预处理音频的日志

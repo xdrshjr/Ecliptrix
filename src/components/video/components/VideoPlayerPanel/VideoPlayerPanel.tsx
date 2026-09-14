@@ -19,6 +19,8 @@ import { useCompositionPlayback } from '../../hooks/useCompositionPlayback';
 import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectRatio } from './aspectRatios';
 import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from './imageOverlays';
 import { useCompositionTransport, type MediaReadiness } from './useCompositionTransport';
+import { useTimelineStore } from '../../timeline/store';
+import { fitImagePositionAction } from '../../timeline/store/actions/updateItemFields';
 
 interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   videoPreview: VideoPreview;
@@ -141,6 +143,12 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const [imageOverlayEntrySnapshots, setImageOverlayEntrySnapshots] = useState<Record<string, ImagePosition>>({});
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   const videoContainerRef = useRef<HTMLDivElement>(null);
+  // S9：Agent 执行期间时间轴处于编辑锁，图片叠加的拖动 / 缩放手柄不可用。
+  const isImageEditLocked = useTimelineStore((state) => state.externalEditLock !== null);
+
+  useEffect(() => {
+    if (isImageEditLocked) setSelectedImageOverlay(null);
+  }, [isImageEditLocked]);
 
   // ----------------------------------------------------------------------
   // local-video-editing-refactor S4 — the multi-track compositor preview path
@@ -177,9 +185,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     enabled: true,
   });
 
-  // 当前播放模式：preview 或 composition
-  const playbackMode = compositionPlayback?.isCompositionMode && compositionPlayback.videoSequences.length > 0
-    ? 'composition' : 'preview';
+  // 当前播放模式：preview 或 composition。ME-07：只要时间轴有任何可渲染条目
+  // （含仅图片 + 配音）就进入合成预览，不再要求存在视频序列。
+  const playbackMode = compositionPlayback?.isCompositionMode ? 'composition' : 'preview';
   const imageOverlayPlaybackTime = getImageOverlayPlaybackTime(
     playbackMode,
     currentTimelineTime,
@@ -267,22 +275,58 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     });
   }, []);
 
-  const handleImagePositionConfirm = useCallback((itemId: string, position: ImagePosition) => {
-    logger.info('图片叠加位置确认', { itemId, position });
+  // ME-05：手势结束即是一次编辑——立即作为一步可撤销操作写入时间轴，导出、自动保存与
+  // 下一次时间轴编辑读到的都是它，而不是只存在于组件状态、等用户记得点确认的位置。
+  const handleImageGestureEnd = useCallback((itemId: string, position: ImagePosition) => {
+    logger.info('图片叠加手势结束，写入时间轴', { itemId, position });
     onImagePositionConfirm?.(itemId, position);
+  }, [logger, onImagePositionConfirm]);
+
+  // 首帧自动适配不是用户编辑：写入时间轴但不进撤销历史。action 拒绝（编辑锁 / 锁定轨）时
+  // 本地预览也不改：只存在于组件状态的框会进导出却不进 store，下一次时间轴同步又被冲回（ME-05）。
+  const handleImageAutoFit = useCallback((itemId: string, position: ImagePosition) => {
+    if (fitImagePositionAction(() => useTimelineStore.getState(), itemId, position)) {
+      handleImagePositionChange(itemId, position);
+    }
+  }, [handleImagePositionChange]);
+
+  // 「完成」：手势已逐次入库，这里只结束选中。
+  const handleImageOverlayDone = useCallback((itemId: string) => {
     clearImageOverlaySnapshot(itemId);
     setSelectedImageOverlay(null);
-  }, [clearImageOverlaySnapshot, logger, onImagePositionConfirm]);
+  }, [clearImageOverlaySnapshot]);
 
-  const handleImagePositionCancel = useCallback((itemId: string) => {
-    const snapshot = imageOverlayEntrySnapshots[itemId];
-    if (snapshot) {
-      logger.info('图片叠加位置取消', { itemId, snapshot });
-      handleImagePositionChange(itemId, snapshot);
+  // 「还原位置」：回到本次选中前的位置，同样是一步可撤销操作（值未变时不记录）。
+  const handleImageOverlayRevert = useCallback((itemId: string) => {
+    const entryPosition = imageOverlayEntrySnapshots[itemId];
+    if (entryPosition) {
+      logger.info('图片叠加还原到选中前位置', { itemId, entryPosition });
+      handleImagePositionChange(itemId, entryPosition);
+      onImagePositionConfirm?.(itemId, entryPosition);
     }
     clearImageOverlaySnapshot(itemId);
     setSelectedImageOverlay(null);
-  }, [clearImageOverlaySnapshot, handleImagePositionChange, imageOverlayEntrySnapshots, logger]);
+  }, [clearImageOverlaySnapshot, handleImagePositionChange, imageOverlayEntrySnapshots, logger, onImagePositionConfirm]);
+
+  // 可拖拽句柄叠在画布上（图片本身由合成器绘制）；编辑锁期间不渲染句柄（S9）。
+  const renderImageOverlayHandles = (frameWidth: number, frameHeight: number) =>
+    isImageEditLocked ? null : getCurrentImageOverlays().map((overlay) => (
+      <ImageOverlay
+        key={overlay.id}
+        imageId={overlay.id}
+        imageUrl={overlay.url}
+        position={overlay.position}
+        containerWidth={frameWidth}
+        containerHeight={frameHeight}
+        onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
+        onGestureEnd={handleImageGestureEnd}
+        onAutoFit={handleImageAutoFit}
+        onConfirm={() => handleImageOverlayDone(overlay.id)}
+        onCancel={() => handleImageOverlayRevert(overlay.id)}
+        isSelected={selectedImageOverlay === overlay.id}
+        onSelect={() => handleImageOverlaySelect(overlay.id, overlay.position)}
+      />
+    ));
 
   // 新增：监听容器尺寸变化（ResizeObserver）
   useEffect(() => {
@@ -476,7 +520,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             <div
               ref={videoContainerRef}
               className="video-preview-container">
-              {playbackMode === 'composition' && compositionPlayback && compositionPlayback.videoSequences.length > 0 ? (
+              {playbackMode === 'composition' && compositionPlayback ? (
                 // 组合播放模式 - 稳定的宽高比容器
                 <div
                   className={`${selectedAspectRatio.cssClass} bg-black rounded-md overflow-hidden relative`}
@@ -525,21 +569,10 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   {/* 新增：图片叠加层 —— 句柄是②比例帧(position:relative)的绝对定位子节点，
                       故归一化基准必须用②的计算尺寸(previewFrameBox)，而非①的 containerDimensions，
                       使可拖拽句柄与合成器在 canvas 上栅格化的真实图片对齐。 */}
-                  {getCurrentImageOverlays().map((overlay) => (
-                    <ImageOverlay
-                      key={overlay.id}
-                      imageId={overlay.id}
-                      imageUrl={overlay.url}
-                      position={overlay.position}
-                      containerWidth={previewFrameBox ? previewFrameBox.width : containerDimensions.width}
-                      containerHeight={previewFrameBox ? previewFrameBox.height : containerDimensions.height}
-                      onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
-                      onConfirm={() => handleImagePositionConfirm(overlay.id, overlay.position)}
-                      onCancel={() => handleImagePositionCancel(overlay.id)}
-                      isSelected={selectedImageOverlay === overlay.id}
-                      onSelect={() => handleImageOverlaySelect(overlay.id, overlay.position)}
-                    />
-                  ))}
+                  {renderImageOverlayHandles(
+                    previewFrameBox ? previewFrameBox.width : containerDimensions.width,
+                    previewFrameBox ? previewFrameBox.height : containerDimensions.height,
+                  )}
                 </div>
               ) : (
                 // 预览模式占位符 - 充满整个容器，保持宽高比稳定
@@ -576,21 +609,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                   </div>
 
                   {/* 在预览模式下也显示图片叠加 */}
-                  {getCurrentImageOverlays().map((overlay) => (
-                    <ImageOverlay
-                      key={overlay.id}
-                      imageId={overlay.id}
-                      imageUrl={overlay.url}
-                      position={overlay.position}
-                      containerWidth={containerDimensions.width}
-                      containerHeight={containerDimensions.height}
-                      onPositionChange={(newPosition) => handleImagePositionChange(overlay.id, newPosition)}
-                      onConfirm={() => handleImagePositionConfirm(overlay.id, overlay.position)}
-                      onCancel={() => handleImagePositionCancel(overlay.id)}
-                      isSelected={selectedImageOverlay === overlay.id}
-                      onSelect={() => handleImageOverlaySelect(overlay.id, overlay.position)}
-                    />
-                  ))}
+                  {renderImageOverlayHandles(containerDimensions.width, containerDimensions.height)}
                 </div>
               )}
             </div>

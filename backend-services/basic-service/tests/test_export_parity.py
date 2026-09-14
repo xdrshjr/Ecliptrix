@@ -8,8 +8,8 @@ SAME values the Phase-2 preview contract (spec 02) produces:
   - z-order = track order (bottom track drawn first, upper overlaid on top);
   - per-clip opacity → the colorchannelmixer `aa` value (the export analogue of
     the compositor's globalAlpha = item.opacity);
-  - dissolve overlap-duration == transition.duration (the cross-dissolve window
-    that TransitionLayer.alphaFor ramps over);
+  - dissolve alpha ramps last transition.duration (the windows
+    TransitionLayer.alphaFor ramps over);
   - fade alpha at a sample time computed from the SAME arithmetic
     TransitionLayer.alphaFor uses, cross-checked against the ffmpeg fade params.
 
@@ -106,12 +106,15 @@ def test_parity_opacity_matches_colorchannelmixer_alpha():
     assert result.filter_complex.count("colorchannelmixer=aa=") == 2  # top_a + top_b
 
 
-def test_parity_dissolve_overlap_equals_transition_duration():
+def test_parity_dissolve_ramps_alpha_over_transition_duration():
     clips = _build_parity_timeline()
     result = build_filtergraph(clips, 1920, 1080)
-    # Cross-dissolve overlap == transition duration (1.0s) — the same window
-    # TransitionLayer.alphaFor ramps the two overlapping clips over.
-    assert "xfade=transition=fade:duration=1.0" in result.filter_complex
+    # A dissolve is two alpha ramps over the transition duration (1.0s) — the
+    # same windows TransitionLayer.alphaFor draws. No xfade: it re-timed the
+    # track and dropped clips (round 2, EXV-04 / EXV-06 / EXV-08).
+    assert "xfade" not in result.filter_complex
+    assert "fade=t=out:st=3:d=1:alpha=1" in result.filter_complex
+    assert "fade=t=in:st=0:d=1:alpha=1" in result.filter_complex
 
 
 def test_parity_fade_param_implies_preview_alpha_at_sample_time():
@@ -141,7 +144,7 @@ def test_parity_fade_param_implies_preview_alpha_at_sample_time():
         clip_start=0.0, clip_duration=4.0, fade_in=1.0, fade_out=None, t=sample_t
     )
     assert abs(implied_ffmpeg_alpha - preview_alpha) < 1e-9
-    assert "fade=t=in:st=0:d=1.0" in result.filter_complex
+    assert "fade=t=in:st=0:d=1:alpha=1" in result.filter_complex
 
 
 def test_parity_effective_duration_matches_preview_clamp():

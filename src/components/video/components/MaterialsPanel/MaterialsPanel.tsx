@@ -31,6 +31,8 @@ import MaterialThumbnail from './MaterialThumbnail';
 import { http, ApiError } from '@/lib/api/http-client';
 import MaterialCacheBadge from '../MaterialCacheBadge';
 import { canPreviewDirectLocalMaterial } from '../../lib/localMaterial';
+import { buildDerivedMaterial } from '../../lib/derivedMaterial';
+import { MATERIAL_DRAG_MIME_PREFIX } from '../../timeline/lib/materialDragTypes';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -838,6 +840,9 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       type: 'material',
       material: material
     }));
+    // dragenter/dragover can read DataTransfer.types but not getData, so the
+    // tracks learn the material type from this entry (ME-10).
+    e.dataTransfer.setData(`${MATERIAL_DRAG_MIME_PREFIX}${material.type}`, material.id);
     
     // 设置拖拽效果
     e.dataTransfer.effectAllowed = 'copy';
@@ -1313,26 +1318,24 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       processedVideoUrl: processedVideoUrl.substring(0, 100)
     });
 
-    // 创建新的素材项，保持原有ID但更新URL和名称
-    const newMaterial: MaterialItem = {
-      ...originalMaterial,
-      // 保持原有ID，这样时间轴中已经添加的素材会自动使用新的URL
-      id: originalMaterial.id,
-      name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_无水印$/, '')}_无水印.mp4`,
-      url: processedVideoUrl,
-      // 保留serverUrl以备用
-      serverUrl: processedVideoUrl,
-      // 更新创建时间以标记为最新版本
-      createdAt: new Date(),
-      // 添加元数据标记这是水印去除后的版本
-      metadata: {
-        ...originalMaterial.metadata,
-        isWatermarkRemoved: true,
-        originalVideoUrl: originalMaterial.url,
-        watermarkRemovedAt: new Date().toISOString(),
-        source: 'watermark-removed'
+    // 保持原有ID，这样时间轴中已经添加的素材会自动使用去水印版本。
+    // 存储身份（cacheUrl / storageKey / localResolvedUrl）按处理结果重建：
+    // 继承原片的本地引用会让预览与导出仍播放带水印的原文件（ME-01）。
+    const newMaterial = buildDerivedMaterial(
+      originalMaterial,
+      { url: processedVideoUrl },
+      {
+        id: originalMaterial.id,
+        name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_无水印$/, '')}_无水印.mp4`,
+        metadata: {
+          ...originalMaterial.metadata,
+          isWatermarkRemoved: true,
+          originalVideoUrl: originalMaterial.url,
+          watermarkRemovedAt: new Date().toISOString(),
+          source: 'watermark-removed'
+        }
       }
-    };
+    );
 
     logger.info('替换原始素材为去水印版本', {
       materialId: newMaterial.id,
@@ -1360,25 +1363,25 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
 
     // 创建新素材项（新 ID），保留原始素材不变
     const newId = `${originalMaterial.id}_sr_${Date.now()}`;
-    const newMaterial: MaterialItem = {
-      ...originalMaterial,
-      id: newId,
-      name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_静音移除$/, '')}_静音移除.mp4`,
-      url: processedVideoUrl,
-      serverUrl: processedVideoUrl,
-      duration: result.new_duration,
-      createdAt: new Date(),
-      metadata: {
-        ...originalMaterial.metadata,
-        isSilenceRemoved: true,
-        originalVideoUrl: originalMaterial.url,
-        originalMaterialId: originalMaterial.id,
-        silenceRemovedAt: new Date().toISOString(),
-        removedSegments: result.removed_count,
-        timeSaved: result.time_saved,
-        source: 'silence-removed'
+    // 存储身份按处理结果重建：继承原片的 storageKey 会让删除新素材时删掉原文件（ME-01）。
+    const newMaterial = buildDerivedMaterial(
+      originalMaterial,
+      { url: processedVideoUrl, duration: result.new_duration },
+      {
+        id: newId,
+        name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_静音移除$/, '')}_静音移除.mp4`,
+        metadata: {
+          ...originalMaterial.metadata,
+          isSilenceRemoved: true,
+          originalVideoUrl: originalMaterial.url,
+          originalMaterialId: originalMaterial.id,
+          silenceRemovedAt: new Date().toISOString(),
+          removedSegments: result.removed_count,
+          timeSaved: result.time_saved,
+          source: 'silence-removed'
+        }
       }
-    };
+    );
 
     logger.info('添加静音移除后的新素材', {
       newMaterialId: newMaterial.id,
@@ -2651,6 +2654,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         isOpen={confirmationDialog.isOpen}
         title={confirmationDialog.title}
         message={confirmationDialog.message}
+        confirmText={t.materialsPanel.deleteConfirmAction}
+        cancelText={t.common.cancel}
         type={confirmationDialog.type}
         onConfirm={confirmationDialog.onConfirm}
         onCancel={handleCloseConfirmationDialog}
@@ -2769,7 +2774,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             <div className="px-6 py-4 border-b border-border flex-shrink-0">
               <h3 className="text-lg font-semibold">选择视频效果和设置聚焦区域</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                将图片 "{selectedImageForConversion.name}" 转换为视频
+                将图片 &quot;{selectedImageForConversion.name}&quot; 转换为视频
               </p>
             </div>
             

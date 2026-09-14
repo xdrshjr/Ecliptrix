@@ -33,6 +33,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MaterialItem, TimelineState } from '@/types';
+import { isStillImageItem } from '../timeline/infrastructure/renderableTimeline';
 import type {
   CompositionPlayback,
   VideoSequenceItem,
@@ -152,12 +153,11 @@ export function buildAudioSyncGroups(
 }
 
 /**
- * Extract the active-able image-overlay inputs from the timeline state. Mirrors
- * the v1 `getCurrentImageOverlays` selection — items with
- * `originalMaterialType === 'image'` on a visible track — but as a TIME-
- * INDEPENDENT input list (the ImageOverlayLayer does the per-frame `t` filter).
- * The image URL is resolved from the live material (same authority as video).
- * Items whose material has no usable URL are dropped.
+ * Extract the active-able image-overlay inputs from the timeline state: still-
+ * image items (`isStillImageItem`, the same rule export uses) on a visible
+ * track, as a TIME-INDEPENDENT input list (the ImageOverlayLayer does the
+ * per-frame `t` filter). The image URL is resolved from the live material (same
+ * authority as video). Items whose material has no usable URL are dropped.
  */
 export function buildImageOverlayInputs(
   timelineState: TimelineState | undefined,
@@ -169,8 +169,8 @@ export function buildImageOverlayInputs(
   for (const track of timelineState.tracks) {
     if (!track.isVisible) continue;
     for (const item of track.items) {
-      if (item.originalMaterialType !== 'image') continue;
       const material = item.materialId ? byId.get(item.materialId) : undefined;
+      if (!isStillImageItem(item, material)) continue;
       const src = material?.url;
       if (!src) continue;
       inputs.push({

@@ -45,6 +45,14 @@ describe('activeSubtitlesAt', () => {
     ];
     expect(activeSubtitlesAt(items, 2).map((s) => s.id)).toEqual(['a', 'b']);
   });
+
+  it('a subtitle ending at t is not drawn at t', () => {
+    const items = [
+      sub({ id: 'first', startTime: 0, duration: 2 }),
+      sub({ id: 'next', startTime: 2, duration: 2 }),
+    ];
+    expect(activeSubtitlesAt(items, 2).map((s) => s.id)).toEqual(['next']);
+  });
 });
 
 describe('wrapText', () => {

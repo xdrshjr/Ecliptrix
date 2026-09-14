@@ -27,6 +27,7 @@ import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
 import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
 import { VideoEditingLogger } from './utils';
+import { segmentTextHash } from './lib/aiMix/segmentTextHash';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useNotification } from '@/contexts/NotificationContext';
 import { VideoAnalysisResponse } from './services/videoAnalysisService';
@@ -1524,6 +1525,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               segment_id: segment.id,
               segment_number: segmentNumber,
               segment_assigned_at: Date.now(), // 自动混剪据此选取该段最新配音
+              // 与本次 TTS 请求朗读的文本同源；文案改动后自动混剪据此识别过期配音
+              segment_text_hash: segmentTextHash(segment),
               task_id: taskId,
               fileName,                  // iter5: align with LocalAudioManager / MaterialsPanel
               server_file_name: fileName, // kept for backward-compat with historical workflow_data

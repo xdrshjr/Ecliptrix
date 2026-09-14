@@ -149,6 +149,22 @@ export function computeImageBounds(
   };
 }
 
+/** zIndex an image carries when it has none — the same default the backend applies. */
+const DEFAULT_IMAGE_Z_INDEX = 10;
+/** Highest zIndex kept; see {@link clampImageZIndex}. */
+const MAX_IMAGE_Z_INDEX = 999;
+
+/**
+ * zIndex as an integer in [0, 999] (default 10). Preview lifts an image to
+ * `baseZ + zIndex * 1000 + index`, so the bound keeps every image below the
+ * subtitle band at `baseZ * 2` — subtitles are burned in after the images in
+ * export too. The backend sorts on the same clamped key.
+ */
+export function clampImageZIndex(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_IMAGE_Z_INDEX;
+  return Math.min(MAX_IMAGE_Z_INDEX, Math.max(0, Math.round(value)));
+}
+
 /** Effective opacity in [0,1] — defaults to fully opaque. */
 export function effectiveImageOpacity(opacity: number | null | undefined): number {
   if (opacity === null || opacity === undefined) return 1;
@@ -179,10 +195,10 @@ export function stillCameraInputAt(
 /**
  * Build the ordered `image` compositor layers active at time `t`.
  *
- * Output `z` is taken from each item's `position.zIndex` (falling back to a
- * stable input-order index) so overlapping overlays composite in the author's
- * intended front-to-back order. Layers with non-positive area or empty `src`
- * are dropped (nothing to draw).
+ * Output `z` is each item's clamped `position.zIndex` (default 10, like the
+ * export) so overlapping overlays composite in the author's intended
+ * front-to-back order; equal zIndex keeps input order once the assembler adds
+ * the index. Layers with non-positive area or empty `src` are dropped.
  */
 export function buildImageLayersAt(
   items: readonly ImageOverlayInput[],
@@ -191,11 +207,11 @@ export function buildImageLayersAt(
 ): Extract<CompositorLayer, { kind: 'image' }>[] {
   const active = activeImageItemsAt(items, t);
   const layers: Extract<CompositorLayer, { kind: 'image' }>[] = [];
-  active.forEach((item, index) => {
+  active.forEach((item) => {
     if (!item.src) return;
     const bounds = computeImageBounds(item.position, fit);
     if (bounds.w <= 0 || bounds.h <= 0) return;
-    const z = item.position?.zIndex ?? index;
+    const z = clampImageZIndex(item.position?.zIndex);
     const cameraInput = stillCameraInputAt(item, t);
     layers.push({
       kind: 'image',

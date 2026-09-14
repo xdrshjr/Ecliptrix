@@ -57,6 +57,15 @@ describe('sourcePathForDelete', () => {
   it('returns undefined when no storage key is present', () => {
     expect(sourcePathForDelete(makeMaterial({}))).toBeUndefined();
   });
+
+  it('does not delete a source file shared by another material', () => {
+    const derived = makeMaterial({ id: 'derived', storageKey: 'video/clip.mp4' });
+    const original = makeMaterial({ id: 'original', metadata: { storageKey: 'video/clip.mp4' } });
+
+    expect(sourcePathForDelete(derived, [original])).toBeUndefined();
+    expect(extraThumbnailKeysForDelete(derived, [original])).toEqual([]);
+    expect(sourcePathForDelete(derived, [derived])).toBe('video/clip.mp4');
+  });
 });
 
 describe('extraThumbnailKeysForDelete', () => {

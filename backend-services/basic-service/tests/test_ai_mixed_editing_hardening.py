@@ -363,12 +363,14 @@ def test_sanitize_reroutes_image_referenced_in_video_segments():
     report = _sanitize(timeline)
 
     assert [s.material_id for s in timeline.video_segments] == ["v1"]
+    # The image lane is packed from 0 like the manual timeline (AM2-01, D-3).
     assert [
         (s.material_id, s.start_time, s.duration)
         for s in timeline.image_segments
-    ] == [("i1", 6.0, 4.0)]
+    ] == [("i1", 0.0, 4.0)]
     assert report.adjusted == [
-        "video_segments[1]: material i1 is an image, moved to image_segments"
+        "video_segments[1]: material i1 is an image, moved to image_segments",
+        "video_segments[1]: i1 moved from 6.00s to 0.00s to close a gap",
     ]
 
 
@@ -453,13 +455,12 @@ def test_sanitize_warnings_use_the_models_original_segment_index():
 
     report = _sanitize(timeline)
 
-    assert [line for line in report.adjusted if "overlapped" in line] == [
-        "video_segments[2]: v1 overlapped the previous segment, moved from "
-        "3.00s to 5.00s"
+    assert [line for line in report.adjusted if "overlap" in line] == [
+        "video_segments[2]: v1 moved from 3.00s to 5.00s to clear an overlap"
     ]
 
 
-def test_sanitize_shifts_same_lane_overlap_and_keeps_other_lanes():
+def test_sanitize_packs_every_lane_independently():
     materials = [*MATERIALS, _material("a2", "audio", 30.0)]
     timeline = SimplifiedTimelineModel(
         total_duration=40,
@@ -484,11 +485,237 @@ def test_sanitize_shifts_same_lane_overlap_and_keeps_other_lanes():
     ] == [
         ("a1", "audio-track-1", 0.0),
         ("a2", "audio-track-1", 10.0),
-        ("a1", "audio-track-2", 5.0),
+        ("a1", "audio-track-2", 0.0),
     ]
     assert timeline.video_segments[0].start_time == 0.0
-    assert len(report.adjusted) == 1
+    assert len([line for line in report.adjusted if " moved " in line]) == 2
     assert timeline.total_duration == 20.0
+
+
+# ── AM2-01 / AM2-07: every lane is packed from 0 (a write is stable) ──
+
+
+def test_sanitize_packs_lanes_and_reports_closed_gaps():
+    timeline = SimplifiedTimelineModel(
+        total_duration=60,
+        video_segments=[
+            {"material_id": "v1", "start_time": 2, "duration": 10},
+            {"material_id": "v1", "start_time": 20, "duration": 5,
+             "clip_start": 10},
+        ],
+        audio_segments=[
+            {"material_id": "a1", "start_time": 3, "duration": 10},
+        ],
+        image_segments=[
+            {"material_id": "i1", "start_time": 50, "duration": 5},
+        ],
+    )
+
+    report = _sanitize(timeline)
+
+    assert [
+        (s.start_time, s.duration) for s in timeline.video_segments
+    ] == [(0.0, 10.0), (10.0, 5.0)]
+    assert timeline.image_segments[0].start_time == 0.0
+    assert timeline.audio_segments[0].start_time == 0.0
+    assert [line for line in report.adjusted if "close a gap" in line] == [
+        "video_segments[0]: v1 moved from 2.00s to 0.00s to close a gap",
+        "video_segments[1]: v1 moved from 20.00s to 10.00s to close a gap",
+        "image_segments[0]: i1 moved from 50.00s to 0.00s to close a gap",
+        "audio_segments[0]: a1 moved from 3.00s to 0.00s to close a gap",
+    ]
+    assert timeline.total_duration == 15.0
+
+
+@pytest.mark.asyncio
+async def test_parse_output_is_contiguous_per_lane(monkeypatch):
+    plan = json.dumps(
+        {
+            "total_duration": 90.5,
+            "video_segments": [
+                {"material_id": "v1", "start_time": 0, "duration": 10},
+                {"material_id": "v1", "start_time": 30.5, "duration": 8,
+                 "clip_start": 5},
+            ],
+            "audio_segments": [
+                {"material_id": "a1", "start_time": 0, "duration": 12},
+                {"material_id": "a1", "start_time": 60, "duration": 10},
+            ],
+            "image_segments": [
+                {"material_id": "i1", "start_time": 55.5, "duration": 5}
+            ],
+        }
+    )
+    monkeypatch.setattr(service_module, "call_chat", ScriptedChat(plan))
+
+    data = await AIMixedEditingService(LLM_CONFIG).generate_mixed_editing(
+        MATERIALS, "task-pack"
+    )
+
+    for track in data["tracks"]:
+        cursor = 0.0
+        for item in sorted(track["items"], key=lambda i: i["startTime"]):
+            assert item["startTime"] == pytest.approx(cursor), track["id"]
+            cursor += item["duration"]
+
+
+def test_overlap_shift_extends_total_instead_of_trimming():
+    # Before AM2-07 a2 was pushed to 30s and then clipped to the model's 55s
+    # total, silently cutting the last 5s of narration.
+    materials = [*MATERIALS, _material("a2", "audio", 30.0)]
+    timeline = SimplifiedTimelineModel(
+        total_duration=55,
+        video_segments=[
+            {"material_id": "v1", "start_time": 0, "duration": 20},
+        ],
+        audio_segments=[
+            {"material_id": "a1", "start_time": 0, "duration": 30},
+            {"material_id": "a2", "start_time": 25, "duration": 30},
+        ],
+    )
+
+    report = _sanitize(timeline, materials)
+
+    a2 = timeline.audio_segments[1]
+    assert (a2.start_time, a2.duration, a2.clip_end) == (30.0, 30.0, 30.0)
+    assert [line for line in report.warnings() if "trimmed" in line] == []
+    assert timeline.total_duration == 60.0
+
+
+# ── AM2-02: audio track names are canonicalised ──
+
+
+@pytest.mark.parametrize(
+    ("track", "expected", "warning"),
+    [
+        (None, "audio-track-1", "track None mapped to audio-track-1"),
+        (2, "audio-track-2", "track 2 mapped to audio-track-2"),
+        ("Audio Track 2", "audio-track-2",
+         'track "Audio Track 2" mapped to audio-track-2'),
+        ("video-track-1", "audio-track-1",
+         'track "video-track-1" mapped to audio-track-1'),
+        ("bgm", "audio-track-2", 'track "bgm" mapped to audio-track-2'),
+        ("audio-track-7", "audio-track-4",
+         'track "audio-track-7" mapped to audio-track-4'),
+        ("audio-track-2", "audio-track-2", None),
+    ],
+)
+def test_sanitize_canonicalises_audio_track_names(track, expected, warning):
+    timeline = SimplifiedTimelineModel(
+        total_duration=10,
+        video_segments=[
+            {"material_id": "v1", "start_time": 0, "duration": 10},
+        ],
+        audio_segments=[
+            {"material_id": "a1", "start_time": 0, "duration": 4,
+             "track": "audio-track-1"},
+            {"material_id": "a1", "start_time": 0, "duration": 4,
+             "track": track},
+        ],
+    )
+
+    report = _sanitize(timeline)
+
+    assert timeline.audio_segments[1].track == expected
+    mapped = [line for line in report.adjusted if "mapped to" in line]
+    assert mapped == ([f"audio_segments[1]: {warning}"] if warning else [])
+
+
+def test_parse_never_emits_duplicate_track_ids():
+    timeline = SimplifiedTimelineModel(
+        total_duration=10,
+        video_segments=[
+            {"material_id": "v1", "start_time": 0, "duration": 10},
+        ],
+        audio_segments=[
+            {"material_id": "a1", "start_time": 0, "duration": 5,
+             "track": "video-track-1"},
+            {"material_id": "a1", "start_time": 0, "duration": 5,
+             "track": "bgm"},
+            {"material_id": "a1", "start_time": 0, "duration": 5,
+             "track": 3},
+        ],
+    )
+    report = _sanitize(timeline)
+
+    data = TimelineParserService().parse_simplified_timeline(
+        simplified_timeline=timeline,
+        materials=MATERIALS,
+        task_id="task-ids",
+        warnings=report.warnings(),
+    )
+
+    ids = [track["id"] for track in data["tracks"]]
+    assert len(ids) == len(set(ids))
+    assert sorted(ids) == [
+        "audio-track-1", "audio-track-2", "audio-track-3",
+        "image-track-1", "video-track-1",
+    ]
+
+
+# ── AM2-06: the prompt example obeys its own rules ──
+
+
+def _prompt_example() -> SimplifiedTimelineModel:
+    example = AIMixedEditingService(LLM_CONFIG)._create_simplified_example()
+    return SimplifiedTimelineModel(**json.loads(example))
+
+
+def test_prompt_example_is_contiguous_and_video_lane_is_longest():
+    example = _prompt_example()
+    lanes: Dict[str, List[Any]] = {
+        "video": list(example.video_segments),
+        "image": list(example.image_segments),
+    }
+    for segment in example.audio_segments:
+        lanes.setdefault(str(segment.track), []).append(segment)
+
+    for name, segments in lanes.items():
+        cursor = 0.0
+        for segment in sorted(segments, key=lambda s: s.start_time):
+            assert segment.start_time == pytest.approx(cursor), name
+            cursor += segment.duration
+    video_end = max(s.start_time + s.duration for s in example.video_segments)
+    others = [*example.audio_segments, *example.image_segments]
+    assert all(s.start_time + s.duration <= video_end for s in others)
+    assert example.total_duration == pytest.approx(video_end)
+
+
+def test_sanitizing_the_prompt_example_changes_nothing():
+    example = _prompt_example()
+    materials = [
+        _material("video_001", "video", 40.0),
+        _material("video_002", "video", 40.0),
+        _material("audio_001", "audio", 60.0),
+        _material("audio_002", "audio", 120.0),
+        _material("image_001", "image"),
+    ]
+
+    report = _sanitize(example, materials)
+
+    assert report.warnings() == []
+
+
+def test_sanitize_warns_when_audio_runs_past_video_end():
+    timeline = SimplifiedTimelineModel(
+        total_duration=30,
+        video_segments=[
+            {"material_id": "v1", "start_time": 0, "duration": 20},
+        ],
+        audio_segments=[
+            {"material_id": "a1", "start_time": 0, "duration": 30},
+        ],
+    )
+
+    report = _sanitize(timeline)
+
+    assert [
+        line for line in report.adjusted if "after the video lane" in line
+    ] == [
+        "audio_segments[0]: a1 ends at 30.00s after the video lane ends "
+        "at 20.00s"
+    ]
+    assert timeline.audio_segments[0].duration == 30.0
 
 
 # ── AM-09 / AM-06: parser output ──

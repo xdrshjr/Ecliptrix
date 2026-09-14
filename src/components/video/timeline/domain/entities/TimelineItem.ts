@@ -12,9 +12,8 @@
  */
 
 import { TimePosition } from '../value-objects/TimePosition';
-import { Duration } from '../value-objects/Duration';
+import { Duration, MIN_CLIP_DURATION_SECONDS } from '../value-objects/Duration';
 import { Volume } from '../value-objects/Volume';
-import { MIN_DURATION_SECONDS } from '../services/DurationCalculationService';
 import type {
   TrackType,
   TimelineItemData,
@@ -395,7 +394,7 @@ export class TimelineItem {
       // A still has no in-point to trim: the left edge moves freely (down to
       // 0) while the right edge stays put, and the clip interval follows.
       const end = currentEnd.value;
-      const start = Math.max(0, Math.min(newPosition.value, end - MIN_DURATION_SECONDS));
+      const start = Math.max(0, Math.min(newPosition.value, end - MIN_CLIP_DURATION_SECONDS));
       this._startTime = TimePosition.create(start);
       this._duration = Duration.create(end - start);
       this._clipStart = TimePosition.create(0);
@@ -434,7 +433,7 @@ export class TimelineItem {
       // clip interval follows. Judged by type, not by the stored fields:
       // legacy images carry originalDuration=5, agent-added ones clipEnd=0.
       const start = this._startTime.value;
-      const end = Math.max(newPosition.value, start + MIN_DURATION_SECONDS);
+      const end = Math.max(newPosition.value, start + MIN_CLIP_DURATION_SECONDS);
       this._duration = Duration.create(end - start);
       this._clipStart = TimePosition.create(0);
       this._clipEnd = TimePosition.create(this._duration.value);

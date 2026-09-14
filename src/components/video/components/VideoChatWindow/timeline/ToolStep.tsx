@@ -19,6 +19,9 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocale } from '@/contexts/LocaleContext';
+import type { AgentClientApplyError, OperationRejectReason } from '@/types';
+import type { Translations } from '@/lib/i18n';
 import type { ToolStepData, ToolStepStatus } from './types';
 import { formatElapsedTime, formatParamValue, formatResult } from './utils';
 import {
@@ -182,6 +185,38 @@ function useElapsedTimer(
 }
 
 // ---------------------------------------------------------------------------
+// Client apply error — the tool succeeded but the timeline refused its change
+// ---------------------------------------------------------------------------
+
+const REJECT_REASON_KEYS: Record<
+  OperationRejectReason,
+  keyof Translations['agentApply']['reasons']
+> = {
+  'clip-not-found': 'clipNotFound',
+  'track-not-found': 'trackNotFound',
+  'target-track-missing': 'targetTrackMissing',
+  'invalid-time': 'invalidTime',
+};
+
+function readClientApplyError(result: unknown): AgentClientApplyError | null {
+  if (result === null || typeof result !== 'object') return null;
+  const candidate = (result as { clientApplyError?: unknown }).clientApplyError;
+  if (candidate === null || typeof candidate !== 'object') return null;
+  const reason = (candidate as { reason?: unknown }).reason;
+  return typeof reason === 'string' && reason in REJECT_REASON_KEYS
+    ? (candidate as AgentClientApplyError)
+    : null;
+}
+
+/** Localised "not applied · reason" text, or null when the step applied normally. */
+function formatClientApplyError(result: unknown, t: Translations): string | null {
+  const applyError = readClientApplyError(result);
+  if (!applyError) return null;
+  const reason = t.agentApply.reasons[REJECT_REASON_KEYS[applyError.reason]];
+  return `${t.agentApply.notApplied} · ${reason}`;
+}
+
+// ---------------------------------------------------------------------------
 // ToolStep component
 // ---------------------------------------------------------------------------
 
@@ -192,6 +227,7 @@ interface ToolStepProps {
 }
 
 const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
+  const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [flashClass, setFlashClass] = useState('');
@@ -221,7 +257,13 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
   const hasDetails =
     Object.keys(step.params).length > 0 || step.result != null;
 
+  // Results are rendered as text only: stored results carry an
+  // "[inline media omitted]" placeholder instead of data: thumbnails, which
+  // would show as a broken picture if it ever became an image source.
   const resultText = step.result != null ? formatResult(step.result) : '';
+  const applyErrorText = formatClientApplyError(step.result, t);
+  const summaryText = applyErrorText ?? step.summary;
+  const errorText = applyErrorText ?? resultText;
   const isUndone = step.status === 'undone';
   const isExecuting = step.status === 'executing';
   const isError = step.status === 'error';
@@ -262,9 +304,9 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
         </span>
 
         {/* One-line summary (collapsed only) */}
-        {!isExpanded && step.summary && !isExecuting && (
+        {!isExpanded && summaryText && !isExecuting && (
           <span className="text-muted-foreground dark:text-zinc-400 truncate flex-1 text-xs">
-            {step.summary}
+            {summaryText}
           </span>
         )}
 
@@ -348,7 +390,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
                   animate="animate"
                   className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/15 rounded px-2 py-1.5"
                 >
-                  {resultText}
+                  {errorText}
                 </motion.div>
               )}
             </div>
@@ -365,7 +407,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
           className="px-3 pb-2 relative z-[1]"
         >
           <div className="text-xs text-red-500 dark:text-red-400 truncate">
-            {resultText}
+            {errorText}
           </div>
         </motion.div>
       )}

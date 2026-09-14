@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, trackEditError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findClip, trackEditError, toolErrorResponse, isStillClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to trim' }),
@@ -10,12 +10,15 @@ const parameters = Type.Object({
 });
 type Params = Static<typeof parameters>;
 
+/** Slack for float noise when comparing an out-point to the source end. */
+const SOURCE_END_TOLERANCE = 1e-3;
+
 export function createTrimClipTool(context: ToolContext): AgentTool<typeof parameters> {
   return {
     name: 'trim_clip',
     label: 'Trim Clip',
     description:
-      'Trim a clip by adjusting its in-point (clipStart) and/or out-point (clipEnd). This changes which portion of the source material is shown, without moving the clip on the timeline.',
+      'Trim a video or audio clip by adjusting its in-point (clipStart) and/or out-point (clipEnd). This changes which portion of the source material is shown, without moving the clip on the timeline. Images have no source range: use resize_clip for them.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -29,14 +32,28 @@ export function createTrimClipTool(context: ToolContext): AgentTool<typeof param
       if (lockError) return toolErrorResponse(lockError);
 
       const { item: clip } = found;
-      const newStart = params.clipStart ?? clip.clipStart ?? 0;
-      const newEnd = params.clipEnd ?? clip.clipEnd ?? clip.duration;
+      if (isStillClip(clip, context.materials)) {
+        return toolErrorResponse({
+          success: false,
+          error: 'Images have no source range; use resize_clip to change their duration',
+        });
+      }
 
+      // A clip without an explicit out-point plays duration seconds from its
+      // in-point; the old `clipEnd ?? duration` ignored the in-point.
+      const currentStart = clip.clipStart ?? 0;
+      const currentEnd = clip.clipEnd ?? currentStart + clip.duration;
+      const newStart = params.clipStart ?? currentStart;
+      const newEnd = params.clipEnd ?? currentEnd;
+
+      if (!Number.isFinite(newStart) || !Number.isFinite(newEnd)) {
+        return toolErrorResponse({ success: false, error: 'clipStart and clipEnd must be finite numbers of seconds' });
+      }
       if (newStart < 0) {
         const err = { success: false, error: 'clipStart cannot be negative' };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
-      if (clip.originalDuration && newEnd > clip.originalDuration) {
+      if (clip.originalDuration && newEnd > clip.originalDuration + SOURCE_END_TOLERANCE) {
         const err = { success: false, error: 'clipEnd exceeds original duration' };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }

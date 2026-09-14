@@ -7,7 +7,6 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { SubtitleEditModal, CameraMotionModal } from '../components';
 import { useVideoCache } from '../hooks/useVideoCache';
 import { selectPlaybackUrl } from '../lib/selectPlaybackUrl';
-import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 import { useTimelineExport } from '../hooks/useTimelineExport';
 import {
   useTimelineStore,
@@ -37,8 +36,15 @@ import type { TimelineData } from './domain';
 import { toMaterialData } from './domain/services/ItemPlacementService';
 import { replaceTimelineAction } from './store/actions/replaceTimeline';
 import { updateSubtitleTextAction } from './store/actions/updateItemFields';
+import { isEditLocked } from './store/editLock';
+import type { TimelineStore } from './store/useTimelineStore';
 import { reasonFromExternalUpdateId } from './lib/externalUpdateId';
-import { getSubtitleCommitBlocker, getSubtitleReplacementBlocker } from './lib/subtitleReplacement';
+import {
+  collectTranscriptionItems,
+  getSubtitleCommitBlocker,
+  getSubtitleReplacementBlocker,
+  type SubtitleCommitBlocker,
+} from './lib/subtitleReplacement';
 import { findTrackForMaterial } from './lib/trackForMaterial';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { canApplyCameraMotion } from '../playback/camera/eligibility';
@@ -65,6 +71,27 @@ function throttle<T extends (...args: any[]) => void>(fn: T, ms: number): T {
       }, remaining);
     }
   }) as T;
+}
+
+/** Store → the legacy `TimelineState` shape the owner's callbacks consume. */
+function toTimelineState(state: TimelineStore): TimelineState {
+  return {
+    currentTime: state.currentTime,
+    totalDuration: state.totalDuration,
+    zoomLevel: state.zoomLevel,
+    selectedItems: state.selectedItems ?? [],
+    tracks: state.tracks as Track[],
+    playbackRate: state.playbackRate,
+    isPlaying: state.isPlaying,
+    snapToGrid: state.snapToGrid,
+    gridSize: state.gridSize,
+    scrollLeft: state.scrollLeft,
+  };
+}
+
+/** External writes the agent may make while it holds the edit lock. */
+function isAgentReason(reason: ReturnType<typeof reasonFromExternalUpdateId>): boolean {
+  return reason === 'agent' || reason === 'agent-undo';
 }
 
 // ---------------------------------------------------------------------------
@@ -190,12 +217,23 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
   }, []);
 
+  // Push the store's real timeline to the owner even when it equals the last
+  // emit: after a refused external write the owner still holds the refused
+  // data (and would autosave, preview and export it), so dedup is bypassed.
+  const resyncOwnerFromStore = useCallback(() => {
+    const ts = toTimelineState(useTimelineStore.getState());
+    lastEmittedShapeJsonRef.current = computeShapeJson(ts);
+    onTimelineStateChangeRef.current?.(ts);
+    onTimelineCompositionChangeRef.current?.(ts);
+  }, [computeShapeJson]);
+
   // ---------------------------------------------------------------------------
   // Store selectors
   // ---------------------------------------------------------------------------
   const { isDragging, isResizing, isInteracting } = useTimelineStore(
     useShallow((state) => ({ isDragging: state.isDragging, isResizing: state.isResizing, isInteracting: state.isInteracting })),
   );
+  const externalEditLock = useTimelineStore((state) => state.externalEditLock);
 
   // Fix C: item flagged by a cross-track drag commit to be scrolled into view.
   const pendingScrollItemId = useTimelineStore((state) => state.pendingScrollItemId);
@@ -292,19 +330,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       // Immediately sync initial state to parent so React state is seeded.
       // The subscription useEffect below runs AFTER this one, so it would
       // miss the initTimeline change — we must notify explicitly here.
-      const freshState = useTimelineStore.getState();
-      const ts: TimelineState = {
-        currentTime: freshState.currentTime,
-        totalDuration: freshState.totalDuration,
-        zoomLevel: freshState.zoomLevel,
-        selectedItems: freshState.selectedItems ?? [],
-        tracks: freshState.tracks as Track[],
-        playbackRate: freshState.playbackRate,
-        isPlaying: freshState.isPlaying,
-        snapToGrid: freshState.snapToGrid,
-        gridSize: freshState.gridSize,
-        scrollLeft: freshState.scrollLeft,
-      };
+      const ts = toTimelineState(useTimelineStore.getState());
       const shapeJson = computeShapeJson(ts);
       if (shapeJson === '' || shapeJson !== lastEmittedShapeJsonRef.current) {
         lastEmittedShapeJsonRef.current = shapeJson;
@@ -321,18 +347,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   useEffect(() => {
     const unsub = useTimelineStore.subscribe((state) => {
       // Build a TimelineState-shaped object for legacy callbacks
-      const ts: TimelineState = {
-        currentTime: state.currentTime,
-        totalDuration: state.totalDuration,
-        zoomLevel: state.zoomLevel,
-        selectedItems: state.selectedItems,
-        tracks: state.tracks as Track[],
-        playbackRate: state.playbackRate,
-        isPlaying: state.isPlaying,
-        snapToGrid: state.snapToGrid,
-        gridSize: state.gridSize,
-        scrollLeft: state.scrollLeft,
-      };
+      const ts = toTimelineState(state);
       // Suppress emits whose timeline-shape is byte-identical to the last
       // one we sent. Pure-transient-only state changes (selection, drag
       // flags) are excluded from the shape JSON, so they don't propagate
@@ -366,22 +381,44 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // kept instead of being cleared on every agent operation.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (externalTimelineState && externalTimelineUpdateId &&
-        externalTimelineUpdateId !== lastExternalUpdateIdRef.current) {
-      lastExternalUpdateIdRef.current = externalTimelineUpdateId;
+    if (!externalTimelineState || !externalTimelineUpdateId ||
+        externalTimelineUpdateId === lastExternalUpdateIdRef.current) {
+      return;
+    }
+    lastExternalUpdateIdRef.current = externalTimelineUpdateId;
+    const reason = reasonFromExternalUpdateId(externalTimelineUpdateId);
+
+    // While the agent holds the timeline only its own writes land. An import
+    // or pending timeline arriving now is refused, and the owner — which has
+    // already stored the refused data — is handed the real timeline back.
+    if (isEditLocked(useTimelineStore.getState()) && !isAgentReason(reason)) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      resyncOwnerFromStore();
+      return;
+    }
+
+    try {
       replaceTimelineAction(
         () => useTimelineStore.getState(),
         externalTimelineState as unknown as TimelineData,
-        reasonFromExternalUpdateId(externalTimelineUpdateId),
+        reason,
       );
+    } catch (error) {
+      // A malformed timeline (e.g. a negative start) throws while being built,
+      // before any history is written; an uncaught throw here would take the
+      // whole editor down from inside a React effect.
+      console.error('[TimelinePanel] external timeline update rejected', { reason, error });
+      showError(t.timeline.messages.externalUpdateRejected);
+      resyncOwnerFromStore();
     }
-  }, [externalTimelineState, externalTimelineUpdateId]);
+  }, [externalTimelineState, externalTimelineUpdateId, resyncOwnerFromStore, showError, showWarning, t]);
 
   // ---------------------------------------------------------------------------
   // Global pointer event listeners for drag (throttled at 16ms)
   // ---------------------------------------------------------------------------
-  // Track the initial pointer-down clientX for deltaX calculation
+  // Initial pointer-down position for the deltaX / deltaY calculation
   const dragStartXRef = useRef(0);
+  const dragStartYRef = useRef(0);
 
   useEffect(() => {
     if (!isInteracting) return;
@@ -391,6 +428,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     if (actor) {
       const snapshot = actor.getSnapshot();
       dragStartXRef.current = snapshot.context?.pointerDownPosition?.x ?? 0;
+      dragStartYRef.current = snapshot.context?.pointerDownPosition?.y ?? 0;
     }
 
     const handlePointerMove = throttle((e: PointerEvent) => {
@@ -410,6 +448,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         clientX: e.clientX,
         clientY: e.clientY,
         deltaX: e.clientX - dragStartXRef.current,
+        // A purely vertical move to another lane must also start a move drag.
+        deltaY: e.clientY - dragStartYRef.current,
         targetTrackId,
       });
     }, 16);
@@ -626,6 +666,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         e.preventDefault();
         return;
       }
+      // Mid-drag, an undo / delete would rewrite history under the gesture and
+      // the release would then commit onto a timeline that no longer matches.
+      if (store.isInteracting && MUTATING_TIMELINE_SHORTCUTS.has(shortcut)) {
+        e.preventDefault();
+        return;
+      }
 
       runShortcut(shortcut, e);
     };
@@ -634,12 +680,27 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     return () => { document.removeEventListener('keydown', handleKeyDown); };
   }, []);
 
+  // The cut tool is an edit mode; when the agent takes the timeline, drop
+  // back to select so the next click cannot try to split a clip.
+  useEffect(() => useTimelineStore.subscribe(
+    (state) => state.externalEditLock,
+    (lock) => {
+      if (lock === null) return;
+      const store = useTimelineStore.getState();
+      if (store.activeTool === 'cut') store.setActiveTool('select');
+    },
+  ), []);
+
   // ---------------------------------------------------------------------------
   // Material drop handler (external materials -> store)
   // ---------------------------------------------------------------------------
   const handleMaterialDrop = useCallback((material: MaterialItem, trackId: string) => {
     // Find the right track for this material
     const state = useTimelineStore.getState();
+    if (isEditLocked(state)) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     let targetTrackId = trackId;
 
     // If specified track doesn't exist, auto-select a compatible unlocked track
@@ -682,10 +743,27 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
   }, [videoCache, showWarning, t]);
 
+  // A drop carries only the material id: resolving it against the library
+  // builds the clip exactly like "add to timeline" (playback urls, storage
+  // key, sentence segments), instead of from the thin drag payload.
+  const handleMaterialDropById = useCallback((materialId: string, trackId: string) => {
+    const material = materials.find(candidate => candidate.id === materialId);
+    if (!material) {
+      showError(t.timeline.messages.materialNotFound);
+      return;
+    }
+    handleMaterialDrop(material, trackId);
+  }, [materials, handleMaterialDrop, showError, t]);
+
   // ---------------------------------------------------------------------------
   // Programmatic material add (from external)
   // ---------------------------------------------------------------------------
   const handleAddMaterialsToTimeline = useCallback((mats: MaterialItem[], targetTrackId?: string) => {
+    // One lock warning for the whole batch rather than one per material.
+    if (isEditLocked(useTimelineStore.getState())) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     // One warning per batch (not per material) when every target is locked.
     let hasWarnedLocked = false;
     mats.forEach((material, index) => {
@@ -719,6 +797,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // and captures the new trackId for auto-scroll.
   // ---------------------------------------------------------------------------
   const handleAddTrack = useCallback((type: 'video' | 'image' | 'audio' | 'subtitle') => {
+    if (isEditLocked(useTimelineStore.getState())) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     const baseTrackName =
       type === 'video' ? t.timeline.track.videoTrack :
       type === 'image' ? t.timeline.track.imageTrack :
@@ -730,12 +812,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       { type, baseTrackName },
     );
     setPendingScrollTrackId(trackId);
-  }, [t]);
+  }, [showWarning, t]);
 
   // ---------------------------------------------------------------------------
   // Toolbar action handlers (complex operations not in store)
   // ---------------------------------------------------------------------------
+  // Copy and organize mutate slices directly (no action layer), so each checks
+  // the edit lock itself before recording any history.
   const handleCopy = useCallback(() => {
+    if (isEditLocked(useTimelineStore.getState())) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     const state = useTimelineStore.getState();
     if (state.selectedItems.length === 0) return;
 
@@ -804,9 +892,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     // Capture synchronously: a next-frame capture lands on whichever history
     // entry is last by then and breaks redo for same-tick edits.
     useTimelineStore.getState().captureNextState();
-  }, [t]);
+  }, [showWarning, t]);
 
   const handleOrganizeMaterials = useCallback(() => {
+    if (isEditLocked(useTimelineStore.getState())) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     const state = useTimelineStore.getState();
     const hasItems = state.tracks.some(t =>
       (t.type === 'video' || t.type === 'audio') && t.items.length > 0
@@ -829,7 +921,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     useTimelineStore.getState().captureNextState();
 
     showSuccess(t.timeline.messages.organizeMaterialsSuccess);
-  }, [showSuccess, showInfo, t]);
+  }, [showSuccess, showInfo, showWarning, t]);
 
   // ---------------------------------------------------------------------------
   // Camera motion (camera-motion-2d-3d §4.5.1)
@@ -908,6 +1000,12 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     subtitleConfirmResolverRef.current = null;
   }, []);
 
+  const showSubtitleCommitBlocker = useCallback((blocker: SubtitleCommitBlocker) => {
+    if (blocker === 'edit-locked') showError(t.timeline.messages.editLockedByAgent);
+    if (blocker === 'track-missing') showError(t.timeline.messages.noSubtitleTrack);
+    if (blocker === 'track-locked') showError(t.timeline.messages.subtitleTrackLocked);
+  }, [showError, t]);
+
   const handleAddSubtitle = useCallback(async () => {
     const state = useTimelineStore.getState();
     const subtitleTrackBefore = state.tracks.find(track => track.type === 'subtitle');
@@ -922,17 +1020,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     }
     if (blocker !== null) return;
 
-    const allAudioItems: any[] = [];
-    state.tracks.filter(track => track.type === 'audio').forEach(track => {
-      track.items.forEach((item: any) => {
-        if (item.type === 'audio' && item.materialId) {
-          allAudioItems.push(item);
-        }
-      });
-    });
     // Local preconditions are checked before asking to replace anything, so
-    // a confirmation is never followed by "nothing to transcribe".
-    if (allAudioItems.length === 0) {
+    // a confirmation is never followed by "nothing to transcribe". Only heard
+    // audio counts: muted and hidden lanes are never transcribed.
+    if (collectTranscriptionItems(state.tracks, materials).length === 0) {
       showError(t.timeline.messages.noAudioItems);
       return;
     }
@@ -959,35 +1050,21 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         externalEditLock: fresh.externalEditLock,
         subtitleTrack,
       });
-      if (commitBlocker === 'edit-locked') showError(t.timeline.messages.editLockedByAgent);
-      if (commitBlocker === 'track-missing') showError(t.timeline.messages.noSubtitleTrack);
-      if (commitBlocker === 'track-locked') showError(t.timeline.messages.subtitleTrackLocked);
+      if (commitBlocker !== null) showSubtitleCommitBlocker(commitBlocker);
       return commitBlocker === null ? subtitleTrack : undefined;
     };
     if (!resolveCommitTrack()) return;
 
+    // Re-collected after the confirmation: clips may have changed while it was open.
+    const audioItemsForTranscription = collectTranscriptionItems(useTimelineStore.getState().tracks, materials);
+    if (audioItemsForTranscription.length === 0) {
+      showError(t.timeline.messages.noAudioItems);
+      return;
+    }
+
     useTimelineStore.getState().setExtractingSubtitles(true);
 
     try {
-      const audioItemsForTranscription = allAudioItems.map(item => {
-        const material = materials?.find(m => m.id === item.materialId);
-        // iter5: never send blob: URLs to backend transcription.
-        const resolved = material ? selectAudioPlaybackUrl(material) : null;
-        const audioUrl = resolved && !resolved.startsWith('blob:')
-          ? resolved
-          : (material?.serverUrl || '');
-        return {
-          id: item.id,
-          name: item.name,
-          url: audioUrl,
-          start_time: item.startTime,
-          duration: item.duration,
-          track_id: item.trackId,
-          clip_start: item.clipStart || 0.0,
-          clip_end: item.clipEnd || (item.originalDuration || item.duration),
-        };
-      });
-
       let result: any;
       try {
         result = await http.post<any>('/api/audio/batch-transcribe', {
@@ -1074,12 +1151,16 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     } finally {
       useTimelineStore.getState().setExtractingSubtitles(false);
     }
-  }, [materials, showSuccess, showError, t, confirmReplaceSubtitles]);
+  }, [materials, showSuccess, showError, t, confirmReplaceSubtitles, showSubtitleCommitBlocker]);
 
   // ---------------------------------------------------------------------------
   // JSON import handler
   // ---------------------------------------------------------------------------
   const handleImportJSON = useCallback(async (file: File) => {
+    if (isEditLocked(useTimelineStore.getState())) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
     useTimelineStore.getState().setImporting(true);
 
     try {
@@ -1121,6 +1202,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         throw new Error(result.error || t.timeline.messages.importProjectInvalidData);
 
       const importedData = result.importedData;
+      // The import request can take minutes; the agent may have started meanwhile.
+      if (isEditLocked(useTimelineStore.getState())) {
+        showWarning(t.timeline.messages.editLockedByAgent);
+        return;
+      }
       if (importedData?.timelineState && importedData?.materials) {
         // One undoable step instead of wiping the user's undo history.
         replaceTimelineAction(
@@ -1159,7 +1245,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     } finally {
       useTimelineStore.getState().setImporting(false);
     }
-  }, [taskId, onImportComplete, onTimelineStateChange, showSuccess, showError, t]);
+  }, [taskId, onImportComplete, onTimelineStateChange, showSuccess, showError, showWarning, t]);
 
   // ---------------------------------------------------------------------------
   // Subtitle editing (modal state)
@@ -1178,9 +1264,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     setEditingTrackId(null);
   }, []);
 
-  const handleSaveSubtitleChanges = useCallback((updatedSubtitles: TimelineItem[]) => {
-    if (!editingTrackId) return;
+  /** @returns false when the save was blocked, so the dialog keeps the edits open. */
+  const handleSaveSubtitleChanges = useCallback((updatedSubtitles: TimelineItem[]): boolean => {
+    if (!editingTrackId) return false;
     const state = useTimelineStore.getState();
+    const blocker = getSubtitleCommitBlocker({
+      externalEditLock: state.externalEditLock,
+      subtitleTrack: state.tracks.find(track => track.id === editingTrackId),
+    });
+    if (blocker !== null) {
+      showSubtitleCommitBlocker(blocker);
+      return false;
+    }
     const currentData = state.exportToData();
     const updatedTracks = currentData.tracks.map((track: any) =>
       track.id === editingTrackId ? { ...track, items: updatedSubtitles } : track
@@ -1191,7 +1286,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       'subtitles',
     );
     handleCloseSubtitleEditModal();
-  }, [editingTrackId, handleCloseSubtitleEditModal]);
+    return true;
+  }, [editingTrackId, handleCloseSubtitleEditModal, showSubtitleCommitBlocker]);
 
   const memoizedSubtitles = useMemo(() => {
     if (!editingTrackId) return [];
@@ -1250,19 +1346,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // Export JSON helper
   // ---------------------------------------------------------------------------
   const handleExportJSON = useCallback(() => {
-    const state = useTimelineStore.getState();
-    const ts: TimelineState = {
-      currentTime: state.currentTime,
-      totalDuration: state.totalDuration,
-      zoomLevel: state.zoomLevel,
-      selectedItems: state.selectedItems,
-      tracks: state.tracks as Track[],
-      playbackRate: state.playbackRate,
-      isPlaying: state.isPlaying,
-      snapToGrid: state.snapToGrid,
-      gridSize: state.gridSize,
-      scrollLeft: state.scrollLeft,
-    };
+    const ts = toTimelineState(useTimelineStore.getState());
     timelineExport.exportTimelineToJSON(ts, materials);
   }, [timelineExport, materials]);
 
@@ -1313,6 +1397,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         localPreviewEnabled={localPreviewEnabled}
         onRetryLocalDownload={onRetryLocalDownload}
         onOpenCameraMotion={handleOpenCameraMotion}
+        onMaterialDrop={handleMaterialDropById}
       />
 
       {/* 运镜面板 */}
@@ -1326,6 +1411,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           clipThumbnailUrl={cameraMotionStagePoster}
           initialMotion={cameraMotionTarget.cameraMotion}
           targetItemIds={cameraMotionTargetIds}
+          isEditLocked={externalEditLock !== null}
         />
       )}
 
@@ -1338,6 +1424,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
           subtitles={memoizedSubtitles}
           taskId="timeline_subtitle_edit"
           locale={locale}
+          isEditLocked={externalEditLock !== null}
         />
       )}
 

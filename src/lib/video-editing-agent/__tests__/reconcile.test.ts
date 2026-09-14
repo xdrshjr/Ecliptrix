@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconcileOverlapsAfterAgentOp, packAllReorganisableTracks } from '../reconcile';
+import { reconcileOverlapsAfterAgentOp } from '../reconcile';
 import type { TimelineState, TimelineItem } from '@/types';
 import type { TimelineOperation } from '../types';
 
@@ -112,43 +112,5 @@ describe('reconcileOverlapsAfterAgentOp', () => {
     reconcileOverlapsAfterAgentOp(s, op);
     const r2 = reconcileOverlapsAfterAgentOp(s, op);
     expect(r2.operations).toEqual([]);
-  });
-});
-
-describe('packAllReorganisableTracks', () => {
-  it('packs every video/audio track regardless of trigger op', () => {
-    const s = state([
-      { id: 'v1', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
-        items: [item('a', 5, 3, 'v1'), item('b', 1, 2, 'v1')] },
-      { id: 'a1', name: 'a', type: 'audio', height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1,
-        items: [item('x', 10, 2, 'a1', 'audio'), item('y', 11, 3, 'a1', 'audio')] },
-    ]);
-    const r = packAllReorganisableTracks(s);
-    expect(r.changedTrackIds.sort()).toEqual(['a1', 'v1']);
-    expect(s.tracks[0].items.map(i => i.startTime)).toEqual([0, 2]);
-    expect(s.tracks[1].items.map(i => i.startTime)).toEqual([0, 2]);
-    expect(r.operations.every(op => op.type === 'move_clip')).toBe(true);
-  });
-
-  it('returns no operations when already packed', () => {
-    const s = state([
-      { id: 'v1', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
-        items: [item('a', 0, 3, 'v1'), item('b', 3, 2, 'v1')] },
-    ]);
-    const r = packAllReorganisableTracks(s);
-    expect(r.operations).toEqual([]);
-    expect(r.changedTrackIds).toEqual([]);
-  });
-
-  it('respects trackIds filter', () => {
-    const s = state([
-      { id: 'v1', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
-        items: [item('a', 5, 3, 'v1'), item('b', 1, 2, 'v1')] },
-      { id: 'v2', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1,
-        items: [item('c', 10, 2, 'v2'), item('d', 11, 3, 'v2')] },
-    ]);
-    const r = packAllReorganisableTracks(s, { trackIds: ['v1'] });
-    expect(r.changedTrackIds).toEqual(['v1']);
-    expect(s.tracks[1].items.map(i => i.startTime)).toEqual([10, 11]);
   });
 });

@@ -76,6 +76,12 @@ export interface AssembleLayersInput {
 
 /** Default z floor for overlays — well above any realistic track z. */
 const DEFAULT_OVERLAY_BASE_Z = 1_000_000;
+/**
+ * Spacing between image zIndex values. zIndex is clamped to [0, 999], so
+ * `baseZ + zIndex * 1000 + index` sorts by zIndex first, then input order, and
+ * always stays below the subtitle band at `baseZ * 2`.
+ */
+const IMAGE_Z_STEP = 1000;
 
 function clamp01(v: number): number {
   if (!Number.isFinite(v)) return 1;
@@ -191,7 +197,7 @@ export function assembleLayers(input: AssembleLayersInput): CompositorLayer[] {
   // here is exactly how `compositorPassthroughFields` once dropped a camera —
   // see the assembleLayers passthrough test (camera-motion-stills P2-1).
   const images = buildImageLayersAt(input.imageItems, input.t, input.imageFit).map(
-    (layer, index) => ({ ...layer, z: baseZ + layer.z + index }),
+    (layer, index) => ({ ...layer, z: baseZ + layer.z * IMAGE_Z_STEP + index }),
   );
 
   const subtitles = buildSubtitleLayers(

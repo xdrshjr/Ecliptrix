@@ -12,6 +12,12 @@ import type { TimePosition } from './TimePosition';
 /** Default duration in seconds for items without an explicit duration. */
 const DEFAULT_DURATION_SECONDS = 5;
 
+/**
+ * Shortest clip the editor produces — split halves, trims and drag previews.
+ * A shorter piece is a sliver nobody can see or grab again at normal zoom.
+ */
+export const MIN_CLIP_DURATION_SECONDS = 0.1;
+
 export class Duration {
   /** Duration in seconds. Always > 0. */
   readonly value: number;

@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 export { TimePosition } from './value-objects/TimePosition';
-export { Duration } from './value-objects/Duration';
+export { Duration, MIN_CLIP_DURATION_SECONDS } from './value-objects/Duration';
 export { Volume } from './value-objects/Volume';
 export { ZoomLevel } from './value-objects/ZoomLevel';
 export { TrackTypeUtils } from './value-objects/TrackType';
@@ -41,7 +41,7 @@ export { ItemPlacementService } from './services/ItemPlacementService';
 export { DragCalculationService } from './services/DragCalculationService';
 export { HistoryService } from './services/HistoryService';
 export { DurationCalculationService } from './services/DurationCalculationService';
-export { SplitService } from './services/SplitService';
+export { SplitService, cutLeavesValidPieces } from './services/SplitService';
 export {
   TIME_EPSILON,
   mapTimelineTimeToSourceTime,
@@ -67,6 +67,9 @@ export {
   isInteracting,
   isCommitted,
   getDragPreview,
+  detectInteractionType,
+  edgeHandleWidthPx,
+  MIN_MOVE_ZONE_PX,
   materialDropMachine,
   createMaterialDropActor,
   isDragOver,
