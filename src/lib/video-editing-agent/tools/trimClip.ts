@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findClip, trackEditError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to trim' }),
@@ -24,6 +24,9 @@ export function createTrimClipTool(context: ToolContext): AgentTool<typeof param
         const err = { success: false, error: `Clip not found: ${params.clipId}` };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
+
+      const lockError = trackEditError(context.timelineState, found.trackId);
+      if (lockError) return toolErrorResponse(lockError);
 
       const { item: clip } = found;
       const newStart = params.clipStart ?? clip.clipStart ?? 0;

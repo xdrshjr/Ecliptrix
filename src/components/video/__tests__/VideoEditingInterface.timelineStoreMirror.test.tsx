@@ -327,8 +327,10 @@ describe('timeline store mirror — production wiring (source level)', () => {
     expect(interfaceSrc).toMatch(
       /const\s+handleImagePositionConfirm\s*=\s*useCallback\(\s*\(itemId:\s*string,\s*position:\s*ImagePosition\)/,
     );
+    // The confirmed position is committed as ONE undoable step (TL-05); the
+    // live drag preview stays out of history.
     expect(interfaceSrc).toMatch(
-      /useTimelineStore\.getState\(\)\.updateItemImagePosition\(itemId,\s*position\)/,
+      /updateImagePositionAction\(\(\)\s*=>\s*useTimelineStore\.getState\(\),\s*itemId,\s*position\)/,
     );
   });
 });

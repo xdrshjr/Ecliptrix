@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   materialId: Type.String({ description: 'The ID of the material to add' }),
@@ -87,10 +87,14 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
             isLocked: false,
             isMuted: false,
             isVisible: true,
-            volume: trackType === 'audio' ? 200 : 100,
+            // 100 % is unity gain; the former 200 doubled every agent audio track.
+            volume: 100,
             order: context.timelineState.tracks.length,
             items: [] as any[],
           };
+          // Refuse before creating a track no clip of this type could sit on.
+          const autoTrackError = materialTrackMismatchError(autoTrack, material.type);
+          if (autoTrackError) return toolErrorResponse(autoTrackError);
           context.timelineState.tracks.push(autoTrack as any);
           trackId = autoTrack.id;
         }
@@ -105,6 +109,9 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
         const err = { success: false, error: `Track is locked: ${trackId}` };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
+      // Preview and export silently skip a clip on a track of the wrong type.
+      const mismatchError = materialTrackMismatchError(track, material.type);
+      if (mismatchError) return toolErrorResponse(mismatchError);
 
       const startTime = params.startTime ?? getTrackEndTime(track);
       const duration = material.duration || 5; // images default to 5s

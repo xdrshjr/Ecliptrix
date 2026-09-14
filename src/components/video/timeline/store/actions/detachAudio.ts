@@ -62,13 +62,5 @@ export function detachAudioAction(
 
   get().autoOrganize();
 
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  get().captureNextState();
 }

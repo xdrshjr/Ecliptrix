@@ -74,7 +74,12 @@ export interface ChatMessage {
   // Agent mode fields
   isAgentMessage?: boolean;
   agentToolCalls?: AgentToolCallRecord[];
+  /** Legacy whole-timeline snapshot of turns written before track patches.
+   *  No longer written; ignored when present in saved conversations. */
   timelineSnapshot?: TimelineState;
+  /** Tracks this agent turn changed, reverted by "undo all". Written by every
+   *  terminal path (completed, stopped, errored); inline thumbnails dropped. */
+  timelineTrackPatches?: AgentTrackPatch[];
   pendingOperations?: Array<AgentTimelineOperation | { type: string; [key: string]: unknown }>;
   isUndone?: boolean;
   /** True when the user explicitly stopped this agent turn (or it was sealed
@@ -92,6 +97,19 @@ export interface AgentToolCallRecord {
   params: Record<string, unknown>;
   status: 'executing' | 'completed' | 'error' | 'undone' | 'cancelled';
   result?: unknown;
+}
+
+/**
+ * One track's state before and after an agent edit, used to undo the edit
+ * without touching other tracks. Both sides are slimmed copies (no inline
+ * `data:` / `blob:` thumbnails) because patches are persisted with messages.
+ */
+export interface AgentTrackPatch {
+  trackId: string;
+  /** null = the edit created this track. */
+  before: Track | null;
+  /** null = the edit removed this track. */
+  after: Track | null;
 }
 
 export interface AgentClipData {
@@ -118,7 +136,7 @@ export type AgentTimelineOperation =
   | { type: 'trim_clip'; clipId: string; clipStart: number; clipEnd: number; duration: number }
   | { type: 'delete_clip'; clipId: string; trackId: string }
   | { type: 'move_clip'; clipId: string; fromTrackId: string; toTrackId: string; newStartTime: number }
-  | { type: 'resize_clip'; clipId: string; newDuration: number };
+  | { type: 'resize_clip'; clipId: string; newDuration: number; clipEnd?: number };
 
 export interface Conversation {
   id: string;

@@ -14,6 +14,7 @@
 import { TimePosition } from '../value-objects/TimePosition';
 import { Duration } from '../value-objects/Duration';
 import { Volume } from '../value-objects/Volume';
+import { MIN_DURATION_SECONDS } from '../services/DurationCalculationService';
 import type {
   TrackType,
   TimelineItemData,
@@ -23,6 +24,7 @@ import type {
   AudioSentenceSegment,
   MaterialType,
   CameraMotionData,
+  SequenceTransitionData,
 } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -105,6 +107,12 @@ export class TimelineItem {
   // exact code path they take today (zero regression surface).
   private _cameraMotion?: CameraMotionData;
 
+  // Leading / trailing edge transitions. Kept on the entity so they survive
+  // every store round-trip (import, undo/redo snapshots) instead of being
+  // silently dropped by fromPlainObject.
+  private _transitionIn?: SequenceTransitionData;
+  private _transitionOut?: SequenceTransitionData;
+
   // ------------------------------------------------------------------
   // Construction (private — use factory methods)
   // ------------------------------------------------------------------
@@ -137,6 +145,8 @@ export class TimelineItem {
     originalMaterialType?: MaterialType;
     audioDetached?: boolean;
     cameraMotion?: CameraMotionData;
+    transitionIn?: SequenceTransitionData;
+    transitionOut?: SequenceTransitionData;
   }) {
     this.id = params.id;
     this._name = params.name;
@@ -165,6 +175,8 @@ export class TimelineItem {
     this._originalMaterialType = params.originalMaterialType;
     this._audioDetached = params.audioDetached;
     this._cameraMotion = params.cameraMotion;
+    this._transitionIn = params.transitionIn;
+    this._transitionOut = params.transitionOut;
   }
 
   // ------------------------------------------------------------------
@@ -228,6 +240,9 @@ export class TimelineItem {
   get cameraMotion(): CameraMotionData | undefined { return this._cameraMotion; }
   set cameraMotion(value: CameraMotionData | undefined) { this._cameraMotion = value; }
 
+  get transitionIn(): SequenceTransitionData | undefined { return this._transitionIn; }
+  get transitionOut(): SequenceTransitionData | undefined { return this._transitionOut; }
+
   // ------------------------------------------------------------------
   // Static factory methods
   // ------------------------------------------------------------------
@@ -268,6 +283,8 @@ export class TimelineItem {
       originalMaterialType: props.originalMaterialType,
       audioDetached: props.audioDetached,
       cameraMotion: props.cameraMotion,
+      transitionIn: props.transitionIn,
+      transitionOut: props.transitionOut,
     });
   }
 
@@ -307,6 +324,8 @@ export class TimelineItem {
       originalMaterialType: data.originalMaterialType,
       audioDetached: data.audioDetached,
       cameraMotion: data.cameraMotion,
+      transitionIn: data.transitionIn,
+      transitionOut: data.transitionOut,
     });
   }
 
@@ -372,6 +391,18 @@ export class TimelineItem {
    * interval so INV-3 holds exactly.
    */
   private resizeStartEdge(newPosition: TimePosition, currentEnd: TimePosition): void {
+    if (this.isStill()) {
+      // A still has no in-point to trim: the left edge moves freely (down to
+      // 0) while the right edge stays put, and the clip interval follows.
+      const end = currentEnd.value;
+      const start = Math.max(0, Math.min(newPosition.value, end - MIN_DURATION_SECONDS));
+      this._startTime = TimePosition.create(start);
+      this._duration = Duration.create(end - start);
+      this._clipStart = TimePosition.create(0);
+      this._clipEnd = TimePosition.create(this._duration.value);
+      return;
+    }
+
     const timeDelta = newPosition.value - this._startTime.value;
 
     if (this._clipStart != null) {
@@ -398,6 +429,18 @@ export class TimelineItem {
    * interval so INV-3 holds exactly.
    */
   private resizeEndEdge(newPosition: TimePosition): void {
+    if (this.isStill()) {
+      // A still has no out-point either: the right edge moves freely and the
+      // clip interval follows. Judged by type, not by the stored fields:
+      // legacy images carry originalDuration=5, agent-added ones clipEnd=0.
+      const start = this._startTime.value;
+      const end = Math.max(newPosition.value, start + MIN_DURATION_SECONDS);
+      this._duration = Duration.create(end - start);
+      this._clipStart = TimePosition.create(0);
+      this._clipEnd = TimePosition.create(this._duration.value);
+      return;
+    }
+
     const timeDelta = newPosition.value - this.endTime().value;
 
     if (this._clipEnd != null) {
@@ -414,6 +457,11 @@ export class TimelineItem {
 
     // No clip info: duration follows the track edges directly.
     this._duration = Duration.fromRange(this._startTime, newPosition);
+  }
+
+  /** A still image: no source media length bounds its edges. */
+  private isStill(): boolean {
+    return this._originalMaterialType === 'image';
   }
 
   /**
@@ -485,6 +533,8 @@ export class TimelineItem {
     if (this._originalMaterialType != null) data.originalMaterialType = this._originalMaterialType;
     if (this._audioDetached != null) data.audioDetached = this._audioDetached;
     if (this._cameraMotion != null) data.cameraMotion = this._cameraMotion;
+    if (this._transitionIn != null) data.transitionIn = this._transitionIn;
+    if (this._transitionOut != null) data.transitionOut = this._transitionOut;
 
     return data;
   }

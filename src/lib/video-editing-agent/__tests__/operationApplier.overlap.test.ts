@@ -105,7 +105,7 @@ describe('OperationApplier — overlap reconcile (FR-6)', () => {
     // Both before-undo and pre-snapshot world should be self-consistent.
     expect(state.value.tracks[0].items).toHaveLength(2);
     const undone = applier.undoOperation('tc-4');
-    expect(undone).toBe(true);
+    expect(undone).toEqual({ ok: true });
     expect(state.value.tracks[0].items.map(i => i.id)).toEqual(['a']);
   });
 });

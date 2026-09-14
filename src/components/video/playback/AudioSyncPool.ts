@@ -131,7 +131,7 @@ function normalizeSrc(src: string | null | undefined): string {
  * Effective per-clip volume = clip.volume (default 1) * track.volume, clamped
  * to [0,1] (spec 02 §2.5).
  */
-export function computeEffectiveVolume(
+export function computeMediaElementVolume(
   clipVolume: number | undefined,
   trackVolume: number,
 ): number {
@@ -183,7 +183,7 @@ export function computeAudioSyncActions(
     }
 
     const targetSourceTime = mapTimelineTimeToSourceTime(hit.clip, compositionTime);
-    const volume = computeEffectiveVolume(hit.clip.volume, group.volume);
+    const volume = computeMediaElementVolume(hit.clip.volume, group.volume);
     const current = currentByTrack[group.trackId] ?? 0;
     const srcChanged =
       normalizeSrc(currentSrcByTrack[group.trackId]) !== normalizeSrc(url);

@@ -181,8 +181,8 @@ class TestTimelineValidationFix:
         assert timeline.audio_segments[0].duration == 5.0   # Clipped from 10.0
         assert timeline.image_segments[0].duration == 2.0   # Clipped from 5.0
     
-    def test_segment_starting_at_total_duration_gets_zero_duration(self):
-        """Test that segment starting exactly at total duration gets zero duration."""
+    def test_segment_starting_at_total_duration_is_removed(self):
+        """A segment starting exactly at total duration would be 0s long: removed."""
         timeline = SimplifiedTimelineModel(
             total_duration=10.0,
             video_segments=[
@@ -196,14 +196,13 @@ class TestTimelineValidationFix:
             audio_segments=[],
             image_segments=[]
         )
-        
+
         result = self.parser_service.validate_simplified_timeline(timeline)
         assert result is True
-        # Should be clipped to 0.0 seconds
-        assert timeline.video_segments[0].duration == 0.0
-    
-    def test_segment_starting_after_total_duration_gets_zero_duration(self):
-        """Test that segment starting after total duration gets zero duration."""
+        assert timeline.video_segments == []
+
+    def test_segment_starting_after_total_duration_is_removed(self):
+        """A segment starting after total duration has no room left: removed."""
         timeline = SimplifiedTimelineModel(
             total_duration=10.0,
             video_segments=[],
@@ -220,8 +219,7 @@ class TestTimelineValidationFix:
         
         result = self.parser_service.validate_simplified_timeline(timeline)
         assert result is True
-        # Should be clipped to 0.0 seconds (max(0.0, 10.0 - 12.0))
-        assert timeline.audio_segments[0].duration == 0.0
+        assert timeline.audio_segments == []
     
     def test_invalid_total_duration_fails_validation(self):
         """Test that invalid total duration (zero or negative) fails validation."""

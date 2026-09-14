@@ -2,7 +2,7 @@
 AI Mixed Editing models for automatic video editing.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 
 
@@ -72,58 +72,68 @@ class AIMixedEditingResponse(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+MAX_SEGMENT_VOLUME_PERCENT = 200.0
+# Values up to this are read as a loudness multiplier (1.0 = original), not a
+# percentage: LLMs frequently answer "volume": 0.8 despite the prompt.
+MAX_VOLUME_MULTIPLIER = 3.0
+
+
+# Segment models describe LLM output, so unknown fields are ignored rather
+# than failing the whole plan (LLMs add "volume" to video segments, etc.).
 class VideoSegmentModel(BaseModel):
     """Video segment model for simplified AI editing response."""
-    
+
     material_id: str = Field(..., description="Material ID reference")
     start_time: float = Field(..., description="Start time in timeline (seconds)")
     duration: float = Field(..., description="Duration of the segment (seconds)")
     clip_start: Optional[float] = Field(default=0.0, description="Start time within the source material (seconds)")
     clip_end: Optional[float] = Field(default=None, description="End time within the source material (seconds)")
 
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}
 
 
 class AudioSegmentModel(BaseModel):
     """Audio segment model for simplified AI editing response."""
-    
+
     material_id: str = Field(..., description="Material ID reference")
     start_time: float = Field(..., description="Start time in timeline (seconds)")
     duration: float = Field(..., description="Duration of the segment (seconds)")
     track: str = Field(default="audio-track-1", description="Target audio track ID")
-    volume: int = Field(default=200, description="Volume level (0-300)")
+    volume: float = Field(default=100.0, description="百分比 0-200，100=原音量")
     clip_start: Optional[float] = Field(default=0.0, description="Start time within the source material (seconds)")
     clip_end: Optional[float] = Field(default=None, description="End time within the source material (seconds)")
 
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}
+
+    @field_validator("volume", mode="before")
+    @classmethod
+    def normalise_volume(cls, value: Any) -> float:
+        """Coerce LLM volume to a percentage in [0, 200]; unusable -> 100."""
+        try:
+            volume = float(value)
+        except (TypeError, ValueError):
+            return 100.0
+        if 0 < volume <= MAX_VOLUME_MULTIPLIER:
+            volume *= 100
+        return max(0.0, min(volume, MAX_SEGMENT_VOLUME_PERCENT))
 
 
 class ImageSegmentModel(BaseModel):
     """Image segment model for simplified AI editing response."""
-    
+
     material_id: str = Field(..., description="Material ID reference")
     start_time: float = Field(..., description="Start time in timeline (seconds)")
     duration: float = Field(default=5.0, description="Display duration (seconds)")
 
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}
 
 
 class SimplifiedTimelineModel(BaseModel):
     """Simplified timeline model for AI mixed editing response."""
-    
+
     total_duration: float = Field(..., description="Total timeline duration (seconds)")
     video_segments: List[VideoSegmentModel] = Field(default=[], description="Video segments arrangement")
     audio_segments: List[AudioSegmentModel] = Field(default=[], description="Audio segments arrangement")
     image_segments: List[ImageSegmentModel] = Field(default=[], description="Image segments arrangement")
 
-    model_config = {"extra": "forbid"}
-
-
-class AIMixedEditingErrorResponse(BaseModel):
-    """Error response model for AI mixed editing."""
-    
-    error: str = Field(..., description="Error message")
-    details: Optional[str] = Field(default=None, description="Additional error details")
-    taskId: Optional[str] = Field(default=None, description="Task ID if available")
-
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "ignore"}

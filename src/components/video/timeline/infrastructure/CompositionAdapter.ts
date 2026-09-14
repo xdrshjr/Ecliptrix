@@ -12,9 +12,10 @@
  * The extraction preserves timeline behavior while selecting desktop-local
  * backend media references for export when available:
  *   - URL selection: cacheUrl/local url preferred, remote serverUrl fallback
- *   - Volume calculation: (item.volume ?? 1) * (track.volume / 100), clamped [0, 2]
- *   - Track filtering: video tracks must be visible and not locked
- *   - Audio track filtering: must be visible, not locked, and not muted
+ *   - Volume calculation: computeEffectiveVolume (item × track%, clamped [0, 2])
+ *   - Track filtering: video tracks must be visible (locking only prevents
+ *     editing — locked tracks still render)
+ *   - Audio track filtering: must be visible and not muted
  *   - Items must have a materialId to be included
  *   - Audio results are sorted by startTime ascending
  */
@@ -30,6 +31,7 @@ import type {
 import type { TrackData, MaterialData } from '../domain/types';
 import { isLocalMediaReference } from '../../lib/selectPlaybackUrl';
 import { toCameraMotionWire } from '../../playback/camera/wire';
+import { computeEffectiveVolume } from './effectiveVolume';
 
 // ---------------------------------------------------------------------------
 // Expanded MaterialData for composition (extends domain MaterialData)
@@ -108,10 +110,10 @@ export class CompositionAdapter implements ICompositionPort {
    * Extract video sequences from timeline tracks.
    *
    * Logic extracted verbatim from useTimelineComposition.ts#getVideoSequencesFromTimeline:
-   * 1. Filter tracks: type='video', isVisible=true, !isLocked
+   * 1. Filter tracks: type='video', isVisible=true (locked tracks still render)
    * 2. For each item with type='video' and a materialId, find the matching material
    * 3. Select URL: prefer local backend reference, fallback serverUrl/url
-   * 4. Compute volume: (item.volume ?? 1) * (track.volume / 100), clamped [0, 2]
+   * 4. Compute volume: computeEffectiveVolume(item.volume, track.volume)
    * 5. Include clip start/end/originalDuration
    */
   extractVideoSequences(
@@ -121,8 +123,9 @@ export class CompositionAdapter implements ICompositionPort {
     const allVideoItems: VideoSequenceItem[] = [];
 
     for (const track of tracks) {
-      // Filter: video tracks that are visible and unlocked
-      if (track.type !== 'video' || !track.isVisible || track.isLocked) {
+      // Filter: visible video tracks. Locking only prevents editing, so a
+      // locked track still renders (EX-02).
+      if (track.type !== 'video' || !track.isVisible) {
         continue;
       }
 
@@ -148,12 +151,8 @@ export class CompositionAdapter implements ICompositionPort {
 
         const finalUrl = selectCanonicalExportReference(material);
 
-        // Volume calculation — exact match with useTimelineComposition.ts:
-        //   Math.max(0, Math.min((item.volume ?? 1) * (track.volume / 100), 2))
-        const volume = Math.max(
-          0,
-          Math.min((item.volume ?? 1) * (track.volume / 100), 2)
-        );
+        // Same rule as the export request builder (useVideoExport).
+        const volume = computeEffectiveVolume(item.volume, track.volume);
 
         const videoSequence: VideoSequenceItem = {
           id: item.id,
@@ -199,10 +198,11 @@ export class CompositionAdapter implements ICompositionPort {
    * Extract audio sequences from timeline tracks.
    *
    * Logic extracted verbatim from useTimelineComposition.ts#getAudioSequencesFromTimeline:
-   * 1. Filter tracks: type='audio', isVisible=true, !isLocked, !isMuted
+   * 1. Filter tracks: type='audio', isVisible=true, !isMuted (locked tracks
+   *    still render)
    * 2. For each item with type='audio' and a materialId, find the matching material
    * 3. Select URL: prefer local backend reference, fallback serverUrl/url
-   * 4. Compute volume: (item.volume ?? 1) * (track.volume / 100), clamped [0, 2]
+   * 4. Compute volume: computeEffectiveVolume(item.volume, track.volume)
    * 5. Sort results by startTime ascending
    */
   extractAudioSequences(
@@ -212,13 +212,12 @@ export class CompositionAdapter implements ICompositionPort {
     const allAudioItems: AudioSequenceItem[] = [];
 
     for (const track of tracks) {
-      // Filter: audio tracks that are visible, unlocked, and unmuted
-      // Matches exact condition from useTimelineComposition.ts:
-      //   track.type === 'audio' && track.isVisible && !track.isLocked && !track.isMuted
+      // Filter: visible, unmuted audio tracks — the same guard the export
+      // request builder (useVideoExport) applies. Locking only prevents
+      // editing, so a locked track still renders (EX-02).
       if (
         track.type !== 'audio' ||
         !track.isVisible ||
-        track.isLocked ||
         track.isMuted
       ) {
         continue;
@@ -244,11 +243,8 @@ export class CompositionAdapter implements ICompositionPort {
 
         const finalUrl = selectCanonicalExportReference(material);
 
-        // Volume calculation — same formula as video
-        const volume = Math.max(
-          0,
-          Math.min((item.volume ?? 1) * (track.volume / 100), 2)
-        );
+        // Volume calculation — same rule as video
+        const volume = computeEffectiveVolume(item.volume, track.volume);
 
         const audioSequence: AudioSequenceItem = {
           id: item.id,

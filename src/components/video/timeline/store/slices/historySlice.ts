@@ -29,28 +29,28 @@ export interface HistorySlice {
 
   /**
    * Record a new action. Captures the current timeline state as the
-   * before-snapshot automatically. The caller should schedule
-   * captureNextState() after the mutation has been applied.
+   * before-snapshot automatically. The caller should call
+   * captureNextState() right after the mutation has been applied.
    */
   recordAction: (type: TimelineAction['type'], payload?: unknown) => void;
 
   /**
    * Capture the current timeline state as the after-snapshot for the
-   * most recently recorded action. Should be called after the mutation
-   * has been applied and _syncDerivedState has run.
-   *
-   * Typically called via requestAnimationFrame or in the next microtask
-   * to ensure the state reflects the completed mutation.
+   * most recently recorded action. Call it synchronously, immediately
+   * after the mutation and _syncDerivedState: deferring it to the next
+   * frame lets a second action in the same tick steal the snapshot.
    */
   captureNextState: () => void;
 
   /**
    * Undo the most recent action by restoring its before-snapshot.
+   * No-op while the external edit lock is held.
    */
   undo: () => void;
 
   /**
    * Redo the next action by restoring its after-snapshot.
+   * No-op while the external edit lock is held.
    */
   redo: () => void;
 
@@ -104,6 +104,7 @@ export const createHistorySlice: StateCreator<
 
   undo: () => {
     const state = get();
+    if (state.externalEditLock !== null) return;
     const snapshot = state._historyService.undo();
     if (snapshot) {
       state.restoreFromSnapshot(snapshot);
@@ -116,6 +117,7 @@ export const createHistorySlice: StateCreator<
 
   redo: () => {
     const state = get();
+    if (state.externalEditLock !== null) return;
     const snapshot = state._historyService.redo();
     if (snapshot) {
       state.restoreFromSnapshot(snapshot);

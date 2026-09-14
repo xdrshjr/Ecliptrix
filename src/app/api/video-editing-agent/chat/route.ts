@@ -18,6 +18,8 @@ const AGENT_TIMEOUT = 1_800_000; // 30 minutes — storyboard generation can tak
 
 const THINKING_TIMEOUT = 30_000;
 const THINKING_HEARTBEAT_INTERVAL = 15_000;
+/** Comment frame interval for the whole stream lifetime (see keepAliveId). */
+const STREAM_KEEPALIVE_INTERVAL_MS = 15_000;
 
 function buildThinkingPrompt(
   userMessage: string,
@@ -292,6 +294,18 @@ export async function POST(request: NextRequest) {
     // dereferences this slot via the closure.
     let triggerClientAbort: ((reason?: string) => void) | null = null;
 
+    // Whole-stream keepalive. The thinking and tool heartbeats leave gaps,
+    // e.g. while the LLM streams long tool-call arguments, and the client
+    // drops a connection after 90 s without data. Declared outside start()
+    // so cancel() can stop it too.
+    let keepAliveId: ReturnType<typeof setInterval> | null = null;
+    const stopKeepAlive = (): void => {
+      if (keepAliveId !== null) {
+        clearInterval(keepAliveId);
+        keepAliveId = null;
+      }
+    };
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -308,6 +322,14 @@ export async function POST(request: NextRequest) {
         };
 
         controller.enqueue(encoder.encode(`: stream-start\n\n`));
+        keepAliveId = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(': keepalive\n\n'));
+          } catch {
+            // The controller is closed, so the stream is over.
+            stopKeepAlive();
+          }
+        }, STREAM_KEEPALIVE_INTERVAL_MS);
 
         if (lastEventId >= 0) {
           console.log(`[VideoEditingAgent] Reconnection detected — client last event ID: ${lastEventId}`);
@@ -557,6 +579,7 @@ export async function POST(request: NextRequest) {
             send({ type: 'error', message: `Agent error: ${message}` });
           }
         } finally {
+          stopKeepAlive();
           try { send('[DONE]'); } catch { /* controller may already be closed */ }
           try { controller.close(); } catch { /* already closed by triggerAbort */ }
         }
@@ -567,6 +590,7 @@ export async function POST(request: NextRequest) {
         // effort; this is the path guaranteed to fire when the client
         // tears down the stream mid-flight.
         console.log('[VideoEditingAgent] ReadableStream.cancel fired:', reason);
+        stopKeepAlive();
         triggerClientAbort?.(typeof reason === 'string' ? reason : 'stream_cancelled');
       },
     });

@@ -50,14 +50,6 @@ export function resizeItemAction(
   // Auto-organize after resize so that any trailing gap is closed.
   get().autoOrganize();
 
-  // Schedule after-snapshot capture
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  // Capture the after-snapshot synchronously (the resize already happened)
+  get().captureNextState();
 }

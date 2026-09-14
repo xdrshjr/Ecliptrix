@@ -81,6 +81,8 @@ export class SplitService {
     // without a motion gets `{}` back — the legacy behaviour, untouched.
     const rebased = rebaseCameraMotionForSplit(original.cameraMotion, original.duration, offset);
 
+    // The cut is a hard edge: the left half keeps only the leading transition
+    // and the right half only the trailing one, so no fade appears mid-clip.
     const leftData: TimelineItemData = {
       ...original,
       id: original.id,
@@ -88,6 +90,7 @@ export class SplitService {
       clipStart,
       clipEnd: splitSourceTime,
       cameraMotion: rebased.left,
+      transitionOut: undefined,
     };
 
     const rightData: TimelineItemData = {
@@ -98,6 +101,7 @@ export class SplitService {
       clipStart: splitSourceTime,
       clipEnd,
       cameraMotion: rebased.right,
+      transitionIn: undefined,
     };
 
     // Replace the original with the two halves; addItem re-sorts the track.

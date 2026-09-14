@@ -8,6 +8,9 @@ import { selectAudioPlaybackUrl } from '@/lib/utils/audioUrl';
 import { materialCompositeKey } from '../lib/materialKey';
 import { selectPlaybackUrl, stripLocalOrigin } from '../lib/selectPlaybackUrl';
 import { toCameraMotionWire } from '../playback/camera/wire';
+import { computeEffectiveVolume } from '../timeline/infrastructure/effectiveVolume';
+
+type ExportTrack = TimelineState['tracks'][number];
 
 /**
  * Resolve the z-order (track_z) for a timeline track. Lower draws first
@@ -15,7 +18,17 @@ import { toCameraMotionWire } from '../playback/camera/wire';
  * compositor's `buildVideoTrackGroups` uses (spec 02) so export and preview
  * agree on which track is on top.
  */
-const resolveTrackZ = (track: TimelineState['tracks'][number]): number => track.order;
+const resolveTrackZ = (track: ExportTrack): number => track.order;
+
+/**
+ * Whether a track's items go into the export request (EX-02). Locking only
+ * prevents editing, so locked tracks ARE exported; a muted audio track is
+ * skipped, matching the preview compositor (`CompositionAdapter`). The
+ * duration validation, the expected-audio count and the build loop all use
+ * this one predicate so they can never disagree.
+ */
+const isTrackExported = (track: ExportTrack): boolean =>
+  track.isVisible && !(track.type === 'audio' && track.isMuted);
 
 interface UseVideoExportReturn {
   isExporting: boolean;
@@ -40,7 +53,7 @@ const calculateVideoTrackDuration = (timelineState: TimelineState): number => {
   let maxVideoEndTime = 0;
   
   timelineState.tracks.forEach(track => {
-    if (track.type === 'video' && track.isVisible && !track.isLocked) {
+    if (track.type === 'video' && isTrackExported(track)) {
       track.items.forEach(item => {
         if (item.type === 'video') {
           const itemEndTime = item.startTime + item.duration;
@@ -62,7 +75,7 @@ const calculateAudioTrackDuration = (timelineState: TimelineState): number => {
   let maxAudioEndTime = 0;
   
   timelineState.tracks.forEach(track => {
-    if (track.type === 'audio' && track.isVisible && !track.isLocked && !track.isMuted) {
+    if (track.type === 'audio' && isTrackExported(track)) {
       track.items.forEach(item => {
         if (item.type === 'audio') {
           const itemEndTime = item.startTime + item.duration;
@@ -120,7 +133,6 @@ export const useVideoExport = ({
   const [exportStartTime, setExportStartTime] = useState<number | null>(null);
   const { showError, showWarning } = useNotification();
   const { t } = useLocale();
-
   // Logger is memoized on taskId — stable across renders, safe to include in
   // handleExport's useCallback deps. Replaces 34 raw console.* sites below
   // so production builds emit only warn/error (info/debug are gated in
@@ -182,14 +194,14 @@ export const useVideoExport = ({
     const subtitleItems: any[] = [];
     const imageItems: any[] = []; // 新增：用于存储图片项目
 
-    // Count audio items the build loop below will attempt to push. Filter must
-    // mirror that loop's track guard exactly (visible + unlocked) — muted
-    // tracks are still exported with their volume scaled, so they count too.
-    // Compared to audioItems.length after the loop so we can hard-fail when
-    // materials.find() drops items.
+    // Count audio items the build loop below will attempt to push. It uses the
+    // loop's exact track guard (`isTrackExported`: visible, and not a muted
+    // audio track — locked tracks are exported) and the loop's item-type
+    // check. Compared to audioItems.length after the loop so we can hard-fail
+    // when materials.find() drops items.
     let expectedAudioItemCount = 0;
     timelineState.tracks.forEach(track => {
-      if (track.type !== 'audio' || !track.isVisible || track.isLocked) return;
+      if (!isTrackExported(track)) return;
       track.items.forEach(item => {
         if (item.type === 'audio') expectedAudioItemCount += 1;
       });
@@ -198,14 +210,14 @@ export const useVideoExport = ({
     try {
       // Import the video composition API
       const { videoCompositionAPI } = await import('@/lib/api/videoComposition');
-      
+
       // Process each track
       timelineState.tracks.forEach(track => {
-        if (!track.isVisible || track.isLocked) {
+        if (!isTrackExported(track)) {
           logger.debug('跳过轨道', {
             trackId: track.id,
             isVisible: track.isVisible,
-            isLocked: track.isLocked,
+            isMuted: track.isMuted,
           });
           return;
         }
@@ -338,7 +350,8 @@ export const useVideoExport = ({
                 start_time: item.startTime,
                 duration: item.duration, // Keep timeline duration for positioning
                 track_id: track.id,
-                volume: (item.volume ?? 1) * ((track.volume || 100) / 100), // 结合项目音量和轨道音量
+                // 项目音量 × 轨道音量，钳制到后端上限（0% 轨道导出为静音）
+                volume: computeEffectiveVolume(item.volume, track.volume),
                 opacity: item.opacity ?? 1.0,
                 // 新增：剪辑信息，用于后端视频裁剪
                 clip_start: clipStart,
@@ -397,6 +410,9 @@ export const useVideoExport = ({
                 trackId: track.id,
               });
 
+              // 项目音量 × 轨道音量，钳制到后端上限（0% 轨道导出为静音）
+              const audioVolume = computeEffectiveVolume(item.volume, track.volume);
+
               audioItems.push({
                 id: item.id,
                 name: item.name,
@@ -404,7 +420,7 @@ export const useVideoExport = ({
                 start_time: item.startTime,
                 duration: item.duration,
                 track_id: track.id,
-                volume: (item.volume ?? 1) * ((track.volume || 100) / 100), // 结合项目音量和轨道音量
+                volume: audioVolume,
                 // 新增：剪辑信息，用于后端音频裁剪
                 clip_start: item.clipStart || 0,
                 clip_end: item.clipEnd || (item.originalDuration || item.duration)
@@ -415,7 +431,7 @@ export const useVideoExport = ({
                 finalUrl: audioUrl,
                 trackId: track.id,
                 trackVolume: track.volume,
-                normalizedVolume: (track.volume || 100) / 100,
+                effectiveVolume: audioVolume,
                 startTime: item.startTime.toFixed(2),
                 clipStart: (item.clipStart || 0).toFixed(2),
                 clipEnd: (item.clipEnd || (item.originalDuration || item.duration)).toFixed(2),
@@ -688,6 +704,9 @@ export const useVideoExport = ({
       // normalize stage even starts). Accumulate de-duplicated so a 30-poll
       // export does not repeat the same line 30 times.
       const compositionWarnings: string[] = [];
+      // Not tied to this component's lifetime on purpose: leaving the editor
+      // (switching task or project) mid-export must still deliver the file,
+      // because the backend keeps rendering either way.
       await videoCompositionAPI.pollCompositionStatus(
         compositionResponse.composition_id,
         (status) => {
@@ -704,7 +723,7 @@ export const useVideoExport = ({
             }
           });
           // Here you could update a progress UI
-        }
+        },
       );
 
       if (compositionWarnings.length > 0) {
@@ -774,7 +793,9 @@ export const useVideoExport = ({
       }
 
       // 检查是否是超时错误并提供更友好的错误信息
-      if (error?.name === 'TimeoutError' || error?.message?.includes('timeout')) {
+      // http-client and the status poller both name their timeouts; a backend
+      // failure whose text merely mentions "timeout" keeps its real reason.
+      if (error?.name === 'TimeoutError') {
         logger.error('视频导出超时', {
           timeout: '10 minutes',
           error: error.message
@@ -815,7 +836,7 @@ export const useVideoExport = ({
         setIsExporting(false);
         setExportProgress(0);
         setExportStartTime(null);
-        
+
         logger.info('导出状态重置完成', {});
       }, 2000); // 2秒后重置状态
     }

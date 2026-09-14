@@ -37,6 +37,8 @@ export interface SelectionSlice {
   deselectAll: () => void;
   /** Drop any selected items that belong to the given track. */
   clearItemsOfTrack: (trackId: string) => void;
+  /** Drop selected ids that no longer exist on the timeline (after a replace). */
+  pruneSelection: () => void;
 
   // Query helpers
   isSelected: (itemId: string) => boolean;
@@ -98,6 +100,14 @@ export const createSelectionSlice: StateCreator<
     const filtered = get().selectedItems.filter(id => !doomedIds.has(id));
     if (filtered.length !== get().selectedItems.length) {
       set({ selectedItems: filtered });
+    }
+  },
+
+  pruneSelection: () => {
+    const { selectedItems, _aggregate } = get();
+    const existing = selectedItems.filter(id => _aggregate.findItem(id) !== null);
+    if (existing.length !== selectedItems.length) {
+      set({ selectedItems: existing });
     }
   },
 

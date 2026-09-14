@@ -476,6 +476,11 @@ export interface Translations {
       noSubtitleTrack: string;
       subtitleExtractionFailed: string;
       subtitleExtractionSuccess: string;
+      replaceSubtitlesTitle: string;
+      replaceSubtitlesBody: string;
+      replaceSubtitlesConfirm: string;
+      subtitleTrackLocked: string;
+      editLockedByAgent: string;
         subtitleExtractionError: string;
         subtitlePrefix: string;
         operationGenerated: string;
@@ -799,6 +804,37 @@ export interface Translations {
     frameIntervalHint: string;
     cancel: string;
     confirm: string;
+    replaceWarningTitle: string;
+    replaceWarningBody: string;
+    preservedTracks: string;
+    undoHint: string;
+  };
+  aiMixingProgress: {
+    title: string;
+    stepAnalyze: string;
+    stepPlan: string;
+    stepApply: string;
+    analyzingVideos: string;
+    planningHint: string;
+    cancel: string;
+    cancelled: string;
+    done: string;
+    success: string;
+    noChanges: string;
+    partialWarning: string;
+    lockedTracksSkipped: string;
+    blockedByAgent: string;
+    errorNoMaterials: string;
+    errorModelNotConfigured: string;
+    errorUpstream: string;
+    errorUnparseable: string;
+    errorTimeout: string;
+    errorInvalidResponse: string;
+    errorGeneric: string;
+  };
+  agentUndo: {
+    conflict: string;
+    notUndoable: string;
   };
   batchAnalysisModal: {
     title: string;
@@ -1248,6 +1284,15 @@ export interface Translations {
     autoMix: {
       noMaterials: string;
       noScriptMaterials: string;
+      replaceConfirmTitle: string;
+      replaceConfirmBody: string;
+      applied: string;
+      skippedNoAudio: string;
+      duplicatesIgnored: string;
+      trackLocked: string;
+      noTargetTrack: string;
+      confirm: string;
+      cancel: string;
     };
     agentDock: {
       fabLabel: string;
@@ -2936,6 +2981,37 @@ export const translations: Record<string, Translations> = {
       frameIntervalHint: 'Smaller interval means more detailed analysis but longer processing time (Recommended: 3-10 seconds)',
       cancel: 'Cancel',
       confirm: 'Start AI Mixing',
+      replaceWarningTitle: 'This will replace part of your timeline',
+      replaceWarningBody: '{count} clips on the video, image and audio tracks will be replaced',
+      preservedTracks: 'These tracks stay unchanged: {tracks}',
+      undoHint: 'You can undo with Ctrl+Z afterwards',
+    },
+    aiMixingProgress: {
+      title: 'AI Auto Edit',
+      stepAnalyze: 'Analyze footage',
+      stepPlan: 'Plan the edit',
+      stepApply: 'Apply to timeline',
+      analyzingVideos: 'Analyzing {count} videos',
+      planningHint: 'Usually takes 30–90 seconds',
+      cancel: 'Cancel',
+      cancelled: 'AI auto edit cancelled; timeline unchanged',
+      done: 'Done',
+      success: 'AI auto edit applied. Press Ctrl+Z to undo',
+      noChanges: 'The AI plan matches the current timeline, so nothing changed',
+      partialWarning: '{count} clips were invalid and were skipped or adjusted',
+      lockedTracksSkipped: 'Locked target tracks were left unchanged',
+      blockedByAgent: 'The agent is editing the timeline. Try again when it finishes',
+      errorNoMaterials: 'Add video, audio or image materials first',
+      errorModelNotConfigured: 'No model is assigned to video editing. Set one in Settings → Models',
+      errorUpstream: 'The editing model request failed. Check your network or model settings and try again',
+      errorUnparseable: 'The model returned an unusable plan. Try again or switch models',
+      errorTimeout: 'AI auto edit timed out. Try again with fewer materials',
+      errorInvalidResponse: 'The editing plan was incomplete',
+      errorGeneric: 'AI auto edit failed: {message}',
+    },
+    agentUndo: {
+      conflict: "The timeline changed after this step, so it can't be undone on its own. Use Ctrl+Z instead",
+      notUndoable: 'This step made no timeline change to undo',
     },
     batchAnalysisModal: {
       title: 'Select Batch Analysis Mode',
@@ -3047,6 +3123,11 @@ export const translations: Record<string, Translations> = {
         noSubtitleTrack: 'No subtitle track found, please add a subtitle track first.',
         subtitleExtractionFailed: 'Subtitle extraction failed, no subtitle content was generated.',
         subtitleExtractionSuccess: 'Subtitle extraction successful! {operation} {count} subtitle segments.',
+        replaceSubtitlesTitle: 'Replace existing subtitles?',
+        replaceSubtitlesBody: '{count} existing subtitles will be replaced by the transcription. Undo with Ctrl+Z',
+        replaceSubtitlesConfirm: 'Replace',
+        subtitleTrackLocked: 'The subtitle track is locked',
+        editLockedByAgent: 'The agent is editing the timeline. You can edit again when it finishes',
         subtitleExtractionError: 'Subtitle extraction error: {error}',
         subtitlePrefix: 'Subtitle',
         operationGenerated: 'Generated',
@@ -3619,6 +3700,15 @@ export const translations: Record<string, Translations> = {
      autoMix: {
        noMaterials: 'Add video, audio, or image materials before running auto-mix.',
        noScriptMaterials: 'Auto-mix needs audio and video generated from the text-script panel — run TTS and AI video matching first.',
+       replaceConfirmTitle: 'Replace existing clips?',
+       replaceConfirmBody: '{count} clips on Video 1 and Audio 1 will be replaced. Other tracks stay unchanged. Undo with Ctrl+Z',
+       applied: 'Arranged {segments} segments',
+       skippedNoAudio: 'Segments {list} have no voice-over yet and were skipped',
+       duplicatesIgnored: 'Ignored {count} outdated material versions',
+       trackLocked: 'Video 1 or Audio 1 is locked',
+       noTargetTrack: 'Add a video track and an audio track before arranging automatically',
+       confirm: 'Replace',
+       cancel: 'Cancel',
      },
      agentDock: {
        fabLabel: 'AI editing assistant',
@@ -5315,6 +5405,37 @@ export const translations: Record<string, Translations> = {
       frameIntervalHint: '间隔越小，分析越详细，但处理时间越长（推荐：3-10秒）',
       cancel: '取消',
       confirm: '开始AI混剪',
+      replaceWarningTitle: '将替换时间轴上的部分内容',
+      replaceWarningBody: '视频轨、图片轨与音频轨上的 {count} 个片段将被 AI 方案替换',
+      preservedTracks: '以下轨道保持不变：{tracks}',
+      undoHint: '完成后可按 Ctrl+Z 撤销',
+    },
+    aiMixingProgress: {
+      title: 'AI 混剪',
+      stepAnalyze: '分析素材',
+      stepPlan: '生成剪辑方案',
+      stepApply: '应用到时间轴',
+      analyzingVideos: '正在分析 {count} 个视频',
+      planningHint: '通常需要 30–90 秒',
+      cancel: '取消',
+      cancelled: '已取消 AI 混剪，时间轴未改动',
+      done: '已完成',
+      success: 'AI 混剪已完成，可按 Ctrl+Z 撤销',
+      noChanges: 'AI 混剪方案与当前时间轴一致，未做改动',
+      partialWarning: '有 {count} 个片段无效，已忽略或调整',
+      lockedTracksSkipped: '目标轨道已锁定，未被修改',
+      blockedByAgent: 'Agent 正在编辑时间轴，请稍后再试',
+      errorNoMaterials: '请先添加视频、音频或图片素材',
+      errorModelNotConfigured: '尚未为「视频剪辑」指定模型，请在 设置 → 模型设置 中配置',
+      errorUpstream: '剪辑模型请求失败，请检查网络或模型配置后重试',
+      errorUnparseable: '模型返回的剪辑方案无法使用，请重试或更换模型',
+      errorTimeout: 'AI 混剪超时，请减少素材数量后重试',
+      errorInvalidResponse: '剪辑方案数据不完整',
+      errorGeneric: 'AI 混剪失败：{message}',
+    },
+    agentUndo: {
+      conflict: '时间轴在该操作之后已被修改，无法单独撤销，可使用 Ctrl+Z 逐步撤销',
+      notUndoable: '该步骤没有可撤销的时间轴改动',
     },
     batchAnalysisModal: {
       title: '选择批量解析模式',
@@ -5426,6 +5547,11 @@ export const translations: Record<string, Translations> = {
           noSubtitleTrack: '没有找到字幕轨道，请先添加字幕轨道。',
           subtitleExtractionFailed: '字幕提取失败，没有生成任何字幕内容。',
           subtitleExtractionSuccess: '字幕提取成功！{operation}了 {count} 个字幕片段。',
+          replaceSubtitlesTitle: '替换现有字幕？',
+          replaceSubtitlesBody: '将用识别结果替换现有 {count} 条字幕，可按 Ctrl+Z 撤销',
+          replaceSubtitlesConfirm: '替换',
+          subtitleTrackLocked: '字幕轨已锁定',
+          editLockedByAgent: 'Agent 正在编辑时间轴，完成后可继续编辑',
           subtitleExtractionError: '字幕提取错误: {error}',
           subtitlePrefix: '字幕',
           operationGenerated: '生成',
@@ -5996,6 +6122,15 @@ export const translations: Record<string, Translations> = {
      autoMix: {
        noMaterials: '请先添加视频、音频或图片素材后再使用自动混剪。',
        noScriptMaterials: '自动混剪需要由文本脚本生成的音频和视频素材，请先在「文本脚本」面板完成 TTS 与 AI 视频匹配。',
+       replaceConfirmTitle: '替换现有片段？',
+       replaceConfirmBody: '将替换视频轨 1 与音频轨 1 中的 {count} 个片段，其他轨道保持不变，可按 Ctrl+Z 撤销',
+       applied: '已按 {segments} 个段落完成排布',
+       skippedNoAudio: '第 {list} 段尚未生成配音，已跳过',
+       duplicatesIgnored: '已忽略 {count} 个旧版本素材',
+       trackLocked: '视频轨 1 或音频轨 1 已锁定',
+       noTargetTrack: '时间轴缺少视频轨或音频轨，无法自动排布',
+       confirm: '替换',
+       cancel: '取消',
      },
      agentDock: {
        fabLabel: 'AI 剪辑助手',

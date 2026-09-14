@@ -31,6 +31,7 @@ import { createComposeStoryboardTool } from './composeStoryboard';
 import { createCheckOverlapsTool, summarizeOverlapReport } from './checkOverlaps';
 import { createAutoFixOverlapsTool } from './autoFixOverlaps';
 import { ItemPlacementService, type OverlapReport } from '@/components/video/timeline/domain/services/ItemPlacementService';
+import { TrackTypeUtils } from '@/components/video/timeline/domain/value-objects/TrackType';
 
 // --- Shared helpers used by tools ---
 
@@ -60,10 +61,50 @@ export function getDefaultTrackForType(
   timelineState: TimelineState,
   type: string
 ): string | null {
-  // Image materials go on video tracks (Track type doesn't include 'image')
-  const trackType = type === 'image' ? 'video' : type;
-  const track = timelineState.tracks.find(t => t.type === trackType && !t.isLocked);
+  // First unlocked track that accepts this material type: images go on any
+  // video track, videos skip image-tracks (which refuse them).
+  const track = timelineState.tracks.find(
+    t => !t.isLocked && TrackTypeUtils.canAcceptMaterial(t.type, type, t.id)
+  );
   return track?.id ?? null;
+}
+
+/** Structured failure returned by an editing tool. */
+export interface ToolErrorResult {
+  success: false;
+  error: string;
+}
+
+/** Wrap a tool failure in the AgentTool result envelope. */
+export function toolErrorResponse(error: ToolErrorResult) {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(error) }],
+    details: error,
+  };
+}
+
+/** Why a track cannot be edited (missing or locked); null when it can. */
+export function trackEditError(state: TimelineState, trackId: string): ToolErrorResult | null {
+  const track = findTrack(state, trackId);
+  if (!track) return { success: false, error: `Track not found: ${trackId}` };
+  if (track.isLocked) {
+    return { success: false, error: `Track is locked: ${trackId}. Ask the user to unlock it first.` };
+  }
+  return null;
+}
+
+/** Error when a `materialType` clip cannot sit on `track`; null when it can. */
+export function materialTrackMismatchError(
+  track: Track,
+  materialType: string,
+): ToolErrorResult | null {
+  if (TrackTypeUtils.canAcceptMaterial(track.type, materialType, track.id)) return null;
+  // The model reads this text, so keep it grammatical ("an audio clip").
+  const article = /^[aeiou]/i.test(materialType) ? 'An' : 'A';
+  return {
+    success: false,
+    error: `${article} ${materialType} clip cannot be placed on ${track.id} (${track.type} track).`,
+  };
 }
 
 export function getTrackEndTime(track: Track): number {

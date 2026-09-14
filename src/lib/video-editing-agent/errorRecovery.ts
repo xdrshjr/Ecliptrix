@@ -104,6 +104,30 @@ const USER_MESSAGES: Record<StreamErrorType, string> = {
   [StreamErrorType.CANCELLED]: '已取消执行。',
 };
 
+/**
+ * Shown when the stream drops after the agent started calling tools. The
+ * route cannot resume a turn and a rerun could execute those tools twice, so
+ * the stream manager does not reconnect.
+ * en: "Connection lost after the agent started using tools. It was not
+ * retried to avoid running them twice; any completed edits stay on the
+ * timeline."
+ */
+export const INTERRUPTED_AFTER_TOOLS_MESSAGE =
+  '连接中断：Agent 已开始调用工具，为避免重复执行未自动重连。已完成的更改保留在时间轴上，可继续对话。';
+
+/**
+ * Turn a recoverable stream error into a terminal one because tool calls
+ * already started: reconnecting re-runs the whole turn on the server.
+ */
+export function toNonRetryableAfterSideEffects(error: StreamError): StreamError {
+  return {
+    ...error,
+    recoverable: false,
+    message: `${error.message} (not retried: tool calls already started)`,
+    userMessage: INTERRUPTED_AFTER_TOOLS_MESSAGE,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // classifyError()
 // ---------------------------------------------------------------------------

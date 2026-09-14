@@ -2,10 +2,23 @@
  * removeItem — Orchestrated action for deleting one or more timeline items.
  *
  * Records history before and after deletion. Supports batch removal
- * (e.g., deleting all selected items).
+ * (e.g., deleting all selected items). Items on locked tracks are never
+ * removed, and a removal that ends up touching nothing records no history.
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+
+/** Ids that exist and sit on an unlocked track. */
+function filterEditableItemIds(
+  get: () => TimelineStore,
+  itemIds: readonly string[],
+): string[] {
+  const aggregate = get()._aggregate;
+  return itemIds.filter(id => {
+    const found = aggregate.findItem(id);
+    return found !== null && !found.track.isLocked;
+  });
+}
 
 /**
  * Remove a single item from the timeline.
@@ -17,6 +30,8 @@ export function removeItemAction(
   get: () => TimelineStore,
   itemId: string,
 ): void {
+  if (filterEditableItemIds(get, [itemId]).length === 0) return;
+
   const state = get();
 
   // Record history (captures before-snapshot)
@@ -34,16 +49,7 @@ export function removeItemAction(
   // Auto-organize: close any gap left by the removed item.
   get().autoOrganize();
 
-  // Schedule after-snapshot capture
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  get().captureNextState();
 }
 
 /**
@@ -58,15 +64,16 @@ export function removeItemsAction(
   get: () => TimelineStore,
   itemIds: string[],
 ): void {
-  if (itemIds.length === 0) return;
+  const editableIds = filterEditableItemIds(get, itemIds);
+  if (editableIds.length === 0) return;
 
   const state = get();
 
   // Record a single history entry for the batch
-  state.recordAction('REMOVE_ITEM', { itemIds });
+  state.recordAction('REMOVE_ITEM', { itemIds: editableIds });
 
   // Remove each item
-  for (const itemId of itemIds) {
+  for (const itemId of editableIds) {
     state.removeItem(itemId);
   }
 
@@ -76,14 +83,5 @@ export function removeItemsAction(
   // Auto-organize once for the whole batch.
   get().autoOrganize();
 
-  // Schedule after-snapshot capture
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  get().captureNextState();
 }

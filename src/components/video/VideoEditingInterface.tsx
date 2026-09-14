@@ -6,6 +6,16 @@ import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, Materia
 import { useVideoEditingStore } from '@/stores';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel, useTimelineStore } from './timeline';
+import { shouldGlobalSpaceTogglePlayback } from './timeline/shortcutOwnership';
+import { updateImagePositionAction } from './timeline/store/actions/updateItemFields';
+import { nextExternalUpdateId } from './timeline/lib/externalUpdateId';
+import {
+  applyScriptAutoMixAction,
+  checkAutoMixTargets,
+  type AutoMixRefusal,
+} from './timeline/store/actions/applyScriptAutoMix';
+import { planScriptAutoMix, type ScriptAutoMixPlan } from './lib/aiMix/planScriptAutoMix';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import '../../styles/video-editing.css';
 import { shouldRestrictVideoEditing, getDeviceType, getDeviceInfo } from '@/lib/utils/deviceDetection';
 import { MobileWarningDialog } from '@/components/ui';
@@ -23,6 +33,7 @@ import {
   useNarrationDirectScript
 } from './hooks';
 import { useAgentExecution } from './hooks/useAgentExecution';
+import { useAIMixedEditing } from './hooks/useAIMixedEditing';
 import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
 import { generateNarrationVideoScript } from '@/lib/api/narrationVideoScript';
 import {
@@ -38,7 +49,6 @@ import VideoUnderstandingScriptModal from './components/VideoUnderstandingScript
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { analyzeVideosInBatch, VIDEO_ANALYSIS_CONFIG } from './utils/parallelVideoAnalysis';
 import { http, ApiError } from '@/lib/api/http-client';
 import type { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import {
@@ -135,7 +145,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const { locale, t } = useLocale();
   
   // 获取通知上下文
-  const { showSuccess, showError } = useNotification();
+  const { showSuccess, showError, showWarning, showInfo } = useNotification();
   
   // 获取用户认证信息
   
@@ -180,19 +190,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     content?.uiState?.isCreativeBrainstormingModalOpen ?? false
   );
   
-  // AI混剪进度状态
-  const [isAIMixing, setIsAIMixing] = useState<boolean>(
-    content?.uiState?.isAIMixing ?? false
-  );
-  const [aiMixingProgress, setAIMixingProgress] = useState<number>(
-    content?.uiState?.aiMixingProgress ?? 0
-  );
-  
-  // AI混剪模式选择弹窗状态
-  const [isAIMixingModeModalOpen, setIsAIMixingModeModalOpen] = useState<boolean>(
-    content?.uiState?.isAIMixingModeModalOpen ?? false
-  );
-  
   // 批量解析模式选择弹窗状态
   const [isBatchAnalysisModalOpen, setIsBatchAnalysisModalOpen] = useState<boolean>(
     content?.uiState?.isBatchAnalysisModalOpen ?? false
@@ -204,6 +201,14 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     targetTrackId?: string, 
     timestamp: number 
   } | undefined>(undefined);
+
+  // AI自动混剪替换确认（内存态，不持久化）。关闭后保留 plan/数量，
+  // 让退场动画期间的文案保持不变。
+  const [autoMixConfirm, setAutoMixConfirm] = useState<{
+    isOpen: boolean;
+    plan: ScriptAutoMixPlan | null;
+    replacedItemCount: number;
+  }>({ isOpen: false, plan: null, replacedItemCount: 0 });
 
   // 视频剪切弹窗状态
   const [videoCutModal, setVideoCutModal] = useState<{
@@ -254,9 +259,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isPolishModalOpen,
     isScriptGenerationModalOpen,
     isCreativeBrainstormingModalOpen,
-    isAIMixing,
-    aiMixingProgress,
-    isAIMixingModeModalOpen,
     isBatchAnalysisModalOpen,
     videoCutModalIsOpen: videoCutModal.isOpen,
   });
@@ -284,9 +286,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isScriptGenerationModalOpen,
         scriptGenerationStartTime,
         isCreativeBrainstormingModalOpen,
-        isAIMixing,
-        aiMixingProgress,
-        isAIMixingModeModalOpen,
         isBatchAnalysisModalOpen,
         videoCutModal,
         isChatLoading: false, // 始终持久化为 false —— 这是瞬态状态，不应被恢复
@@ -304,9 +303,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       content.uiState?.isScriptGenerationModalOpen !== isScriptGenerationModalOpen ||
       content.uiState?.scriptGenerationStartTime !== scriptGenerationStartTime ||
       content.uiState?.isCreativeBrainstormingModalOpen !== isCreativeBrainstormingModalOpen ||
-      content.uiState?.isAIMixing !== isAIMixing ||
-      content.uiState?.aiMixingProgress !== aiMixingProgress ||
-      content.uiState?.isAIMixingModeModalOpen !== isAIMixingModeModalOpen ||
       content.uiState?.isBatchAnalysisModalOpen !== isBatchAnalysisModalOpen ||
       content.uiState?.agentMode !== agentMode ||
       content.uiState?.hasAutoChatInitialized !== hasAutoChatInitialized.current ||
@@ -321,9 +317,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isPolishModalOpen,
         isScriptGenerationModalOpen,
         isCreativeBrainstormingModalOpen,
-        isAIMixing,
-        aiMixingProgress,
-        isAIMixingModeModalOpen,
         videoCutModalIsOpen: videoCutModal.isOpen,
         hasAutoChatInitialized: hasAutoChatInitialized.current,
       });
@@ -338,9 +331,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     isScriptGenerationModalOpen,
     scriptGenerationStartTime,
     isCreativeBrainstormingModalOpen,
-    isAIMixing,
-    aiMixingProgress,
-    isAIMixingModeModalOpen,
     agentMode,
     videoCutModal,
     taskId,
@@ -420,15 +410,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 全局键盘事件处理 - 空格键播放/暂停功能
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== 'Space') return;
+      // Space yields only to text inputs and modal dialogs. A focused clip or
+      // toolbar button does NOT own it: Space after clicking one still plays.
+      if (event.code !== 'Space' || !shouldGlobalSpaceTogglePlayback(event)) return;
       const target = event.target as HTMLElement;
-      const isInInputField =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.contentEditable === 'true' ||
-        !!target.closest('input, textarea, [contenteditable="true"]');
       const ref = videoPlayerRef.current;
-      if (isInInputField || !ref) return;
+      if (!ref) return;
 
       event.preventDefault();
       // 修复 R1：让 panel 自己回答"是否在播放"，避免父级镜像状态时序滞后。
@@ -519,11 +506,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const calculateEffectiveVolume = useCallback((timelineState: TimelineState | null, currentTime: number): number => {
     if (!timelineState) return 0.8; // 默认音量
 
-    // 找到当前时间点所有活跃的视频轨道
+    // 找到当前时间点所有活跃的视频轨道（锁定只防编辑，锁定轨照常出声，EX-02）
     const activeVideoTracks = timelineState.tracks.filter(track => 
       track.type === 'video' && 
       track.isVisible && 
-      !track.isLocked && 
       !track.isMuted &&
       track.items.some(item => 
         item.type === 'video' && 
@@ -1725,188 +1711,27 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     setCurrentTimelineState(timelineState);
   }, []);
 
-  // 处理项目文件导入完成
-  const handleImportComplete = useCallback((importedMaterials: MaterialItem[], importedTimelineState: TimelineState, isAIMixedEditing: boolean = false) => {
-    console.log(`[VideoEditingInterface] 项目文件导入完成 - 开始处理`, {
+  // 处理项目文件导入完成（JSON 导入 / 待处理时间轴数据）：完全替换时间轴状态。
+  // AI 混剪不再经过这里：它在 useAIMixedEditing 中按轨道精确合并后直接写入 store。
+  const handleImportComplete = useCallback((importedMaterials: MaterialItem[], importedTimelineState: TimelineState) => {
+    console.log(`[VideoEditingInterface] 项目文件导入完成`, {
       taskId,
-      isAIMixedEditing,
       importedMaterialCount: importedMaterials.length,
       importedTrackCount: importedTimelineState.tracks.length,
       totalDuration: importedTimelineState.totalDuration,
-      timelineStateKeys: Object.keys(importedTimelineState),
-      tracksWithItems: importedTimelineState.tracks.map(track => ({
-        id: track.id,
-        name: track.name,
-        type: track.type,
-        itemCount: track.items?.length || 0,
-        items: track.items?.map(item => ({ id: item.id, name: item.name, startTime: item.startTime, duration: item.duration })) || []
-      })),
-      timestamp: new Date().toISOString()
     });
 
-    // 处理时间轴状态更新
-    let finalTimelineState: TimelineState;
-    
-    if (isAIMixedEditing && currentTimelineState) {
-      // AI混剪模式：将导入的素材合并到现有轨道中，保持现有轨道结构
-      console.log(`[VideoEditingInterface] AI混剪模式：合并素材到现有轨道`, {
-        taskId,
-        currentTracksCount: currentTimelineState.tracks.length,
-        importedTracksCount: importedTimelineState.tracks.length,
-        timestamp: new Date().toISOString()
-      });
+    // TimelinePanel 的外部同步把它作为一步可撤销操作写入 store
+    setCurrentTimelineState(importedTimelineState);
+    setExternalTimelineUpdateId(nextExternalUpdateId('timeline-update'));
 
-      // 创建合并后的轨道
-      const mergedTracks = currentTimelineState.tracks.map(existingTrack => {
-        // 查找导入数据中对应类型的轨道
-        let importedTrack;
-        
-        // 根据现有轨道ID匹配对应的导入轨道
-        if (existingTrack.id === 'video-track-1') {
-          importedTrack = importedTimelineState.tracks.find(track => 
-            track.type === 'video' && track.id.includes('video')
-          );
-        } else if (existingTrack.id === 'image-track-1') {
-          importedTrack = importedTimelineState.tracks.find(track => 
-            track.type === 'video' && track.id.includes('image')
-          );
-        } else if (existingTrack.id === 'audio-track-1') {
-          // 音频只导入到音频轨道1，收集所有音频轨道的素材
-          const allAudioTracks = importedTimelineState.tracks.filter(track => 
-            track.type === 'audio'
-          );
-          
-          if (allAudioTracks.length > 0) {
-            // 合并所有音频轨道的素材到音频轨道1
-            const allAudioItems = allAudioTracks.flatMap(track => track.items);
-            
-            // 按开始时间排序音频素材
-            const sortedAudioItems = allAudioItems.sort((a, b) => a.startTime - b.startTime);
-            
-            console.log(`[VideoEditingInterface] 合并所有音频素材到 ${existingTrack.id}`, {
-              audioTracksCount: allAudioTracks.length,
-              totalAudioItems: sortedAudioItems.length,
-              audioItemsTimeRange: sortedAudioItems.length > 0 ? {
-                firstStart: sortedAudioItems[0].startTime,
-                lastEnd: sortedAudioItems[sortedAudioItems.length - 1].startTime + sortedAudioItems[sortedAudioItems.length - 1].duration
-              } : null,
-              timestamp: new Date().toISOString()
-            });
-            
-            // 创建虚拟导入轨道，包含所有音频素材
-            importedTrack = {
-              ...allAudioTracks[0],
-              items: sortedAudioItems
-            };
-          }
-        } else if (existingTrack.id.startsWith('audio-track-') && existingTrack.id !== 'audio-track-1') {
-          // 其他音频轨道不导入任何内容，保持清空
-          importedTrack = null;
-          console.log(`[VideoEditingInterface] 跳过 ${existingTrack.id}，音频只导入到音频轨道1`, {
-            timestamp: new Date().toISOString()
-          });
-        } else if (existingTrack.id.startsWith('subtitle-track-')) {
-          // 字幕轨道不参与AI混剪，保持清空
-          importedTrack = null;
-          console.log(`[VideoEditingInterface] 跳过 ${existingTrack.id}，字幕轨道不参与AI混剪`, {
-            timestamp: new Date().toISOString()
-          });
-        } else {
-          // 通用匹配：按类型匹配
-          importedTrack = importedTimelineState.tracks.find(track => 
-            track.type === existingTrack.type
-          );
-        }
-
-        if (importedTrack && importedTrack.items.length > 0) {
-          console.log(`[VideoEditingInterface] 合并轨道 ${existingTrack.id}`, {
-            existingItems: existingTrack.items.length,
-            importedItems: importedTrack.items.length,
-            timestamp: new Date().toISOString()
-          });
-          
-          // 清空现有轨道的素材，添加AI混剪的素材
-          return {
-            ...existingTrack,
-            items: importedTrack.items.map(item => ({
-              ...item,
-              trackId: existingTrack.id // 确保使用现有轨道的ID
-            }))
-          };
-        } else {
-          // 没有对应的导入素材，清空轨道
-          return {
-            ...existingTrack,
-            items: []
-          };
-        }
-      });
-
-      finalTimelineState = {
-        ...currentTimelineState,
-        tracks: mergedTracks,
-        totalDuration: importedTimelineState.totalDuration,
-        currentTime: 0
-      };
-
-      console.log(`[VideoEditingInterface] AI混剪轨道合并完成`, {
-        taskId,
-        finalTracksCount: finalTimelineState.tracks.length,
-        tracksWithItems: finalTimelineState.tracks.map(track => ({
-          id: track.id,
-          itemCount: track.items.length
-        })),
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      // 普通导入模式：完全替换timeline状态
-      finalTimelineState = importedTimelineState;
-      console.log(`[VideoEditingInterface] 普通导入模式：完全替换timeline状态`, { taskId });
-    }
-
-    // 更新本地时间轴状态
-    console.log(`[VideoEditingInterface] 开始更新本地时间轴状态`, { taskId });
-    const updateId = `timeline-update-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setCurrentTimelineState(finalTimelineState);
-    setExternalTimelineUpdateId(updateId);
-    console.log(`[VideoEditingInterface] 本地时间轴状态更新完成`, { taskId, updateId });
-    
-    // 将导入的素材添加到素材管理中（AI混剪时跳过，因为应该使用现有素材）
-    if (importedMaterials.length > 0 && !isAIMixedEditing) {
-      console.log(`[VideoEditingInterface] 开始添加素材到素材库`, { 
-        taskId,
-        materialsToAdd: importedMaterials.map(m => ({ id: m.id, name: m.name, type: m.type }))
-      });
+    if (importedMaterials.length > 0) {
       materialManagement.addMaterials(importedMaterials);
-      console.log(`[VideoEditingInterface] 已将 ${importedMaterials.length} 个素材添加到素材库`, {
-        materialIds: importedMaterials.map(m => m.id),
-        timestamp: new Date().toISOString()
-      });
-    } else if (isAIMixedEditing) {
-      console.log(`[VideoEditingInterface] AI混剪模式：跳过添加新素材到素材库，使用现有素材`, {
-        taskId,
-        existingMaterialsCount: materialManagement.materials.length,
-        importedMaterialsCount: importedMaterials.length,
-        timestamp: new Date().toISOString()
-      });
     }
 
-    // 同步到timeline组合管理
-    console.log(`[VideoEditingInterface] 开始同步到timeline组合管理`, { taskId });
-    timelineComposition.handleTimelineStateChange(finalTimelineState);
-    console.log(`[VideoEditingInterface] timeline组合管理同步完成`, { taskId });
-    
-    // 重置当前播放时间
+    timelineComposition.handleTimelineStateChange(importedTimelineState);
     setTimelineCurrentTime(0);
-    
-    console.log(`[VideoEditingInterface] 项目导入处理完成`, {
-      taskId,
-      isAIMixedEditing,
-      newTotalDuration: finalTimelineState.totalDuration,
-      finalTrackCount: finalTimelineState.tracks.length,
-      timestamp: new Date().toISOString()
-    });
-  }, [taskId, materialManagement, timelineComposition, currentTimelineState]);
+  }, [taskId, materialManagement, timelineComposition]);
 
   // 检测并导入待处理的时间轴数据
   useEffect(() => {
@@ -1941,8 +1766,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
       // 使用handleImportComplete来导入时间轴数据
       // 传入空的materials数组，因为时间轴数据本身包含了素材引用
-      // isAIMixedEditing设为false，让系统正常处理素材
-      handleImportComplete([], normalizedTimelineData, false);
+      handleImportComplete([], normalizedTimelineData);
 
       // 清除pending标记，避免重复导入
       const updatedContent: VideoEditingTaskContent = {
@@ -2047,408 +1871,93 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [timelineComposition]);
 
   const handleImagePositionConfirm = useCallback((itemId: string, position: ImagePosition) => {
-    useTimelineStore.getState().updateItemImagePosition(itemId, position);
+    // One undoable step; the live drag preview above stays out of history.
+    updateImagePositionAction(() => useTimelineStore.getState(), itemId, position);
   }, []);
 
-  // 新增：AI自动混剪功能
+  // AI自动混剪：按脚本段落把最新配音与匹配视频一次性排到视频轨 1 / 音频轨 1，
+  // 其余轨道保持不变；整次排布是一步可撤销操作。
+  const reportAutoMixRefusal = useCallback((reason: AutoMixRefusal) => {
+    if (reason === 'track-locked') {
+      showWarning(t.videoEditing.autoMix.trackLocked);
+    } else if (reason === 'no-target-track') {
+      showError(t.videoEditing.autoMix.noTargetTrack);
+    } else {
+      showError(t.videoEditing.autoMix.noScriptMaterials, 6000);
+    }
+  }, [showError, showWarning, t]);
+
+  const applyAutoMixPlan = useCallback((plan: ScriptAutoMixPlan) => {
+    // The agent owns the timeline while it runs (same lock as keyboard edits);
+    // re-checked here because the lock may engage while the prompt is open.
+    if (useTimelineStore.getState().externalEditLock !== null) {
+      showWarning(t.timeline.messages.editLockedByAgent);
+      return;
+    }
+    // Targets are re-checked inside the action as well: the timeline may have
+    // changed while the confirmation was open.
+    const result = applyScriptAutoMixAction(() => useTimelineStore.getState(), plan);
+    if (!result.ok) {
+      reportAutoMixRefusal(result.reason);
+      return;
+    }
+    const skippedSegments = plan.segments
+      .filter(segment => segment.status === 'skipped-no-audio')
+      .map(segment => segment.segmentNumber);
+    showSuccess(t.videoEditing.autoMix.applied
+      .replace('{segments}', String(plan.segments.length - skippedSegments.length)));
+    if (skippedSegments.length > 0) {
+      showWarning(t.videoEditing.autoMix.skippedNoAudio
+        .replace('{list}', skippedSegments.join(locale === 'zh-CN' ? '、' : ', ')));
+    }
+    if (plan.ignoredDuplicateMaterialIds.length > 0) {
+      showInfo(t.videoEditing.autoMix.duplicatesIgnored
+        .replace('{count}', String(plan.ignoredDuplicateMaterialIds.length)));
+    }
+    logger.info('Script auto-mix applied', {
+      taskId,
+      placements: plan.placements.length,
+      segments: plan.segments.length,
+      skippedSegments,
+      replacedItemCount: result.replacedItemCount,
+    });
+  }, [locale, logger, reportAutoMixRefusal, showInfo, showSuccess, showWarning, t, taskId]);
+
   const handleAutoMixAudio = useCallback(() => {
     if (materialManagement.allMaterials.length === 0) {
       showError(t.videoEditing.autoMix.noMaterials, 5000);
       return;
     }
-
-    console.log(`[VideoEditingInterface] 开始AI自动混剪`, {
-      taskId,
-      totalMaterialsCount: materialManagement.allMaterials.length,
-      timestamp: new Date().toISOString()
-    });
-
-    // 筛选从文本脚本转换的音频素材（使用 allMaterials：自动混剪需要音频+视频，类型筛选会丢素材）
-    const scriptAudioMaterials = materialManagement.allMaterials.filter(material => {
-      const isAudio = material.type === 'audio';
-      const hasSegmentId = material.metadata?.segment_id;
-      const hasSegmentNumber = typeof material.metadata?.segment_number === 'number';
-
-      return isAudio && hasSegmentId && hasSegmentNumber;
-    });
-
-    // 筛选从文本脚本关联的视频素材（使用 allMaterials：同上）
-    const scriptVideoMaterials = materialManagement.allMaterials.filter(material => {
-      const isVideo = material.type === 'video';
-      const hasSegmentId = material.metadata?.segment_id;
-      const hasSegmentNumber = typeof material.metadata?.segment_number === 'number';
-
-      return isVideo && hasSegmentId && hasSegmentNumber;
-    });
-
-    console.log(`[VideoEditingInterface] 筛选出脚本素材`, {
-      totalMaterials: materialManagement.allMaterials.length,
-      scriptAudioCount: scriptAudioMaterials.length,
-      scriptVideoCount: scriptVideoMaterials.length,
-      audioMaterials: scriptAudioMaterials.map(m => ({
-        id: m.id,
-        name: m.name,
-        segmentId: m.metadata?.segment_id,
-        segmentNumber: m.metadata?.segment_number,
-        duration: m.duration
-      })),
-      videoMaterials: scriptVideoMaterials.map(m => ({
-        id: m.id,
-        name: m.name,
-        segmentId: m.metadata?.segment_id,
-        segmentNumber: m.metadata?.segment_number,
-        duration: m.duration
-      }))
-    });
-
-    if (scriptAudioMaterials.length === 0 && scriptVideoMaterials.length === 0) {
-      showError(t.videoEditing.autoMix.noScriptMaterials, 6000);
+    if (useTimelineStore.getState().externalEditLock !== null) {
+      showWarning(t.timeline.messages.editLockedByAgent);
       return;
     }
-
-    // 按segment_number排序音频素材，确保转换顺序
-    const sortedAudioMaterials = [...scriptAudioMaterials].sort((a, b) => {
-      const aSegmentNumber = a.metadata?.segment_number || 0;
-      const bSegmentNumber = b.metadata?.segment_number || 0;
-      return aSegmentNumber - bSegmentNumber;
-    });
-
-    // 按segment_number排序视频素材，确保与音频相同的转换顺序
-    const sortedVideoMaterials = [...scriptVideoMaterials].sort((a, b) => {
-      const aSegmentNumber = a.metadata?.segment_number || 0;
-      const bSegmentNumber = b.metadata?.segment_number || 0;
-      return aSegmentNumber - bSegmentNumber;
-    });
-
-    console.log(`[VideoEditingInterface] 素材排序完成`, {
-      audioMaterials: sortedAudioMaterials.map((m, index) => ({
-        index: index + 1,
-        id: m.id,
-        name: m.name,
-        segmentNumber: m.metadata?.segment_number,
-        duration: m.duration?.toFixed(2)
-      })),
-      videoMaterials: sortedVideoMaterials.map((m, index) => ({
-        index: index + 1,
-        id: m.id,
-        name: m.name,
-        segmentNumber: m.metadata?.segment_number,
-        duration: m.duration?.toFixed(2)
-      })),
-      totalAudioDuration: sortedAudioMaterials.reduce((total, m) => total + (m.duration || 0), 0).toFixed(2),
-      totalVideoDuration: sortedVideoMaterials.reduce((total, m) => total + (m.duration || 0), 0).toFixed(2)
-    });
-
-    // 合并音频和视频素材为一个数组，不指定targetTrackId，让handleMaterialDrop根据素材类型自动选择轨道
-    // 这样避免了两次setMaterialsToAddToTimeline之间的状态覆盖问题
-    const combinedMaterials = [...sortedAudioMaterials, ...sortedVideoMaterials];
-
-    if (combinedMaterials.length > 0) {
-      setMaterialsToAddToTimeline({
-        materials: combinedMaterials,
-        // 不指定targetTrackId，让每个素材根据类型自动路由到对应轨道（音频→audio-track, 视频→video-track）
-        timestamp: Date.now()
-      });
-
-      console.log(`[VideoEditingInterface] 素材添加请求已发送（音频+视频合并）`, {
-        totalCount: combinedMaterials.length,
-        audioCount: sortedAudioMaterials.length,
-        videoCount: sortedVideoMaterials.length,
-        timestamp: Date.now()
-      });
-    }
-
-    console.log(`[VideoEditingInterface] AI自动混剪请求完成`, {
-      audioMaterialsCount: sortedAudioMaterials.length,
-      videoMaterialsCount: sortedVideoMaterials.length,
-      totalMaterialsProcessed: combinedMaterials.length,
-      timestamp: Date.now()
-    });
-  }, [taskId, materialManagement.allMaterials, showError, t]);
-
-  // 新增：AI混剪功能 - 显示模式选择弹窗
-  const handleAIMixedEditing = useCallback(() => {
-    console.log(`[VideoEditingInterface] 点击AI混剪按钮`, {
-      taskId,
-      totalMaterialsCount: materialManagement.allMaterials.length,
-      timestamp: new Date().toISOString()
-    });
-
-    // 检查是否有素材（使用 allMaterials：MaterialsPanel 类型筛选不应让按钮误判为"无素材"）
-    if (materialManagement.allMaterials.length === 0) {
-      console.warn(`[VideoEditingInterface] 无素材可用于AI混剪`, { taskId });
-      showError('无素材可用于AI混剪，请先添加视频、音频或图片素材', 5000);
+    // 使用 allMaterials：排布需要全部音频与视频，不受素材面板类型筛选影响
+    const plan = planScriptAutoMix(materialManagement.allMaterials);
+    // Missing or locked target tracks are reported BEFORE asking to replace,
+    // so the user is never asked to confirm an edit that will be refused.
+    const check = checkAutoMixTargets(useTimelineStore.getState().tracks, plan);
+    if (!check.ok) {
+      reportAutoMixRefusal(check.reason);
       return;
     }
-
-    // 显示模式选择弹窗
-    setIsAIMixingModeModalOpen(true);
-  }, [taskId, materialManagement.allMaterials.length, showError]);
-
-  // 新增：执行AI混剪的实际逻辑
-  const executeAIMixedEditing = useCallback(async (mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
-    console.log(`[VideoEditingInterface] 开始执行AI混剪`, {
-      taskId,
-      mode,
-      totalMaterialsCount: materialManagement.allMaterials.length,
-      timestamp: new Date().toISOString()
-    });
-
-    // 开始AI混剪并显示进度弹窗
-    setIsAIMixing(true);
-    setAIMixingProgress(0);
-    
-    // 模拟进度条增长
-    const progressInterval = setInterval(() => {
-      setAIMixingProgress(prev => {
-        if (prev >= 90) {
-          return prev; // 在90%停止自动增长，等待实际完成
-        }
-        return Math.min(prev + Math.random() * 8 + 2, 90); // 随机增长2-10%，最多到90%
-      });
-    }, 800 + Math.random() * 400); // 800-1200ms间隔
-
-    console.log(`[VideoEditingInterface] 显示AI混剪进度弹窗`, { taskId });
-
-    try {
-            // 第一步：如果有视频素材，先进行并行视频分析
-            // 使用 allMaterials：AI 混剪需要覆盖全部视频素材，不受 MaterialsPanel 类型筛选影响
-      const videoMaterials = materialManagement.allMaterials.filter(m => m.type === 'video');
-      
-      if (videoMaterials.length > 0) {
-        console.log(`[VideoEditingInterface] 开始批量视频分析阶段（AI混剪模式）`, {
-          taskId,
-          videoCount: videoMaterials.length,
-          mode: mode.type,
-          frameInterval: mode.frameInterval,
-          useBatchAPI: true,
-          timestamp: new Date().toISOString()
-        });
-
-        try {
-          // AI混剪使用批量分析API，优化的两阶段处理：
-          // 1. 顺序提取帧（一个接一个处理视频）
-          // 2. 并发VLM分析（对所有提取的帧并发调用）
-          const analysisResults = await analyzeVideosInBatch(
-            videoMaterials,
-            {
-              maxRetries: VIDEO_ANALYSIS_CONFIG.MAX_RETRY_ATTEMPTS,
-              retryDelayMs: VIDEO_ANALYSIS_CONFIG.RETRY_DELAY_MS,
-              mode
-            },
-            taskId
-          );
-
-          const successfulAnalyses = analysisResults.filter(r => r.success);
-          const failedAnalyses = analysisResults.filter(r => !r.success);
-
-          console.log(`[VideoEditingInterface] 批量视频分析阶段完成`, {
-            taskId,
-            totalVideos: videoMaterials.length,
-            successCount: successfulAnalyses.length,
-            failedCount: failedAnalyses.length,
-            successRate: `${Math.round((successfulAnalyses.length / videoMaterials.length) * 100)}%`,
-            useBatchAPI: true,
-            timestamp: new Date().toISOString()
-          });
-
-          if (failedAnalyses.length > 0) {
-            console.warn(`[VideoEditingInterface] 部分视频分析失败，但将继续进行AI混剪`, {
-              taskId,
-              failedCount: failedAnalyses.length,
-              failedVideos: failedAnalyses.map(r => r.material.name),
-              timestamp: new Date().toISOString()
-            });
-          }
-
-        } catch (error) {
-          console.error(`[VideoEditingInterface] 批量视频分析阶段异常`, {
-            taskId,
-            error: error instanceof Error ? error.message : String(error),
-            videoCount: videoMaterials.length,
-            useBatchAPI: true,
-            timestamp: new Date().toISOString()
-          });
-          // 继续执行AI混剪，即使视频分析失败
-        }
-      }
-
-      // 第二步：执行AI混剪（使用 allMaterials：AI 混剪 API 需要看到全部素材）
-      console.log(`[VideoEditingInterface] 开始AI混剪阶段`, {
-        materials: materialManagement.allMaterials.map(m => ({
-          id: m.id,
-          name: m.name,
-          type: m.type,
-          duration: m.duration
-        }))
-      });
-
-      // 调用AI混剪API
-      let result: any;
-      try {
-        result = await http.post<any>('/api/ai-mixed-editing', {
-          taskId: taskId,
-          materials: materialManagement.allMaterials
-        }, { timeoutMs: 600_000 });
-      } catch (httpError) {
-        if (httpError instanceof ApiError) {
-          throw new Error(httpError.message || `HTTP error! status: ${httpError.status}`);
-        }
-        throw httpError;
-      }
-
-      console.log(`[VideoEditingInterface] AI混剪API调用成功`, {
-        taskId,
-        hasTimelineData: !!result.timelineData,
-        timelineDataKeys: result.timelineData ? Object.keys(result.timelineData) : [],
-        timestamp: new Date().toISOString()
-      });
-
-      // 完成进度条到100%
-      clearInterval(progressInterval);
-      setAIMixingProgress(100);
-
-      // 使用时间轴导入功能填充时间轴
-      if (result.timelineData) {
-        console.log(`[VideoEditingInterface] 开始导入AI生成的时间轴数据`, { 
-          taskId,
-          timelineDataSize: JSON.stringify(result.timelineData).length,
-          timestamp: new Date().toISOString()
-        });
-        
-        let importResult: any;
-        try {
-          importResult = await http.post<any>('/api/timeline-import', {
-            taskId: taskId,
-            fileContent: JSON.stringify(result.timelineData),
-            fileName: `ai-mixed-editing-${Date.now()}.json`,
-            mergeMode: 'replace',
-            preserveIds: true  // AI混剪时保持素材ID，以便与现有素材对应
-          }, { timeoutMs: 300_000 });
-        } catch (httpError) {
-          console.error(`[VideoEditingInterface] Timeline import API调用失败`, {
-            taskId,
-            status: httpError instanceof ApiError ? httpError.status : undefined,
-            error: httpError,
-            timestamp: new Date().toISOString()
-          });
-          if (httpError instanceof ApiError) {
-            throw new Error(httpError.message || `Timeline import failed: ${httpError.status}`);
-          }
-          throw httpError;
-        }
-
-        console.log(`[VideoEditingInterface] Timeline import API调用成功`, {
-          taskId,
-          success: importResult.success,
-          hasImportedData: !!importResult.importedData,
-          importedDataKeys: importResult.importedData ? Object.keys(importResult.importedData) : [],
-          statistics: importResult.statistics,
-          timestamp: new Date().toISOString()
-        });
-
-        // 详细日志导入数据结构
-        if (importResult.importedData) {
-          console.log(`[VideoEditingInterface] 导入数据详细结构`, {
-            taskId,
-            hasTimelineState: !!importResult.importedData.timelineState,
-            hasMaterials: !!importResult.importedData.materials,
-            timelineStateKeys: importResult.importedData.timelineState ? Object.keys(importResult.importedData.timelineState) : [],
-            materialsCount: importResult.importedData.materials ? importResult.importedData.materials.length : 0,
-            tracksCount: importResult.importedData.timelineState?.tracks ? importResult.importedData.timelineState.tracks.length : 0,
-            timestamp: new Date().toISOString()
-          });
-        }
-
-        if (!importResult.success) {
-          throw new Error(importResult.error || 'Timeline import failed');
-        }
-
-        // 处理导入的数据，类似TimelinePanel中的handleImportJSON
-        const importedData = importResult.importedData;
-        if (importedData && importedData.timelineState && importedData.materials) {
-          console.log(`[VideoEditingInterface] 开始处理AI混剪导入数据`, {
-            taskId,
-            materialsCount: importedData.materials.length,
-            tracksCount: importedData.timelineState.tracks.length,
-            totalDuration: importedData.timelineState.totalDuration,
-            timestamp: new Date().toISOString()
-          });
-
-          // 调用导入完成处理函数，这会更新timeline状态（AI混剪模式不添加新素材）
-          handleImportComplete(importedData.materials, importedData.timelineState, true);
-
-          // 显示成功提示
-          console.log(`[VideoEditingInterface] AI混剪完成`, { 
-            taskId,
-            importedMaterialCount: importedData.materials.length,
-            importedTrackCount: importedData.timelineState.tracks.length,
-            timestamp: new Date().toISOString()
-          });
-          
-          // 延迟关闭进度弹窗，让用户看到100%完成状态
-          setTimeout(() => {
-            setIsAIMixing(false);
-            setAIMixingProgress(0);
-          }, 1500);
-          
-          showSuccess(
-            `AI混剪已完成！导入了 ${importResult.statistics?.imported_track_count || 0} 个轨道和 ${importResult.statistics?.imported_material_count || 0} 个素材，时间轴已自动填充，请查看生成的剪辑方案`, 
-            8000
-          );
-        } else {
-          console.error(`[VideoEditingInterface] AI混剪导入数据格式不正确`, {
-            taskId,
-            hasImportedData: !!importedData,
-            hasTimelineState: !!(importedData?.timelineState),
-            hasMaterials: !!(importedData?.materials),
-            timestamp: new Date().toISOString()
-          });
-          throw new Error('AI混剪导入数据格式不正确');
-        }
-      } else {
-        console.error(`[VideoEditingInterface] AI混剪返回的数据中缺少时间轴信息`, {
-          taskId,
-          resultKeys: Object.keys(result),
-          timestamp: new Date().toISOString()
-        });
-        throw new Error('AI混剪返回的数据中缺少时间轴信息');
-      }
-
-    } catch (error) {
-      // 清理进度条
-      clearInterval(progressInterval);
-      setIsAIMixing(false);
-      setAIMixingProgress(0);
-      
-      console.error(`[VideoEditingInterface] AI混剪失败`, {
-        taskId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      showError(`AI混剪失败: ${error instanceof Error ? error.message : String(error)}`, 8000);
+    if (check.replacedItemCount > 0) {
+      setAutoMixConfirm({ isOpen: true, plan, replacedItemCount: check.replacedItemCount });
+      return;
     }
-  }, [taskId, materialManagement.allMaterials, showSuccess, showError, handleImportComplete]);
+    applyAutoMixPlan(plan);
+  }, [materialManagement.allMaterials, applyAutoMixPlan, reportAutoMixRefusal, showError, showWarning, t]);
 
-  // 处理AI混剪模式选择弹窗的确认
-  const handleAIMixingModeConfirm = useCallback((mode: { type: 'quick' | 'professional'; frameInterval?: number }) => {
-    console.log(`[VideoEditingInterface] 用户选择AI混剪模式`, {
-      taskId,
-      selectedMode: mode,
-      timestamp: new Date().toISOString()
-    });
-    
-    // 关闭弹窗
-    setIsAIMixingModeModalOpen(false);
-    
-    // 执行AI混剪
-    executeAIMixedEditing(mode);
-  }, [taskId, executeAIMixedEditing]);
+  const handleAutoMixConfirm = useCallback(() => {
+    const plan = autoMixConfirm.plan;
+    setAutoMixConfirm(current => ({ ...current, isOpen: false }));
+    if (plan) applyAutoMixPlan(plan);
+  }, [autoMixConfirm.plan, applyAutoMixPlan]);
 
-  // 处理AI混剪模式选择弹窗的关闭
-  const handleAIMixingModeClose = useCallback(() => {
-    console.log(`[VideoEditingInterface] 用户取消AI混剪模式选择`, { taskId });
-    setIsAIMixingModeModalOpen(false);
-  }, [taskId]);
+  const handleAutoMixCancel = useCallback(() => {
+    setAutoMixConfirm(current => ({ ...current, isOpen: false }));
+  }, []);
+
 
   // 清除添加素材请求状态，避免重复处理
   React.useEffect(() => {
@@ -2584,6 +2093,27 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     agentMode,
     setAgentMode,
     projectId,
+  });
+
+  // External edit lock: agent operations are undoable, so a keyboard/toolbar
+  // undo or delete issued mid-run would fork the client timeline from the
+  // state the agent keeps editing. The overlay only blocks the pointer.
+  useEffect(() => {
+    useTimelineStore.getState().setExternalEditLock(agent.agentIsExecuting ? 'agent' : null);
+  }, [agent.agentIsExecuting]);
+  useEffect(() => () => {
+    useTimelineStore.getState().setExternalEditLock(null);
+  }, []);
+
+  // AI 混剪编排：分阶段进度、可取消、过期结果丢弃、按轨道合并为一步可撤销操作。
+  // 素材经 ref 读取最新值，避免长任务结束时用到旧闭包里的素材列表。
+  const allMaterialsRef = useRef(materialManagement.allMaterials);
+  allMaterialsRef.current = materialManagement.allMaterials;
+  const getAllMaterials = useCallback(() => allMaterialsRef.current, []);
+  const aiMix = useAIMixedEditing({
+    taskId,
+    getMaterials: getAllMaterials,
+    isAgentExecuting: agent.agentIsExecuting,
   });
 
   // --- Unified send handler: routes to agent or regular based on agentMode ---
@@ -2780,7 +2310,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onSearchVideos={videoSearch.openSearchModal}
             onSearchAudios={audioSearch.openSearchModal}
             onSearchImages={imageSearch.openSearchModal}
-            onAIMixedEditing={handleAIMixedEditing}
+            onAIMixedEditing={aiMix.openModeModal}
             onAutoMixAudio={handleAutoMixAudio}
             onVideoAnalysis={handleVideoAnalysis}
             onBatchVideoAnalysis={handleBatchVideoAnalysis}
@@ -2946,11 +2476,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         videoUrl={videoAnalysis.currentVideoUrl || undefined}
       />
 
-      {/* AI混剪模式选择弹窗 */}
+      {/* AI混剪模式选择弹窗（含「将替换 / 保留的轨道」提示） */}
       <AIMixingModeSelectionModal
-        isOpen={isAIMixingModeModalOpen}
-        onClose={handleAIMixingModeClose}
-        onConfirm={handleAIMixingModeConfirm}
+        isOpen={aiMix.isModeModalOpen}
+        impact={aiMix.timelineImpact}
+        onClose={aiMix.closeModeModal}
+        onConfirm={aiMix.start}
       />
 
       {/* 批量解析模式选择弹窗 */}
@@ -2960,11 +2491,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         onConfirm={handleBatchAnalysisConfirm}
       />
 
-      {/* AI混剪进度弹窗 */}
-      <AIMixingProgressModal
-        isOpen={isAIMixing}
-        progress={aiMixingProgress}
-        allowCancel={false}
+      {/* AI混剪进度弹窗：分阶段步骤条，可取消，无伪进度 */}
+      <AIMixingProgressModal runState={aiMix.runState} onCancel={aiMix.cancel} />
+
+      {/* AI自动混剪替换确认：锁定/缺轨已在打开前检查 */}
+      <ConfirmationDialog
+        isOpen={autoMixConfirm.isOpen}
+        type="warning"
+        title={t.videoEditing.autoMix.replaceConfirmTitle}
+        message={t.videoEditing.autoMix.replaceConfirmBody.replace('{count}', String(autoMixConfirm.replacedItemCount))}
+        confirmText={t.videoEditing.autoMix.confirm}
+        cancelText={t.videoEditing.autoMix.cancel}
+        onConfirm={handleAutoMixConfirm}
+        onCancel={handleAutoMixCancel}
       />
 
       {/* 视频剪切弹窗 */}

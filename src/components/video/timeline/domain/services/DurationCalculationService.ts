@@ -19,7 +19,7 @@ import type { TrackData } from '../types';
 // Minimum floor duration — ensures the timeline always has a non-zero length
 // even when empty. Matches the spec: Duration.create(0.1).
 // ---------------------------------------------------------------------------
-const MIN_DURATION_SECONDS = 0.1;
+export const MIN_DURATION_SECONDS = 0.1;
 
 // ---------------------------------------------------------------------------
 // DurationCalculationService

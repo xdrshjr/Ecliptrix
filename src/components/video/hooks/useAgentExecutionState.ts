@@ -110,6 +110,12 @@ export interface StartExecutionParams {
   onComplete?: () => void;
   /** Called when the stream fails terminally. */
   onError?: (error: StreamError) => void;
+  /**
+   * Called when the stream manager reconnects. A reconnect re-runs the whole
+   * turn on the server, so the consumer must drop the text, thinking content
+   * and tool cards it showed for the abandoned attempt.
+   */
+  onRestart?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,6 +270,13 @@ export function useAgentExecutionState() {
           console.log(`[useAgentExecutionState] Retrying (${attempt}): ${reason}`);
           // Allow retry to proceed
           return true;
+        },
+
+        onRestart: () => {
+          // The reconnect re-runs the turn: drop the abandoned attempt's text.
+          accumulatedTextRef.current = '';
+          updateState({ pendingMessage: '' });
+          params.onRestart?.();
         },
       });
 

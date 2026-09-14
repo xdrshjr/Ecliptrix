@@ -181,11 +181,7 @@ function ensureDragActor(
         // (INV-5 preserved) — this is purely a visibility aid.
         state.selectItem(preview.itemId);
         state.requestScrollItemIntoView(preview.itemId);
-        if (typeof requestAnimationFrame !== 'undefined') {
-          requestAnimationFrame(() => get().captureNextState());
-        } else {
-          Promise.resolve().then(() => get().captureNextState());
-        }
+        get().captureNextState();
       } else if (interactionType === 'move' && swapTargetId && swapTargetId !== preview.itemId) {
         // Dispatch as a swap; swapItemsAction records history + auto-organizes.
         swapItemsAction(get, preview.itemId, swapTargetId);
@@ -197,11 +193,7 @@ function ensureDragActor(
         });
         state.moveItem(preview.itemId, preview.startTime, false);
         state.autoOrganize();
-        if (typeof requestAnimationFrame !== 'undefined') {
-          requestAnimationFrame(() => get().captureNextState());
-        } else {
-          Promise.resolve().then(() => get().captureNextState());
-        }
+        get().captureNextState();
       } else if (interactionType === 'resize-start' || interactionType === 'resize-end') {
         const edge = interactionType === 'resize-start' ? 'start' : 'end';
         const position = edge === 'start' ? preview.startTime : preview.startTime + preview.duration;
@@ -212,11 +204,7 @@ function ensureDragActor(
         });
         state.resizeItem(preview.itemId, edge, position);
         state.autoOrganize();
-        if (typeof requestAnimationFrame !== 'undefined') {
-          requestAnimationFrame(() => get().captureNextState());
-        } else {
-          Promise.resolve().then(() => get().captureNextState());
-        }
+        get().captureNextState();
       }
 
       // Always clear any lingering swap target at commit boundary.
@@ -308,7 +296,21 @@ export const createDragSlice: StateCreator<
   cancelDrag: () => {
     const actor = get()._dragActor;
     if (!actor) return;
+    const snapshot = actor.getSnapshot();
+    const { itemId, originalStartTime } = snapshot.context;
+    // Only a move drag writes its preview into the store (updateDrag's
+    // mutation is gated on isDragging); resize previews live in the machine.
+    const wasDragging = isDraggingQuery(snapshot);
     actor.send({ type: 'ESCAPE' });
+    if (wasDragging && itemId) {
+      const current = get().tracks
+        .flatMap(track => track.items)
+        .find(item => item.id === itemId);
+      if (current && Math.abs(current.startTime - originalStartTime) > 1e-6) {
+        // Preview mode: roll back the preview without recording history.
+        get().moveItem(itemId, originalStartTime, true);
+      }
+    }
     if (get().swapTargetItemId !== null) {
       set({ swapTargetItemId: null } as Partial<TimelineStore>);
     }

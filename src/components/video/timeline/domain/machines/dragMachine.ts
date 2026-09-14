@@ -98,6 +98,8 @@ export interface DragContext {
   originalClipStart: number;
   originalClipEnd: number;
   originalMediaDuration: number;
+  /** Still image: no source media bounds, so the left edge may extend to 0. */
+  isStill: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +125,8 @@ export type PointerDownEvent = {
   clipEnd?: number;
   /** Total duration of the source media (seconds). Defaults to originalDuration. */
   originalMediaDuration?: number;
+  /** Still image clip: edges extend freely (no source media to run out of). */
+  isStill?: boolean;
 };
 
 export type PointerMoveEvent = {
@@ -187,6 +191,7 @@ const initialContext: DragContext = {
   originalClipStart: 0,
   originalClipEnd: 0,
   originalMediaDuration: 0,
+  isStill: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -245,13 +250,15 @@ function calculateResizeStartPreview(
   deltaX: number,
   zoomLevel: number,
   originalClipStart: number,
-  originalMediaDuration: number
+  originalMediaDuration: number,
+  isStill: boolean
 ): { startTime: number; duration: number } {
   const deltaTime = pixelsToSeconds(deltaX, zoomLevel);
   const originalEndTime = originalStartTime + originalDuration;
 
-  // How far left we can extend (limited by clipStart reaching 0)
-  const maxLeftExtension = originalClipStart;
+  // How far left we can extend: a video is limited by clipStart reaching 0;
+  // a still has no in-point, so it can extend all the way to time 0.
+  const maxLeftExtension = isStill ? originalStartTime : originalClipStart;
   const minAllowedStartTime = Math.max(0, originalStartTime - maxLeftExtension);
   const maxAllowedStartTime = originalEndTime - MIN_DURATION;
 
@@ -322,6 +329,7 @@ export const dragMachine = setup({
         originalClipStart: e.clipStart ?? 0,
         originalClipEnd: e.clipEnd ?? (e.originalMediaDuration ?? e.originalDuration),
         originalMediaDuration: e.originalMediaDuration ?? e.originalDuration,
+        isStill: e.isStill ?? false,
       };
     }),
 
@@ -349,7 +357,8 @@ export const dragMachine = setup({
         e.deltaX,
         context.zoomLevel,
         context.originalClipStart,
-        context.originalMediaDuration
+        context.originalMediaDuration,
+        context.isStill
       );
       return {
         previewStartTime: result.startTime,
@@ -405,6 +414,7 @@ export const dragMachine = setup({
       originalClipStart: 0,
       originalClipEnd: 0,
       originalMediaDuration: 0,
+      isStill: false,
     })),
   },
 }).createMachine({

@@ -8,7 +8,8 @@
  * (tsconfig jsx: "preserve" disables JSX mounts under Vitest).
  *
  * What we verify:
- *  - The keydown handler returns early when target is an input / textarea / contentEditable.
+ *  - The keydown handler delegates "who owns Space" to shouldGlobalSpaceTogglePlayback
+ *    (text inputs and modal dialogs keep it; focused clips/buttons do not).
  *  - The handler returns early when the ref is null (no exception path).
  *  - The handler dispatches via ref.isPlaying() — calling pauseFromTimeline() when playing,
  *    seekAndPlayFromTimeline(timelineCurrentTimeRef.current) when paused.
@@ -35,16 +36,17 @@ describe('VideoEditingInterface — global Space key dispatcher', () => {
     expect(handler).toMatch(/event\.code\s*!==\s*'Space'/);
   });
 
-  it('treats INPUT / TEXTAREA / contentEditable as a blocklist', () => {
-    expect(handler).toMatch(/target\.tagName\s*===\s*'INPUT'/);
-    expect(handler).toMatch(/target\.tagName\s*===\s*'TEXTAREA'/);
-    expect(handler).toMatch(/target\.contentEditable\s*===\s*'true'/);
-    expect(handler).toMatch(/target\.closest\('input, textarea, \[contenteditable="true"\]'\)/);
+  it('delegates Space ownership to shouldGlobalSpaceTogglePlayback', () => {
+    // The text-input / modal exclusion lives in the shared pure helper, which
+    // deliberately ignores defaultPrevented and focused buttons (RV-04).
+    expect(handler).toMatch(
+      /event\.code\s*!==\s*'Space'\s*\|\|\s*!shouldGlobalSpaceTogglePlayback\(event\)/,
+    );
+    expect(handler).not.toMatch(/event\.defaultPrevented/);
   });
 
   it('returns when ref is null without throwing', () => {
-    // The early-return must reference both isInInputField and !ref.
-    expect(handler).toMatch(/isInInputField\s*\|\|\s*!ref/);
+    expect(handler).toMatch(/if\s*\(!ref\)\s*return;/);
   });
 
   it('calls event.preventDefault() to avoid page scroll', () => {

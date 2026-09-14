@@ -22,6 +22,30 @@ import type {
   TimelineItemData,
   TrackData,
 } from '../types';
+import type { MaterialItem } from '@/types';
+
+/**
+ * Convert a material-library entry into the store's MaterialData shape.
+ *
+ * Shared by manual drops and the script auto-mix so every path that turns a
+ * material into a clip snapshots the same fields (url/cacheUrl/storageKey,
+ * sentence segments) — a third hand-written copy is how they drift apart.
+ */
+export function toMaterialData(material: MaterialItem): MaterialData {
+  return {
+    id: material.id,
+    name: material.name,
+    type: material.type,
+    url: material.url,
+    serverUrl: material.serverUrl,
+    cacheUrl: material.cacheUrl,
+    storageKey: material.storageKey,
+    duration: material.duration || 5,
+    thumbnailUrl: material.thumbnailUrl,
+    metadata: material.metadata,
+    sentenceSegments: material.sentenceSegments,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Overlap detection types
@@ -196,11 +220,16 @@ export class ItemPlacementService {
       // Clip properties — initialize to full range
       clipStart: 0,
       clipEnd: duration,
-      originalDuration: duration,
 
       // Original material type for distinguishing image items on video tracks
       originalMaterialType: material.type,
     };
+
+    // A still image has no source length: recording one would cap how far the
+    // clip can be stretched (it used to freeze image clips at 5 seconds).
+    if (material.type !== 'image') {
+      itemData.originalDuration = duration;
+    }
 
     // Audio-specific: generate random waveform data (50 samples)
     // Matches the original: Array.from({ length: 50 }, () => Math.random() * 0.8 + 0.2)

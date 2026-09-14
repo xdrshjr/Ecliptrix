@@ -39,13 +39,5 @@ export function setCameraMotionAction(
     get().updateItemCameraMotion(id, motion);
   });
 
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  get().captureNextState();
 }

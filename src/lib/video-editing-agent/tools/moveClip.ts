@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, findTrack, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findClip, findTrack, trackEditError, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to move' }),
@@ -32,16 +32,21 @@ export function createMoveClipTool(context: ToolContext): AgentTool<typeof param
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
 
+      // Moving takes the clip off its source track, so both tracks must be editable.
+      const sourceError = trackEditError(context.timelineState, found.trackId);
+      if (sourceError) return toolErrorResponse(sourceError);
+
       const targetTrackId = params.newTrackId ?? found.trackId;
+      const targetError = trackEditError(context.timelineState, targetTrackId);
+      if (targetError) return toolErrorResponse(targetError);
+
+      // A move within one track cannot create a type mismatch; skipping the
+      // check keeps legacy clips without originalMaterialType movable.
       const targetTrack = findTrack(context.timelineState, targetTrackId);
-      if (!targetTrack) {
-        const err = { success: false, error: `Target track not found: ${targetTrackId}` };
-        return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
-      }
-      if (targetTrack.isLocked) {
-        const err = { success: false, error: 'Target track is locked' };
-        return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
-      }
+      const mismatchError = targetTrack && targetTrackId !== found.trackId
+        ? materialTrackMismatchError(targetTrack, found.item.originalMaterialType ?? found.item.type)
+        : null;
+      if (mismatchError) return toolErrorResponse(mismatchError);
 
       context.updateTimeline(toolCallId, {
         type: 'move_clip',

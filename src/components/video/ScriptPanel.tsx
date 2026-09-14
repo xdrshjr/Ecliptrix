@@ -746,6 +746,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       const segmentNumber = getSegmentNumber(segmentId);
       const segment = segments.find(s => s.id === segmentId);
       
+      // Auto-mix keeps the latest assignment per slot by this stamp: a match
+      // that reuses a library id is replaced in place, not appended.
+      const assignedAt = Date.now();
       videos.forEach((video, index) => {
         // 创建带有段落信息的视频副本
         const videoWithSegmentInfo: MaterialItem = {
@@ -757,7 +760,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             segment_id: segmentId,
             segment_number: segmentNumber,
             segment_title: segment?.title,
-            video_index_in_segment: index + 1
+            video_index_in_segment: index + 1,
+            segment_assigned_at: assignedAt
           }
         };
         
@@ -1519,6 +1523,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
               text_length: segment.sentences.reduce((sum, s) => sum + s.text.length, 0),
               segment_id: segment.id,
               segment_number: segmentNumber,
+              segment_assigned_at: Date.now(), // 自动混剪据此选取该段最新配音
               task_id: taskId,
               fileName,                  // iter5: align with LocalAudioManager / MaterialsPanel
               server_file_name: fileName, // kept for backward-compat with historical workflow_data

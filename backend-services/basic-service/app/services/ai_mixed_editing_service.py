@@ -4,7 +4,9 @@ Handles Video Cut LLM API calls with structured prompts and JSON parsing.
 """
 
 import json
-from typing import Dict, Any, List
+import logging
+from typing import Any, Dict, List, Optional, Tuple
+
 from app.config import settings
 from app.logger import get_logger
 from app.models.ai_mixed_editing_models import (
@@ -12,26 +14,118 @@ from app.models.ai_mixed_editing_models import (
     SimplifiedTimelineModel,
     VideoAnalysisMetadata,
 )
+from app.models.model_settings_models import ModelFunctionType
 from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
-from app.services.timeline_parser_service import TimelineParserService
+from app.services.llm_json import extract_json_object
+from app.services.model_settings_service import model_settings_service
+from app.services.timeline_parser_service import (
+    SanitizeReport,
+    TimelineParserService,
+)
 from app.services.video_analysis_storage_service import video_analysis_storage
 
 logger = get_logger(__name__)
+
+# One normal attempt plus one repair round (AM-05).
+PLAN_ATTEMPTS = 2
+ERROR_DETAIL_MAX_CHARS = 300
+# Replayed in the repair round instead of an empty assistant reply.
+EMPTY_REPLY_PLACEHOLDER = "(empty response)"
+REPAIR_PROMPT = (
+    "上一次输出无法解析为有效 JSON（错误：{error}）。"
+    "请只输出一个符合示例结构的 JSON 对象，不要任何解释或代码块标记。"
+)
+
+
+class AIMixError(Exception):
+    """AI mix failure; the router maps it onto an ErrorResponse."""
+
+    error_code = "AI_MIX_INTERNAL"
+    status_code = 500
+
+
+class AIMixModelNotConfiguredError(AIMixError):
+    """No URL, key or model is resolved for the VIDEO_CUT function."""
+
+    error_code = "AI_MIX_MODEL_NOT_CONFIGURED"
+    status_code = 503
+
+
+class AIMixUpstreamError(AIMixError):
+    """The request to the video editing model failed."""
+
+    error_code = "AI_MIX_LLM_UPSTREAM_FAILED"
+    status_code = 502
+
+
+class AIMixPlanUnparseableError(AIMixError):
+    """Every attempt returned an unusable editing plan."""
+
+    error_code = "AI_MIX_PLAN_UNPARSEABLE"
+    status_code = 422
 
 
 class AIMixedEditingService:
     """Service for handling AI mixed editing with Video Cut LLM."""
 
-    def __init__(self):
-        """Initialize the AI mixed editing service."""
-        self.api_key = ***REMOVED***
-        self.api_url = settings.video_cut_llm_api_url
-        self.model = settings.video_cut_llm_model
-        self.api_type = normalize_api_type(settings.video_cut_llm_api_type)
-        self.timeline_parser = TimelineParserService()
+    def __init__(self, llm_config: Optional[LLMCallConfig] = None) -> None:
+        """
+        Initialize the AI mixed editing service.
 
-        if not self.api_key or not self.api_url:
+        Args:
+            llm_config: Resolved model config. ``None`` keeps the legacy
+                behaviour of reading ``VIDEO_CUT_LLM_*`` settings; request
+                handlers use :meth:`create`, which honours 模型设置.
+
+        Raises:
+            ValueError: ``llm_config`` is None and VIDEO_CUT_LLM_* is unset
+        """
+        self.timeline_parser = TimelineParserService()
+        if llm_config is None:
+            llm_config = self._config_from_settings()
+        self.llm_config: LLMCallConfig = llm_config
+
+    @classmethod
+    async def create(cls) -> "AIMixedEditingService":
+        """
+        Build the service from the effective VIDEO_CUT model config
+        (模型设置 assignment first, env fallback second).
+
+        Raises:
+            AIMixModelNotConfiguredError: URL, key or model is missing
+        """
+        resolved = await model_settings_service.get_effective_config(
+            ModelFunctionType.VIDEO_CUT
+        )
+        config = LLMCallConfig(
+            api_url=resolved.api_url or "",
+            api_key=resolved.api_key or "",
+            model=resolved.model_name or "",
+            api_type=normalize_api_type(resolved.api_type),
+        )
+        if not (config.api_url and config.api_key and config.model):
+            raise AIMixModelNotConfiguredError(
+                "No model is assigned to video editing"
+            )
+        logger.info(
+            f"AI mix model resolved from {resolved.source}: "
+            f"api_type={config.api_type} model={config.model}"
+        )
+        return cls(config)
+
+    @staticmethod
+    def _config_from_settings() -> LLMCallConfig:
+        """Legacy VIDEO_CUT_LLM_* config; raises ValueError when unset."""
+        api_key = ***REMOVED***
+        api_url = settings.video_cut_llm_api_url
+        if not api_key or not api_url:
             raise ValueError("Video Cut LLM API key and URL must be configured")
+        return LLMCallConfig(
+            api_url=api_url,
+            api_key=api_key,
+            model=settings.video_cut_llm_model,
+            api_type=normalize_api_type(settings.video_cut_llm_api_type),
+        )
 
     def _create_simplified_example(self) -> str:
         """
@@ -64,7 +158,7 @@ class AIMixedEditingService:
                     "start_time": 0,
                     "duration": 55.5,
                     "track": "audio-track-1",
-                    "volume": 200,
+                    "volume": 100,
                     "clip_start": 0.0,
                     "clip_end": 55.5,
                 },
@@ -73,7 +167,7 @@ class AIMixedEditingService:
                     "start_time": 60.0,
                     "duration": 30.5,
                     "track": "audio-track-1",
-                    "volume": 150,
+                    "volume": 30,
                     "clip_start": 0.0,
                     "clip_end": 30.5,
                 },
@@ -315,7 +409,7 @@ class AIMixedEditingService:
    - 使用提供的音频素材ID作为material_id
    - 设定合理的start_time和duration
    - 默认使用audio-track-1，如需要可以使用audio-track-2
-   - volume设置为100-300之间的数值（100=正常音量）
+   - volume 为百分比（0-200），100 表示原音量；旁白/配音用 100，背景音乐建议 20-40
    - 可以设置clip_start和clip_end来截取音频的特定片段
 
 4. **图片片段安排** (image_segments)：
@@ -351,7 +445,7 @@ class AIMixedEditingService:
             f"AI mixed editing request - Task ID: {task_id}",
             extra={
                 "task_id": task_id,
-                "model": self.model,
+                "model": self.llm_config.model,
                 "materials_count": materials_count,
             },
         )
@@ -438,9 +532,9 @@ class AIMixedEditingService:
         Generate mixed editing timeline using simplified LLM API approach.
 
         This method:
-        1. Calls LLM to generate simplified timeline JSON
-        2. Parses the simplified JSON into structured data
-        3. Converts simplified data to full timeline format
+        1. Calls LLM to generate simplified timeline JSON (one repair retry)
+        2. Sanitises it against the supplied materials
+        3. Converts it to full timeline format, carrying sanitise warnings
 
         Args:
             materials: List of material items
@@ -450,157 +544,168 @@ class AIMixedEditingService:
             Dict[str, Any]: Generated full timeline JSON data
 
         Raises:
-            Exception: If API call, parsing, or conversion fails
+            AIMixError: any failure; the subclass identifies the stage
         """
         self._log_request(len(materials), task_id)
 
         try:
-            # Step 1: Generate simplified timeline using LLM
             logger.info(
                 f"Step 1: Generating simplified timeline with LLM for task: {task_id}"
             )
-            simplified_timeline = await self._generate_simplified_timeline(
-                materials, task_id
+            simplified_timeline, report = (
+                await self._generate_simplified_timeline(materials, task_id)
             )
 
-            # Step 2: Convert simplified timeline to full format
             logger.info(
                 f"Step 2: Converting simplified timeline to full format for task: {task_id}"
             )
             timeline_data = self._convert_to_full_timeline(
-                simplified_timeline, materials, task_id
+                simplified_timeline,
+                materials,
+                task_id,
+                warnings=report.warnings(),
             )
 
             logger.info(f"AI mixed editing completed successfully for task: {task_id}")
             return timeline_data
 
+        except AIMixError:
+            raise
         except Exception as e:
             error_msg = f"AI mixed editing service error: {str(e)}"
             logger.error(error_msg, extra={"task_id": task_id}, exc_info=True)
-            raise Exception(error_msg)
+            raise AIMixError(error_msg[:ERROR_DETAIL_MAX_CHARS]) from e
 
     async def _generate_simplified_timeline(
         self, materials: List[MaterialItemModel], task_id: str
-    ) -> SimplifiedTimelineModel:
+    ) -> Tuple[SimplifiedTimelineModel, SanitizeReport]:
         """
-        Generate simplified timeline using LLM API.
+        Generate and sanitise a simplified timeline, retrying once.
 
-        Args:
-            materials: List of material items
-            task_id: Task identifier
+        Output that is not JSON, fails the schema, has a non-positive
+        total_duration or keeps no usable segment after sanitising triggers a
+        repair round that shows the model its reply and the error.
 
         Returns:
-            SimplifiedTimelineModel: Generated simplified timeline data
+            Tuple of the sanitised timeline and what sanitising changed
 
         Raises:
-            Exception: If API call or JSON parsing fails
+            AIMixUpstreamError: the LLM request failed
+            AIMixPlanUnparseableError: no attempt produced a usable plan
         """
-        # Create prompt for simplified JSON
         prompt = self._create_prompt(materials)
+        self._log_prompt_summary(materials, prompt, task_id)
+        messages: List[Dict[str, Any]] = [{"role": "user", "content": prompt}]
+        last_error: Optional[Exception] = None
 
-        # Debug logging: check if video analysis data is included in prompt
-        if settings.debug:
-            video_materials_with_analysis = [
-                m
-                for m in materials
-                if m.type == "video"
-                and self._extract_video_analysis_data(m) is not None
-            ]
-            if video_materials_with_analysis:
-                print(f"\n=== DEBUG: Video Analysis Data Included in LLM Prompt ===")
-                print(
-                    f"Videos with analysis data: {len(video_materials_with_analysis)}"
+        for attempt in range(1, PLAN_ATTEMPTS + 1):
+            content = await self._call_llm(messages, task_id)
+            try:
+                simplified_timeline = SimplifiedTimelineModel(
+                    **extract_json_object(content)
                 )
-                for material in video_materials_with_analysis:
-                    analysis = self._extract_video_analysis_data(material)
-                    if analysis:
-                        print(
-                            f"- {material.id} ({material.name}): {len(analysis.frame_analyses)} frames"
-                        )
-                        for i, frame in enumerate(
-                            analysis.frame_analyses[:3]
-                        ):  # Show first 3 frames
-                            truncated_analysis = self._truncate_frame_analysis(
-                                frame.analysis, 100
-                            )  # Show first 100 chars for debug
-                            print(
-                                f"  Frame {frame.frame_number} ({frame.timestamp:.2f}s): {truncated_analysis}"
-                            )
-                print("=" * 50)
+                if simplified_timeline.total_duration <= 0:
+                    raise ValueError("total_duration must be positive")
+                report = self.timeline_parser.sanitize_simplified_timeline(
+                    simplified_timeline, materials
+                )
+                self._log_llm_response(
+                    True, task_id, simplified_data=simplified_timeline
+                )
+                return simplified_timeline, report
+            # json.JSONDecodeError and pydantic's ValidationError are both
+            # ValueErrors.
+            except ValueError as e:
+                last_error = e
+                logger.warning(
+                    f"AI mix plan unparseable for task {task_id} "
+                    f"(attempt {attempt}/{PLAN_ATTEMPTS}): "
+                    f"{str(e)[:ERROR_DETAIL_MAX_CHARS]}",
+                    extra={
+                        "task_id": task_id,
+                        "llm_content_head": content[:500],
+                    },
+                )
+                messages = [
+                    *messages,
+                    {
+                        "role": "assistant",
+                        # Anthropic rejects an empty non-final assistant
+                        # turn; a reasoning model can spend max_tokens
+                        # before writing any text.
+                        "content": content if content.strip()
+                        else EMPTY_REPLY_PLACEHOLDER,
+                    },
+                    {
+                        "role": "user",
+                        "content": REPAIR_PROMPT.format(error=str(e)[:200]),
+                    },
+                ]
 
-        messages = [{"role": "user", "content": prompt}]
+        error_msg = str(last_error)[:ERROR_DETAIL_MAX_CHARS]
+        self._log_llm_response(False, task_id, error_msg)
+        raise AIMixPlanUnparseableError(error_msg)
 
+    async def _call_llm(
+        self, messages: List[Dict[str, Any]], task_id: str
+    ) -> str:
+        """Call the video-cut model; any failure becomes AIMixUpstreamError."""
         logger.info(
             f"Calling Video Cut LLM API for simplified timeline "
-            f"(api_type={self.api_type}) base={self.api_url} for task: {task_id}"
+            f"(api_type={self.llm_config.api_type}, "
+            f"model={self.llm_config.model}) "
+            f"base={self.llm_config.api_url} for task: {task_id}"
         )
-
-        if settings.debug:
-            print(f"\n=== DEBUG: LLM API Request for task {task_id} ===")
-            print(f"api_type: {self.api_type}")
-            print(f"Base URL: {self.api_url}")
-            print(f"Model: {self.model}")
-            print(json.dumps(messages, indent=2, ensure_ascii=False))
-            print("=" * 50)
-
         try:
             content = await call_chat(
                 messages,
-                config=LLMCallConfig(
-                    api_url=self.api_url,
-                    api_key=self.api_key,
-                    model=self.model,
-                    api_type=self.api_type,
-                ),
+                config=self.llm_config,
                 temperature=0.2,
                 max_tokens=8000,
                 timeout=120.0,
             )
         except Exception as e:
-            error_msg = f"Video Cut LLM API call failed: {str(e)}"
-            logger.error(error_msg, extra={"task_id": task_id}, exc_info=True)
+            # Timeouts often stringify to "", so fall back to the type name.
+            error_msg = (str(e) or type(e).__name__)[:ERROR_DETAIL_MAX_CHARS]
+            logger.error(
+                f"Video Cut LLM API call failed for task {task_id}: "
+                f"{error_msg}",
+                extra={"task_id": task_id},
+                exc_info=True,
+            )
             self._log_llm_response(False, task_id, error_msg)
-            raise Exception(error_msg)
+            raise AIMixUpstreamError(error_msg) from e
 
-        if settings.debug:
-            preview = content if len(content) <= 3000 else content[:3000] + f"... [TRUNCATED - Total length: {len(content)}]"
-            print(f"\n=== DEBUG: LLM API Response for task {task_id} ===")
-            print(preview)
-            print("=" * 50)
+        logger.debug(
+            f"Video Cut LLM response for task {task_id} "
+            f"({len(content)} chars): {content[:500]}"
+        )
+        return content
 
-        try:
-            content = content.strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
-
-            simplified_data_dict = json.loads(content)
-            simplified_timeline = SimplifiedTimelineModel(**simplified_data_dict)
-
-            if settings.debug:
-                print(f"\n=== DEBUG: Parsed Simplified Timeline for task {task_id} ===")
-                print(json.dumps(simplified_timeline.model_dump(), indent=2, ensure_ascii=False))
-                print("=" * 50)
-
-            if not self.timeline_parser.validate_simplified_timeline(simplified_timeline):
-                raise ValueError("Simplified timeline validation failed")
-
-            self._log_llm_response(True, task_id, simplified_data=simplified_timeline)
-            return simplified_timeline
-
-        except (json.JSONDecodeError, ValueError) as e:
-            error_msg = f"Failed to parse simplified JSON from LLM response: {str(e)}"
-            logger.error(error_msg, extra={"task_id": task_id, "llm_content": content[:1000]})
-            self._log_llm_response(False, task_id, error_msg)
-            raise Exception(error_msg)
+    def _log_prompt_summary(
+        self, materials: List[MaterialItemModel], prompt: str, task_id: str
+    ) -> None:
+        """Debug-log the prompt size and the videos with frame analysis."""
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        analysed_videos = sum(
+            1
+            for material in materials
+            if material.type == "video"
+            and self._extract_video_analysis_data(material) is not None
+        )
+        logger.debug(
+            f"AI mix prompt for task {task_id}: {len(materials)} materials, "
+            f"{analysed_videos} videos with frame analysis, {len(prompt)} chars"
+        )
 
     def _convert_to_full_timeline(
         self,
         simplified_timeline: SimplifiedTimelineModel,
         materials: List[MaterialItemModel],
         task_id: str,
+        *,
+        warnings: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Convert simplified timeline to full timeline format.
@@ -609,6 +714,7 @@ class AIMixedEditingService:
             simplified_timeline: Simplified timeline data
             materials: List of material items
             task_id: Task identifier
+            warnings: Sanitise warnings written to ``metadata.warnings``
 
         Returns:
             Dict[str, Any]: Full timeline JSON data
@@ -621,23 +727,8 @@ class AIMixedEditingService:
                 simplified_timeline=simplified_timeline,
                 materials=materials,
                 task_id=task_id,
+                warnings=warnings,
             )
-
-            # Debug logging: print final timeline data if DEBUG=true
-            if settings.debug:
-                print(f"\n=== DEBUG: Final Timeline Data for task {task_id} ===")
-                # Create a copy for printing (truncate materials section for readability)
-                debug_timeline = timeline_data.copy()
-                if (
-                    "materials" in debug_timeline
-                    and len(debug_timeline["materials"]) > 3
-                ):
-                    debug_timeline["materials"] = debug_timeline["materials"][:3] + [
-                        f"... [TRUNCATED - Total materials: {len(timeline_data['materials'])}]"
-                    ]
-                print(json.dumps(debug_timeline, indent=2, ensure_ascii=False))
-                print("=" * 50)
-
             self._log_parsing_response(True, task_id, timeline_data=timeline_data)
             return timeline_data
 
@@ -645,4 +736,4 @@ class AIMixedEditingService:
             error_msg = f"Timeline conversion failed: {str(e)}"
             logger.error(error_msg, extra={"task_id": task_id}, exc_info=True)
             self._log_parsing_response(False, task_id, error_msg)
-            raise Exception(error_msg)
+            raise Exception(error_msg) from e

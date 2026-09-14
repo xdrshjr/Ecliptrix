@@ -27,6 +27,8 @@ const FILE = resolve(__dirname, '..', 'TimelineItemDownloadOverlay.tsx');
 const src = readFileSync(FILE, 'utf-8');
 const PANEL_FILE = resolve(__dirname, '..', 'TimelinePanel.tsx');
 const panelSrc = readFileSync(PANEL_FILE, 'utf-8');
+const PLACEMENT_FILE = resolve(__dirname, '..', 'domain', 'services', 'ItemPlacementService.ts');
+const placementSrc = readFileSync(PLACEMENT_FILE, 'utf-8');
 
 describe('TimelineItem — local-download render guards (C2/C4)', () => {
   it('renders nothing when local preview is off', () => {
@@ -66,8 +68,11 @@ describe('TimelineItem direct-local materials', () => {
   });
 
   it('TimelinePanel preserves local playback fields in MaterialData snapshots', () => {
-    const start = panelSrc.indexOf('const materialData');
-    const block = panelSrc.slice(start, start + 500);
+    // The MaterialItem → MaterialData mapping is shared with the script
+    // auto-mix through ItemPlacementService.toMaterialData; drops must use it.
+    expect(panelSrc).toMatch(/addItemAction\([^;]*toMaterialData\(material\)\)/);
+    const start = placementSrc.indexOf('export function toMaterialData');
+    const block = placementSrc.slice(start, start + 700);
     expect(block).toMatch(/cacheUrl:\s*material\.cacheUrl/);
     expect(block).toMatch(/storageKey:\s*material\.storageKey/);
     expect(block).toMatch(/metadata:\s*material\.metadata/);

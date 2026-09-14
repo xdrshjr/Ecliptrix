@@ -273,7 +273,8 @@ export interface SubtitleSequenceItem {
 export interface ICompositionPort {
   /**
    * Extract video sequences from tracks and materials.
-   * Filters for visible, unlocked video tracks with video-type items.
+   * Filters for visible video tracks with video-type items (locking only
+   * prevents edits, so locked tracks still render).
    * URL selection: prefer local backend reference, fallback serverUrl/url.
    * Volume: item.volume * track.volume / 100, clamped to [0, 2].
    */
@@ -284,7 +285,7 @@ export interface ICompositionPort {
 
   /**
    * Extract audio sequences from tracks and materials.
-   * Filters for visible, unlocked, unmuted audio tracks.
+   * Filters for visible, unmuted audio tracks (locked tracks still play).
    * URL selection: prefer local backend reference, fallback serverUrl/url.
    * Volume: item.volume * track.volume / 100, clamped to [0, 2].
    */

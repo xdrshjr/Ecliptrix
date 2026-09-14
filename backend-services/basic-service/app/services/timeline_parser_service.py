@@ -3,10 +3,12 @@ Timeline Parser Service for converting simplified AI editing responses to full t
 Handles the conversion from simplified JSON structure to complete timeline JSON.
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from app.logger import get_logger
 from app.models.ai_mixed_editing_models import (
+    MAX_SEGMENT_VOLUME_PERCENT,
     SimplifiedTimelineModel,
     VideoSegmentModel, 
     AudioSegmentModel,
@@ -15,6 +17,42 @@ from app.models.ai_mixed_editing_models import (
 )
 
 logger = get_logger(__name__)
+
+# Segments shorter than this are unusable on the timeline and in export.
+MIN_SEGMENT_SECONDS = 0.1
+# Float slack when deciding whether two same-lane segments overlap.
+OVERLAP_EPSILON = 1e-3
+# Clipping by more than this is logged as a warning, anything less as debug.
+CLIP_LOG_TOLERANCE_SECONDS = 0.1
+SEGMENT_LISTS = ("video_segments", "audio_segments", "image_segments")
+LIST_MATERIAL_TYPES = {
+    "video_segments": "video",
+    "audio_segments": "audio",
+    "image_segments": "image",
+}
+
+
+@dataclass
+class SanitizeReport:
+    """Readable record of what sanitising changed in an AI mix plan."""
+
+    dropped: List[str] = field(default_factory=list)
+    adjusted: List[str] = field(default_factory=list)
+    # id(segment) -> the model's own "list[index]", so steps that work on
+    # filtered or re-routed lists still name the segment the model wrote.
+    labels: Dict[int, str] = field(default_factory=dict, repr=False)
+
+    def warnings(self) -> List[str]:
+        """Dropped then adjusted lines, as written to metadata.warnings."""
+        return [*self.dropped, *self.adjusted]
+
+    def remember_label(self, segment: Any, label: str) -> None:
+        """Record the model's original ``list[index]`` for a segment."""
+        self.labels[id(segment)] = label
+
+    def label_of(self, segment: Any, fallback: str) -> str:
+        """The segment's original name, or ``fallback`` if unrecorded."""
+        return self.labels.get(id(segment), fallback)
 
 
 class TimelineParserService:
@@ -209,7 +247,12 @@ class TimelineParserService:
                 "trackId": segment.track,
                 "color": self._get_material_color("audio"),
                 "materialId": segment.material_id,
-                "volume": segment.volume / 100.0,  # Convert percentage to decimal
+                # Percentage (100 = original loudness) -> gain (1.0)
+                "volume": round(
+                    max(0.0, min(segment.volume, MAX_SEGMENT_VOLUME_PERCENT))
+                    / 100.0,
+                    3,
+                ),
                 "opacity": 1,
                 "clipStart": segment.clip_start,
                 "clipEnd": clip_end,
@@ -345,7 +388,7 @@ class TimelineParserService:
             "isLocked": False,
             "isMuted": False,
             "isVisible": True,
-            "volume": 200,
+            "volume": 100,
             "order": 2,
             "items": audio_tracks_items.get("audio-track-1", [])
         })
@@ -363,7 +406,7 @@ class TimelineParserService:
                     "isLocked": False,
                     "isMuted": False,
                     "isVisible": True,
-                    "volume": 200,
+                    "volume": 100,
                     "order": order,
                     "items": items
                 })
@@ -420,7 +463,8 @@ class TimelineParserService:
         self, 
         simplified_timeline: SimplifiedTimelineModel,
         materials: List[MaterialItemModel],
-        task_id: str
+        task_id: str,
+        warnings: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Parse simplified timeline to full timeline format.
@@ -429,6 +473,7 @@ class TimelineParserService:
             simplified_timeline: Simplified timeline data
             materials: List of available materials
             task_id: Task identifier
+            warnings: Sanitise warnings stored as ``metadata.warnings``
             
         Returns:
             Dict[str, Any]: Full timeline JSON data
@@ -456,6 +501,7 @@ class TimelineParserService:
                 "tracks": self._create_tracks(simplified_timeline, materials),
                 "materials": self._create_materials_section(materials)
             }
+            timeline_data["metadata"]["warnings"] = list(warnings or [])
             
             self.logger.info(
                 f"Timeline parsing completed successfully for task: {task_id}",
@@ -477,90 +523,339 @@ class TimelineParserService:
     def validate_simplified_timeline(self, simplified_timeline: SimplifiedTimelineModel) -> bool:
         """
         Validate simplified timeline data for consistency.
-        Automatically clips segments that exceed total duration.
-        
+        Automatically clips segments that exceed total duration and removes
+        segments shorter than MIN_SEGMENT_SECONDS (a 0s item can be neither
+        imported nor exported).
+
         Args:
             simplified_timeline: Simplified timeline data to validate
-            
+
         Returns:
             bool: True if valid, False otherwise
         """
         try:
-            # Tolerance for floating-point precision (0.1 seconds)
-            TOLERANCE = 0.1
-            
-            # Check if total duration is positive
-            if simplified_timeline.total_duration <= 0:
+            total_duration = simplified_timeline.total_duration
+            if total_duration <= 0:
                 self.logger.error("Invalid total duration: must be positive")
                 return False
-            
-            # Check and clip video segments that exceed total duration
-            for segment in simplified_timeline.video_segments:
-                segment_end_time = segment.start_time + segment.duration
-                if segment_end_time > simplified_timeline.total_duration:
-                    excess = segment_end_time - simplified_timeline.total_duration
-                    
-                    # Clip the segment to fit within total duration
-                    new_duration = simplified_timeline.total_duration - segment.start_time
-                    
-                    if excess > TOLERANCE:
-                        self.logger.warning(
-                            f"Video segment exceeds total duration by {excess:.3f}s, clipping: "
-                            f"{segment.material_id} (duration: {segment.duration:.3f}s -> {new_duration:.3f}s)"
-                        )
-                    else:
-                        self.logger.debug(
-                            f"Video segment slightly exceeds total duration (within tolerance), clipping: "
-                            f"{segment.material_id}"
-                        )
-                    
-                    segment.duration = max(0.0, new_duration)
-                    
-            for segment in simplified_timeline.audio_segments:
-                segment_end_time = segment.start_time + segment.duration
-                if segment_end_time > simplified_timeline.total_duration:
-                    excess = segment_end_time - simplified_timeline.total_duration
-                    
-                    # Clip the segment to fit within total duration
-                    new_duration = simplified_timeline.total_duration - segment.start_time
-                    
-                    if excess > TOLERANCE:
-                        self.logger.warning(
-                            f"Audio segment exceeds total duration by {excess:.3f}s, clipping: "
-                            f"{segment.material_id} (duration: {segment.duration:.3f}s -> {new_duration:.3f}s)"
-                        )
-                    else:
-                        self.logger.debug(
-                            f"Audio segment slightly exceeds total duration (within tolerance), clipping: "
-                            f"{segment.material_id}"
-                        )
-                    
-                    segment.duration = max(0.0, new_duration)
-                    
-            for segment in simplified_timeline.image_segments:
-                segment_end_time = segment.start_time + segment.duration
-                if segment_end_time > simplified_timeline.total_duration:
-                    excess = segment_end_time - simplified_timeline.total_duration
-                    
-                    # Clip the segment to fit within total duration
-                    new_duration = simplified_timeline.total_duration - segment.start_time
-                    
-                    if excess > TOLERANCE:
-                        self.logger.warning(
-                            f"Image segment exceeds total duration by {excess:.3f}s, clipping: "
-                            f"{segment.material_id} (duration: {segment.duration:.3f}s -> {new_duration:.3f}s)"
-                        )
-                    else:
-                        self.logger.debug(
-                            f"Image segment slightly exceeds total duration (within tolerance), clipping: "
-                            f"{segment.material_id}"
-                        )
-                    
-                    segment.duration = max(0.0, new_duration)
-            
+
+            for list_name in SEGMENT_LISTS:
+                clipped = self._clip_segments_for_validation(
+                    getattr(simplified_timeline, list_name),
+                    total_duration,
+                    list_name,
+                )
+                setattr(simplified_timeline, list_name, clipped)
+
             self.logger.info("Simplified timeline validation passed")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Timeline validation error: {str(e)}", exc_info=True)
             return False
+
+    def _clip_segments_for_validation(
+        self, segments: List[Any], total_duration: float, list_name: str
+    ) -> List[Any]:
+        """Clip segments ending past ``total_duration``; drop too-short ones."""
+        kept = []
+        for segment in segments:
+            excess = segment.start_time + segment.duration - total_duration
+            if excess > 0:
+                new_duration = total_duration - segment.start_time
+                log = (
+                    self.logger.warning
+                    if excess > CLIP_LOG_TOLERANCE_SECONDS
+                    else self.logger.debug
+                )
+                log(
+                    f"{list_name} segment exceeds total duration by "
+                    f"{excess:.3f}s, clipping: {segment.material_id} "
+                    f"(duration: {segment.duration:.3f}s -> "
+                    f"{new_duration:.3f}s)"
+                )
+                segment.duration = max(0.0, new_duration)
+            if segment.duration < MIN_SEGMENT_SECONDS:
+                self.logger.warning(
+                    f"{list_name} segment shorter than {MIN_SEGMENT_SECONDS}s "
+                    f"removed: {segment.material_id}"
+                )
+                continue
+            kept.append(segment)
+        return kept
+
+    # ── AI mix plan sanitising (AM-06) ──
+
+    def sanitize_simplified_timeline(
+        self,
+        timeline: SimplifiedTimelineModel,
+        materials: List[MaterialItemModel],
+    ) -> SanitizeReport:
+        """
+        Make an LLM editing plan importable, mutating ``timeline`` in place.
+
+        Steps: move images referenced from video_segments into
+        image_segments and drop unknown / mistyped material references;
+        clamp video and audio source ranges to the material duration keeping
+        ``duration == clip_end - clip_start``; clip to total_duration and
+        drop segments shorter than MIN_SEGMENT_SECONDS; shift same-lane
+        overlaps (video, image, one lane per audio track) and clip again.
+        total_duration finally becomes the latest segment end.
+
+        Args:
+            timeline: LLM plan to sanitise (modified in place)
+            materials: Materials the plan may reference
+
+        Returns:
+            SanitizeReport: one readable line per dropped / adjusted segment
+
+        Raises:
+            ValueError: no usable segment is left
+        """
+        report = SanitizeReport()
+        by_id = {material.id: material for material in materials}
+        self._reroute_by_material_type(timeline, by_id, report)
+        self._normalise_source_range(timeline, by_id, report)
+        self._clip_to_total(timeline, report)
+        self._resolve_lane_overlaps(timeline, report)
+
+        segments = _all_segments(timeline)
+        if not segments:
+            raise ValueError("no usable segments after sanitising")
+        timeline.total_duration = max(
+            segment.start_time + segment.duration for segment in segments
+        )
+        if report.dropped or report.adjusted:
+            self.logger.warning(
+                f"AI mix plan sanitised: {len(report.dropped)} dropped, "
+                f"{len(report.adjusted)} adjusted",
+                extra={"sanitize_warnings": report.warnings()[:20]},
+            )
+        return report
+
+    def _reroute_by_material_type(
+        self,
+        timeline: SimplifiedTimelineModel,
+        by_id: Dict[str, MaterialItemModel],
+        report: SanitizeReport,
+    ) -> None:
+        """Move images out of video_segments; drop unknown or mistyped refs."""
+        for list_name in SEGMENT_LISTS:
+            for index, segment in enumerate(getattr(timeline, list_name)):
+                report.remember_label(segment, f"{list_name}[{index}]")
+        video_candidates: List[Tuple[int, VideoSegmentModel]] = []
+        moved_images: List[ImageSegmentModel] = []
+        for index, segment in enumerate(timeline.video_segments):
+            material = by_id.get(segment.material_id)
+            if material is None or material.type != "image":
+                video_candidates.append((index, segment))
+                continue
+            image = ImageSegmentModel(
+                material_id=segment.material_id,
+                start_time=segment.start_time,
+                duration=segment.duration,
+            )
+            report.remember_label(image, f"video_segments[{index}]")
+            moved_images.append(image)
+            report.adjusted.append(
+                f"video_segments[{index}]: material {segment.material_id} "
+                "is an image, moved to image_segments"
+            )
+
+        timeline.video_segments = self._keep_matching_type(
+            "video_segments", video_candidates, by_id, report
+        )
+        timeline.audio_segments = self._keep_matching_type(
+            "audio_segments",
+            list(enumerate(timeline.audio_segments)),
+            by_id,
+            report,
+        )
+        kept_images = self._keep_matching_type(
+            "image_segments",
+            list(enumerate(timeline.image_segments)),
+            by_id,
+            report,
+        )
+        timeline.image_segments = kept_images + moved_images
+
+    def _keep_matching_type(
+        self,
+        list_name: str,
+        indexed_segments: List[Tuple[int, Any]],
+        by_id: Dict[str, MaterialItemModel],
+        report: SanitizeReport,
+    ) -> List[Any]:
+        """Segments whose material exists and matches the list's type."""
+        expected_type = LIST_MATERIAL_TYPES[list_name]
+        kept = []
+        for index, segment in indexed_segments:
+            material = by_id.get(segment.material_id)
+            if material is not None and material.type == expected_type:
+                kept.append(segment)
+                continue
+            problem = (
+                "not found"
+                if material is None
+                else f"is {material.type}, not {expected_type}"
+            )
+            report.dropped.append(
+                f"{list_name}[{index}]: material {segment.material_id} "
+                f"{problem}, dropped"
+            )
+        return kept
+
+    def _normalise_source_range(
+        self,
+        timeline: SimplifiedTimelineModel,
+        by_id: Dict[str, MaterialItemModel],
+        report: SanitizeReport,
+    ) -> None:
+        """Clamp video / audio clip ranges to their source material."""
+        for list_name in ("video_segments", "audio_segments"):
+            kept = []
+            for index, segment in enumerate(getattr(timeline, list_name)):
+                material = by_id[segment.material_id]
+                label = report.label_of(segment, f"{list_name}[{index}]")
+                if self._normalise_segment_range(
+                    segment, material, label, report
+                ):
+                    kept.append(segment)
+            setattr(timeline, list_name, kept)
+
+    def _normalise_segment_range(
+        self,
+        segment: Any,
+        material: MaterialItemModel,
+        label: str,
+        report: SanitizeReport,
+    ) -> bool:
+        """Normalise one clip range (INV-3); False when it must be dropped."""
+        source = (
+            material.duration
+            if material.duration and material.duration > 0
+            else None
+        )
+        clip_start = max(0.0, segment.clip_start or 0.0)
+        if source is not None and clip_start >= source:
+            report.dropped.append(
+                f"{label}: clip_start {clip_start:.2f}s is past the "
+                f"{source:.2f}s source of {segment.material_id}, dropped"
+            )
+            return False
+
+        clip_end = segment.clip_end
+        if clip_end is None or clip_end <= clip_start:
+            # A missing or reversed end means "play `duration` from start".
+            clip_end = clip_start + segment.duration
+        if source is not None:
+            clip_end = min(clip_end, source)
+        available = clip_end - clip_start
+        if available < MIN_SEGMENT_SECONDS <= segment.duration:
+            report.dropped.append(
+                f"{label}: only {available:.2f}s of {segment.material_id} "
+                f"is left after clip_start {clip_start:.2f}s, dropped"
+            )
+            return False
+        if available < segment.duration - OVERLAP_EPSILON:
+            report.adjusted.append(
+                f"{label}: {segment.material_id} shortened from "
+                f"{segment.duration:.2f}s to the {available:.2f}s left in "
+                "its source range"
+            )
+        segment.duration = min(segment.duration, available)
+        segment.clip_start = clip_start
+        segment.clip_end = clip_start + segment.duration
+        return True
+
+    def _clip_to_total(
+        self, timeline: SimplifiedTimelineModel, report: SanitizeReport
+    ) -> None:
+        """Clamp starts to >= 0, clip to total_duration, drop too-short ones."""
+        total_duration = timeline.total_duration
+        for list_name in SEGMENT_LISTS:
+            kept = []
+            for index, segment in enumerate(getattr(timeline, list_name)):
+                segment.start_time = max(0.0, segment.start_time)
+                excess = segment.start_time + segment.duration - total_duration
+                if excess > 0:
+                    segment.duration = total_duration - segment.start_time
+                    _sync_clip_end(segment)
+                name = report.label_of(segment, f"{list_name}[{index}]")
+                label = f"{name}: {segment.material_id}"
+                if segment.duration < MIN_SEGMENT_SECONDS:
+                    report.dropped.append(
+                        f"{label} is shorter than {MIN_SEGMENT_SECONDS}s "
+                        f"within the {total_duration:.2f}s timeline, dropped"
+                    )
+                    continue
+                if excess > OVERLAP_EPSILON:
+                    report.adjusted.append(
+                        f"{label} trimmed by {excess:.2f}s to fit the "
+                        f"{total_duration:.2f}s timeline"
+                    )
+                kept.append(segment)
+            setattr(timeline, list_name, kept)
+
+    def _resolve_lane_overlaps(
+        self, timeline: SimplifiedTimelineModel, report: SanitizeReport
+    ) -> None:
+        """Shift same-lane overlaps later, then clip to total_duration again."""
+        audio_lanes: Dict[str, List[Tuple[int, AudioSegmentModel]]] = {}
+        for index, segment in enumerate(timeline.audio_segments):
+            audio_lanes.setdefault(segment.track, []).append((index, segment))
+        lanes = [
+            ("video_segments", list(enumerate(timeline.video_segments))),
+            ("image_segments", list(enumerate(timeline.image_segments))),
+            *(("audio_segments", lane) for lane in audio_lanes.values()),
+        ]
+        shifted = [
+            self._shift_lane_overlaps(list_name, lane, report)
+            for list_name, lane in lanes
+        ]
+        if any(shifted):
+            # A segment pushed later may now run past total_duration.
+            self._clip_to_total(timeline, report)
+
+    def _shift_lane_overlaps(
+        self,
+        list_name: str,
+        indexed_segments: List[Tuple[int, Any]],
+        report: SanitizeReport,
+    ) -> bool:
+        """Start each segment no earlier than the previous one ends."""
+        shifted = False
+        previous_end: Optional[float] = None
+        ordered = sorted(indexed_segments, key=lambda pair: pair[1].start_time)
+        for index, segment in ordered:
+            overlaps = (
+                previous_end is not None
+                and segment.start_time < previous_end - OVERLAP_EPSILON
+            )
+            if overlaps:
+                name = report.label_of(segment, f"{list_name}[{index}]")
+                report.adjusted.append(
+                    f"{name}: {segment.material_id} overlapped "
+                    f"the previous segment, moved from "
+                    f"{segment.start_time:.2f}s to {previous_end:.2f}s"
+                )
+                segment.start_time = previous_end
+                shifted = True
+            previous_end = segment.start_time + segment.duration
+        return shifted
+
+
+def _all_segments(timeline: SimplifiedTimelineModel) -> List[Any]:
+    """Every segment of the plan: video, then audio, then image."""
+    return [
+        *timeline.video_segments,
+        *timeline.audio_segments,
+        *timeline.image_segments,
+    ]
+
+
+def _sync_clip_end(segment: Any) -> None:
+    """Keep ``duration == clip_end - clip_start`` for source-ranged segments."""
+    if isinstance(segment, ImageSegmentModel):
+        return
+    segment.clip_end = (segment.clip_start or 0.0) + segment.duration

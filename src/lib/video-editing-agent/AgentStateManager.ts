@@ -187,6 +187,23 @@ export class AgentStateManager {
     return this.isCancelled;
   }
 
+  /**
+   * Discard everything shown for an abandoned stream attempt. A reconnect
+   * re-runs the whole turn on the server (text, thinking and tool calls are
+   * streamed again), so keeping the first attempt would duplicate the text
+   * and leave its tool cards "executing" forever. The message id and the
+   * subscribers are kept; subscribers are notified immediately.
+   */
+  resetForRestart(): void {
+    this.accumulatedContent = '';
+    this.thinkingContent = '';
+    this.toolCalls = [];
+    this.pendingOperations = [];
+    this.errorMessage = null;
+    this.isThinking = false;
+    this.flushNow();
+  }
+
   // -----------------------------------------------------------------------
   // State Query Methods
   // -----------------------------------------------------------------------
@@ -284,10 +301,11 @@ export class AgentStateManager {
    *   - Tool call records (in the persisted format)
    *   - Pending operations list
    *   - isStreaming flag (false only when finalized or errored)
+   *
+   * It carries no timeline data: the caller attaches the turn's
+   * `timelineTrackPatches` when the turn ends.
    */
-  toMessageUpdate(
-    timelineSnapshot?: import('@/types').TimelineState,
-  ): ChatMessage {
+  toMessageUpdate(): ChatMessage {
     const isStreaming = !this.isFinalized && this.errorMessage === null;
 
     const agentToolCalls: AgentToolCallRecord[] = this.toolCalls.map(tc => ({
@@ -306,7 +324,6 @@ export class AgentStateManager {
       isStreaming,
       isAgentMessage: true,
       agentToolCalls,
-      timelineSnapshot,
       pendingOperations: [...this.pendingOperations],
       thinkingContent: this.thinkingContent || undefined,
       isThinking: this.isThinking,

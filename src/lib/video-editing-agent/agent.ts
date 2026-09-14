@@ -1,7 +1,7 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model, KnownApi } from '@mariozechner/pi-ai';
-import type { TimelineState } from '@/types';
+import type { MaterialType, TimelineState } from '@/types';
 import type { ToolContext, TimelineOperation, AgentOperation, SSEEvent, VideoEditingAgentConfig } from './types';
 import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
@@ -361,6 +361,8 @@ function applyOperationLocally(state: TimelineState, operation: TimelineOperatio
           clipEnd: operation.clip.clipEnd,
           originalDuration: operation.clip.originalDuration,
           volume: operation.clip.volume,
+          // Mirrors OperationApplier so get_timeline tells images apart.
+          originalMaterialType: (operation.material.type as MaterialType) || undefined,
         });
       }
       break;
@@ -413,6 +415,7 @@ function applyOperationLocally(state: TimelineState, operation: TimelineOperatio
         const clip = track.items.find(i => i.id === operation.clipId);
         if (clip) {
           clip.duration = operation.newDuration;
+          if (operation.clipEnd !== undefined) clip.clipEnd = operation.clipEnd;
           break;
         }
       }

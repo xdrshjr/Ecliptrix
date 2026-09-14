@@ -3,12 +3,25 @@
  * items that live on the same video/audio track.
  *
  * Records history before the mutation, applies the swap, runs autoOrganize
- * to close any incidental gap, then schedules the after-snapshot capture.
- * Same pattern as addItemAction / moveItemAction so that the swap enters
+ * to close any incidental gap, then captures the after-snapshot. Same
+ * pattern as addItemAction / moveItemAction so that the swap enters
  * the undo stack as a single atomic unit.
  */
 
 import type { TimelineStore } from '../useTimelineStore';
+
+/**
+ * Whether the aggregate would accept the swap. Checked BEFORE recording, so
+ * a refused swap leaves no empty history entry behind.
+ */
+function canSwap(get: () => TimelineStore, aId: string, bId: string): boolean {
+  const aggregate = get()._aggregate;
+  const a = aggregate.findItem(aId);
+  const b = aggregate.findItem(bId);
+  if (!a || !b) return false;
+  if (a.track.id !== b.track.id) return false;
+  return !a.track.isLocked && a.track.type !== 'subtitle';
+}
 
 /**
  * Swap two items on the same non-subtitle, non-locked track.
@@ -23,6 +36,7 @@ export function swapItemsAction(
   bId: string,
 ): void {
   if (aId === bId) return;
+  if (!canSwap(get, aId, bId)) return;
 
   const state = get();
 
@@ -30,13 +44,5 @@ export function swapItemsAction(
   state.swapItems(aId, bId);
   state.autoOrganize();
 
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  get().captureNextState();
 }

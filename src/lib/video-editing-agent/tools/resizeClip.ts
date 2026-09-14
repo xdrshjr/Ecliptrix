@@ -1,20 +1,23 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findClip, trackEditError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to resize' }),
-  newDuration: Type.Number({ description: 'New display duration in seconds' }),
+  newDuration: Type.Number({ description: 'New duration in seconds; the in-point stays and the out-point moves' }),
 });
 type Params = Static<typeof parameters>;
+
+/** Slack for float noise when comparing a duration to the source end. */
+const SOURCE_END_TOLERANCE = 1e-3;
 
 export function createResizeClipTool(context: ToolContext): AgentTool<typeof parameters> {
   return {
     name: 'resize_clip',
     label: 'Resize Clip',
     description:
-      'Stretch or compress a clip\'s display duration on the timeline. This changes how long the clip appears without altering the source material\'s in/out points.',
+      'Change how long a clip plays by moving its out-point. The in-point stays fixed; the clip cannot run past the end of its source media. Images can be any length.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -24,9 +27,27 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
 
+      const lockError = trackEditError(context.timelineState, found.trackId);
+      if (lockError) return toolErrorResponse(lockError);
+
       if (params.newDuration <= 0) {
         const err = { success: false, error: 'Duration must be positive' };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+      }
+
+      // Stills have no source range; everything else plays its source from
+      // the fixed in-point, so the source end caps the duration.
+      const isStill = found.item.originalMaterialType === 'image';
+      const clipStart = found.item.clipStart ?? 0;
+      const sourceDuration = found.item.originalDuration ?? 0;
+      const maxDuration = !isStill && sourceDuration > 0
+        ? sourceDuration - clipStart
+        : Number.POSITIVE_INFINITY;
+      if (params.newDuration > maxDuration + SOURCE_END_TOLERANCE) {
+        return toolErrorResponse({
+          success: false,
+          error: `Clip ${params.clipId} can be at most ${maxDuration.toFixed(2)}s long (source ends there).`,
+        });
       }
 
       const previousDuration = found.item.duration;
@@ -35,6 +56,8 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
         type: 'resize_clip',
         clipId: params.clipId,
         newDuration: params.newDuration,
+        // Moving the out-point keeps duration === clipEnd - clipStart.
+        clipEnd: isStill ? undefined : clipStart + params.newDuration,
       });
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);

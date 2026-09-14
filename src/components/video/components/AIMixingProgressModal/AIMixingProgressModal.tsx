@@ -1,178 +1,330 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
+import type { Translations } from '@/lib/i18n';
+import type { AiMixRunState, AiMixStage } from '../../hooks/useAIMixedEditing';
 
 interface AIMixingProgressModalProps {
-  isOpen: boolean;
-  progress: number;
-  onCancel?: () => void;
-  allowCancel?: boolean;
+  runState: AiMixRunState;
+  onCancel: () => void;
 }
 
-const AIMixingProgressModal: React.FC<AIMixingProgressModalProps> = ({
-  isOpen,
-  progress,
-  onCancel,
-  allowCancel = false
-}) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
+type StepStage = 'analyzing' | 'planning' | 'applying';
+type StepStatus = 'done' | 'active' | 'pending';
 
+const STEP_STAGES: readonly StepStage[] = ['analyzing', 'planning', 'applying'];
+const OPEN_STAGES: readonly AiMixStage[] = [...STEP_STAGES, 'done'];
+const ENTER_DELAY_MS = 10;
+const EXIT_DURATION_MS = 200;
+const TITLE_ID = 'ai-mixing-progress-title';
+const STATUS_ID = 'ai-mixing-progress-status';
+const OWN_DIALOG_SELECTOR = `[role="dialog"][aria-labelledby="${TITLE_ID}"]`;
+
+const STEP_LABEL_CLASSES: Record<StepStatus, string> = {
+  done: 'text-foreground',
+  active: 'font-medium text-foreground',
+  pending: 'text-muted-foreground',
+};
+
+function getStepStatus(step: StepStage, stage: AiMixStage): StepStatus {
+  if (stage === 'done') return 'done';
+  const activeIndex = (STEP_STAGES as readonly AiMixStage[]).indexOf(stage);
+  const stepIndex = STEP_STAGES.indexOf(step);
+  if (activeIndex === -1 || stepIndex > activeIndex) return 'pending';
+  return stepIndex === activeIndex ? 'active' : 'done';
+}
+
+/** Mount immediately, animate in next tick; animate out, then unmount. */
+function usePresence(isOpen: boolean): { isMounted: boolean; isShown: boolean } {
+  const [isMounted, setIsMounted] = useState(isOpen);
+  const [isShown, setIsShown] = useState(false);
   useEffect(() => {
     if (isOpen) {
-      setIsVisible(true);
-      setTimeout(() => setIsAnimating(true), 10);
-    } else {
-      setIsAnimating(false);
-      setTimeout(() => setIsVisible(false), 200);
+      setIsMounted(true);
+      const timer = window.setTimeout(() => setIsShown(true), ENTER_DELAY_MS);
+      return () => window.clearTimeout(timer);
     }
+    setIsShown(false);
+    const timer = window.setTimeout(() => setIsMounted(false), EXIT_DURATION_MS);
+    return () => window.clearTimeout(timer);
   }, [isOpen]);
+  return { isMounted, isShown };
+}
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    // 阻止点击背景关闭弹窗，确保用户无法进行其他操作
-    e.preventDefault();
-    e.stopPropagation();
+/**
+ * On close, hand focus back — unless another dialog has already taken it.
+ * Ownership is checked by selector: the dialog node may not exist yet when
+ * the effect starts (it mounts one render after opening).
+ */
+function useRestoreFocusOnClose(isOpen: boolean): void {
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const previous = document.activeElement;
+    return () => {
+      const active = document.activeElement;
+      const isFocusOurs = !active
+        || active === document.body
+        || active.closest(OWN_DIALOG_SELECTOR) !== null;
+      if (isFocusOurs && previous instanceof HTMLElement && previous.isConnected) {
+        previous.focus();
+      }
+    };
+  }, [isOpen]);
+}
+
+function CheckIcon({ className }: { className: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+function SparklesIcon({ className }: { className: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z" />
+      <path d="M19 15l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8L19 15z" />
+    </svg>
+  );
+}
+
+function StepIndicator({ status }: { status: StepStatus }) {
+  if (status === 'done') {
+    return (
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <CheckIcon className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  if (status === 'active') {
+    return (
+      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-card">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"
+          className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none">
+          <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="2.5" className="text-border" />
+          <path d="M21.5 12A9.5 9.5 0 0 0 12 2.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-card">
+      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+    </span>
+  );
+}
+
+interface ProgressStepProps {
+  status: StepStatus;
+  label: string;
+  hint?: string;
+  hasConnector: boolean;
+}
+
+function ProgressStep({ status, label, hint, hasConnector }: ProgressStepProps) {
+  return (
+    <li
+      className="relative flex gap-3 pb-5 last:pb-2"
+      aria-current={status === 'active' ? 'step' : undefined}
+    >
+      {hasConnector && (
+        <span
+          aria-hidden="true"
+          className={`absolute bottom-1 left-3 top-7 w-px -translate-x-1/2 transition-colors duration-300 motion-reduce:transition-none ${
+            status === 'done' ? 'bg-primary' : 'bg-border'
+          }`}
+        />
+      )}
+      <StepIndicator status={status} />
+      <div className="min-w-0 pt-0.5">
+        <p className={`text-sm leading-5 ${STEP_LABEL_CLASSES[status]}`}>{label}</p>
+        {status === 'active' && hint && (
+          <p className="mt-0.5 text-xs leading-4 text-muted-foreground">{hint}</p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+type StepCopy = Record<StepStage, { label: string; hint?: string }>;
+
+/** Step labels, plus the hint shown under whichever step is active. */
+function describeSteps(
+  copy: Translations['aiMixingProgress'],
+  shown: AiMixRunState,
+): StepCopy {
+  return {
+    analyzing: {
+      label: copy.stepAnalyze,
+      hint: shown.videoCount > 0
+        ? copy.analyzingVideos.replace('{count}', String(shown.videoCount))
+        : undefined,
+    },
+    planning: { label: copy.stepPlan, hint: copy.planningHint },
+    applying: { label: copy.stepApply },
   };
+}
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // 阻止 Escape 键关闭弹窗，除非允许取消
-    if (e.key === 'Escape' && allowCancel && onCancel) {
-      onCancel();
-    } else {
-      e.preventDefault();
+function ProgressDialogHeader({ isDone, title }: { isDone: boolean; title: string }) {
+  return (
+    <div className="flex items-center gap-3 px-6 pt-6">
+      <span
+        aria-hidden="true"
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-200 motion-reduce:transition-none ${
+          isDone ? 'bg-primary text-primary-foreground' : 'bg-accent text-primary'
+        }`}
+      >
+        {isDone
+          ? <CheckIcon className="h-5 w-5" />
+          : <SparklesIcon className="h-5 w-5" />}
+      </span>
+      <h2 id={TITLE_ID} className="text-base font-semibold leading-6 text-foreground">
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+interface ProgressDialogFooterProps {
+  isDone: boolean;
+  isOpen: boolean;
+  cancelRef: React.RefObject<HTMLButtonElement | null>;
+  copy: Translations['aiMixingProgress'];
+  onCancel: () => void;
+}
+
+function ProgressDialogFooter({
+  isDone, isOpen, cancelRef, copy, onCancel,
+}: ProgressDialogFooterProps) {
+  return (
+    <div className="mt-2 flex h-16 items-center justify-end border-t border-border px-6">
+      {isDone ? (
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+          <CheckIcon className="h-4 w-4" />
+          {copy.done}
+        </span>
+      ) : (
+        <button
+          ref={cancelRef}
+          type="button"
+          onClick={onCancel}
+          disabled={!isOpen}
+          className="h-9 rounded-md border border-border bg-secondary px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:pointer-events-none disabled:opacity-60 motion-reduce:transition-none"
+        >
+          {copy.cancel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Progress for AI auto edit: three honest steps (no fake percentage — the
+ * backend reports none), cancellable while running, Escape cancels, and the
+ * backdrop never dismisses a running edit.
+ *
+ * Over 60 lines: the shell keeps the last visible state through the exit
+ * animation and owns the focus / keyboard contract, which belong together.
+ */
+const AIMixingProgressModal: React.FC<AIMixingProgressModalProps> = ({
+  runState,
+  onCancel,
+}) => {
+  const { t } = useLocale();
+  const isOpen = OPEN_STAGES.indexOf(runState.stage) !== -1;
+  const { isMounted, isShown } = usePresence(isOpen);
+  // While fading out after cancel / error, keep the last visible state.
+  const [lastOpenState, setLastOpenState] = useState(runState);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const isCancellable = isOpen && runState.stage !== 'done';
+
+  useEffect(() => {
+    if (isOpen) setLastOpenState(runState);
+  }, [isOpen, runState]);
+
+  useRestoreFocusOnClose(isOpen);
+
+  useEffect(() => {
+    if (!isMounted || !isOpen) return;
+    (cancelRef.current ?? dialogRef.current)?.focus();
+  }, [isMounted, isOpen, isCancellable]);
+
+  if (!isMounted) return null;
+
+  const copy = t.aiMixingProgress;
+  const shown = isOpen ? runState : lastOpenState;
+  const isDone = shown.stage === 'done';
+  const steps = describeSteps(copy, shown);
+  const activeStep = STEP_STAGES
+    .filter((step) => getStepStatus(step, shown.stage) === 'active')[0];
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (isCancellable) onCancel();
+    } else if (event.key === 'Tab') {
+      // Cancel is the only control, so Tab must not leave the dialog.
+      event.preventDefault();
+      (cancelRef.current ?? dialogRef.current)?.focus();
     }
   };
-
-  const getProgressStage = () => {
-    if (progress < 15) return '准备分析素材...';
-    if (progress < 35) return '调用AI生成剪辑方案...';
-    if (progress < 60) return '处理时间轴配置...';
-    if (progress < 85) return '合并到现有轨道...';
-    if (progress < 95) return '同步时间轴状态...';
-    if (progress >= 100) return 'AI混剪完成';
-    return '即将完成...';
-  };
-
-  if (!isVisible) return null;
 
   return (
-    <div 
-      className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ${
-        isAnimating ? 'bg-black bg-opacity-40' : 'bg-black bg-opacity-0'
+    <div
+      className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-colors duration-200 motion-reduce:transition-none ${
+        isShown ? 'bg-black/60' : 'bg-black/0'
       }`}
-      onClick={handleBackdropClick}
-      onKeyDown={handleKeyDown}
-      tabIndex={-1}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ai-mixing-progress-title"
-      aria-describedby="ai-mixing-progress-description"
+      onMouseDown={(event) => {
+        // The backdrop never closes a running edit; keep focus in the dialog.
+        if (event.target === event.currentTarget) event.preventDefault();
+      }}
     >
-      <div 
-        className={`bg-card rounded-md border border-border max-w-sm w-full transform transition-all duration-300 ${
-          isAnimating ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={TITLE_ID}
+        aria-describedby={STATUS_ID}
+        aria-busy={!isDone}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className={`w-full max-w-sm rounded-lg border border-border bg-card text-card-foreground shadow-xl outline-none transition duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none ${
+          isShown ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
-        onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="relative">
-              {/* 外圆环 - 进度背景 */}
-              <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 64 64">
-                <circle
-                  cx="32"
-                  cy="32"
-                  r="28"
-                  stroke="currentColor"
-                  className="text-accent"
-                  strokeWidth="4"
-                  fill="none"
-                />
-                <circle
-                  cx="32"
-                  cy="32"
-                  r="28"
-                  stroke="currentColor"
-                  className="text-primary transition-all duration-500 ease-out"
-                  strokeWidth="4"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeDasharray={`${2 * Math.PI * 28}`}
-                  strokeDashoffset={`${2 * Math.PI * 28 * (1 - progress / 100)}`}
-                />
-              </svg>
-              
-              {/* 中心图标 */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                {progress >= 100 ? (
-                  <svg className="w-6 h-6 text-primary" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6 text-primary animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          <h3 
-            id="ai-mixing-progress-title"
-            className="text-lg font-semibold text-foreground mb-2"
-          >
-            AI混剪处理中
-          </h3>
-          
-          <p 
-            id="ai-mixing-progress-description"
-            className="text-sm text-muted-foreground mb-1"
-          >
-            {getProgressStage()}
-          </p>
-          
-          <p className="text-2xl font-bold text-primary mb-4">
-            {Math.round(progress)}%
-          </p>
-        </div>
+        <ProgressDialogHeader isDone={isDone} title={copy.title} />
 
-        {/* Progress Bar */}
-        <div className="px-6 pb-4">
-          <div className="w-full bg-accent rounded-full h-2 overflow-hidden">
-            <div 
-              className="h-2 bg-primary rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${Math.min(progress, 100)}%` }}
+        <ol className="px-6 pb-1 pt-5">
+          {STEP_STAGES.map((step, index) => (
+            <ProgressStep
+              key={step}
+              status={getStepStatus(step, shown.stage)}
+              label={steps[step].label}
+              hint={steps[step].hint}
+              hasConnector={index < STEP_STAGES.length - 1}
             />
-          </div>
-        </div>
+          ))}
+        </ol>
 
-        {/* Footer */}
-        <div className="px-6 pb-6">
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground mb-3">
-              AI正在智能分析您的素材并生成剪辑方案，请耐心等待
-            </p>
-            
-            {allowCancel && onCancel && progress < 100 && (
-              <button
-                onClick={onCancel}
-                className="px-4 py-2 text-sm font-medium text-muted-foreground bg-muted border border-border rounded-md hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors"
-              >
-                取消混剪
-              </button>
-            )}
-            
-            {progress >= 100 && (
-              <div className="flex items-center justify-center space-x-1 text-primary">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                </svg>
-                <span className="text-sm font-medium">AI混剪成功</span>
-              </div>
-            )}
-          </div>
-        </div>
+        <p id={STATUS_ID} role="status" aria-live="polite" className="sr-only">
+          {isDone && copy.done}
+          {activeStep && <span>{steps[activeStep].label}</span>}
+          {activeStep && steps[activeStep].hint && <span> {steps[activeStep].hint}</span>}
+        </p>
+
+        <ProgressDialogFooter
+          isDone={isDone}
+          isOpen={isOpen}
+          cancelRef={cancelRef}
+          copy={copy}
+          onCancel={onCancel}
+        />
       </div>
     </div>
   );

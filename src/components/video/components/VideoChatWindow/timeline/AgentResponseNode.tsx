@@ -16,6 +16,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MarkdownRenderer from '@/components/chat/MarkdownRenderer';
+import { UNDOABLE_TOOL_NAMES } from '@/lib/video-editing-agent/trackPatch';
 import type { AgentResponseNodeData } from './types';
 import { formatTimestamp, getToolDisplayName } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
@@ -75,9 +76,9 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
   const iconVariant = node.isUndone ? 'undone' : 'response';
   const activeVariants = node.isUndone ? undoneNodeVariants : nodeVariants;
 
-  // Only show tool calls that had a result (completed tools, not just status queries)
+  // Only completed calls of tools that change the timeline can be undone
   const undoableToolCalls = node.toolCalls.filter(
-    (tc) => tc.status === 'completed' && tc.name !== 'get_timeline' && tc.name !== 'search_materials'
+    (tc) => tc.status === 'completed' && UNDOABLE_TOOL_NAMES.has(tc.name)
   );
   const hasUndoableTools = undoableToolCalls.length > 0;
 

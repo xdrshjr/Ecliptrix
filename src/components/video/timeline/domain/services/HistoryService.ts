@@ -45,13 +45,14 @@ export interface TimelineAction {
     | 'TRACK_VOLUME'
     | 'TRACK_VISIBILITY'
     | 'TRACK_ADD'
-    | 'TRACK_REMOVE';
+    | 'TRACK_REMOVE'
+    | 'REPLACE_TIMELINE';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload?: any;
   timestamp: Date;
   /** State snapshot taken BEFORE the action was applied. */
   previousState?: TimelineSnapshot;
-  /** State snapshot taken AFTER the action was applied (captured on next render). */
+  /** State snapshot taken AFTER the action was applied (captured synchronously). */
   nextState?: TimelineSnapshot;
 }
 
@@ -142,14 +143,18 @@ export class HistoryService {
    * Attach an "after" snapshot to the most recently added action.
    *
    * Extracted from TimelinePanel.tsx updateLastHistoryNextState (lines 364-383).
-   * Typically called on the next render frame after the action has been applied
-   * so that the snapshot reflects the post-mutation state.
+   * Called synchronously right after the mutation has been applied — every
+   * store mutation is synchronous, so the snapshot already reflects it.
+   *
+   * Ignored when the last entry has been undone: writing the current (undone)
+   * state into its nextState would turn the pending redo into a no-op.
    *
    * @param snapshot  A deep-cloned snapshot of the timeline state after
    *                  the action was applied.
    */
   captureAfterState(snapshot: TimelineSnapshot): void {
     if (this._history.length === 0) return;
+    if (this._historyIndex !== this._history.length - 1) return;
 
     const lastIndex = this._history.length - 1;
     this._history[lastIndex] = {

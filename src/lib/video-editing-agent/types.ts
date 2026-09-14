@@ -86,6 +86,8 @@ export type TimelineOperation =
       type: 'resize_clip';
       clipId: string;
       newDuration: number;
+      /** New out-point (clipStart + newDuration). Omitted for images. */
+      clipEnd?: number;
     };
 
 // --- Material Operations ---

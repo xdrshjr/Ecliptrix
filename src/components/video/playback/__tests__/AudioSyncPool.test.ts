@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import {
   AudioSyncPool,
   computeAudioSyncActions,
-  computeEffectiveVolume,
+  computeMediaElementVolume,
   type AudioSyncGroup,
   type AudioElementLike,
 } from '../AudioSyncPool';
@@ -40,24 +40,24 @@ function clip(
   return { id, startTime, duration, clipStart: 0, clipEnd: duration, url: AUDIO_URL, ...over };
 }
 
-describe('computeEffectiveVolume', () => {
+describe('computeMediaElementVolume', () => {
   it('multiplies item volume by track volume and clamps to [0,1]', () => {
-    expect(computeEffectiveVolume(0.5, 1)).toBe(0.5);
-    expect(computeEffectiveVolume(undefined, 0.8)).toBe(0.8); // item defaults to 1
-    expect(computeEffectiveVolume(1, 2)).toBe(1); // clamp high
-    expect(computeEffectiveVolume(-1, 1)).toBe(0); // clamp low
+    expect(computeMediaElementVolume(0.5, 1)).toBe(0.5);
+    expect(computeMediaElementVolume(undefined, 0.8)).toBe(0.8); // item defaults to 1
+    expect(computeMediaElementVolume(1, 2)).toBe(1); // clamp high
+    expect(computeMediaElementVolume(-1, 1)).toBe(0); // clamp low
   });
 
   // Added (google-tester-01, S1 acceptance): explicit edge values the task
   // asked to probe — exact 0, exact 1, just-over 1, and NaN/Inf degenerate input.
   it('treats an explicit item volume of 0 as silent (0, not the default 1)', () => {
-    expect(computeEffectiveVolume(0, 1)).toBe(0);
+    expect(computeMediaElementVolume(0, 1)).toBe(0);
   });
 
   it('keeps exactly 1.0 and clamps just-over-1 down to 1', () => {
-    expect(computeEffectiveVolume(1, 1)).toBe(1);
-    expect(computeEffectiveVolume(1.0001, 1)).toBe(1);
-    expect(computeEffectiveVolume(0.6, 2)).toBe(1); // 1.2 → 1
+    expect(computeMediaElementVolume(1, 1)).toBe(1);
+    expect(computeMediaElementVolume(1.0001, 1)).toBe(1);
+    expect(computeMediaElementVolume(0.6, 2)).toBe(1); // 1.2 → 1
   });
 
   it('guards every non-finite input to 0 (the !isFinite guard fires BEFORE the >=1 clamp)', () => {
@@ -65,9 +65,9 @@ describe('computeEffectiveVolume', () => {
     // +Inf — because the `!Number.isFinite` guard precedes the `>= 1` clamp.
     // This is the safe choice (never write a non-finite volume); pin it so a
     // future re-order to "+Inf → 1" is a deliberate, reviewed change.
-    expect(computeEffectiveVolume(Number.NaN, 1)).toBe(0);
-    expect(computeEffectiveVolume(Number.POSITIVE_INFINITY, 1)).toBe(0);
-    expect(computeEffectiveVolume(Number.NEGATIVE_INFINITY, 1)).toBe(0);
+    expect(computeMediaElementVolume(Number.NaN, 1)).toBe(0);
+    expect(computeMediaElementVolume(Number.POSITIVE_INFINITY, 1)).toBe(0);
+    expect(computeMediaElementVolume(Number.NEGATIVE_INFINITY, 1)).toBe(0);
   });
 });
 

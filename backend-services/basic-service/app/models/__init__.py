@@ -124,7 +124,6 @@ from .ai_mixed_editing_models import (
     MaterialItemModel,
     AIMixedEditingRequest,
     AIMixedEditingResponse,
-    AIMixedEditingErrorResponse
 )
 
 from .queue_models import (
@@ -250,7 +249,6 @@ __all__ = [
     "MaterialItemModel",
     "AIMixedEditingRequest",
     "AIMixedEditingResponse",
-    "AIMixedEditingErrorResponse",
     
     # Queue Management Models
     "QueueTask",

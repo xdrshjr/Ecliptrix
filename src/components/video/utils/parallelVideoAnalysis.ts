@@ -68,6 +68,8 @@ export interface ParallelAnalysisOptions {
   retryDelayMs?: number;
   mode: { type: 'quick' | 'professional'; frameInterval?: number };
   sequential?: boolean; // 是否顺序执行（一个接一个），默认为 false（并行执行）
+  /** Caller cancellation (e.g. AI auto edit cancelled): aborts the batch request. */
+  signal?: AbortSignal;
 }
 
 // Utility class for managing concurrent requests with thread limiting
@@ -598,9 +600,15 @@ export async function analyzeVideosInBatch(
       timestamp: new Date().toISOString()
     });
 
-    // Create request with timeout
+    // Create request with timeout; the caller's signal aborts it as well.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), VIDEO_ANALYSIS_CONFIG.REQUEST_TIMEOUT_MS);
+    const forwardCallerAbort = () => controller.abort();
+    if (options.signal?.aborted) {
+      controller.abort();
+    } else {
+      options.signal?.addEventListener('abort', forwardCallerAbort, { once: true });
+    }
 
     let batchResult: BatchVideoAnalysisResponse;
     try {
@@ -610,6 +618,7 @@ export async function analyzeVideosInBatch(
       });
     } catch (httpError) {
       clearTimeout(timeoutId);
+      options.signal?.removeEventListener('abort', forwardCallerAbort);
       const errorResponseTime = performance.now() - startTime;
       const errorMessage = httpError instanceof ApiError
         ? (httpError.message || `HTTP error! status: ${httpError.status}`)
@@ -627,6 +636,7 @@ export async function analyzeVideosInBatch(
     }
 
     clearTimeout(timeoutId);
+    options.signal?.removeEventListener('abort', forwardCallerAbort);
 
     const responseTime = performance.now() - startTime;
     

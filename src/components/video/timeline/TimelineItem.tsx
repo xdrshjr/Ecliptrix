@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore, splitAction } from './store';
+import { updateSubtitleTextAction } from './store/actions/updateItemFields';
 import type { TimelineItemData } from './domain/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
 import AudioWaveformCanvas from './AudioWaveformCanvas';
@@ -115,7 +116,6 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const toggleItemSelection = useTimelineStore(s => s.toggleItemSelection);
   const deselectAll = useTimelineStore(s => s.deselectAll);
   const setEditingSubtitle = useTimelineStore(s => s.setEditingSubtitle);
-  const updateItemSubtitle = useTimelineStore(s => s.updateItemSubtitle);
 
   // ---------------------------------------------------------------------------
   // Local UI state (subtitle editing only)
@@ -241,6 +241,14 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       selectItem(item.id);
     }
 
+    // Locked tracks keep click-to-select but never start a move or trim.
+    if (isTrackLocked) return;
+
+    // A still image has no source length, so its edges can extend freely.
+    // Legacy items without originalDuration must not feed `undefined` into
+    // the machine's clamp maths (it turned into NaN).
+    const isStill = item.originalMaterialType === 'image';
+
     // Start drag via store (state machine decides move vs resize)
     startDrag({
       type: 'POINTER_DOWN',
@@ -255,7 +263,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       zoomLevel,
       clipStart: item.clipStart,
       clipEnd: item.clipEnd,
-      originalMediaDuration: item.originalDuration,
+      originalMediaDuration: isStill
+        ? Number.POSITIVE_INFINITY
+        : (item.originalDuration ?? Number.POSITIVE_INFINITY),
+      isStill,
     });
   };
 
@@ -273,6 +284,9 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     e.stopPropagation();
 
     if (item.type === 'subtitle') {
+      // The commit is refused on a locked track, which would silently throw
+      // away what the user typed; don't open the editor at all.
+      if (isTrackLocked) return;
       setEditingText(item.text || '');
       setEditingSubtitle(item.id);
       return;
@@ -310,7 +324,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     // Only commit (and push to undo history) when the value actually changed.
     // Allow empty commits so users can clear a caption without losing the clip.
     if (nextText !== prevText) {
-      updateItemSubtitle(item.id, nextText);
+      updateSubtitleTextAction(() => useTimelineStore.getState(), item.id, nextText);
     }
     setEditingSubtitle(null);
     setEditingText('');
@@ -615,7 +629,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         `${isSelected ? ` (${t.timeline.track.selected})` : ''}` +
         `${isTrackLocked ? ` (${t.timeline.track.trackLocked})` : ''}`
       }
-      style={getItemStyles()}
+      style={isTrackLocked ? { ...getItemStyles(), cursor: 'not-allowed' } : getItemStyles()}
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
@@ -688,7 +702,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 
       {/* Resize handles — DaVinci-style trim brackets. Hit area (w-1.5,
           left/right, cursor-ew-resize) is unchanged; only the look is crisper. */}
-      {isSelected && (
+      {isSelected && !isTrackLocked && (
         <>
           <div
             className="absolute left-0 top-0 w-1.5 h-full cursor-ew-resize bg-white/70 hover:bg-white transition-colors"

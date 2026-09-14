@@ -7,6 +7,14 @@
  * consumer (React hook, test harness, etc.). Phase 2's `useAgentExecution`
  * hook (google-dev-04) will own one instance per request.
  *
+ * ## Reconnect semantics
+ *
+ * The agent route cannot resume a turn: every connection runs the agent from
+ * the start and numbers its events from 0 again. A reconnect is therefore a
+ * clean restart of the turn (`onRestart` tells the consumer to drop what it
+ * already showed), and it is only attempted while no tool call has been seen
+ * — after that, a rerun could execute tools (some of them billed) twice.
+ *
  * ## Usage
  *
  * ```ts
@@ -33,6 +41,7 @@ import {
   classifyError,
   getRetryDelay,
   shouldRetry,
+  toNonRetryableAfterSideEffects,
 } from './errorRecovery';
 
 // ---------------------------------------------------------------------------
@@ -63,6 +72,12 @@ export interface SSEStreamManagerConfig {
   onComplete: () => void;
   /** Called before each automatic retry. Return `false` to abort retry. */
   onRetry?: (attempt: number, reason: string) => boolean | void;
+  /**
+   * Called right before a reconnect. A reconnect restarts the turn from
+   * scratch on the server, so the caller must discard the text, thinking
+   * content and tool cards accumulated for this turn so far.
+   */
+  onRestart?: (attempt: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +122,8 @@ export class SSEStreamManager {
   private completedToolCallIds: string[] = [];
   private pendingToolCallIds: string[] = [];
   private lastEvent: SSEEvent | null = null;
+  /** Set once any tool_call / tool_result arrived; never reset by a restart. */
+  private hasObservedToolCall = false;
   private _isRunning = false;
   private _isCancelled = false;
 
@@ -207,39 +224,18 @@ export class SSEStreamManager {
           context: this.buildErrorContext(),
         });
 
+        // A reconnect re-runs the whole turn on the server. Once a tool call
+        // was seen it may already have executed (including billed generation
+        // tools), so a rerun would execute it twice: stop instead.
+        if (this.hasObservedToolCall && streamError.recoverable) {
+          this.config.onError(toNonRetryableAfterSideEffects(streamError));
+          return;
+        }
+
         // Attempt retry if appropriate
         if (shouldRetry(streamError, this.retryCount, this.config.maxRetries)) {
-          const shouldProceed = this.config.onRetry?.(
-            this.retryCount + 1,
-            streamError.userMessage,
-          );
-          if (shouldProceed === false) {
-            // Caller vetoed the retry
-            this.config.onError(streamError);
-            return;
-          }
-
-          this.retryCount++;
-          const delayMs = getRetryDelay(this.retryCount - 1);
-
-          console.log(
-            `[SSEStreamManager] Retry ${this.retryCount}/${this.config.maxRetries} ` +
-            `in ${delayMs}ms (reason: ${streamError.type})`,
-          );
-
-          // Create a fresh controller for the delay so the backoff actually
-          // waits — the previous controller's signal is already aborted (that
-          // is why we are in this catch block).
-          const delayController = new AbortController();
-          this.controller = delayController;
-          try {
-            await delay(delayMs, delayController.signal);
-          } catch {
-            // Aborted during delay (e.g. user cancel) — exit
-            if (this._isCancelled) return;
-          }
-
-          continue; // next iteration of the retry loop
+          if (await this.retryAfterBackoff(streamError)) continue;
+          return;
         }
 
         // Not recoverable or retries exhausted
@@ -247,6 +243,60 @@ export class SSEStreamManager {
         return;
       }
     }
+  }
+
+  /**
+   * Wait out the backoff before the next attempt. Resolves true when the
+   * loop should reconnect, false when it must stop (the caller vetoed the
+   * retry, which is reported here, or the user cancelled during the wait).
+   */
+  private async retryAfterBackoff(streamError: StreamError): Promise<boolean> {
+    const shouldProceed = this.config.onRetry?.(
+      this.retryCount + 1,
+      streamError.userMessage,
+    );
+    if (shouldProceed === false) {
+      // Caller vetoed the retry
+      this.config.onError(streamError);
+      return false;
+    }
+
+    this.retryCount++;
+    const delayMs = getRetryDelay(this.retryCount - 1);
+
+    console.log(
+      `[SSEStreamManager] Retry ${this.retryCount}/${this.config.maxRetries} ` +
+      `in ${delayMs}ms (reason: ${streamError.type})`,
+    );
+
+    // Create a fresh controller for the delay so the backoff actually
+    // waits — the previous controller's signal is already aborted (that
+    // is why we are in the catch block).
+    const delayController = new AbortController();
+    this.controller = delayController;
+    try {
+      await delay(delayMs, delayController.signal);
+    } catch {
+      // Aborted during delay (e.g. user cancel) — exit
+      if (this._isCancelled) return false;
+    }
+
+    this.resetForRestart();
+    return true;
+  }
+
+  /**
+   * Forget everything received from the abandoned attempt and tell the
+   * caller. The rerun numbers its events from 0 and the LLM output differs,
+   * so nothing from the first attempt may be used to skip or match events.
+   */
+  private resetForRestart(): void {
+    this.lastReceivedEventId = -1;
+    this.completedToolCallIds = [];
+    this.pendingToolCallIds = [];
+    this.lastEvent = null;
+    this.buffer = '';
+    this.config.onRestart?.(this.retryCount);
   }
 
   // ---------------------------------------------------------------------------
@@ -261,11 +311,6 @@ export class SSEStreamManager {
       'Content-Type': 'application/json',
       ...headers,
     };
-
-    // On retry, send Last-Event-ID so the server can skip already-delivered events
-    if (this.lastReceivedEventId >= 0) {
-      requestHeaders['Last-Event-ID'] = String(this.lastReceivedEventId);
-    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -313,30 +358,8 @@ export class SSEStreamManager {
         const events = this.parseSSEBuffer(chunk);
 
         for (const event of events) {
-          // Client-side dedup on reconnect: skip events already processed
-          // before the disconnect. On first connection (retryCount === 0),
-          // process everything normally.
-          const eventWithId = event as SSEEvent & { _eventId?: number };
-          if (
-            this.retryCount > 0 &&
-            eventWithId._eventId !== undefined &&
-            eventWithId._eventId <= this.lastReceivedEventId
-          ) {
-            // Already processed before disconnect — skip but don't
-            // re-track (IDs and tool-call state are already recorded).
-            continue;
-          }
-
-          // Also skip tool_call events whose ID is already completed
-          if (
-            this.retryCount > 0 &&
-            event.type === 'tool_call' &&
-            this.completedToolCallIds.includes(event.toolCallId)
-          ) {
-            continue;
-          }
-
-          // Track event IDs for dedup / resumption
+          // Every event of this attempt is delivered: a restart re-runs the
+          // turn, so ids and tool-call ids of an earlier attempt mean nothing.
           this.trackEvent(event);
 
           // Check for stream-end signals
@@ -492,7 +515,7 @@ export class SSEStreamManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Event tracking (for dedup and retry context)
+  // Event tracking (retry decision and error context)
   // ---------------------------------------------------------------------------
 
   private trackEvent(event: SSEEvent & { _eventId?: number }): void {
@@ -505,11 +528,13 @@ export class SSEStreamManager {
 
     // Track tool call lifecycle for retry context
     if (event.type === 'tool_call') {
+      this.hasObservedToolCall = true;
       const id = event.toolCallId;
       if (!this.pendingToolCallIds.includes(id)) {
         this.pendingToolCallIds.push(id);
       }
     } else if (event.type === 'tool_result') {
+      this.hasObservedToolCall = true;
       const id = event.toolCallId;
       // Move from pending to completed
       this.pendingToolCallIds = this.pendingToolCallIds.filter(tid => tid !== id);

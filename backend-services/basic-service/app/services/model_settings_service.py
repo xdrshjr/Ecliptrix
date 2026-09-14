@@ -11,7 +11,7 @@ Migrated from SQLite (aiosqlite) to PostgreSQL (async SQLAlchemy).
 import os
 import time
 import uuid
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import httpx
 from sqlalchemy import select, update, delete
@@ -33,7 +33,7 @@ from app.models.model_settings_models import (
 )
 from app.models.db_models import ModelProvider, ModelAssignment
 from app.database import async_session_factory
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.logger import get_logger
 
 logger = get_logger(__name__)
@@ -644,12 +644,7 @@ class ModelSettingsService:
                 settings.fast_llm_model or settings.llm_model,
                 settings.fast_llm_api_type,
             ),
-            ModelFunctionType.VIDEO_CUT: (
-                settings.video_cut_llm_api_url or settings.llm_api_url,
-                ***REMOVED*** or settings.llm_api_key,
-                settings.video_cut_llm_model,
-                settings.video_cut_llm_api_type,
-            ),
+            ModelFunctionType.VIDEO_CUT: self._video_cut_env_group(settings),
             ModelFunctionType.VISION: (
                 settings.vl_llm_api_url or settings.llm_api_url,
                 settings.vl_llm_api_key or settings.llm_api_key,
@@ -715,6 +710,31 @@ class ModelSettingsService:
             temperature=assignment.temperature,
             max_tokens=assignment.max_tokens,
             updated_at=assignment.updated_at.isoformat() if assignment.updated_at else None,
+        )
+
+    @staticmethod
+    def _video_cut_env_group(
+        settings: Settings,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """VIDEO_CUT env fallback as (api_url, api_key, model, api_type).
+
+        Falls back as a whole group: pairing LLM_API_URL with
+        VIDEO_CUT_LLM_API_TYPE could send openai-format requests to an
+        anthropic endpoint. The key still falls back to LLM_API_KEY so an old
+        .env that only set VIDEO_CUT_LLM_API_URL keeps working.
+        """
+        if not settings.video_cut_llm_api_url:
+            return (
+                settings.llm_api_url,
+                settings.llm_api_key,
+                settings.llm_model,
+                settings.llm_api_type,
+            )
+        return (
+            settings.video_cut_llm_api_url,
+            ***REMOVED*** or settings.llm_api_key,
+            settings.video_cut_llm_model or settings.llm_model,
+            settings.video_cut_llm_api_type,
         )
 
 

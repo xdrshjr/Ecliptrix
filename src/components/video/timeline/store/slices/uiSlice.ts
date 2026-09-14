@@ -37,6 +37,13 @@ export interface UISlice {
    * never part of the snapshot/history.
    */
   pendingScrollItemId: string | null;
+  /**
+   * Set while something outside the user drives the timeline (the editing
+   * agent). Agent operations are undoable, so an undo/delete issued mid-run
+   * would fork the client timeline from the state the agent keeps editing;
+   * keyboard and toolbar edits are refused until the lock is released.
+   */
+  externalEditLock: 'agent' | null;
 
   setExporting: (value: boolean) => void;
   setImporting: (value: boolean) => void;
@@ -48,6 +55,8 @@ export interface UISlice {
   requestScrollItemIntoView: (itemId: string) => void;
   /** Clear the pending scroll-into-view request once consumed. */
   clearPendingScrollItem: () => void;
+  /** Acquire (`'agent'`) or release (`null`) the external edit lock. */
+  setExternalEditLock: (lock: 'agent' | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +75,7 @@ export const createUISlice: StateCreator<
   showVolumeSlider: null,
   editingSubtitleId: null,
   pendingScrollItemId: null,
+  externalEditLock: null,
 
   setExporting: (value: boolean) => {
     set({ isExporting: value });
@@ -97,5 +107,9 @@ export const createUISlice: StateCreator<
 
   clearPendingScrollItem: () => {
     set({ pendingScrollItemId: null });
+  },
+
+  setExternalEditLock: (lock: 'agent' | null) => {
+    set({ externalEditLock: lock });
   },
 });

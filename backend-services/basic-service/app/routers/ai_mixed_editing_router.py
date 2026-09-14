@@ -1,147 +1,158 @@
 """
 AI Mixed Editing router for automatic video editing.
+
+Failures return ``ErrorResponse`` with a stable ``error_code`` so the frontend
+can show a localised message instead of a raw Python dict (AM-07).
 """
 
-import json
-from fastapi import APIRouter, HTTPException, status
-from app.models.ai_mixed_editing_models import (
-    AIMixedEditingRequest, 
-    AIMixedEditingResponse, 
-    AIMixedEditingErrorResponse
-)
-from app.services.ai_mixed_editing_service import AIMixedEditingService
+from collections import Counter
+from typing import Optional
+
+from fastapi import APIRouter, status
+from fastapi.responses import JSONResponse
+
 from app.logger import get_logger
-from app.config import settings
+from app.models.ai_mixed_editing_models import (
+    AIMixedEditingRequest,
+    AIMixedEditingResponse,
+)
+from app.models.base_models import ErrorResponse
+from app.services.ai_mixed_editing_service import (
+    AIMixedEditingService,
+    AIMixError,
+    AIMixModelNotConfiguredError,
+    AIMixPlanUnparseableError,
+    AIMixUpstreamError,
+)
 
 # Initialize router and logger
 router = APIRouter()
 logger = get_logger(__name__)
 
+INVALID_REQUEST_CODE = "AI_MIX_INVALID_REQUEST"
+INTERNAL_MESSAGE = "Unexpected error while generating the editing plan"
+UPSTREAM_DETAIL_MAX_CHARS = 300
+_ERROR_RESPONSES = {
+    status_code: {"model": ErrorResponse}
+    for status_code in (400, 422, 500, 502, 503)
+}
 
-@router.post("/ai-mixed-editing", response_model=AIMixedEditingResponse)
+
+def _error_response(
+    status_code: int,
+    error_code: str,
+    message: str,
+    task_id: Optional[str],
+    stage: str,
+) -> JSONResponse:
+    """Build the ErrorResponse body shared by every AI mix failure."""
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponse(
+            success=False,
+            message=message,
+            error_code=error_code,
+            error_details={"taskId": task_id, "stage": stage},
+        ).model_dump(mode="json"),
+    )
+
+
+def _service_error_response(error: AIMixError, task_id: str) -> JSONResponse:
+    """Map a service exception onto the AM-07 status / error_code table."""
+    if isinstance(error, AIMixModelNotConfiguredError):
+        message, stage = "No model is assigned to video editing", "configure"
+    elif isinstance(error, AIMixUpstreamError):
+        detail = str(error)[:UPSTREAM_DETAIL_MAX_CHARS]
+        message = f"The video editing model request failed: {detail}"
+        stage = "plan"
+    elif isinstance(error, AIMixPlanUnparseableError):
+        message = "The model returned an unusable editing plan"
+        stage = "plan"
+    else:
+        message, stage = INTERNAL_MESSAGE, "internal"
+    return _error_response(
+        error.status_code, error.error_code, message, task_id, stage
+    )
+
+
+def _invalid_request_response(
+    request: AIMixedEditingRequest,
+) -> Optional[JSONResponse]:
+    """400 for a blank taskId or an empty materials list, otherwise None.
+
+    The request model already rejects an empty taskId / materials list with
+    422; this also catches a whitespace-only taskId.
+    """
+    if request.taskId.strip() and request.materials:
+        return None
+    logger.warning(
+        "AI mixed editing request rejected: taskId and materials required"
+    )
+    return _error_response(
+        status.HTTP_400_BAD_REQUEST,
+        INVALID_REQUEST_CODE,
+        "taskId and at least one material are required",
+        request.taskId or None,
+        "validate",
+    )
+
+
+@router.post(
+    "/ai-mixed-editing",
+    response_model=AIMixedEditingResponse,
+    responses=_ERROR_RESPONSES,
+)
 async def ai_mixed_editing(request: AIMixedEditingRequest):
     """
     AI mixed editing endpoint for automatic video editing.
-    
-    Args:
-        request: AI mixed editing request containing task ID and materials
-        
-    Returns:
-        AIMixedEditingResponse: Generated timeline JSON data
-        
-    Raises:
-        HTTPException: If request validation fails or service error occurs
+
+    Returns AIMixedEditingResponse on success, otherwise an ErrorResponse
+    with status 400 / 422 / 500 / 502 / 503 and an ``AI_MIX_*`` error_code.
     """
+    invalid_request = _invalid_request_response(request)
+    if invalid_request is not None:
+        return invalid_request
+
+    task_id = request.taskId
+    logger.info(
+        f"Processing AI mixed editing request for task: {task_id} "
+        f"with {len(request.materials)} materials"
+    )
+    material_types = Counter(material.type for material in request.materials)
+    logger.debug(
+        f"AI mix material types for task {task_id}: {dict(material_types)}"
+    )
+
     try:
-        # Debug logging: print request body if DEBUG=true (FULL CONTENT - NO TRUNCATION)
-        if settings.debug:
-            print(f"\n=== DEBUG: AI Mixed Editing Router Request ===")
-            print(f"Task ID: {request.taskId}")
-            print(f"Materials count: {len(request.materials) if request.materials else 0}")
-            print(f"Request Body:")
-            # Print full request body without any truncation as required
-            print(json.dumps(request.model_dump(), indent=2, ensure_ascii=False))
-            print("=" * 50)
-        
-        # Validate request parameters
-        if not request.taskId:
-            logger.error("AI mixed editing request validation failed: taskId is required")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=AIMixedEditingErrorResponse(
-                    error="Task ID is required",
-                    taskId=request.taskId
-                ).model_dump()
-            )
-        
-        if not request.materials or len(request.materials) == 0:
-            logger.error(f"AI mixed editing request validation failed: materials list is empty for task {request.taskId}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=AIMixedEditingErrorResponse(
-                    error="Materials list is required and must not be empty",
-                    taskId=request.taskId
-                ).model_dump()
-            )
-        
-        logger.info(f"Processing AI mixed editing request for task: {request.taskId} with {len(request.materials)} materials")
-        
-        # Initialize service
-        try:
-            ai_mixed_editing_service = AIMixedEditingService()
-        except ValueError as e:
-            logger.error(f"AI mixed editing service initialization failed: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=AIMixedEditingErrorResponse(
-                    error="AI mixed editing service not properly configured",
-                    details=str(e),
-                    taskId=request.taskId
-                ).model_dump()
-            )
-        
-        # Generate mixed editing timeline
-        try:
-            timeline_data = await ai_mixed_editing_service.generate_mixed_editing(
-                materials=request.materials,
-                task_id=request.taskId
-            )
-            
-            logger.info(f"AI mixed editing completed successfully for task: {request.taskId}")
-            
-            response = AIMixedEditingResponse(
-                success=True,
-                message="AI mixed editing completed successfully",
-                timelineData=timeline_data,
-                taskId=request.taskId
-            )
-            
-            # Debug logging: print response body if DEBUG=true
-            if settings.debug:
-                print(f"\n=== DEBUG: AI Mixed Editing Router Response ===")
-                print(f"Success: {response.success}")
-                print(f"Task ID: {response.taskId}")
-                print(f"Message: {response.message}")
-                # Create a copy for printing (truncate timeline data for readability)
-                debug_response = response.model_dump()
-                if debug_response.get("timelineData"):
-                    timeline_summary = {
-                        "metadata": debug_response["timelineData"].get("metadata", {}),
-                        "timeline": debug_response["timelineData"].get("timeline", {}),
-                        "tracks_count": len(debug_response["timelineData"].get("tracks", [])),
-                        "materials_count": len(debug_response["timelineData"].get("materials", []))
-                    }
-                    debug_response["timelineData"] = f"[TIMELINE_DATA_SUMMARY] {timeline_summary}"
-                print(f"Response Body:")
-                print(json.dumps(debug_response, indent=2, ensure_ascii=False))
-                print("=" * 50)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"AI mixed editing generation failed for task {request.taskId}: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=AIMixedEditingErrorResponse(
-                    error="Failed to generate mixed editing timeline",
-                    details=str(e),
-                    taskId=request.taskId
-                ).model_dump()
-            )
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
-    except Exception as e:
+        service = await AIMixedEditingService.create()
+        timeline_data = await service.generate_mixed_editing(
+            materials=request.materials, task_id=task_id
+        )
+    except AIMixError as error:
+        # The service already logged the cause, with a traceback where one
+        # helps; repeating it here would only double the noise.
         logger.error(
-            f"Unexpected error in AI mixed editing for task {getattr(request, 'taskId', 'unknown')}: {str(e)}",
-            exc_info=True
+            f"AI mixed editing failed for task {task_id}: "
+            f"{error.error_code}: {error}"
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=AIMixedEditingErrorResponse(
-                error="Internal server error",
-                details="An unexpected error occurred",
-                taskId=getattr(request, 'taskId', None)
-            ).model_dump()
+        return _service_error_response(error, task_id)
+    except Exception:
+        logger.error(
+            f"Unexpected error in AI mixed editing for task {task_id}",
+            exc_info=True,
         )
+        return _error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            AIMixError.error_code,
+            INTERNAL_MESSAGE,
+            task_id,
+            "internal",
+        )
+
+    logger.info(f"AI mixed editing completed successfully for task: {task_id}")
+    return AIMixedEditingResponse(
+        success=True,
+        message="AI mixed editing completed successfully",
+        timelineData=timeline_data,
+        taskId=task_id,
+    )

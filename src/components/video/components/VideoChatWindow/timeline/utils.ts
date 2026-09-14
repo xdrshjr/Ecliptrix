@@ -212,7 +212,9 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
 
   // 3. Response node: finalized text after streaming ends
   if (!isStreaming && message.content) {
-    const operationCount = message.pendingOperations?.length ?? 0;
+    // Only turns that recorded track patches can be reverted. Older messages
+    // (whole-timeline snapshots) hide the button instead of wiping later edits.
+    const patchCount = message.timelineTrackPatches?.length ?? 0;
     nodes.push({
       kind: 'response',
       id: `${message.id}-response`,
@@ -221,7 +223,7 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
       toolCalls: message.agentToolCalls ?? [],
       isUndone: !!message.isUndone,
       messageId: message.id,
-      canUndo: operationCount > 0 && !message.isUndone,
+      canUndo: patchCount > 0 && !message.isUndone,
       isStreaming: false,
     });
   }

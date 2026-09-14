@@ -77,13 +77,5 @@ export function splitAction(
 
   get().autoOrganize();
 
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  get().captureNextState();
 }

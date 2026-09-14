@@ -289,13 +289,7 @@ export function removeTrackAction(
 // ---------------------------------------------------------------------------
 
 function scheduleNextStateCapture(get: () => TimelineStore): void {
-  if (typeof requestAnimationFrame !== 'undefined') {
-    requestAnimationFrame(() => {
-      get().captureNextState();
-    });
-  } else {
-    Promise.resolve().then(() => {
-      get().captureNextState();
-    });
-  }
+  // Synchronous on purpose: a capture deferred to the next frame lands on
+  // whichever entry is last by then, breaking redo for same-tick edits.
+  get().captureNextState();
 }

@@ -36,7 +36,17 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Read from store
-  const { canUndo, canRedo, isExporting, isImporting, isExtractingSubtitles, selectedItemsCount, activeTool } = useTimelineStore(
+  const {
+    canUndo,
+    canRedo,
+    isExporting,
+    isImporting,
+    isExtractingSubtitles,
+    selectedItemsCount,
+    editableSelectedCount,
+    isEditLocked,
+    activeTool,
+  } = useTimelineStore(
     useShallow((state) => ({
       canUndo: state.canUndo,
       canRedo: state.canRedo,
@@ -44,9 +54,15 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       isImporting: state.isImporting,
       isExtractingSubtitles: state.isExtractingSubtitles,
       selectedItemsCount: state.selectedItems.length,
+      // Copy/delete ignore clips on locked tracks, so the buttons must too.
+      editableSelectedCount: state.selectedItems.filter((id) =>
+        state.tracks.some((track) => !track.isLocked && track.items.some((item) => item.id === id)),
+      ).length,
+      isEditLocked: state.externalEditLock !== null,
       activeTool: state.activeTool,
     })),
   );
+  const editLockedHint = isEditLocked ? t.timeline.messages.editLockedByAgent : undefined;
 
   // Store actions
   const undo = useTimelineStore((state) => state.undo);
@@ -114,7 +130,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     ),
     label: t.timeline.toolbar.cut,
     shortcut: t.timeline.shortcuts.cutShortcut,
-    disabled: false,
+    disabled: isEditLocked,
+    disabledHint: editLockedHint,
   };
 
   // 基础编辑按钮配置
@@ -129,7 +146,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.copy,
       shortcut: t.timeline.shortcuts.copyShortcut,
-      disabled: selectedItemsCount === 0
+      // Copy duplicates clips onto the timeline, so it is an edit as well.
+      disabled: editableSelectedCount === 0 || isEditLocked,
+      disabledHint: editLockedHint,
     },
     {
       id: 'delete',
@@ -141,7 +160,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.delete,
       shortcut: t.timeline.shortcuts.deleteShortcut,
-      disabled: selectedItemsCount === 0
+      disabled: editableSelectedCount === 0 || isEditLocked,
+      disabledHint: editLockedHint,
     }
   ];
 
@@ -157,7 +177,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.undo,
       shortcut: t.timeline.shortcuts.undoShortcut,
-      disabled: !canUndo
+      disabled: !canUndo || isEditLocked,
+      disabledHint: editLockedHint,
     },
     {
       id: 'redo',
@@ -169,7 +190,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.redo,
       shortcut: t.timeline.shortcuts.redoShortcut,
-      disabled: !canRedo
+      disabled: !canRedo || isEditLocked,
+      disabledHint: editLockedHint,
     },
     {
       id: 'organize',
@@ -287,7 +309,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: isExtractingSubtitles ? t.timeline.toolbar.extractingSubtitles : t.timeline.toolbar.subtitles,
       shortcut: t.timeline.shortcuts.subtitlesShortcut,
-      disabled: isExtractingSubtitles
+      disabled: isExtractingSubtitles || isEditLocked,
+      disabledHint: editLockedHint,
     }
   ];
 

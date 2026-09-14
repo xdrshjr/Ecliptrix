@@ -165,6 +165,19 @@ export interface VideoCompositionRequest {
   output_format?: string;
 }
 
+/**
+ * Failure details the backend attaches to a failed composition — mirrors the
+ * pydantic `CompositionErrorDetails` (`video_models.py`). The async-exception
+ * path only records `{ error }`, so every field is optional on the wire.
+ */
+export interface CompositionErrorDetails {
+  error_summary?: string;
+  recovery_suggestions?: string[];
+  failed_videos?: unknown[];
+  composition_stage?: string;
+  error?: string;
+}
+
 export interface VideoCompositionResponse {
   success: boolean;
   message: string;
@@ -174,7 +187,7 @@ export interface VideoCompositionResponse {
   output_file_path?: string;
   output_file_size?: number;
   processing_time?: number;
-  error_details?: any;
+  error_details?: CompositionErrorDetails;
   /**
    * Warnings decidable in the SYNCHRONOUS request stage only (e.g. the server
    * has camera motion disabled). Degrades that happen during normalization
@@ -191,7 +204,12 @@ export interface CompositionStatusResponse {
   start_time: number;
   processing_time?: number;
   output_file_size?: number;
-  error_details?: any;
+  error_details?: CompositionErrorDetails;
+  /**
+   * Top-level failure text. The status endpoint whitelists it next to
+   * `error_details` (a copy of `error_summary`, or its own fallback text).
+   */
+  error?: string;
   /**
    * Non-fatal degrade notices raised during the ASYNC normalize stage
    * (camera-motion-2d-3d §4.4.5 / D14) — e.g. "this clip's 3D motion fell back
@@ -228,6 +246,40 @@ function validateCompositionRequest(request: VideoCompositionRequest): void {
       'Invalid composition request: total_duration must be a positive number',
     );
   }
+}
+
+function firstNonBlank(candidates: Array<string | undefined>): string | undefined {
+  return candidates.find(
+    (candidate) => typeof candidate === 'string' && candidate.trim() !== '',
+  );
+}
+
+/**
+ * User-facing message for a failed composition status. Reads the backend's
+ * `error_summary` first (the old code read only `error_details.error`, which
+ * the structured failure path never sets, so users always saw
+ * "Unknown error"), then appends the first recovery suggestion.
+ */
+function buildCompositionFailureMessage(status: CompositionStatusResponse): string {
+  const details = status.error_details;
+  const reason =
+    firstNonBlank([details?.error_summary, details?.error, status.error]) ??
+    'Unknown error';
+  const suggestion = firstNonBlank([details?.recovery_suggestions?.[0]]);
+  const message = `Composition failed: ${reason}`;
+  return suggestion ? `${message}\n${suggestion}` : message;
+}
+
+function createPollingAbortError(): DOMException {
+  return new DOMException('Composition polling aborted', 'AbortError');
+}
+
+// Named like http-client's own timeout so callers can tell "polling gave up"
+// apart from a backend failure whose text merely mentions a timeout.
+function createPollingTimeoutError(): Error {
+  const error = new Error('Composition polling timeout');
+  error.name = 'TimeoutError';
+  return error;
 }
 
 /**
@@ -300,49 +352,60 @@ export class VideoCompositionAPI {
   /**
    * Poll composition status until completion.
    *
-   * Loop logic preserved verbatim per spec §4.4 — only the inner status
-   * call now goes through `http.get`.
+   * Aborting `signal` clears the pending poll and rejects with a
+   * `DOMException` named `AbortError`; a status request already in flight is
+   * ignored once it returns (no `onProgress`, no further scheduling).
    */
   async pollCompositionStatus(
     compositionId: string,
     onProgress?: (status: CompositionStatusResponse) => void,
     pollInterval: number = 2000,
     maxAttempts: number = 300, // 10 minutes at 2s intervals
+    signal?: AbortSignal,
   ): Promise<CompositionStatusResponse> {
-    let attempts = 0;
-
     return new Promise((resolve, reject) => {
+      let attempts = 0;
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      const finish = (settle: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
+        settle();
+      };
+      const onAbort = () => finish(() => reject(createPollingAbortError()));
+
       const poll = async () => {
         try {
           attempts++;
           const status = await this.getCompositionStatus(compositionId);
+          if (settled) return; // aborted while the request was in flight
 
-          if (onProgress) {
-            onProgress(status);
-          }
+          onProgress?.(status);
 
           if (status.status === 'completed') {
-            resolve(status);
-            return;
+            finish(() => resolve(status));
+          } else if (status.status === 'failed') {
+            const message = buildCompositionFailureMessage(status);
+            finish(() => reject(new Error(message)));
+          } else if (attempts >= maxAttempts) {
+            finish(() => reject(createPollingTimeoutError()));
+          } else {
+            timeoutId = setTimeout(poll, pollInterval);
           }
-
-          if (status.status === 'failed') {
-            reject(new Error(`Composition failed: ${status.error_details?.error || 'Unknown error'}`));
-            return;
-          }
-
-          if (attempts >= maxAttempts) {
-            reject(new Error('Composition polling timeout'));
-            return;
-          }
-
-          setTimeout(poll, pollInterval);
         } catch (error) {
-          reject(error);
+          finish(() => reject(error));
         }
       };
 
-      poll();
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      signal?.addEventListener('abort', onAbort, { once: true });
+      void poll();
     });
   }
 
