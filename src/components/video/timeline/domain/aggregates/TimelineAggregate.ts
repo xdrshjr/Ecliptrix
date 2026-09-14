@@ -18,6 +18,7 @@ import { Volume } from '../value-objects/Volume';
 import { ZoomLevel } from '../value-objects/ZoomLevel';
 import { SplitService, type SplitResult } from '../services/SplitService';
 import { TrackSelectionService } from '../services/TrackSelectionService';
+import { readViewFlags } from '../services/trackViewFlags';
 import type {
   TrackType,
   TimelineData,
@@ -267,6 +268,44 @@ export class TimelineAggregate {
       }
       track.sortItems();
     }
+    this.recalculateTotalDuration();
+  }
+
+  /**
+   * Put a clip at `insertIndex` among the other clips of its magnetic lane and
+   * pack the lane flush from 0, with the same cursor rule as
+   * organizeVideoAudioTracks (TL3-01). The index is clamped to the lane.
+   *
+   * @throws Error if the item is not found or its track is not video/audio.
+   * @throws TrackLockedError if the track is locked.
+   */
+  reorderMagneticItem(itemId: string, insertIndex: number): void {
+    const found = this.findItem(itemId);
+    if (!found) {
+      throw new Error(`TimelineAggregate.reorderMagneticItem: item "${itemId}" not found.`);
+    }
+    const { track, item } = found;
+    if (track.isLocked) {
+      throw new TrackLockedError(track.id, 'reorderMagneticItem');
+    }
+    if (track.type !== 'video' && track.type !== 'audio') {
+      throw new Error(
+        `TimelineAggregate.reorderMagneticItem: track "${track.id}" (type=${track.type}) is not magnetic.`,
+      );
+    }
+    const ordered = track.items
+      .filter(candidate => candidate.id !== itemId)
+      .sort((a, b) => a.startTime.value - b.startTime.value);
+    const index = Math.min(Math.max(0, Math.trunc(insertIndex)), ordered.length);
+    ordered.splice(index, 0, item);
+    let cursor = 0;
+    for (const candidate of ordered) {
+      if (candidate.startTime.value !== cursor) {
+        candidate.moveTo(TimePosition.create(cursor));
+      }
+      cursor += candidate.duration.value;
+    }
+    track.sortItems();
     this.recalculateTotalDuration();
   }
 
@@ -611,9 +650,18 @@ export class TimelineAggregate {
    * scroll, playhead, playback rate and grid are view state the user set
    * after the edit: restoring them made Ctrl+Z jump the view to 100% / 0 px
    * while the DOM stayed scrolled, so ruler clicks landed on the wrong time.
+   *
+   * Lock, mute and visibility are view flags, not content (S12): a track that
+   * still exists keeps the flags it has now, so undoing an older edit never
+   * unlocks or unmutes it. A track that only the snapshot has keeps its own.
    */
   restore(snapshot: TimelineSnapshot): void {
     const restored = TimelineAggregate.fromPlainObject(snapshot);
+    const liveById = new Map(this._tracks.map(track => [track.id, track] as const));
+    for (const track of restored._tracks) {
+      const live = liveById.get(track.id);
+      if (live) track.applyViewFlags(readViewFlags(live));
+    }
     this._tracks = [...(restored._tracks as Track[])];
     this.recalculateTotalDuration();
   }

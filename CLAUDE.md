@@ -61,7 +61,7 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 1. **Backend proxy** (most routes): Read `process.env.BACKEND_URL` and forward requests to the FastAPI backend. Example: `video-search/route.ts` proxies to `${BACKEND_URL}/api/video/search`.
 2. **Direct LLM call** (chat routes): Read `process.env.LLM_API_URL` and `LLM_API_KEY` to call OpenAI-compatible APIs directly, bypassing the backend. Example: `chat/route.ts`.
 
-`BACKEND_URL` is server-side only (no `NEXT_PUBLIC_` prefix). Most backend routes are mounted under `/api` prefix, except `ai_video_generate_router`, `video_export_router`, and `intent_detection_router` which mount at root.
+`BACKEND_URL` is server-side only (no `NEXT_PUBLIC_` prefix). Most backend routes are mounted under `/api` prefix, except `video_export_router` and `intent_detection_router`, which mount at root.
 
 ### Frontend Structure
 
@@ -78,7 +78,7 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 
 ### Backend Structure
 
-- **Entry point**: `app/main.py` — registers 32 routers, CORS middleware, exception handlers, static file mounts
+- **Entry point**: `app/main.py` — registers 31 routers, CORS middleware, exception handlers, static file mounts
 - **Configuration**: `app/config.py` — manual `get_settings()` function that reads `.env` via python-dotenv then YAML from `config/`. Note: `llm_api_key` and `llm_api_url` are required with no defaults — app won't start without them.
 - **Database**: `app/database.py` — async SQLAlchemy engine with `create_all` plus an idempotent `UPDATE` that claims any pre-refactor rows for `LOCAL_OWNER_ID`. No destructive DDL, ever.
 - **Pattern**: Router → Service → (LLM/DB/External API). Each feature has a router in `app/routers/`, a service in `app/services/`, and models in `app/models/`

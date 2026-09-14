@@ -31,7 +31,7 @@ import MaterialThumbnail from './MaterialThumbnail';
 import { http, ApiError } from '@/lib/api/http-client';
 import MaterialCacheBadge from '../MaterialCacheBadge';
 import { canPreviewDirectLocalMaterial } from '../../lib/localMaterial';
-import { buildDerivedMaterial } from '../../lib/derivedMaterial';
+import { buildDerivedMaterial, withoutScriptSegment } from '../../lib/derivedMaterial';
 import { MATERIAL_DRAG_MIME_PREFIX } from '../../timeline/lib/materialDragTypes';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
@@ -1371,7 +1371,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
         id: newId,
         name: `${originalMaterial.name.replace(/\.[^/.]+$/, '').replace(/_静音移除$/, '')}_静音移除.mp4`,
         metadata: {
-          ...originalMaterial.metadata,
+          // 新素材不继承原片的脚本段归属，否则自动混剪会把它当作该段最新的匹配（N-13）
+          ...withoutScriptSegment(originalMaterial.metadata),
           isSilenceRemoved: true,
           originalVideoUrl: originalMaterial.url,
           originalMaterialId: originalMaterial.id,

@@ -30,11 +30,15 @@ PURE string construction: no subprocess, no filesystem.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Protocol
+from types import SimpleNamespace
+from typing import List, Optional, Protocol, Sequence, Tuple
 
 # Matches TransitionLayer's TIME_EPSILON (spec 01) so boundary arithmetic agrees
 # with the preview compositor.
 TIME_EPSILON = 0.001
+#: A canvas command with more inputs than this is refused before it runs: each
+#: input costs ~55 MB of decoder memory at 1080p (N-04 / EX3-04).
+MAX_CANVAS_INPUTS = 200
 
 
 class TransitionLike(Protocol):
@@ -80,6 +84,20 @@ class FiltergraphResult:
     video_inputs: List[str]
     #: Canvas duration in seconds (the timeline end).
     timeline_end: float = 0.0
+
+
+@dataclass(frozen=True)
+class RunPlan:
+    """One contiguous run of a track — the unit the canvas overlays (N-04)."""
+
+    track_id: str
+    z: int
+    clips: Tuple[ClipLike, ...]
+    start: float
+    duration: float
+    #: Any clip has a transition or an opacity below 1, so the run keeps one
+    #: input per clip (its alpha ramps are applied per clip).
+    needs_alpha: bool
 
 
 def _clamp01(value: Optional[float]) -> float:
@@ -269,6 +287,58 @@ def _overlay_runs_on_base(run_labels: List[str]) -> List[str]:
     return parts
 
 
+def _visible_clips(clips: Sequence[ClipLike]) -> List[ClipLike]:
+    """Clips that draw anything; a fully transparent clip gets no input at all."""
+    return [clip for clip in clips if _clamp01(clip.opacity) > TIME_EPSILON]
+
+
+def plan_runs(clips: Sequence[ClipLike], fps: int) -> List[RunPlan]:
+    """The contiguous runs :func:`build_filtergraph` overlays, bottom track first.
+
+    The caller pre-merges every alpha-free run of several clips into one file
+    with the concat demuxer, so the canvas decodes one input per run instead of
+    one per clip (N-04: 241 inputs peaked at 16.4 GB). Runs with alpha keep one
+    input per clip because their fades and opacity are applied per clip.
+    """
+    tolerance = 0.5 / max(1, fps)
+    runs: List[RunPlan] = []
+    for plan in group_tracks(_visible_clips(clips)):
+        for run in _contiguous_runs(plan.clips, tolerance):
+            start = run[0].start_time
+            runs.append(RunPlan(
+                track_id=plan.track_id,
+                z=plan.z,
+                clips=tuple(run),
+                start=start,
+                duration=_clip_end(run[-1]) - start,
+                needs_alpha=any(_needs_alpha(clip) for clip in run),
+            ))
+    return runs
+
+
+def pin_to_layer(clip: ClipLike, z: int) -> SimpleNamespace:
+    """A read-only view of ``clip`` on a fixed track z.
+
+    Once some runs of a track are merged, the track's first clip may be a merged
+    run, so every canvas clip carries the z :func:`group_tracks` resolved.
+    """
+    return SimpleNamespace(
+        id=clip.id, track_id=getattr(clip, "track_id", ""), track_z=z,
+        start_time=clip.start_time, duration=clip.duration,
+        clip_start=clip.clip_start, clip_end=clip.clip_end, opacity=clip.opacity,
+        transition_in=clip.transition_in, transition_out=clip.transition_out,
+    )
+
+
+def merged_run_clip(run: RunPlan, clip_id: str) -> SimpleNamespace:
+    """The one alpha-free canvas clip that stands for a run joined into a file."""
+    return SimpleNamespace(
+        id=clip_id, track_id=run.track_id, track_z=run.z, start_time=run.start,
+        duration=run.duration, clip_start=None, clip_end=None, opacity=1.0,
+        transition_in=None, transition_out=None,
+    )
+
+
 def build_filtergraph(
     clips: List[ClipLike],
     width: int,
@@ -287,7 +357,7 @@ def build_filtergraph(
         timeline_end: where the timeline ends (images, audio and subtitles can
             outlast the last video clip). The canvas is at least that long.
     """
-    visible = [clip for clip in clips if _clamp01(clip.opacity) > TIME_EPSILON]
+    visible = _visible_clips(clips)
     last_end = max((_clip_end(clip) for clip in visible), default=0.0)
     end = max(last_end, timeline_end or 0.0)
     plans = group_tracks(visible)

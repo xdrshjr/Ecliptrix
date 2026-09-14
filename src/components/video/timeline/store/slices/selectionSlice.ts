@@ -32,6 +32,8 @@ export interface SelectionSlice {
   setActiveTool: (tool: TimelineToolType) => void;
 
   selectItem: (itemId: string) => void;
+  /** Replace the selection with exactly these items (e.g. fresh copies). */
+  selectItems: (itemIds: string[]) => void;
   toggleItemSelection: (itemId: string) => void;
   selectAllTrackItems: (trackId: string) => void;
   deselectAll: () => void;
@@ -69,6 +71,10 @@ export const createSelectionSlice: StateCreator<
   // would create no-op undo entries that confuse the user.
   selectItem: (itemId: string) => {
     set({ selectedItems: [itemId] });
+  },
+
+  selectItems: (itemIds: string[]) => {
+    set({ selectedItems: [...itemIds] });
   },
 
   toggleItemSelection: (itemId: string) => {

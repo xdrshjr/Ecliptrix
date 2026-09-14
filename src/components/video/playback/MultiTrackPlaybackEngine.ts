@@ -30,6 +30,7 @@ import { PlayheadController } from './PlayheadController';
 import { VideoSourcePool, type VideoElementLike, type TrackSourcePlan } from './VideoSourcePool';
 import { AudioSyncPool, type AudioSyncGroup, type AudioElementLike } from './AudioSyncPool';
 import { assembleLayers, type ActiveVideoEntry } from './internal/assembleLayers';
+import { VIDEO_SEEK_TOLERANCE_SEC } from './internal/constants';
 import {
   isPreviewDebugEnabled,
   formatTrackDiagnostics,
@@ -37,8 +38,8 @@ import {
   type TrackDiagnosticRow,
 } from './internal/previewDebug';
 import { activeClipAt } from './TrackScheduler';
-import type { TextMeasurer } from './SubtitleLayer';
 import type { ImageOverlayInput } from './ImageOverlayLayer';
+import type { OutputSize } from '../lib/subtitleLayout';
 import type {
   CompositorLayer,
   ICanvasViewport,
@@ -84,13 +85,27 @@ export interface MultiTrackAttachDeps {
   resolveSource: (seq: VideoSequenceItem) => string | null;
   timeline: MultiTrackTimelineFacade;
   viewport?: ICanvasViewport | null;
-  /** Subtitle text measurer (real 2d-context measure injected by the host). */
-  measureSubtitle?: TextMeasurer;
+  /**
+   * Pixel size of the exported frame for the project aspect ratio. Subtitles
+   * are laid out against it and scaled onto the canvas (EXO-09).
+   */
+  outputSize: OutputSize;
+  /**
+   * Writes an effective [0,2] preview volume to a decode / audio element (ME-06
+   * gain routing). Absent → the pools clamp the element volume to [0,1].
+   */
+  applyVolume?: (element: VideoElementLike, volume: number) => void;
+  /**
+   * Before a src is assigned: the element to assign on — a fresh one when the
+   * current element is gain-routed and `url` is cross-origin (ME-06).
+   */
+  prepareElementForSrc?: (
+    trackId: string,
+    role: 'active' | 'prewarm' | 'audio',
+    element: VideoElementLike,
+    url: string,
+  ) => VideoElementLike;
 }
-
-const DEFAULT_SUBTITLE_MAX_WIDTH_FRACTION = 0.9;
-/** Fallback measurer used in headless / pre-measure contexts. */
-const fallbackMeasure: TextMeasurer = (text, style) => text.length * style.fontSize * 0.5;
 
 export class MultiTrackPlaybackEngine {
   readonly clock: PlaybackClock;
@@ -106,7 +121,7 @@ export class MultiTrackPlaybackEngine {
   private _audioPool: AudioSyncPool | null = null;
   private _clockUnsub: (() => void) | null = null;
   private _disposed = false;
-  private _measure: TextMeasurer = fallbackMeasure;
+  private _assetReadyUnsub: (() => void) | null = null;
 
   // §5.3 — readiness-repaint listeners bound to decode elements on first
   // resolution; unbound on dispose to avoid leaking listeners.
@@ -160,10 +175,16 @@ export class MultiTrackPlaybackEngine {
       throw new Error('MultiTrackPlaybackEngine.attach: instance has been disposed');
     }
     this._deps = deps;
-    this._measure = deps.measureSubtitle ?? fallbackMeasure;
     this._debugEnabled = isPreviewDebugEnabled();
     this.compositor.attach(deps.canvas, deps.viewport ?? undefined);
     this._buildPools(deps);
+    // PV3-02: the canvas is the only visible image raster, so an image that
+    // finishes loading while paused must repaint the frame on screen.
+    this._assetReadyUnsub?.();
+    this._assetReadyUnsub = this.compositor.onAssetReady(() => {
+      if (this._disposed || this._phase === 'playing') return;
+      this._renderAt(this._lastRenderComp, false);
+    });
 
     this.playhead.bindOnWrite((t) => {
       try {
@@ -180,6 +201,7 @@ export class MultiTrackPlaybackEngine {
 
   /** Construct the per-track video pool + audio pool from the attach deps. */
   private _buildPools(deps: MultiTrackAttachDeps): void {
+    const { applyVolume, prepareElementForSrc } = deps;
     this._videoPool = new VideoSourcePool(
       (trackId) => {
         const els = deps.resolveTrackElements(trackId);
@@ -192,11 +214,40 @@ export class MultiTrackPlaybackEngine {
         return { active: els.active, prewarm: els.prewarm };
       },
       deps.resolveSource,
+      VIDEO_SEEK_TOLERANCE_SEC,
+      {
+        applyVolume: applyVolume && ((_trackId, element, volume) => applyVolume(element, volume)),
+        prepareElementForSrc: prepareElementForSrc && ((trackId, role, element, url) => {
+          const next = prepareElementForSrc(trackId, role, element, url);
+          // A recycled element is new to the engine and the resolver will not
+          // see it until the next frame — which never comes while paused — so
+          // bind its readiness repaint now or the paused frame stays black.
+          if (next !== element) this._bindReadinessRepaint(next);
+          return next;
+        }),
+      },
     );
-    this._audioPool = new AudioSyncPool((trackId) => {
-      const el = deps.resolveAudioElement(trackId);
-      return el ? toAudioElement(el) : null;
-    });
+    // The audio pool sees memoized adapters; the volume hooks act on the host's
+    // real element for the track, which is what the adapter wraps.
+    this._audioPool = new AudioSyncPool(
+      (trackId) => {
+        const el = deps.resolveAudioElement(trackId);
+        return el ? toAudioElement(el) : null;
+      },
+      {
+        applyVolume: applyVolume && ((trackId, adapter, volume) => {
+          const el = deps.resolveAudioElement(trackId);
+          if (el) applyVolume(el, volume);
+          else adapter.volume = Math.min(1, Math.max(0, volume));
+        }),
+        prepareElementForSrc: prepareElementForSrc && ((trackId, adapter, url) => {
+          const el = deps.resolveAudioElement(trackId);
+          if (!el) return adapter;
+          const next = prepareElementForSrc(trackId, 'audio', el, url);
+          return next === el ? adapter : toAudioElement(next);
+        }),
+      },
+    );
   }
 
   getPhase(): MultiTrackPhase {
@@ -245,11 +296,16 @@ export class MultiTrackPlaybackEngine {
     if (this._phase !== 'ended') this._setPhase('paused');
   }
 
-  /** Seek to `t` and paint a single frame; resumes playing if it was playing. */
+  /**
+   * Seek to `t` and paint a single frame; resumes playing if it was playing.
+   * The target is clamped to the render end (N-06): past it there is nothing to
+   * draw, so the playhead would show black and a progress beyond 100%.
+   */
   seek(t: number): void {
     if (this._disposed || !this._deps) return;
     const wasPlaying = this._phase === 'playing';
-    const target = Math.max(0, t);
+    const total = this._deps.timeline.getTotalDuration();
+    const target = total > 0 ? Math.min(Math.max(0, t), total) : Math.max(0, t);
     this.clock.stop();
     this.playhead.forceSet(target);
     if (wasPlaying) {
@@ -286,6 +342,8 @@ export class MultiTrackPlaybackEngine {
     this._clockUnsub = null;
     this._cameraDegradeUnsub?.();
     this._cameraDegradeUnsub = null;
+    this._assetReadyUnsub?.();
+    this._assetReadyUnsub = null;
     this._disarmStartReanchor();
     this._unbindReadinessRepaint();
     try {
@@ -391,14 +449,12 @@ export class MultiTrackPlaybackEngine {
   private _assemble(videoEntries: ActiveVideoEntry[], comp: number): CompositorLayer[] {
     if (!this._deps) return [];
     const tl = this._deps.timeline;
-    const maxWidth = this._deps.canvas.width * DEFAULT_SUBTITLE_MAX_WIDTH_FRACTION;
     return assembleLayers({
       videoEntries,
       subtitleItems: tl.getSubtitleItems(),
       imageItems: tl.getImageItems(),
       t: comp,
-      subtitleMaxWidthPx: maxWidth,
-      measureSubtitle: this._measure,
+      output: this._deps.outputSize,
     });
   }
 

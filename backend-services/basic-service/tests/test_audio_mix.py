@@ -16,6 +16,7 @@ from app.services.composition.audio_mix import (
     AudioMixPlan,
     AudioSource,
     build_audio_mix,
+    chunk_sources,
 )
 
 
@@ -126,3 +127,10 @@ def test_wired_builder_equals_inline_for_single_zero_delay_source():
     expected = _inline_mix_filter(processed_audio_paths, actual_total_duration)
     plan = build_audio_mix([AudioSource(start_time=0.0)], actual_total_duration)
     assert plan.filter_complex == expected
+
+
+def test_chunk_sources_plan():
+    """400 clip sources are mixed 64 at a time so no command passes 32767 chars (EX3-04)."""
+    assert chunk_sources(0) == []
+    assert [list(chunk) for chunk in chunk_sources(5, max_inputs=2)] == [[0, 1], [2, 3], [4]]
+    assert [len(chunk) for chunk in chunk_sources(400)] == [64] * 6 + [16]

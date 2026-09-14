@@ -11,6 +11,7 @@
  */
 
 import type { VideoSequenceItem } from '../types';
+import type { SubtitleLineLayout } from '../lib/subtitleLayout';
 import type { ResolvedCameraDraw, StillCameraInput } from './camera/types';
 
 /**
@@ -110,9 +111,14 @@ export type CompositorLayer =
   | {
       kind: 'subtitle';
       id: string;
-      /** Pre-wrapped lines (SubtitleLayer owns layout). */
-      lines: string[];
-      style: SubtitleStyle;
+      /**
+       * Lines laid out in OUTPUT pixels (EXO-09): the compositor scales them by
+       * `frame.height / outputHeight`, so preview size and placement match export.
+       */
+      lines: SubtitleLineLayout[];
+      style: { fontSize: number; color: string; background?: string; fontFamily?: string };
+      /** Height of the exported frame the lines were laid out against. */
+      outputHeight: number;
       opacity: number;
       z: number;
     }
@@ -152,6 +158,11 @@ export interface VideoTrackGroup {
   /** Z-order index — lower draws first (bottom). */
   z: number;
   items: import('../types').VideoSequenceItem[];
+  /**
+   * Preview master volume [0,1] multiplied into every clip's volume (PV3-03).
+   * Monitoring only — never part of the project data or the export.
+   */
+  volumeScale?: number;
 }
 
 /** Track-grouped audio sequences for the audio sync pool. */

@@ -11,8 +11,10 @@
  * {@link MultiTrackAttachDeps} needs:
  *   - `canvas`               — the preview canvas (sized in device px, DPR-aware);
  *   - `resolveTrackElements` — the active + prewarm decode `<video>` for a track;
- *   - `resolveAudioElement`  — the hidden media element for an audio track;
- *   - `measureSubtitle`      — a real 2d-context text measurer.
+ *   - `resolveAudioElement`  — the hidden media element for an audio track.
+ *
+ * Subtitles are laid out in output pixels (EXO-09), so the host no longer
+ * measures text.
  *
  * It owns NO business logic and NO engine lifecycle — the hook
  * ({@link useCompositionPlayback}) attaches/plays/seeks/disposes the engine. The
@@ -31,7 +33,13 @@ import React, {
 } from 'react';
 import type { TrackVideoElements } from '../../playback';
 import type { VideoElementLike } from '../../playback';
-import type { TextMeasurer, ResolvedSubtitleStyle } from '../../playback/SubtitleLayer';
+import { PreviewGainRouter } from '../../playback/audio/PreviewGainRouter';
+
+/** Which pooled element of a track a volume / recycle request is about. */
+export type PreviewElementRole = 'active' | 'prewarm' | 'audio';
+
+// ME-06：远程未缓存素材在预览中听不出超过 100% 的音量；每个会话只提示一次。
+let volumeBoostUnavailableNotified = false;
 
 /** Hidden decode source — off-screen so the canvas is the user-visible surface. */
 const HIDDEN_MEDIA_STYLE: React.CSSProperties = {
@@ -70,8 +78,26 @@ export interface PreviewCanvasHandle {
    * and cached. Returns null only before the hidden host mounts.
    */
   resolveAudioElement(trackId: string): VideoElementLike | null;
-  /** A real 2d-context subtitle text measurer using the compositor's font. */
-  measureSubtitle: TextMeasurer;
+  /**
+   * Write an effective [0,2] preview volume to a pooled element (ME-06): above
+   * 100% a same-origin element is routed through a WebAudio gain stage.
+   */
+  applyVolume(element: VideoElementLike, volume: number): void;
+  /**
+   * Replace a track's pooled element with a fresh, un-routed one (a gain-routed
+   * element cannot play a cross-origin url). Returns the new element, or null
+   * when the track has none yet.
+   */
+  recycleElement(trackId: string, role: PreviewElementRole): VideoElementLike | null;
+  /** `element`, or a recycled replacement when it is gain-routed and `url` is cross-origin. */
+  prepareElementForSrc(
+    trackId: string,
+    role: PreviewElementRole,
+    element: VideoElementLike,
+    url: string,
+  ): VideoElementLike;
+  /** Resume the preview AudioContext; called when playback starts. */
+  resumeAudio(): void;
   /**
    * Subscribe to viewport (canvas) size changes. The compositor's rAF loop is
    * stopped while paused, so a resize would not repaint by itself; the
@@ -87,13 +113,8 @@ export interface PreviewCanvasProps {
   ariaLabel?: string;
   /** Inline style for the wrapping <div> (the panel uses it for letterbox). */
   style?: React.CSSProperties;
-}
-
-/** Build the canvas font string the compositor uses, for accurate measuring. */
-function subtitleFont(style: ResolvedSubtitleStyle): string {
-  const italic = style.italic ? 'italic ' : '';
-  const bold = style.bold ? 'bold ' : '';
-  return `${italic}${bold}${style.fontSize}px sans-serif`;
+  /** Called at most once per session when a >100% volume cannot be boosted (ME-06). */
+  onVolumeBoostUnavailable?: () => void;
 }
 
 /**
@@ -101,7 +122,7 @@ function subtitleFont(style: ResolvedSubtitleStyle): string {
  * lifecycle is driven by {@link useCompositionPlayback} via the exposed handle.
  */
 const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
-  function PreviewCanvas({ className, ariaLabel, style }, ref) {
+  function PreviewCanvas({ className, ariaLabel, style, onVolumeBoostUnavailable }, ref) {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const sourceHostRef = useRef<HTMLDivElement | null>(null);
@@ -110,12 +131,13 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
     // Cleared on unmount so a remount starts fresh.
     const videoPoolRef = useRef<Map<string, TrackVideoElements>>(new Map());
     const audioPoolRef = useRef<Map<string, VideoElementLike>>(new Map());
-    // A single offscreen 2d context dedicated to text measurement so it never
-    // contends with the compositor's draw context.
-    const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
     // Viewport-change subscribers (the orchestration hook requests a non-playing
     // repaint on resize). Ref-backed so the handle method stays stable.
     const viewportListenersRef = useRef<Set<() => void>>(new Set());
+    // ME-06: one gain router per host, created on first use, disposed on unmount.
+    const gainRouterRef = useRef<PreviewGainRouter | null>(null);
+    const onVolumeBoostUnavailableRef = useRef(onVolumeBoostUnavailable);
+    onVolumeBoostUnavailableRef.current = onVolumeBoostUnavailable;
 
     const createHiddenVideo = useCallback((): HTMLVideoElement => {
       const el = document.createElement('video');
@@ -182,16 +204,63 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
       };
     }, []);
 
-    const measureSubtitle = useCallback<TextMeasurer>((text, style) => {
-      let ctx = measureCtxRef.current;
-      if (!ctx) {
-        const measureCanvas = document.createElement('canvas');
-        ctx = measureCanvas.getContext('2d');
-        measureCtxRef.current = ctx;
-      }
-      if (!ctx) return text.length * style.fontSize * 0.5;
-      ctx.font = subtitleFont(style);
-      return ctx.measureText(text).width;
+    const gainRouter = useCallback((): PreviewGainRouter => {
+      if (!gainRouterRef.current) gainRouterRef.current = new PreviewGainRouter();
+      return gainRouterRef.current;
+    }, []);
+
+    const applyVolume = useCallback((element: VideoElementLike, volume: number) => {
+      const outcome = gainRouter().apply(element as unknown as HTMLMediaElement, volume);
+      if (outcome !== 'unboostable' || volumeBoostUnavailableNotified) return;
+      volumeBoostUnavailableNotified = true;
+      onVolumeBoostUnavailableRef.current?.();
+    }, [gainRouter]);
+
+    /** Drop `old` (pause, unload, disconnect, detach) and hand back a fresh element. */
+    const replaceElement = useCallback(
+      (old: VideoElementLike, create: () => HTMLVideoElement): HTMLVideoElement => {
+        const media = old as unknown as HTMLVideoElement;
+        gainRouterRef.current?.release(media);
+        media.pause();
+        media.removeAttribute('src');
+        media.load();
+        media.remove();
+        return create();
+      },
+      [],
+    );
+
+    const recycleElement = useCallback(
+      (trackId: string, role: PreviewElementRole): VideoElementLike | null => {
+        if (role === 'audio') {
+          const old = audioPoolRef.current.get(trackId);
+          if (!old) return null;
+          const next = replaceElement(old, createHiddenAudio) as unknown as VideoElementLike;
+          audioPoolRef.current.set(trackId, next);
+          return next;
+        }
+        const pair = videoPoolRef.current.get(trackId);
+        if (!pair || !pair[role]) return null;
+        const next = replaceElement(pair[role]!, createHiddenVideo) as unknown as VideoElementLike;
+        videoPoolRef.current.set(trackId, { ...pair, [role]: next });
+        return next;
+      },
+      [createHiddenAudio, createHiddenVideo, replaceElement],
+    );
+
+    const prepareElementForSrc = useCallback(
+      (trackId: string, role: PreviewElementRole, element: VideoElementLike, url: string) => {
+        const router = gainRouterRef.current;
+        if (!router || !router.needsRecycleFor(element as unknown as HTMLMediaElement, url)) {
+          return element;
+        }
+        return recycleElement(trackId, role) ?? element;
+      },
+      [recycleElement],
+    );
+
+    const resumeAudio = useCallback(() => {
+      void gainRouterRef.current?.resume();
     }, []);
 
     // The handle is ref-backed, so it is stable across renders — the hook reads
@@ -201,10 +270,21 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
         getCanvas: () => canvasRef.current,
         resolveTrackElements,
         resolveAudioElement,
-        measureSubtitle,
+        applyVolume,
+        recycleElement,
+        prepareElementForSrc,
+        resumeAudio,
         subscribeViewportChange,
       }),
-      [resolveTrackElements, resolveAudioElement, measureSubtitle, subscribeViewportChange],
+      [
+        resolveTrackElements,
+        resolveAudioElement,
+        applyVolume,
+        recycleElement,
+        prepareElementForSrc,
+        resumeAudio,
+        subscribeViewportChange,
+      ],
     );
 
     useImperativeHandle(ref, () => handle, [handle]);
@@ -256,7 +336,8 @@ const PreviewCanvas = forwardRef<PreviewCanvasHandle, PreviewCanvasProps>(
         videoPool.clear();
         audioPool.clear();
         viewportListeners.clear();
-        measureCtxRef.current = null;
+        gainRouterRef.current?.dispose();
+        gainRouterRef.current = null;
       };
     }, []);
 

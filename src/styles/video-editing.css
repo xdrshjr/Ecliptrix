@@ -187,14 +187,14 @@
 .video-editing-markdown-editor .w-md-editor-text-textarea::-webkit-scrollbar-thumb,
 .video-editing-markdown-editor .w-md-editor-text-pre::-webkit-scrollbar-thumb,
 .video-editing-markdown-editor .w-md-editor-preview::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.4);
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
   border-radius: 3px;
 }
 
 .video-editing-markdown-editor .w-md-editor-text-textarea::-webkit-scrollbar-thumb:hover,
 .video-editing-markdown-editor .w-md-editor-text-pre::-webkit-scrollbar-thumb:hover,
 .video-editing-markdown-editor .w-md-editor-preview::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.6);
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 }
 
 /* 修复特定class的高度问题 - 增强约束 */
@@ -309,12 +309,12 @@
 }
 
 .materials-grid-container::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.4);
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
   border-radius: 3px;
 }
 
 .materials-grid-container::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.6);
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 }
 
 /* 素材卡片样式增强 */
@@ -576,12 +576,12 @@
 }
 
 .video-editing-preview-lower::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.4);
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
   border-radius: 3px;
 }
 
 .video-editing-preview-lower::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.6);
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 }
 
 /* 响应式设计更新 - 针对新布局优化 */
@@ -999,11 +999,6 @@
   outline-offset: 2px;
 }
 
-.timeline-toolbar button:focus {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
 /* High Contrast Mode */
 @media (prefers-contrast: high) {
   .timeline-item {
@@ -1119,13 +1114,13 @@
 }
 
 .track-container > div:first-child::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.4);
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
   border-radius: 4px;
   transition: background-color 0.2s ease;
 }
 
 .track-container > div:first-child::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.6);
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 }
 
 .track-container > div:first-child::-webkit-scrollbar-corner {
@@ -1301,13 +1296,13 @@
 }
 
 .video-cut-clip-list::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.4);
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
   border-radius: 3px;
   transition: background 0.2s ease;
 }
 
 .video-cut-clip-list::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.6);
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 }
 
 /* backdrop blur removed for flat design */

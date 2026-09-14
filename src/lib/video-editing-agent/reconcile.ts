@@ -8,10 +8,11 @@
  * and locked tracks are intentionally untouched (subtitles must keep tight
  * audio alignment; locked tracks belong to the user).
  *
- * Invariant S8 ("a write is stable"): a clip the agent adds or moves leaves
- * its track exactly as the UI's organize pass would, so the next unrelated
- * user edit never re-packs the agent's layout. The requested start time is an
- * insertion point — on a tie the operated clip goes first.
+ * Invariant S8 ("a write is stable"): every agent edit (add, move, delete,
+ * trim, resize) leaves its tracks exactly as the UI's organize pass would, so
+ * the next unrelated user edit never re-packs the agent's layout. The
+ * requested start time of an add / move is an insertion point — on a tie the
+ * operated clip goes first.
  *
  * No React, DOM, or Zustand imports — this module is safe to load on the
  * server (Next.js API route) and in the browser.
@@ -28,10 +29,9 @@ const ORDER_PRECISION = 1e6;
 /**
  * Accepted operation shape for reconcile. `TimelineOperation` (from the
  * video-editing-agent types) and `AgentTimelineOperation` (from `@/types`)
- * share every field reconcile reads but differ on unrelated ones like
- * `material.url`, so accepting the union lets both the in-browser
- * `OperationApplier` and the server-side `agent.ts` call this helper
- * without an unsafe cast.
+ * share every field reconcile reads but are declared separately, so
+ * accepting the union lets both the in-browser `OperationApplier` and the
+ * server-side `agent.ts` call this helper without an unsafe cast.
  */
 type ReconcilableOperation = TimelineOperation | AgentTimelineOperation;
 
@@ -182,12 +182,13 @@ function anchorClipIdOf(operation?: ReconcilableOperation): string | undefined {
 }
 
 /**
- * Adds and moves pack their tracks even without an overlap: a gap they leave
- * would be closed by the next UI edit, moving clips the agent already
- * reported (S8). Other operations only repair overlaps they created.
+ * Every timeline edit packs its tracks even without an overlap: a gap it
+ * leaves (a deleted, trimmed or shortened clip) would be closed by the next
+ * UI edit, moving clips the agent already reported (S8). Only the reconcile
+ * pass without a triggering operation limits itself to overlapping tracks.
  */
 function packsWithoutOverlap(operation?: ReconcilableOperation): boolean {
-  return operation?.type === 'add_clip' || operation?.type === 'move_clip';
+  return operation !== undefined;
 }
 
 export interface ReconcileResult {

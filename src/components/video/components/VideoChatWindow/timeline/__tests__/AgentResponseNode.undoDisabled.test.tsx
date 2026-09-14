@@ -1,23 +1,27 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
-import * as jsxRuntime from 'react/jsx-runtime';
-import ts from 'typescript';
 // @ts-expect-error -- Vite resolves ?raw imports; this repo has no ambient typing for them
 import responseNodeSource from '../AgentResponseNode.tsx?raw';
 // @ts-expect-error -- Vite resolves ?raw imports; this repo has no ambient typing for them
 import chatPanelSource from '../TimelineChatPanel.tsx?raw';
 // @ts-expect-error -- Vite resolves ?raw imports; this repo has no ambient typing for them
 import chatWindowSource from '../../VideoChatWindow.tsx?raw';
-import * as trackPatch from '@/lib/video-editing-agent/trackPatch';
+import {
+  compileComponent,
+  localeContextModule,
+  reactModules,
+} from '@/components/video/timeline/__tests__/test-utils/compileComponent';
+import { getTranslations } from '@/lib/i18n';
 import * as animations from '../animations';
 import * as utils from '../utils';
 import type { AgentResponseNodeData } from '../types';
+import { framerMotionModule } from './test-utils/motionStub';
 
 /**
  * AG2-10 / RV-05. tsconfig keeps JSX as `preserve`, so the component is
  * compiled from its raw source with the TypeScript API and rendered with
- * framer-motion, markdown and the locale context stubbed out.
+ * framer-motion and markdown stubbed out and the real English translations.
  */
 
 interface ResponseNodeProps {
@@ -27,58 +31,21 @@ interface ResponseNodeProps {
   undoDisabled?: boolean;
 }
 
-const MOTION_ONLY_PROPS = ['variants', 'initial', 'animate', 'exit', 'layout', 'transition'];
-const motionComponents = new Map<string, React.ElementType>();
-
-function motionComponent(tag: string): React.ElementType {
-  const cached = motionComponents.get(tag);
-  if (cached) return cached;
-  const component = React.forwardRef<Element, Record<string, unknown>>(function MotionStub(props, ref) {
-    const domProps: Record<string, unknown> = { ...props, ref };
-    for (const key of MOTION_ONLY_PROPS) delete domProps[key];
-    return React.createElement(tag, domProps);
-  });
-  component.displayName = `motion.${tag}`;
-  motionComponents.set(tag, component);
-  return component;
-}
+const en = getTranslations('en');
 
 function loadResponseNode(): React.FC<ResponseNodeProps> {
-  const { outputText } = ts.transpileModule(String(responseNodeSource), {
-    compilerOptions: {
-      jsx: ts.JsxEmit.ReactJSX,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-      esModuleInterop: true,
-    },
-  });
-  const modules: Record<string, unknown> = {
-    react: React,
-    'react/jsx-runtime': jsxRuntime,
-    'framer-motion': {
-      motion: new Proxy({}, { get: (_target, tag: string) => motionComponent(tag) }),
-      AnimatePresence: ({ children }: { children?: React.ReactNode }) =>
-        React.createElement(React.Fragment, null, children),
-    },
+  return compileComponent<ResponseNodeProps>(String(responseNodeSource), {
+    ...reactModules(),
+    ...framerMotionModule(),
+    ...localeContextModule(),
     '@/components/chat/MarkdownRenderer': {
       __esModule: true,
       default: ({ content }: { content: string }) => React.createElement('div', null, content),
     },
-    '@/contexts/LocaleContext': {
-      useLocale: () => ({ t: { agentUndo: { blockedWhileRunning: 'The agent is still working' } } }),
-    },
-    '@/lib/video-editing-agent/trackPatch': trackPatch,
     './utils': utils,
     './animations': animations,
     './TimelineNodeIcon': { __esModule: true, default: () => null },
-  };
-  const compiled = { exports: {} as { default?: React.FC<ResponseNodeProps> } };
-  const requireModule = (id: string) => {
-    if (id in modules) return modules[id];
-    throw new Error(`unmapped import ${id}`);
-  };
-  new Function('require', 'module', 'exports', outputText)(requireModule, compiled, compiled.exports);
-  return compiled.exports.default!;
+  });
 }
 
 let AgentResponseNode: React.FC<ResponseNodeProps>;
@@ -98,8 +65,8 @@ function responseNode(): AgentResponseNodeData {
     timestamp: new Date(0),
     content: 'Moved two clips.',
     toolCalls: [
-      { id: 'tc-1', name: 'move_clip', params: {}, status: 'completed' },
-      { id: 'tc-2', name: 'add_to_track', params: {}, status: 'completed' },
+      { id: 'tc-1', name: 'move_clip', params: {}, status: 'completed', changedTimeline: true },
+      { id: 'tc-2', name: 'add_to_track', params: {}, status: 'completed', changedTimeline: true },
     ],
     isUndone: false,
     messageId: 'msg-1',
@@ -112,18 +79,18 @@ describe('AgentResponseNode undo while the agent runs', () => {
     const onUndoAll = vi.fn();
     render(React.createElement(AgentResponseNode, { node: responseNode(), onUndoAll, undoDisabled: true }));
 
-    const undoAll = screen.getByRole('button', { name: 'Undo All' });
+    const undoAll = screen.getByRole('button', { name: en.agentTimeline.undoAll });
     fireEvent.click(undoAll);
 
     expect({
       undoAllDisabled: (undoAll as HTMLButtonElement).disabled,
-      undoSingleDisabled: (screen.getByRole('button', { name: 'Undo Single' }) as HTMLButtonElement).disabled,
+      undoSingleDisabled: (screen.getByRole('button', { name: en.agentTimeline.undoStep }) as HTMLButtonElement).disabled,
       title: undoAll.getAttribute('title'),
       undoCalls: onUndoAll.mock.calls.length,
     }).toEqual({
       undoAllDisabled: true,
       undoSingleDisabled: true,
-      title: 'The agent is still working',
+      title: en.agentUndo.blockedWhileRunning,
       undoCalls: 0,
     });
   });
@@ -132,7 +99,7 @@ describe('AgentResponseNode undo while the agent runs', () => {
     const onUndoAll = vi.fn();
     render(React.createElement(AgentResponseNode, { node: responseNode(), onUndoAll }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Undo All' }));
+    fireEvent.click(screen.getByRole('button', { name: en.agentTimeline.undoAll }));
 
     expect(onUndoAll).toHaveBeenCalledWith('msg-1');
   });

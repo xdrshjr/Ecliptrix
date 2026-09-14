@@ -80,8 +80,6 @@ export type {
   VideoSequenceItem,
   AudioSequenceItem,
   // Service types
-  ResizeResult,
-  InteractionType,
   TimelineAction,
   // Machine types
   DragContext,

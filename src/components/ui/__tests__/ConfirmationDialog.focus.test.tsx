@@ -8,6 +8,9 @@ import dialogSource from '../ConfirmationDialog.tsx?raw';
 import type { ConfirmationDialogProps } from '../ConfirmationDialog';
 import * as focusTrap from '../focusTrap';
 import { shouldTimelineHandleKeyEvent } from '@/components/video/timeline/shortcutOwnership';
+import { getTranslations, type SupportedLocale } from '@/lib/i18n';
+
+let activeLocale: SupportedLocale = 'en';
 
 /**
  * tsconfig keeps JSX as `preserve`, which Vitest's esbuild honours, so the
@@ -28,6 +31,9 @@ function loadConfirmationDialog(): React.FC<ConfirmationDialogProps> {
     react: React,
     'react/jsx-runtime': jsxRuntime,
     './focusTrap': focusTrap,
+    '@/contexts/LocaleContext': {
+      useLocale: () => ({ locale: activeLocale, setLocale: () => {}, t: getTranslations(activeLocale) }),
+    },
   };
   const compiled = { exports: {} as { default?: React.FC<ConfirmationDialogProps> } };
   const requireModule = (id: string) => {
@@ -59,6 +65,7 @@ function dialogProps(overrides: Partial<ConfirmationDialogProps> = {}): Confirma
 }
 
 beforeEach(() => {
+  activeLocale = 'en';
   vi.useFakeTimers();
 });
 
@@ -124,6 +131,37 @@ describe('ConfirmationDialog focus and keyboard behaviour', () => {
     dialog.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Replace' }));
+  });
+
+  it('dialog root sits on the z-modal layer above the agent dock', () => {
+    // The agent dock (z-dock 850 / z-dock-panel 860) must stay below every modal.
+    render(React.createElement(ConfirmationDialog, dialogProps()));
+    const rootClasses = screen.getByRole('dialog').parentElement!.className.split(/\s+/);
+    expect({ modalLayer: rootClasses.includes('z-modal'), arbitraryLayer: rootClasses.some((c) => c.startsWith('z-[')) })
+      .toEqual({ modalLayer: true, arbitraryLayer: false });
+  });
+
+  it('default button labels follow the active locale', () => {
+    // Omitted labels fall back to the locale (`??`), exactly like props a caller never passed.
+    const withoutLabels = dialogProps({ confirmText: undefined, cancelText: undefined });
+    activeLocale = 'en';
+    const { unmount } = render(React.createElement(ConfirmationDialog, withoutLabels));
+    const english = screen.getAllByRole('button').map((button) => button.textContent);
+    unmount();
+    activeLocale = 'zh-CN';
+    render(React.createElement(ConfirmationDialog, withoutLabels));
+    const chinese = screen.getAllByRole('button').map((button) => button.textContent);
+    const en = getTranslations('en').common;
+    const zh = getTranslations('zh-CN').common;
+    expect({ english, chinese }).toEqual({ english: [en.cancel, en.confirm], chinese: [zh.cancel, zh.confirm] });
+  });
+
+  it('Escape is marked handled so an enclosing modal does not also close', () => {
+    render(React.createElement(ConfirmationDialog, dialogProps()));
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    cancel.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it('restores focus after closing', () => {

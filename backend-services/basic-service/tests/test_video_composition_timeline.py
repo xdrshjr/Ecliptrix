@@ -9,8 +9,9 @@ exports over a black canvas without any video item.
 
 from unittest.mock import MagicMock, patch
 
-from app.models.video_models import AspectRatio
+from app.models.video_models import AspectRatio, VideoCompositionItem
 from app.services.composition.composition_outcome import frame_count_for
+from app.services.composition.media_probe import VideoStreamInfo
 from app.services.video_composition_service import VideoCompositionService
 from tests.composition_harness import (
     MODULE,
@@ -93,7 +94,7 @@ def test_normalized_clip_uses_exact_frame_count(tmp_path):
     }
 
     with patch(f"{MODULE}.subprocess.run", side_effect=ffmpeg), \
-            patch.object(VideoCompositionService, "_get_video_properties", return_value=(1920, 1080, 30.0)), \
+            patch.object(VideoCompositionService, "_cv2_video_properties", return_value=(1920, 1080, 30.0)), \
             patch(f"{MODULE}.cv2.VideoCapture", return_value=capture):
         result = service._normalize_video(video_info)
 
@@ -115,7 +116,7 @@ def test_normalized_clip_counts_frames_between_rounded_timeline_boundaries(tmp_p
     }
 
     with patch(f"{MODULE}.subprocess.run", side_effect=ffmpeg), \
-            patch.object(VideoCompositionService, "_get_video_properties", return_value=(1920, 1080, 30.0)), \
+            patch.object(VideoCompositionService, "_cv2_video_properties", return_value=(1920, 1080, 30.0)), \
             patch(f"{MODULE}.cv2.VideoCapture", return_value=capture):
         service._normalize_video(video_info)
 
@@ -230,3 +231,54 @@ def test_concat_fast_path_failure_reports_the_compose_stage_readably(tmp_path):
     details = service.compositions["comp-1"]["error_details"]
     assert response.success is False
     assert (details["composition_stage"], details["error_summary"]) == ("compose", "Invalid argument")
+
+
+def test_invalid_clip_window_is_not_retried(tmp_path):
+    """EX3-02: a deterministic failure used to burn 4 attempts and 7 s of back-off."""
+    service = make_service(tmp_path)
+    failure = {
+        "success": False, "error": "Invalid clipping parameters: clip duration is -1.00s",
+        "index": 0, "retryable": False,
+    }
+
+    with patch.object(VideoCompositionService, "_normalize_video", return_value=failure) as normalize, \
+            patch(f"{MODULE}.time.sleep", side_effect=AssertionError("must not back off")):
+        result = service._normalize_video_with_retry({"index": 0})
+
+    assert normalize.call_count == 1
+    assert (result["success"], result["attempts"]) == (False, 1)
+
+
+def test_empty_clip_window_is_reported_as_not_retryable(tmp_path):
+    service = make_service(tmp_path)
+    video_info = {
+        'video_path': media_file(tmp_path, "source.mp4"), 'index': 0, 'temp_dir': str(tmp_path),
+        'target_fps': 30, 'ffmpeg_path': 'ffmpeg', 'clip_start': 5.0, 'clip_end': 5.0,
+        'target_aspect_ratio': AspectRatio.RATIO_16_9, 'camera_motion': None, 'camera_label': 'clip',
+    }
+    source = VideoStreamInfo(width=1920, height=1080, fps=30.0, duration=10.0, rotation=0)
+
+    with patch.object(VideoCompositionService, "_describe_source", return_value=source):
+        result = service._normalize_video(video_info)
+
+    assert (result["success"], result["retryable"]) == (False, False)
+
+
+def test_split_clips_of_one_source_are_not_copied(tmp_path):
+    """EX3-03: every clip cut from one 2 GB recording copied the whole file to temp."""
+    service = make_service(tmp_path)
+    source = media_file(tmp_path, "recording.mp4")
+    clips = [
+        VideoCompositionItem(
+            id=f"cut-{n}", name=f"cut-{n}", url=source, start_time=n * 2.0, duration=2.0,
+            track_id="video-track-1", clip_start=n * 2.0, clip_end=n * 2.0 + 2.0,
+        )
+        for n in range(3)
+    ]
+
+    with composing(FakeFfmpeg()) as normalizer, patch(f"{MODULE}.shutil.copy2") as copy:
+        response = service._compose_video_sync("comp-1", composition_request(video_items=clips, total_duration=6.0))
+
+    assert response.success is True
+    copy.assert_not_called()
+    assert {call.args[1]["video_path"] for call in normalizer.call_args_list} == {source}

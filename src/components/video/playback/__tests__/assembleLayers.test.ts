@@ -16,11 +16,8 @@ import {
   buildSubtitleLayers,
   type ActiveVideoEntry,
 } from '../internal/assembleLayers';
-import type { TextMeasurer } from '../SubtitleLayer';
 import type { ImageOverlayInput } from '../ImageOverlayLayer';
 import type { VideoSequenceItem, SubtitleSequenceItem } from '../../types';
-
-const measure: TextMeasurer = (text, style) => text.length * style.fontSize * 0.5;
 
 function clip(over: Partial<VideoSequenceItem> & { id: string }): VideoSequenceItem {
   return {
@@ -101,8 +98,7 @@ describe('assembleLayers — z-order across kinds', () => {
       subtitleItems,
       imageItems,
       t: 5,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: measure,
+      output: { width: 1920, height: 1080 },
     });
     const kinds = layers.map((l) => l.kind);
     // video, video, image, subtitle in ascending z.
@@ -129,8 +125,7 @@ describe('assembleLayers — z-order across kinds', () => {
       subtitleItems: [{ id: 's', text: 'x', startTime: 100, duration: 5, trackId: 'st' }],
       imageItems: [{ id: 'i', src: '/x.png', startTime: 100, duration: 5 }],
       t: 5,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: measure,
+      output: { width: 1920, height: 1080 },
     });
     expect(layers.every((l) => l.kind === 'video')).toBe(true);
     expect(layers).toHaveLength(1);
@@ -145,8 +140,7 @@ describe('assembleLayers — z-order across kinds', () => {
         { id: 'back', src: '/b.png', startTime: 0, duration: 10, position: { x: 0, y: 0, width: 0.5, height: 0.5, zIndex: 5 } },
       ],
       t: 5,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: measure,
+      output: { width: 1920, height: 1080 },
     });
     expect(layers.map((l) => l.id)).toEqual(['back', 'front']);
   });
@@ -160,8 +154,7 @@ describe('assembleLayers — z-order across kinds', () => {
         { id: 'negative', src: '/b.png', startTime: 0, duration: 10, position: { x: 0, y: 0, width: 0.5, height: 0.5, zIndex: -40 } },
       ],
       t: 5,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: measure,
+      output: { width: 1920, height: 1080 },
     });
     const subtitleZ = layers.find((l) => l.kind === 'subtitle')!.z;
     const imageZ = layers.filter((l) => l.kind === 'image').map((l) => l.z);
@@ -169,15 +162,17 @@ describe('assembleLayers — z-order across kinds', () => {
   });
 });
 
-describe('buildSubtitleLayers — wrapping + style', () => {
-  it('wraps long text into multiple lines and drops empty layouts', () => {
+describe('buildSubtitleLayers — output-pixel layout (EXO-09)', () => {
+  it('wraps against the output width and drops subtitles with no visible line', () => {
     const items: SubtitleSequenceItem[] = [
       { id: 's', text: 'one two three four five', startTime: 0, duration: 10, trackId: 'st' },
       { id: 'empty', text: '', startTime: 0, duration: 10, trackId: 'st' },
+      { id: 'blank', text: '  \n ', startTime: 0, duration: 10, trackId: 'st' },
     ];
-    // Narrow width so wrapping happens with the test measurer.
-    const layers = buildSubtitleLayers(items, 5, 60, measure, 1_000_000);
-    expect(layers).toHaveLength(1); // empty dropped
-    expect(layers[0].lines.length).toBeGreaterThan(1);
+    // 340 px wide at the default 24 px → floor(240 / 24) = 10 chars per line.
+    const layers = buildSubtitleLayers(items, 5, { width: 340, height: 1080 }, 1_000_000);
+    expect(layers.map((layer) => layer.id)).toEqual(['s']);
+    expect(layers[0].lines.map((line) => line.text)).toEqual(['one two', 'three four', 'five']);
+    expect(layers[0].outputHeight).toBe(1080);
   });
 });

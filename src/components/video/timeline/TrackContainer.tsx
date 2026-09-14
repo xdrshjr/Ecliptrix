@@ -3,22 +3,25 @@
 import React, { useState, useEffect, useCallback, RefObject, useRef } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
-import { TIMELINE_PADDING_SECONDS, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_WHEEL } from './constants';
+import { TIMELINE_PADDING_SECONDS } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 import Track from './Track';
 import type { LocalProxyMaskState } from './TimelineItem';
+import type { MissingMaterialPredicate } from './lib/missingMaterial';
 import { formatTimelineTime } from './timeFormat';
 import TimelinePlayhead from './TimelinePlayhead';
 import PortalTooltip from './PortalTooltip';
 import { TRACK_HEADER_WIDTH } from './theme/timelineTheme';
+import { trackMouseGesture } from './lib/mouseGesture';
 
 // 拖拽滚动状态接口
 interface DragScrollState {
   isDragging: boolean;
-  startX: number;
-  startScrollLeft: number;
   currentCursor: 'default' | 'grab' | 'grabbing';
 }
+
+/** A press that moves less than this (px) before release is a click, not a pan. */
+const CLICK_SLOP_PX = 4;
 
 interface TrackContainerProps {
   scrollRef?: RefObject<HTMLDivElement | null>;
@@ -37,6 +40,8 @@ interface TrackContainerProps {
   onOpenCameraMotion?: (itemId: string) => void;
   /** A material dragged from the materials panel was dropped on a lane. */
   onMaterialDrop: (materialId: string, trackId: string) => void;
+  /** Whether a clip's material is gone; omitted until the library has loaded (N-01). */
+  isMaterialMissing?: MissingMaterialPredicate;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -51,6 +56,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onRetryLocalDownload,
   onOpenCameraMotion,
   onMaterialDrop,
+  isMaterialMissing,
 }) => {
   const { t, locale: contextLocale } = useLocale();
 
@@ -67,7 +73,6 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
 
   // Store actions
   const deselectAll = useTimelineStore((state) => state.deselectAll);
-  const setZoomLevel = useTimelineStore((state) => state.setZoomLevel);
 
   const pixelsPerSecond = zoomLevel * 50;
   // TRACK_HEADER_WIDTH is imported from timelineTheme (single source for the
@@ -78,8 +83,6 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   const [trackHeight, setTrackHeight] = useState(32);
   const [dragScrollState, setDragScrollState] = useState<DragScrollState>({
     isDragging: false,
-    startX: 0,
-    startScrollLeft: 0,
     currentCursor: 'default'
   });
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -129,12 +132,10 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   // 按顺序排序轨道
   const sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
 
-  // 处理轨道背景点击（取消选择）
-  const handleContainerClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      deselectAll();
-    }
-  };
+  // Events from portalled descendants (the volume popover renders into <body>)
+  // still bubble through React to this container; they are not lane gestures.
+  const isFromThisContainer = (e: React.MouseEvent): boolean =>
+    (e.currentTarget as Node).contains(e.target as Node);
 
   // 判断指针当前是否位于交互区域（时间轴素材或左侧轨道控制列）。
   // 这两类元素有自己的点击/拖动语义，不应触发拖拽式横向滚动。
@@ -155,18 +156,51 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     }
   };
 
-  // 处理鼠标按下事件（拖拽滚动）
+  // Document listeners of the drag-scroll gesture in flight (S16).
+  const dragScrollDisposeRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragScrollDisposeRef.current?.(), []);
+
+  const endDragScroll = (cursor: DragScrollState['currentCursor']) => {
+    dragScrollDisposeRef.current = null;
+    setDragScrollState({ isDragging: false, currentCursor: cursor });
+  };
+
+  // 处理鼠标按下事件（拖拽滚动；窗口失焦、主键丢失与卸载时结束，见 S16）
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isFromThisContainer(e)) return;
     if (isPointerOverInteractiveArea(e)) return;
     if (e.button !== 0) return;
     e.preventDefault();
 
-    const startScrollLeftVal = scrollRef?.current?.scrollLeft || 0;
-    setDragScrollState({
-      isDragging: true,
-      startX: e.clientX,
-      startScrollLeft: startScrollLeftVal,
-      currentCursor: 'grabbing'
+    // A still click without modifiers on a lane clears the selection; a drag
+    // pans the view (TL2-08).
+    const target = e.target as HTMLElement;
+    const press = {
+      x: e.clientX,
+      y: e.clientY,
+      onLane: target.closest('.track-content') !== null,
+      withModifier: e.ctrlKey || e.metaKey || e.shiftKey,
+    };
+    const startScrollLeft = scrollRef?.current?.scrollLeft || 0;
+    setDragScrollState({ isDragging: true, currentCursor: 'grabbing' });
+
+    dragScrollDisposeRef.current?.();
+    dragScrollDisposeRef.current = trackMouseGesture({
+      onMove: (moveEvent) => {
+        const el = scrollRef?.current;
+        if (!el || !onScroll) return;
+        const newScrollLeft = computeClampedScrollLeft(el, startScrollLeft, moveEvent.clientX - press.x);
+        el.scrollLeft = newScrollLeft;
+        onScroll(newScrollLeft);
+      },
+      onEnd: (endEvent) => {
+        endDragScroll('grab');
+        if (!endEvent || !press.onLane || press.withModifier) return;
+        if (endEvent.ctrlKey || endEvent.metaKey || endEvent.shiftKey) return;
+        const moved = Math.hypot(endEvent.clientX - press.x, endEvent.clientY - press.y);
+        if (moved < CLICK_SLOP_PX) deselectAll();
+      },
+      onCancel: () => endDragScroll('default'),
     });
   };
 
@@ -182,63 +216,11 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     return Math.min(maxScrollLeft, Math.max(0, raw));
   };
 
-  // 处理鼠标移动事件
+  // 处理鼠标移动事件（拖拽中的平移由文档级手势处理，这里只更新光标）
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragScrollState.isDragging) {
-      updateCursorStyle(e);
-      return;
-    }
-    if (scrollRef?.current && onScroll) {
-      const deltaX = e.clientX - dragScrollState.startX;
-      const newScrollLeft = computeClampedScrollLeft(
-        scrollRef.current,
-        dragScrollState.startScrollLeft,
-        deltaX,
-      );
-      scrollRef.current.scrollLeft = newScrollLeft;
-      onScroll(newScrollLeft);
-    }
+    if (dragScrollState.isDragging || !isFromThisContainer(e)) return;
+    updateCursorStyle(e);
   };
-
-  // 处理鼠标释放事件
-  const handleMouseUp = () => {
-    if (dragScrollState.isDragging) {
-      setDragScrollState(prev => ({ ...prev, isDragging: false, currentCursor: 'grab' }));
-    }
-  };
-
-  // 全局鼠标事件监听（拖拽滚动）
-  useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (dragScrollState.isDragging && scrollRef?.current && onScroll) {
-        const el = scrollRef.current;
-        const deltaX = e.clientX - dragScrollState.startX;
-        const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
-        const newScrollLeft = Math.min(
-          maxScrollLeft,
-          Math.max(0, dragScrollState.startScrollLeft - deltaX),
-        );
-        el.scrollLeft = newScrollLeft;
-        onScroll(newScrollLeft);
-      }
-    };
-
-    const handleGlobalMouseUp = () => {
-      if (dragScrollState.isDragging) {
-        setDragScrollState(prev => ({ ...prev, isDragging: false, currentCursor: 'grab' }));
-      }
-    };
-
-    if (dragScrollState.isDragging) {
-      document.addEventListener('mousemove', handleGlobalMouseMove);
-      document.addEventListener('mouseup', handleGlobalMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleGlobalMouseMove);
-      document.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, [dragScrollState.isDragging, dragScrollState.startX, dragScrollState.startScrollLeft, scrollRef, onScroll]);
 
   // 新增轨道后，将新轨滚入可视区域（垂直方向）
   // Precedence: use scrollRef (outer scroll container) for vertical scrollTop.
@@ -275,17 +257,6 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [pendingScrollTrackId, scrollRef, onScrollConsumed]);
 
-  // 处理Ctrl+滚轮缩放
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      const newZoom = e.deltaY < 0
-        ? Math.min(ZOOM_MAX, zoomLevel * ZOOM_STEP_WHEEL)
-        : Math.max(ZOOM_MIN, zoomLevel / ZOOM_STEP_WHEEL);
-      setZoomLevel(newZoom);
-    }
-  }, [zoomLevel, setZoomLevel]);
-
   // 处理添加轨道
   const handleAddTrack = (type: 'video' | 'image' | 'audio' | 'subtitle') => {
     onAddTrack(type);
@@ -302,11 +273,8 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
           ref={scrollRef}
           className="absolute inset-0 overflow-y-auto overflow-x-auto"
           style={{ cursor: dragScrollState.currentCursor }}
-          onClick={handleContainerClick}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onWheel={handleWheel}
           onScroll={(e) => {
             if (onScroll) {
               onScroll(e.currentTarget.scrollLeft);
@@ -345,6 +313,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   onRetryLocalDownload={onRetryLocalDownload}
                   onOpenCameraMotion={onOpenCameraMotion}
                   onMaterialDrop={onMaterialDrop}
+                  isMaterialMissing={isMaterialMissing}
                 />
               ))
             ) : (
@@ -363,7 +332,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   <div className="flex items-center justify-center space-x-3">
                     <button
                       onClick={() => handleAddTrack('video')}
-                      className="flex items-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                      className="flex items-center space-x-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary-a/90 transition-colors"
                     >
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
@@ -404,11 +373,11 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
           </div>
         </div>
 
-        {/* 左侧滚动渐变指示器 */}
+        {/* 左侧滚动渐变指示器 — 轨道头固定在左侧，渐隐从轨道头右缘开始 */}
         {canScrollLeft && (
           <div
-            className="absolute left-0 top-0 bottom-0 w-8 pointer-events-none z-10"
-            style={{ background: 'linear-gradient(to right, hsl(var(--muted)), transparent)' }}
+            className="absolute top-0 bottom-0 w-8 pointer-events-none z-10"
+            style={{ left: TRACK_HEADER_WIDTH, background: 'linear-gradient(to right, var(--muted), transparent)' }}
           />
         )}
 
@@ -416,7 +385,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
         {canScrollRight && (
           <div
             className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none z-10 flex items-center justify-end pr-1"
-            style={{ background: 'linear-gradient(to left, hsl(var(--muted)), transparent)' }}
+            style={{ background: 'linear-gradient(to left, var(--muted), transparent)' }}
           >
             <svg className="w-4 h-4 text-muted-foreground animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

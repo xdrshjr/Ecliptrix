@@ -83,6 +83,17 @@ module.exports = {
           "4": "var(--chart-4)",
           "5": "var(--chart-5)",
         },
+        // Alpha-capable aliases. The theme variables are hex colours without
+        // <alpha-value>, so `bg-primary/10` generates no CSS at all while
+        // `bg-primary-a/10` does. State tints migrate to these screen by
+        // screen (a global switch would reveal ~580 never-seen tints at once).
+        "primary-a": "color-mix(in srgb, var(--primary) calc(<alpha-value> * 100%), transparent)",
+        "muted-a": "color-mix(in srgb, var(--muted) calc(<alpha-value> * 100%), transparent)",
+        "foreground-a": "color-mix(in srgb, var(--foreground) calc(<alpha-value> * 100%), transparent)",
+        "accent-a": "color-mix(in srgb, var(--accent) calc(<alpha-value> * 100%), transparent)",
+        "background-a": "color-mix(in srgb, var(--background) calc(<alpha-value> * 100%), transparent)",
+        "destructive-a": "color-mix(in srgb, var(--destructive) calc(<alpha-value> * 100%), transparent)",
+        "border-a": "color-mix(in srgb, var(--border) calc(<alpha-value> * 100%), transparent)",
       },
       borderRadius: {
         lg: "var(--radius)",

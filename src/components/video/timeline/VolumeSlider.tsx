@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   useTimelineStore,
   setTrackVolumePreviewAction,
   commitTrackVolumeAction,
 } from './store';
+import { revertTrackVolumePreviewAction } from './store/actions/trackActions';
 import { useLocale } from '@/contexts/LocaleContext';
 import { deriveTrackDisplayName } from './trackDisplayName';
+import { trackMouseGesture } from './lib/mouseGesture';
 
 /**
  * VolumeSlider — Track volume control popover.
@@ -74,8 +76,28 @@ const VolumeSlider: React.FC = () => {
     }
   }, [volume]);
 
-  // Remember the element that opened the popover so we can restore focus on close.
-  const returnFocusRef = useRef<HTMLElement | null>(null);
+  // Return focus to whatever opened the popover (the track's volume button).
+  // Track.tsx unmounts this component on close, so the hand-back runs in the
+  // unmount cleanup. A layout effect captures the opener before the
+  // focus-on-open frame below moves focus into the popover. Focus the user
+  // already moved elsewhere (a click, Tab) is left alone.
+  useLayoutEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => {
+      const active = document.activeElement;
+      const focusWasInPopover =
+        active === null ||
+        active === document.body ||
+        !active.isConnected ||
+        // Read at unmount on purpose: the popover node mounts after this
+        // effect (the `mounted` gate), so a copy taken here would be null.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        sliderRef.current?.contains(active) === true;
+      if (focusWasInPopover && opener?.isConnected) {
+        opener.focus({ preventScroll: true });
+      }
+    };
+  }, []);
 
   // Focus-on-open: schedule rAF only; cleanup cancels rAF, no focus side-effect.
   useEffect(() => {
@@ -97,16 +119,6 @@ const VolumeSlider: React.FC = () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [isVisible, isLocked, mounted]);
-
-  // Restore-on-close: capture activeElement on open, restore on close.
-  useEffect(() => {
-    if (isVisible) {
-      returnFocusRef.current = (document.activeElement as HTMLElement) ?? null;
-      return;
-    }
-    returnFocusRef.current?.focus?.();
-    returnFocusRef.current = null;
-  }, [isVisible]);
 
   // Bug 3: reset focus-guard whenever the popover is hidden
   useEffect(() => {
@@ -163,6 +175,51 @@ const VolumeSlider: React.FC = () => {
 
   // Cancel any pending live-preview frame on unmount.
   useEffect(() => cancelLivePreview, [cancelLivePreview]);
+
+  // Document listeners of the pointer / touch drag in flight.
+  const dragDisposeRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Abandon an in-flight drag (Escape, window blur, touchcancel, unmount): the
+   * live preview goes back to the pre-gesture value and no history is written.
+   */
+  const cancelDrag = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    dragDisposeRef.current?.();
+    dragDisposeRef.current = null;
+    cancelLivePreview();
+    if (trackId) {
+      revertTrackVolumePreviewAction(
+        () => useTimelineStore.getState(),
+        trackId,
+        preGestureVolumeRef.current,
+      );
+    }
+    updateVolume(preGestureVolumeRef.current);
+  }, [cancelLivePreview, trackId, updateVolume]);
+  // Document listeners and the unmount cleanup always reach the latest closure.
+  const cancelDragRef = useRef(cancelDrag);
+  cancelDragRef.current = cancelDrag;
+
+  // The popover closes (unmounts) on outside interaction; a drag still held
+  // at that point must not leave its preview value behind.
+  useEffect(() => () => cancelDragRef.current(), []);
+
+  /** A released drag commits once: restores pre-gesture, then records the final value. */
+  const finishDrag = useCallback(() => {
+    dragDisposeRef.current = null;
+    isDraggingRef.current = false;
+    cancelLivePreview();
+    if (trackId) {
+      commitTrackVolumeAction(
+        () => useTimelineStore.getState(),
+        trackId,
+        preGestureVolumeRef.current,
+        localVolumeRef.current,
+      );
+    }
+  }, [cancelLivePreview, trackId]);
 
   // Commit any pending keyboard-stepped volume immediately. Clears the timer
   // and nulls the ref before dispatch so a re-entrant call cannot double-commit.
@@ -229,6 +286,11 @@ const VolumeSlider: React.FC = () => {
         // block other listeners on the same target.
         event.stopImmediatePropagation();
         event.preventDefault();
+        // Escape mid-drag abandons the drag only; a second Escape closes.
+        if (isDraggingRef.current) {
+          cancelDragRef.current();
+          return;
+        }
         flushPendingKeyCommit();
         hideVolumeSlider();
       }
@@ -298,31 +360,18 @@ const VolumeSlider: React.FC = () => {
       updateVolume(newVolume);
     }
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      moveEvent.preventDefault();
-      const vol = calculateVolume(moveEvent.clientX);
-      updateVolume(vol);
-      scheduleLivePreview(vol);
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = false;
-      cancelLivePreview();
-      if (trackId) {
-        commitTrackVolumeAction(
-          () => useTimelineStore.getState(),
-          trackId,
-          preGestureVolumeRef.current,
-          localVolumeRef.current,
-        );
-      }
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [calculateVolume, updateVolume, scheduleLivePreview, cancelLivePreview, trackId, isLocked]);
+    dragDisposeRef.current?.();
+    dragDisposeRef.current = trackMouseGesture({
+      onMove: (moveEvent) => {
+        moveEvent.preventDefault();
+        const vol = calculateVolume(moveEvent.clientX);
+        updateVolume(vol);
+        scheduleLivePreview(vol);
+      },
+      onEnd: finishDrag,
+      onCancel: () => cancelDragRef.current(),
+    });
+  }, [calculateVolume, updateVolume, scheduleLivePreview, finishDrag, isLocked]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (isLocked) {
@@ -347,24 +396,25 @@ const VolumeSlider: React.FC = () => {
       scheduleLivePreview(vol);
     };
 
-    const handleTouchEnd = () => {
-      isDraggingRef.current = false;
-      cancelLivePreview();
-      if (trackId) {
-        commitTrackVolumeAction(
-          () => useTimelineStore.getState(),
-          trackId,
-          preGestureVolumeRef.current,
-          localVolumeRef.current,
-        );
-      }
+    const removeTouchListeners = () => {
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchCancel);
     };
 
+    const handleTouchEnd = () => {
+      removeTouchListeners();
+      finishDrag();
+    };
+
+    const handleTouchCancel = () => cancelDragRef.current();
+
+    dragDisposeRef.current?.();
+    dragDisposeRef.current = removeTouchListeners;
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
-  }, [calculateVolume, updateVolume, scheduleLivePreview, cancelLivePreview, trackId, isLocked]);
+    document.addEventListener('touchcancel', handleTouchCancel);
+  }, [calculateVolume, updateVolume, scheduleLivePreview, finishDrag, isLocked]);
 
   if (!mounted || !isVisible) return null;
 
@@ -519,7 +569,7 @@ const VolumeSlider: React.FC = () => {
         </div>
         {/* 100% mark line */}
         <div
-          className="absolute top-0 h-3 w-px bg-foreground/30 pointer-events-none"
+          className="absolute top-0 h-3 w-px bg-foreground-a/30 pointer-events-none"
           style={{ left: '50%' }}
         />
         <div className="flex justify-between text-[10px] text-muted-foreground mt-1">

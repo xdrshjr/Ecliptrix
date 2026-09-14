@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useLocale } from '@/contexts/LocaleContext';
 import {
   Camera3DRenderer,
@@ -138,10 +139,12 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
    * read as exactly that — losing the edit mid-gesture (R33).
    */
   const draggingRef = useRef(false);
+  const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
 
   // Re-seed the draft each time the panel opens on a (possibly different) clip.
   useEffect(() => {
     if (!isOpen) return;
+    setIsDiscardConfirmOpen(false);
     const seed = initialMotion ?? emptyCameraMotion('2d');
     setDraft(seed);
     setMode(seed.mode);
@@ -333,11 +336,24 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
     // (R33) — releasing the mouse over the page while reframing would otherwise
     // close the panel and throw the work away.
     if (draggingRef.current) return;
-    if (isDirty && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm(labels.discardConfirm)) return;
+    // The nested confirmation owns the keyboard while it is open.
+    if (isDiscardConfirmOpen) return;
+    // Ask in-app, not with the blocking, unthemed native confirm.
+    if (isDirty) {
+      setIsDiscardConfirmOpen(true);
+      return;
     }
     onClose();
-  }, [isDirty, labels.discardConfirm, onClose]);
+  }, [isDirty, isDiscardConfirmOpen, onClose]);
+
+  const handleDiscardConfirmed = useCallback(() => {
+    setIsDiscardConfirmOpen(false);
+    onClose();
+  }, [onClose]);
+
+  const handleDiscardCancelled = useCallback(() => {
+    setIsDiscardConfirmOpen(false);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -541,13 +557,24 @@ const CameraMotionModal: React.FC<CameraMotionModalProps> = ({
             aria-describedby={isEditLocked ? EDIT_LOCK_HINT_ID : undefined}
             title={isEditLocked ? t.timeline.messages.editLockedByAgent : undefined}
             className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground shadow-sm
-              transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+              transition-colors hover:bg-primary-a/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
               disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary"
           >
             {labels.apply}
           </button>
         </div>
       </div>
+
+      <ConfirmationDialog
+        isOpen={isDiscardConfirmOpen}
+        type="danger"
+        title={labels.discardTitle}
+        message={labels.discardConfirm}
+        confirmText={labels.discardAction}
+        cancelText={labels.cancel}
+        onConfirm={handleDiscardConfirmed}
+        onCancel={handleDiscardCancelled}
+      />
     </Modal>
   );
 };

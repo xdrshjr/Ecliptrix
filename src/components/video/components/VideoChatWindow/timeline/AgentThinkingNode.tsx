@@ -13,6 +13,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentThinkingNodeData } from './types';
 import { formatTimestamp } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
@@ -23,6 +24,7 @@ interface AgentThinkingNodeProps {
 }
 
 const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = ({ node }) => {
+  const { t } = useLocale();
   const [collapsed, setCollapsed] = useState(false);
 
   if (node.isThinkingPhase) {
@@ -48,7 +50,7 @@ const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = ({ node }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
               <span className="text-xs font-medium text-primary dark:text-primary/90 flex-1">
-                {node.isStreaming ? 'Thinking...' : 'Thought Process'}
+                {node.isStreaming ? t.agentTimeline.thinking : t.agentTimeline.thoughtProcess}
               </span>
               <svg
                 className={`w-3 h-3 text-muted-foreground transition-transform ${collapsed ? '' : 'rotate-180'}`}
@@ -106,7 +108,7 @@ const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = ({ node }) => {
             {formatTimestamp(node.timestamp)}
           </span>
           <span className="text-xs font-medium text-primary dark:text-primary/90">
-            AI Analyzing...
+            {t.agentTimeline.analyzing}
           </span>
         </div>
 

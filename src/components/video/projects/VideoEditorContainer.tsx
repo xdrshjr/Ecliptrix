@@ -6,14 +6,19 @@ import { resetVideoEditingStore } from '@/stores/videoEditingStore';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import { getVideoProject } from '@/lib/api/videoProjects';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { useTimelineStore } from '@/components/video/timeline/store';
 import type { Conversation, MaterialItem, VideoEditingTaskContent } from '@/types';
 import { useProjectAutosave } from './hooks/useProjectAutosave';
 import {
   hydrateTimelineFromProjectData,
+  restoreTimelineBackup,
+  withCurrentRecoveryBackup,
+  withoutTimelineRecoveryBackup,
   withTimelineRecoveryBackup,
   type HydrationResult,
 } from './hydrateTimeline';
-import { repairDerivedMaterialIdentity } from '../lib/derivedMaterial';
+import { repairDerivedMaterialIdentity, repairInheritedSegmentMembership } from '../lib/derivedMaterial';
 
 /** Render a project's `updated_at` ISO string for the editor top strip.
  *  Mirrors ProjectCard's relative formatting so list ↔ editor agree. */
@@ -70,14 +75,28 @@ function rehydrateConversations(raw: unknown): Conversation[] | undefined {
 }
 
 /** Derived materials saved before ME-01 still point at their original's file;
- *  rebuild their storage identity so preview, export and delete use their own. */
+ *  rebuild their storage identity so preview, export and delete use their own.
+ *  Clips and silence-removed copies saved before N-13 also drop the script
+ *  segment membership they inherited from their original. */
 function repairProjectMaterials(data: Record<string, unknown>): Record<string, unknown> {
   if (!Array.isArray(data.materials)) return data;
-  const { materials, repairedIds } = repairDerivedMaterialIdentity(data.materials as MaterialItem[]);
-  if (repairedIds.length === 0) return data;
-  console.info('[project] repaired derived material identity', { count: repairedIds.length });
-  return { ...data, materials };
+  const identity = repairDerivedMaterialIdentity(data.materials as MaterialItem[]);
+  const membership = repairInheritedSegmentMembership(identity.materials);
+  if (identity.repairedIds.length + membership.repairedIds.length === 0) return data;
+  console.info('[project] repaired derived materials', {
+    identityCount: identity.repairedIds.length,
+    segmentMembershipCount: membership.repairedIds.length,
+  });
+  return { ...data, materials: membership.materials };
 }
+
+/** The backup's save time for the restore prompt; the raw value if unparseable. */
+function formatBackupDate(savedAt: string, locale: string): string {
+  const date = new Date(savedAt);
+  return Number.isNaN(date.getTime()) ? savedAt : date.toLocaleString(locale);
+}
+
+type BackupDialogKind = 'restore' | 'discard';
 
 interface VideoEditorContainerProps {
   /** The persisted project ID to load and bind to. */
@@ -105,9 +124,13 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
   taskId,
   onCloseProject,
 }) => {
-  const { t } = useLocale();
-  const { showError, showWarning } = useNotification();
+  const { t, locale } = useLocale();
+  const { showError, showWarning, showSuccess } = useNotification();
   const [content, setContent] = useState<VideoEditingTaskContent | null>(null);
+  // Kind survives closing so the dialog's exit animation keeps its text.
+  const [backupDialog, setBackupDialog] = useState<{ isOpen: boolean; kind: BackupDialogKind }>(
+    { isOpen: false, kind: 'restore' },
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -185,7 +208,9 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
 
   const handleUpdateContent = useCallback(
     (next: VideoEditingTaskContent) => {
-      setContent(next);
+      // The backup field is the container's: a discard must survive an update
+      // the editor built from an earlier render.
+      setContent((current) => withCurrentRecoveryBackup(current, next));
     },
     [],
   );
@@ -215,6 +240,35 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
       }
     },
   });
+
+  // N-07: the only way back to a timeline the hydration backed up.
+  const recoveryBackup = content?.timelineRecoveryBackup;
+  const closeBackupDialog = useCallback(() => {
+    setBackupDialog((current) => ({ ...current, isOpen: false }));
+  }, []);
+
+  const handleRestoreBackup = useCallback(() => {
+    closeBackupDialog();
+    if (!recoveryBackup) return;
+    // Restored as one undoable step; TimelinePanel's subscription carries the
+    // new timeline into content and autosave. The backup stays until discarded.
+    const outcome = restoreTimelineBackup(() => useTimelineStore.getState(), recoveryBackup);
+    if (outcome.kind === 'edit-locked') {
+      showWarning(t.timeline.messages.editLockedByAgent);
+    } else if (outcome.kind === 'unreadable') {
+      showError(t.videoProjects.backupUnreadable);
+    } else {
+      const messages = t.videoProjects;
+      showSuccess(outcome.skippedCount > 0
+        ? messages.backupRestored.replace('{count}', String(outcome.skippedCount))
+        : messages.backupRestoredAll);
+    }
+  }, [closeBackupDialog, recoveryBackup, showError, showSuccess, showWarning, t]);
+
+  const handleDiscardBackup = useCallback(() => {
+    closeBackupDialog();
+    setContent((current) => (current ? withoutTimelineRecoveryBackup(current) : current));
+  }, [closeBackupDialog]);
 
   // Render
   if (loading) {
@@ -267,6 +321,27 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
             </span>
           </div>
         )}
+        {recoveryBackup && (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setBackupDialog({ isOpen: true, kind: 'restore' })}
+              className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-xs font-medium text-primary hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5" />
+              </svg>
+              {t.videoProjects.restoreBackup}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBackupDialog({ isOpen: true, kind: 'discard' })}
+              className="inline-flex items-center h-6 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t.videoProjects.discardBackup}
+            </button>
+          </div>
+        )}
         <div className="text-xs text-muted-foreground flex-shrink-0" aria-live="polite">
           {saveStatus === 'saving' && t.videoProjects.saving}
           {saveStatus === 'saved' && t.videoProjects.saved}
@@ -280,6 +355,22 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
         taskId={taskId}
         content={content}
         onUpdateContent={handleUpdateContent}
+      />
+
+      <ConfirmationDialog
+        isOpen={backupDialog.isOpen && !!recoveryBackup}
+        title={backupDialog.kind === 'discard'
+          ? t.videoProjects.discardBackup
+          : t.videoProjects.restoreBackupConfirmTitle}
+        message={backupDialog.kind === 'discard'
+          ? t.videoProjects.discardBackupConfirmBody
+          : t.videoProjects.restoreBackupConfirmBody
+            .replace('{date}', formatBackupDate(recoveryBackup?.savedAt ?? '', locale))}
+        confirmText={backupDialog.kind === 'discard' ? t.videoProjects.discardBackup : t.videoProjects.restoreBackup}
+        cancelText={t.common.cancel}
+        type={backupDialog.kind === 'discard' ? 'danger' : 'warning'}
+        onConfirm={backupDialog.kind === 'discard' ? handleDiscardBackup : handleRestoreBackup}
+        onCancel={closeBackupDialog}
       />
     </div>
   );

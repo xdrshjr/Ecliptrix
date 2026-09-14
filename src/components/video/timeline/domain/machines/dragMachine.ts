@@ -7,9 +7,9 @@
  * States: idle → detecting → dragging/resizingStart/resizingEnd →
  *         previewing/resizePreviewing → committed → idle
  *
- * The machine captures pointer events and computes preview positions
- * using inline drag calculation logic (same math as DragCalculationService:
- * RESIZE_HANDLE_WIDTH=8, pixelsPerSecond=zoomLevel*50).
+ * The machine captures pointer events and computes preview positions. It is
+ * the single source of the drag maths — trim hot zones (RESIZE_HANDLE_WIDTH=8,
+ * shrunk by MIN_MOVE_ZONE_PX) and pixelsPerSecond=zoomLevel*50.
  *
  * Extracted from: src/components/video/timeline/TimelineItem.tsx
  */
@@ -18,7 +18,7 @@ import { setup, assign, createActor, type SnapshotFrom } from 'xstate';
 import { MIN_CLIP_DURATION_SECONDS } from '../value-objects/Duration';
 
 // ---------------------------------------------------------------------------
-// Constants (same as DragCalculationService)
+// Constants
 // ---------------------------------------------------------------------------
 
 /** Width in pixels of the resize handle at each edge of an item. */

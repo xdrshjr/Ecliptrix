@@ -106,11 +106,18 @@ function announceApplied(
     .filter((segment) => segment.status === status)
     .map((segment) => segment.segmentNumber)
     .join(locale === 'zh-CN' ? '、' : ', ');
-  const skipped = plan.segments.filter((segment) => segment.status === 'skipped-no-audio');
+  const countWith = (status: AutoMixSegmentReport['status']) => plan.segments
+    .filter((segment) => segment.status === status).length;
+  const noAudio = countWith('skipped-no-audio');
+  const noVideo = countWith('skipped-no-video');
   notify.showSuccess(messages.applied
-    .replace('{segments}', String(plan.segments.length - skipped.length)));
-  if (skipped.length > 0) {
+    .replace('{segments}', String(plan.segments.length - noAudio - noVideo)));
+  if (noAudio > 0) {
     notify.showWarning(messages.skippedNoAudio.replace('{list}', numbersWith('skipped-no-audio')));
+  }
+  // AM3-01: a video-only mix skips segments for lack of a matched video.
+  if (noVideo > 0) {
+    notify.showWarning(messages.skippedNoVideo.replace('{list}', numbersWith('skipped-no-video')));
   }
   if (plan.segments.some((segment) => segment.status === 'video-short')) {
     notify.showWarning(messages.videoShort.replace('{list}', numbersWith('video-short')));

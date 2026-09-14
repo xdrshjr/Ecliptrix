@@ -60,6 +60,9 @@ import {
   PLAYBACK_SCRUB_ECHO_TOLERANCE_SEC,
 } from '../playback/internal/constants';
 import type { PreviewCanvasHandle } from '../components/VideoPlayerPanel/PreviewCanvas';
+import { imageOverlaySourceUrl } from '../components/VideoPlayerPanel/imageOverlays';
+import type { OutputSize } from '../lib/subtitleLayout';
+import { isPreviewVolumeBoostEnabled } from '@/lib/playbackFlags';
 
 // ---------------------------------------------------------------------------
 // Pure group / overlay builders (jsdom-testable without an engine or canvas).
@@ -71,9 +74,11 @@ import type { PreviewCanvasHandle } from '../components/VideoPlayerPanel/Preview
  * falling back to first-seen track order so the result is deterministic even
  * when `trackZ` is absent. Item order within a track is preserved (the upstream
  * extractor keeps them startTime-ordered, satisfying TrackScheduler INV-5).
+ * `volumeScale` is the preview master volume carried onto every group (PV3-03).
  */
 export function buildVideoTrackGroups(
   sequences: readonly VideoSequenceItem[],
+  volumeScale = 1,
 ): VideoTrackGroup[] {
   const byTrack = new Map<string, VideoSequenceItem[]>();
   const order: string[] = [];
@@ -90,7 +95,7 @@ export function buildVideoTrackGroups(
   const groups = order.map((trackId, index) => {
     const items = byTrack.get(trackId) ?? [];
     const z = items[0]?.trackZ ?? index;
-    return { trackId, z, items };
+    return { trackId, z, items, volumeScale };
   });
   // Stable z-ascending order (bottom→top) regardless of insertion order.
   groups.sort((a, b) => a.z - b.z);
@@ -109,12 +114,13 @@ export function buildVideoTrackGroups(
  * sequence (an independent `'audio'` group here) carries the sound.
  *
  * Track volume is already normalized into each sequence's `volume` by the
- * CompositionAdapter (item.volume × track.volume / 100, clamped [0,2]); we carry
- * a per-group `volume` of 1 and let the per-clip `volume` express the effective
- * gain so we never double-apply the track scalar.
+ * CompositionAdapter (item.volume × track.volume / 100, clamped [0,2]); the
+ * per-group `volume` is therefore NOT the track scalar but the preview master
+ * volume (PV3-03, default 1), which the pool multiplies into every clip.
  */
 export function buildAudioSyncGroups(
   audioSequences: readonly AudioSequenceItem[],
+  masterVolume = 1,
 ): AudioSyncGroup[] {
   const groups: AudioSyncGroup[] = [];
 
@@ -133,7 +139,7 @@ export function buildAudioSyncGroups(
     groups.push({
       trackId,
       muted: false,
-      volume: 1,
+      volume: masterVolume,
       kind: 'audio',
       items: (audioByTrack.get(trackId) ?? []).map((seq) => ({
         id: seq.id,
@@ -156,8 +162,9 @@ export function buildAudioSyncGroups(
  * Extract the active-able image-overlay inputs from the timeline state: still-
  * image items (`isStillImageItem`, the same rule export uses) on a visible
  * track, as a TIME-INDEPENDENT input list (the ImageOverlayLayer does the
- * per-frame `t` filter). The image URL is resolved from the live material (same
- * authority as video). Items whose material has no usable URL are dropped.
+ * per-frame `t` filter). The image URL is the same local reference export sends
+ * (PV3-02, {@link imageOverlaySourceUrl}). Items whose material has no usable URL
+ * are dropped.
  */
 export function buildImageOverlayInputs(
   timelineState: TimelineState | undefined,
@@ -171,7 +178,7 @@ export function buildImageOverlayInputs(
     for (const item of track.items) {
       const material = item.materialId ? byId.get(item.materialId) : undefined;
       if (!isStillImageItem(item, material)) continue;
-      const src = material?.url;
+      const src = material ? imageOverlaySourceUrl(material) : '';
       if (!src) continue;
       inputs.push({
         id: item.id,
@@ -239,6 +246,13 @@ export interface UseCompositionPlaybackOptions {
   onTimeUpdate?: (t: number) => void;
   /** Letterbox aspect ratio for fixed-ratio preview, e.g. 16/9. */
   aspectRatio?: number;
+  /** Exported frame size for the project aspect ratio; subtitles lay out against it (EXO-09). */
+  outputSize: OutputSize;
+  /**
+   * Preview master volume in [0,1] (PV3-03). Read through a ref on every tick,
+   * so a change never re-attaches the engine; monitoring only, never exported.
+   */
+  masterVolume: number;
   /** Whether the new compositor path is active (flag on). Off → fully inert. */
   enabled: boolean;
 }
@@ -283,6 +297,8 @@ export function useCompositionPlayback(
     isPlaying,
     onTimeUpdate,
     aspectRatio,
+    outputSize,
+    masterVolume,
     enabled,
   } = options;
 
@@ -310,6 +326,11 @@ export function useCompositionPlayback(
   if (resolverOptsRef.current === null) {
     resolverOptsRef.current = { preferPreviewProxy, preferLocalProxy };
   }
+  // ME-06 rollback switch, locked at mount like the resolver flags.
+  const volumeBoostEnabledRef = useRef<boolean | null>(null);
+  if (volumeBoostEnabledRef.current === null) {
+    volumeBoostEnabledRef.current = isPreviewVolumeBoostEnabled();
+  }
 
   // Latest-value refs so the engine's per-tick closures read fresh data without
   // re-attaching (re-attach would reset the engine state machine every render).
@@ -318,11 +339,15 @@ export function useCompositionPlayback(
   const timelineStateRef = useRef(timelineState);
   const currentTimeRef = useRef(currentTime);
   const onTimeUpdateRef = useRef(onTimeUpdate);
+  const masterVolumeRef = useRef(masterVolume);
+  const outputSizeRef = useRef(outputSize);
   compositionRef.current = compositionPlayback;
   materialsRef.current = materials;
   timelineStateRef.current = timelineState;
   currentTimeRef.current = currentTime;
   onTimeUpdateRef.current = onTimeUpdate;
+  masterVolumeRef.current = masterVolume;
+  outputSizeRef.current = outputSize;
 
   // timeline-preview-playback-stutter fix (A): throttle the engine→React clock
   // push. The engine reports composition time at ~60Hz; pushing every tick into
@@ -364,9 +389,15 @@ export function useCompositionPlayback(
   const buildTimelineFacade = useCallback((): MultiTrackTimelineFacade => {
     return {
       getVideoTrackGroups: () =>
-        buildVideoTrackGroups(compositionRef.current?.videoSequences ?? []),
+        buildVideoTrackGroups(
+          compositionRef.current?.videoSequences ?? [],
+          masterVolumeRef.current,
+        ),
       getAudioSyncGroups: () =>
-        buildAudioSyncGroups(compositionRef.current?.audioSequences ?? []),
+        buildAudioSyncGroups(
+          compositionRef.current?.audioSequences ?? [],
+          masterVolumeRef.current,
+        ),
       getSubtitleItems: (): SubtitleSequenceItem[] =>
         compositionRef.current?.subtitleSequences ?? [],
       getImageItems: () =>
@@ -416,7 +447,15 @@ export function useCompositionPlayback(
         )?.url ?? null,
       timeline: buildTimelineFacade(),
       viewport: aspectRatio ? { aspectRatio, letterboxColor: '#000' } : null,
-      measureSubtitle: host.measureSubtitle,
+      outputSize: outputSizeRef.current,
+      // Without the flag the pools keep writing element volume clamped to [0,1].
+      ...(volumeBoostEnabledRef.current
+        ? {
+            applyVolume: (element, volume) => host.applyVolume(element, volume),
+            prepareElementForSrc: (trackId, role, element, url) =>
+              host.prepareElementForSrc(trackId, role, element, url),
+          }
+        : {}),
     };
 
     try {
@@ -438,7 +477,8 @@ export function useCompositionPlayback(
         // ignore — already torn down
       }
     };
-  }, [enabled, aspectRatio, buildTimelineFacade, hostVersion]);
+    // The output size changes together with the aspect ratio; both re-attach.
+  }, [enabled, aspectRatio, outputSize.width, outputSize.height, buildTimelineFacade, hostVersion]);
 
   const play = useCallback(() => {
     engineRef.current?.play();
@@ -467,6 +507,8 @@ export function useCompositionPlayback(
     if (!engine) return;
     if (isPlaying) {
       wasPlayingRef.current = true;
+      // A suspended AudioContext would silence gain-routed elements (ME-06).
+      hostHandleRef.current?.resumeAudio?.();
       engine.play();
     } else {
       // fix A-c: on a real playing→pause, capture the exact displayed-frame

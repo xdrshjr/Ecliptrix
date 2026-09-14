@@ -21,7 +21,10 @@ from app.models.video_models import (
     VideoCompositionItem,
     VideoCompositionRequest,
 )
+from PIL import Image
+
 from app.services.composition.camera_motion import CameraFilterCaps, CameraMotionConfig
+from app.services.composition.composition_lifecycle import CancelRegistry
 from app.services.subtitle_service import SubtitleService
 from app.services.video_composition_service import VideoCompositionService
 
@@ -67,6 +70,7 @@ def make_service(tmp_path: Path, composition_id: str = "comp-1") -> VideoComposi
     service.output_dir.mkdir(parents=True, exist_ok=True)
     service.subtitle_service = object.__new__(SubtitleService)
     service._gpu_encoder = None
+    service._cancel_events = CancelRegistry()
     return service
 
 
@@ -74,6 +78,14 @@ def media_file(tmp_path: Path, name: str) -> str:
     path = tmp_path / "media" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"media")
+    return str(path)
+
+
+def png_file(tmp_path: Path, name: str) -> str:
+    """A decodable image: export leaves undecodable images out (EX3-05)."""
+    path = tmp_path / "media" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (4, 4), (255, 0, 0)).save(path, format="PNG")
     return str(path)
 
 
@@ -94,7 +106,7 @@ def audio_item(tmp_path: Path, item_id: str, start: float, duration: float) -> A
 
 def image_item(tmp_path: Path, item_id: str, start: float, duration: float) -> ImageCompositionItem:
     return ImageCompositionItem(
-        id=item_id, name=f"{item_id}.png", url=media_file(tmp_path, f"{item_id}.png"),
+        id=item_id, name=f"{item_id}.png", url=png_file(tmp_path, f"{item_id}.png"),
         start_time=start, duration=duration, track_id="image-track-1",
         position=ImagePosition(x=0.0, y=0.0, width=1.0, height=1.0),
     )

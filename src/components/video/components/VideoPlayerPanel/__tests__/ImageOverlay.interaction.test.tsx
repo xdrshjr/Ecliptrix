@@ -57,6 +57,21 @@ describe('ImageOverlay — selection stability + four-corner resize (D1′/D2/D2
   });
 });
 
+describe('ImageOverlay — the canvas is the only visible raster (PV3-02)', () => {
+  it('handle image is invisible so the canvas raster is the only visible copy', () => {
+    const img = OVERLAY.match(/<img[\s\S]*?\/>/);
+    expect(img).not.toBeNull();
+    expect(img![0]).toMatch(/aria-hidden="true"/);
+    expect(img![0]).toMatch(/className="[^"]*\bopacity-0\b[^"]*"/);
+  });
+
+  it('a read-only overlay on a locked track starts no gesture and renders no resize handles (PV3-04)', () => {
+    expect(OVERLAY).toMatch(/if \(e\.button !== 0 \|\| readOnly\) return;/);
+    expect(OVERLAY).toMatch(/isSelected && !readOnly && RESIZE_HANDLES\.map\(/);
+    expect(PANEL).toMatch(/readOnly=\{overlay\.isLocked\}/);
+  });
+});
+
 describe('ImageOverlay explicit commit/cancel controls', () => {
   it('exposes confirm/cancel callbacks on selected image overlays', () => {
     expect(OVERLAY).toMatch(/onConfirm\?:\s*\(\)\s*=>\s*void/);

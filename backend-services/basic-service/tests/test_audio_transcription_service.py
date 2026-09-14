@@ -220,7 +220,14 @@ async def test_aprocess_silent_audio_returns_success_with_empty_subtitles(tmp_pa
     transcoded.write_bytes(b"\x00" * 128)
 
     silent_payload = {"audio_info": {"duration": 500}, "result": {"text": "", "utterances": []}}
-    fake_ws = _FakeWS(frames=[_full_server_response(silent_payload, seq=2)])
+    # The service drains one handshake ack before streaming audio; without it
+    # the ack read consumes the only frame and the final recv times out.
+    fake_ws = _FakeWS(
+        frames=[
+            _full_server_response({"audio_info": {}, "result": {"utterances": []}}, seq=1),
+            _full_server_response(silent_payload, seq=2),
+        ]
+    )
 
     with patch.object(svc, "get_audio_duration", return_value=0.5), \
          patch.object(svc, "_transcode_to_pcm16k_mono", return_value=str(transcoded)), \

@@ -2,8 +2,8 @@
 Video-related API routes for the Basic Service application.
 """
 
-from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from app.models import (
@@ -23,6 +23,7 @@ from app.models import (
     VideoCutRequest,
     VideoCutResponse
 )
+from app.models.base_models import BaseResponse, ErrorResponse
 from app.models.video_models import (
     WatermarkRemovalRequest,
     WatermarkRemovalResponse,
@@ -41,6 +42,7 @@ from app.services.watermark_removal_service import WatermarkRemovalService
 from app.services.queue_manager import queue_manager
 from app.services.simple_queue_decorator import with_simple_queue
 from app.logger import get_logger
+from app.utils import client_disconnect
 from typing import Union
 
 # Initialize router and logger
@@ -214,7 +216,7 @@ async def compose_video(request: VideoCompositionRequest) -> VideoCompositionRes
 @router.get("/compose/{composition_id}/status")
 async def get_composition_status(composition_id: str):
     """
-    Get the status of a video composition.
+    Get the status of a video composition (long: one explicit field whitelist).
     
     Args:
         composition_id: ID of the composition to check
@@ -257,14 +259,19 @@ async def get_composition_status(composition_id: str):
                 # Round 2 S7: content missing from a completed export.
                 "degradations": composition_info.get("degradations", []),
             }
-            
+            for live_key in ("stage", "activity_at"):  # the client's stall timer (EXO-07 / RV3-02)
+                if live_key in composition_info:
+                    safe_info[live_key] = composition_info[live_key]
             # Add completion info if available
             if "processing_time" in composition_info:
                 safe_info["processing_time"] = composition_info["processing_time"]
             if "output_file_size" in composition_info:
                 safe_info["output_file_size"] = composition_info["output_file_size"]
             if "error_details" in composition_info:
-                safe_info["error_details"] = composition_info["error_details"]
+                safe_info["error_details"] = details = composition_info["error_details"]
+                for detail_key in ("composition_stage", "error_summary"):
+                    if isinstance(details, dict) and detail_key in details:
+                        safe_info[detail_key] = details[detail_key]
             if "error" in composition_info:
                 safe_info["error"] = composition_info["error"]
             if status_error:
@@ -295,6 +302,28 @@ async def get_composition_status(composition_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred while retrieving composition status"
         )
+
+
+def _composition_error(status_code: int, error_code: str, message: str) -> JSONResponse:
+    body = ErrorResponse(success=False, message=message, error_code=error_code)
+    return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
+
+
+@router.post("/compose/{composition_id}/cancel")
+async def cancel_composition(composition_id: str):
+    """Cancel a queued or running composition; it stops at its next stage boundary (EXO-07)."""
+    outcome = video_composition_service.cancel_composition(composition_id)
+    if outcome == "settled":
+        return _composition_error(
+            status.HTTP_409_CONFLICT, "COMPOSITION_ALREADY_SETTLED",
+            f"Composition {composition_id} has already finished",
+        )
+    if outcome == "not_found":
+        return _composition_error(
+            status.HTTP_404_NOT_FOUND, "COMPOSITION_NOT_FOUND", f"Composition {composition_id} not found",
+        )
+    data = {"composition_id": composition_id, "status": "cancelling"}
+    return BaseResponse(success=True, message="cancelling", data=data)
 
 
 @router.get("/compose/{composition_id}/download")
@@ -800,9 +829,11 @@ async def analyze_video(request: VideoAnalysisRequest) -> VideoAnalysisResponse:
 
 
 @router.post("/batch-analyze", response_model=BatchVideoAnalysisResponse)
-async def batch_analyze_videos(request: BatchVideoAnalysisRequest) -> BatchVideoAnalysisResponse:
+async def batch_analyze_videos(
+    request: BatchVideoAnalysisRequest, http_request: Request
+) -> Union[BatchVideoAnalysisResponse, Response]:
     """
-    Analyze multiple videos using VL LLM with optimized two-phase processing.
+    Analyze videos with the VL LLM in two phases (long: logging and error mapping inline).
     
     This endpoint implements a two-phase processing approach for optimal performance:
     1. Sequential Frame Extraction: Extract frames from videos one by one
@@ -867,10 +898,14 @@ async def batch_analyze_videos(request: BatchVideoAnalysisRequest) -> BatchVideo
             "use_thumbnails": request.use_thumbnails
         })
         
-        result = await video_analysis_service.batch_analyze_videos(
-            videos=request.videos,
-            custom_prompt=request.custom_prompt,
-            use_thumbnails=request.use_thumbnails
+        # Stop the remaining VLM calls once the client disconnects (AM2-04).
+        result = await client_disconnect.run_until_client_disconnects(
+            http_request,
+            video_analysis_service.batch_analyze_videos(
+                videos=request.videos,
+                custom_prompt=request.custom_prompt,
+                use_thumbnails=request.use_thumbnails
+            ),
         )
         
         # Log batch analysis results
@@ -892,6 +927,11 @@ async def batch_analyze_videos(request: BatchVideoAnalysisRequest) -> BatchVideo
         
         return result
         
+    except client_disconnect.ClientDisconnectedError:
+        logger.info("Batch video analysis cancelled by the client "
+                    f"({len(request.videos)} videos)")
+        return Response(status_code=client_disconnect.CLIENT_CLOSED_REQUEST_STATUS)
+
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { backendConfig } from '@/lib/config/backend';
 import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat';
-import { createVideoEditingAgent, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
+import { createVideoEditingAgent, formatErrorDetail, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
+import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
+import { AGENT_IDLE_TIMEOUT_MS } from '@/lib/video-editing-agent/timeouts';
 import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types';
 import type { ChatMessage, TimelineState, MaterialItem } from '@/types';
 
@@ -14,7 +16,9 @@ import type { ChatMessage, TimelineState, MaterialItem } from '@/types';
 // invocation, heartbeat keepalive, and SSE event ID tracking. Only the
 // backend call was migrated to `backendConfig.baseUrl`.
 
-const AGENT_TIMEOUT = 1_800_000; // 30 minutes — storyboard generation can take 4+ minutes; long tool chains need headroom
+// No tool activity for 30 minutes — storyboard generation can take 4+ minutes;
+// long tool chains need headroom. Shared with the client's idle timeout.
+const AGENT_TIMEOUT = AGENT_IDLE_TIMEOUT_MS;
 
 const THINKING_TIMEOUT = 30_000;
 const THINKING_HEARTBEAT_INTERVAL = 15_000;
@@ -243,26 +247,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
     }
 
-    const effectiveTimelineState = timelineState && Array.isArray(timelineState.tracks)
+    // The client sends the same default when the editor has no timeline, so
+    // a turn started from nothing still has a baseline to undo against.
+    const effectiveTimelineState: TimelineState = timelineState && Array.isArray(timelineState.tracks)
       ? timelineState
-      : {
-          tracks: [
-            { id: 'video-track-1', name: 'Video Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0, items: [] },
-            { id: 'image-track-1', name: 'Image Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1, items: [] },
-            { id: 'audio-track-1', name: 'Audio Track 1', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 2, items: [] },
-            { id: 'audio-track-2', name: 'Audio Track 2', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 3, items: [] },
-            { id: 'subtitle-track-1', name: 'Subtitle Track', type: 'subtitle' as const, height: 50, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 4, items: [] },
-          ],
-          currentTime: 0,
-          totalDuration: 0,
-          zoomLevel: 1,
-          selectedItems: [],
-          playbackRate: 1,
-          isPlaying: false,
-          snapToGrid: true,
-          gridSize: 0.5,
-          scrollLeft: 0,
-        };
+      : createDefaultAgentTimelineState();
 
     const effectiveMaterials = Array.isArray(materials) ? materials : [];
 
@@ -468,6 +457,14 @@ export async function POST(request: NextRequest) {
           const resetTimeout = () => {
             if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
+              // The error goes out BEFORE `cancelled`: the client stops
+              // reading at `cancelled`, so an error sent afterwards never
+              // reached the user and the turn read as stopped by the user.
+              send({
+                type: 'error',
+                code: 'server_timeout',
+                message: `Agent timed out after ${AGENT_TIMEOUT / 1000}s of inactivity. Completed operations have been preserved. Try breaking the task into smaller steps.`,
+              });
               // Route the watchdog through triggerAbort so client-abort
               // and server-timeout share one idempotent code path
               // (avoids double-close on the SSE controller).
@@ -569,14 +566,13 @@ export async function POST(request: NextRequest) {
             // triggerAbort — no additional error event needed.
             console.log('[VideoEditingAgent] Aborted (cancelled event already sent):', message);
           } else if (message === 'Agent timeout') {
-            // Watchdog already routed through triggerAbort — but emit a
-            // human-facing error event so the UI shows the timeout message
-            // instead of just a silent cancellation.
+            // The watchdog already sent the server_timeout error (before
+            // `cancelled`) and routed through triggerAbort.
             console.error('[VideoEditingAgent] Error:', message);
-            send({ type: 'error', message: `Agent timed out after ${AGENT_TIMEOUT / 1000}s of inactivity. Completed operations have been preserved. Try breaking the task into smaller steps.` });
           } else {
             console.error('[VideoEditingAgent] Error:', message);
-            send({ type: 'error', message: `Agent error: ${message}` });
+            // Coded so the UI shows a localised sentence around the detail.
+            send({ type: 'error', code: 'agent_error', message: formatErrorDetail(message) });
           }
         } finally {
           stopKeepAlive();

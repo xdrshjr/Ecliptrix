@@ -63,6 +63,16 @@ export interface TimelineAction {
 /** Maximum number of actions retained in the history stack. */
 const MAX_HISTORY = 50;
 
+/** What the most recent addAction displaced, so it can be put back. */
+interface LastAddedAction {
+  /** The redo branch the add truncated. */
+  tail: TimelineAction[];
+  /** The oldest entries MAX_HISTORY pushed out. */
+  head: TimelineAction[];
+  /** The history index before the add. */
+  index: number;
+}
+
 // ---------------------------------------------------------------------------
 // HistoryService
 // ---------------------------------------------------------------------------
@@ -84,6 +94,13 @@ export class HistoryService {
    */
   private _historyIndex: number = -1;
 
+  /**
+   * Set by addAction and cleared by anything that settles the entry (a
+   * captured after-state, undo, redo, clear): only a still-open add can be
+   * withdrawn by discardLastAction.
+   */
+  private _lastAdd: LastAddedAction | null = null;
+
   // -----------------------------------------------------------------------
   // Mutators
   // -----------------------------------------------------------------------
@@ -104,6 +121,9 @@ export class HistoryService {
    * captureBeforeState() before this method.
    */
   addAction(action: TimelineAction): void {
+    const previousIndex = this._historyIndex;
+    const tail = this._history.slice(this._historyIndex + 1);
+
     // 1. Truncate forward history (new branch)
     this._history = this._history.slice(0, this._historyIndex + 1);
 
@@ -111,12 +131,34 @@ export class HistoryService {
     this._history.push(action);
 
     // 3. Trim to MAX_HISTORY
+    let head: TimelineAction[] = [];
     if (this._history.length > MAX_HISTORY) {
+      head = this._history.slice(0, this._history.length - MAX_HISTORY);
       this._history = this._history.slice(-MAX_HISTORY);
     }
 
     // 4. Update index to point at the new last entry
     this._historyIndex = this._history.length - 1;
+    this._lastAdd = { tail, head, index: previousIndex };
+  }
+
+  /**
+   * Withdraw the most recent addAction because it changed nothing (S12):
+   * the redo branch it truncated and the entries MAX_HISTORY pushed out come
+   * back, so the stacks look exactly as if the edit had never been attempted.
+   *
+   * @returns false when there is no open add to withdraw, or the index has
+   *   moved off the entry since.
+   */
+  discardLastAction(): boolean {
+    const lastAdd = this._lastAdd;
+    if (lastAdd === null || this._historyIndex !== this._history.length - 1) {
+      return false;
+    }
+    this._history = [...lastAdd.head, ...this._history.slice(0, -1), ...lastAdd.tail];
+    this._historyIndex = lastAdd.index;
+    this._lastAdd = null;
+    return true;
   }
 
   /**
@@ -161,6 +203,7 @@ export class HistoryService {
       ...this._history[lastIndex],
       nextState: snapshot,
     };
+    this._lastAdd = null;
   }
 
   // -----------------------------------------------------------------------
@@ -185,6 +228,7 @@ export class HistoryService {
       return null;
     }
 
+    this._lastAdd = null;
     this._historyIndex--;
     return actionToUndo.previousState;
   }
@@ -207,6 +251,7 @@ export class HistoryService {
       return null;
     }
 
+    this._lastAdd = null;
     this._historyIndex++;
     return actionToRedo.nextState;
   }
@@ -269,5 +314,6 @@ export class HistoryService {
   clear(): void {
     this._history = [];
     this._historyIndex = -1;
+    this._lastAdd = null;
   }
 }

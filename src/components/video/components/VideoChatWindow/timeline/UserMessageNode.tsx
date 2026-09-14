@@ -1,7 +1,7 @@
 /**
  * UserMessageNode — renders a user's message on the timeline.
  *
- * Layout: solid circle icon | timestamp + "User" label | message text
+ * Layout: solid circle icon | timestamp + localised author label | message text
  *
  * Uses shared nodeVariants for entrance animation (opacity + translateY).
  *
@@ -12,6 +12,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useLocale } from '@/contexts/LocaleContext';
 import type { UserMessageNodeData } from './types';
 import { formatTimestamp } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
@@ -22,6 +23,7 @@ interface UserMessageNodeProps {
 }
 
 const UserMessageNode: React.FC<UserMessageNodeProps> = ({ node }) => {
+  const { t } = useLocale();
   return (
     <motion.div
       className="flex items-start gap-0"
@@ -42,7 +44,7 @@ const UserMessageNode: React.FC<UserMessageNodeProps> = ({ node }) => {
             {formatTimestamp(node.timestamp)}
           </span>
           <span className="text-xs font-medium text-foreground dark:text-zinc-300">
-            User
+            {t.agentTimeline.userAuthor}
           </span>
         </div>
 

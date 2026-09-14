@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   MUTATING_TIMELINE_SHORTCUTS,
+  resolveGlobalSpaceAction,
   resolveTimelineShortcut,
   shouldGlobalSpaceTogglePlayback,
+  shouldShortcutRunDuringInteraction,
   shouldTimelineHandleCopyShortcut,
   shouldTimelineHandleKeyEvent,
 } from '../shortcutOwnership';
@@ -155,6 +157,59 @@ describe('shouldGlobalSpaceTogglePlayback', () => {
 
   it('Space without an element target toggles playback', () => {
     expect(shouldGlobalSpaceTogglePlayback({ target: null })).toBe(true);
+  });
+});
+
+function spaceEvent(target: Element | null, repeat = false) {
+  return { code: 'Space', target, repeat };
+}
+
+describe('resolveGlobalSpaceAction', () => {
+  it('Space yields to a keyboard-focused toolbar button', () => {
+    const host = mount('<button type="button">Cut</button>');
+    expect(resolveGlobalSpaceAction(spaceEvent(host.querySelector('button')), 'keyboard')).toBe('yield');
+  });
+
+  it('Space still plays after a button was clicked with the mouse', () => {
+    const host = mount('<button type="button">Cut</button>');
+    expect(resolveGlobalSpaceAction(spaceEvent(host.querySelector('button')), 'pointer')).toBe('toggle');
+  });
+
+  it('auto-repeated Space is swallowed without toggling', () => {
+    const host = mount('<div role="button" tabindex="0" class="clip"></div>');
+    expect(resolveGlobalSpaceAction(spaceEvent(host.querySelector('.clip'), true), 'pointer')).toBe('swallow');
+  });
+
+  it('Space inside text editing or a modal dialog yields in either modality', () => {
+    const host = mount('<input /><div role="dialog" aria-modal="true"><span>x</span></div>');
+    expect([
+      resolveGlobalSpaceAction(spaceEvent(host.querySelector('input')), 'pointer'),
+      resolveGlobalSpaceAction(spaceEvent(host.querySelector('span'), true), 'pointer'),
+    ]).toEqual(['yield', 'yield']);
+  });
+
+  it('keys other than Space yield', () => {
+    expect(resolveGlobalSpaceAction({ code: 'KeyK', target: null, repeat: false }, 'pointer')).toBe('yield');
+  });
+});
+
+describe('shouldShortcutRunDuringInteraction', () => {
+  it('Escape during a drag only cancels the drag', () => {
+    const shortcut = resolveTimelineShortcut(key({ key: 'Escape' }), false);
+    expect({ shortcut, runs: shouldShortcutRunDuringInteraction(shortcut!) })
+      .toEqual({ shortcut: 'deselect', runs: false });
+  });
+
+  it('Escape when idle deselects', () => {
+    // Idle keys never consult the interaction predicate: the resolved shortcut runs.
+    expect(resolveTimelineShortcut(key({ key: 'Escape' }), false)).toBe('deselect');
+  });
+
+  it('export still runs mid-drag while timeline edits do not', () => {
+    expect([
+      shouldShortcutRunDuringInteraction('export'),
+      shouldShortcutRunDuringInteraction('delete'),
+    ]).toEqual([true, false]);
   });
 });
 

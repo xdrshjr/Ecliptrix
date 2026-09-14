@@ -171,6 +171,16 @@ const ERROR_MESSAGE_KEYS: ReadonlyMap<string, AiMixErrorKey> = new Map([
   ['VALIDATION_ERROR', 'errorInvalidRequest'],
   ['TIMELINE_IMPORT_INVALID', 'errorImportFailed'],
 ]);
+/**
+ * Failures of the connection to the local service, not verdicts on the plan:
+ * an import that never reached the backend must not read as "the plan cannot
+ * be applied" (AM3-02).
+ */
+const TRANSPORT_ERROR_CODES: ReadonlySet<string> = new Set([
+  'BACKEND_TIMEOUT',
+  'BACKEND_UNREACHABLE',
+  'NETWORK_ERROR',
+]);
 
 /** The plan could not be imported into a timeline; `cause` is the original failure. */
 export class AiMixImportError extends Error {
@@ -374,9 +384,12 @@ async function importPlan(
       { timeoutMs: IMPORT_TIMEOUT_MS, signal },
     );
   } catch (error) {
-    // Cancellation and timeouts keep their own meaning; any rejection by the
-    // import endpoint means the plan cannot be applied.
-    if (error instanceof ApiError) throw new AiMixImportError(error);
+    // Cancellation, timeouts and an unreachable local service keep their own
+    // meaning (AM3-02); only a rejection by the import endpoint means the plan
+    // cannot be applied.
+    if (error instanceof ApiError && !TRANSPORT_ERROR_CODES.has(error.code)) {
+      throw new AiMixImportError(error);
+    }
     throw error;
   }
   const timelineState = response?.success

@@ -136,7 +136,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   <span
                     className="block w-2.5 h-2.5 rounded-full"
                     style={{
-                      backgroundColor: c.color || 'hsl(var(--primary))',
+                      backgroundColor: c.color || 'var(--primary)',
                     }}
                   />
                 }

@@ -8,10 +8,12 @@ import {
   clampImagePosition,
   alignDefaultBoxToImage,
   hasPositionChanged,
+  isNudgeKey,
   resizeFromHandle,
   RESIZE_HANDLES,
   type HandleId,
 } from './imageOverlayGeometry';
+import { ImageNudgeBurst } from './imageOverlayNudge';
 
 const overlayLogger = new VideoEditingLogger({ component: 'ImageOverlay' });
 
@@ -33,6 +35,8 @@ interface ImageOverlayProps {
   isSelected?: boolean;
   onSelect?: () => void;
   imageId: string;
+  /** The image's track is locked: focusable, but no drag, resize or nudge (PV3-04). */
+  readOnly?: boolean;
 }
 
 /**
@@ -60,7 +64,8 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   onCancel,
   isSelected = false,
   onSelect,
-  imageId
+  imageId,
+  readOnly = false,
 }) => {
   const { t } = useLocale();
   const [isGesturing, setIsGesturing] = useState(false);
@@ -76,6 +81,14 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
 
   // D3：入口钳制一次，作为渲染 + 拖拽 + 缩放的唯一基准。
   const safePosition = useMemo(() => clampImagePosition(position), [position]);
+
+  // N-02：方向键微调串。回调经 ref 读最新值，微调串本身在挂载期内保持同一实例。
+  const nudgeTargetRef = useRef({ imageId, onPositionChange, onGestureEnd });
+  nudgeTargetRef.current = { imageId, onPositionChange, onGestureEnd };
+  const [nudgeBurst] = useState(() => new ImageNudgeBurst({
+    onPositionChange: (next) => nudgeTargetRef.current.onPositionChange(next),
+    onCommit: (next) => nudgeTargetRef.current.onGestureEnd?.(nudgeTargetRef.current.imageId, next),
+  }));
 
   const pixelPosition = {
     x: safePosition.x * containerWidth,
@@ -130,7 +143,9 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   }, [naturalSize, containerWidth, containerHeight, position, onAutoFit, onPositionChange, imageId]);
 
   const beginGesture = useCallback((e: React.PointerEvent<HTMLElement>, handle: HandleId | null) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || readOnly) return;
+    // A pending keyboard nudge is its own edit; commit it before the pointer takes over.
+    nudgeBurst.flush();
     // preventDefault suppresses the compatibility mousedown, so the preview
     // wrapper's "press blank area to deselect" never fires for this gesture;
     // stopPropagation keeps a corner press from also starting a move.
@@ -152,7 +167,7 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
     };
     setIsGesturing(true);
     overlayLogger.debug('gesture-start', { imageId, handle, startPosition: safePosition });
-  }, [onSelect, safePosition, imageId]);
+  }, [onSelect, safePosition, imageId, readOnly, nudgeBurst]);
 
   const positionForPointer = useCallback((
     gesture: ActiveGesture,
@@ -244,6 +259,30 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   useEffect(() => () => {
     if (gestureRef.current) finishGestureRef.current(true);
   }, []);
+  useEffect(() => () => nudgeBurst.flush(), [nudgeBurst]);
+
+  // N-02：聚焦的叠加层用方向键移动（Shift 加大步长），Esc 撤回本串，Enter 提交并完成。
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey || gestureRef.current) return;
+    if (e.key === 'Escape') {
+      if (nudgeBurst.cancel()) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      nudgeBurst.flush();
+      onConfirm?.();
+      return;
+    }
+    if (readOnly || !isNudgeKey(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    nudgeBurst.nudge(safePosition, e.key, e.shiftKey);
+  }, [nudgeBurst, onConfirm, readOnly, safePosition]);
 
   const handleControlPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -268,7 +307,11 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
   return (
     <div
       ref={overlayRef}
-      className={`absolute cursor-move select-none ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+      tabIndex={0}
+      role="group"
+      aria-label={t.imageOverlay.overlayLabel}
+      title={readOnly ? t.timeline.track.trackLocked : undefined}
+      className={`absolute select-none outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${readOnly ? 'cursor-default' : 'cursor-move'} ${isSelected && !readOnly ? 'ring-2 ring-blue-500' : ''}`}
       style={{
         left: `${pixelPosition.x}px`,
         top: `${pixelPosition.y}px`,
@@ -285,20 +328,32 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
       // D1′ defense-in-depth：拦截源自叠加层的尾随 click，防御未来在祖先上新挂
       // onClick 导致选区被清（主修复已在 wrapper 改用 onMouseDown 取消选择）。
       onClick={(e) => e.stopPropagation()}
+      onFocus={(e) => {
+        if (e.target === e.currentTarget && !readOnly) onSelect?.();
+      }}
+      onBlur={() => nudgeBurst.flush()}
+      onKeyDown={handleKeyDown}
     >
+      {/* PV3-02：画布是图片唯一可见的栅格（带不透明度、运镜，并位于字幕之下）；
+          这个 <img> 保持透明，只用于读取自然尺寸（首帧对齐与等比缩放）。 */}
       <img
         ref={imgRef}
         src={imageUrl}
         alt=""
-        className="w-full h-full object-contain pointer-events-none"
+        aria-hidden="true"
+        className="w-full h-full object-contain pointer-events-none opacity-0"
         draggable={false}
         onLoad={handleImageLoad}
         onError={() => overlayLogger.error('image-load-failed', { imageId, imageUrl })}
       />
 
+      {readOnly && (
+        <div className="absolute inset-0 border-2 border-dashed border-white/70 pointer-events-none" />
+      )}
+
       {/* 选中时显示四角缩放手柄（D2）：角居中定位 + 对角线光标 + 外扩透明命中区
           (p-1 → 实际可点 ≈ 20px)，可见方块沿用 w-3 h-3 蓝色样式。 */}
-      {isSelected && RESIZE_HANDLES.map((handle) => (
+      {isSelected && !readOnly && RESIZE_HANDLES.map((handle) => (
         <div
           key={handle.id}
           className={`absolute ${handle.positionClass} ${handle.cursorClass} p-1`}
@@ -308,11 +363,11 @@ const ImageOverlay: React.FC<ImageOverlayProps> = ({
         </div>
       ))}
 
-      {isSelected && (
+      {isSelected && !readOnly && (
         <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
       )}
 
-      {isSelected && (
+      {isSelected && !readOnly && (
         <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
           <button
             type="button"

@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, trackEditError, toolErrorResponse, isStillClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findClip, trackEditError, toolErrorResponse, isStillClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning, collectClipStarts, diffClipStarts } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to resize' }),
@@ -17,7 +17,8 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
     name: 'resize_clip',
     label: 'Resize Clip',
     description:
-      'Change how long a clip plays by moving its out-point. The in-point stays fixed; the clip cannot run past the end of its source media. Images can be any length.',
+      'Change how long a clip plays by moving its out-point. The in-point stays fixed; the clip cannot run past the end of its source media. Images can be any length. ' +
+      'Clips on video and audio tracks sit end to end, so shortening a clip moves the clips after it earlier (lengthening moves them later); shiftedClips lists them.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -52,6 +53,7 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
 
       const previousDuration = found.item.duration;
 
+      const before = collectClipStarts(context.timelineState, [found.trackId]);
       context.updateTimeline(toolCallId, {
         type: 'resize_clip',
         clipId: params.clipId,
@@ -61,10 +63,15 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
         // stretched image back to its original length.
         clipEnd: clipStart + params.newDuration,
       });
+      const shiftedClips = diffClipStarts(
+        before,
+        collectClipStarts(context.timelineState, [found.trackId]),
+        params.clipId,
+      );
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
-      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapReports = runOverlapPostCheck(context.timelineState, [found.trackId]);
       const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {
@@ -74,6 +81,7 @@ export function createResizeClipTool(context: ToolContext): AgentTool<typeof par
           previousDuration,
           newDuration: params.newDuration,
         },
+        ...(shiftedClips.length > 0 ? { shiftedClips } : {}),
         ...(warning ? { warning } : {}),
         ...(overlapWarning ? { overlapWarning, overlapCount: overlapReports.length } : {}),
       };

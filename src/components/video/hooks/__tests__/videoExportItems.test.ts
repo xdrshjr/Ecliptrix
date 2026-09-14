@@ -1,7 +1,17 @@
+/**
+ * @vitest-environment node
+ *
+ * videoExportItems — pure request builders. Runs in node (no DOM needed) so the
+ * EX3-07 hygiene check can read the source file with node:fs.
+ */
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { MaterialItem, TimelineItem, Track } from '@/types';
 import {
   buildExportCompositionItems,
+  isClipMaterialMissing,
   planVideoExport,
   toImageCompositionItem,
   toSubtitleCompositionItem,
@@ -109,5 +119,33 @@ describe('videoExportItems', () => {
       byId([]),
     );
     expect(plan).toEqual({ status: 'missing-materials', clips: [{ itemId: 'Clip A', name: 'Clip A' }] });
+  });
+});
+
+describe('videoExportItems source hygiene (EX3-07)', () => {
+  it('source file has no raw control characters', () => {
+    // A raw NUL made git treat the file as binary and hid its diff from review.
+    const bytes = readFileSync(resolve(process.cwd(), 'src/components/video/hooks/videoExportItems.ts'));
+    const controlOffsets = Array.from(bytes.entries())
+      .filter(([, byte]) => byte < 9 || byte === 11 || byte === 12 || (byte >= 14 && byte < 32))
+      .map(([offset]) => offset);
+
+    expect(controlOffsets).toEqual([]);
+  });
+});
+
+describe('isClipMaterialMissing (N-01)', () => {
+  const materials = byId([material('m1', 'video')]);
+
+  it('reports a clip whose material is not in the library', () => {
+    expect([
+      isClipMaterialMissing(item('present', { materialId: 'm1' }), materials),
+      isClipMaterialMissing(item('deleted', { materialId: 'gone' }), materials),
+      isClipMaterialMissing(item('unbound'), materials),
+    ]).toEqual([false, true, true]);
+  });
+
+  it('never reports a subtitle', () => {
+    expect(isClipMaterialMissing(item('caption', { type: 'subtitle', text: 'hi' }), materials)).toBe(false);
   });
 });

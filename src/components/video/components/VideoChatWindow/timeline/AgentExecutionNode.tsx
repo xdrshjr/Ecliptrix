@@ -2,7 +2,8 @@
  * AgentExecutionNode — renders the tool-execution phase on the timeline.
  *
  * Shows a concentric-circle icon (with pulse animation when active),
- * an "Executing (M/N)" header, and a collapsible list of ToolStep items.
+ * a localised executing / executed (M/N) header, and a collapsible list of
+ * ToolStep items.
  *
  * Enhanced animations (Spec 05):
  * - Node entrance via shared nodeVariants
@@ -18,6 +19,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentExecutionNodeData } from './types';
 import { formatTimestamp, toolCallToStepData } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
@@ -32,6 +34,7 @@ interface AgentExecutionNodeProps {
 }
 
 const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel }) => {
+  const { t } = useLocale();
   // Auto-expand while active, collapse when done (user can toggle)
   const [isExpanded, setIsExpanded] = useState(node.isActive);
 
@@ -46,7 +49,7 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel 
     setIsExpanded((prev) => !prev);
   }, []);
 
-  const steps = node.toolCalls.map(toolCallToStepData);
+  const steps = node.toolCalls.map((tc) => toolCallToStepData(tc, t.agentTimeline.toolNames));
   const completedCount = steps.filter(
     (s) =>
       s.status === 'completed' ||
@@ -92,7 +95,7 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel 
             {formatTimestamp(node.timestamp)}
           </span>
           <span className="text-xs font-medium text-foreground dark:text-zinc-200">
-            {node.isActive ? 'Executing' : 'Executed'}
+            {node.isActive ? t.agentTimeline.executing : t.agentTimeline.executed}
             {' '}
             <span className={`tabular-nums ${hasErrors ? 'text-red-500 dark:text-red-400' : 'text-primary'}`}>
               ({completedCount}/{totalCount})
@@ -146,7 +149,7 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel 
                     onClick={onCancel}
                     className="text-xs text-muted-foreground dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors px-4 py-1.5 rounded-md border border-border dark:border-zinc-600 hover:border-red-300 dark:hover:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/15"
                   >
-                    Cancel Execution
+                    {t.agentTimeline.stop}
                   </button>
                 </motion.div>
               )}
@@ -161,15 +164,15 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel 
             onClick={toggleExpand}
             className="text-xs text-muted-foreground dark:text-zinc-500 hover:text-foreground dark:hover:text-zinc-300 transition-colors"
           >
-            {totalCount} operation{totalCount !== 1 ? 's' : ''} completed
-            {hasErrors ? ' (with errors)' : ''} — click to expand
+            {(hasErrors ? t.agentTimeline.collapsedSummaryErrors : t.agentTimeline.collapsedSummary)
+              .replace('{count}', String(totalCount))}
           </button>
         )}
 
         {/* Cancel notice — shown after cancellation */}
         {!node.isActive && steps.some((s) => s.status === 'executing') && (
           <div className="mt-1 text-xs text-muted-foreground dark:text-zinc-500 italic">
-            Execution cancelled. Completed operations have been preserved.
+            {t.agentTimeline.cancelledNotice}
           </div>
         )}
       </div>

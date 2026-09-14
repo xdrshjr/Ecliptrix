@@ -36,6 +36,7 @@ import { useVideoEditingStore } from '@/stores';
 import { packOverlappingTracks, reconcileOverlapsAfterAgentOp } from './reconcile';
 import { diffTimelineTracks, revertTrackPatches } from './trackPatch';
 import { validateOperationTargets, type OperationValidation } from './operationGuards';
+import { createDefaultAgentTimelineState } from './defaultTimeline';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -545,7 +546,7 @@ export class OperationApplier {
     const current = this.config.getTimelineState();
     if (current) return current;
     console.warn('[OperationApplier] No timeline state — initializing default');
-    const initial = createDefaultTimelineState();
+    const initial = createDefaultAgentTimelineState();
     this.config.setTimelineState(initial);
     return initial;
   }
@@ -768,27 +769,6 @@ function touchedTrackIds(
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
-
-function createDefaultTimelineState(): TimelineState {
-  return {
-    currentTime: 0,
-    totalDuration: 0,
-    zoomLevel: 1,
-    selectedItems: [],
-    tracks: [
-      { id: 'video-track-1', name: 'Video Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0, items: [] },
-      { id: 'image-track-1', name: 'Image Track', type: 'video' as const, height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 1, items: [] },
-      { id: 'audio-track-1', name: 'Audio Track 1', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 2, items: [] },
-      { id: 'audio-track-2', name: 'Audio Track 2', type: 'audio' as const, height: 60, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 3, items: [] },
-      { id: 'subtitle-track-1', name: 'Subtitle Track', type: 'subtitle' as const, height: 50, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 4, items: [] },
-    ],
-    playbackRate: 1,
-    isPlaying: false,
-    snapToGrid: true,
-    gridSize: 0.5,
-    scrollLeft: 0,
-  };
-}
 
 function computeTimelineEnd(state: TimelineState): number {
   let maxEnd = 0;

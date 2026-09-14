@@ -17,9 +17,13 @@ import type { TimelineStore } from '../useTimelineStore';
 import type { TimelineItemData } from '../../domain';
 import { isEditLocked } from '../editLock';
 import { shiftCameraMotionWindow } from '../../../playback/camera/splitRebase';
+import { clampTrimEdge, lanePeersOf } from '../../domain/services/FreeLaneRules';
 
 /** Below this the clip-local origin did not move (float noise). */
 const ORIGIN_SHIFT_EPSILON_SECONDS = 1e-9;
+
+/** A clamped subtitle edge this close to where it was is not an edit. */
+const UNCHANGED_EDGE_EPSILON_SECONDS = 1e-6;
 
 /**
  * Resize a timeline item by moving one of its edges.
@@ -43,11 +47,21 @@ export function resizeItemAction(
   if (!found || found.track.isLocked) return;
   const before = found.item.toPlainObject();
 
+  // Subtitle lanes are never packed, so a trim stops at the neighbouring
+  // caption instead of stacking two captions on screen (TL3-04).
+  let position = newPosition;
+  if (found.track.type === 'subtitle') {
+    const current = { startTime: before.startTime, duration: before.duration };
+    position = clampTrimEdge(lanePeersOf(found.track), itemId, edge, newPosition, current);
+    const currentEdge = edge === 'start' ? current.startTime : current.startTime + current.duration;
+    if (Math.abs(position - currentEdge) < UNCHANGED_EDGE_EPSILON_SECONDS) return;
+  }
+
   // Record history (captures before-snapshot)
-  state.recordAction('UPDATE_ITEM', { itemId, edge, newPosition });
+  state.recordAction('UPDATE_ITEM', { itemId, edge, newPosition: position });
 
   // Perform the resize
-  state.resizeItem(itemId, edge, newPosition);
+  state.resizeItem(itemId, edge, position);
 
   if (edge === 'start') {
     shiftMotionWindowWithTrim(get, before);

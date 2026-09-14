@@ -18,7 +18,7 @@
 - **Auth:** none. Single local owner, expressed as the constants `LOCAL_OWNER_ID` / `LOCAL_OWNER_NAME` (`app/constants.py`, mirrored in `src/lib/localOwner.ts`). The backend binds to `127.0.0.1` and no route carries an auth dependency
 - **Testing:** Vitest (frontend, `vitest.config.ts` + `vitest.integration.config.ts`), pytest (backend, 111 test files)
 - **Deployment:** desktop only — `electron-builder` installer; there is no server deployment path
-- **Scale:** ~620 non-test TS/TSX source files, ~140 backend Python modules, 103 Next.js API routes, 32 backend routers
+- **Scale:** ~620 non-test TS/TSX source files, ~140 backend Python modules, 103 Next.js API routes, 31 backend routers
 
 ### Current Branch Context
 
@@ -190,18 +190,18 @@ Also `desktop.d.ts` (Electron bridge typings: `version`, `logsPath`, `windowCont
 ## Backend (`backend-services/basic-service/`)
 
 ### Entry & Config
-- `app/main.py` (~716 lines) — FastAPI app, lifespan startup/shutdown, CORS, `SessionAuthMiddleware`, `RateLimitMiddleware`, `SecurityHeadersMiddleware`, exception handlers returning `ErrorResponse`, static mounts, and 37 `include_router` calls. Most mount under `/api`; `ai_video_generate_router` and `video_export_router` mount at root.
+- `app/main.py` (~716 lines) — FastAPI app, lifespan startup/shutdown, CORS, `SessionAuthMiddleware`, `RateLimitMiddleware`, `SecurityHeadersMiddleware`, exception handlers returning `ErrorResponse`, static mounts, and 31 `include_router` calls. Most mount under `/api`; `video_export_router` mounts at root.
 - `app/config.py` (~1151 lines) — manual `get_settings()`: `.env` via python-dotenv, then YAML from `config/`. `llm_api_key` / `llm_api_url` have no defaults.
 - `app/database.py` — async SQLAlchemy engine (pool_size 10, max_overflow 20), table auto-create + admin seeding on startup
-- `app/logger.py`, `app/constants.py` (`LOCAL_OWNER_ID` / `LOCAL_OWNER_NAME`), `app/security/` (`log_redact.py`, `url_guard.py`), `app/middleware/` (`security_headers.py` only)
+- `app/logger.py`, `app/constants.py` (`LOCAL_OWNER_ID` / `LOCAL_OWNER_NAME`), `app/security/` (`log_redact.py`, `url_guard.py`), `app/middleware/` (`security_headers.py` only), `app/utils/client_disconnect.py` (`run_until_client_disconnects`: cancels AI mixing / batch analysis when the client aborts)
 
-### Routers (`app/routers/`, 37 files)
-`api_router` (aggregate), `ai_mixed_editing_router`, `ai_video_generate_router`, `ark_image_router`, `ark_video_router`, `audio_router`, `chat_router`, `config_router`, `frame_pack_router`, `image_pack_router`, `image_router`, `llm_router`, `material_router`, `media_proxy_router`, `model_settings_router`, `preview_proxy_router`, `silence_removal_router`, `storage_files_router` (+ `audio_router` sub-app; implements HTTP **206 Range** explicitly so `<video>` can seek), `storage_router`, `storyboard_router`, `system_settings_router`, `timeline_export_router`, `timeline_import_router`, `tts_router`, `video_cover`, `video_export_router`, `video_project_router`, `video_router` (~1345 lines), `video_understanding_script_router`, `voice_clone_router`, `youtube_router`
+### Routers (`app/routers/`, 30 files)
+`api_router` (aggregate), `ai_mixed_editing_router`, `ark_image_router`, `ark_video_router`, `audio_router`, `chat_router`, `config_router`, `frame_pack_router`, `image_pack_router`, `image_router`, `llm_router`, `material_router`, `media_proxy_router`, `model_settings_router`, `preview_proxy_router`, `silence_removal_router`, `storage_files_router` (+ `audio_router` sub-app; implements HTTP **206 Range** explicitly so `<video>` can seek), `storage_router`, `storyboard_router`, `system_settings_router`, `timeline_export_router`, `timeline_import_router`, `tts_router`, `video_cover`, `video_export_router`, `video_project_router`, `video_router` (~1345 lines), `video_understanding_script_router`, `voice_clone_router`, `youtube_router`
 
 ### Services (`app/services/`, 55+ files)
-- **Composition / export:** `video_composition_service.py` (~2917 lines), `composition/` (`filtergraph_builder`, `camera_motion` ~1429 lines, `audio_mix`, `encode`, `media_download`, `media_resolution`, `subtitle_prep`, `video_scaling`), `reference_compositor.py`, `subtitle_service.py`, `timeline_export_service.py`, `timeline_import_service.py`, `timeline_parser_service.py`
+- **Composition / export:** `video_composition_service.py` (~2917 lines), `composition/` (`filtergraph_builder`, `camera_motion` ~1429 lines, `audio_mix`, `composition_lifecycle` (stage, cancel registry, TTL cleanup), `composition_outcome`, `encode`, `ffmpeg_args`, `media_probe` (ffprobe display size / duration), `media_resolution`, `video_scaling`), `reference_compositor.py`, `subtitle_service.py`, `timeline_export_service.py`, `timeline_import_service.py`, `timeline_parser_service.py`
 - **Video:** `video_cut_service.py`, `video_analysis_service.py` (+ `video_analysis_storage_service.py`), `video_understanding_script_service.py`, `video_search_service.py`, `video_cover_service.py`, `video_project_service.py`, `watermark_removal_service.py`, `silence_removal_service.py`, `image_to_video_service.py`
-- **AI:** `llm_client.py`, `llm_service.py`, `chat_service.py`, `ai_mixed_editing_service.py`, `ai_video_generate_service.py`, `ark_video_service.py`, `ark_image_service.py`, `storyboard_service.py` (~2209 lines) + `storyboard_video_queue.py`, `model_settings_service.py`
+- **AI:** `llm_client.py`, `llm_service.py`, `chat_service.py`, `ai_mixed_editing_service.py`, `ark_video_service.py`, `ark_image_service.py`, `storyboard_service.py` (~2209 lines) + `storyboard_video_queue.py`, `model_settings_service.py`
 - **Audio:** `tts_service.py` (~1218 lines), `batch_tts_service.py`, `sentence_tts_service.py`, `voice_clone_service.py`, `volcano_ws_protocol.py`, `audio_transcription_service.py`, `audio_search_service.py`, `waveform_service.py`
 - **Media / storage:** `storage_service.py`, `material_download_service.py`, `local_media_resolver.py`, `media_proxy_service.py`, `preview_proxy_service.py` + `preview_proxy_queue.py`, `thumbnail_service.py`, `derived_gc_service.py`, `frame_pack_service.py`, `grid_pack_service.py`, `pack_ownership_service.py`, `image_search_service.py`, `youtube_service.py` (~1157 lines)
 - **Platform:** `system_settings_service.py`, `queue_manager.py`, `queue_decorator.py`, `simple_queue_decorator.py`
@@ -383,7 +383,7 @@ See the DDD breakdown above; `TimelinePanel.tsx` is the UI entry, `domain/aggreg
 ### `backend-services/basic-service/app/`
 | File | Description |
 |------|-------------|
-| `main.py` | FastAPI app, middleware, exception handlers, 32 routers, static mounts |
+| `main.py` | FastAPI app, middleware, exception handlers, 31 routers, static mounts |
 | `config.py` | `get_settings()` — `.env` + YAML config loading |
 | `database.py` | Async engine, session factory, init/close, `create_all`, idempotent local-owner claim, legacy-DSN rewrite |
 | `logger.py` | Structured logging setup |

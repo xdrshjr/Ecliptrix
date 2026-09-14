@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { TimelineState, Track, TimelineItem, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -11,7 +12,6 @@ import { useTimelineExport } from '../hooks/useTimelineExport';
 import {
   useTimelineStore,
   removeItemsAction,
-  addItemAction,
   addTrackAction,
   setCameraMotionAction,
 } from './store';
@@ -29,11 +29,15 @@ import {
   shouldTimelineHandleCopyShortcut,
   shouldTimelineHandleKeyEvent,
   resolveTimelineShortcut,
+  shouldShortcutRunDuringInteraction,
   MUTATING_TIMELINE_SHORTCUTS,
   type TimelineShortcut,
 } from './shortcutOwnership';
 import type { TimelineData } from './domain';
-import { toMaterialData } from './domain/services/ItemPlacementService';
+import { tracksEqual } from './domain/services/snapshotEquality';
+import { duplicateSelectedClips } from './lib/duplicateClips';
+import { dropMaterialWithDuration } from './lib/dropMaterialWithDuration';
+import { createMissingMaterialPredicate } from './lib/missingMaterial';
 import { replaceTimelineAction } from './store/actions/replaceTimeline';
 import { updateSubtitleTextAction } from './store/actions/updateItemFields';
 import { isEditLocked } from './store/editLock';
@@ -46,6 +50,10 @@ import {
   type SubtitleCommitBlocker,
 } from './lib/subtitleReplacement';
 import { findTrackForMaterial } from './lib/trackForMaterial';
+import { isClipVisibleInLane } from './lib/clipVisibility';
+import { useAnchoredZoom, useTimelineWheel } from './hooks/useTimelineWheel';
+import { useFollowPlayhead } from './hooks/useFollowPlayhead';
+import { TRACK_HEADER_WIDTH } from './theme/timelineTheme';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { canApplyCameraMotion } from '../playback/camera/eligibility';
 import type { CameraMotion } from '../playback/camera';
@@ -111,6 +119,8 @@ interface TimelinePanelProps {
   externalTimelineUpdateId?: string;
   /** Round-2 client-preview: manual retry for a failed/degraded local download. */
   onRetryLocalDownload?: (materialId: string) => void;
+  /** The material library has loaded, so a clip without its material is really missing (N-01). */
+  materialsLoaded?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +139,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   externalTimelineState,
   externalTimelineUpdateId,
   onRetryLocalDownload,
+  materialsLoaded = false,
 }) => {
   const { t, locale } = useLocale();
   const { showSuccess, showError, showInfo, showWarning } = useNotification();
@@ -139,6 +150,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // Only video/audio carry a mask (C2: image/subtitle excluded). The map
   // identity changes whenever any localProxy* field changes, re-rendering items.
   const localPreviewEnabled = useMemo(() => isLocalPreviewEnabled(), []);
+  // A material drop may await a duration probe; its result must not land after unmount.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+  const isMaterialMissing = useMemo(
+    () => createMissingMaterialPredicate(materials, materialsLoaded),
+    [materials, materialsLoaded],
+  );
+
   const localProxyStatusMap = useMemo(() => {
     const map = new Map<string, LocalProxyMaskState>();
     if (!localPreviewEnabled) return map;
@@ -174,6 +196,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [subtitleReplaceConfirm, setSubtitleReplaceConfirm] = React.useState({ isOpen: false, count: 0 });
   const subtitleConfirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
 
+  // Dialogs render into <body>: the agent run marks the timeline section
+  // `inert`, which froze dialogs inside it and let clicks through (N-12).
+  const [portalHost, setPortalHost] = React.useState<HTMLElement | null>(null);
+  useEffect(() => { setPortalHost(document.body); }, []);
+
   // Track last external update to avoid infinite loops
   const lastExternalUpdateIdRef = useRef<string | null>(null);
   const lastProcessedMaterialsTimestampRef = useRef<number | undefined>(undefined);
@@ -208,7 +235,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         scrollLeft: ts.scrollLeft,
         snapToGrid: ts.snapToGrid,
         gridSize: ts.gridSize,
-        isPlaying: ts.isPlaying,
+        // isPlaying is left out: play / pause is mirrored into the store for
+        // the ruler and must not re-emit (autosave, composition rebuild).
       });
     } catch {
       // Cyclic / non-serialisable structure — let the emit through; better
@@ -257,9 +285,13 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         const item = track?.items.find((it) => it.id === itemId);
         return canApplyCameraMotion(item, track);
       });
-      // The clip that opened the panel always leads the list, so "apply to the
-      // first target only" (checkbox off) means "the one you opened".
-      return [cameraMotionTargetId, ...eligible.filter((id) => id !== cameraMotionTargetId)];
+      // The clip that opened the panel leads the list, so "apply to the first
+      // target only" (checkbox off) means "the one you opened" — while it can
+      // still take a motion: its track may have been locked since (TL3-06).
+      const openerTrack = state.tracks.find((tr) => tr.items.some((it) => it.id === cameraMotionTargetId));
+      const opener = openerTrack?.items.find((it) => it.id === cameraMotionTargetId);
+      const others = eligible.filter((id) => id !== cameraMotionTargetId);
+      return canApplyCameraMotion(opener, openerTrack) ? [cameraMotionTargetId, ...others] : others;
     }),
   );
 
@@ -416,9 +448,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // ---------------------------------------------------------------------------
   // Global pointer event listeners for drag (throttled at 16ms)
   // ---------------------------------------------------------------------------
-  // Initial pointer-down position for the deltaX / deltaY calculation
+  // Initial pointer-down position (and lane scroll) for the delta calculation
   const dragStartXRef = useRef(0);
   const dragStartYRef = useRef(0);
+  const dragStartScrollLeftRef = useRef(0);
 
   useEffect(() => {
     if (!isInteracting) return;
@@ -430,47 +463,47 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       dragStartXRef.current = snapshot.context?.pointerDownPosition?.x ?? 0;
       dragStartYRef.current = snapshot.context?.pointerDownPosition?.y ?? 0;
     }
+    dragStartScrollLeftRef.current = trackScrollRef.current?.scrollLeft ?? 0;
+    // Scrolling the lanes mid-drag moves the content under a still pointer, so
+    // the delta counts the scroll gained since the press (TL2-24).
+    const scrollOffsetSincePress = () =>
+      (trackScrollRef.current?.scrollLeft ?? 0) - dragStartScrollLeftRef.current;
+    // The lane (data-track-id, Track.tsx) under the pointer lets the drag layer
+    // transfer a clip across tracks. Null when outside any lane.
+    const trackIdAt = (clientX: number, clientY: number): string | null =>
+      document.elementFromPoint(clientX, clientY)
+        ?.closest('[data-track-id]')?.getAttribute('data-track-id') ?? null;
+    let lastPointer: { clientX: number; clientY: number } | null = null;
 
-    const handlePointerMove = throttle((e: PointerEvent) => {
-      // Hit-test the track under the pointer so the drag layer can transfer the
-      // clip across tracks (e.g. audio-track-1 → audio-track-2). The `.track`
-      // container already carries data-track-id (Track.tsx); resolve it via the
-      // topmost element at the pointer. Null when outside any lane.
-      const targetTrackId =
-        (typeof document !== 'undefined'
-          ? document
-              .elementFromPoint(e.clientX, e.clientY)
-              ?.closest('[data-track-id]')
-              ?.getAttribute('data-track-id')
-          : null) ?? null;
+    const sendMove = (clientX: number, clientY: number) => {
+      lastPointer = { clientX, clientY };
       useTimelineStore.getState().updateDrag({
         type: 'POINTER_MOVE',
-        clientX: e.clientX,
-        clientY: e.clientY,
-        deltaX: e.clientX - dragStartXRef.current,
+        clientX,
+        clientY,
+        deltaX: clientX - dragStartXRef.current + scrollOffsetSincePress(),
         // A purely vertical move to another lane must also start a move drag.
-        deltaY: e.clientY - dragStartYRef.current,
-        targetTrackId,
+        deltaY: clientY - dragStartYRef.current,
+        targetTrackId: trackIdAt(clientX, clientY),
       });
-    }, 16);
+    };
+    const handlePointerMove = throttle((e: PointerEvent) => sendMove(e.clientX, e.clientY), 16);
+    // A scroll under a still pointer re-sends the move so the clip follows the cursor.
+    const handleLaneScroll = () => {
+      if (lastPointer) sendMove(lastPointer.clientX, lastPointer.clientY);
+    };
 
     const handlePointerUp = (e: PointerEvent) => {
+      if (scrollOffsetSincePress() !== 0) sendMove(e.clientX, e.clientY);
       // Fix D: re-hit-test the track under the release point so the commit
       // targets where the user actually let go, not the last (throttled and
       // possibly stale) POINTER_MOVE target (analysis §3.3). Null when released
       // outside any lane — the machine then keeps the last move target.
-      const targetTrackId =
-        (typeof document !== 'undefined'
-          ? document
-              .elementFromPoint(e.clientX, e.clientY)
-              ?.closest('[data-track-id]')
-              ?.getAttribute('data-track-id')
-          : null) ?? null;
       useTimelineStore.getState().endDrag({
         type: 'POINTER_UP',
         clientX: e.clientX,
         clientY: e.clientY,
-        targetTrackId,
+        targetTrackId: trackIdAt(e.clientX, e.clientY),
       });
     };
 
@@ -486,6 +519,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       useTimelineStore.getState().cancelDrag();
     };
 
+    const laneEl = trackScrollRef.current;
+    laneEl?.addEventListener('scroll', handleLaneScroll);
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
     window.addEventListener('pointercancel', handleCancel);
@@ -493,6 +528,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      laneEl?.removeEventListener('scroll', handleLaneScroll);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handleCancel);
@@ -528,13 +564,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         const parentRect = scrollEl.getBoundingClientRect();
         const elRect = el.getBoundingClientRect();
         const elLeftInParent = elRect.left - parentRect.left + scrollEl.scrollLeft;
-        const elRightInParent = elLeftInParent + elRect.width;
-        const viewLeft = scrollEl.scrollLeft;
-        const viewRight = viewLeft + scrollEl.clientWidth;
         const MARGIN = 48;
-        if (elLeftInParent < viewLeft || elRightInParent > viewRight) {
-          // Reveal the clip's start with a little left context.
-          scrollEl.scrollLeft = Math.max(0, elLeftInParent - MARGIN);
+        const visible = isClipVisibleInLane({
+          elLeft: elLeftInParent,
+          elRight: elLeftInParent + elRect.width,
+          scrollLeft: scrollEl.scrollLeft,
+          clientWidth: scrollEl.clientWidth,
+          headerWidth: TRACK_HEADER_WIDTH,
+        });
+        if (!visible) {
+          // Reveal the clip's start, with a little context, right of the sticky header.
+          scrollEl.scrollLeft = Math.max(0, elLeftInParent - TRACK_HEADER_WIDTH - MARGIN);
         }
       }
       useTimelineStore.getState().clearPendingScrollItem();
@@ -672,6 +712,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         e.preventDefault();
         return;
       }
+      // Escape mid-drag belongs to the drag (it cancels the gesture) and must
+      // not clear the selection as well (UI3-13).
+      if (store.isInteracting && !shouldShortcutRunDuringInteraction(shortcut)) return;
 
       runShortcut(shortcut, e);
     };
@@ -718,30 +761,38 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       targetTrackId = lookup.trackId;
     }
 
-    const added = addItemAction(() => useTimelineStore.getState(), targetTrackId, toMaterialData(material));
-    if (!added) {
-      // A drop onto a locked track is refused, not silently rerouted elsewhere.
-      const target = useTimelineStore.getState().tracks.find(track => track.id === targetTrackId);
-      if (target?.isLocked) {
-        showWarning(t.timeline.track.trackLocked);
+    // A material without a known length is probed first (ME-11); the flow
+    // re-checks the lock and the target track after the probe.
+    void dropMaterialWithDuration(() => useTimelineStore.getState(), material, targetTrackId, {
+      isMounted: () => isMountedRef.current,
+      onSlowProbe: () => showInfo(t.timeline.messages.probingDuration, 3000),
+    }).then((outcome) => {
+      if (outcome.kind === 'refused') {
+        // A drop onto a locked track is refused, not silently rerouted elsewhere.
+        if (outcome.reason === 'track-locked') showWarning(t.timeline.track.trackLocked);
+        if (outcome.reason === 'edit-locked') showWarning(t.timeline.messages.editLockedByAgent);
+        if (outcome.reason === 'track-missing') showWarning(t.agentApply.reasons.trackNotFound);
+        return;
       }
-      return;
-    }
+      if (outcome.durationFallback) showWarning(t.timeline.messages.durationUnknownFallback);
 
-    // Trigger video preload
-    if (material.type === 'video') {
-      // 优先预热同源 cacheUrl（远程素材已被 useRemoteMaterialPrefetch 预下载
-      // 到 cached_materials；命中后 <video> Range 走本地 200ms 内首字节）。
-      // 未命中时回落到 serverUrl||url，与历史行为一致。
-      const previewUrl =
-        selectPlaybackUrl(material, { purpose: 'preview' }) ||
-        material.serverUrl ||
-        material.url;
-      if (previewUrl && material.id) {
-        videoCache.preloadVideo(previewUrl, material.id).catch(() => {});
+      // Trigger video preload
+      if (material.type === 'video') {
+        // 优先预热同源 cacheUrl（远程素材已被 useRemoteMaterialPrefetch 预下载
+        // 到 cached_materials；命中后 <video> Range 走本地 200ms 内首字节）。
+        // 未命中时回落到 serverUrl||url，与历史行为一致。
+        const previewUrl =
+          selectPlaybackUrl(material, { purpose: 'preview' }) ||
+          material.serverUrl ||
+          material.url;
+        if (previewUrl && material.id) {
+          videoCache.preloadVideo(previewUrl, material.id).catch(() => {});
+        }
       }
-    }
-  }, [videoCache, showWarning, t]);
+    }).catch((error) => {
+      console.error('[TimelinePanel] material drop failed', { materialId: material.id, error });
+    });
+  }, [videoCache, showInfo, showWarning, t]);
 
   // A drop carries only the material id: resolving it against the library
   // builds the clip exactly like "add to timeline" (playback urls, storage
@@ -827,63 +878,19 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     const state = useTimelineStore.getState();
     if (state.selectedItems.length === 0) return;
 
-    // Collect selected items (clips on locked tracks are never duplicated)
-    const selectedItemsList: any[] = [];
-    state.tracks.forEach(track => {
-      if (track.isLocked) return;
-      track.items.forEach((item: any) => {
-        if (state.selectedItems.includes(item.id)) {
-          selectedItemsList.push({ ...item, trackId: track.id });
-        }
-      });
-    });
+    // Clips on locked tracks are never duplicated (see duplicateClips).
+    const { data, newIds } = duplicateSelectedClips(
+      state.exportToData(),
+      state.selectedItems,
+      (name) => t.timeline.track.copyOf.replace('{name}', name),
+    );
+    if (newIds.length === 0) return;
 
-    if (selectedItemsList.length === 0) return;
-
-    // Group by track
-    const itemsByTrack: Record<string, any[]> = {};
-    selectedItemsList.forEach(item => {
-      if (!itemsByTrack[item.trackId]) itemsByTrack[item.trackId] = [];
-      itemsByTrack[item.trackId].push(item);
-    });
-
-    // Record history
     state.recordAction('ADD_ITEM', {
       operation: 'copy',
       selectedItemIds: state.selectedItems,
     });
-
-    // Create copies - use exportToData/importFromData to safely mutate
-    const currentData = state.exportToData();
-    const newSelectedIds: string[] = [];
-
-    const updatedTracks = currentData.tracks.map((track: any) => {
-      const trackItems = itemsByTrack[track.id];
-      if (!trackItems || trackItems.length === 0) return track;
-
-      const trackEndTime = track.items.length > 0
-        ? Math.max(...track.items.map((i: any) => (i.startTime || 0) + (i.duration || 0)))
-        : 0;
-
-      let placementTime = trackEndTime;
-      const copies: any[] = [];
-
-      trackItems.forEach((original: any) => {
-        const newId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        copies.push({
-          ...original,
-          id: newId,
-          name: t.timeline.track.copyOf.replace('{name}', original.name),
-          startTime: placementTime,
-        });
-        newSelectedIds.push(newId);
-        placementTime += original.duration || 0;
-      });
-
-      return { ...track, items: [...track.items, ...copies] };
-    });
-
-    state.importFromData({ ...currentData, tracks: updatedTracks });
+    state.importFromData(data);
 
     // Copy appends at the end of each track; auto-organize so the new items
     // participate in the same flush-from-0 invariant as any other mutation.
@@ -892,6 +899,10 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     // Capture synchronously: a next-frame capture lands on whichever history
     // entry is last by then and breaks redo for same-tick edits.
     useTimelineStore.getState().captureNextState();
+
+    // The copies are what the user just made, so they become the selection (TL2-22).
+    useTimelineStore.getState().selectItems(newIds);
+    useTimelineStore.getState().requestScrollItemIntoView(newIds[0]);
   }, [showWarning, t]);
 
   const handleOrganizeMaterials = useCallback(() => {
@@ -909,6 +920,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       return;
     }
 
+    const tracksBefore = state.exportToData().tracks;
     // Reuse the UPDATE_ITEM action type so existing history filters keep
     // working; autoOrganize does the actual packing.
     state.recordAction('UPDATE_ITEM', {
@@ -920,6 +932,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
     useTimelineStore.getState().captureNextState();
 
+    // An already tidy timeline records nothing (S12) and says so (TL3-02).
+    if (tracksEqual(tracksBefore, useTimelineStore.getState().exportToData().tracks)) {
+      showInfo(t.timeline.messages.organizeMaterialsAlreadyTidy, 3000);
+      return;
+    }
     showSuccess(t.timeline.messages.organizeMaterialsSuccess);
   }, [showSuccess, showInfo, showWarning, t]);
 
@@ -964,9 +981,11 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
   const handleApplyCameraMotion = useCallback(
     (itemIds: string[], motion: CameraMotion | null) => {
-      setCameraMotionAction(() => useTimelineStore.getState(), itemIds, motion);
+      if (setCameraMotionAction(() => useTimelineStore.getState(), itemIds, motion)) return;
+      showWarning(isEditLocked(useTimelineStore.getState())
+        ? t.timeline.messages.editLockedByAgent : t.timeline.cameraMotion.disabledTrackLocked);
     },
-    [],
+    [showWarning, t],
   );
 
   const handleAddEffect = useCallback(() => {
@@ -1330,6 +1349,17 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
     requestAnimationFrame(() => { isScrollingSyncRef.current = false; });
   }, []);
 
+  // Ctrl+wheel and button zoom keep the time under the cursor / playhead
+  // (TL2-07); the view pages along with playback (TL2-24).
+  const requestAnchoredZoom = useAnchoredZoom(trackScrollRef);
+  useTimelineWheel({
+    trackScrollRef,
+    rulerScrollRef,
+    getZoomLevel: () => useTimelineStore.getState().zoomLevel,
+    onZoom: requestAnchoredZoom,
+  });
+  useFollowPlayhead({ trackScrollRef, rulerScrollRef });
+
   // ---------------------------------------------------------------------------
   // Notify parent of current time changes
   // ---------------------------------------------------------------------------
@@ -1365,7 +1395,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   return (
     <div
       className={`timeline-panel flex flex-col h-full bg-card ${className}`}
-      tabIndex={0}
+      tabIndex={-1}
+      role="region"
+      aria-label={t.timeline.panelAriaLabel}
     >
       {/* 工具栏 */}
       <TimelineToolbar
@@ -1383,6 +1415,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       <TimelineRuler
         scrollRef={rulerScrollRef}
         onScroll={handleRulerScroll}
+        onZoomRequest={requestAnchoredZoom}
       />
 
       {/* 轨道容器 */}
@@ -1398,47 +1431,53 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onRetryLocalDownload={onRetryLocalDownload}
         onOpenCameraMotion={handleOpenCameraMotion}
         onMaterialDrop={handleMaterialDropById}
+        isMaterialMissing={isMaterialMissing}
       />
 
-      {/* 运镜面板 */}
-      {cameraMotionTarget && (
-        <CameraMotionModal
-          isOpen={cameraMotionTargetId !== null}
-          onClose={handleCloseCameraMotion}
-          onApply={handleApplyCameraMotion}
-          clipName={cameraMotionTarget.name}
-          clipDuration={cameraMotionTarget.duration}
-          clipThumbnailUrl={cameraMotionStagePoster}
-          initialMotion={cameraMotionTarget.cameraMotion}
-          targetItemIds={cameraMotionTargetIds}
-          isEditLocked={externalEditLock !== null}
-        />
-      )}
+      {portalHost && createPortal(
+        <>
+          {/* 运镜面板 */}
+          {cameraMotionTarget && (
+            <CameraMotionModal
+              isOpen={cameraMotionTargetId !== null}
+              onClose={handleCloseCameraMotion}
+              onApply={handleApplyCameraMotion}
+              clipName={cameraMotionTarget.name}
+              clipDuration={cameraMotionTarget.duration}
+              clipThumbnailUrl={cameraMotionStagePoster}
+              initialMotion={cameraMotionTarget.cameraMotion}
+              targetItemIds={cameraMotionTargetIds}
+              isEditLocked={externalEditLock !== null}
+            />
+          )}
 
-      {/* 字幕编辑模态框 */}
-      {editingTrackId && (
-        <SubtitleEditModal
-          isOpen={isSubtitleEditModalOpen}
-          onClose={handleCloseSubtitleEditModal}
-          onSave={handleSaveSubtitleChanges}
-          subtitles={memoizedSubtitles}
-          taskId="timeline_subtitle_edit"
-          locale={locale}
-          isEditLocked={externalEditLock !== null}
-        />
-      )}
+          {/* 字幕编辑模态框 */}
+          {editingTrackId && (
+            <SubtitleEditModal
+              isOpen={isSubtitleEditModalOpen}
+              onClose={handleCloseSubtitleEditModal}
+              onSave={handleSaveSubtitleChanges}
+              subtitles={memoizedSubtitles}
+              taskId="timeline_subtitle_edit"
+              locale={locale}
+              isEditLocked={externalEditLock !== null}
+            />
+          )}
 
-      {/* 字幕替换确认：识别前询问，确认后整体替换为一步可撤销操作 */}
-      <ConfirmationDialog
-        isOpen={subtitleReplaceConfirm.isOpen}
-        type="warning"
-        title={t.timeline.messages.replaceSubtitlesTitle}
-        message={t.timeline.messages.replaceSubtitlesBody.replace('{count}', String(subtitleReplaceConfirm.count))}
-        confirmText={t.timeline.messages.replaceSubtitlesConfirm}
-        cancelText={t.common.cancel}
-        onConfirm={() => settleSubtitleReplaceConfirm(true)}
-        onCancel={() => settleSubtitleReplaceConfirm(false)}
-      />
+          {/* 字幕替换确认：识别前询问，确认后整体替换为一步可撤销操作 */}
+          <ConfirmationDialog
+            isOpen={subtitleReplaceConfirm.isOpen}
+            type="warning"
+            title={t.timeline.messages.replaceSubtitlesTitle}
+            message={t.timeline.messages.replaceSubtitlesBody.replace('{count}', String(subtitleReplaceConfirm.count))}
+            confirmText={t.timeline.messages.replaceSubtitlesConfirm}
+            cancelText={t.common.cancel}
+            onConfirm={() => settleSubtitleReplaceConfirm(true)}
+            onCancel={() => settleSubtitleReplaceConfirm(false)}
+          />
+        </>,
+        portalHost,
+      )}
     </div>
   );
 };

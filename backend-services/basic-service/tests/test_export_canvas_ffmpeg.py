@@ -9,11 +9,17 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import wave
+from array import array
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from app.models.video_models import AspectRatio, VideoCompositionItem, VideoCompositionRequest
+from app.services.composition import audio_mix
 from app.services.composition.filtergraph_builder import build_filtergraph
+from app.services.video_composition_service import VideoCompositionService
 
 _FFMPEG = shutil.which("ffmpeg")
 _FFPROBE = shutil.which("ffprobe")
@@ -177,3 +183,147 @@ def test_black_base_only_graph_encodes_with_duration(tmp_path):
     video = _render(tmp_path, [], {}, timeline_end=2.0)
     assert abs(_duration(video) - 2.0) < 0.1
     assert _close(_pixel(video, 1.0), BLACK)
+
+
+# ---------------------------------------------------------------------------
+# Round 3: sources the normalization pass used to mis-read, and long timelines
+# ---------------------------------------------------------------------------
+
+
+def _composer() -> VideoCompositionService:
+    service = object.__new__(VideoCompositionService)
+    service._gpu_encoder = None
+    return service
+
+
+def _normalize(directory: Path, source: str, aspect: AspectRatio, window) -> str:
+    result = _composer()._normalize_video({
+        'video_path': source, 'index': 0, 'temp_dir': str(directory), 'target_fps': FPS,
+        'ffmpeg_path': 'ffmpeg', 'clip_start': window[0], 'clip_end': window[1],
+        'timeline_start': 0.0, 'target_aspect_ratio': aspect,
+        'camera_motion': None, 'camera_label': 'clip',
+    })
+    assert result["success"] is True, result.get("error")
+    return result["normalized_path"]
+
+
+def _frame_count(video: str) -> int:
+    out = subprocess.run(
+        [_FFPROBE, "-v", "error", "-count_frames", "-select_streams", "v:0",
+         "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", video],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    return int(out.strip())
+
+
+def _pixel_at(video: str, at_seconds: float, x: int, y: int, width: int):
+    raw = subprocess.run(
+        [_FFMPEG, "-v", "error", "-ss", f"{at_seconds}", "-i", video,
+         "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        check=True, capture_output=True,
+    ).stdout
+    offset = (y * width + x) * 3
+    return tuple(raw[offset:offset + 3])
+
+
+def test_rotated_portrait_clip_fills_vertical_frame(tmp_path):
+    """EX3-01: a phone clip stored landscape with a 90-degree display matrix."""
+    landscape = _color_clip(tmp_path, "landscape", "red", 1)
+    portrait = str(tmp_path / "portrait.mp4")
+    subprocess.run(
+        [_FFMPEG, "-y", "-v", "error", "-display_rotation:v:0", "90",
+         "-i", landscape, "-c", "copy", portrait],
+        check=True, capture_output=True,
+    )
+
+    normalized = _normalize(tmp_path, portrait, AspectRatio.RATIO_9_16, (0.0, 1.0))
+
+    # Letterboxing the coded 64x36 size left rows 0-655 of 1080x1920 black.
+    assert _close(_pixel_at(normalized, 0.5, 540, 100, 1080), RED)
+
+
+def test_webm_without_duration_normalizes_requested_window(tmp_path):
+    """EX3-02: a live-style WebM has no container duration and no frame count."""
+    capture = str(tmp_path / "capture.webm")
+    subprocess.run(
+        [_FFMPEG, "-y", "-v", "error", "-f", "lavfi",
+         "-i", f"color=c=blue:s={WIDTH}x{HEIGHT}:r={FPS}:d=4",
+         "-c:v", "libvpx", "-f", "webm", "-live", "1", capture],
+        check=True, capture_output=True,
+    )
+
+    normalized = _normalize(tmp_path, capture, AspectRatio.RATIO_16_9, (0.5, 1.5))
+
+    assert _frame_count(normalized) == 30
+
+
+def test_premerged_run_matches_per_clip_frame_count(tmp_path):
+    """N-04: a joined run keeps every clip's frames and position on the canvas."""
+    colors = {"a": "red", "b": "green", "c": "blue", "top": "white"}
+    paths = {name: _color_clip(tmp_path, name, color, 0.5) for name, color in colors.items()}
+    placement = (("a", 0.0, "t1"), ("b", 0.5, "t1"), ("c", 1.0, "t1"), ("top", 2.0, "t2"))
+    items = [
+        VideoCompositionItem(
+            id=name, name=name, url=paths[name], start_time=start, duration=0.5,
+            track_id=track, clip_start=0.0, clip_end=0.5,
+        )
+        for name, start, track in placement
+    ]
+    request = VideoCompositionRequest(
+        task_id="t", video_items=items, total_duration=3.0,
+        output_resolution={"width": WIDTH, "height": HEIGHT}, output_fps=FPS,
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    output = tmp_path / "canvas.mp4"
+
+    _composer()._compose_videos_filtergraph(
+        request, [paths[item.id] for item in items], output, "ffmpeg",
+        {"width": WIDTH, "height": HEIGHT}, 3.0, str(work),
+    )
+
+    assert (work / "run_0.mp4").exists()
+    assert _frame_count(str(output)) == 90
+    assert _close(_pixel(str(output), 0.25), RED)
+    assert _close(_pixel(str(output), 1.25), BLUE)
+    assert _close(_pixel(str(output), 2.25), (255, 255, 255))
+
+
+def _tone(directory: Path, name: str, frequency: int) -> str:
+    path = str(directory / f"{name}.wav")
+    subprocess.run(
+        [_FFMPEG, "-y", "-v", "error", "-f", "lavfi",
+         "-i", f"sine=frequency={frequency}:sample_rate=44100:duration=2",
+         "-af", "volume=12dB", "-ac", "2", path],
+        check=True, capture_output=True,
+    )
+    return path
+
+
+def _samples(path: str) -> array:
+    with wave.open(path, "rb") as handle:
+        return array("h", handle.readframes(handle.getnframes()))
+
+
+def test_chunked_audio_mix_matches_single_pass_mix(tmp_path):
+    """EX3-04 / RV3-14: five half-scale tones sum past 0 dBFS; float chunks must not clip early."""
+    sources = [
+        {"path": _tone(tmp_path, f"tone{n}", 220 + 110 * n), "start_time": n * 0.1}
+        for n in range(5)
+    ]
+    work = tmp_path / "work"
+    work.mkdir()
+    composer = _composer()
+    single, chunked = str(work / "single.wav"), str(work / "chunked.wav")
+
+    assert composer._run_audio_mix(sources, single, "ffmpeg", 2.5)
+    with patch("app.services.video_composition_service.chunk_sources",
+               lambda count: audio_mix.chunk_sources(count, max_inputs=2)):
+        parts = composer._mix_audio_chunks(sources, str(work), "ffmpeg", 2.5)
+    assert len(parts) == 3
+    assert composer._run_audio_mix(parts, chunked, "ffmpeg", 2.5)
+
+    single_samples, chunked_samples = _samples(single), _samples(chunked)
+    assert len(single_samples) == len(chunked_samples)
+    assert max(abs(a - b) for a, b in zip(single_samples, chunked_samples)) <= 1
+    assert max(abs(sample) for sample in single_samples) >= 32767  # the sum reaches full scale

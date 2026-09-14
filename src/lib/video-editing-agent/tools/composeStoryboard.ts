@@ -89,7 +89,7 @@ function buildSceneOperation(material: MaterialItem, trackId: string, startTime:
       originalDuration: material.type === 'image' ? 0 : duration,
       volume: 1.0,
     },
-    material: { ...toAgentClipMaterial(material), url: material.url },
+    material: toAgentClipMaterial(material),
   };
 }
 
@@ -159,7 +159,7 @@ export function createComposeStoryboardTool(context: ToolContext): AgentTool<typ
       // Reconcile packs the track, so read the real end instead of the requested cursor.
       const totalDuration = getTrackEndTime(track);
       const warning = formatDurationWarning(checkTrackDurationConstraint(context.timelineState));
-      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapReports = runOverlapPostCheck(context.timelineState, [track.id]);
       const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {

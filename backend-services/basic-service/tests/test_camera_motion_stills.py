@@ -323,9 +323,12 @@ def service(monkeypatch, tmp_path):
 @pytest.fixture
 def two_images(tmp_path):
     paths = []
+    from PIL import Image
+
     for name in ("moving.png", "static.png"):
         path = tmp_path / name
-        path.write_bytes(b"not-a-real-png")
+        # Decodable on purpose: export leaves undecodable images out (EX3-05).
+        Image.new("RGB", (4, 3)).save(path, format="PNG")
         paths.append(str(path))
     return paths
 

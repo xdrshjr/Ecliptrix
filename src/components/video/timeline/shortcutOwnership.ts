@@ -1,3 +1,5 @@
+import type { InputModality } from './inputModality';
+
 interface CopyShortcutOwnershipInput {
   selection?: Pick<Selection, 'isCollapsed' | 'toString'> | null;
   selectedItems: readonly unknown[];
@@ -42,6 +44,9 @@ export function shouldTimelineHandleKeyEvent(
  * clip roots are tabIndex=0 and preventDefault Space to select themselves, and
  * Space after clicking a clip or a toolbar button must still toggle playback —
  * the core convention of every editor.
+ *
+ * @deprecated Use {@link resolveGlobalSpaceAction}, which also yields to
+ * keyboard-focused controls and swallows auto-repeat. Kept for one release.
  */
 export function shouldGlobalSpaceTogglePlayback(
   event: Pick<KeyboardEvent, 'target'>,
@@ -50,6 +55,44 @@ export function shouldGlobalSpaceTogglePlayback(
   if (!target) return true;
   if (target instanceof HTMLElement && target.isContentEditable) return false;
   return !target.closest(SPACE_TEXT_EDITING_SELECTOR) && !target.closest(MODAL_SELECTOR);
+}
+
+/** Controls whose own activation key is Space when reached by keyboard. */
+const SPACE_ACTIVATED_CONTROL_SELECTOR = [
+  'button',
+  'a[href]',
+  'summary',
+  'select',
+  'input[type="checkbox"]',
+  'input[type="radio"]',
+  '[role="button"]',
+  '[role="checkbox"]',
+  '[role="switch"]',
+  '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="option"]',
+  '[role="tab"]',
+].join(', ');
+
+/** `toggle` plays / pauses, `swallow` only prevents the default, `yield` leaves the key alone. */
+export type GlobalSpaceAction = 'toggle' | 'swallow' | 'yield';
+
+/**
+ * Who owns a global Space press. A control the user reached with the keyboard
+ * gets its native activation; after a mouse click the same control keeps
+ * Space as play (NLE convention). Held Space auto-repeats ~30×/s and must not
+ * flicker playback, so repeats are swallowed.
+ */
+export function resolveGlobalSpaceAction(
+  event: Pick<KeyboardEvent, 'code' | 'target' | 'repeat'>,
+  modality: InputModality,
+): GlobalSpaceAction {
+  if (event.code !== 'Space') return 'yield';
+  if (!shouldGlobalSpaceTogglePlayback(event)) return 'yield';
+  const target = toElement(event.target);
+  if (modality === 'keyboard' && target?.matches(SPACE_ACTIVATED_CONTROL_SELECTOR)) return 'yield';
+  return event.repeat ? 'swallow' : 'toggle';
 }
 
 export type TimelineShortcut =
@@ -81,6 +124,15 @@ export const MUTATING_TIMELINE_SHORTCUTS: ReadonlySet<TimelineShortcut> = new Se
   'subtitles',
   'delete',
 ]);
+
+/**
+ * Whether a shortcut may run while a clip drag / trim is in flight. Edits
+ * would rewrite the timeline under the gesture, and Escape belongs to the
+ * drag (it cancels the gesture) — it must not also clear the selection.
+ */
+export function shouldShortcutRunDuringInteraction(shortcut: TimelineShortcut): boolean {
+  return !MUTATING_TIMELINE_SHORTCUTS.has(shortcut) && shortcut !== 'deselect';
+}
 
 type ShortcutKeyEvent = Pick<
   KeyboardEvent,

@@ -52,7 +52,16 @@ describe('TimelinePanel edit entry points check the edit lock', () => {
   it('adding materials and tracks is refused while locked', () => {
     const drop = sliceBetween('const handleMaterialDrop = useCallback(', 'const handleMaterialDropById = useCallback(');
     expect(drop.indexOf('isEditLocked(state)')).toBeGreaterThanOrEqual(0);
-    expect(drop.indexOf('isEditLocked(state)')).toBeLessThan(drop.indexOf('addItemAction('));
+    expect(drop.indexOf('isEditLocked(state)')).toBeLessThan(drop.indexOf('dropMaterialWithDuration('));
+    // The add itself happens in the drop flow, which checks the lock again
+    // after an asynchronous duration probe (ME-11).
+    const flowSrc = readFileSync(resolve(__dirname, '..', 'lib', 'dropMaterialWithDuration.ts'), 'utf-8');
+    const recheck = flowSrc.slice(flowSrc.indexOf('function refusalAfterProbe('), flowSrc.indexOf('export async function'));
+    expect(recheck).toContain('isEditLocked(state)');
+    const flow = flowSrc.slice(flowSrc.indexOf('export async function dropMaterialWithDuration('));
+    const probe = flow.indexOf('await probeWithNotice(');
+    expect(flow.indexOf('refusalAfterProbe(get', probe)).toBeGreaterThan(probe);
+    expect(flow.indexOf('refusalAfterProbe(get', probe)).toBeLessThan(flow.indexOf('addItemAction(get', probe));
 
     const batch = sliceBetween('const handleAddMaterialsToTimeline = useCallback(', 'useEffect(');
     expect(batch).toContain(LOCK_CHECK);
@@ -91,7 +100,7 @@ describe('TimelinePanel drag safety', () => {
 
   it('pointer moves carry a vertical delta so a straight drag to another lane starts a move', () => {
     expect(panelSrc).toMatch(/dragStartYRef\.current = snapshot\.context\?\.pointerDownPosition\?\.y \?\? 0/);
-    expect(panelSrc).toMatch(/deltaY: e\.clientY - dragStartYRef\.current/);
+    expect(panelSrc).toMatch(/deltaY: clientY - dragStartYRef\.current/);
   });
 
   it('material drops resolve the id against the library', () => {

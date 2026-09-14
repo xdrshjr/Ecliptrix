@@ -27,8 +27,8 @@
  *     the legacy single-source drawFrame path is untouched (v1 coexistence).
  *
  *  6. Integration boundary (S3 will rely on these): the MultiTrackAttachDeps DOM
- *     contract (null prewarm allowed; viewport letterbox honoured; a real
- *     measureSubtitle wired through the engine produces wrapped lines) and the
+ *     contract (null prewarm allowed; viewport letterbox honoured; subtitles
+ *     laid out against the output size are drawn through the engine) and the
  *     CanvasCompositor.renderFrame(CompositorLayer[]) shape.
  */
 
@@ -47,7 +47,6 @@ import { CanvasCompositor } from '../CanvasCompositor';
 import { MultiTrackPlaybackEngine, type MultiTrackAttachDeps } from '../MultiTrackPlaybackEngine';
 import { PlaybackClock } from '../PlaybackClock';
 import { PlayheadController } from '../PlayheadController';
-import type { TextMeasurer } from '../SubtitleLayer';
 import type { CompositorLayer, VideoTrackGroup } from '../types';
 import type {
   SubtitleSequenceItem,
@@ -230,6 +229,7 @@ function makeRecordingCanvas(width = 1280, height = 720) {
     }),
     fillRect: vi.fn(),
     fillText: vi.fn((t: string) => fillTextCalls.push(t)),
+    strokeText: vi.fn(),
     measureText: vi.fn(() => ({ width: 80 })),
     save: vi.fn(),
     restore: vi.fn(),
@@ -248,8 +248,6 @@ function makeRecordingCanvas(width = 1280, height = 720) {
   } as unknown as HTMLCanvasElement;
   return { canvas, ctx, drawnAlphas, fillTextCalls };
 }
-
-const measure: TextMeasurer = (text, style) => text.length * style.fontSize * 0.5;
 
 describe('transition alpha at draw — effective video opacity = item.opacity × alphaFor', () => {
   it('a fade-in clip with item opacity 0.5 draws at 0.5 × midpoint-alpha through renderFrame', () => {
@@ -278,8 +276,7 @@ describe('transition alpha at draw — effective video opacity = item.opacity ×
       subtitleItems: [],
       imageItems: [],
       t: 2,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: measure,
+      output: { width: 1920, height: 1080 },
     });
     c.renderFrame(layers);
 
@@ -304,8 +301,7 @@ describe('transition alpha at draw — effective video opacity = item.opacity ×
       subtitleItems: [],
       imageItems: [],
       t: 5,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: measure,
+      output: { width: 1920, height: 1080 },
     });
     c.renderFrame(layers);
     expect(drawnAlphas[0].alpha).toBeCloseTo(0.8, 6);
@@ -330,8 +326,7 @@ describe('z-order — subtitle sits ABOVE image (caption never occluded)', () =>
         { id: 'sub', text: 'caption', startTime: 0, duration: 10, trackId: 'st' },
       ],
       t: 5,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: measure,
+      output: { width: 1920, height: 1080 },
     });
     const videoZ = layers.find((l) => l.kind === 'video')!.z;
     const imageZ = layers.find((l) => l.kind === 'image')!.z;
@@ -378,7 +373,7 @@ function buildEngine(opts: {
   subtitleItems?: SubtitleSequenceItem[];
   total: number;
   viewport?: MultiTrackAttachDeps['viewport'];
-  measureSubtitle?: TextMeasurer;
+  outputSize?: MultiTrackAttachDeps['outputSize'];
   prewarm?: boolean;
 }) {
   const control = makeControlledClock();
@@ -401,8 +396,8 @@ function buildEngine(opts: {
     resolveTrackElements: () => ({ active: videoEl, prewarm: prewarmEl }),
     resolveAudioElement: () => null,
     resolveSource: (s) => `/api/storage/files/video/${s.id}.mp4`,
+    outputSize: opts.outputSize ?? { width: 1920, height: 1080 },
     viewport: opts.viewport,
-    measureSubtitle: opts.measureSubtitle,
     timeline: {
       getVideoTrackGroups: () => opts.videoGroups,
       getAudioSyncGroups: () => [],
@@ -507,18 +502,17 @@ describe('integration boundary — MultiTrackAttachDeps contract S3 must satisfy
     expect(recording.ctx.fillStyle).toBe('#123456');
   });
 
-  it('a real measureSubtitle wired through the engine produces wrapped subtitle lines', () => {
+  it('the engine lays subtitles out against the output size and draws every wrapped line', () => {
     const { recording } = buildEngine({
       videoGroups: [group('t1', 0, [vseq({ id: 'a' })])],
       subtitleItems: [
         { id: 's', text: 'one two three four five six', startTime: 0, duration: 10, trackId: 'st' },
       ],
       total: 10,
-      // A measurer that forces multi-line wrapping at the engine's canvas width.
-      measureSubtitle: (text, style) => text.length * style.fontSize,
+      // 340 px wide at the default 24 px → floor(240 / 24) = 10 chars per line.
+      outputSize: { width: 340, height: 1080 },
     });
-    // The first-frame paint drew at least one subtitle line via fillText.
-    expect(recording.fillTextCalls.length).toBeGreaterThan(0);
+    expect(recording.fillTextCalls).toEqual(['one two', 'three four', 'five six']);
   });
 
   it('renderFrame accepts the documented CompositorLayer[] union (video|image|subtitle) shape', () => {
@@ -528,7 +522,15 @@ describe('integration boundary — MultiTrackAttachDeps contract S3 must satisfy
     const layers: CompositorLayer[] = [
       { kind: 'video', id: 'v', source: { readyState: 4, videoWidth: 100, videoHeight: 100 } as unknown as HTMLVideoElement, opacity: 1, z: 0 },
       { kind: 'image', id: 'i', src: '/x.png', bounds: { x: 0, y: 0, w: 0.5, h: 0.5 }, opacity: 1, z: 1_000_000 },
-      { kind: 'subtitle', id: 's', lines: ['cap'], style: { fontSize: 20, color: '#fff' }, opacity: 1, z: 2_000_000 },
+      {
+        kind: 'subtitle',
+        id: 's',
+        lines: [{ text: 'cap', topY: 1005 }],
+        style: { fontSize: 20, color: '#fff' },
+        outputHeight: 1080,
+        opacity: 1,
+        z: 2_000_000,
+      },
     ];
     // The boundary contract: renderFrame consumes the full union without throwing.
     expect(() => c.renderFrame(layers)).not.toThrow();

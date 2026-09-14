@@ -136,4 +136,21 @@ describe('splitAction', () => {
     const cut = splitAction(() => useTimelineStore.getState(), 3, 'playhead');
     expect({ missed, cut }).toEqual({ missed: 'none', cut: 'split' });
   });
+
+  // TL3-05: the cut tool acts on the clip the user clicked, even on a hidden lane.
+  it('cut tool splits a clip the user clicked on a hidden track', () => {
+    useTimelineStore.getState().toggleTrackVisibility('video-track-1');
+    useTimelineStore.getState().selectItem('v-a');
+    const outcome = splitAction(() => useTimelineStore.getState(), 3, 'selected');
+    const video = useTimelineStore.getState().tracks.find(t => t.id === 'video-track-1')!;
+    expect({ outcome, clips: video.items.length }).toEqual({ outcome: 'split', clips: 2 });
+  });
+
+  it('playhead split still skips hidden tracks', () => {
+    useTimelineStore.getState().toggleTrackVisibility('video-track-1');
+    splitAction(() => useTimelineStore.getState(), 3, 'playhead');
+    const video = useTimelineStore.getState().tracks.find(t => t.id === 'video-track-1')!;
+    const audio = useTimelineStore.getState().tracks.find(t => t.id === 'audio-track-1')!;
+    expect({ video: video.items.length, audio: audio.items.length }).toEqual({ video: 1, audio: 2 });
+  });
 });

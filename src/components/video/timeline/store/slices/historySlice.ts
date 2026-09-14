@@ -16,6 +16,7 @@
 import type { StateCreator } from 'zustand';
 import { HistoryService } from '../../domain';
 import type { TimelineAction } from '../../domain';
+import { tracksEqual } from '../../domain/services/snapshotEquality';
 import type { TimelineStore } from '../useTimelineStore';
 import { isEditLocked } from '../editLock';
 
@@ -119,7 +120,16 @@ export const createHistorySlice: StateCreator<
   captureNextState: () => {
     const state = get();
     const afterSnapshot = state.getSnapshot();
-    state._historyService.captureAfterState(afterSnapshot);
+    // S12: an edit that left the tracks as they were (a clip that snapped
+    // back, an already tidy lane, an unchanged volume) takes its entry back
+    // and returns the redo branch it cut off.
+    const history = state._historyService.getHistory();
+    const last = history[history.length - 1];
+    const unchanged =
+      !!last?.previousState && tracksEqual(last.previousState.tracks, afterSnapshot.tracks);
+    if (!unchanged || !state._historyService.discardLastAction()) {
+      state._historyService.captureAfterState(afterSnapshot);
+    }
     set({
       canUndo: state._historyService.canUndo(),
       canRedo: state._historyService.canRedo(),

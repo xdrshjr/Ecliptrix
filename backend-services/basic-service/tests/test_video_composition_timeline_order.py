@@ -100,165 +100,6 @@ class TestVideoCompositionTimelineOrder:
             )
         ]
     
-    def test_video_items_sorting_by_start_time(self, sample_video_items_unordered):
-        """测试视频项目按start_time正确排序"""
-        # 创建合成请求
-        request = VideoCompositionRequest(
-            task_id="test_task_video_sorting",
-            video_items=sample_video_items_unordered,
-            audio_items=[],
-            subtitle_items=[],
-            total_duration=15.0,
-            output_resolution={"width": 1920, "height": 1080},
-            output_fps=30,
-            output_format="mp4"
-        )
-        
-        # Mock 外部依赖
-        with patch.object(self.service, '_check_ffmpeg', return_value=True), \
-             patch.object(self.service, '_get_ffmpeg_path', return_value='ffmpeg'), \
-             patch.object(self.service, '_download_video'), \
-             patch.object(self.service, '_normalize_video'), \
-             patch('subprocess.run'), \
-             patch('os.makedirs'), \
-             patch('shutil.rmtree'):
-            
-            # 验证排序前的顺序
-            original_ids = [item.id for item in request.video_items]
-            assert original_ids == ["video_3", "video_1", "video_2"]
-            
-            # 调用compose_video方法（会触发排序）
-            try:
-                self.service.compose_video(request)
-            except Exception:
-                # 忽略后续处理错误，我们只关心排序逻辑
-                pass
-            
-            # 验证排序后的顺序
-            sorted_ids = [item.id for item in request.video_items]
-            expected_order = ["video_1", "video_2", "video_3"]  # 按start_time排序
-            assert sorted_ids == expected_order
-            
-            # 验证start_time确实是递增的
-            start_times = [item.start_time for item in request.video_items]
-            assert start_times == sorted(start_times)
-    
-    def test_audio_items_sorting_by_start_time(self, sample_audio_items_unordered):
-        """测试音频项目按start_time正确排序"""
-        request = VideoCompositionRequest(
-            task_id="test_task_audio_sorting",
-            video_items=[],
-            audio_items=sample_audio_items_unordered,
-            subtitle_items=[],
-            total_duration=12.0,
-            output_resolution={"width": 1920, "height": 1080},
-            output_fps=30,
-            output_format="mp4"
-        )
-        
-        with patch.object(self.service, '_check_ffmpeg', return_value=True), \
-             patch.object(self.service, '_get_ffmpeg_path', return_value='ffmpeg'), \
-             patch('subprocess.run'), \
-             patch('os.makedirs'), \
-             patch('shutil.rmtree'):
-            
-            # 验证排序前的顺序
-            original_ids = [item.id for item in request.audio_items]
-            assert original_ids == ["audio_2", "audio_1"]
-            
-            try:
-                self.service.compose_video(request)
-            except Exception:
-                pass
-            
-            # 验证排序后的顺序
-            sorted_ids = [item.id for item in request.audio_items]
-            expected_order = ["audio_1", "audio_2"]  # 按start_time排序
-            assert sorted_ids == expected_order
-            
-            # 验证start_time确实是递增的
-            start_times = [item.start_time for item in request.audio_items]
-            assert start_times == sorted(start_times)
-    
-    def test_subtitle_items_sorting_by_start_time(self, sample_subtitle_items_unordered):
-        """测试字幕项目按start_time正确排序"""
-        request = VideoCompositionRequest(
-            task_id="test_task_subtitle_sorting",
-            video_items=[],
-            audio_items=[],
-            subtitle_items=sample_subtitle_items_unordered,
-            total_duration=9.0,
-            output_resolution={"width": 1920, "height": 1080},
-            output_fps=30,
-            output_format="mp4"
-        )
-        
-        with patch.object(self.service, '_check_ffmpeg', return_value=True), \
-             patch.object(self.service, '_get_ffmpeg_path', return_value='ffmpeg'), \
-             patch('subprocess.run'), \
-             patch('os.makedirs'), \
-             patch('shutil.rmtree'):
-            
-            # 验证排序前的顺序
-            original_ids = [item.id for item in request.subtitle_items]
-            assert original_ids == ["subtitle_2", "subtitle_1"]
-            
-            try:
-                self.service.compose_video(request)
-            except Exception:
-                pass
-            
-            # 验证排序后的顺序
-            sorted_ids = [item.id for item in request.subtitle_items]
-            expected_order = ["subtitle_1", "subtitle_2"]  # 按start_time排序
-            assert sorted_ids == expected_order
-            
-            # 验证start_time确实是递增的
-            start_times = [item.start_time for item in request.subtitle_items]
-            assert start_times == sorted(start_times)
-    
-    def test_mixed_items_sorting(self, sample_video_items_unordered, 
-                                sample_audio_items_unordered, 
-                                sample_subtitle_items_unordered):
-        """测试混合项目（视频+音频+字幕）的排序"""
-        request = VideoCompositionRequest(
-            task_id="test_task_mixed_sorting",
-            video_items=sample_video_items_unordered,
-            audio_items=sample_audio_items_unordered,
-            subtitle_items=sample_subtitle_items_unordered,
-            total_duration=15.0,
-            output_resolution={"width": 1920, "height": 1080},
-            output_fps=30,
-            output_format="mp4"
-        )
-        
-        with patch.object(self.service, '_check_ffmpeg', return_value=True), \
-             patch.object(self.service, '_get_ffmpeg_path', return_value='ffmpeg'), \
-             patch.object(self.service, '_download_video'), \
-             patch.object(self.service, '_normalize_video'), \
-             patch('subprocess.run'), \
-             patch('os.makedirs'), \
-             patch('shutil.rmtree'):
-            
-            try:
-                self.service.compose_video(request)
-            except Exception:
-                pass
-            
-            # 验证所有类型的项目都被正确排序
-            video_start_times = [item.start_time for item in request.video_items]
-            audio_start_times = [item.start_time for item in request.audio_items]
-            subtitle_start_times = [item.start_time for item in request.subtitle_items]
-            
-            assert video_start_times == sorted(video_start_times)
-            assert audio_start_times == sorted(audio_start_times)
-            assert subtitle_start_times == sorted(subtitle_start_times)
-            
-            # 验证具体的排序结果
-            assert [item.id for item in request.video_items] == ["video_1", "video_2", "video_3"]
-            assert [item.id for item in request.audio_items] == ["audio_1", "audio_2"]
-            assert [item.id for item in request.subtitle_items] == ["subtitle_1", "subtitle_2"]
-    
     def test_already_sorted_items_remain_unchanged(self):
         """测试已经正确排序的项目保持不变"""
         # 创建已经按start_time排序的项目
@@ -296,7 +137,6 @@ class TestVideoCompositionTimelineOrder:
         
         with patch.object(self.service, '_check_ffmpeg', return_value=True), \
              patch.object(self.service, '_get_ffmpeg_path', return_value='ffmpeg'), \
-             patch.object(self.service, '_download_video'), \
              patch.object(self.service, '_normalize_video'), \
              patch('subprocess.run'), \
              patch('os.makedirs'), \
@@ -350,7 +190,6 @@ class TestVideoCompositionTimelineOrder:
         
         with patch.object(self.service, '_check_ffmpeg', return_value=True), \
              patch.object(self.service, '_get_ffmpeg_path', return_value='ffmpeg'), \
-             patch.object(self.service, '_download_video'), \
              patch.object(self.service, '_normalize_video'), \
              patch('subprocess.run'), \
              patch('os.makedirs'), \

@@ -402,6 +402,7 @@ export class TimelineItem {
       return;
     }
 
+    this.materializeClipRange();
     const timeDelta = newPosition.value - this._startTime.value;
 
     if (this._clipStart != null) {
@@ -417,9 +418,25 @@ export class TimelineItem {
       return;
     }
 
-    // No clip info: duration follows the track edges directly.
+    // No clip info (subtitles only): duration follows the track edges directly.
     this._startTime = newPosition;
     this._duration = Duration.fromRange(newPosition, currentEnd);
+  }
+
+  /**
+   * A legacy media clip saved without clip fields plays from source 0 (every
+   * reader treats a missing clipStart as 0). Trimming it through the no-clip
+   * branch moved the track edge but not the in-point, so a left trim cut the
+   * wrong end (TL2-05). Materialise the implied range first — the same
+   * defaults SplitService uses — so the trim branches below apply. Subtitles
+   * have no source media and keep no clip fields.
+   */
+  private materializeClipRange(): void {
+    if (this._type === 'subtitle') return;
+    if (this._clipStart == null) this._clipStart = TimePosition.create(0);
+    if (this._clipEnd == null) {
+      this._clipEnd = TimePosition.create(this._clipStart.value + this._duration.value);
+    }
   }
 
   /**
@@ -440,6 +457,7 @@ export class TimelineItem {
       return;
     }
 
+    this.materializeClipRange();
     const timeDelta = newPosition.value - this.endTime().value;
 
     if (this._clipEnd != null) {
@@ -454,7 +472,7 @@ export class TimelineItem {
       return;
     }
 
-    // No clip info: duration follows the track edges directly.
+    // No clip info (subtitles only): duration follows the track edges directly.
     this._duration = Duration.fromRange(this._startTime, newPosition);
   }
 

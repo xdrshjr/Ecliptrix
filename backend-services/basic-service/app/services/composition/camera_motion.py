@@ -140,8 +140,8 @@ _config_cache: Optional[CameraMotionConfig] = None
 def load_camera_config(config_path: str = "config/camera-motion.yaml") -> CameraMotionConfig:
     """Load the camera-motion config, falling back to built-in defaults.
 
-    Mirrors the repo's existing YAML convention (``yaml.safe_load`` + defaults
-    when the file is absent, see ``video_composition_service._load_video_download_config``).
+    Mirrors the repo's YAML convention (``yaml.safe_load`` + defaults when the
+    file is absent).
     """
     global _config_cache
     if _config_cache is not None:

@@ -23,8 +23,6 @@ logger = get_logger(__name__)
 MIN_SEGMENT_SECONDS = 0.1
 # Float slack when deciding whether two same-lane segments overlap.
 OVERLAP_EPSILON = 1e-3
-# Clipping by more than this is logged as a warning, anything less as debug.
-CLIP_LOG_TOLERANCE_SECONDS = 0.1
 SEGMENT_LISTS = ("video_segments", "audio_segments", "image_segments")
 LIST_MATERIAL_TYPES = {
     "video_segments": "video",
@@ -527,70 +525,6 @@ class TimelineParserService:
             self.logger.error(error_msg, extra={"task_id": task_id}, exc_info=True)
             raise Exception(error_msg)
     
-    def validate_simplified_timeline(self, simplified_timeline: SimplifiedTimelineModel) -> bool:
-        """
-        Validate simplified timeline data for consistency.
-        Automatically clips segments that exceed total duration and removes
-        segments shorter than MIN_SEGMENT_SECONDS (a 0s item can be neither
-        imported nor exported).
-
-        Args:
-            simplified_timeline: Simplified timeline data to validate
-
-        Returns:
-            bool: True if valid, False otherwise
-        """
-        try:
-            total_duration = simplified_timeline.total_duration
-            if total_duration <= 0:
-                self.logger.error("Invalid total duration: must be positive")
-                return False
-
-            for list_name in SEGMENT_LISTS:
-                clipped = self._clip_segments_for_validation(
-                    getattr(simplified_timeline, list_name),
-                    total_duration,
-                    list_name,
-                )
-                setattr(simplified_timeline, list_name, clipped)
-
-            self.logger.info("Simplified timeline validation passed")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Timeline validation error: {str(e)}", exc_info=True)
-            return False
-
-    def _clip_segments_for_validation(
-        self, segments: List[Any], total_duration: float, list_name: str
-    ) -> List[Any]:
-        """Clip segments ending past ``total_duration``; drop too-short ones."""
-        kept = []
-        for segment in segments:
-            excess = segment.start_time + segment.duration - total_duration
-            if excess > 0:
-                new_duration = total_duration - segment.start_time
-                log = (
-                    self.logger.warning
-                    if excess > CLIP_LOG_TOLERANCE_SECONDS
-                    else self.logger.debug
-                )
-                log(
-                    f"{list_name} segment exceeds total duration by "
-                    f"{excess:.3f}s, clipping: {segment.material_id} "
-                    f"(duration: {segment.duration:.3f}s -> "
-                    f"{new_duration:.3f}s)"
-                )
-                segment.duration = max(0.0, new_duration)
-            if segment.duration < MIN_SEGMENT_SECONDS:
-                self.logger.warning(
-                    f"{list_name} segment shorter than {MIN_SEGMENT_SECONDS}s "
-                    f"removed: {segment.material_id}"
-                )
-                continue
-            kept.append(segment)
-        return kept
-
     # ── AI mix plan sanitising (AM-06) ──
 
     def sanitize_simplified_timeline(

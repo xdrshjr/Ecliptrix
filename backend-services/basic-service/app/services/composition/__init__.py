@@ -16,14 +16,16 @@ unit-testable modules:
 - ``encode`` — GPU encoder detection + encoding parameter selection.
 - ``video_scaling`` — aspect-ratio resolution + per-clip scale/pad filter math
   (letterbox / pillarbox geometry, even-dimension rounding, ``-vf`` builder).
-- ``media_download`` — URL classification predicates. Export never downloads
-  overlay images: a remote image is reported instead (round 2, EXO-18).
+- ``media_probe`` — ffprobe reading of a source's display size (rotation
+  applied), frame rate and duration, with ``None`` for an unknown length
+  (round 3, EX3-01 / EX3-02).
 - ``composition_outcome`` — what an export reports besides its file: the
   ``CompositionStageError`` of a stage without a correct fallback, the
   de-duplicated ``degradations`` entries and the per-item losses of the audio
   mix and the image overlay inputs (round 2, S6 / S7).
 - ``ffmpeg_args`` — long filter graphs reach FFmpeg through a script file
-  instead of the Windows-limited command line (round 2, EXO-05).
+  instead of the Windows-limited command line (round 2, EXO-05); long commands
+  report activity through ``-progress`` files (round 3, RV3-02).
 - ``camera_motion`` — 2D / 3D camera motion (camera-motion-2d-3d): the Python
   mirror of the frontend math kernel, the FFmpeg ``zoompan`` / ``perspective`` /
   ``rotate`` chain builder injected between ``scale`` and ``pad``, the filter

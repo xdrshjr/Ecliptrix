@@ -8,6 +8,7 @@ an implicit translucent black box.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,7 +18,11 @@ import pytest
 
 from app.models.video_models import SubtitleCompositionItem
 from app.services.composition.camera_motion import CameraFilterCaps, CameraMotionConfig
-from app.services.subtitle_service import SubtitleService, to_ffmpeg_color
+from app.services.subtitle_service import (
+    SubtitleService,
+    escape_filter_option_value,
+    to_ffmpeg_color,
+)
 from app.services.video_composition_service import VideoCompositionService
 
 
@@ -190,3 +195,69 @@ def test_subtitle_text_with_percent_sign_is_burned_in(tmp_path):
                  background_color="#FF0000", position="top")
     video = _burn(tmp_path, [item])
     assert _colored_pixels(video, 5, _UPPER_ROWS, 0) > 1000
+
+
+@needs_ffmpeg
+def test_drawtext_burns_when_temp_path_contains_apostrophe(tmp_path):
+    # %TEMP% of a Windows user named O'Neil: the quoted textfile= path broke
+    # the filter graph and every subtitle was dropped (N-15).
+    work_dir = tmp_path / "O'Neil"
+    work_dir.mkdir()
+    item = _item("s1", "MM", 0.0, 2.0, font_size=40, font_color="#FF0000",
+                 background_color="#FF0000", position="top")
+    video = _burn(work_dir, [item])
+    assert _colored_pixels(video, 5, _UPPER_ROWS, 0) > 1000
+
+
+_WINDOWS_FONTS = "C:/Windows/Fonts/"
+
+
+def _windows_font_for(service: SubtitleService, text: str, installed) -> str:
+    """The font ``_get_font_path`` picks on Windows with only ``installed`` fonts."""
+    available = {_WINDOWS_FONTS + name for name in installed}
+    real_exists = os.path.exists
+
+    def exists(path):
+        if str(path).startswith(_WINDOWS_FONTS):
+            return path in available
+        return real_exists(path)
+
+    with patch("platform.system", return_value="Windows"), \
+            patch("app.services.subtitle_service.os.path.exists", side_effect=exists):
+        return service._get_font_path("default", text)
+
+
+def test_kana_subtitle_selects_japanese_capable_font(subtitles):
+    font = _windows_font_for(subtitles, "ありがとう", ["arial.ttf", "YuGothM.ttc", "msyh.ttc"])
+    assert font == _WINDOWS_FONTS + "YuGothM.ttc"
+
+
+def test_hangul_subtitle_selects_korean_font(subtitles):
+    font = _windows_font_for(
+        subtitles, "안녕하세요 여러분", ["arial.ttf", "malgun.ttf", "msyh.ttc"]
+    )
+    assert font == _WINDOWS_FONTS + "malgun.ttf"
+
+
+def test_chinese_subtitle_with_katakana_middle_dot_keeps_a_hanzi_font(subtitles):
+    # Chinese separates foreign names with U+30FB; Yu Gothic has no glyph for
+    # 说 or 这, so choosing it burned missing-glyph boxes into the export.
+    font = _windows_font_for(
+        subtitles, "哈利・波特说这个", ["arial.ttf", "YuGothM.ttc", "msyh.ttc"]
+    )
+    assert font == _WINDOWS_FONTS + "msyh.ttc"
+
+
+def test_middle_dot_text_wraps_by_character_like_the_preview(subtitles):
+    # subtitleLayout.containsCjk counts U+30FB as per-character text.
+    assert subtitles._wrap_text("A・B・C・D", 2) == ["A・", "B・", "C・", "D"]
+
+
+def test_kana_only_text_wraps_by_character(subtitles):
+    assert subtitles._wrap_text("ありがとう" * 3, 5) == ["ありがとう"] * 3
+
+
+def test_filter_option_value_escaping_survives_quote_colon_and_comma():
+    assert escape_filter_option_value("C:/Users/O'Neil/a,b.txt") == (
+        "C\\\\:/Users/O\\\\\\'Neil/a\\,b.txt"
+    )

@@ -1,0 +1,1041 @@
+{
+  "description": "Subtitle layout in output pixels as burned by subtitle_service drawtext. Read by tests/test_subtitle_layout_golden.py and src/components/video/lib/__tests__/subtitleLayout.test.ts (EXO-09).",
+  "cases": [
+    {
+      "name": "top-1080x1920-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 50
+          }
+        ]
+      }
+    },
+    {
+      "name": "top-1080x1920-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精",
+            "topY": 50
+          },
+          {
+            "text": "彩的短视频内容并分享给朋友们观看谢谢大家",
+            "topY": 103
+          }
+        ]
+      }
+    },
+    {
+      "name": "top-1080x1920-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 50
+          },
+          {
+            "text": "",
+            "topY": 103
+          },
+          {
+            "text": "Third line",
+            "topY": 156
+          }
+        ]
+      }
+    },
+    {
+      "name": "top-1920x1080-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 50
+          }
+        ]
+      }
+    },
+    {
+      "name": "top-1920x1080-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢",
+            "topY": 50
+          },
+          {
+            "text": "谢大家",
+            "topY": 103
+          }
+        ]
+      }
+    },
+    {
+      "name": "top-1920x1080-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 50
+          },
+          {
+            "text": "",
+            "topY": 103
+          },
+          {
+            "text": "Third line",
+            "topY": 156
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1080x1920-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 454
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1080x1920-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精",
+            "topY": 427
+          },
+          {
+            "text": "彩的短视频内容并分享给朋友们观看谢谢大家",
+            "topY": 480
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1080x1920-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 401
+          },
+          {
+            "text": "",
+            "topY": 454
+          },
+          {
+            "text": "Third line",
+            "topY": 507
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1920x1080-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 244
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1920x1080-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢",
+            "topY": 217
+          },
+          {
+            "text": "谢大家",
+            "topY": 270
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1920x1080-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 191
+          },
+          {
+            "text": "",
+            "topY": 244
+          },
+          {
+            "text": "Third line",
+            "topY": 297
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1080x1920-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 933
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1080x1920-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精",
+            "topY": 907
+          },
+          {
+            "text": "彩的短视频内容并分享给朋友们观看谢谢大家",
+            "topY": 960
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1080x1920-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 880
+          },
+          {
+            "text": "",
+            "topY": 933
+          },
+          {
+            "text": "Third line",
+            "topY": 986
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1920x1080-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 513
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1920x1080-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢",
+            "topY": 487
+          },
+          {
+            "text": "谢大家",
+            "topY": 540
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1920x1080-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 460
+          },
+          {
+            "text": "",
+            "topY": 513
+          },
+          {
+            "text": "Third line",
+            "topY": 566
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1080x1920-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 1414
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1080x1920-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精",
+            "topY": 1387
+          },
+          {
+            "text": "彩的短视频内容并分享给朋友们观看谢谢大家",
+            "topY": 1440
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1080x1920-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 1361
+          },
+          {
+            "text": "",
+            "topY": 1414
+          },
+          {
+            "text": "Third line",
+            "topY": 1467
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1920x1080-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 784
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1920x1080-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢",
+            "topY": 757
+          },
+          {
+            "text": "谢大家",
+            "topY": 810
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1920x1080-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 731
+          },
+          {
+            "text": "",
+            "topY": 784
+          },
+          {
+            "text": "Third line",
+            "topY": 837
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1080x1920-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 1817
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1080x1920-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精",
+            "topY": 1764
+          },
+          {
+            "text": "彩的短视频内容并分享给朋友们观看谢谢大家",
+            "topY": 1817
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1080x1920-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 1711
+          },
+          {
+            "text": "",
+            "topY": 1764
+          },
+          {
+            "text": "Third line",
+            "topY": 1817
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1920x1080-latin",
+      "text": "Hello world",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Hello world",
+            "topY": 977
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1920x1080-cjk40",
+      "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢谢大家",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "今天我们一起来学习如何使用剪辑软件制作精彩的短视频内容并分享给朋友们观看谢",
+            "topY": 924
+          },
+          {
+            "text": "谢大家",
+            "topY": 977
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1920x1080-blankline",
+      "text": "First line\n\nThird line",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "First line",
+            "topY": 871
+          },
+          {
+            "text": "",
+            "topY": 924
+          },
+          {
+            "text": "Third line",
+            "topY": 977
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1080x1920-kana",
+      "text": "ありがとうありがとうありがとうありがとうありがとう",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "ありがとうありがとうありがとうありがとう",
+            "topY": 1764
+          },
+          {
+            "text": "ありがとう",
+            "topY": 1817
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1920x1080-kana",
+      "text": "ありがとうありがとうありがとうありがとうありがとう",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "ありがとうありがとうありがとうありがとうありがとう",
+            "topY": 977
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1080x1920-kana",
+      "text": "ありがとうありがとうありがとうありがとうありがとう",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "ありがとうありがとうありがとうありがとう",
+            "topY": 427
+          },
+          {
+            "text": "ありがとう",
+            "topY": 480
+          }
+        ]
+      }
+    },
+    {
+      "name": "upper-3/4-1920x1080-kana",
+      "text": "ありがとうありがとうありがとうありがとうありがとう",
+      "fontSize": 48,
+      "position": "upper-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "ありがとうありがとうありがとうありがとうありがとう",
+            "topY": 244
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1080x1920-hangul",
+      "text": "안녕하세요 여러분 반갑습니다 오늘도 좋은 하루 되세요",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "안녕하세요 여러분 반갑습니다 오늘도 ",
+            "topY": 1764
+          },
+          {
+            "text": "좋은 하루 되세요",
+            "topY": 1817
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1920x1080-hangul",
+      "text": "안녕하세요 여러분 반갑습니다 오늘도 좋은 하루 되세요",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "안녕하세요 여러분 반갑습니다 오늘도 좋은 하루 되세요",
+            "topY": 977
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1080x1920-latinwrap",
+      "text": "The quick brown fox jumps over the lazy dog again and again",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "The quick brown fox",
+            "topY": 880
+          },
+          {
+            "text": "jumps over the lazy",
+            "topY": 933
+          },
+          {
+            "text": "dog again and again",
+            "topY": 986
+          }
+        ]
+      }
+    },
+    {
+      "name": "center-1920x1080-latinwrap",
+      "text": "The quick brown fox jumps over the lazy dog again and again",
+      "fontSize": 48,
+      "position": "center",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "The quick brown fox jumps over the",
+            "topY": 487
+          },
+          {
+            "text": "lazy dog again and again",
+            "topY": 540
+          }
+        ]
+      }
+    },
+    {
+      "name": "top-1080x1920-trimmed",
+      "text": "   padded caption   ",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "padded caption",
+            "topY": 50
+          }
+        ]
+      }
+    },
+    {
+      "name": "top-1920x1080-trimmed",
+      "text": "   padded caption   ",
+      "fontSize": 48,
+      "position": "top",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "padded caption",
+            "topY": 50
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1080x1920-astralcjk",
+      "text": "𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀",
+            "topY": 1764
+          },
+          {
+            "text": "𠀀𠀀𠀀𠀀𠀀",
+            "topY": 1817
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottom-1920x1080-astralcjk",
+      "text": "𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀",
+      "fontSize": 48,
+      "position": "bottom",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀",
+            "topY": 977
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1080x1920-longword",
+      "text": "Supercalifragilisticexpialidocious is long",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1080,
+        "height": 1920
+      },
+      "expected": {
+        "maxChars": 20,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Supercalifragilisticexpialidocious",
+            "topY": 1387
+          },
+          {
+            "text": "is long",
+            "topY": 1440
+          }
+        ]
+      }
+    },
+    {
+      "name": "lower-3/4-1920x1080-longword",
+      "text": "Supercalifragilisticexpialidocious is long",
+      "fontSize": 48,
+      "position": "lower-3/4",
+      "output": {
+        "width": 1920,
+        "height": 1080
+      },
+      "expected": {
+        "maxChars": 37,
+        "lineHeight": 53,
+        "lines": [
+          {
+            "text": "Supercalifragilisticexpialidocious is",
+            "topY": 757
+          },
+          {
+            "text": "long",
+            "topY": 810
+          }
+        ]
+      }
+    }
+  ]
+}

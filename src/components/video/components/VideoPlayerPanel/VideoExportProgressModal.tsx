@@ -2,11 +2,28 @@
 
 import React, { useEffect, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import type { CompositionStage } from '@/lib/api/videoComposition';
+import type { Translations } from '@/lib/i18n';
+
+type ProgressStageKey = keyof Translations['videoExportProgressModal']['progressStages'];
+
+/** Backend stage → the sentence shown for it (EXO-07); no stage falls back to progress. */
+const STAGE_LABEL_KEYS: Readonly<Record<CompositionStage, ProgressStageKey>> = {
+  queued: 'queued',
+  resolving: 'preparing',
+  normalizing: 'processing',
+  compositing: 'composing',
+  mixing: 'generating',
+  overlays: 'generating',
+  finalizing: 'almostDone',
+};
 
 interface VideoExportProgressModalProps {
   isOpen: boolean;
   progress: number;
   startTime?: number | null;
+  /** Backend stage of the running composition; older backends send none. */
+  stage?: CompositionStage;
   onCancel?: () => void;
   allowCancel?: boolean;
 }
@@ -15,6 +32,7 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
   isOpen,
   progress,
   startTime,
+  stage,
   onCancel,
   allowCancel = false
 }) => {
@@ -61,20 +79,25 @@ const VideoExportProgressModal: React.FC<VideoExportProgressModalProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // 阻止 Escape 键关闭弹窗，除非允许取消
-    if (e.key === 'Escape' && allowCancel && onCancel) {
-      onCancel();
-    } else {
+    // 编辑器快捷键监听在 document 上：弹窗内的按键不能作用到正在导出的时间轴，
+    // Tab 也不能移出弹窗。Enter / Space 保留默认行为，
+    // 否则聚焦的「取消导出」按钮无法用键盘触发。
+    e.stopPropagation();
+    if (e.key === 'Tab') {
       e.preventDefault();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (allowCancel && onCancel) onCancel();
     }
   };
 
   const getProgressStage = () => {
+    if (progress >= 100) return t.videoExportProgressModal.progressStages.completed;
+    if (stage) return t.videoExportProgressModal.progressStages[STAGE_LABEL_KEYS[stage]];
     if (progress < 20) return t.videoExportProgressModal.progressStages.preparing;
     if (progress < 40) return t.videoExportProgressModal.progressStages.processing;
     if (progress < 70) return t.videoExportProgressModal.progressStages.composing;
     if (progress < 95) return t.videoExportProgressModal.progressStages.generating;
-    if (progress >= 100) return t.videoExportProgressModal.progressStages.completed;
     return t.videoExportProgressModal.progressStages.almostDone;
   };
 

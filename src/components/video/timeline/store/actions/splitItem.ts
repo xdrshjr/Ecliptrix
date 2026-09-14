@@ -43,8 +43,9 @@ function cutIsInside(item: TimelineItemData, tCut: number): boolean {
  * Collect the clips eligible for a split at `tCut`. Locked tracks are skipped
  * entirely; for 'playhead' all visible unlocked tracks are scanned and only
  * the clip(s) the cursor sits inside count; for 'selected' only the currently
- * selected clips the cut crosses count. Crossed clips whose halves would be
- * too short are counted instead of targeted.
+ * selected clips the cut crosses count — on hidden tracks too, since the user
+ * clicked that very clip with the cut tool (TL3-05). Crossed clips whose
+ * halves would be too short are counted instead of targeted.
  */
 function collectTargets(
   tracks: TrackData[],
@@ -56,7 +57,7 @@ function collectTargets(
   const targets: SplitTargets = { ids: [], tooCloseCount: 0 };
 
   for (const track of tracks) {
-    if (track.isLocked || !track.isVisible) continue;
+    if (track.isLocked || (scope === 'playhead' && !track.isVisible)) continue;
     for (const item of track.items) {
       if (scope === 'selected' && !selectedSet.has(item.id)) continue;
       if (!cutIsInside(item, tCut)) continue;

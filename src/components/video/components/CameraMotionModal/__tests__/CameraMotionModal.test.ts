@@ -97,9 +97,11 @@ describe('CameraMotionModal — non-invasive editing', () => {
   });
 
   it('confirms before discarding unapplied edits', () => {
+    // In-app ConfirmationDialog, not the blocking native confirm (UI3-07);
+    // behaviour is covered by CameraMotionModal.discard.test.tsx.
     expect(modalSrc).toMatch(/const handleRequestClose/);
-    expect(modalSrc).toMatch(/if \(isDirty && typeof window !== 'undefined'/);
-    expect(modalSrc).toMatch(/window\.confirm\(labels\.discardConfirm\)/);
+    expect(modalSrc).toMatch(/if \(isDirty\) \{\s*\n\s*setIsDiscardConfirmOpen\(true\);/);
+    expect(modalSrc).not.toMatch(/window\.confirm/);
   });
 
   it('re-seeds the draft from the live item every time it opens', () => {

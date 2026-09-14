@@ -11,10 +11,8 @@ import tempfile
 import subprocess
 import threading
 import asyncio
-import yaml
-import random
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Any, Sequence, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from dataclasses import dataclass
@@ -26,8 +24,6 @@ import cv2
 from app.logger import get_logger
 from app.config import settings
 from app.security.url_guard import (
-    FFMPEG_LOCAL_PROTOCOL_WHITELIST,
-    FFMPEG_REMOTE_PROTOCOL_WHITELIST,
     URLGuardError,
     validate_external_url,
     validate_local_path_for_ffmpeg,
@@ -42,9 +38,7 @@ from app.models import (
     CompositionErrorDetails,
     VideoProcessingStage
 )
-from app.models.youtube_models import YoutubeVideoDownloadRequest
 from app.services.subtitle_service import SubtitleService
-from app.services.youtube_service import YouTubeService
 from app.services.material_download_service import get_material_download_service
 from app.services.local_media_resolver import (
     LOCAL_HOSTS,
@@ -52,6 +46,7 @@ from app.services.local_media_resolver import (
     LocalMediaResolveError,
     audio_generated_dir,
     audio_subtitle_dir,
+    composed_output_dir,
     legacy_audio_generated_dir,
     legacy_audio_subtitle_dir,
     resolve_media_reference,
@@ -64,8 +59,21 @@ from app.services.composition.media_resolution import (
     NonLocalMediaError,
     resolve_local_media,
 )
-from app.services.composition.filtergraph_builder import build_filtergraph
-from app.services.composition.audio_mix import AudioSource, build_audio_mix
+from app.services.composition.filtergraph_builder import (
+    MAX_CANVAS_INPUTS,
+    FiltergraphResult,
+    RunPlan,
+    build_filtergraph,
+    merged_run_clip,
+    pin_to_layer,
+    plan_runs,
+)
+from app.services.composition.audio_mix import (
+    MAX_MIX_INPUTS,
+    AudioSource,
+    build_audio_mix,
+    chunk_sources,
+)
 from app.services.composition.composition_outcome import (
     AudioMixResult,
     CompositionStageError,
@@ -77,16 +85,34 @@ from app.services.composition.composition_outcome import (
     last_stderr_line,
     timeline_end_of,
 )
-from app.services.composition.ffmpeg_args import filter_complex_args
+from app.services.composition.ffmpeg_args import (
+    filter_complex_args,
+    progress_file_path,
+    with_progress,
+)
 from app.services.composition.video_scaling import (
     build_video_filter,
     calculate_video_scaling,
     ensure_even_dimensions,
     get_aspect_ratio_info,
 )
-from app.services.composition.media_download import (
-    is_pexels_url,
-    is_youtube_url,
+from app.services.composition.composition_lifecycle import (
+    CANCELLED_SUMMARY,
+    CANVAS_PROGRESS_NAME,
+    SETTLED_STATUSES,
+    CancelRegistry,
+    CompositionCancelled,
+    evict_settled,
+    remove_file,
+    remove_stale_outputs,
+    set_stage,
+    status_snapshot,
+    temp_dir_for,
+)
+from app.services.composition.media_probe import (
+    VideoStreamInfo,
+    ffprobe_path_for,
+    probe_video_stream,
 )
 from app.services.composition.camera_motion import (
     build_camera_filter_chain,
@@ -141,6 +167,13 @@ _MAX_IMAGE_Z_INDEX = 999
 _INTERMEDIATE_SUFFIXES = (
     "_with_audio.mp4", "_merged.mp4", "_with_images.mp4", "_with_subtitles.mp4",
 )
+#: How often a queued composition re-checks for cancellation (RV3-13).
+_SLOT_POLL_SECONDS = 0.5
+#: Above this many inputs every decoder runs single-threaded (N-04).
+_SINGLE_THREAD_INPUT_THRESHOLD = 16
+_TOO_MANY_INPUTS = "too many inputs for one FFmpeg command"
+#: ``ERROR_FILENAME_EXCED_RANGE``: the command line is over 32767 characters.
+_WINDOWS_COMMAND_TOO_LONG = 206
 
 
 def _image_stack_key(item: Any) -> int:
@@ -172,6 +205,10 @@ def _intermediate_paths_for(output_path: Path) -> List[str]:
     return [base.replace(".mp4", suffix) for suffix in _INTERMEDIATE_SUFFIXES]
 
 
+def _nth_or_none(values: Optional[Sequence[Optional[str]]], index: int) -> Optional[str]:
+    return values[index] if values is not None and index < len(values) else None
+
+
 def _dropped_audio(item: Any, reason: str) -> DroppedAudio:
     item_id = str(getattr(item, "id", "") or "")
     return DroppedAudio(
@@ -201,18 +238,15 @@ class VideoCompositionService:
     def __init__(self):
         """Initialize the video composition service."""
         self.compositions: Dict[str, Dict[str, Any]] = {}
-        self.output_dir = Path("static/video/composed")
+        # Under STORAGE_ROOT: the packaged backend's CWD is its install dir (EX3-06).
+        self.output_dir = composed_output_dir()
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Load video download configuration
-        self._load_video_download_config()
-        
+        # composition_id -> set when the user cancels the export (EXO-07)
+        self._cancel_events = CancelRegistry()
+
         # Initialize subtitle service for subtitle composition
         self.subtitle_service = SubtitleService()
-        
-        # Initialize YouTube service for YouTube video downloads
-        self.youtube_service = YouTubeService()
-        
+
         # Check ffmpeg availability
         self._check_ffmpeg()
 
@@ -222,6 +256,7 @@ class VideoCompositionService:
         # Concurrency control: limit simultaneous compositions to prevent CPU/memory overload
         self._composition_semaphore = threading.Semaphore(2)
 
+        remove_stale_outputs(self.output_dir)
         logger.info(f"VideoCompositionService initialized (gpu_encoder={self._gpu_encoder})")
     
     def _check_ffmpeg(self) -> bool:
@@ -253,6 +288,23 @@ class VideoCompositionService:
         """Get FFmpeg encoding parameters for the detected encoder + quality."""
         return get_encoding_params(self._gpu_encoder, quality)
 
+    @staticmethod
+    def _run_tracked_ffmpeg(
+        cmd: List[str], progress_path: str, stage: str,
+    ) -> subprocess.CompletedProcess:
+        """``subprocess.run`` reporting activity to ``progress_path`` (RV3-02); a command
+        line Windows refuses (``WinError 206``) becomes a readable stage error (EX3-04)."""
+        try:
+            return subprocess.run(with_progress(cmd, progress_path), capture_output=True, text=True)
+        except OSError as exc:
+            if getattr(exc, "winerror", None) != _WINDOWS_COMMAND_TOO_LONG:
+                raise
+            logger.error(
+                f"FFmpeg command of stage '{stage}' is over the Windows command-line "
+                f"limit ({len(cmd)} arguments)"
+            )
+            raise CompositionStageError(stage, _TOO_MANY_INPUTS) from exc
+
     def _compose_videos_filtergraph(
         self,
         request: VideoCompositionRequest,
@@ -270,24 +322,51 @@ class VideoCompositionService:
         the canvas graph (returns True). A failed composite raises
         :class:`CompositionStageError`: it never falls back to concatenating
         every track, which produced a longer, wrong video reported as success
-        (EXV-07). The seven inputs are the stage's real dependencies.
+        (EXV-07). The seven inputs are the stage's real dependencies. Alpha-free
+        runs are joined first: one input per run, not per clip (N-04 / EX3-04).
         """
+        width, height = int(output_resolution["width"]), int(output_resolution["height"])
+        fps = int(request.output_fps)
+        clip_paths = self._clip_path_map(request, normalized_videos)
         plan = build_filtergraph(
-            list(request.video_items),
-            int(output_resolution["width"]),
-            int(output_resolution["height"]),
-            pre_trimmed=True,
-            fps=int(request.output_fps),
-            timeline_end=timeline_end,
+            list(request.video_items), width, height,
+            pre_trimmed=True, fps=fps, timeline_end=timeline_end,
         )
-        planned_paths = self._planned_input_paths(request, normalized_videos, plan.video_inputs)
         if plan.can_use_concat:
             logger.info("Single contiguous track: composing with the concat demuxer")
-            self._concat_videos(planned_paths, output_path, temp_dir, ffmpeg_path)
+            self._concat_videos(
+                self._planned_input_paths(clip_paths, plan.video_inputs),
+                output_path, temp_dir, ffmpeg_path,
+            )
             return False
 
+        canvas_clips = self._premerge_runs(
+            plan_runs(request.video_items, fps), clip_paths, temp_dir, ffmpeg_path,
+        )
+        plan = build_filtergraph(
+            canvas_clips, width, height, pre_trimmed=True, fps=fps, timeline_end=timeline_end,
+        )
+        planned_paths = self._planned_input_paths(clip_paths, plan.video_inputs)
+        self._run_canvas_composite(plan, planned_paths, output_path, temp_dir, ffmpeg_path)
+        return True
+
+    def _run_canvas_composite(
+        self, plan: FiltergraphResult, input_paths: List[str], output_path: Path,
+        temp_dir: str, ffmpeg_path: str,
+    ) -> None:
+        """Run the canvas graph over ``input_paths``; a command too large to run is refused (N-04)."""
+        if len(input_paths) > MAX_CANVAS_INPUTS:
+            logger.error(
+                f"Canvas composition needs {len(input_paths)} inputs "
+                f"(limit {MAX_CANVAS_INPUTS})"
+            )
+            raise CompositionStageError("compose", _TOO_MANY_INPUTS)
+
+        single_threaded = len(input_paths) > _SINGLE_THREAD_INPUT_THRESHOLD
         cmd = [ffmpeg_path, '-y']
-        for path in planned_paths:
+        for path in input_paths:
+            if single_threaded:
+                cmd.extend(['-threads', '1'])
             cmd.extend(['-i', path])
         cmd.extend(filter_complex_args(plan.filter_complex, temp_dir, ffmpeg_path))
         cmd.extend(['-map', plan.output_label])
@@ -295,37 +374,60 @@ class VideoCompositionService:
         cmd.append(str(output_path))
 
         logger.info(
-            f"Running canvas composition: {len(planned_paths)} inputs, "
+            f"Running canvas composition: {len(input_paths)} inputs, "
             f"timeline_end={plan.timeline_end:.3f}s"
         )
         logger.debug(f"Filtergraph: {plan.filter_complex}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = self._run_tracked_ffmpeg(
+            cmd, progress_file_path(temp_dir, CANVAS_PROGRESS_NAME), "compose",
+        )
         if result.returncode != 0:
             summary = last_stderr_line(result.stderr)
             logger.error(f"Canvas composition failed: {summary}")
             raise CompositionStageError("compose", summary)
         logger.info("Canvas composition succeeded")
-        return True
 
     @staticmethod
-    def _planned_input_paths(
-        request: VideoCompositionRequest,
-        normalized_videos: List[str],
-        clip_ids: List[str],
-    ) -> List[str]:
-        """The normalized file of every planned input, in plan order."""
-        id_to_path = {
+    def _clip_path_map(
+        request: VideoCompositionRequest, normalized_videos: List[str],
+    ) -> Dict[str, str]:
+        """Clip id -> its normalized file."""
+        return {
             item.id: normalized_videos[index]
             for index, item in enumerate(request.video_items)
             if index < len(normalized_videos)
         }
+
+    @staticmethod
+    def _planned_input_paths(clip_paths: Dict[str, str], clip_ids: List[str]) -> List[str]:
+        """The file of every planned input, in plan order."""
         paths: List[str] = []
         for clip_id in clip_ids:
-            path = id_to_path.get(clip_id)
+            path = clip_paths.get(clip_id)
             if not path:
                 raise CompositionStageError("compose", f"normalized clip missing for {clip_id}")
             paths.append(path)
         return paths
+
+    def _premerge_runs(
+        self, runs: List[RunPlan], clip_paths: Dict[str, str], temp_dir: str, ffmpeg_path: str,
+    ) -> List[Any]:
+        """Canvas clips with each alpha-free multi-clip run joined into one file (N-04);
+        normalized clips share codec and exact frame budgets, so concat is lossless."""
+        canvas_clips: List[Any] = []
+        for number, run in enumerate(runs):
+            if run.needs_alpha or len(run.clips) == 1:
+                canvas_clips.extend(pin_to_layer(clip, run.z) for clip in run.clips)
+                continue
+            run_id = f"__run_{number}"
+            run_path = os.path.join(temp_dir, f"run_{number}.mp4")
+            self._concat_videos(
+                self._planned_input_paths(clip_paths, [clip.id for clip in run.clips]),
+                Path(run_path), temp_dir, ffmpeg_path,
+            )
+            clip_paths[run_id] = run_path
+            canvas_clips.append(merged_run_clip(run, run_id))
+        return canvas_clips
 
     def _fail_composition(
         self, composition_id: str, *, error_details: Dict[str, Any], progress: float,
@@ -458,7 +560,9 @@ class VideoCompositionService:
             '-c', 'copy',
             str(output_path),
         ]
-        result = subprocess.run(concat_cmd, capture_output=True, text=True)
+        # The re-encode fallback can encode a whole timeline: report activity (RV3-02)
+        progress_path = progress_file_path(temp_dir, f"concat_{output_path.stem}")
+        result = self._run_tracked_ffmpeg(concat_cmd, progress_path, "compose")
         if result.returncode != 0:
             logger.warning("Direct copy failed, trying re-encoding...")
             concat_cmd = [
@@ -466,7 +570,7 @@ class VideoCompositionService:
                 '-f', 'concat', '-safe', '0',
                 '-i', concat_list_path,
             ] + self._get_encoding_params("fast") + [str(output_path)]
-            result = subprocess.run(concat_cmd, capture_output=True, text=True)
+            result = self._run_tracked_ffmpeg(concat_cmd, progress_path, "compose")
             if result.returncode != 0:
                 summary = last_stderr_line(result.stderr)
                 logger.error(f"Video concatenation failed: {summary}")
@@ -476,139 +580,57 @@ class VideoCompositionService:
         """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
         return ensure_even_dimensions(width, height)
     
-    def _load_video_download_config(self):
-        """Load video download configuration from YAML file."""
-        try:
-            config_path = Path("config/video-download.yaml")
-            if config_path.exists():
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    self.video_download_config = yaml.safe_load(f)
-                logger.info("Video download configuration loaded successfully")
-            else:
-                # Default configuration if file doesn't exist
-                self.video_download_config = {
-                    'pexels': {
-                        'retry': {
-                            'max_retries': 5,
-                            'switch_api_key_on_retry': True,
-                            'download_timeout': 120,
-                            'retry_delay': 2.0
-                        },
-                        'download': {
-                            'max_file_size_mb': 500,
-                            'min_file_size_kb': 1
-                        }
-                    },
-                    'general': {
-                        'cleanup_temp_files': True,
-                        'detailed_logging': True
-                    }
-                }
-                logger.warning("Video download config file not found, using defaults")
-        except Exception as e:
-            logger.error(f"Failed to load video download configuration: {str(e)}")
-            # Use default configuration
-            self.video_download_config = {
-                'pexels': {
-                    'retry': {
-                        'max_retries': 5,
-                        'switch_api_key_on_retry': True,
-                        'download_timeout': 120,
-                        'retry_delay': 2.0
-                    }
-                }
-            }
-    
-    def _is_youtube_url(self, url: str) -> bool:
-        """Check if the URL is a YouTube URL."""
-        return is_youtube_url(url)
-
-    def _is_pexels_url(self, url: str) -> bool:
-        """Check if URL is a Pexels video URL."""
-        return is_pexels_url(url)
-    
     def _get_video_properties(self, video_path: str) -> tuple:
-        """Get video properties (width, height, fps)."""
+        """Display width, height and fps, or ``(None, None, None)``. ffprobe first: OpenCV
+        reports the coded size and ignores rotation (EX3-01)."""
+        info = probe_video_stream(video_path, ffprobe_path_for("ffmpeg"))
+        if info is not None:
+            return info.width, info.height, info.fps
+        return self._cv2_video_properties(video_path)
+
+    @staticmethod
+    def _cv2_video_properties(video_path: str) -> tuple:
+        """Coded width, height and fps from OpenCV, or ``(None, None, None)``."""
         try:
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
                 return None, None, None
-            
+
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = cap.get(cv2.CAP_PROP_FPS)
-            
+
             cap.release()
             return width, height, fps
         except Exception as e:
-            logger.error(f"Failed to get video properties: {str(e)}")
+            logger.error(f"Failed to get video properties of {video_path}: {str(e)}")
             return None, None, None
-    
-    def _download_video_with_retry(self, video_url: str, temp_dir: str, index: int, video_item: VideoCompositionItem, max_retries: int = 3) -> Dict[str, Any]:
-        """Download a single video file with retry mechanism."""
-        thread_id = threading.current_thread().ident
-        video_name = f"video_{index}.mp4"
-        video_path = os.path.join(temp_dir, video_name)
-        
-        logger.info(f"[Thread {thread_id}] Starting video download with retry: {video_url} (max_retries: {max_retries})")
-        
-        last_error = None
-        
-        for attempt in range(max_retries + 1):
-            try:
-                logger.info(f"[Thread {thread_id}] Download attempt {attempt + 1}/{max_retries + 1} for video {index}")
-                
-                # Call the existing download method
-                result = self._download_video(video_url, temp_dir, index)
-                
-                if result.get('success'):
-                    if attempt > 0:
-                        logger.info(f"[Thread {thread_id}] Video download succeeded on retry attempt {attempt + 1}")
-                    else:
-                        logger.info(f"[Thread {thread_id}] Video download succeeded on first attempt")
-                    return result
-                else:
-                    last_error = result.get('error', 'Unknown download error')
-                    logger.warning(f"[Thread {thread_id}] Download attempt {attempt + 1} failed: {last_error}")
-                    
-                    if attempt >= max_retries:
-                        break
-                        
-                    # Wait before retry with exponential backoff
-                    wait_time = min(2 ** attempt, 10)  # Cap at 10 seconds
-                    logger.info(f"[Thread {thread_id}] Waiting {wait_time}s before retry {attempt + 2}")
-                    time.sleep(wait_time)
-                    
-            except Exception as e:
-                last_error = str(e)
-                logger.error(f"[Thread {thread_id}] Download attempt {attempt + 1} exception: {last_error}")
-                
-                if attempt >= max_retries:
-                    break
-                    
-                # Wait before retry
-                wait_time = min(2 ** attempt, 10)
-                logger.info(f"[Thread {thread_id}] Waiting {wait_time}s before retry {attempt + 2}")
-                time.sleep(wait_time)
-        
-        # All attempts failed
-        error_details = {
-            "success": False,
-            "error": f"Video download failed after {max_retries + 1} attempts",
-            "last_error": last_error,
-            "attempts": max_retries + 1,
-            "video_details": {
-                "index": index,
-                "id": video_item.id,
-                "name": video_item.name,
-                "url": video_url,
-                "timeline_position": video_item.start_time,
-                "duration": video_item.duration
-            }
-        }
-        
-        logger.error(f"[Thread {thread_id}] All download attempts failed for video {index}: {last_error}")
-        return error_details
+
+    def _describe_source(self, video_path: str, ffmpeg_path: str) -> Optional[VideoStreamInfo]:
+        """Display geometry and duration (``None`` when unknown) of a clip source (EX3-01 / EX3-02)."""
+        info = probe_video_stream(video_path, ffprobe_path_for(ffmpeg_path))
+        if info is not None:
+            return info
+        # OpenCV only: ffprobe already failed once for this file
+        width, height, fps = self._cv2_video_properties(video_path)
+        if not width or not height:
+            return None
+        return VideoStreamInfo(
+            width=int(width), height=int(height), fps=float(fps or 30.0),
+            duration=self._cv2_duration(video_path, fps), rotation=0,
+        )
+
+    @staticmethod
+    def _cv2_duration(video_path: str, fps: Optional[float]) -> Optional[float]:
+        """Frame-count duration; ``None`` when OpenCV cannot count the frames."""
+        cap = cv2.VideoCapture(video_path)
+        try:
+            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        finally:
+            cap.release()
+        if not fps or fps <= 0 or not frame_count or frame_count <= 0:
+            return None
+        return frame_count / fps
 
     def _normalize_video_with_retry(self, video_info: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
         """Normalize a single video with retry mechanism."""
@@ -632,6 +654,10 @@ class VideoCompositionService:
                 else:
                     last_error = result.get('error', 'Unknown normalization error')
                     logger.warning(f"Normalization attempt {attempt + 1} failed: {last_error}")
+                    if result.get('retryable') is False:
+                        # A bad clip window or unreadable source fails the same
+                        # way every time: retrying only delays the error (EX3-02).
+                        return {**result, "attempts": attempt + 1, "last_error": last_error}
                     
                     if attempt >= max_retries:
                         break
@@ -666,190 +692,7 @@ class VideoCompositionService:
         logger.error(f"All normalization attempts failed for video {video_info['index']}: {last_error}")
         return error_details
     
-    def _download_video(self, video_url: str, temp_dir: str, index: int) -> Dict[str, Any]:
-        """Download a single video file."""
-        thread_id = threading.current_thread().ident
-        video_name = f"video_{index}.mp4"
-        video_path = os.path.join(temp_dir, video_name)
-        
-        logger.info(f"[Thread {thread_id}] Downloading video: {video_url}")
-        
-        # Check if it's a YouTube URL
-        if self._is_youtube_url(video_url):
-            logger.info(f"[Thread {thread_id}] Detected YouTube URL, using yt-dlp for download")
-            return self._download_youtube_video(video_url, video_path, thread_id)
-        # Check if it's a Pexels URL
-        elif self._is_pexels_url(video_url):
-            logger.info(f"[Thread {thread_id}] Detected Pexels URL, using retry logic with API key switching")
-            return self._download_pexels_video_with_retry(video_url, video_path, thread_id)
-        else:
-            logger.info(f"[Thread {thread_id}] Using FFmpeg for direct video URL download")
-            return self._download_video_with_ffmpeg(video_url, video_path, thread_id)
-    
-    def _download_youtube_video(self, video_url: str, target_path: str, thread_id: int) -> Dict[str, Any]:
-        """Download YouTube video using YouTubeService."""
-        try:
-            # Create download request
-            download_request = YoutubeVideoDownloadRequest(
-                url=video_url,
-                video_quality="720p",  # Use reasonable quality for composition
-                format_type="mp4"
-            )
-            
-            logger.info(f"[Thread {thread_id}] Starting YouTube download with yt-dlp")
-            
-            # Download using YouTube service
-            result = self.youtube_service.download_video(download_request)
-            
-            if not result.success:
-                error_msg = f"YouTube download failed: {result.error or result.message}"
-                logger.error(f"[Thread {thread_id}] {error_msg}")
-                return {"success": False, "error": error_msg}
-            
-            # Move downloaded file to target location
-            if result.file_path and os.path.exists(result.file_path):
-                try:
-                    shutil.move(result.file_path, target_path)
-                    file_size = os.path.getsize(target_path)
-                    logger.info(f"[Thread {thread_id}] YouTube download successful: {file_size / 1024 / 1024:.2f}MB")
-                    return {"success": True, "output_path": target_path}
-                except Exception as e:
-                    error_msg = f"Failed to move downloaded file: {str(e)}"
-                    logger.error(f"[Thread {thread_id}] {error_msg}")
-                    return {"success": False, "error": error_msg}
-            else:
-                error_msg = "Downloaded file not found"
-                logger.error(f"[Thread {thread_id}] {error_msg}")
-                return {"success": False, "error": error_msg}
-                
-        except Exception as e:
-            error_msg = f"YouTube download error: {str(e)}"
-            logger.error(f"[Thread {thread_id}] {error_msg}", exc_info=True)
-            return {"success": False, "error": error_msg}
-    
-    def _download_pexels_video_with_retry(self, video_url: str, video_path: str, thread_id: int) -> Dict[str, Any]:
-        """Download Pexels video with API key retry logic."""
-        config = self.video_download_config.get('pexels', {})
-        retry_config = config.get('retry', {})
-        
-        max_retries = retry_config.get('max_retries', 5)
-        switch_api_key = retry_config.get('switch_api_key_on_retry', True)
-        retry_delay = retry_config.get('retry_delay', 2.0)
-        
-        logger.info(f"[Thread {thread_id}] Starting Pexels video download with retry logic (max_retries: {max_retries})")
-        
-        # Get available API keys
-        api_keys = getattr(settings, 'pexels_api_keys', [])
-        if not api_keys:
-            logger.error(f"[Thread {thread_id}] No Pexels API keys available for retry logic")
-            return self._download_video_with_ffmpeg(video_url, video_path, thread_id)
-        
-        # Try with different API keys if configured
-        used_keys = set()
-        
-        for attempt in range(max_retries + 1):
-            try:
-                # Select API key for this attempt
-                if switch_api_key and len(api_keys) > 1:
-                    # Get unused API keys
-                    available_keys = [key for key in api_keys if key not in used_keys]
-                    if not available_keys:
-                        # If all keys used, reset and use all keys again
-                        used_keys.clear()
-                        available_keys = api_keys
-                    
-                    current_api_key = random.choice(available_keys)
-                    used_keys.add(current_api_key)
-                else:
-                    current_api_key = api_keys[0] if api_keys else None
-                
-                if attempt > 0:
-                    logger.info(f"[Thread {thread_id}] Retry attempt {attempt}/{max_retries} for Pexels download")
-                    if switch_api_key:
-                        logger.info(f"[Thread {thread_id}] Using API key: {current_api_key[:10]}...{current_api_key[-5:] if current_api_key else 'None'}")
-                    time.sleep(retry_delay)
-                
-                # Attempt download with current configuration
-                result = self._download_video_with_ffmpeg(video_url, video_path, thread_id)
-                
-                if result.get('success'):
-                    if attempt > 0:
-                        logger.info(f"[Thread {thread_id}] Pexels download succeeded on retry attempt {attempt}")
-                    else:
-                        logger.info(f"[Thread {thread_id}] Pexels download succeeded on first attempt")
-                    return result
-                else:
-                    error_msg = result.get('error', 'Unknown error')
-                    logger.warning(f"[Thread {thread_id}] Pexels download attempt {attempt + 1} failed: {error_msg}")
-                    
-                    # If this is the last attempt, return the error
-                    if attempt >= max_retries:
-                        logger.error(f"[Thread {thread_id}] All Pexels download attempts failed after {max_retries + 1} tries")
-                        return result
-                
-            except Exception as e:
-                error_msg = f"Pexels download attempt {attempt + 1} error: {str(e)}"
-                logger.error(f"[Thread {thread_id}] {error_msg}")
-                
-                if attempt >= max_retries:
-                    return {"success": False, "error": f"All retry attempts failed. Last error: {error_msg}"}
-        
-        # This should not be reached, but just in case
-        return {"success": False, "error": "Maximum retry attempts exceeded"}
-    
-    def _download_video_with_ffmpeg(self, video_url: str, video_path: str, thread_id: int) -> Dict[str, Any]:
-        """Download video using FFmpeg (for non-YouTube URLs)."""
-        ffmpeg_path = self._get_ffmpeg_path()
-        if not ffmpeg_path:
-            return {"success": False, "error": "ffmpeg not available"}
-
-        # Spec 03 §3.3 (V03-E) — gate the remote URL before letting
-        # FFmpeg open it. Combined with the protocol whitelist below this
-        # blocks file:// / rtsp:// / http://169.254.169.254 from sneaking
-        # in via timeline JSON.
-        try:
-            video_url = validate_external_url(video_url)
-        except URLGuardError as guard_exc:
-            logger.warning(f"[Thread {thread_id}] FFmpeg download URL rejected: {guard_exc}")
-            return {"success": False, "error": f"URL rejected: {guard_exc}"}
-
-        # Use ffmpeg to download video — restrict to remote protocols only
-        # (no file:// fallback even if the URL contains tricks).
-        download_cmd = [
-            ffmpeg_path,
-            '-y',
-            '-protocol_whitelist', FFMPEG_REMOTE_PROTOCOL_WHITELIST,
-            '-i', video_url,
-            '-c', 'copy',
-            video_path
-        ]
-        
-        try:
-            logger.info(f"[Thread {thread_id}] Executing FFmpeg download command")
-            result = subprocess.run(download_cmd, capture_output=True, 
-                                  text=True, timeout=120)
-            
-            if result.returncode != 0:
-                error_msg = f"FFmpeg download failed: {result.stderr}"
-                logger.error(f"[Thread {thread_id}] {error_msg}")
-                return {"success": False, "error": error_msg}
-            
-            # Check file exists and has reasonable size
-            if not os.path.exists(video_path):
-                return {"success": False, "error": "Downloaded file not found"}
-            
-            file_size = os.path.getsize(video_path)
-            if file_size < 1024:  # Less than 1KB
-                return {"success": False, "error": "Downloaded file too small"}
-            
-            logger.info(f"[Thread {thread_id}] FFmpeg download successful: {file_size / 1024 / 1024:.2f}MB")
-            return {"success": True, "output_path": video_path}
-            
-        except subprocess.TimeoutExpired:
-            return {"success": False, "error": "Download timeout"}
-        except Exception as e:
-            return {"success": False, "error": f"Download error: {str(e)}"}
-    
+    # Over 60 lines: probing, scaling, the camera-motion fallback and the command share state.
     def _normalize_video(self, video_info: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize a single video to target specifications with optional clipping."""
         thread_id = threading.current_thread().ident
@@ -865,33 +708,34 @@ class VideoCompositionService:
         logger.info(f"[Thread {thread_id}] Normalizing video {index + 1}")
         logger.info(f"[Thread {thread_id}] Clipping parameters: start={clip_start}s, end={clip_end}s")
         
-        # Get video properties
-        width, height, fps = self._get_video_properties(video_path)
-        if width is None:
-            return {"success": False, "error": f"Cannot get video properties: {video_path}", "index": index}
-        
-        # Get video duration
-        cap = cv2.VideoCapture(video_path)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        original_duration = frame_count / fps if fps > 0 else 0
-        cap.release()
-        
-        # 计算实际的剪辑参数
+        # Display size (rotation applied) and duration, which may be unknown (EX3-01 / EX3-02)
+        source = self._describe_source(video_path, ffmpeg_path)
+        if source is None:
+            error_msg = f"Cannot get video properties: {video_path}"
+            return {"success": False, "error": error_msg, "index": index, "retryable": False}
+        width, height, fps = source.width, source.height, source.fps
+
+        # 计算实际的剪辑参数；源时长未知时不钳制终点，-t 与 -frames:v 仍限定输出
         actual_clip_start = max(0.0, clip_start)
-        actual_clip_end = min(original_duration, clip_end) if clip_end is not None else original_duration
-        clip_duration = actual_clip_end - actual_clip_start
-        
-        logger.info(f"[Thread {thread_id}] Video properties: {width}x{height}, {fps:.2f}fps, original={original_duration:.2f}s")
-        logger.info(f"[Thread {thread_id}] Clipping: start={actual_clip_start:.2f}s, end={actual_clip_end:.2f}s, duration={clip_duration:.2f}s")
-        
+        actual_clip_end = clip_end if clip_end is not None else source.duration
+        if source.duration is not None and actual_clip_end is not None:
+            actual_clip_end = min(source.duration, actual_clip_end)
+        clip_duration = actual_clip_end - actual_clip_start if actual_clip_end is not None else 0.0
+
+        logger.info(
+            f"[Thread {thread_id}] Source {width}x{height} {fps:.2f}fps rotation={source.rotation} "
+            f"original={source.duration}s; clip {actual_clip_start:.2f}-{actual_clip_end}s"
+        )
+
         # Validate clipping parameters
         if clip_duration <= 0:
             error_msg = f"Invalid clipping parameters: clip duration is {clip_duration:.2f}s"
             logger.error(f"[Thread {thread_id}] {error_msg}")
-            return {"success": False, "error": error_msg, "index": index}
+            return {"success": False, "error": error_msg, "index": index, "retryable": False}
         
         # Normalize video with clipping
         normalized_path = os.path.join(temp_dir, f"normalized_{index}.mp4")
+        progress_path = progress_file_path(temp_dir, f"normalize_{index}")
         
         # 获取目标视频的宽高比信息
         target_aspect_ratio = self._get_aspect_ratio_info(video_info['target_aspect_ratio'])
@@ -951,9 +795,9 @@ class VideoCompositionService:
             '-i', video_path
         ])
         
-        # 如果需要限制时长
-        if clip_duration < original_duration:
-            normalize_cmd.extend(['-t', str(clip_duration)])
+        # Always bound the window: a source without a known length has nothing
+        # to clamp it against (EX3-02)
+        normalize_cmd.extend(['-t', str(clip_duration)])
         
         normalize_cmd.extend([
             '-vf', vf_params,
@@ -974,7 +818,7 @@ class VideoCompositionService:
         
         try:
             logger.info(f"[Thread {thread_id}] Running FFmpeg command: {' '.join(normalize_cmd)}")
-            result = subprocess.run(normalize_cmd, capture_output=True, text=True)
+            result = self._run_tracked_ffmpeg(normalize_cmd, progress_path, "normalization")
 
             if result.returncode != 0 and camera_chain:
                 # 运镜表达式错误是「确定性失败」，重试多少次都一样。降级必须发生在
@@ -995,7 +839,7 @@ class VideoCompositionService:
                     arg if arg != vf_params else self._build_video_filter(scaling_params, "")
                     for arg in normalize_cmd
                 ]
-                result = subprocess.run(retry_cmd, capture_output=True, text=True)
+                result = self._run_tracked_ffmpeg(retry_cmd, progress_path, "normalization")
                 camera_chain = ""
 
             if result.returncode != 0:
@@ -1022,7 +866,7 @@ class VideoCompositionService:
                         arg if arg != vf_params else self._build_video_filter(scaling_params, "")
                         for arg in normalize_cmd
                     ]
-                    result = subprocess.run(retry_cmd, capture_output=True, text=True)
+                    result = self._run_tracked_ffmpeg(retry_cmd, progress_path, "normalization")
                     if result.returncode != 0:
                         error_msg = f"Normalization failed: {result.stderr}"
                         logger.error(f"[Thread {thread_id}] {error_msg}")
@@ -1101,6 +945,7 @@ class VideoCompositionService:
             logger.warning(f"Could not probe normalized clip duration: {exc}")
         return None
     
+    # Over 60 lines: every fail-fast request check runs before the status entry exists.
     def start_video_composition(self, request: VideoCompositionRequest) -> VideoCompositionResponse:
         """
         Start video composition asynchronously and return immediately with composition_id.
@@ -1121,6 +966,7 @@ class VideoCompositionService:
                 progress=0.0,
             )
 
+        self._evict_settled_compositions()
         composition_id = str(uuid.uuid4())
         start_time = time.time()
 
@@ -1134,6 +980,7 @@ class VideoCompositionService:
             "task_id": request.task_id,
             "status": "processing",
             "progress": 0.0,
+            "stage": "queued",
             "start_time": start_time,
             "request": request,
             # camera-motion-2d-3d D14 (W2): non-fatal degrade notices raised by
@@ -1145,6 +992,7 @@ class VideoCompositionService:
             "degradations": [],
         }
         
+        self._cancel_events.track(composition_id)
         # Start background processing
         threading.Thread(
             target=self._process_video_composition_async,
@@ -1166,7 +1014,8 @@ class VideoCompositionService:
         Process video composition in background thread with concurrency control.
         """
         logger.info(f"Composition {composition_id} waiting for semaphore (max concurrent: 2)")
-        self._composition_semaphore.acquire()
+        if not self._acquire_composition_slot(composition_id):
+            return
         try:
             logger.info(f"Background processing started for composition {composition_id}")
 
@@ -1188,8 +1037,21 @@ class VideoCompositionService:
             )
         finally:
             self._composition_semaphore.release()
+            self._cancel_events.forget(composition_id)
             logger.info(f"Composition {composition_id} released semaphore")
 
+    def _acquire_composition_slot(self, composition_id: str) -> bool:
+        """Wait for a slot, re-checking cancellation: False when cancelled while queued (RV3-13)."""
+        while not self._composition_semaphore.acquire(timeout=_SLOT_POLL_SECONDS):
+            if self._cancel_events.is_cancelled(composition_id):
+                logger.info(f"Composition {composition_id} cancelled while queued")
+                self._mark_cancelled(composition_id)
+                self._cancel_events.forget(composition_id)
+                return False
+        self._set_stage(composition_id, "resolving")
+        return True
+
+    # Over 60 lines: the stage sequence shares one try/finally that owns the cleanup.
     def _compose_video_sync(self, composition_id: str, request: VideoCompositionRequest) -> VideoCompositionResponse:
         """
         Compose video from timeline data (synchronous processing).
@@ -1306,7 +1168,7 @@ class VideoCompositionService:
                    f"{trimmed_audio_count}/{len(request.audio_items)} 音频片段被裁剪, "
                    f"时间轴终点: {timeline_end}s")
         
-        temp_dir = os.path.join(tempfile.gettempdir(), f"video_compose_{composition_id}")
+        temp_dir = temp_dir_for(composition_id)
         output_filename = f"composed_{composition_id}.{request.output_format}"
         output_path = self.output_dir / output_filename
         # Every file a stage may leave next to the output; removed in `finally`
@@ -1317,13 +1179,17 @@ class VideoCompositionService:
         # stages it wires (normalize payload, overlay warning sinks).
         try:
             os.makedirs(temp_dir, exist_ok=True)
+            # RV3-22: STORAGE_ROOT may not hold the export directory yet
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self._raise_if_cancelled(composition_id)
 
             logger.info(f"Temp directory: {temp_dir}")
             logger.info(f"Output path: {output_path}")
             
-            # Update progress
             if composition_id in self.compositions:
-                self.compositions[composition_id]["progress"] = 0.1
+                # The canvas stage interpolates its progress over the timeline (RV3-02)
+                self.compositions[composition_id]["timeline_end"] = timeline_end
+            self._set_stage(composition_id, "resolving", 0.1)
             
             # Download videos with retry mechanism and URL deduplication
             logger.info("Starting video downloads with retry mechanism and URL deduplication...")
@@ -1447,29 +1313,13 @@ class VideoCompositionService:
                     error_details=error_details
                 )
             
-            # Create file copies for videos with duplicate URLs
-            logger.info("Creating file copies for duplicate URLs...")
+            # Clips cut from one source all read that one file: normalization only
+            # reads its input, and a copy per clip filled the temp disk (EX3-03).
             for url, indices in url_to_indices.items():
                 if url in url_to_downloaded_path:
-                    original_path = url_to_downloaded_path[url]
-                    
                     for video_index in indices:
-                        if video_index == indices[0]:
-                            # First video uses the original downloaded file
-                            downloaded_videos[video_index] = original_path
-                        else:
-                            # Create copy for duplicate URLs
-                            copy_name = f"video_{video_index}.mp4"
-                            copy_path = os.path.join(temp_dir, copy_name)
-                            try:
-                                shutil.copy2(original_path, copy_path)
-                                downloaded_videos[video_index] = copy_path
-                                logger.info(f"Created copy for video index {video_index} from URL: {url}")
-                            except Exception as e:
-                                logger.error(f"Failed to create copy for video index {video_index}: {str(e)}")
-                                # Use original file as fallback
-                                downloaded_videos[video_index] = original_path
-            
+                        downloaded_videos[video_index] = url_to_downloaded_path[url]
+
             # Verify all videos are assigned
             missing_videos = [i for i, path in enumerate(downloaded_videos) if path is None]
             if missing_videos:
@@ -1498,8 +1348,7 @@ class VideoCompositionService:
                 ]
             })
             
-            # Update progress
-            self.compositions[composition_id]["progress"] = 0.4
+            self._set_stage(composition_id, "normalizing", 0.4)
             
             # Get target video parameters from request
             target_fps = request.output_fps
@@ -1544,11 +1393,15 @@ class VideoCompositionService:
             normalized_videos = []
             failed_normalizations = []
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {executor.submit(self._normalize_video_with_retry, task): task['index'] for task in video_tasks}
+                futures = {}
+                for task in video_tasks:
+                    self._raise_if_cancelled(composition_id, futures)
+                    futures[executor.submit(self._normalize_video_with_retry, task)] = task['index']
                 
                 # 收集结果并保持原始顺序
                 norm_results = {}
                 for future in as_completed(futures):
+                    self._raise_if_cancelled(composition_id, futures)
                     original_index = futures[future]
                     result = future.result()
                     # W2: worker threads MUST NOT write the shared composition
@@ -1580,6 +1433,10 @@ class VideoCompositionService:
                         )
                         failed_normalizations.append(failed_normalization)
                         logger.error(f"Video normalization failed permanently at index {original_index}: {result['error']}")
+                    completed = len(norm_results) + len(failed_normalizations)
+                    self._set_stage(
+                        composition_id, "normalizing", 0.4 + 0.3 * completed / len(video_tasks),
+                    )
                 
                 # Check if any normalizations failed
                 if failed_normalizations:
@@ -1625,8 +1482,8 @@ class VideoCompositionService:
                 ]
             })
             
-            # Update progress
-            self.compositions[composition_id]["progress"] = 0.7
+            self._raise_if_cancelled(composition_id)
+            self._set_stage(composition_id, "compositing", 0.7)
 
             # Round 2 S6: one canvas composite places every clip at its real
             # start on a black canvas as long as the timeline. Only a plain
@@ -1640,12 +1497,13 @@ class VideoCompositionService:
                 output_resolution, timeline_end, temp_dir,
             )
 
-            # Update progress
-            self.compositions[composition_id]["progress"] = 0.9
+            self._raise_if_cancelled(composition_id)
+            self._set_stage(composition_id, "mixing", 0.9)
 
             # Extract embedded audio from video tracks
             video_audio_paths = self._extract_video_audio_tracks(
-                request, temp_dir, ffmpeg_path, composition_id=composition_id
+                request, temp_dir, ffmpeg_path,
+                composition_id=composition_id, local_paths=downloaded_videos,
             )
 
             # Handle audio if present (independent audio tracks or video embedded audio)
@@ -1658,6 +1516,10 @@ class VideoCompositionService:
                 )
             else:
                 logger.info("No audio tracks to process")
+            self._set_stage(composition_id, "mixing", 0.93)
+
+            self._raise_if_cancelled(composition_id)
+            self._set_stage(composition_id, "overlays", 0.97)
 
             # Process image overlays and subtitles
             # When both exist, merge into a single FFmpeg pass to avoid redundant re-encoding
@@ -1737,6 +1599,7 @@ class VideoCompositionService:
             else:
                 logger.info("No image overlays or subtitle tracks to process")
 
+            self._set_stage(composition_id, "finalizing")
             # Final processing
             processing_time = time.time() - start_time
             file_size = output_path.stat().st_size
@@ -1764,6 +1627,9 @@ class VideoCompositionService:
                 processing_time=processing_time
             )
 
+        except CompositionCancelled:
+            logger.info(f"Composition {composition_id} cancelled by the user")
+            return self._cancelled_response(composition_id, output_path)
         except CompositionStageError as e:
             logger.error(f"Video composition failed in stage '{e.stage}': {e.summary}")
             return self._composition_failure_response(composition_id, request, e.stage, e.summary)
@@ -1778,10 +1644,13 @@ class VideoCompositionService:
             # failure alike (EXO-13).
             shutil.rmtree(temp_dir, ignore_errors=True)
             self._remove_intermediates(intermediate_paths, output_path)
+            # The request payload is only needed while composing (EX3-06)
+            self.compositions.get(composition_id, {}).pop("request", None)
 
     def get_composition_status(self, composition_id: str) -> Optional[Dict[str, Any]]:
-        """Get the status of a composition."""
-        return self.compositions.get(composition_id)
+        """A status snapshot with live FFmpeg activity and canvas progress (RV3-02)."""
+        info = self.compositions.get(composition_id)
+        return status_snapshot(composition_id, info) if info is not None else None
     
     def get_download_info(self, composition_id: str) -> Optional[Dict[str, Any]]:
         """Get download information for a completed composition."""
@@ -1800,6 +1669,51 @@ class VideoCompositionService:
             "composition_id": composition_id
         } 
 
+    def cancel_composition(self, composition_id: str) -> str:
+        """``"cancelling"``, ``"settled"`` or ``"not_found"``; the worker stops at its next
+        stage boundary and removes its files (EXO-07)."""
+        info = self.compositions.get(composition_id)
+        if info is None:
+            return "not_found"
+        if info.get("status") in SETTLED_STATUSES:
+            return "settled"
+        self._cancel_events.request(composition_id)
+        logger.info(f"Cancellation requested for composition {composition_id}")
+        return "cancelling"
+
+    def _raise_if_cancelled(self, composition_id: str, futures: Iterable[Any] = ()) -> None:
+        self._cancel_events.raise_if_cancelled(composition_id, futures)
+
+    def _mark_cancelled(self, composition_id: str) -> None:
+        """Settle a cancelled composition as failed in stage ``cancelled``."""
+        info = self.compositions.get(composition_id, {})
+        info.pop("request", None)
+        self._fail_composition(
+            composition_id,
+            error_details={"error_summary": CANCELLED_SUMMARY, "composition_stage": "cancelled"},
+            progress=float(info.get("progress", 0.0)),
+        )
+
+    def _cancelled_response(self, composition_id: str, output_path: Path) -> VideoCompositionResponse:
+        """Settle a composition cancelled mid-pipeline and drop its partial output."""
+        remove_file(str(output_path))
+        self._mark_cancelled(composition_id)
+        return VideoCompositionResponse(
+            success=False, message=CANCELLED_SUMMARY, composition_id=composition_id,
+            status="failed", progress=float(self.compositions[composition_id].get("progress", 0.0)),
+        )
+
+    def _set_stage(self, composition_id: str, stage: str, progress: Optional[float] = None) -> None:
+        set_stage(self.compositions.get(composition_id), stage, progress)
+
+    def _evict_settled_compositions(self) -> int:
+        """Forget compositions settled over an hour ago and delete their exports (EX3-06)."""
+        evicted = evict_settled(self.compositions)
+        for info in evicted:
+            remove_file(info.get("output_file_path"))
+        if evicted:
+            logger.info(f"Evicted {len(evicted)} settled compositions and their exports")
+        return len(evicted)
     # Backend service root: backend-services/basic-service/. Resolved from this
     # file's location instead of CWD so the path holds whether uvicorn is launched
     # from repo root, the basic-service directory, or anywhere else.
@@ -1831,7 +1745,15 @@ class VideoCompositionService:
 
         Raises :class:`URLGuardError` on the first offending URL.
         """
-        for items in (request.video_items, request.audio_items, request.image_items):
+        # Only audio items still reach FFmpeg as http(s) URLs. Videos and images
+        # are read from local files or reported as non-local without any network
+        # access, so a DNS check on them only broke exports on fake-ip or offline
+        # networks (N-14).
+        for items, opened_remotely in (
+            (request.video_items, False),
+            (request.audio_items, True),
+            (request.image_items, False),
+        ):
             for item in items:
                 url = getattr(item, "url", None)
                 if not isinstance(url, str) or not url:
@@ -1846,7 +1768,7 @@ class VideoCompositionService:
                     # and still containerises via validate_local_path_for_ffmpeg)
                     # so the front door agrees with the resolver. See
                     # docs/diagnoses/video-export-packaged-desktop-loopback-ssrf.
-                    if _is_loopback_local_reference(url):
+                    if not opened_remotely or _is_loopback_local_reference(url):
                         continue
                     validate_external_url(url)
                     continue
@@ -2037,7 +1959,9 @@ class VideoCompositionService:
             video_with_audio_path
         ]
         logger.info(f"Running audio-video merge command: {' '.join(audio_video_cmd)}")
-        result = subprocess.run(audio_video_cmd, capture_output=True, text=True)
+        result = self._run_tracked_ffmpeg(
+            audio_video_cmd, progress_file_path(job.temp_dir, "merge"), "audio",
+        )
         if result.returncode != 0:
             raise RuntimeError(
                 f"FFmpeg audio-video merge failed (returncode={result.returncode}): "
@@ -2057,6 +1981,7 @@ class VideoCompositionService:
         temp_dir: str,
         ffmpeg_path: str,
         composition_id: Optional[str] = None,
+        local_paths: Optional[Sequence[Optional[str]]] = None,
     ) -> list:
         """
         Extract embedded audio from video items that have audio streams.
@@ -2080,7 +2005,9 @@ class VideoCompositionService:
                 )
                 continue
             try:
-                entry, failure = self._extract_one_video_audio(i, video_item, temp_dir, ffmpeg_path)
+                entry, failure = self._extract_one_video_audio(
+                    i, video_item, temp_dir, ffmpeg_path, _nth_or_none(local_paths, i),
+                )
             except OSError as exc:
                 entry, failure = None, str(exc)
             if failure:
@@ -2093,17 +2020,21 @@ class VideoCompositionService:
         logger.info(f"Extracted {len(video_audio_paths)} audio tracks from {len(request.video_items)} video items")
         return video_audio_paths
 
+    # Over 60 lines: the audio-stream probe and the extraction report failures in one shape.
     def _extract_one_video_audio(
         self, index: int, video_item: VideoCompositionItem, temp_dir: str, ffmpeg_path: str,
+        local_path: Optional[str] = None,
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """``(entry, None)``; ``(None, None)`` without an audio stream; ``(None, reason)``."""
-        try:
-            local_path = self._convert_url_to_local_path(video_item.url)
-        except _MEDIA_RESOLVE_ERRORS as exc:
-            return None, str(exc)
+        """``(entry, None)``; ``(None, None)`` without an audio stream; ``(None, reason)``.
+        Prefers the video stage's ``local_path``: re-resolving lost cached clips' sound (N-14)."""
+        if not local_path:
+            try:
+                local_path = self._convert_url_to_local_path(video_item.url)
+            except _MEDIA_RESOLVE_ERRORS as exc:
+                return None, str(exc)
 
         # Use ffprobe to check if the video has an audio stream
-        ffprobe_path = os.path.join(os.path.dirname(ffmpeg_path), 'ffprobe') if os.path.dirname(ffmpeg_path) else 'ffprobe'
+        ffprobe_path = ffprobe_path_for(ffmpeg_path)
         probe_cmd = [
             ffprobe_path,
             '-v', 'error',
@@ -2140,7 +2071,9 @@ class VideoCompositionService:
             extracted_path
         ])
         logger.info(f"Extracting video audio: {' '.join(extract_cmd)}")
-        result = subprocess.run(extract_cmd, capture_output=True, text=True)
+        result = self._run_tracked_ffmpeg(
+            extract_cmd, progress_file_path(temp_dir, f"embedded_audio_{index}"), "audio",
+        )
         if result.returncode != 0:
             return None, last_stderr_line(result.stderr) or "the embedded audio could not be extracted"
         return {
@@ -2198,10 +2131,13 @@ class VideoCompositionService:
             return self._mix_audio_sources(
                 request, list(extra_audio_paths or []), audio_mix_path, ffmpeg_path, timeline_end
             )
+        except CompositionStageError:
+            raise
         except Exception as e:
             logger.error(f"Audio processing failed with exception: {str(e)}", exc_info=True)
             return AudioMixResult(path=None)
 
+    # Over 60 lines: the delayed-start and immediate-start commands differ in shape.
     def _mix_single_audio_item(
         self, audio_item: Any, audio_mix_path: str, temp_dir: str, ffmpeg_path: str,
         timeline_end: float,
@@ -2240,7 +2176,9 @@ class VideoCompositionService:
                 temp_audio_path
             ])
             logger.info(f"Creating audio segment: {' '.join(audio_segment_cmd)}")
-            result = subprocess.run(audio_segment_cmd, capture_output=True, text=True)
+            result = self._run_tracked_ffmpeg(
+                audio_segment_cmd, progress_file_path(temp_dir, "audio_segment"), "audio",
+            )
             if result.returncode != 0:
                 logger.error(f"Audio segment creation failed: {result.stderr}")
                 return AudioMixResult(
@@ -2271,7 +2209,9 @@ class VideoCompositionService:
             ])
 
         logger.info(f"Running final audio command: {' '.join(final_cmd)}")
-        result = subprocess.run(final_cmd, capture_output=True, text=True)
+        result = self._run_tracked_ffmpeg(
+            final_cmd, progress_file_path(temp_dir, "audio_mix"), "audio",
+        )
         if result.returncode != 0:
             logger.error("Single audio processing failed", {
                 'command': ' '.join(final_cmd),
@@ -2319,36 +2259,64 @@ class VideoCompositionService:
 
         # Volume and routing (mute / audio_detached drop) are already applied
         # upstream, so the shared builder only positions + pads + mixes + trims.
-        mix_filter = build_audio_mix(
-            [AudioSource(start_time=info['start_time']) for info in processed_audio_paths],
-            timeline_end,
-        ).filter_complex
-        mix_cmd = [ffmpeg_path, '-y']
-        for audio_info in processed_audio_paths:
-            mix_cmd.extend(['-i', audio_info['path']])
-        mix_cmd.extend(filter_complex_args(mix_filter, temp_dir, ffmpeg_path))
-        mix_cmd.extend([
-            '-map', '[out]',
-            '-t', str(timeline_end),
-            '-ar', '44100',
-            '-ac', '2',
-            audio_mix_path
-        ])
-        logger.info(f"Running final mix command: {' '.join(mix_cmd)}")
-        result = subprocess.run(mix_cmd, capture_output=True, text=True)
-        self._remove_preprocessed_audio(processed_audio_paths)
+        parts: List[Dict[str, Any]] = []
+        try:
+            sources = processed_audio_paths
+            if len(sources) > MAX_MIX_INPUTS:
+                parts = self._mix_audio_chunks(sources, temp_dir, ffmpeg_path, timeline_end)
+                sources = parts
+            mixed = bool(sources) and self._run_audio_mix(sources, audio_mix_path, ffmpeg_path, timeline_end)
+        finally:
+            self._remove_preprocessed_audio(processed_audio_paths + parts)
 
-        if result.returncode != 0:
-            logger.error("Audio mixing failed", {
-                'command': ' '.join(mix_cmd),
-                'stderr': result.stderr,
-            })
-            return AudioMixResult(path=None, dropped=dropped)
-        if not os.path.exists(audio_mix_path):
-            logger.error("Audio mixing completed but output file not found")
+        if not mixed:
             return AudioMixResult(path=None, dropped=dropped)
         logger.info(f"Audio mixing completed successfully, output size: {os.path.getsize(audio_mix_path)} bytes")
         return AudioMixResult(path=audio_mix_path, dropped=dropped)
+
+    def _mix_audio_chunks(
+        self, sources: List[Dict[str, Any]], temp_dir: str, ffmpeg_path: str, timeline_end: float,
+    ) -> List[Dict[str, Any]]:
+        """Mix ``sources`` in ``MAX_MIX_INPUTS`` chunks, ``[]`` when one fails (EX3-04). Float
+        chunk samples: a chunk summing above 0 dBFS must not clip before the final mix (RV3-14)."""
+        parts: List[Dict[str, Any]] = []
+        for number, indices in enumerate(chunk_sources(len(sources))):
+            part_path = os.path.join(temp_dir, f"mix_part_{number}.wav")
+            chunk = [sources[index] for index in indices]
+            if not self._run_audio_mix(chunk, part_path, ffmpeg_path, timeline_end, float_samples=True):
+                self._remove_preprocessed_audio(parts)
+                return []
+            parts.append({'path': part_path, 'start_time': 0.0, 'name': f'audio mix part {number + 1}'})
+        logger.info(f"Mixed {len(sources)} audio sources in {len(parts)} chunks")
+        return parts
+
+    def _run_audio_mix(
+        self, sources: List[Dict[str, Any]], output_path: str, ffmpeg_path: str,
+        timeline_end: float, float_samples: bool = False,
+    ) -> bool:
+        """Position ``sources`` on the timeline and mix them into ``output_path``."""
+        temp_dir = os.path.dirname(output_path)
+        mix_filter = build_audio_mix(
+            [AudioSource(start_time=info['start_time']) for info in sources], timeline_end,
+        ).filter_complex
+        mix_cmd = [ffmpeg_path, '-y']
+        for audio_info in sources:
+            mix_cmd.extend(['-i', audio_info['path']])
+        mix_cmd.extend(filter_complex_args(mix_filter, temp_dir, ffmpeg_path))
+        mix_cmd.extend(['-map', '[out]', '-t', str(timeline_end), '-ar', '44100', '-ac', '2'])
+        if float_samples:
+            mix_cmd.extend(['-c:a', 'pcm_f32le'])
+        mix_cmd.append(output_path)
+        logger.info(f"Running audio mix of {len(sources)} inputs into {os.path.basename(output_path)}")
+        stem = os.path.splitext(os.path.basename(output_path))[0]
+        result = self._run_tracked_ffmpeg(mix_cmd, progress_file_path(temp_dir, stem), "audio")
+        if result.returncode != 0:
+            logger.error("Audio mixing failed", {'command': ' '.join(mix_cmd), 'stderr': result.stderr})
+            return False
+        if not os.path.exists(output_path):
+            logger.error(f"Audio mixing completed but {output_path} was not created")
+            return False
+        return True
 
     def _preprocess_audio_item(
         self, audio_item: Any, processed_path: str, ffmpeg_path: str, label: str,
@@ -2455,7 +2423,8 @@ class VideoCompositionService:
             return None
         subtitled_path = video_path.replace('.mp4', '_with_subtitles.mp4')
         self.subtitle_service.burn_drawtext_filters(
-            video_path, subtitled_path, filters, temp_dir, timeout=None
+            video_path, subtitled_path, filters, temp_dir, timeout=None,
+            progress_path=progress_file_path(temp_dir, "subtitles"),
         )
         return subtitled_path
 
@@ -2514,7 +2483,7 @@ class VideoCompositionService:
 
         Export is local-only: a remote image is reported instead of fetched with
         an unbounded ``requests.get``, and one bad image no longer aborts the
-        whole overlay batch (EXO-04).
+        whole overlay batch (EXO-04); nor does one undecodable image (EX3-05).
         """
         try:
             local_path = self._convert_url_to_local_path(url)
@@ -2524,7 +2493,23 @@ class VideoCompositionService:
             return None, "remote image is not available locally"
         if not os.path.exists(local_path):
             return None, "image file not found"
+        if not self._is_decodable_image(local_path):
+            return None, "image file cannot be decoded"
         return local_path, None
+
+    @staticmethod
+    def _is_decodable_image(path: str) -> bool:
+        try:
+            from PIL import Image
+        except ImportError:
+            return cv2.imread(path) is not None
+        try:
+            with Image.open(path) as image:
+                image.verify()
+            return True
+        except Exception as exc:
+            logger.warning(f"Image overlay {path} cannot be decoded: {exc}")
+            return False
 
     def _build_still_overlay_inputs(
         self, image_items: List, video_path: str, temp_dir: str,
@@ -2662,6 +2647,7 @@ class VideoCompositionService:
             for entry in entries if entry['plan'].animated
         ]
 
+    # Over 60 lines: image inputs, the drawtext merge and the motion-free retry build one command.
     def _process_overlays_and_subtitles_combined(
         self, image_items: List, subtitle_items: List,
         video_path: str, output_path: str, temp_dir: str,
@@ -2739,7 +2725,7 @@ class VideoCompositionService:
             cmd = assemble(cmd, filter_parts, last_overlay_output)
 
             logger.info(f"Running merged overlay+subtitle command")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = self._run_tracked_ffmpeg(cmd, progress_file_path(temp_dir, "overlays"), "overlays")
 
             if result.returncode != 0 and any(e['plan'].animated for e in entries):
                 # D22 / G4: camera motion is a garnish — it must never be the
@@ -2754,9 +2740,9 @@ class VideoCompositionService:
                     output_fps, ffmpeg_path, disable_camera=True,
                 )
                 retry_parts, retry_last = self._build_still_overlay_filters(retry_entries)
-                retry_result = subprocess.run(
+                retry_result = self._run_tracked_ffmpeg(
                     assemble(retry_cmd, retry_parts, retry_last),
-                    capture_output=True, text=True,
+                    progress_file_path(temp_dir, "overlays"), "overlays",
                 )
                 if retry_result.returncode == 0:
                     warnings.extend(self._camera_retry_warnings(entries))
@@ -2774,6 +2760,7 @@ class VideoCompositionService:
             logger.error(f"Error in merged overlay+subtitle processing: {str(e)}", exc_info=True)
             return False, warnings
 
+    # Over 60 lines: image inputs and the motion-free retry build one command.
     def _process_image_overlays(
         self, image_items: List, video_path: str, output_path: str, temp_dir: str,
         output_resolution: Dict[str, int], output_fps: int = 30,
@@ -2836,7 +2823,7 @@ class VideoCompositionService:
             logger.info(f"Image overlay filter complex: {';'.join(filter_parts)}")
             logger.info(f"Running image overlay command with {len(entries)} images")
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = self._run_tracked_ffmpeg(cmd, progress_file_path(temp_dir, "overlays"), "overlays")
 
             if result.returncode != 0 and any(e['plan'].animated for e in entries):
                 # D22 / G4: strip every camera chain and try once more. The retry
@@ -2851,9 +2838,9 @@ class VideoCompositionService:
                     output_fps, ffmpeg_path, disable_camera=True,
                 )
                 retry_parts, retry_last = self._build_still_overlay_filters(retry_entries)
-                retry_result = subprocess.run(
+                retry_result = self._run_tracked_ffmpeg(
                     assemble(retry_cmd, retry_parts, retry_last),
-                    capture_output=True, text=True,
+                    progress_file_path(temp_dir, "overlays"), "overlays",
                 )
                 if retry_result.returncode == 0:
                     warnings.extend(self._camera_retry_warnings(entries))

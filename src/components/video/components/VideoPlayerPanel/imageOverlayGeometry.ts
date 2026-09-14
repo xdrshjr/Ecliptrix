@@ -179,6 +179,37 @@ export function resizeKeepingAspect(
   return { width: newWidth, height: newHeight };
 }
 
+/** 方向键微调（N-02）。 */
+export type NudgeKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown';
+
+/** 一次方向键微调的归一化步长：普通 1%，按住 Shift 10%。 */
+export const NUDGE_STEP = 0.01;
+export const NUDGE_STEP_LARGE = 0.1;
+
+export function isNudgeKey(key: string): key is NudgeKey {
+  return key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown';
+}
+
+/**
+ * 键盘微调（N-02）：按方向移动一个步长，x 钳制到 [0, 1-width]、y 钳制到
+ * [0, 1-height]，再经 `clampImagePosition`，与拖动同一套边界。
+ */
+export function nudgeImagePosition(
+  position: ImagePosition,
+  key: NudgeKey,
+  large: boolean,
+): ImagePosition {
+  const step = large ? NUDGE_STEP_LARGE : NUDGE_STEP;
+  const safe = clampImagePosition(position);
+  const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0;
+  const dy = key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0;
+  return clampImagePosition({
+    ...safe,
+    x: Math.max(0, Math.min(1 - safe.width, safe.x + dx)),
+    y: Math.max(0, Math.min(1 - safe.height, safe.y + dy)),
+  });
+}
+
 /** 四角缩放手柄 id：`tl/tr/bl/br` = 左上/右上/左下/右下（D2）。 */
 export type HandleId = 'tl' | 'tr' | 'bl' | 'br';
 

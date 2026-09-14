@@ -1,20 +1,20 @@
 /**
- * SubtitleLayer — spec 02 §2.3 / §6 #9 (layout logic).
+ * SubtitleLayer — spec 02 §2.3 / §6 #9 (selection + layout).
  *
- * Pure tests: active-window selection, word wrap against an injectable text
- * measurer, style resolution, and the layout cache hit invariant.
+ * Pure tests: active-window selection, style resolution with the export
+ * defaults, and the output-pixel layout cache (EXO-09). The layout rules
+ * themselves are pinned against export in `lib/__tests__/subtitleLayout.test.ts`.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   SubtitleLayer,
   activeSubtitlesAt,
-  wrapText,
   resolveSubtitleStyle,
-  type ResolvedSubtitleStyle,
-  type TextMeasurer,
 } from '../SubtitleLayer';
 import type { SubtitleSequenceItem } from '../../types';
+
+const OUTPUT_1080P = { width: 1920, height: 1080 };
 
 function sub(over: Partial<SubtitleSequenceItem> = {}): SubtitleSequenceItem {
   return {
@@ -26,9 +26,6 @@ function sub(over: Partial<SubtitleSequenceItem> = {}): SubtitleSequenceItem {
     ...over,
   };
 }
-
-/** Each character is 10px wide — deterministic measurer for wrap tests. */
-const charMeasurer: TextMeasurer = (text) => text.length * 10;
 
 describe('activeSubtitlesAt', () => {
   it('returns subtitles covering t', () => {
@@ -55,86 +52,74 @@ describe('activeSubtitlesAt', () => {
   });
 });
 
-describe('wrapText', () => {
-  const style: ResolvedSubtitleStyle = {
-    fontSize: 24,
-    color: '#fff',
-    bold: false,
-    italic: false,
-    align: 'center',
-    vAnchor: 0.9,
-  };
-
-  it('wraps words to fit the max width', () => {
-    // limit 50px → 5 chars per line at 10px/char.
-    const lines = wrapText('aa bb cc dd', style, 50, charMeasurer);
-    expect(lines).toEqual(['aa bb', 'cc dd']);
-  });
-
-  it('honors hard newlines', () => {
-    const lines = wrapText('one\ntwo', style, 1000, charMeasurer);
-    expect(lines).toEqual(['one', 'two']);
-  });
-
-  it('keeps an oversized single word on its own line', () => {
-    const lines = wrapText('supercalifragilistic', style, 30, charMeasurer);
-    expect(lines).toEqual(['supercalifragilistic']);
-  });
-
-  it('returns empty array for empty text', () => {
-    expect(wrapText('', style, 100, charMeasurer)).toEqual([]);
-  });
-});
-
 describe('resolveSubtitleStyle', () => {
-  it('maps timeline fontColor/backgroundColor/position to draw fields', () => {
+  it('maps timeline fontColor/backgroundColor/position/fontFamily to draw fields', () => {
     const resolved = resolveSubtitleStyle({
-      fontFamily: 'sans' as never,
+      fontFamily: 'serif',
       fontSize: 32,
       fontColor: '#ff0000',
       backgroundColor: '#000000',
-      position: 'top' as never,
+      position: 'top',
     });
-    expect(resolved.fontSize).toBe(32);
-    expect(resolved.color).toBe('#ff0000');
-    expect(resolved.background).toBe('#000000');
-    expect(resolved.vAnchor).toBeCloseTo(0.12, 5);
+    expect(resolved).toEqual({
+      fontSize: 32,
+      color: '#ff0000',
+      background: '#000000',
+      fontFamily: 'serif',
+      position: 'top',
+    });
   });
 
-  it('falls back to legible defaults when style is missing', () => {
-    const resolved = resolveSubtitleStyle(undefined);
-    expect(resolved.fontSize).toBe(24);
-    expect(resolved.color).toBe('#ffffff');
-    expect(resolved.vAnchor).toBeCloseTo(0.9, 5);
-    expect(resolved.align).toBe('center');
+  it('falls back to the export defaults when style is missing', () => {
+    expect(resolveSubtitleStyle(undefined)).toEqual({
+      fontSize: 24,
+      color: '#ffffff',
+      background: undefined,
+      fontFamily: 'default',
+      position: 'bottom',
+    });
+  });
+
+  it('truncates a fractional font size and treats a transparent background as none, like export', () => {
+    const resolved = resolveSubtitleStyle({ fontSize: 30.7, backgroundColor: 'transparent' });
+    expect({ fontSize: resolved.fontSize, background: resolved.background }).toEqual({
+      fontSize: 30,
+      background: undefined,
+    });
   });
 });
 
 describe('SubtitleLayer layout cache', () => {
-  it('returns a cached result object for identical inputs', () => {
+  it('shares the laid-out lines for identical inputs', () => {
     const layer = new SubtitleLayer();
-    const measure = vi.fn(charMeasurer);
-    const r1 = layer.layout('aa bb cc', { fontSize: 24 } as never, 50, measure);
-    const callsAfterFirst = measure.mock.calls.length;
-    const r2 = layer.layout('aa bb cc', { fontSize: 24 } as never, 50, measure);
-    expect(r2).toBe(r1); // same cached object
-    expect(measure.mock.calls.length).toBe(callsAfterFirst); // no re-measure
-    expect(r1.lines).toEqual(['aa bb', 'cc']);
+    const r1 = layer.layout('aa bb cc', { fontSize: 24 }, OUTPUT_1080P);
+    const r2 = layer.layout('aa bb cc', { fontSize: 24 }, OUTPUT_1080P);
+    expect(r2.lines).toBe(r1.lines);
+    expect(r1.lines.map((line) => line.text)).toEqual(['aa bb cc']);
   });
 
-  it('re-wraps when the max width changes', () => {
+  it('lays out again when the output size changes', () => {
     const layer = new SubtitleLayer();
-    const wide = layer.layout('aa bb cc dd', { fontSize: 24 } as never, 1000, charMeasurer);
-    const narrow = layer.layout('aa bb cc dd', { fontSize: 24 } as never, 50, charMeasurer);
-    expect(wide.lines).toEqual(['aa bb cc dd']);
-    expect(narrow.lines).toEqual(['aa bb', 'cc dd']);
+    const text = 'one two three four five';
+    // 1920 px wide at 24 px → 76 chars per line; 240 px wide → floor(140 / 24) = 5.
+    const wide = layer.layout(text, { fontSize: 24 }, OUTPUT_1080P);
+    const narrow = layer.layout(text, { fontSize: 24 }, { width: 240, height: 1080 });
+    expect(wide.lines.map((line) => line.text)).toEqual([text]);
+    expect(narrow.lines.map((line) => line.text)).toEqual(['one', 'two', 'three', 'four', 'five']);
+  });
+
+  it('reads colors fresh even when the layout is cached', () => {
+    const layer = new SubtitleLayer();
+    layer.layout('caption', { fontSize: 24, fontColor: '#ffffff' }, OUTPUT_1080P);
+    const recolored = layer.layout('caption', { fontSize: 24, fontColor: '#00ff00' }, OUTPUT_1080P);
+    expect(recolored.style.color).toBe('#00ff00');
   });
 
   it('evicts the oldest entry past the cap', () => {
     const layer = new SubtitleLayer(2);
-    layer.layout('one', { fontSize: 24 } as never, 100, charMeasurer);
-    layer.layout('two', { fontSize: 24 } as never, 100, charMeasurer);
-    layer.layout('three', { fontSize: 24 } as never, 100, charMeasurer);
+    layer.layout('one', { fontSize: 24 }, OUTPUT_1080P);
+    layer.layout('two', { fontSize: 24 }, OUTPUT_1080P);
+    layer.layout('three', { fontSize: 24 }, OUTPUT_1080P);
     expect(layer._cacheSize()).toBe(2);
   });
 });

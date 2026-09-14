@@ -9,13 +9,12 @@
  * @module useAgentExecution
  */
 
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import type {
   TimelineState,
   MaterialItem,
   ChatMessage,
   Conversation,
-  AgentToolCallRecord,
   AgentTimelineOperation,
   AgentTrackPatch,
 } from '@/types';
@@ -24,7 +23,6 @@ import { isInlineMediaUrl } from '@/lib/inlineUrl';
 import { nextExternalUpdateId } from '@/components/video/timeline/lib/externalUpdateId';
 import { useTimelineStore } from '@/components/video/timeline/store/useTimelineStore';
 import { isEditLocked } from '@/components/video/timeline/store/editLock';
-import { SSEStreamManager } from '@/lib/video-editing-agent/SSEStreamManager';
 import { AgentEventRouter } from '@/lib/video-editing-agent/AgentEventRouter';
 import { AgentStateManager } from '@/lib/video-editing-agent/AgentStateManager';
 import {
@@ -36,12 +34,23 @@ import {
   rebaseTrackPatches,
   revertTrackPatches,
 } from '@/lib/video-editing-agent/trackPatch';
-import type { SSEEvent } from '@/lib/video-editing-agent/types';
+import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
+import {
+  serverErrorMessageKey,
+  streamErrorMessageKey,
+  type StreamError,
+} from '@/lib/video-editing-agent/errorRecovery';
+import type { AgentStreamErrorCode, SSEEvent } from '@/lib/video-editing-agent/types';
 import type {
   AgentExecutionState,
   StartExecutionParams,
 } from './useAgentExecutionState';
 import { useAgentExecutionState } from './useAgentExecutionState';
+import {
+  createTurnMessageIds,
+  replaceRetiredTurnMessage,
+  stripHistoryForRequest,
+} from './agentTurnLifecycle';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,6 +102,10 @@ export interface UseAgentExecutionReturn {
   undoAllOperations: (messageId: string) => void;
   /** Undo a single operation by toolCallId within a message. */
   undoSingleOperation: (messageId: string, toolCallId: string) => void;
+  /** Clear the error of a run that already ended (the error card's Dismiss). */
+  dismissExecutionError: () => void;
+  /** Agent messages whose steps can still be undone one at a time this session. */
+  singleUndoMessageIds: ReadonlySet<string>;
 }
 
 /** Per-turn collaborators the stream callbacks close over. */
@@ -100,10 +113,14 @@ interface AgentTurn {
   stateManager: AgentStateManager;
   router: AgentEventRouter;
   /** Timeline when the turn started: baseline for its track patches. */
-  turnStart: TimelineState | undefined;
-  /** Replace the turn's agent reply in the turn's conversation. */
+  turnStart: TimelineState;
+  /** Write the turn's agent reply (only that message once retired). */
   writeAgentMessage: (message: ChatMessage) => void;
+  /** A newer turn may start: later writes of this one update its own message only. */
+  retire: () => void;
 }
+
+const NO_MESSAGE_IDS: ReadonlySet<string> = new Set();
 
 type TurnStreamCallbacks = Pick<
   StartExecutionParams,
@@ -229,25 +246,24 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   const updateConvMessagesRef = useRef(updateConversationMessages);
   updateConvMessagesRef.current = updateConversationMessages;
 
-  // -- SSEStreamManager ref (for cancel) --
-  const streamManagerRef = useRef<SSEStreamManager | null>(null);
-
-  // -- OperationApplier ref (for undo, persists across renders) --
-  const operationApplierRef = useRef<OperationApplier | null>(null);
+  // -- OperationApplier per agent message (for single-step undo). Kept for
+  //    the session so a step of an earlier turn stays undoable; cleared on a
+  //    conversation switch. --
+  const operationAppliersRef = useRef(new Map<string, OperationApplier>());
+  const [singleUndoMessageIds, setSingleUndoMessageIds] =
+    useState<ReadonlySet<string>>(NO_MESSAGE_IDS);
 
   // -- Per-execution state manager ref --
   const stateManagerRef = useRef<AgentStateManager | null>(null);
-
-  // -- Track messages-before-agent for building final message array --
-  const messagesBeforeAgentRef = useRef<ChatMessage[]>([]);
 
   // -- Timeline at the start of the running turn: in-memory baseline for
   //    the turn's track patches (no longer persisted on the message) --
   const timelineSnapshotRef = useRef<TimelineState | undefined>(undefined);
 
-  // -- Conversation the running turn belongs to. On a conversation switch
-  //    activeConversationIdRef has already moved when the turn is sealed. --
-  const turnConversationIdRef = useRef<string | null>(null);
+  // -- The latest turn's message writer (bound to its conversation) and its
+  //    retirement switch --
+  const turnWriterRef = useRef<((message: ChatMessage) => void) | null>(null);
+  const retireTurnRef = useRef<(() => void) | null>(null);
 
   // -- Serialises SSE event handling. Every event, and every terminal write
   //    of the agent message, waits for the previous one, so a delete_clip's
@@ -356,6 +372,28 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     [setTimelineState, onTimelineUpdate, triggerClipAnimation],
   );
 
+  /** Localised text for an SSE `error` event; an old server sends no code. */
+  const describeServerError = useCallback(
+    ({ message, code }: { message: string; code?: AgentStreamErrorCode }): string =>
+      code
+        ? t.agentStream.errors[serverErrorMessageKey(code)].replace('{detail}', message)
+        : message,
+    [t],
+  );
+
+  /** Localised text for a stream (transport) failure. */
+  const describeStreamError = useCallback(
+    (error: StreamError): string => t.agentStream.errors[streamErrorMessageKey(error)],
+    [t],
+  );
+
+  const notifyAgentError = useCallback(
+    (text: string): void => {
+      onNotification?.('error', t.agentTimeline.errorPrefix.replace('{message}', text));
+    },
+    [onNotification, t],
+  );
+
   const createEventRouter = useCallback(
     (stateManager: AgentStateManager, operationApplier: OperationApplier) =>
       new AgentEventRouter({
@@ -367,16 +405,17 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
             stateManager.addOperation(event.operation);
           }
         },
-        onError: (errorMsg) => {
-          onNotification?.('error', `Agent error: ${errorMsg}`);
-        },
+        onError: notifyAgentError,
+        describeError: describeServerError,
       }),
-    [onNotification],
+    [notifyAgentError, describeServerError],
   );
 
+  // Over 60 lines: every callback closes over this turn's subscription and
+  // final write, so splitting them would only thread those through.
   const createTurnCallbacks = useCallback(
     (turn: AgentTurn): TurnStreamCallbacks => {
-      const { stateManager, router, turnStart, writeAgentMessage } = turn;
+      const { stateManager, router, turnStart, writeAgentMessage, retire } = turn;
       // Subscribe to state changes → update conversation messages
       const unsubscribe = stateManager.subscribe(() => {
         writeAgentMessage(stateManager.toMessageUpdate());
@@ -415,28 +454,40 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
             });
           }, 'finalizing agent message'),
         onError: (error) => {
-          onNotification?.('error', `Agent error: ${error.message}`);
+          const text = describeStreamError(error);
+          notifyAgentError(text);
           return runAfterQueuedEvents(() => {
             unsubscribe();
             // Safety: finalize the message so it doesn't stay in streaming state
-            stateManager.setError(error.userMessage);
+            stateManager.setError(text);
             writeFinalMessage();
           }, 'finalizing failed agent message');
         },
         // cancelByUser queues the sealing write before cancelling the
         // stream, so the tail read here already includes it.
         onCancel: () => eventChainRef.current,
-        // The watchdog gave up on a step that never settled. Later turns must
-        // not queue behind it (sending awaits the chain and would wait
-        // forever); the stuck step stays on the old chain and still applies
-        // if it ever settles.
+        // The watchdog gave up on a step that never settled. The message is
+        // sealed now (not streaming, patches so far) and the turn retired:
+        // the stuck step stays on the old chain and still applies if it ever
+        // settles, but then updates only this message. Later turns must not
+        // queue behind it (sending awaits the chain and would wait forever).
         onFinishingTimeout: () => {
+          unsubscribe();
+          writeAgentMessage({
+            ...stateManager.toMessageUpdate(),
+            isStreaming: false,
+            timelineTrackPatches: computeTurnPatches(turnStart),
+          });
+          retire();
           eventChainRef.current = Promise.resolve();
           onNotification?.('warning', t.agentApply.finishingTimedOut);
         },
       };
     },
-    [runAfterQueuedEvents, computeTurnPatches, onNotification, t],
+    [
+      runAfterQueuedEvents, computeTurnPatches, describeStreamError, notifyAgentError,
+      onNotification, t,
+    ],
   );
 
   /** Per-execution applier, state manager, event router and callbacks. */
@@ -445,22 +496,42 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       convId: string;
       agentMessageId: string;
       messagesWithUser: ChatMessage[];
-      turnStart: TimelineState | undefined;
+      turnStart: TimelineState;
     }) => {
       const operationApplier = createOperationApplier();
-      operationApplierRef.current = operationApplier;
+      operationAppliersRef.current.set(turn.agentMessageId, operationApplier);
+      setSingleUndoMessageIds(new Set(operationAppliersRef.current.keys()));
       const stateManager = new AgentStateManager(turn.agentMessageId);
       stateManagerRef.current = stateManager;
+      let retired = false;
+      const writeAgentMessage = (agentMessage: ChatMessage): void => {
+        if (!retired) {
+          updateConvMessagesRef.current(turn.convId, [...turn.messagesWithUser, agentMessage]);
+          return;
+        }
+        const conversation = conversationsRef.current.find(c => c.id === turn.convId);
+        const messages = conversation
+          ? replaceRetiredTurnMessage(conversation.messages, agentMessage)
+          : null;
+        if (!messages) {
+          console.warn('[useAgentExecution] Dropped a late write of a retired turn', {
+            messageId: agentMessage.id,
+          });
+          return;
+        }
+        updateConvMessagesRef.current(turn.convId, messages);
+      };
+      const retire = (): void => {
+        retired = true;
+      };
+      turnWriterRef.current = writeAgentMessage;
+      retireTurnRef.current = retire;
       return createTurnCallbacks({
         stateManager,
         router: createEventRouter(stateManager, operationApplier),
         turnStart: turn.turnStart,
-        writeAgentMessage: (agentMessage) => {
-          updateConvMessagesRef.current(turn.convId, [
-            ...turn.messagesWithUser,
-            agentMessage,
-          ]);
-        },
+        writeAgentMessage,
+        retire,
       });
     },
     [createOperationApplier, createEventRouter, createTurnCallbacks],
@@ -470,6 +541,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // sendAgentMessage
   // -----------------------------------------------------------------------
 
+  // Over 60 lines: one ordered sequence (drain, retire, snapshot, placeholder,
+  // start) whose steps must not interleave with another send.
   const sendAgentMessage = useCallback(async (message: string) => {
     if (sendingRef.current || agentIsExecutingRef.current) return;
     if (!activeConversationIdRef.current) return;
@@ -482,25 +555,26 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       const convId = activeConversationIdRef.current;
       const activeConversation = conversationsRef.current.find(c => c.id === convId);
       if (!convId || !activeConversation) return;
+      // Writes the previous turn still owes may only touch its own message.
+      retireTurnRef.current?.();
 
-      // 1. Remember where the turn starts (baseline for its track patches)
+      // 1. Remember where the turn starts (baseline for its track patches).
+      //    With no timeline yet the turn starts from the shared default one,
+      //    so it can still be undone as a whole.
       const currentTL = timelineStateRef.current;
-      const turnStart: TimelineState | undefined = currentTL
-        ? JSON.parse(JSON.stringify(currentTL))
-        : undefined;
+      const baseline = currentTL ?? createDefaultAgentTimelineState();
+      const turnStart: TimelineState = JSON.parse(JSON.stringify(baseline));
       timelineSnapshotRef.current = turnStart;
-      turnConversationIdRef.current = convId;
 
       // 2. Add user message and the agent reply placeholder
+      const { userMessageId, agentMessageId } = createTurnMessageIds();
       const userMessage: ChatMessage = {
-        id: `msg-${Date.now()}-user`,
+        id: userMessageId,
         role: 'user',
         content: message,
         timestamp: new Date(),
       };
       const messagesWithUser = [...activeConversation.messages, userMessage];
-      messagesBeforeAgentRef.current = messagesWithUser;
-      const agentMessageId = `msg-${Date.now()}-agent`;
       updateConversationMessages(convId, [
         ...messagesWithUser,
         createAgentPlaceholder(agentMessageId),
@@ -521,8 +595,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       startExecution({
         url: '/api/video-editing-agent/chat',
         body: {
-          messages: messagesWithUser,
-          timelineState: currentTL,
+          messages: stripHistoryForRequest(messagesWithUser),
+          timelineState: baseline,
           materials: stripInlineMediaForAgent(materialsRef.current),
           projectId,
         },
@@ -556,31 +630,27 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   const sealMessage = useCallback(
     (options: { byUser: boolean }): void => {
+      // Only a live stream can be stopped. A turn that already ended (done,
+      // failed, or sealed by the watchdog) is final: sealing it again would
+      // record it as stopped by the user and rewrite its message.
+      if (!streamLiveRef.current) return;
       const sm = stateManagerRef.current;
-      if (!sm) return;
+      const writeAgentMessage = turnWriterRef.current;
+      if (!sm || !writeAgentMessage) return;
       // The navigation/unmount path demotes in-flight tool calls but does
-      // NOT flag the assistant message as cancelled (spec §2.6.2).
-      sm.markCancelled({ appendMarker: options.byUser });
+      // NOT flag the assistant message as cancelled (spec §2.6.2), so the
+      // next-turn converter does not emit the resume system note.
+      sm.markCancelled({ appendMarker: options.byUser, byUser: options.byUser });
       sm.destroy();
 
       // Capture the turn now: the write waits for already-received
       // operations, and a new turn may replace these refs in the meantime.
-      const convId = turnConversationIdRef.current;
-      const baseMessages = messagesBeforeAgentRef.current;
       const turnStart = timelineSnapshotRef.current;
-      if (!convId) return;
-
       runAfterQueuedEvents(() => {
-        const finalMsg: ChatMessage = {
+        writeAgentMessage({
           ...sm.toMessageUpdate(),
           timelineTrackPatches: computeTurnPatches(turnStart),
-        };
-        if (!options.byUser) {
-          // Per spec §2.6.2 — keep isCancelled false for the nav path so
-          // the next-turn converter does not emit the resume system note.
-          finalMsg.isCancelled = undefined;
-        }
-        updateConvMessagesRef.current(convId, [...baseMessages, finalMsg]);
+        });
       }, 'sealing agent message');
     },
     [runAfterQueuedEvents, computeTurnPatches],
@@ -604,6 +674,12 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // through cancelByUser. The exposed name `cancelExecution` stays for the
   // existing prop wiring in VideoEditingInterface.
   const cancelExecution = cancelByUser;
+
+  /** Clears the error card of a run that already ended; a live run is left alone. */
+  const dismissExecutionError = useCallback(() => {
+    if (agentIsExecutingRef.current) return;
+    resetState();
+  }, [resetState]);
 
   // -----------------------------------------------------------------------
   // undoAllOperations — revert the track patches of an agent message
@@ -666,15 +742,15 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   const undoSingleOperation = useCallback((messageId: string, toolCallId: string) => {
     if (isAgentUndoBlocked()) return;
-    const applier = operationApplierRef.current;
+    const applier = operationAppliersRef.current.get(messageId);
     // Read before undoing: a successful undo drops the step's records.
     const affectedTrackIds = applier?.affectedTrackIds(toolCallId) ?? [];
     const result: AgentUndoResult = applier
       ? applier.undoOperation(toolCallId)
       : { ok: false, reason: 'not-found' };
     if (!result.ok) {
-      // Records live only in the latest run's applier, so steps of earlier
-      // turns report "not undoable".
+      // Records live only in this session's appliers, so steps of turns
+      // from before a reload (or another conversation) report "not undoable".
       console.warn('[useAgentExecution] Single operation undo refused', {
         toolCallId,
         reason: result.reason,
@@ -766,6 +842,11 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     if (streamLiveRef.current) {
       cancelByNavigation();
     }
+    // Single-step undo records belong to the conversation being left.
+    if (operationAppliersRef.current.size > 0) {
+      operationAppliersRef.current.clear();
+      setSingleUndoMessageIds(NO_MESSAGE_IDS);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversationId]);
 
@@ -804,5 +885,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     cancelExecution,
     undoAllOperations,
     undoSingleOperation,
+    dismissExecutionError,
+    singleUndoMessageIds,
   };
 }

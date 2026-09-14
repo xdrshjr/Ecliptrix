@@ -70,7 +70,10 @@ describe('TimelineItem direct-local materials', () => {
   it('TimelinePanel preserves local playback fields in MaterialData snapshots', () => {
     // The MaterialItem → MaterialData mapping is shared with the script
     // auto-mix through ItemPlacementService.toMaterialData; drops must use it.
-    expect(panelSrc).toMatch(/addItemAction\([^;]*toMaterialData\(material\)\)/);
+    // The drop goes through the duration-probing flow, which builds the snapshot (ME-11).
+    expect(panelSrc).toMatch(/dropMaterialWithDuration\(/);
+    const dropFlowSrc = readFileSync(resolve(__dirname, '..', 'lib', 'dropMaterialWithDuration.ts'), 'utf-8');
+    expect(dropFlowSrc).toMatch(/let data = toMaterialData\(material\);[\s\S]*addItemAction\(get, trackId, data\)/);
     const start = placementSrc.indexOf('export function toMaterialData');
     const block = placementSrc.slice(start, start + 700);
     expect(block).toMatch(/cacheUrl:\s*material\.cacheUrl/);

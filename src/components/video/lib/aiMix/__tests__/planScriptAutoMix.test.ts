@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { MaterialItem } from '@/types';
 import { planScriptAutoMix } from '../planScriptAutoMix';
 import type { ScriptAutoMixPlan } from '../planScriptAutoMix';
+import { repairInheritedSegmentMembership } from '../../derivedMaterial';
 
 interface ScriptMaterialOptions {
   id: string;
@@ -369,5 +370,49 @@ describe('planScriptAutoMix · AS2-03 video coverage', () => {
     ]);
 
     expect(plan.segments[0].status).toBe('video-short');
+  });
+});
+
+describe('planScriptAutoMix · AM3-01 / N-13', () => {
+  it('a video-only plan reports a segment without videos as skipped-no-video', () => {
+    const plan = planScriptAutoMix([
+      footage({ id: 'v1', segment: 1, duration: 3 }),
+      footage({ id: 'v3', segment: 3, duration: 4 }),
+    ], {
+      segments: [
+        { id: 'segment-1', videos: [{ id: 'v1' }] },
+        { id: 'segment-2' },
+        { id: 'segment-3', videos: [{ id: 'v3' }] },
+      ],
+    });
+
+    expect({
+      statuses: plan.segments.map((segment) => segment.status),
+      video: laneTimings(plan, 'video'),
+    }).toEqual({
+      statuses: ['placed', 'skipped-no-video', 'placed'],
+      video: [['v1', 0, 3], ['v3', 3, 4]],
+    });
+  });
+
+  it('a repaired cut clip does not take its original legacy slot', () => {
+    const original = footage({ id: 'V', segment: 1, duration: 20, slot: 1, assignedAt: 1000 });
+    const cutClip: MaterialItem = {
+      ...original,
+      id: 'V_clip_c1',
+      duration: 3,
+      createdAt: new Date('2026-09-02T00:00:00Z'),
+      metadata: { ...original.metadata, isClip: true, originalMaterialId: 'V' },
+    };
+    const { materials } = repairInheritedSegmentMembership([
+      original,
+      voice({ id: 'A', segment: 1, duration: 10, assignedAt: 1000 }),
+      cutClip,
+    ]);
+
+    const plan = planScriptAutoMix(materials);
+
+    expect({ videos: videoIds(plan), ignored: plan.ignoredDuplicateMaterialIds })
+      .toEqual({ videos: ['V'], ignored: [] });
   });
 });

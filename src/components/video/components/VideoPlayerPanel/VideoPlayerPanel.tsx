@@ -18,7 +18,9 @@ import CameraDegradeBadge from './CameraDegradeBadge';
 import { useCompositionPlayback } from '../../hooks/useCompositionPlayback';
 import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectRatio } from './aspectRatios';
 import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from './imageOverlays';
-import { useCompositionTransport, type MediaReadiness } from './useCompositionTransport';
+import { useCompositionTransport, computeProgressPercent, type MediaReadiness } from './useCompositionTransport';
+import { usePlayStateMirror } from './usePlayStateMirror';
+import { outputSizeForAspect } from '../../lib/subtitleLayout';
 import { useTimelineStore } from '../../timeline/store';
 import { fitImagePositionAction } from '../../timeline/store/actions/updateItemFields';
 
@@ -125,6 +127,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const compositionCurrentTimeRef = useRef(0);
   const [isCompositionPlaying, setIsCompositionPlaying] = useState(false);
   const [compositionCurrentTime, setCompositionCurrentTime] = useState(0);
+  // UI3-12：播放态镜像到时间轴 store（标尺「播放中」），卸载时复位。
+  usePlayStateMirror(isCompositionPlaying);
 
   const updateCompositionCurrentTime = useCallback((time: number) => {
     compositionCurrentTimeRef.current = time;
@@ -182,6 +186,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
       if (onCompositionTimeUpdate) onCompositionTimeUpdate(time);
     },
     aspectRatio: previewAspectRatio,
+    outputSize: outputSizeForAspect(selectedAspectRatio.id),
+    masterVolume: volume,
     enabled: true,
   });
 
@@ -325,6 +331,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         onCancel={() => handleImageOverlayRevert(overlay.id)}
         isSelected={selectedImageOverlay === overlay.id}
         onSelect={() => handleImageOverlaySelect(overlay.id, overlay.position)}
+        readOnly={overlay.isLocked}
       />
     ));
 
@@ -381,6 +388,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     },
     materials: materials || [],
     taskId,
+    // The export session is per project: another project of this task is not blocked (RV3-07).
+    projectId,
     aspectRatio: selectedAspectRatio.id // Pass selected aspect ratio to export hook
   });
 
@@ -415,7 +424,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   // 空/未知时长时 isSeekable=false → 进度条 disabled、播放键 disabled、--progress 兜底 0%。
   const totalForBar = getTotalDuration();
   const isSeekable = totalForBar > 0;
-  const progressPercent = isSeekable ? (getCurrentTime() / totalForBar) * 100 : 0;
+  const progressPercent = computeProgressPercent(getCurrentTime(), totalForBar);
   const volumePercent = Math.round(volume * 100);
 
   return (
@@ -552,6 +561,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
                       data; there is no legacy fallback path. */}
                   <PreviewCanvas
                     ref={compositionPreview.hostRef}
+                    onVolumeBoostUnavailable={() => showWarning(t.videoPlayerPanel.playback.volumeBoostUnavailable)}
                     style={{
                       position: 'absolute',
                       inset: 0,
@@ -752,7 +762,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         isOpen={videoExport.isExporting}
         progress={videoExport.exportProgress}
         startTime={videoExport.exportStartTime}
-        allowCancel={false}
+        stage={videoExport.exportStage}
+        allowCancel={videoExport.canCancelExport}
+        onCancel={videoExport.cancelExport}
       />
 
       {/* Video Cover authoring modal — only mounted when a projectId is bound. */}

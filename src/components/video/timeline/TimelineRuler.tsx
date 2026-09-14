@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useRef, useState, useCallback, useEffect, RefObject } from 'react';
+import React, { useRef, useState, useEffect, RefObject } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useTimelineStore } from './store';
 import {
   TIMELINE_PADDING_SECONDS,
-  ZOOM_MIN, ZOOM_MAX, ZOOM_STEP_WHEEL, ZOOM_EPSILON,
+  ZOOM_MAX, ZOOM_EPSILON,
 } from './constants';
 import { useShallow } from 'zustand/react/shallow';
 import { formatTimelineTime } from './timeFormat';
@@ -15,22 +15,32 @@ import {
   TICK_MAJOR_H, TICK_MINOR_H, TICK_SUBMINOR_H, TICK_LABEL_FONT_PX,
 } from './theme/timelineTheme';
 import TimelinePlayhead from './TimelinePlayhead';
+import { trackMouseGesture } from './lib/mouseGesture';
+import type { ZoomAnchor } from './hooks/useTimelineWheel';
 
 const ZOOM_LADDER = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0] as const;
 
 interface TimelineRulerProps {
   scrollRef?: RefObject<HTMLDivElement | null>;
   onScroll?: (scrollLeft: number) => void;
+  /**
+   * Zoom while keeping `anchor.timeAtAnchor` under `anchor.anchorOffsetPx`.
+   * Without it the zoom buttons fall back to a plain, unanchored zoom.
+   */
+  onZoomRequest?: (zoom: number, anchor: ZoomAnchor) => void;
 }
 
 const TimelineRuler: React.FC<TimelineRulerProps> = ({
   scrollRef,
   onScroll,
+  onZoomRequest,
 }) => {
   const { t } = useLocale();
   const rulerRef = useRef<HTMLDivElement>(null);
   const controlPanelRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
+  // Disposer of the scrub gesture in flight; run on unmount as well (S16).
+  const scrubDisposeRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => scrubDisposeRef.current?.(), []);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showZoomHint, setShowZoomHint] = useState(false);
   // Width of the scrollable tick area, tracked for viewport-culling the ticks.
@@ -125,32 +135,32 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     setCurrentTime(next);
   };
 
-  // 处理播放头拖拽
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // 处理播放头拖拽（仅主键；窗口失焦、主键丢失与卸载时结束，见 S16）
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // A right / middle press opens menus or pans elsewhere; it must not seek.
+    if (e.button !== 0) return;
     e.preventDefault();
-    isDragging.current = true;
+    // preventDefault also cancels the focus a press gives the slider; restore
+    // it so arrow keys can continue the scrub from the keyboard.
+    if (hasItems && totalDuration > 0) e.currentTarget.focus({ preventScroll: true });
 
     const time = calculateTimeFromMouseEvent(e);
     if (time !== null) {
       setCurrentTime(time);
     }
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!isDragging.current) return;
-      const moveTime = calculateTimeFromMouseEvent(moveEvent);
-      if (moveTime !== null) {
-        setCurrentTime(moveTime);
-      }
-    };
-
-    const handleMouseUp = () => {
-      isDragging.current = false;
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    const clearGesture = () => { scrubDisposeRef.current = null; };
+    scrubDisposeRef.current?.();
+    scrubDisposeRef.current = trackMouseGesture({
+      onMove: (moveEvent) => {
+        const moveTime = calculateTimeFromMouseEvent(moveEvent);
+        if (moveTime !== null) {
+          setCurrentTime(moveTime);
+        }
+      },
+      onEnd: clearGesture,
+      onCancel: clearGesture,
+    });
   };
 
   // Adaptive interval picker — the SAME function the lane grid (Track.tsx)
@@ -256,10 +266,30 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
   const atZoomMin = zoomLevel <= ZOOM_LADDER[0] + ZOOM_EPSILON;
   const atZoomDefault = Math.abs(zoomLevel - 1.0) < ZOOM_EPSILON;
 
+  // Button zooms keep the playhead still when it is on screen, otherwise the
+  // centre of the view — so the content being looked at does not slide away.
+  const requestZoom = (zoom: number) => {
+    if (!onZoomRequest) {
+      setZoomLevel(zoom);
+      return;
+    }
+    const viewport = viewportWidth > 0
+      ? viewportWidth
+      : (scrollRef?.current ?? rulerRef.current)?.clientWidth ?? 0;
+    const playheadOffset = currentTime * pixelsPerSecond - scrollLeft;
+    const anchorOffsetPx = playheadOffset >= 0 && playheadOffset <= viewport
+      ? playheadOffset
+      : viewport / 2;
+    onZoomRequest(zoom, {
+      timeAtAnchor: (scrollLeft + anchorOffsetPx) / pixelsPerSecond,
+      anchorOffsetPx,
+    });
+  };
+
   const handleZoomIn = () => {
     if (atZoomMax) return;
     const next = ZOOM_LADDER.find((z) => z > zoomLevel + ZOOM_EPSILON);
-    setZoomLevel(next ?? ZOOM_MAX);
+    requestZoom(next ?? ZOOM_MAX);
   };
 
   const handleZoomOut = () => {
@@ -268,22 +298,12 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
     for (const z of ZOOM_LADDER) {
       if (z < zoomLevel - ZOOM_EPSILON) next = z;
     }
-    setZoomLevel(next ?? ZOOM_LADDER[0]);
+    requestZoom(next ?? ZOOM_LADDER[0]);
   };
 
   const handleZoomReset = () => {
-    setZoomLevel(1.0);
+    requestZoom(1.0);
   };
-
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      const newZoom = e.deltaY < 0
-        ? Math.min(ZOOM_MAX, zoomLevel * ZOOM_STEP_WHEEL)
-        : Math.max(ZOOM_MIN, zoomLevel / ZOOM_STEP_WHEEL);
-      setZoomLevel(newZoom);
-    }
-  }, [zoomLevel, setZoomLevel]);
 
   const disabledWhenEmpty = !hasItems || totalDuration <= 0;
 
@@ -304,7 +324,6 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             <span
               role="img"
               aria-label={t.timeline.ruler.timelineTooltip}
-              title={t.timeline.ruler.timelineTooltip}
               className="text-muted-foreground cursor-help inline-flex"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -321,7 +340,7 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
             )}
           </div>
 
-          <span className="text-xs font-mono tabular-nums tracking-tight text-foreground/90">
+          <span className="text-xs font-mono tabular-nums tracking-tight text-foreground-a/90">
             {formatTime(currentTime)}
           </span>
         </div>
@@ -378,7 +397,6 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
               type="button"
               className="text-muted-foreground cursor-help p-0.5 bg-transparent border-0 rounded"
               aria-label={t.timeline.toolbar.zoomHint}
-              title={t.timeline.toolbar.zoomHint}
               onFocus={() => setShowZoomHint(true)}
               onBlur={() => setShowZoomHint(false)}
             >
@@ -413,7 +431,6 @@ const TimelineRuler: React.FC<TimelineRulerProps> = ({
         aria-disabled={disabledWhenEmpty}
         onMouseDown={handleMouseDown}
         onKeyDown={handleScrubKeyDown}
-        onWheel={handleWheel}
         onScroll={(e) => {
           if (onScroll) {
             onScroll(e.currentTarget.scrollLeft);

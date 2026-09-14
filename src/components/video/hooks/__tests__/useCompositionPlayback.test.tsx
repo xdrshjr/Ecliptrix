@@ -142,7 +142,6 @@ function fakeHost() {
     getCanvas: () => canvas,
     resolveTrackElements: vi.fn(() => ({ active: {} as never, prewarm: null })),
     resolveAudioElement: vi.fn(() => ({} as never)),
-    measureSubtitle: vi.fn(() => 10),
   };
 }
 
@@ -226,6 +225,61 @@ describe('buildAudioSyncGroups (RISK 2 routing)', () => {
       '/api/storage/files/audio/b.mp3',
     ]);
   });
+
+  it('audio sync groups carry the preview master volume', () => {
+    const { rerender } = renderHook(
+      (props: { masterVolume: number }) =>
+        useCompositionPlayback({
+          compositionPlayback: composition({ audioSequences: [aseq({ id: 'm1' })] }),
+          materials: [],
+          preferPreviewProxy: true,
+          preferLocalProxy: true,
+          currentTime: 0,
+          isPlaying: false,
+          outputSize: { width: 1920, height: 1080 },
+          masterVolume: props.masterVolume,
+          enabled: true,
+        }),
+      { initialProps: { masterVolume: 1 } },
+    );
+    expect(buildAudioSyncGroups([aseq({ id: 'm1' })], 0.4)[0].volume).toBe(0.4);
+    rerender({ masterVolume: 0.25 });
+    expect(buildVideoTrackGroups([vseq({ id: 'a' })], 0.25)[0].volumeScale).toBe(0.25);
+  });
+
+  it('the attached engine reads a changed master volume without re-attaching', () => {
+    const host = fakeHost();
+    const r = renderHook(
+      (props: { masterVolume: number }) =>
+        useCompositionPlayback({
+          compositionPlayback: composition({
+            videoSequences: [vseq({ id: 'a', materialId: 'mat-1' })],
+            audioSequences: [aseq({ id: 'm1' })],
+          }),
+          materials: [directLocalMaterial('mat-1')],
+          preferPreviewProxy: true,
+          preferLocalProxy: true,
+          currentTime: 0,
+          isPlaying: false,
+          aspectRatio: 16 / 9,
+          outputSize: { width: 1920, height: 1080 },
+          masterVolume: props.masterVolume,
+          enabled: true,
+        }),
+      { initialProps: { masterVolume: 1 } },
+    );
+    act(() => {
+      r.result.current.hostRef(host as never);
+    });
+    const attachesBefore = attachSpy.mock.calls.length;
+    r.rerender({ masterVolume: 0 });
+    const timeline = lastDeps!.timeline;
+    expect({
+      reattached: attachSpy.mock.calls.length !== attachesBefore,
+      audio: timeline.getAudioSyncGroups()[0].volume,
+      video: timeline.getVideoTrackGroups()[0].volumeScale,
+    }).toEqual({ reattached: false, audio: 0, video: 0 });
+  });
 });
 
 describe('buildImageOverlayInputs', () => {
@@ -253,7 +307,7 @@ describe('buildImageOverlayInputs', () => {
     ];
     const out = buildImageOverlayInputs(timeline, materials);
     expect(out).toHaveLength(1);
-    expect(out[0].src).toBe('/api/storage/files/images/x.png');
+    expect(new URL(out[0].src).pathname).toBe('/api/storage/files/images/x.png');
     expect(out[0].opacity).toBe(0.8);
   });
 
@@ -371,6 +425,8 @@ function renderUseCompositionPlayback(
       currentTime: 0,
       isPlaying: false,
       aspectRatio: 16 / 9,
+      outputSize: { width: 1920, height: 1080 },
+      masterVolume: 1,
       enabled: true,
       ...extra,
     }),
@@ -522,6 +578,8 @@ describe('useCompositionPlayback — image-overlay ghost-duplicate repaint (方�
       currentTime: 0,
       isPlaying,
       aspectRatio: 16 / 9,
+      outputSize: { width: 1920, height: 1080 },
+      masterVolume: 1,
       enabled: true,
     };
   }

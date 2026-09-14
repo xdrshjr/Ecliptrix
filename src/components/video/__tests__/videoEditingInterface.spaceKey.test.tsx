@@ -8,8 +8,9 @@
  * (tsconfig jsx: "preserve" disables JSX mounts under Vitest).
  *
  * What we verify:
- *  - The keydown handler delegates "who owns Space" to shouldGlobalSpaceTogglePlayback
- *    (text inputs and modal dialogs keep it; focused clips/buttons do not).
+ *  - The keydown handler delegates "who owns Space" to resolveGlobalSpaceAction
+ *    (text inputs, modal dialogs and keyboard-focused controls keep it; after a
+ *    mouse click a clip / button does not; auto-repeat is swallowed).
  *  - The handler returns early when the ref is null (no exception path).
  *  - The handler dispatches via ref.isPlaying() — calling pauseFromTimeline() when playing,
  *    seekAndPlayFromTimeline(timelineCurrentTimeRef.current) when paused.
@@ -32,17 +33,28 @@ describe('VideoEditingInterface — global Space key dispatcher', () => {
     return src.slice(start, end);
   })();
 
-  it('returns early for non-Space keys', () => {
-    expect(handler).toMatch(/event\.code\s*!==\s*'Space'/);
+  it('returns early for keys the global Space action yields', () => {
+    // Non-Space keys, text inputs, modals and keyboard-focused controls all
+    // resolve to 'yield' in the shared pure helper (shortcutOwnership tests).
+    expect(handler).toMatch(/if\s*\(action\s*===\s*'yield'\)\s*return;/);
   });
 
-  it('delegates Space ownership to shouldGlobalSpaceTogglePlayback', () => {
-    // The text-input / modal exclusion lives in the shared pure helper, which
-    // deliberately ignores defaultPrevented and focused buttons (RV-04).
-    expect(handler).toMatch(
-      /event\.code\s*!==\s*'Space'\s*\|\|\s*!shouldGlobalSpaceTogglePlayback\(event\)/,
-    );
-    expect(handler).not.toMatch(/event\.defaultPrevented/);
+  it('delegates Space ownership to resolveGlobalSpaceAction with the tracked input modality', () => {
+    // TL2-13 / UI3-11: keyboard-focused controls keep Space; auto-repeat is
+    // swallowed without toggling. defaultPrevented stays deliberately ignored.
+    expect({
+      resolves: /resolveGlobalSpaceAction\(event,\s*getInputModality\(\)\)/.test(handler),
+      tracksModality: /installInputModalityTracking\(document\)/.test(handler),
+      disposesTracking: /disposeModalityTracking\(\);/.test(handler),
+      swallowsRepeat: /if\s*\(action\s*===\s*'swallow'\)\s*\{\s*event\.preventDefault\(\);\s*return;/.test(handler),
+      readsDefaultPrevented: /event\.defaultPrevented/.test(handler),
+    }).toEqual({
+      resolves: true,
+      tracksModality: true,
+      disposesTracking: true,
+      swallowsRepeat: true,
+      readsDefaultPrevented: false,
+    });
   });
 
   it('returns when ref is null without throwing', () => {

@@ -638,12 +638,25 @@ describe('computeSourcePlan — per-clip desiredVolume (V1)', () => {
     expect(plans[0].desiredVolume).toBe(1);
   });
 
-  it('clamps an effective volume above 1 down to 1.0 (preview ceiling)', () => {
+  it('carries an effective volume above 1 for the gain stage, capped at 2 (ME-06)', () => {
     // seq.volume is already item × track (CompositionAdapter clamps to [0,2]); a
-    // >100% setting must NOT be re-multiplied — just clamped to the element max.
-    const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 1.5 })])];
+    // >100% setting must NOT be re-multiply — the element writer decides the gain.
+    const groups = [
+      group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 1.5 })]),
+      group('t2', 1, [seq({ id: 'b', startTime: 0, duration: 5, volume: 3 })]),
+    ];
+    const plans = computeSourcePlan(groups, 1, {}, resolverFrom({ a: '/a.mp4', b: '/b.mp4' }));
+    expect(plans.map((plan) => plan.desiredVolume)).toEqual([1.5, 2]);
+  });
+});
+
+describe('computeSourcePlan — preview master volume (PV3-03)', () => {
+  it('desiredVolume scales clip volume by the group master volume', () => {
+    const groups: VideoTrackGroup[] = [
+      { ...group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 0.8 })]), volumeScale: 0.5 },
+    ];
     const plans = computeSourcePlan(groups, 1, {}, resolverFrom({ a: '/a.mp4' }));
-    expect(plans[0].desiredVolume).toBe(1);
+    expect(plans[0].desiredVolume).toBeCloseTo(0.4, 6);
   });
 });
 
@@ -699,6 +712,53 @@ describe('VideoSourcePool applier — per-clip preview volume (V1, §3.C reverse
     const groups = [group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 1.5 })])];
     pool.sync(groups, 1, true);
     expect(active.volume).toBe(1);
+  });
+
+  it('writes the effective volume through the injected applyVolume (ME-06)', () => {
+    const active = fakeEl({ paused: false, muted: false });
+    const writes: Array<[string, number]> = [];
+    const pool = new VideoSourcePool(
+      () => ({ active, prewarm: null }),
+      resolverFrom({ a: '/a.mp4' }),
+      VIDEO_SEEK_TOLERANCE_SEC,
+      { applyVolume: (trackId, _element, volume) => writes.push([trackId, volume]) },
+    );
+    pool.sync([group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5, volume: 1.5 })])], 1, true);
+    expect(writes).toEqual([['t1', 1.5]]);
+  });
+
+  it('a routed element is recycled before a cross-origin src is assigned', () => {
+    const routed = fakeEl({ paused: true });
+    const fresh = fakeEl({ paused: true });
+    const elements = new Map<string, TrackElements>([['t1', { active: routed, prewarm: null }]]);
+    const prepared: Array<[string, string]> = [];
+    const pool = new VideoSourcePool(
+      (id) => elements.get(id) ?? null,
+      resolverFrom({ a: 'https://cdn.example.com/a.mp4' }),
+      VIDEO_SEEK_TOLERANCE_SEC,
+      {
+        prepareElementForSrc: (trackId, role, element, url) => {
+          prepared.push([role, url]);
+          if (element !== routed) return element;
+          elements.set(trackId, { active: fresh, prewarm: null });
+          return fresh;
+        },
+      },
+    );
+
+    const [{ element }] = pool.sync([group('t1', 0, [seq({ id: 'a', startTime: 0, duration: 5 })])], 1, false);
+
+    expect({
+      prepared,
+      drawn: element === fresh,
+      routedSrc: routed.src,
+      freshSrc: fresh.src,
+    }).toEqual({
+      prepared: [['active', 'https://cdn.example.com/a.mp4']],
+      drawn: true,
+      routedSrc: '',
+      freshSrc: 'https://cdn.example.com/a.mp4',
+    });
   });
 
   it('keeps a detached clip muted regardless of its volume (no double audio)', () => {

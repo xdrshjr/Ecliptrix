@@ -4,79 +4,66 @@
  *
  * Two responsibilities, both kept testable:
  *   1. `activeSubtitlesAt(items, t)` — pick the subtitle items covering time t.
- *   2. `layout(text, style, maxWidthPx, measure)` — wrap the text into lines
- *      that fit `maxWidthPx`, with a layout cache keyed by (text, fontSize,
- *      bold/italic, maxWidth) so the per-frame path is cheap.
+ *   2. `layout(text, style, output)` — lay the text out in OUTPUT pixels with the
+ *      export's drawtext rules ({@link layoutSubtitle}, EXO-09), cached by
+ *      (text, fontSize, position, output size) so the per-frame path is cheap.
  *
  * The canvas DRAW of the laid-out lines is delegated to the compositor
- * (`CanvasCompositor` subtitle layer). Layout is pure given an injectable text
- * measurer, so it can be unit-tested in jsdom without a real 2d context.
+ * (`CanvasCompositor` subtitle layer), which scales output pixels onto the
+ * preview frame.
  */
 
 import { TIME_EPSILON } from '../timeline/domain/services/ClipTimeMapping';
+import { layoutSubtitle, type OutputSize, type SubtitleLineLayout } from '../lib/subtitleLayout';
 import type { SubtitleSequenceItem } from '../types';
-import type { SubtitleStyle as CompositorSubtitleStyle } from './types';
-
-/** Measures the rendered width (px) of `text` at the given style. */
-export type TextMeasurer = (text: string, style: ResolvedSubtitleStyle) => number;
 
 /** Style after defaults are applied — what the layout + draw both read. */
 export interface ResolvedSubtitleStyle {
+  /** Integer pixel size in the OUTPUT frame (export truncates it the same way). */
   fontSize: number;
   color: string;
   background?: string;
-  bold: boolean;
-  italic: boolean;
-  align: 'left' | 'center' | 'right';
-  /** Vertical anchor as fraction of canvas height (0=top, 1=bottom). */
-  vAnchor: number;
+  fontFamily: string;
+  position: string;
 }
 
 export interface SubtitleLayoutResult {
-  lines: string[];
+  lines: SubtitleLineLayout[];
+  lineHeight: number;
   style: ResolvedSubtitleStyle;
 }
 
-const DEFAULT_V_ANCHOR = 0.9;
-const DEFAULT_COLOR = '#ffffff';
+type CachedLayout = Pick<SubtitleLayoutResult, 'lines' | 'lineHeight'>;
 
-/**
- * Normalize a timeline `SubtitleStyle` (font family / position oriented) into
- * the compositor's draw-oriented `ResolvedSubtitleStyle`. Accepts the loose
- * shapes the timeline produces; falls back to legible defaults.
- */
-export function resolveSubtitleStyle(
-  style: SubtitleSequenceItem['style'] | CompositorSubtitleStyle | undefined,
-): ResolvedSubtitleStyle {
-  const s = (style ?? {}) as Record<string, unknown>;
-  const fontSize = typeof s.fontSize === 'number' && s.fontSize > 0 ? s.fontSize : 24;
-  const color =
-    (typeof s.fontColor === 'string' && s.fontColor) ||
-    (typeof s.color === 'string' && s.color) ||
-    DEFAULT_COLOR;
-  const background =
-    (typeof s.backgroundColor === 'string' && s.backgroundColor) ||
-    (typeof s.background === 'string' && s.background) ||
-    undefined;
-  const align =
-    s.align === 'left' || s.align === 'right' ? s.align : 'center';
-  const vAnchor =
-    typeof s.vAnchor === 'number' ? s.vAnchor : positionToVAnchor(s.position);
-  return {
-    fontSize,
-    color,
-    background: background || undefined,
-    bold: s.bold === true,
-    italic: s.italic === true,
-    align,
-    vAnchor,
-  };
+/** `SubtitleDrawStyle` defaults in `subtitle_service.py`. */
+const DEFAULT_FONT_SIZE = 24;
+const DEFAULT_COLOR = '#ffffff';
+const DEFAULT_POSITION = 'bottom';
+const DEFAULT_FONT_FAMILY = 'default';
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
 }
 
-function positionToVAnchor(position: unknown): number {
-  if (position === 'top') return 0.12;
-  if (position === 'center' || position === 'middle') return 0.5;
-  return DEFAULT_V_ANCHOR;
+/**
+ * Normalize a timeline `SubtitleStyle` into the fields layout and draw read,
+ * with the export defaults (`resolve_draw_style`) for anything missing. A
+ * `transparent` background means "no box", as in export.
+ */
+export function resolveSubtitleStyle(
+  style: SubtitleSequenceItem['style'] | Record<string, unknown> | undefined,
+): ResolvedSubtitleStyle {
+  const s = (style ?? {}) as Record<string, unknown>;
+  const fontSize =
+    typeof s.fontSize === 'number' && s.fontSize >= 1 ? Math.trunc(s.fontSize) : DEFAULT_FONT_SIZE;
+  const background = nonEmptyString(s.backgroundColor) ?? nonEmptyString(s.background);
+  return {
+    fontSize,
+    color: nonEmptyString(s.fontColor) ?? nonEmptyString(s.color) ?? DEFAULT_COLOR,
+    background: background && background.toLowerCase() !== 'transparent' ? background : undefined,
+    fontFamily: nonEmptyString(s.fontFamily) ?? DEFAULT_FONT_FAMILY,
+    position: nonEmptyString(s.position) ?? DEFAULT_POSITION,
+  };
 }
 
 /**
@@ -101,46 +88,11 @@ export function activeSubtitlesAt(
 }
 
 /**
- * Greedy word-wrap `text` into lines fitting `maxWidthPx`. Explicit newlines
- * in the source text are honored as hard breaks. A single word wider than the
- * limit is kept on its own line (never dropped). Pure given `measure`.
- */
-export function wrapText(
-  text: string,
-  style: ResolvedSubtitleStyle,
-  maxWidthPx: number,
-  measure: TextMeasurer,
-): string[] {
-  if (!text) return [];
-  const limit = maxWidthPx > 0 ? maxWidthPx : Infinity;
-  const lines: string[] = [];
-  for (const hardLine of text.split('\n')) {
-    const words = hardLine.split(/\s+/).filter(Boolean);
-    if (words.length === 0) {
-      lines.push('');
-      continue;
-    }
-    let current = '';
-    for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word;
-      if (current && measure(candidate, style) > limit) {
-        lines.push(current);
-        current = word;
-      } else {
-        current = candidate;
-      }
-    }
-    if (current) lines.push(current);
-  }
-  return lines;
-}
-
-/**
- * SubtitleLayer with a layout cache. The cache key folds the wrap-relevant
- * inputs so a stable subtitle does not re-wrap every frame.
+ * SubtitleLayer with a layout cache. The cache key folds the layout-relevant
+ * inputs so a stable subtitle is not laid out again every frame.
  */
 export class SubtitleLayer {
-  private readonly _cache = new Map<string, SubtitleLayoutResult>();
+  private readonly _cache = new Map<string, CachedLayout>();
   private readonly _maxEntries: number;
 
   constructor(maxEntries = 128) {
@@ -156,29 +108,27 @@ export class SubtitleLayer {
   }
 
   /**
-   * Resolve style + wrap text, memoized. Identical (text, style, maxWidth)
-   * returns the same cached result object.
+   * Resolve style + lay out in output pixels. The layout is memoized by
+   * (text, fontSize, position, output size) — the only inputs it depends on —
+   * so identical inputs share the same `lines` array; colors are read fresh.
    */
   layout(
     text: string,
-    rawStyle: SubtitleSequenceItem['style'] | CompositorSubtitleStyle | undefined,
-    maxWidthPx: number,
-    measure: TextMeasurer,
+    rawStyle: SubtitleSequenceItem['style'] | Record<string, unknown> | undefined,
+    output: OutputSize,
   ): SubtitleLayoutResult {
     const style = resolveSubtitleStyle(rawStyle);
-    const key = this._key(text, style, maxWidthPx);
-    const cached = this._cache.get(key);
-    if (cached) return cached;
-    const result: SubtitleLayoutResult = {
-      lines: wrapText(text, style, maxWidthPx, measure),
-      style,
-    };
-    if (this._cache.size >= this._maxEntries) {
-      const oldest = this._cache.keys().next().value;
-      if (oldest !== undefined) this._cache.delete(oldest);
+    const key = [text, style.fontSize, style.position, output.width, output.height].join('|');
+    let layout = this._cache.get(key);
+    if (!layout) {
+      layout = layoutSubtitle(text, style, output);
+      if (this._cache.size >= this._maxEntries) {
+        const oldest = this._cache.keys().next().value;
+        if (oldest !== undefined) this._cache.delete(oldest);
+      }
+      this._cache.set(key, layout);
     }
-    this._cache.set(key, result);
-    return result;
+    return { lines: layout.lines, lineHeight: layout.lineHeight, style };
   }
 
   /** Test/diagnostic — current cache size. */
@@ -188,19 +138,5 @@ export class SubtitleLayer {
 
   clearCache(): void {
     this._cache.clear();
-  }
-
-  private _key(
-    text: string,
-    style: ResolvedSubtitleStyle,
-    maxWidthPx: number,
-  ): string {
-    return [
-      text,
-      style.fontSize,
-      style.bold ? 'b' : '',
-      style.italic ? 'i' : '',
-      Math.round(maxWidthPx),
-    ].join('|');
   }
 }

@@ -328,9 +328,16 @@ describe('timeline store mirror — production wiring (source level)', () => {
       /const\s+handleImagePositionConfirm\s*=\s*useCallback\(\s*\(itemId:\s*string,\s*position:\s*ImagePosition\)/,
     );
     // The confirmed position is committed as ONE undoable step (TL-05); the
-    // live drag preview stays out of history.
+    // live drag preview stays out of history. A refused commit (agent lock,
+    // locked track) reverts the owner to the store value first (PV3-04 / S13).
     expect(interfaceSrc).toMatch(
-      /updateImagePositionAction\(\(\)\s*=>\s*useTimelineStore\.getState\(\),\s*itemId,\s*position\)/,
+      /const\s+getStore\s*=\s*\(\)\s*=>\s*useTimelineStore\.getState\(\)/,
+    );
+    expect(interfaceSrc).toMatch(
+      /resolveImagePositionCommit\(\s*imageEditBlocker\(getStore,\s*itemId\),\s*readImagePosition\(getStore,\s*itemId\),?\s*\)/,
+    );
+    expect(interfaceSrc).toMatch(
+      /updateImagePositionAction\(getStore,\s*itemId,\s*position\)/,
     );
   });
 });

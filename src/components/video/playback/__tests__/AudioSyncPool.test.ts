@@ -41,11 +41,45 @@ function clip(
 }
 
 describe('computeMediaElementVolume', () => {
-  it('multiplies item volume by track volume and clamps to [0,1]', () => {
+  it('multiplies item volume by the group volume and clamps to the effective [0,2] range (ME-06)', () => {
     expect(computeMediaElementVolume(0.5, 1)).toBe(0.5);
     expect(computeMediaElementVolume(undefined, 0.8)).toBe(0.8); // item defaults to 1
-    expect(computeMediaElementVolume(1, 2)).toBe(1); // clamp high
+    expect(computeMediaElementVolume(1, 2)).toBe(2); // >100% carried for the gain stage
+    expect(computeMediaElementVolume(1.5, 2)).toBe(2); // clamp high at the export ceiling
     expect(computeMediaElementVolume(-1, 1)).toBe(0); // clamp low
+  });
+
+  it('the default volume writer clamps the element to [0,1]', () => {
+    const el: AudioElementLike = {
+      src: '',
+      currentTime: 0,
+      volume: 1,
+      paused: false,
+      play: () => undefined,
+      pause: () => undefined,
+    };
+    const pool = new AudioSyncPool(() => el);
+    const group = audioGroup('t1', [clip('c', 0, 10, { volume: 1.6, url: AUDIO_URL })]);
+    el.src = new URL(AUDIO_URL, window.location.href).href;
+    pool.tick([group], 1, true);
+    expect(el.volume).toBe(1);
+  });
+
+  it('writes the effective volume through the injected applyVolume', () => {
+    const el: AudioElementLike = {
+      src: new URL(AUDIO_URL, window.location.href).href,
+      currentTime: 1,
+      volume: 1,
+      paused: false,
+      play: () => undefined,
+      pause: () => undefined,
+    };
+    const writes: number[] = [];
+    const pool = new AudioSyncPool(() => el, {
+      applyVolume: (_trackId, _element, volume) => writes.push(volume),
+    });
+    pool.tick([audioGroup('t1', [clip('c', 0, 10, { volume: 1.6 })])], 1, true);
+    expect(writes).toEqual([1.6]);
   });
 
   // Added (google-tester-01, S1 acceptance): explicit edge values the task
@@ -54,10 +88,10 @@ describe('computeMediaElementVolume', () => {
     expect(computeMediaElementVolume(0, 1)).toBe(0);
   });
 
-  it('keeps exactly 1.0 and clamps just-over-1 down to 1', () => {
+  it('keeps exactly 1.0 and carries just-over-1 for the gain stage', () => {
     expect(computeMediaElementVolume(1, 1)).toBe(1);
-    expect(computeMediaElementVolume(1.0001, 1)).toBe(1);
-    expect(computeMediaElementVolume(0.6, 2)).toBe(1); // 1.2 → 1
+    expect(computeMediaElementVolume(1.0001, 1)).toBe(1.0001);
+    expect(computeMediaElementVolume(0.6, 2)).toBeCloseTo(1.2, 9);
   });
 
   it('guards every non-finite input to 0 (the !isFinite guard fires BEFORE the >=1 clamp)', () => {
@@ -160,7 +194,7 @@ describe('computeAudioSyncActions', () => {
     expect(actions[0].volume).toBe(0);
   });
 
-  it('an over-driven track volume is clamped into the action volume ([0,1])', () => {
+  it('an over-driven group volume is carried into the action volume up to the export ceiling (ME-06)', () => {
     const groups = [audioGroup('t1', [clip('a', 0, 5, { volume: 1 })], { volume: 2 })];
     const actions = computeAudioSyncActions(groups, 2, {
       isPlaying: true,
@@ -169,7 +203,7 @@ describe('computeAudioSyncActions', () => {
       currentSrcByTrack: { t1: AUDIO_URL },
     });
     expect(actions[0].action).toBe('hold');
-    expect(actions[0].volume).toBe(1); // 1 * 2 → clamped to 1
+    expect(actions[0].volume).toBe(2); // 1 * 2 → carried; the element writer clamps or boosts
   });
 
   // --- timeline-preview-audio-track-silent fix: source url carriage ---------

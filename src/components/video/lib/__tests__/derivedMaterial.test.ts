@@ -4,7 +4,10 @@ import {
   buildDerivedMaterial,
   isDerivedMaterial,
   repairDerivedMaterialIdentity,
+  repairInheritedSegmentMembership,
+  SCRIPT_SEGMENT_METADATA_FIELDS,
   storageKeyFromLocalUrl,
+  withoutScriptSegment,
 } from '../derivedMaterial';
 import { selectPlaybackUrl } from '../selectPlaybackUrl';
 import { sourcePathForDelete } from '../../hooks/materialManagement/materialDeleteHelpers';
@@ -170,5 +173,71 @@ describe('repairDerivedMaterialIdentity', () => {
 
     expect(repairedIds).toEqual([]);
     expect(materials[0].cacheUrl).toBe(cacheUrl);
+  });
+});
+
+describe('repairInheritedSegmentMembership (N-13)', () => {
+  const scriptOriginal = localUpload({
+    metadata: {
+      ...localUpload().metadata,
+      segment_id: 'segment-1',
+      segment_number: 1,
+      segment_assigned_at: Date.parse('2026-09-01T08:00:00.000Z'),
+      video_index_in_segment: 1,
+    },
+  });
+
+  /** A clip saved before placeholders dropped the original's segment fields. */
+  function savedClip(metadata: Record<string, unknown> = {}): MaterialItem {
+    return {
+      ...localUpload(),
+      id: 'orig_clip_c1',
+      url: '/api/storage/files/video/clips/orig_clip_c1.mp4',
+      // Persisted materials come back with an ISO string, not a Date.
+      createdAt: '2026-09-02T00:00:00.000Z' as unknown as Date,
+      metadata: { ...scriptOriginal.metadata, isClip: true, originalMaterialId: 'orig', ...metadata },
+    };
+  }
+
+  const segmentFields = (material: MaterialItem) =>
+    SCRIPT_SEGMENT_METADATA_FIELDS.filter((field) => field in (material.metadata ?? {}));
+
+  it('strips segment membership a clip inherited at cut time', () => {
+    const { materials, repairedIds } = repairInheritedSegmentMembership([scriptOriginal, savedClip()]);
+
+    expect({
+      repairedIds,
+      clipFields: segmentFields(materials[1]),
+      originalUntouched: materials[0] === scriptOriginal,
+      again: repairInheritedSegmentMembership(materials).repairedIds,
+    }).toEqual({ repairedIds: ['orig_clip_c1'], clipFields: [], originalUntouched: true, again: [] });
+  });
+
+  it('keeps segment membership assigned after the cut', () => {
+    const matchedLater = savedClip({
+      segment_id: 'segment-2',
+      segment_number: 2,
+      segment_assigned_at: Date.parse('2026-09-03T00:00:00.000Z'),
+    });
+
+    const { materials, repairedIds } = repairInheritedSegmentMembership([scriptOriginal, matchedLater]);
+
+    expect({ repairedIds, same: materials[1] === matchedLater }).toEqual({ repairedIds: [], same: true });
+  });
+
+  it('strips an unstamped clip whose original belongs to the same segment', () => {
+    const { segment_assigned_at: _stamp, ...unstamped } = savedClip().metadata ?? {};
+    void _stamp;
+    const legacy = { ...savedClip(), metadata: unstamped };
+
+    expect(repairInheritedSegmentMembership([scriptOriginal, legacy]).repairedIds).toEqual(['orig_clip_c1']);
+  });
+});
+
+describe('withoutScriptSegment', () => {
+  it('drops only the script segment fields', () => {
+    expect(withoutScriptSegment({ segment_id: 's', segment_text_hash: 'h', fileName: 'a.mp4' }))
+      .toEqual({ fileName: 'a.mp4' });
+    expect(withoutScriptSegment(undefined)).toEqual({});
   });
 });

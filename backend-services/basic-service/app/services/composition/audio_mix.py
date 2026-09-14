@@ -30,6 +30,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List
 
+#: Sources one amix command takes. More are mixed in chunks (EX3-04): every
+#: ``-i`` costs ~100 command-line characters and Windows caps the line at 32767.
+MAX_MIX_INPUTS = 64
+
+
+def chunk_sources(count: int, max_inputs: int = MAX_MIX_INPUTS) -> List[range]:
+    """Consecutive source index ranges covering ``count``, none above ``max_inputs``.
+
+    ``amix normalize=0`` is a plain sum and every chunk is padded to the timeline
+    end, so mixing the chunks and then the chunk mixes equals one big mix — as
+    long as the chunk files keep float samples (RV3-14).
+    """
+    if count <= 0:
+        return []
+    size = max(1, max_inputs)
+    return [range(start, min(start + size, count)) for start in range(0, count, size)]
+
 
 @dataclass(frozen=True)
 class AudioSource:

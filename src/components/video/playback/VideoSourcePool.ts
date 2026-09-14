@@ -35,6 +35,7 @@
 
 import { activeClipAt, prewarmNextAt } from './TrackScheduler';
 import { VIDEO_SEEK_TOLERANCE_SEC } from './internal/constants';
+import { MAX_EFFECTIVE_VOLUME } from '../timeline/infrastructure/effectiveVolume';
 import type { VideoTrackGroup } from './types';
 import type { VideoSequenceItem } from '../types';
 
@@ -146,28 +147,29 @@ export interface TrackSourcePlan {
    */
   muteAudio: boolean;
   /**
-   * Output loudness [0,1] to apply to the active element's OWN audio this frame.
-   * The active clip's effective volume (`seq.volume`, already item × track and
-   * clamped upstream) re-clamped to [0,1]; defaults to 1 when absent. Written by
-   * {@link VideoSourcePool._apply} on the "confirmed playing" / "paused hold"
-   * branches so preview loudness tracks live volume changes. Idle/detached
-   * tracks carry 1 here but never sound (the `muteAudio` route silences them).
+   * Effective loudness [0, MAX_EFFECTIVE_VOLUME] for the active element's OWN
+   * audio this frame: the clip's volume (`seq.volume`, already item × track)
+   * times the preview master volume; defaults to 1. Carried unclamped above 1 so
+   * the injected `applyVolume` can boost it (ME-06); the default writer clamps
+   * it into the element's [0,1]. Idle/detached tracks carry 1 here but never
+   * sound (the `muteAudio` route silences them).
    */
   desiredVolume: number;
 }
 
 /**
- * Clamp a raw volume to the [0,1] range a media element accepts. Mirrors
- * `AudioSyncPool.clampVolume` semantics (kept local to avoid coupling the video
- * module to the audio one): NaN/±∞ → 0, ≤0 → 0, ≥1 → 1. `seq.volume` is already
- * the item × track composite (clamped to [0,2] upstream), so this is a single
- * final clamp — never re-multiply by track volume here (that would double-apply).
+ * Clamp to the effective range export applies ([0, MAX_EFFECTIVE_VOLUME]);
+ * NaN/±∞ → 0. `seq.volume` is already the item × track composite, so never
+ * re-multiply by track volume here (that would double-apply).
  */
-function clampVolume(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
+function clampEffectiveVolume(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(value, MAX_EFFECTIVE_VOLUME);
+}
+
+/** The default volume writer: the element's own [0,1] range, no gain. */
+function writeElementVolume(_trackId: string, element: VideoElementLike, volume: number): void {
+  element.volume = Math.min(1, clampEffectiveVolume(volume));
 }
 
 function normalizeSrc(src: string | null | undefined): string {
@@ -236,8 +238,8 @@ export function computeSourcePlan(
       // Embedded audio plays from this element unless the clip is detached.
       muteAudio: hit.clip.audioDetached === true,
       // Per-clip effective loudness (item × track, already composited into
-      // `seq.volume` upstream); single final clamp to the element's [0,1].
-      desiredVolume: clampVolume(hit.clip.volume ?? 1),
+      // `seq.volume` upstream) times the preview master volume (PV3-03).
+      desiredVolume: clampEffectiveVolume((hit.clip.volume ?? 1) * (group.volumeScale ?? 1)),
     };
   });
 }
@@ -290,6 +292,22 @@ export interface TrackElements {
 /** Resolves (or lazily creates) the A/B element pair bound to a track id. */
 export type TrackElementResolver = (trackId: string) => TrackElements | null;
 
+/** Preview audio hooks injected by the host (ME-06). Both default to plain element writes. */
+export interface VideoSourcePoolOptions {
+  /** Writes an effective [0, MAX_EFFECTIVE_VOLUME] volume to the element. */
+  applyVolume?: (trackId: string, element: VideoElementLike, volume: number) => void;
+  /**
+   * Called before `src` is assigned; returns the element to assign on — a fresh
+   * one when the current element is gain-routed and cannot play `url`.
+   */
+  prepareElementForSrc?: (
+    trackId: string,
+    role: 'active' | 'prewarm',
+    element: VideoElementLike,
+    url: string,
+  ) => VideoElementLike;
+}
+
 /**
  * Thin stateful applier. Reads each track's live element state, runs the pure
  * planner, then assigns src / seeks / prewarms. The assigned src is byte-equal
@@ -299,15 +317,20 @@ export class VideoSourcePool {
   private readonly _resolveElements: TrackElementResolver;
   private readonly _resolveSource: SequenceSourceResolver;
   private readonly _seekTolerance: number;
+  private readonly _applyVolume: NonNullable<VideoSourcePoolOptions['applyVolume']>;
+  private readonly _prepareElementForSrc: VideoSourcePoolOptions['prepareElementForSrc'];
 
   constructor(
     resolveElements: TrackElementResolver,
     resolveSource: SequenceSourceResolver,
     seekToleranceSec: number = VIDEO_SEEK_TOLERANCE_SEC,
+    options: VideoSourcePoolOptions = {},
   ) {
     this._resolveElements = resolveElements;
     this._resolveSource = resolveSource;
     this._seekTolerance = seekToleranceSec;
+    this._applyVolume = options.applyVolume ?? writeElementVolume;
+    this._prepareElementForSrc = options.prepareElementForSrc;
   }
 
   /**
@@ -352,7 +375,7 @@ export class VideoSourcePool {
   private _apply(plan: TrackSourcePlan, isPlaying: boolean): VideoElementLike | null {
     const els = this._resolveElements(plan.trackId);
     if (!els) return null;
-    const el = els.active;
+    let el = els.active;
 
     if (plan.desiredUrl === null || plan.desiredSourceTime === null) {
       // Idle track — mute + pause its decode source so it is not heard / not
@@ -363,6 +386,7 @@ export class VideoSourcePool {
     }
 
     if (plan.needsSrcSwap) {
+      el = this._prepareForSrc(plan.trackId, 'active', el, plan.desiredUrl);
       // RC-B: assign exactly the planned URL (== the compare key).
       el.src = plan.desiredUrl;
     }
@@ -386,19 +410,29 @@ export class VideoSourcePool {
         el.muted = plan.muteAudio;
         // Apply this frame's per-clip loudness so live track/clip volume drags
         // are heard immediately (mirrors AudioSyncPool for audio tracks).
-        el.volume = plan.desiredVolume;
+        this._applyVolume(plan.trackId, el, plan.desiredVolume);
       }
     } else {
       // Paused: hold the final audio route but make no sound.
       el.muted = plan.muteAudio;
-      el.volume = plan.desiredVolume;
+      this._applyVolume(plan.trackId, el, plan.desiredVolume);
       this._pauseQuietly(el);
     }
 
     if (plan.prewarmUrl && els.prewarm) {
-      this._warm(els.prewarm, plan.prewarmUrl);
+      this._warm(plan.trackId, els.prewarm, plan.prewarmUrl);
     }
     return el;
+  }
+
+  /** The element to assign `url` on — the host may swap a gain-routed one (ME-06). */
+  private _prepareForSrc(
+    trackId: string,
+    role: 'active' | 'prewarm',
+    el: VideoElementLike,
+    url: string,
+  ): VideoElementLike {
+    return this._prepareElementForSrc ? this._prepareElementForSrc(trackId, role, el, url) : el;
   }
 
   /**
@@ -440,11 +474,12 @@ export class VideoSourcePool {
     }
   }
 
-  private _warm(prewarm: VideoElementLike, url: string): void {
+  private _warm(trackId: string, prewarm: VideoElementLike, url: string): void {
     if (normalizeSrc(prewarm.src) === normalizeSrc(url)) return;
-    prewarm.src = url;
+    const target = this._prepareForSrc(trackId, 'prewarm', prewarm, url);
+    target.src = url;
     // Keep the prewarm element parked so it decodes without driving the clock.
-    this._pauseQuietly(prewarm);
+    this._pauseQuietly(target);
   }
 
   /**

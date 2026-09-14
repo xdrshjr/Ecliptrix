@@ -60,7 +60,15 @@ describe('selectActiveImageOverlays', () => {
       3,
     );
     expect(overlays).toHaveLength(1);
-    expect(overlays[0]).toMatchObject({ id: 'i', url: '/api/storage/files/images/x.png', materialId: 'mat-1' });
+    expect(overlays[0]).toMatchObject({ id: 'i', materialId: 'mat-1', isLocked: false });
+    expect(new URL(overlays[0].url).pathname).toBe('/api/storage/files/images/x.png');
+  });
+
+  it('overlays on a locked track are returned read-only', () => {
+    const locked = timeline([imageItem({ id: 'i' })]);
+    locked.tracks[0].isLocked = true;
+    const overlays = selectActiveImageOverlays(locked, [material()], 1);
+    expect(overlays.map((overlay) => overlay.isLocked)).toEqual([true]);
   });
 
   it('uses the item imagePosition when present, else a default position', () => {

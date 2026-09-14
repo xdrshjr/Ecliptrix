@@ -30,7 +30,10 @@ import type {
 import { DragCalculationService } from '../../domain';
 import type { TimelineStore } from '../useTimelineStore';
 import { moveItemAction } from '../actions/moveItem';
+import { reorderItemAction } from '../actions/reorderItem';
 import { resizeItemAction } from '../actions/resizeItem';
+import { magneticInsertIndex } from '../../domain/services/MagneticInsertion';
+import { fitMove, lanePeersOf } from '../../domain/services/FreeLaneRules';
 import { swapItemsAction } from '../actions/swapItems';
 import { isEditLocked } from '../editLock';
 
@@ -134,26 +137,69 @@ function hasResizeChanged(preview: DragPreviewData, context: CommitContext): boo
 // Commit
 // ---------------------------------------------------------------------------
 
+const isMagneticLane = (type: string): boolean => type === 'video' || type === 'audio';
+
+/**
+ * A release on the clip's own lane. Magnetic lanes take the slot the preview
+ * start points at (TL3-01); free lanes go through moveItemAction, which fits
+ * a caption into a gap (TL3-04).
+ */
+function commitSameTrackMove(get: () => TimelineStore, preview: DragPreviewData): void {
+  const found = get()._aggregate.findItem(preview.itemId);
+  if (!found) return;
+  if (isMagneticLane(found.track.type)) {
+    const peers = lanePeersOf(found.track);
+    reorderItemAction(get, preview.itemId, magneticInsertIndex(peers, preview.itemId, preview.startTime));
+    return;
+  }
+  moveItemAction(get, preview.itemId, preview.startTime);
+}
+
+/** The target lane exists, both lanes are unlocked and the target accepts the clip. */
+function canTransferTo(get: () => TimelineStore, itemId: string, targetTrackId: string): boolean {
+  const aggregate = get()._aggregate;
+  const found = aggregate.findItem(itemId);
+  const target = aggregate.findTrack(targetTrackId);
+  if (!found || !target || found.track.isLocked || target.isLocked) return false;
+  return target.canAcceptMaterial(found.item.originalMaterialType ?? found.item.type);
+}
+
 function commitCrossTrackMove(get: () => TimelineStore, preview: DragPreviewData): void {
-  const state = get();
   const targetTrackId = preview.targetTrackId as string;
-  // Transfer the clip to the track under the pointer. moveItem guards the
-  // target (unlocked + type-compatible) and falls back to a same-track
-  // move if it can't accept, so the clip is never dropped (§8.3).
-  state.recordAction('MOVE_ITEM', {
-    itemId: preview.itemId,
-    newStartTime: preview.startTime,
-    targetTrackId,
-  });
-  state.moveItem(preview.itemId, preview.startTime, false, targetTrackId);
+  // A lane that cannot take the clip (locked / incompatible) leaves it on its
+  // own lane, committed like any same-lane release: nothing is recorded when
+  // it keeps its slot, and it is not selected as if it had moved (TL3-02).
+  if (!canTransferTo(get, preview.itemId, targetTrackId)) {
+    commitSameTrackMove(get, preview);
+    return;
+  }
+  const aggregate = get()._aggregate;
+  const target = aggregate.findTrack(targetTrackId)!;
+  let startTime = preview.startTime;
+  if (target.type === 'subtitle') {
+    const duration = aggregate.findItem(preview.itemId)!.item.duration.value;
+    const fitted = fitMove(lanePeersOf(target), preview.itemId, startTime, duration);
+    if (fitted === null) return;
+    startTime = fitted;
+  }
+
+  const state = get();
+  state.recordAction('MOVE_ITEM', { itemId: preview.itemId, newStartTime: startTime, targetTrackId });
+  state.moveItem(preview.itemId, startTime, false, targetTrackId);
+  const landed = get()._aggregate.findItem(preview.itemId)?.track.id === targetTrackId;
+  if (landed && isMagneticLane(target.type)) {
+    // Same history entry: the drop point picks the slot on the new lane too.
+    const index = magneticInsertIndex(lanePeersOf(target), preview.itemId, preview.startTime);
+    get()._aggregate.reorderMagneticItem(preview.itemId, index);
+  }
   state.autoOrganize();
-  // Fix C: the clip has correctly transferred to the target track, but
-  // autoOrganize repacks that track flush-from-0, so a short clip dropped
-  // onto a track that already holds a long clip lands past the right edge of
-  // the viewport and reads as "lost". Select it and ask the panel to scroll it
-  // into view so the cross-track move is observable.
-  state.selectItem(preview.itemId);
-  state.requestScrollItemIntoView(preview.itemId);
+  if (landed) {
+    // Fix C: autoOrganize repacks the target flush-from-0, so a short clip
+    // dropped next to a long one lands past the viewport and reads as "lost".
+    // Select it and scroll it into view so the transfer is observable.
+    state.selectItem(preview.itemId);
+    state.requestScrollItemIntoView(preview.itemId);
+  }
   get().captureNextState();
 }
 
@@ -186,7 +232,7 @@ function commitMove(
     swapItemsAction(get, preview.itemId, swapTargetId);
     set({ swapTargetItemId: null });
   } else {
-    moveItemAction(get, preview.itemId, preview.startTime);
+    commitSameTrackMove(get, preview);
   }
 }
 

@@ -99,6 +99,7 @@ describe('MultiTrackPlaybackEngine — image and audio only', () => {
       resolveTrackElements: () => null,
       resolveAudioElement: () => audioEl,
       resolveSource: () => null,
+      outputSize: { width: 1920, height: 1080 },
       timeline: {
         getVideoTrackGroups: () => [],
         getAudioSyncGroups: () => [voice],

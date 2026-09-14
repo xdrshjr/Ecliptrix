@@ -70,6 +70,12 @@ export interface ProxyOptions {
    * cookies and internal headers.
    */
   responseHeaderAllowlist?: string[]
+  /**
+   * When true, a client that disconnects (Next aborts `req.signal`) aborts the
+   * upstream fetch as well, so the backend sees the disconnect and stops its
+   * work (AM2-04). The client is gone, so the proxy answers 499 with no body.
+   */
+  abortOnClientDisconnect?: boolean
 }
 
 /**
@@ -185,6 +191,27 @@ function looksLikeJson(contentType: string | null): boolean {
   return contentType.toLowerCase().includes('application/json')
 }
 
+/** nginx's "client closed request": logged when the client left before the answer. */
+const CLIENT_CLOSED_REQUEST_STATUS = 499
+
+/**
+ * Aborts `upstream` when the client request's signal aborts (AM2-04).
+ * Returns the function that detaches the listener once the upstream settles.
+ */
+function forwardClientAbort(req: NextRequest, upstream: AbortController): () => void {
+  const clientSignal: AbortSignal | undefined = req.signal
+  if (!clientSignal) return () => {}
+  if (clientSignal.aborted) {
+    upstream.abort()
+    return () => {}
+  }
+  const onClientAbort = () => upstream.abort()
+  clientSignal.addEventListener('abort', onClientAbort, { once: true })
+  return () => clientSignal.removeEventListener('abort', onClientAbort)
+}
+
+// Longer than 60 lines on purpose: one linear pipeline whose numbered steps
+// (resolve → headers → body → upstream call → streaming / buffered) read in order.
 async function executeProxy(
   method: HttpMethod,
   req: NextRequest,
@@ -255,6 +282,9 @@ async function executeProxy(
   // 5. Issue the upstream call with AbortController-driven timeout
   const abortCtrl = new AbortController()
   const timeoutHandle = setTimeout(() => abortCtrl.abort(), timeoutMs)
+  const detachClientAbort = opts?.abortOnClientDisconnect
+    ? forwardClientAbort(req, abortCtrl)
+    : () => {}
 
   let backendResponse: Response
   try {
@@ -275,6 +305,11 @@ async function executeProxy(
     backendResponse = await fetch(targetUrl, fetchInit)
   } catch (error: unknown) {
     clearTimeout(timeoutHandle)
+    detachClientAbort()
+    // The client disconnected: nobody reads this response, 499 marks it in logs.
+    if (opts?.abortOnClientDisconnect && req.signal?.aborted) {
+      return new Response(null, { status: CLIENT_CLOSED_REQUEST_STATUS })
+    }
     // AbortError → timeout
     if (
       error instanceof Error &&
@@ -292,6 +327,7 @@ async function executeProxy(
     })
   }
   clearTimeout(timeoutHandle)
+  detachClientAbort()
 
   // 6. Streaming pass-through — short-circuit before buffering the body
   if (opts?.streaming) {

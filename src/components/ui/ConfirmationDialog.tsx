@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { trapTabKey } from './focusTrap';
 
 export interface ConfirmationDialogProps {
@@ -19,13 +20,16 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   isOpen,
   title,
   message,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   confirmButtonClass,
   onConfirm,
   onCancel,
   type = 'danger'
 }) => {
+  const { t } = useLocale();
+  const confirmLabel = confirmText ?? t.common.confirm;
+  const cancelLabel = cancelText ?? t.common.cancel;
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
@@ -87,6 +91,8 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       // itself), so keyboard focus can never walk out to the editor behind it.
       trapTabKey(e, dialogRef.current);
     } else if (e.key === 'Escape') {
+      // Marked handled: a dialog nested in a Modal must not close it as well.
+      e.preventDefault();
       handleCancel();
     } else if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) {
       // A focused button activates itself on Enter; confirming here as well
@@ -148,7 +154,7 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-[200] flex items-center justify-center p-4 transition-all duration-200 ${
+      className={`fixed inset-0 z-modal flex items-center justify-center p-4 transition-all duration-200 ${
         isAnimating ? 'bg-black/60' : 'bg-black/0'
       }`}
       onClick={handleBackdropClick}
@@ -194,14 +200,14 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             onClick={handleCancel}
             className="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-md hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 transition-colors"
           >
-            {cancelText}
+            {cancelLabel}
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 transition-colors ${getDefaultConfirmButtonClass()}`}
           >
-            {confirmText}
+            {confirmLabel}
           </button>
         </div>
       </div>

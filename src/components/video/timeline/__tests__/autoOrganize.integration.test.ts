@@ -426,10 +426,11 @@ describe('cross-track audio move into occupied track (Bug #2 / round-2)', () => 
     });
     // 1st move exits `detecting` → `dragging` (no preview yet).
     store.updateDrag({ type: 'POINTER_MOVE', clientX: 10, clientY: 0, deltaX: 10 });
-    // 2nd move computes the preview (deltaX 0 → startTime 0) and records the
-    // hovered target track.
+    // 2nd move computes the preview (deltaX 250 → startTime 5, past the long
+    // clip's midpoint, so the magnetic slot is after it — TL3-01) and records
+    // the hovered target track.
     store.updateDrag({
-      type: 'POINTER_MOVE', clientX: 10, clientY: 0, deltaX: 0,
+      type: 'POINTER_MOVE', clientX: 250, clientY: 0, deltaX: 250,
       targetTrackId: opts?.moveTarget ?? 'audio-track-1',
     });
     store.endDrag({

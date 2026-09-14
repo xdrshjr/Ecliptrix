@@ -10,7 +10,15 @@
  */
 
 import type { AgentClientApplyError } from '@/types';
-import type { SSEEvent, AgentOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
+import type {
+  SSEEvent,
+  AgentOperation,
+  AgentStreamErrorCode,
+  MaterialOperation,
+  ScriptOperation,
+  StoryboardOperation,
+  AsyncTaskOperation,
+} from './types';
 import type { AgentStateManager } from './AgentStateManager';
 import type { ApplyOutcome, OperationApplier } from './OperationApplier';
 import { useVideoEditingStore } from '@/stores';
@@ -34,6 +42,12 @@ export interface AgentEventRouterConfig {
    * (those go through SSEStreamManager's onError).
    */
   onError?: (message: string) => void;
+  /**
+   * Turns an SSE `error` event into the text shown to the user (and stored
+   * on the message). The router has no locale, so the consumer localises by
+   * `code`; without it the server's raw message is used.
+   */
+  describeError?: (error: { message: string; code?: AgentStreamErrorCode }) => string;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,12 +59,14 @@ export class AgentEventRouter {
   private readonly operationApplier: OperationApplier;
   private readonly onOperationApplied?: AgentEventRouterConfig['onOperationApplied'];
   private readonly onError?: AgentEventRouterConfig['onError'];
+  private readonly describeError?: AgentEventRouterConfig['describeError'];
 
   constructor(config: AgentEventRouterConfig) {
     this.stateManager = config.stateManager;
     this.operationApplier = config.operationApplier;
     this.onOperationApplied = config.onOperationApplied;
     this.onError = config.onError;
+    this.describeError = config.describeError;
   }
 
   /**
@@ -98,10 +114,12 @@ export class AgentEventRouter {
         await this.handleToolResult(event);
         break;
 
-      case 'error':
-        this.stateManager.setError(event.message);
-        this.onError?.(event.message);
+      case 'error': {
+        const text = this.describeError?.({ message: event.message, code: event.code }) ?? event.message;
+        this.stateManager.setError(text);
+        this.onError?.(text);
         break;
+      }
 
       case 'agent_end':
         this.stateManager.finalize();
@@ -109,11 +127,13 @@ export class AgentEventRouter {
 
       case 'cancelled':
         // Server-side abort propagated through SSE — seal the in-flight
-        // tool calls as `cancelled` and mark the message `isCancelled` so
-        // the next-turn messageConverter injects the resume system note.
-        // For server-timeout vs client-aborted, the appendMarker is only
-        // true for client_aborted (user clicked stop) — server timeout
-        // gets its own user-facing error event from the route.
+        // tool calls as `cancelled`. A server timeout was not the user's
+        // choice: its `error` event (sent first) explains it, and the turn
+        // must not tell the next one "the user stopped you".
+        if (event.reason === 'server_timeout') {
+          this.stateManager.markCancelled({ appendMarker: false, byUser: false });
+          break;
+        }
         this.stateManager.markCancelled({
           appendMarker: event.reason === 'client_aborted' || event.reason === 'thinking_aborted',
         });
@@ -163,6 +183,7 @@ export class AgentEventRouter {
         ? this.operationApplier.applyRepack(operations, event.toolCallId)
         : await this.operationApplier.applyBatch(operations, event.toolCallId);
       if (this.reportRejectedApply(event, outcome)) return;
+      this.markIfApplied(event.toolCallId, outcome);
       this.onOperationApplied?.(event);
       return;
     }
@@ -175,6 +196,7 @@ export class AgentEventRouter {
         // Timeline operations go through OperationApplier (existing path)
         const outcome = await this.operationApplier.apply(op, event.toolCallId);
         if (this.reportRejectedApply(event, outcome)) return;
+        this.markIfApplied(event.toolCallId, outcome);
       } else if (this.isMaterialOperation(op)) {
         // Record pre-state for undo BEFORE applying
         this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
@@ -225,6 +247,11 @@ export class AgentEventRouter {
       clientApplyError,
     });
     return true;
+  }
+
+  /** Only a step that really changed the timeline can be undone on its own. */
+  private markIfApplied(toolCallId: string, outcome: ApplyOutcome | undefined): void {
+    if (outcome?.status === 'applied') this.stateManager.markTimelineChanged(toolCallId);
   }
 
   // -------------------------------------------------------------------------

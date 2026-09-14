@@ -26,7 +26,14 @@
 import { useTimelineStore } from '@/components/video/timeline/store';
 import type { TimelineStore } from '@/components/video/timeline/store';
 import type { TimelineData } from '@/components/video/timeline/domain/types';
-import { repairTimelineData, type TimelineRepairReport } from './repairTimelineData';
+import { replaceTimelineAction } from '@/components/video/timeline/store/actions/replaceTimeline';
+import { isEditLocked } from '@/components/video/timeline/store/editLock';
+import {
+  EMPTY_TIMELINE_DATA,
+  repairTimelineData,
+  salvageTimelineData,
+  type TimelineRepairReport,
+} from './repairTimelineData';
 
 export type HydrationResult =
   | { status: 'loaded' }
@@ -38,22 +45,10 @@ export interface TimelineRecoveryBackup {
   data: unknown;
 }
 
-/**
- * Empty `TimelineData` used when the persisted payload is missing or
- * structurally invalid. Mirrors the slice's DEFAULT_INITIAL_DATA so the
- * store's derived fields land on the same defaults as a fresh page load.
- */
-const EMPTY_TIMELINE_DATA: TimelineData = {
-  currentTime: 0,
-  totalDuration: 0,
-  zoomLevel: 1.0,
-  playbackRate: 1.0,
-  isPlaying: false,
-  snapToGrid: true,
-  gridSize: 0.5,
-  scrollLeft: 0,
-  tracks: [],
-};
+export type RestoreBackupOutcome =
+  | { kind: 'restored'; skippedCount: number }
+  | { kind: 'edit-locked' }
+  | { kind: 'unreadable' };
 
 function hasTracksArray(value: unknown): value is { tracks: unknown[] } & Record<string, unknown> {
   return (
@@ -142,11 +137,18 @@ export function hydrateTimelineFromProjectData(
   return hasUnreadableContent ? { status: 'failed' } : { status: 'loaded' };
 }
 
+/** A repair that removed clips loses data the user may want back (DS3-01). */
+function lostTimelineContent(hydration: HydrationResult): boolean {
+  if (hydration.status === 'failed') return true;
+  return hydration.status === 'repaired' && hydration.report.droppedItemIds.length > 0;
+}
+
 /**
  * The project data to open after hydration. When the timeline could not be
- * read, the ORIGINAL `uiState.currentTimelineState` is copied to the top-level
- * `timelineRecoveryBackup` so the empty timeline the editor opens with (and
- * then autosaves) cannot erase it. Top level, because the editor rebuilds
+ * read, or its repair dropped clips, the ORIGINAL
+ * `uiState.currentTimelineState` is copied to the top-level
+ * `timelineRecoveryBackup` so the timeline the editor opens with (and then
+ * autosaves) cannot erase it. Top level, because the editor rebuilds
  * `uiState` field by field and drops unknown keys. An existing backup is never
  * overwritten: the earliest original is the one worth keeping.
  */
@@ -155,7 +157,7 @@ export function withTimelineRecoveryBackup(
   hydration: HydrationResult,
   now: Date = new Date(),
 ): Record<string, unknown> {
-  if (hydration.status !== 'failed' || projectData.timelineRecoveryBackup !== undefined) {
+  if (!lostTimelineContent(hydration) || projectData.timelineRecoveryBackup !== undefined) {
     return projectData;
   }
   const uiState = projectData.uiState as Record<string, unknown> | undefined;
@@ -164,4 +166,47 @@ export function withTimelineRecoveryBackup(
     data: uiState?.currentTimelineState,
   };
   return { ...projectData, timelineRecoveryBackup: backup };
+}
+
+/**
+ * Replace the current timeline with what can still be read from a recovery
+ * backup, as ONE undoable step (N-07). The backup itself stays in the project
+ * until the user discards it.
+ */
+export function restoreTimelineBackup(
+  getStore: () => TimelineStore,
+  backup: TimelineRecoveryBackup,
+): RestoreBackupOutcome {
+  if (isEditLocked(getStore())) return { kind: 'edit-locked' };
+  const salvaged = salvageTimelineData(backup.data);
+  if (!salvaged) return { kind: 'unreadable' };
+  try {
+    replaceTimelineAction(getStore, salvaged.data, 'import');
+  } catch (err) {
+    console.warn('[hydrateTimeline] salvaged backup could not be imported', { err, savedAt: backup.savedAt });
+    return { kind: 'unreadable' };
+  }
+  return { kind: 'restored', skippedCount: salvaged.report.droppedItemIds.length };
+}
+
+/** Project content without its recovery backup (the user discarded it). */
+export function withoutTimelineRecoveryBackup<T extends { timelineRecoveryBackup?: unknown }>(content: T): T {
+  const { timelineRecoveryBackup: _removed, ...rest } = content;
+  void _removed;
+  return rest as T;
+}
+
+/**
+ * The editor's content update carrying the backup the container holds now.
+ * Only the container creates (on load) or discards the backup, so an update
+ * the editor built from content rendered before "discard" cannot bring it back.
+ */
+export function withCurrentRecoveryBackup<T extends { timelineRecoveryBackup?: TimelineRecoveryBackup }>(
+  current: T | null,
+  next: T,
+): T {
+  const held = current?.timelineRecoveryBackup;
+  if (next.timelineRecoveryBackup === held) return next;
+  const rest = withoutTimelineRecoveryBackup(next);
+  return held === undefined ? rest : { ...rest, timelineRecoveryBackup: held };
 }

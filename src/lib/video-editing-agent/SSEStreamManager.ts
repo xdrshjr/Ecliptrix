@@ -1,7 +1,7 @@
 /**
  * SSEStreamManager — standalone SSE stream connection manager with heartbeat
- * detection, total timeout, auto-retry with exponential backoff, and proper
- * SSE spec parsing.
+ * detection, idle and maximum-duration timeouts, auto-retry with exponential
+ * backoff, and proper SSE spec parsing.
  *
  * Designed as a framework-agnostic class so it can be instantiated by any
  * consumer (React hook, test harness, etc.). Phase 2's `useAgentExecution`
@@ -34,6 +34,7 @@
  */
 
 import type { SSEEvent } from './types';
+import { AGENT_IDLE_TIMEOUT_MS, AGENT_MAX_DURATION_MS, CLIENT_IDLE_GRACE_MS } from './timeouts';
 import {
   type StreamError,
   type StreamErrorContext,
@@ -55,8 +56,17 @@ export interface SSEStreamManagerConfig {
   body: unknown;
   /** Additional request headers (Content-Type is set automatically). */
   headers?: Record<string, string>;
-  /** Total timeout in ms (default 1 800 000 = 30 min). */
+  /**
+   * End the run after this many ms without agent activity (tool calls, tool
+   * results, text or thinking deltas; keepalive comments do not count).
+   * Default: the server's idle timeout plus a grace period, so the server's
+   * own timeout error arrives first.
+   */
+  idleTimeoutMs?: number;
+  /** @deprecated Alias of `idleTimeoutMs`, kept for existing callers. */
   timeout?: number;
+  /** Hard cap on the whole run in ms, however active (default 2 h). */
+  maxDurationMs?: number;
   /** Heartbeat timeout — max ms between data chunks (default 90 000). */
   heartbeatTimeout?: number;
   /** Maximum automatic retries (default 2). */
@@ -87,6 +97,26 @@ export interface SSEStreamManagerConfig {
 /** Type-safe wrapper for timer IDs that works in both Node and browser. */
 type TimerId = ReturnType<typeof setTimeout>;
 
+/** `StreamError.message` when the run saw no agent activity for too long. */
+export const IDLE_TIMEOUT_ERROR_MESSAGE = 'Agent run stopped: no activity within the idle timeout';
+
+/** `StreamError.message` when the run reached its maximum duration. */
+export const MAX_DURATION_ERROR_MESSAGE = 'Agent run stopped: maximum run duration exceeded';
+
+/** Events that show the agent is making progress; comments never count. */
+const ACTIVITY_EVENT_TYPES: ReadonlySet<SSEEvent['type']> = new Set<SSEEvent['type']>([
+  'tool_call',
+  'tool_result',
+  'text_delta',
+  'thinking_delta',
+]);
+
+/** Value of an SSE field line: text after the `name:` prefix, minus one leading space. */
+function fieldValue(line: string, prefixLength: number): string {
+  const value = line.slice(prefixLength);
+  return value.startsWith(' ') ? value.slice(1) : value;
+}
+
 /** Delay helper that respects AbortSignal. */
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -109,15 +139,20 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 export class SSEStreamManager {
   // -- Config (immutable after construction) --
   private readonly config: Required<
-    Pick<SSEStreamManagerConfig, 'url' | 'body' | 'timeout' | 'heartbeatTimeout' | 'maxRetries'>
+    Pick<SSEStreamManagerConfig, 'url' | 'body' | 'idleTimeoutMs' | 'maxDurationMs' | 'heartbeatTimeout' | 'maxRetries'>
   > & SSEStreamManagerConfig;
 
   // -- Runtime state --
   private controller: AbortController | null = null;
   private heartbeatTimer: TimerId | null = null;
-  private totalTimer: TimerId | null = null;
+  private idleTimer: TimerId | null = null;
+  private maxDurationTimer: TimerId | null = null;
   private retryCount = 0;
   private buffer = '';
+  /** `data:` lines of the event still being received (see parseSSEBuffer). */
+  private pendingDataLines: string[] = [];
+  /** `id:` of the event still being received. */
+  private pendingId: number | null = null;
   private lastReceivedEventId = -1;
   private completedToolCallIds: string[] = [];
   private pendingToolCallIds: string[] = [];
@@ -130,7 +165,8 @@ export class SSEStreamManager {
   constructor(config: SSEStreamManagerConfig) {
     this.config = {
       ...config,
-      timeout: config.timeout ?? 1_800_000,
+      idleTimeoutMs: config.idleTimeoutMs ?? config.timeout ?? AGENT_IDLE_TIMEOUT_MS + CLIENT_IDLE_GRACE_MS,
+      maxDurationMs: config.maxDurationMs ?? AGENT_MAX_DURATION_MS,
       heartbeatTimeout: config.heartbeatTimeout ?? 90_000,
       maxRetries: config.maxRetries ?? 2,
     };
@@ -194,12 +230,15 @@ export class SSEStreamManager {
   // ---------------------------------------------------------------------------
 
   private async connectAndRead(): Promise<void> {
-    // Start the total timeout — covers the entire lifecycle including retries.
-    this.startTotalTimeout();
+    // Run timeouts cover the entire lifecycle including retries.
+    this.startIdleTimeout();
+    this.startMaxDuration();
 
     while (true) {
       // Reset per-attempt state
       this.buffer = '';
+      this.pendingDataLines = [];
+      this.pendingId = null;
       this.controller = new AbortController();
 
       try {
@@ -296,6 +335,8 @@ export class SSEStreamManager {
     this.pendingToolCallIds = [];
     this.lastEvent = null;
     this.buffer = '';
+    this.pendingDataLines = [];
+    this.pendingId = null;
     this.config.onRestart?.(this.retryCount);
   }
 
@@ -397,15 +438,20 @@ export class SSEStreamManager {
    *
    * ```
    *
-   * - Lines starting with `data: ` carry payload.
-   * - Lines starting with `id: ` set the last event ID.
-   * - An empty line (`\n\n`) marks the end of an event.
+   * - Lines starting with `data:` carry payload; several data lines of one
+   *   event are joined with `\n`.
+   * - Lines starting with `id:` set the event ID (the space is optional).
+   * - An empty line marks the end of an event.
    * - Lines starting with `:` are comments (ignored).
-   * - Incomplete trailing data is kept in the buffer for the next chunk.
+   * - A trailing `\r` is stripped (CRLF streams).
+   *
+   * The fields of an unfinished event live on the instance, not in this call:
+   * a network chunk can end between an event's `data:` line and its blank
+   * line, and the old per-call state dropped that whole event — a tool
+   * result the server had applied never reached the client timeline.
    */
   parseSSEBuffer(chunk: string): SSEEvent[] {
     this.buffer += chunk;
-    const events: SSEEvent[] = [];
 
     // Split on newlines — SSE uses \n as line delimiter
     const lines = this.buffer.split('\n');
@@ -413,82 +459,66 @@ export class SSEStreamManager {
     // The last element may be an incomplete line; keep it in the buffer
     this.buffer = lines.pop() ?? '';
 
-    let currentData = '';
-    let currentId: number | null = null;
-
+    const events: SSEEvent[] = [];
     for (const line of lines) {
-      // Comment line (SSE spec: lines starting with ':')
-      if (line.startsWith(':')) {
-        continue;
-      }
-
-      // id field
-      if (line.startsWith('id: ')) {
-        const idStr = line.slice(4).trim();
-        const parsed = parseInt(idStr, 10);
-        if (!isNaN(parsed)) {
-          currentId = parsed;
-        }
-        continue;
-      }
-
-      // data field
-      if (line.startsWith('data: ')) {
-        currentData = line.slice(6);
-        continue;
-      }
-
-      // Empty line = event boundary
-      if (line.trim() === '' && currentData) {
-        const event = this.parseEventData(currentData, currentId);
-        if (event !== null) {
-          events.push(event);
-        }
-        currentData = '';
-        currentId = null;
-      }
+      const event = this.consumeLine(line);
+      if (event !== null) events.push(event);
     }
-
     return events;
+  }
+
+  /** Apply one complete line; returns the event a blank line completes. */
+  private consumeLine(rawLine: string): SSEEvent | null {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+
+    if (line === '') return this.dispatchPendingEvent();
+    if (line.startsWith(':')) return null;
+
+    if (line.startsWith('id:')) {
+      const parsed = parseInt(fieldValue(line, 3), 10);
+      if (!isNaN(parsed)) this.pendingId = parsed;
+      return null;
+    }
+    if (line.startsWith('data:')) {
+      this.pendingDataLines.push(fieldValue(line, 5));
+    }
+    return null;
+  }
+
+  /** Complete the pending event, if it has data, and reset the pending fields. */
+  private dispatchPendingEvent(): SSEEvent | null {
+    if (this.pendingDataLines.length === 0) {
+      this.pendingId = null;
+      return null;
+    }
+    const event = this.parseEventData(this.pendingDataLines.join('\n'), this.pendingId);
+    this.pendingDataLines = [];
+    this.pendingId = null;
+    return event;
   }
 
   /**
    * Flush any remaining data in the buffer (called when stream ends).
-   * This handles the edge case where the last event lacks a trailing newline.
+   * Handles a last event whose trailing newline or blank line never came.
    */
   private flushBuffer(): void {
-    if (!this.buffer.trim()) return;
-
-    // Try to extract a final event from the remaining buffer
     const lines = this.buffer.split('\n');
-    let currentData = '';
-    let currentId: number | null = null;
-
-    for (const line of lines) {
-      if (line.startsWith(':')) continue;
-      if (line.startsWith('id: ')) {
-        const idStr = line.slice(4).trim();
-        const parsed = parseInt(idStr, 10);
-        if (!isNaN(parsed)) currentId = parsed;
-        continue;
-      }
-      if (line.startsWith('data: ')) {
-        currentData = line.slice(6);
-        continue;
-      }
-    }
-
-    if (currentData) {
-      const event = this.parseEventData(currentData, currentId);
-      if (event !== null) {
-        this.trackEvent(event);
-        // Always deliver the event (including stream-end); the caller
-        // (connectAndRead) will invoke onComplete separately.
-        this.config.onEvent(event);
-      }
-    }
-
     this.buffer = '';
+
+    const events: SSEEvent[] = [];
+    for (const line of lines) {
+      const event = this.consumeLine(line);
+      if (event !== null) events.push(event);
+    }
+    const last = this.dispatchPendingEvent();
+    if (last !== null) events.push(last);
+
+    for (const event of events) {
+      this.trackEvent(event);
+      // Always deliver the event (including stream-end); the caller
+      // (connectAndRead) will invoke onComplete separately.
+      this.config.onEvent(event);
+    }
   }
 
   /**
@@ -525,6 +555,8 @@ export class SSEStreamManager {
     }
 
     this.lastEvent = event;
+    // Progress restarts the idle window; keepalive comments never get here.
+    if (ACTIVITY_EVENT_TYPES.has(event.type)) this.startIdleTimeout();
 
     // Track tool call lifecycle for retry context
     if (event.type === 'tool_call') {
@@ -562,7 +594,7 @@ export class SSEStreamManager {
     }
     this.heartbeatTimer = setTimeout(() => {
       console.warn('[SSEStreamManager] Heartbeat timeout — no data for', this.config.heartbeatTimeout, 'ms');
-      this.handleDisconnect('heartbeat_timeout');
+      this.handleHeartbeatTimeout();
     }, this.config.heartbeatTimeout);
   }
 
@@ -574,51 +606,71 @@ export class SSEStreamManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Total timeout
-  // ---------------------------------------------------------------------------
-
-  private startTotalTimeout(): void {
-    this.clearTotalTimeout();
-    this.totalTimer = setTimeout(() => {
-      console.warn('[SSEStreamManager] Total timeout — exceeded', this.config.timeout, 'ms');
-      this.handleDisconnect('total_timeout');
-    }, this.config.timeout);
-  }
-
-  private clearTotalTimeout(): void {
-    if (this.totalTimer !== null) {
-      clearTimeout(this.totalTimer);
-      this.totalTimer = null;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Disconnect handler
+  // Run timeouts
   // ---------------------------------------------------------------------------
 
   /**
-   * Called when a heartbeat or total timeout fires. Aborts the current
-   * fetch so the read loop throws and enters the retry path.
+   * (Re)start the idle window. Every activity event restarts it, so a run
+   * whose tools stay busy for hours is not cut off at a fixed 30 minutes.
    */
-  private handleDisconnect(reason: string): void {
-    if (this._isCancelled) return;
+  private startIdleTimeout(): void {
+    this.clearIdleTimeout();
+    this.idleTimer = setTimeout(() => {
+      console.warn('[SSEStreamManager] Idle timeout — no agent activity for', this.config.idleTimeoutMs, 'ms');
+      this.endRun(IDLE_TIMEOUT_ERROR_MESSAGE);
+    }, this.config.idleTimeoutMs);
+  }
 
-    if (reason === 'total_timeout') {
-      // Total timeout is not recoverable — cancel everything
-      this._isCancelled = true;
-      this.controller?.abort();
-      this.cleanup();
-      this.config.onError(
-        classifyError({
-          error: new Error('Total execution timeout'),
-          disconnectReason: 'total_timeout',
-          context: this.buildErrorContext(),
-        }),
-      );
-      return;
+  private clearIdleTimeout(): void {
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
     }
+  }
 
-    // For heartbeat timeout, abort the current connection to trigger retry
+  private startMaxDuration(): void {
+    this.clearMaxDuration();
+    this.maxDurationTimer = setTimeout(() => {
+      console.warn('[SSEStreamManager] Maximum run duration exceeded:', this.config.maxDurationMs, 'ms');
+      this.endRun(MAX_DURATION_ERROR_MESSAGE);
+    }, this.config.maxDurationMs);
+  }
+
+  private clearMaxDuration(): void {
+    if (this.maxDurationTimer !== null) {
+      clearTimeout(this.maxDurationTimer);
+      this.maxDurationTimer = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Disconnect handlers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * An idle or maximum-duration timeout is not recoverable: cancel
+   * everything and report a TOTAL_TIMEOUT whose message tells the two apart.
+   */
+  private endRun(message: string): void {
+    if (this._isCancelled) return;
+    this._isCancelled = true;
+    this.controller?.abort();
+    this.cleanup();
+    this.config.onError(
+      classifyError({
+        error: new Error(message),
+        disconnectReason: 'total_timeout',
+        context: this.buildErrorContext(),
+      }),
+    );
+  }
+
+  /**
+   * Called when no data arrived within the heartbeat window. Aborts the
+   * current fetch so the read loop throws and enters the retry path.
+   */
+  private handleHeartbeatTimeout(): void {
+    if (this._isCancelled) return;
     this.controller?.abort();
   }
 
@@ -628,7 +680,8 @@ export class SSEStreamManager {
 
   private cleanup(): void {
     this.clearHeartbeat();
-    this.clearTotalTimeout();
+    this.clearIdleTimeout();
+    this.clearMaxDuration();
   }
 
   // ---------------------------------------------------------------------------

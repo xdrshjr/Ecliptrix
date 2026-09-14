@@ -319,7 +319,7 @@ const StylePanel: React.FC<StylePanelProps> = ({
       <button
         type="button"
         onClick={onApplyToAll}
-        className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium"
+        className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary-a/90 transition-colors font-medium"
       >
         {labels.applyToAll}
       </button>
@@ -834,7 +834,7 @@ const SubtitleEditModal: React.FC<SubtitleEditModalProps> = ({
                 aria-describedby={isEditLocked ? EDIT_LOCK_HINT_ID : undefined}
                 className={`px-4 py-2 rounded-md font-medium transition-colors ${
                   hasChanges && !isEditLocked
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary-a/90'
                     : 'bg-muted-foreground/30 text-muted-foreground cursor-not-allowed'
                 }`}
               >

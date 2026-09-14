@@ -9,7 +9,8 @@
  * - AnimatePresence wraps the node list for smooth enter/exit animations
  * - TimelineAnimationStyles injected once for CSS @keyframes
  * - WelcomeGuide shown when messages are empty
- * - ErrorStateCard shown for agent-level errors
+ * - ErrorStateCard shown for agent-level errors (the run is over, so it
+ *   offers Dismiss, never Cancel)
  * - Cancel button passed to AgentExecutionNode
  * - All nodes use shared animation variants
  *
@@ -21,9 +22,10 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useLocale } from '@/contexts/LocaleContext';
+import { streamErrorMessageKey } from '@/lib/video-editing-agent/errorRecovery';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
 import type { TimelineChatPanelProps, TimelineNodeData, ConnectorState } from './types';
-import { messagesToTimelineNodes } from './utils';
+import { getToolDisplayName, messagesToTimelineNodes } from './utils';
 import TimelineAnimationStyles from './TimelineAnimationStyles';
 import TimelineConnector from './TimelineConnector';
 import UserMessageNode from './UserMessageNode';
@@ -81,13 +83,16 @@ const LiveExecutionIndicator: React.FC<LiveExecutionIndicatorProps> = ({
   onCancel,
   finishingLabel,
 }) => {
+  const { t } = useLocale();
   if (!isAgentRunning(executionState.status)) {
     return null;
   }
 
   // The stream already ended: stopping would do nothing, so the button is disabled.
   const isFinishing = executionState.status === 'finishing';
-  const currentToolName = executionState.currentTool?.name ?? null;
+  const currentToolName = executionState.currentTool
+    ? getToolDisplayName(executionState.currentTool.name, t.agentTimeline.toolNames)
+    : null;
   const completedCount = executionState.completedTools.length;
 
   return (
@@ -105,15 +110,15 @@ const LiveExecutionIndicator: React.FC<LiveExecutionIndicatorProps> = ({
             {isFinishing
               ? finishingLabel
               : executionState.status === 'retrying'
-                ? `Retrying (attempt ${executionState.retryCount})...`
+                ? t.agentTimeline.liveRetrying.replace('{n}', String(executionState.retryCount))
                 : currentToolName
-                  ? `Executing: ${currentToolName}`
+                  ? t.agentTimeline.liveTool.replace('{tool}', currentToolName)
                   : completedCount > 0
-                    ? `Completed ${completedCount} operation${completedCount > 1 ? 's' : ''}, continuing...`
-                    : 'Agent is working...'}
+                    ? t.agentTimeline.liveProgress.replace('{count}', String(completedCount))
+                    : t.agentTimeline.liveWorking}
           </span>
 
-          {/* Cancel button */}
+          {/* Stop button — same action and label as the execution card's */}
           <button
             type="button"
             onClick={onCancel}
@@ -121,7 +126,7 @@ const LiveExecutionIndicator: React.FC<LiveExecutionIndicatorProps> = ({
             title={isFinishing ? finishingLabel : undefined}
             className="text-xs text-muted-foreground dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors ml-auto px-2 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-muted-foreground disabled:hover:bg-transparent disabled:hover:border-transparent"
           >
-            Cancel
+            {t.agentTimeline.stop}
           </button>
         </div>
 
@@ -144,6 +149,13 @@ const LiveExecutionIndicator: React.FC<LiveExecutionIndicatorProps> = ({
 type TimelineChatPanelComponentProps = TimelineChatPanelProps & {
   /** Disables agent undo buttons (set while the agent runs). */
   undoDisabled?: boolean;
+  /** Clears the error of a run that already ended (the error card's action). */
+  onDismiss?: () => void;
+  /**
+   * Agent messages whose steps can still be undone one by one in this
+   * session. When omitted every turn offers single-step undo.
+   */
+  singleUndoMessageIds?: ReadonlySet<string>;
 };
 
 const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
@@ -153,6 +165,8 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   onUndoSingle,
   onCancel,
   undoDisabled: undoDisabledProp = false,
+  onDismiss,
+  singleUndoMessageIds,
 }) => {
   const { t } = useLocale();
   const isFinishing = executionState?.status === 'finishing';
@@ -209,7 +223,11 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
 
   // ----- Map messages to timeline nodes -----
 
-  const nodes = useMemo(() => messagesToTimelineNodes(messages), [messages]);
+  const emptyResponseLabel = t.agentStream.errors.emptyResponse;
+  const nodes = useMemo(
+    () => messagesToTimelineNodes(messages, { emptyResponse: emptyResponseLabel }),
+    [messages, emptyResponseLabel],
+  );
 
   // ----- Determine if we need a live execution indicator at the end -----
   // While finishing it is always shown: it tells the user why the timeline is
@@ -272,6 +290,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
                   onUndoAll={onUndoAll}
                   onUndoSingle={onUndoSingle}
                   undoDisabled={undoDisabled}
+                  canUndoSteps={singleUndoMessageIds ? singleUndoMessageIds.has(node.messageId) : true}
                 />
               )}
             </div>
@@ -297,10 +316,13 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
           {nodes.length > 0 && <TimelineConnector state="default" height={16} />}
           <ErrorStateCard
             variant={errorVariant}
-            message={executionState.error.userMessage || executionState.error.message || 'An unexpected error occurred.'}
+            message={t.agentTimeline.errorPrefix.replace(
+              '{message}',
+              t.agentStream.errors[streamErrorMessageKey(executionState.error)],
+            )}
             retryCount={executionState.retryCount}
             maxRetries={2}
-            onCancel={onCancel}
+            onDismiss={onDismiss}
             onRetry={undefined /* retry is handled by the execution engine automatically */}
           />
         </>

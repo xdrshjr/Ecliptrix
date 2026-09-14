@@ -223,6 +223,32 @@ describe('useScriptAutoMix', () => {
     });
   });
 
+  it('a video-only mix warns about missing videos, not missing voice-over', () => {
+    seedTimeline(0, 0);
+    Object.values(notify).forEach((fn) => fn.mockClear());
+    const { result } = renderHook(() => useScriptAutoMix(options({
+      getMaterials: () => [
+        scriptMaterial('video-1', 'video', 3, 1),
+        scriptMaterial('video-3', 'video', 4, 3),
+      ],
+      getScriptSegments: () => [
+        { id: 'segment-1', videos: [{ id: 'video-1' }] },
+        { id: 'segment-2' },
+        { id: 'segment-3', videos: [{ id: 'video-3' }] },
+      ],
+    })));
+
+    act(() => { result.current.requestAutoMix(); });
+
+    expect({
+      successes: notify.showSuccess.mock.calls,
+      warnings: notify.showWarning.mock.calls,
+    }).toEqual({
+      successes: [[en.videoEditing.autoMix.applied.replace('{segments}', '2')]],
+      warnings: [[en.videoEditing.autoMix.skippedNoVideo.replace('{list}', '2')]],
+    });
+  });
+
   it('warns about segments whose video cannot cover the voice-over', () => {
     seedTimeline(0, 0);
     const { result } = renderHook(() => useScriptAutoMix(options({

@@ -31,6 +31,7 @@ function makeMockCanvas(width = 1280, height = 720) {
     fillText: vi.fn((text: string) => {
       fillTextCalls.push(text);
     }),
+    strokeText: vi.fn(),
     measureText: vi.fn(() => ({ width: 100 })),
     save: vi.fn(),
     restore: vi.fn(),
@@ -134,8 +135,12 @@ describe('CanvasCompositor.renderFrame — multi-source compositing', () => {
       {
         kind: 'subtitle',
         id: 's',
-        lines: ['hello world', 'second line'],
+        lines: [
+          { text: 'hello world', topY: 971 },
+          { text: 'second line', topY: 1000 },
+        ],
         style: { fontSize: 24, color: '#fff' },
+        outputHeight: 1080,
         opacity: 1,
         z: 1_000_000,
       },
@@ -152,7 +157,15 @@ describe('CanvasCompositor.renderFrame — multi-source compositing', () => {
     ctx.drawImage.mockImplementation(() => order.push('video'));
     ctx.fillText.mockImplementation(() => order.push('subtitle'));
     c.renderFrame([
-      { kind: 'subtitle', id: 's', lines: ['cap'], style: { fontSize: 20, color: '#fff' }, opacity: 1, z: 2_000_000 },
+      {
+        kind: 'subtitle',
+        id: 's',
+        lines: [{ text: 'cap', topY: 1005 }],
+        style: { fontSize: 20, color: '#fff' },
+        outputHeight: 1080,
+        opacity: 1,
+        z: 2_000_000,
+      },
       videoLayer('v', 0, 1),
     ]);
     // Even though subtitle was listed first, its higher z sorts it after video.

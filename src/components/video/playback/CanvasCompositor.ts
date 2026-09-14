@@ -15,10 +15,16 @@ import {
   ADAPTIVE_RECOVER_HOLD_FRAMES,
   ADAPTIVE_WINDOW_FRAMES,
 } from './internal/constants';
-import { fitContain, type FitRect } from './internal/fitContain';
+import {
+  fitContain,
+  fitSourceInFrame,
+  outputFrameRect,
+  type FitRect,
+} from './internal/fitContain';
 import { Camera3DRenderer } from './camera/Camera3DRenderer';
 import { fallbackCropForDraw, resolveCameraDraw } from './camera/resolveCameraDraw';
 import type { ResolvedCameraDraw } from './camera/types';
+import { SUBTITLE_BORDER_PX, SUBTITLE_BOX_BORDER_PX } from '../lib/subtitleLayout';
 import type {
   CompositorLayer,
   CompositorStats,
@@ -26,10 +32,17 @@ import type {
   ICanvasViewport,
   OverlayPayload,
   PreviewFrame,
-  SubtitleStyle,
 } from './types';
 
 const DEFAULT_LETTERBOX_COLOR = '#000';
+const SUBTITLE_STROKE_COLOR = '#000000';
+
+/** Font stacks in the order export's `_get_font_path` prefers for each family. */
+function subtitleFontStack(fontFamily: string | undefined): string {
+  if (fontFamily === 'serif') return '"SimSun","Songti SC","Noto Serif CJK SC",serif';
+  if (fontFamily === 'monospace') return 'monospace';
+  return '"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif';
+}
 const DROPPED_RATE_EMIT_INTERVAL_MS = 1000;
 
 /**
@@ -123,6 +136,10 @@ export class CanvasCompositor implements ICanvasCompositor {
   private _droppedAtLastEmit = 0;
   private _onDroppedRate: ((sample: DroppedFrameRateEmit) => void) | null = null;
 
+  // PV3-02 — the canvas is the only visible image raster, so a paused preview
+  // must repaint when an image finishes loading. Cleared on detach.
+  private readonly _assetReadyListeners = new Set<() => void>();
+
   constructor(now?: () => number) {
     this._now =
       now ??
@@ -169,6 +186,7 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._droppedAtLastEmit = 0;
     this._layerStats.clear();
     this._lastFrameDrewAny = false;
+    this._assetReadyListeners.clear();
     if (this._camera3D) {
       this._camera3D.dispose();
       this._camera3D = null;
@@ -186,6 +204,18 @@ export class CanvasCompositor implements ICanvasCompositor {
 
   setOverlays(overlays: OverlayPayload[]): void {
     this._overlays = overlays;
+  }
+
+  /**
+   * Subscribe to "an image layer finished loading" (PV3-02). While paused the
+   * render loop is idle, so without this a newly added image stays invisible
+   * until the next seek. Returns an unsubscribe function.
+   */
+  onAssetReady(listener: () => void): () => void {
+    this._assetReadyListeners.add(listener);
+    return () => {
+      this._assetReadyListeners.delete(listener);
+    };
   }
 
   drawFrame(frame: PreviewFrame): void {
@@ -245,13 +275,15 @@ export class CanvasCompositor implements ICanvasCompositor {
    *                  show through (§6 case 8).
    *   - `image`    — normalized-bounds image at its opacity (reuses the same
    *                  image draw as {@link _drawOverlays}).
-   *   - `subtitle` — pre-wrapped lines drawn over everything (§6 case 9).
+   *   - `subtitle` — lines laid out in output pixels, drawn over everything
+   *                  (§6 case 9).
    *
-   * Layers are sorted by `z` ascending here so callers need not pre-sort. The
-   * letterbox fill is painted once from the FIRST video layer's fit-rect (or
-   * full canvas when there is no video). Adaptive-fps stats + the dropped-rate
-   * gauge are updated exactly as in {@link drawFrame} so the single-frame and
-   * multi-track paths share one performance model.
+   * Layers are sorted by `z` ascending here so callers need not pre-sort. Every
+   * layer is placed against the output frame (S11): the project aspect ratio
+   * contained in the canvas, whether or not a video is ready. The whole canvas
+   * is filled with the letterbox color first. Adaptive-fps stats + the
+   * dropped-rate gauge are updated exactly as in {@link drawFrame} so the
+   * single-frame and multi-track paths share one performance model.
    */
   renderFrame(layers: CompositorLayer[]): void {
     if (!this._ctx || !this._canvas) return;
@@ -260,13 +292,13 @@ export class CanvasCompositor implements ICanvasCompositor {
     const canvas = this._canvas;
     const sorted = [...layers].sort((a, b) => a.z - b.z);
 
-    const fit = this._baseFit(sorted, canvas);
+    const frame = this._frameRect(canvas);
     ctx.fillStyle = this._viewport?.letterboxColor ?? DEFAULT_LETTERBOX_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     let drewAny = false;
     for (const layer of sorted) {
-      const painted = this._drawLayer(ctx, canvas, fit, layer);
+      const painted = this._drawLayer(ctx, frame, layer);
       drewAny = painted || drewAny;
       if (layer.kind === 'video') {
         this._recordLayerStat(layer.id, painted, layer.source?.readyState ?? 0);
@@ -285,21 +317,16 @@ export class CanvasCompositor implements ICanvasCompositor {
     this._maybeEmitDroppedRate();
   }
 
-  /** Fit-rect for the lowest ready video layer, or full-canvas fallback. */
-  private _baseFit(layers: readonly CompositorLayer[], canvas: HTMLCanvasElement): FitRect {
-    for (const layer of layers) {
-      if (layer.kind !== 'video') continue;
-      const source = layer.source;
-      if (!source || source.readyState < 2) continue;
-      const intrinsicW = source.videoWidth || canvas.width;
-      const intrinsicH = source.videoHeight || canvas.height;
-      return fitContain({
-        sourceWidth: intrinsicW,
-        sourceHeight: intrinsicH,
-        destWidth: canvas.width,
-        destHeight: canvas.height,
-        targetAspectRatio: this._viewport?.aspectRatio,
-      });
+  /**
+   * The output frame inside the canvas (S11): the project aspect ratio
+   * contained in the canvas, or the whole canvas without a viewport. It never
+   * depends on a video being ready, so overlays do not jump when one becomes
+   * drawable.
+   */
+  private _frameRect(canvas: HTMLCanvasElement): FitRect {
+    const aspect = this._viewport?.aspectRatio;
+    if (aspect && aspect > 0) {
+      return outputFrameRect(canvas.width, canvas.height, aspect);
     }
     return { x: 0, y: 0, width: canvas.width, height: canvas.height };
   }
@@ -307,45 +334,43 @@ export class CanvasCompositor implements ICanvasCompositor {
   /** Draw one layer. Returns true when it actually painted pixels. */
   private _drawLayer(
     ctx: CanvasRenderingContext2D,
-    canvas: HTMLCanvasElement,
-    fit: FitRect,
+    frame: FitRect,
     layer: CompositorLayer,
   ): boolean {
     switch (layer.kind) {
       case 'video':
-        return this._drawVideoLayer(ctx, canvas, layer);
+        return this._drawVideoLayer(ctx, frame, layer);
       case 'image':
-        return this._drawImageLayer(ctx, fit, layer);
+        return this._drawImageLayer(ctx, frame, layer);
       case 'subtitle':
-        return this._drawSubtitleLayer(ctx, canvas, fit, layer);
+        return this._drawSubtitleLayer(ctx, frame, layer);
     }
   }
 
+  /**
+   * A video is contained in the output frame by its OWN aspect ratio (PV3-01),
+   * mirroring export's scale-then-pad; camera motion acts on that content rect,
+   * as export applies motion between scale and pad.
+   */
   private _drawVideoLayer(
     ctx: CanvasRenderingContext2D,
-    canvas: HTMLCanvasElement,
+    frame: FitRect,
     layer: Extract<CompositorLayer, { kind: 'video' }>,
   ): boolean {
     const source = layer.source;
     if (!source || source.readyState < 2) return false;
     if (layer.opacity <= 0) return false;
-    const intrinsicW = source.videoWidth || canvas.width;
-    const intrinsicH = source.videoHeight || canvas.height;
-    const fit = fitContain({
-      sourceWidth: intrinsicW,
-      sourceHeight: intrinsicH,
-      destWidth: canvas.width,
-      destHeight: canvas.height,
-      targetAspectRatio: this._viewport?.aspectRatio,
-    });
-    if (fit.width <= 0 || fit.height <= 0) return false;
+    const intrinsicW = source.videoWidth || frame.width;
+    const intrinsicH = source.videoHeight || frame.height;
+    const content = fitSourceInFrame(intrinsicW, intrinsicH, frame);
+    if (content.width <= 0 || content.height <= 0) return false;
     if (layer.camera) {
-      return this._drawCameraVideoLayer(ctx, source, fit, layer.camera, layer.opacity, intrinsicW, intrinsicH);
+      return this._drawCameraVideoLayer(ctx, source, content, layer.camera, layer.opacity, intrinsicW, intrinsicH);
     }
     ctx.save();
     ctx.globalAlpha = clamp01(layer.opacity);
     try {
-      ctx.drawImage(source, fit.x, fit.y, fit.width, fit.height);
+      ctx.drawImage(source, content.x, content.y, content.width, content.height);
       ctx.restore();
       return true;
     } catch {
@@ -646,12 +671,12 @@ export class CanvasCompositor implements ICanvasCompositor {
 
   private _drawSubtitleLayer(
     ctx: CanvasRenderingContext2D,
-    canvas: HTMLCanvasElement,
-    fit: FitRect,
+    frame: FitRect,
     layer: Extract<CompositorLayer, { kind: 'subtitle' }>,
   ): boolean {
-    if (layer.lines.length === 0) return false;
-    this._drawSubtitleLines(ctx, canvas, fit, layer.lines, layer.style);
+    if (!(layer.outputHeight > 0) || frame.height <= 0) return false;
+    if (!layer.lines.some((line) => line.text.trim())) return false;
+    this._drawSubtitleLines(ctx, frame, layer);
     return true;
   }
 
@@ -857,47 +882,41 @@ export class CanvasCompositor implements ICanvasCompositor {
   }
 
   /**
-   * Draw pre-wrapped subtitle lines (multi-track path — SubtitleLayer owns the
-   * wrap). Lines are stacked upward from the vertical anchor so the block is
-   * bottom-anchored, matching the single-line {@link _drawSubtitle} baseline.
+   * Draw subtitle lines laid out in OUTPUT pixels (EXO-09), scaled by
+   * `frame.height / outputHeight` so glyph size and placement match export.
+   * Like drawtext: each line centred on the frame, a 2px black border (canvas
+   * strokes centred on the path, so the line is twice as wide), an optional
+   * box padded by `boxborderw`, and blank lines keep their slot unpainted.
    */
   private _drawSubtitleLines(
     ctx: CanvasRenderingContext2D,
-    canvas: HTMLCanvasElement,
-    fit: FitRect,
-    lines: string[],
-    style: SubtitleStyle,
+    frame: FitRect,
+    layer: Extract<CompositorLayer, { kind: 'subtitle' }>,
   ): void {
-    if (lines.length === 0) return;
+    const scale = frame.height / layer.outputHeight;
+    const fontSize = layer.style.fontSize * scale;
+    const boxPad = SUBTITLE_BOX_BORDER_PX * scale;
+    const x = frame.x + frame.width / 2;
     ctx.save();
-    const fontStyle = `${style.italic ? 'italic ' : ''}${style.bold ? 'bold ' : ''}${style.fontSize}px sans-serif`;
-    ctx.font = fontStyle;
-    ctx.textAlign = style.align ?? 'center';
-    ctx.textBaseline = 'middle';
-    const vAnchor = style.vAnchor ?? 0.9;
-    const xCenter = fit.x + fit.width / 2;
-    const lineHeight = style.fontSize * 1.25;
-    const anchorY = fit.y + fit.height * vAnchor;
-    const blockHeight = lineHeight * lines.length;
-    // Top line so the whole block ends at the anchor (bottom-anchored stack).
-    const firstLineY = anchorY - blockHeight + lineHeight / 2;
-    lines.forEach((line, index) => {
-      const y = firstLineY + index * lineHeight;
-      if (style.background) {
-        ctx.fillStyle = style.background;
-        const metrics = ctx.measureText(line);
-        const padX = style.fontSize * 0.4;
-        const padY = style.fontSize * 0.3;
-        ctx.fillRect(
-          xCenter - metrics.width / 2 - padX,
-          y - style.fontSize / 2 - padY,
-          metrics.width + padX * 2,
-          style.fontSize + padY * 2,
-        );
+    ctx.globalAlpha = clamp01(layer.opacity);
+    ctx.font = `${fontSize}px ${subtitleFontStack(layer.style.fontFamily)}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = SUBTITLE_BORDER_PX * 2 * scale;
+    ctx.strokeStyle = SUBTITLE_STROKE_COLOR;
+    for (const line of layer.lines) {
+      if (!line.text.trim()) continue;
+      const y = frame.y + line.topY * scale;
+      if (layer.style.background) {
+        const width = ctx.measureText(line.text).width;
+        ctx.fillStyle = layer.style.background;
+        ctx.fillRect(x - width / 2 - boxPad, y - boxPad, width + 2 * boxPad, fontSize + 2 * boxPad);
       }
-      ctx.fillStyle = style.color;
-      ctx.fillText(line, xCenter, y);
-    });
+      ctx.strokeText(line.text, x, y);
+      ctx.fillStyle = layer.style.color;
+      ctx.fillText(line.text, x, y);
+    }
     ctx.restore();
   }
 
@@ -905,11 +924,39 @@ export class CanvasCompositor implements ICanvasCompositor {
     if (typeof Image === 'undefined') return null;
     const cached = this._imageCache.get(src);
     if (cached) return cached;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = src;
+    const img = this._createImage(src, true);
     this._imageCache.set(src, img);
     return img;
+  }
+
+  /**
+   * Load an image and repaint once it arrives (PV3-02). An anonymous CORS
+   * request that fails (a remote host without CORS headers) is retried once
+   * without `crossOrigin`: the 2D draw works on a tainted image, and the 3D
+   * path and `captureFrame` already degrade on one.
+   */
+  private _createImage(src: string, anonymous: boolean): HTMLImageElement {
+    const img = new Image();
+    if (anonymous) {
+      img.crossOrigin = 'anonymous';
+      img.onerror = () => {
+        if (this._imageCache.get(src) !== img) return;
+        this._imageCache.set(src, this._createImage(src, false));
+      };
+    }
+    img.onload = () => this._notifyAssetReady();
+    img.src = src;
+    return img;
+  }
+
+  private _notifyAssetReady(): void {
+    this._assetReadyListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (error) {
+        console.warn('[CanvasCompositor] asset-ready listener failed', error);
+      }
+    });
   }
 }
 

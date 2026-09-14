@@ -33,6 +33,7 @@ import { createCheckOverlapsTool, summarizeOverlapReport } from './checkOverlaps
 import { createAutoFixOverlapsTool } from './autoFixOverlaps';
 import { ItemPlacementService, type OverlapReport } from '@/components/video/timeline/domain/services/ItemPlacementService';
 import { TrackTypeUtils } from '@/components/video/timeline/domain/value-objects/TrackType';
+import { isReorganisable } from '../reconcile';
 
 // --- Shared helpers used by tools ---
 
@@ -163,11 +164,39 @@ export function checkTrackDurationConstraint(state: TimelineState) {
 }
 
 /**
- * Run overlap detection across the current timeline and return the raw
- * report list. Pure: does not mutate state.
+ * Overlaps an edit should warn about: only on the tracks it touched
+ * (`trackIds`, all tracks when omitted) and only where auto_fix_overlaps can
+ * repair them. An unrelated subtitle or locked-track overlap used to ride
+ * along on every edit and sent the model into an auto_fix loop it could not
+ * finish. Pure: does not mutate state.
  */
-export function runOverlapPostCheck(state: TimelineState): OverlapReport[] {
-  return ItemPlacementService.findAllOverlaps(state.tracks);
+export function runOverlapPostCheck(
+  state: TimelineState,
+  trackIds?: readonly string[],
+): OverlapReport[] {
+  const tracks = state.tracks.filter(
+    track => isReorganisable(track) && (!trackIds || trackIds.includes(track.id)),
+  );
+  return ItemPlacementService.findAllOverlaps(tracks);
+}
+
+/** Whether auto_fix_overlaps can repair the overlap (video / audio, unlocked). */
+export function isOverlapAutoFixable(state: TimelineState, report: OverlapReport): boolean {
+  const track = findTrack(state, report.trackId);
+  return track ? isReorganisable(track) : false;
+}
+
+/** Every same-track overlap, as get_timeline and check_timeline_overlaps list it. */
+export function describeOverlaps(state: TimelineState, reports: readonly OverlapReport[]) {
+  return reports.map(report => ({
+    trackId: report.trackId,
+    trackType: report.trackType,
+    clipAId: report.a.clipId,
+    clipBId: report.b.clipId,
+    overlapStart: report.overlapStart,
+    overlapEnd: report.overlapEnd,
+    autoFixable: isOverlapAutoFixable(state, report),
+  }));
 }
 
 /**

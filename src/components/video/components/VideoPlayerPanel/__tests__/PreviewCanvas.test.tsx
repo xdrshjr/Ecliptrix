@@ -12,13 +12,13 @@
  * What we verify (the surface useCompositionPlayback / the engine consume):
  *  - renders the preview <canvas> + a hidden decode-source container;
  *  - the imperative handle exposes getCanvas / resolveTrackElements /
- *    resolveAudioElement / measureSubtitle (== MultiTrackAttachDeps inputs);
+ *    resolveAudioElement (== MultiTrackAttachDeps inputs);
  *  - resolveTrackElements lazily creates ONE active + ONE prewarm <video> per
  *    track and caches per track id;
  *  - resolveAudioElement lazily creates + caches one media element per track;
  *  - the host NEVER assigns `src` on the decode <video>s (VideoSourcePool owns
  *    src — RC-B);
- *  - measureSubtitle uses a real 2d context with the compositor font;
+ *  - the host no longer measures subtitle text (EXO-09 lays out in output px);
  *  - DPR-aware ResizeObserver sizing.
  */
 
@@ -39,7 +39,6 @@ describe('PreviewCanvas — DOM host contract', () => {
     expect(src).toMatch(/getCanvas:\s*\(\)\s*=>\s*canvasRef\.current/);
     expect(src).toMatch(/resolveTrackElements\b/);
     expect(src).toMatch(/resolveAudioElement\b/);
-    expect(src).toMatch(/measureSubtitle\b/);
   });
 
   it('resolveTrackElements lazily creates one active + one prewarm <video> per track and caches it', () => {
@@ -67,11 +66,9 @@ describe('PreviewCanvas — DOM host contract', () => {
     expect(src).not.toMatch(/setAttribute\(\s*['"]src['"]/);
   });
 
-  it('measureSubtitle measures via a real 2d context using the compositor font', () => {
-    expect(src).toMatch(/getContext\('2d'\)/);
-    expect(src).toMatch(/ctx\.font\s*=\s*subtitleFont\(style\)/);
-    expect(src).toMatch(/ctx\.measureText\(text\)\.width/);
-    expect(src).toMatch(/\$\{style\.fontSize\}px sans-serif/);
+  it('does not measure subtitle text: subtitles are laid out in output pixels (EXO-09)', () => {
+    expect(src).not.toMatch(/measureText/);
+    expect(src).not.toMatch(/getContext\('2d'\)/);
   });
 
   it('keeps the canvas DPR-sized via a ResizeObserver', () => {

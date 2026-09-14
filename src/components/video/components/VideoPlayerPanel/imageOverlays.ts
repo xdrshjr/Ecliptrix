@@ -9,12 +9,23 @@
 
 import type { TimelineState, MaterialItem, ImagePosition } from '@/types';
 import { isStillImageItem } from '../../timeline/infrastructure/renderableTimeline';
+import { selectPlaybackUrl, toAbsolutePlaybackUrl } from '../../lib/selectPlaybackUrl';
 
 export interface ActiveImageOverlay {
   id: string;
   url: string;
   position: ImagePosition;
   materialId?: string;
+  /** The item's track is locked: the handle is shown read-only (PV3-04). */
+  isLocked: boolean;
+}
+
+/**
+ * The image URL the preview draws: the same local reference export sends
+ * (cached / uploaded file first), falling back to the material URL (PV3-02).
+ */
+export function imageOverlaySourceUrl(material: MaterialItem): string {
+  return toAbsolutePlaybackUrl(selectPlaybackUrl(material, { purpose: 'export' })) || material.url || '';
 }
 
 export type ImageOverlayPlaybackMode = 'composition' | 'preview';
@@ -69,12 +80,14 @@ export function selectActiveImageOverlays(
       }
       const material = materials.find((m) => m.id === item.materialId);
       if (!isStillImageItem(item, material)) continue;
-      if (material && material.url) {
+      const url = material ? imageOverlaySourceUrl(material) : '';
+      if (url) {
         overlays.push({
           id: item.id,
-          url: material.url,
+          url,
           position: item.imagePosition || DEFAULT_OVERLAY_POSITION,
           materialId: item.materialId,
+          isLocked: track.isLocked === true,
         });
       } else if (onMissing) {
         onMissing({

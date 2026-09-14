@@ -142,7 +142,7 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
         type: 'add_clip',
         clip: newClip,
         // Snapshot the playback fields so the clip survives the material leaving the library.
-        material: { ...toAgentClipMaterial(material), url: material.url },
+        material: toAgentClipMaterial(material),
       });
 
       const startTime = findClip(context.timelineState, newClip.id)?.item.startTime ?? requestedStartTime;
@@ -150,7 +150,7 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
-      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapReports = runOverlapPostCheck(context.timelineState, [trackId]);
       const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {

@@ -8,8 +8,8 @@ can show a localised message instead of a raw Python dict (AM-07).
 from collections import Counter
 from typing import Optional
 
-from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, status
+from fastapi.responses import JSONResponse, Response
 
 from app.logger import get_logger
 from app.models.ai_mixed_editing_models import (
@@ -23,6 +23,11 @@ from app.services.ai_mixed_editing_service import (
     AIMixModelNotConfiguredError,
     AIMixPlanUnparseableError,
     AIMixUpstreamError,
+)
+from app.utils.client_disconnect import (
+    CLIENT_CLOSED_REQUEST_STATUS,
+    ClientDisconnectedError,
+    run_until_client_disconnects,
 )
 
 # Initialize router and logger
@@ -97,17 +102,27 @@ def _invalid_request_response(
     )
 
 
+async def _generate_timeline(request: AIMixedEditingRequest):
+    """Create the service and build the plan as one cancellable unit of work."""
+    service = await AIMixedEditingService.create()
+    return await service.generate_mixed_editing(
+        materials=request.materials, task_id=request.taskId
+    )
+
+
 @router.post(
     "/ai-mixed-editing",
     response_model=AIMixedEditingResponse,
     responses=_ERROR_RESPONSES,
 )
-async def ai_mixed_editing(request: AIMixedEditingRequest):
+async def ai_mixed_editing(request: AIMixedEditingRequest, http_request: Request):
     """
     AI mixed editing endpoint for automatic video editing.
 
     Returns AIMixedEditingResponse on success, otherwise an ErrorResponse
     with status 400 / 422 / 500 / 502 / 503 and an ``AI_MIX_*`` error_code.
+    When the client disconnects (the user cancelled), the LLM work is
+    cancelled and the handler answers 499 (AM2-04).
     """
     invalid_request = _invalid_request_response(request)
     if invalid_request is not None:
@@ -124,10 +139,12 @@ async def ai_mixed_editing(request: AIMixedEditingRequest):
     )
 
     try:
-        service = await AIMixedEditingService.create()
-        timeline_data = await service.generate_mixed_editing(
-            materials=request.materials, task_id=task_id
+        timeline_data = await run_until_client_disconnects(
+            http_request, _generate_timeline(request)
         )
+    except ClientDisconnectedError:
+        logger.info(f"AI mixed editing cancelled by the client for task {task_id}")
+        return Response(status_code=CLIENT_CLOSED_REQUEST_STATUS)
     except AIMixError as error:
         # The service already logged the cause, with a traceback where one
         # helps; repeating it here would only double the noise.

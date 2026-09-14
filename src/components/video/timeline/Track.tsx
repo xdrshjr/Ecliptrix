@@ -6,8 +6,10 @@ import {
   useTimelineStore,
   removeTrackAction,
   toggleTrackLockAction,
+  toggleTrackMuteAction,
   toggleTrackVisibilityAction,
 } from './store';
+import type { MissingMaterialPredicate } from './lib/missingMaterial';
 import type { TrackData } from './domain/types';
 import type { MaterialItem } from '@/types';
 import TimelineItem, { type LocalProxyMaskState } from './TimelineItem';
@@ -67,6 +69,8 @@ interface TrackProps {
    * timeline" (playback urls, storage key, sentence segments included).
    */
   onMaterialDrop: (materialId: string, trackId: string) => void;
+  /** Whether a clip's material is gone; omitted until the library has loaded (N-01). */
+  isMaterialMissing?: MissingMaterialPredicate;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +88,7 @@ const Track: React.FC<TrackProps> = ({
   onRetryLocalDownload,
   onOpenCameraMotion,
   onMaterialDrop,
+  isMaterialMissing,
 }) => {
   const volumeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -195,6 +200,11 @@ const Track: React.FC<TrackProps> = ({
 
   const handleLockClick = () => {
     toggleTrackLockAction(() => useTimelineStore.getState(), trackId);
+  };
+
+  const handleMuteClick = () => {
+    if (track.isLocked) return;
+    toggleTrackMuteAction(() => useTimelineStore.getState(), trackId);
   };
 
   const handleVisibilityClick = () => {
@@ -329,14 +339,17 @@ const Track: React.FC<TrackProps> = ({
       style={{ minWidth: '100%' }}
     >
       {/* Track controls panel — left accent strip cues the per-type color. */}
+      {/* Sticky so names and controls stay in view on a scrolled timeline
+          (UI3-10). Opaque and above clips (z ≤ 10); a hidden track dims the
+          contents, never the background, or clips would show through. */}
       <div
-        className={`track-controls w-56 bg-muted border-r border-border transition-opacity ${
-          track.isVisible ? '' : 'opacity-60'
-        }`}
+        className={`track-controls sticky left-0 z-20 w-56 bg-muted border-r border-border`}
         style={{ boxShadow: `inset 3px 0 0 0 ${getTrackAccent()}` }}
       >
         <div
-          className="flex items-center justify-between p-2"
+          className={`flex items-center justify-between p-2 transition-opacity ${
+            track.isVisible ? '' : 'opacity-60'
+          }`}
           style={{ height: trackHeight }}
         >
           {/* Left: icon + name */}
@@ -372,7 +385,6 @@ const Track: React.FC<TrackProps> = ({
                         : 'bg-muted text-muted-foreground hover:bg-accent'
                   }`}
                   aria-label={volumeBase}
-                  title={volumeBase}
                   aria-haspopup="dialog"
                   aria-expanded={volumeSliderOpen}
                   aria-controls={volumePopoverId}
@@ -389,12 +401,15 @@ const Track: React.FC<TrackProps> = ({
                     )}
                   </svg>
                 </button>
-
-                {/* Volume slider popover — rendered once globally, controlled by store */}
-                {volumeSliderOpen && <VolumeSlider />}
               </PortalTooltip>
               );
             })()}
+
+            {/* Volume slider popover — positioned from the store and portalled
+                into <body>. It stays outside the button's PortalTooltip: React
+                bubbles the popover's focus and hover through the component
+                tree, which kept re-opening that tooltip while adjusting. */}
+            {volumeSliderOpen && <VolumeSlider />}
 
             {/* Edit subtitles button (subtitle track only) */}
             {track.type === 'subtitle' && (
@@ -415,11 +430,6 @@ const Track: React.FC<TrackProps> = ({
                     }
                   }}
                   disabled={track.items.length === 0 || track.isLocked}
-                  title={
-                    track.items.length === 0 ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.editSubtitlesHint}` :
-                    track.isLocked ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.trackLocked}` :
-                    `${t.timeline.track.editSubtitles} - ${trackDisplayName}`
-                  }
                   aria-label={
                     track.items.length === 0 ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.editSubtitlesHint}` :
                     track.isLocked ? `${t.timeline.track.editSubtitles} - ${trackDisplayName} — ${t.timeline.track.trackLocked}` :
@@ -452,19 +462,12 @@ const Track: React.FC<TrackProps> = ({
               <button
                 onClick={handleSelectAllClick}
                 disabled={track.items.length === 0 || track.isLocked}
-                title={
-                  track.items.length === 0
-                    ? `${t.timeline.track.selectAll} - ${trackDisplayName} — ${t.timeline.track.selectAllEmptyHint}`
-                    : track.isLocked
-                      ? `${t.timeline.track.selectAll} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
-                      : `${t.timeline.track.selectAll} - ${trackDisplayName}`
-                }
                 className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                   (track.items.length === 0 || track.isLocked)
                     ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground'
                     : allItemsSelected
-                      ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                      : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                      ? 'bg-primary-a/10 text-primary hover:bg-primary-a/20'
+                      : 'bg-muted text-muted-foreground hover:bg-primary-a/10 hover:text-primary'
                 }`}
                 aria-label={
                   track.items.length === 0
@@ -480,6 +483,37 @@ const Track: React.FC<TrackProps> = ({
               </button>
             </PortalTooltip>
 
+            {/* Mute button (audio tracks) — a monitoring switch, so it records
+                no undo entry (ME-12). "M" as in an NLE track header, so it
+                never reads as the volume button next to it. Video tracks get
+                none: preview and export ignore isMuted on them, so the button
+                would promise silence and still play the embedded audio. */}
+            {track.type === 'audio' && (() => {
+              const muteBase = `${track.isMuted ? t.timeline.track.unmute : t.timeline.track.mute} - ${trackDisplayName}`;
+              const muteLabel = track.isLocked ? `${muteBase} — ${t.timeline.track.trackLocked}` : muteBase;
+              return (
+                <PortalTooltip className="relative" label={muteLabel}>
+                  <button
+                    type="button"
+                    onClick={handleMuteClick}
+                    disabled={track.isLocked}
+                    aria-pressed={track.isMuted}
+                    aria-label={muteLabel}
+                    data-testid={`track-mute-${track.id}`}
+                    className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] text-[10px] font-bold leading-none ${
+                      track.isLocked
+                        ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
+                        : track.isMuted
+                          ? 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-500/30'
+                          : 'bg-muted text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    <span aria-hidden="true">M</span>
+                  </button>
+                </PortalTooltip>
+              );
+            })()}
+
             {/* Lock button */}
             <PortalTooltip
               className="relative"
@@ -493,7 +527,6 @@ const Track: React.FC<TrackProps> = ({
                     : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
                 aria-label={`${track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock} - ${trackDisplayName}`}
-                title={`${track.isLocked ? t.timeline.track.unlock : t.timeline.track.lock} - ${trackDisplayName}`}
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                   {track.isLocked ? (
@@ -522,15 +555,12 @@ const Track: React.FC<TrackProps> = ({
                     ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
                     : `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName}`
                 }
-                title={track.isLocked
-                  ? `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
-                  : `${track.isVisible ? t.timeline.track.hide : t.timeline.track.show} - ${trackDisplayName}`}
                 className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
                     : track.isVisible
                       ? 'bg-muted text-muted-foreground hover:bg-accent'
-                      : 'bg-accent text-muted-foreground hover:bg-accent/80'
+                      : 'bg-accent text-muted-foreground hover:bg-accent-a/80'
                 }`}
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
@@ -558,9 +588,6 @@ const Track: React.FC<TrackProps> = ({
                 aria-label={track.isLocked
                   ? `${t.timeline.track.removeTrack} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
                   : `${t.timeline.track.removeTrack} - ${trackDisplayName}`}
-                title={track.isLocked
-                  ? `${t.timeline.track.removeTrack} - ${trackDisplayName} — ${t.timeline.track.trackLocked}`
-                  : `${t.timeline.track.removeTrack} - ${trackDisplayName}`}
                 className={`p-1 rounded transition-colors flex items-center justify-center w-[22px] h-[22px] ${
                   track.isLocked
                     ? 'opacity-50 cursor-not-allowed'
@@ -580,7 +607,7 @@ const Track: React.FC<TrackProps> = ({
       <div
         className={`track-content flex-1 relative ${
           isDropAccepted
-            ? 'bg-primary/10 border-2 border-primary border-dashed'
+            ? 'bg-primary-a/10 border-2 border-primary border-dashed'
             : dragOver
               ? 'bg-card border-2 border-border border-dashed cursor-not-allowed'
               : 'bg-card'
@@ -588,7 +615,9 @@ const Track: React.FC<TrackProps> = ({
         // Locked lanes keep pointer events: their clips stay selectable and
         // show the lock tooltip / not-allowed cursor; edits are refused per item.
         style={{
-          opacity: track.isVisible ? 1 : 0.3,
+          // Hidden reads dimmest; a muted audio lane is dimmed too, so it is
+          // visible at a glance which lanes will not be heard (ME-12).
+          opacity: !track.isVisible ? 0.3 : track.type === 'audio' && track.isMuted ? 0.6 : 1,
           height: trackHeight,
         }}
         onDragEnter={evaluateMaterialDrag}
@@ -615,6 +644,7 @@ const Track: React.FC<TrackProps> = ({
             localPreviewEnabled={localPreviewEnabled}
             onRetryLocalDownload={onRetryLocalDownload}
             onOpenCameraMotion={onOpenCameraMotion}
+            isMaterialMissing={isMaterialMissing?.(item) ?? false}
           />
         ))}
 
@@ -641,7 +671,7 @@ const Track: React.FC<TrackProps> = ({
 
         {/* Drag-over overlay: where it lands, or why it can't */}
         {isDropAccepted && (
-          <div className="absolute inset-0 flex items-center justify-center bg-primary/10 bg-opacity-90 pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center bg-primary-a/10 pointer-events-none">
             <div className="bg-primary text-primary-foreground px-2 py-1 rounded">
               <div className="flex items-center space-x-1">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

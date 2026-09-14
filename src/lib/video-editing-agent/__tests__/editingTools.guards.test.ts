@@ -2,11 +2,15 @@
  * Editing tool guards: locked tracks (AG-04), track / material type
  * compatibility (AG-05), the resize_clip source bound (AG-07), negative
  * start times (AG2-08), storyboard type checks (AG2-14), trim out-points and
- * images (AG2-15) and in-use material removal (AG2-16).
+ * images (AG2-15), in-use material removal (AG2-16), overlap warnings limited
+ * to fixable overlaps on the edited track (AG2-18) and gap closing after
+ * delete (N-10).
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { MaterialItem, TimelineItem, Track } from '@/types';
 import type { ToolContext } from '../types';
+import { createVideoEditingAgent } from '../agent';
+import { createCheckOverlapsTool } from '../tools/checkOverlaps';
 import { createAddToTrackTool } from '../tools/addToTrack';
 import { createComposeStoryboardTool } from '../tools/composeStoryboard';
 import { createDeleteClipTool } from '../tools/deleteClip';
@@ -229,5 +233,65 @@ describe('editing tool guards', () => {
       recorded: 0,
       library: ['scene'],
     });
+  });
+
+  it('an edit on the video track carries no warning for subtitle overlaps', async () => {
+    const { context } = makeContext(
+      [
+        track('v1', 'video', []),
+        track('s1', 'subtitle', [
+          clip('s-a', 's1', { type: 'subtitle', startTime: 0, duration: 3 }),
+          clip('s-b', 's1', { type: 'subtitle', startTime: 2, duration: 3 }),
+        ]),
+      ],
+      [material('scene', 'video')],
+    );
+
+    const result = await createAddToTrackTool(context).execute('tc-1', { materialId: 'scene', trackId: 'v1' });
+    const details = result.details as Record<string, unknown>;
+
+    expect({ success: details.success, warned: 'overlapWarning' in details }).toEqual({ success: true, warned: false });
+  });
+
+  it('check_timeline_overlaps marks subtitle overlaps as not auto-fixable', async () => {
+    const { context } = makeContext([
+      track('v1', 'video', [clip('a', 'v1'), clip('b', 'v1', { startTime: 2 })]),
+      track('s1', 'subtitle', [
+        clip('s-a', 's1', { type: 'subtitle', startTime: 0, duration: 3 }),
+        clip('s-b', 's1', { type: 'subtitle', startTime: 2, duration: 3 }),
+      ]),
+    ]);
+
+    const result = await createCheckOverlapsTool(context).execute('tc-1', {});
+    const details = result.details as { overlaps: Array<{ trackId: string; autoFixable: boolean }>; summary: string };
+
+    expect({
+      overlaps: details.overlaps.map(overlap => [overlap.trackId, overlap.autoFixable]),
+      explainsIgnoring: details.summary.includes('autoFixable=false'),
+    }).toEqual({ overlaps: [['v1', true], ['s1', false]], explainsIgnoring: true });
+  });
+
+  it('delete_clip reports the clips it pulled earlier', async () => {
+    const { context } = makeContext([
+      track('v1', 'video', [
+        clip('a', 'v1', { duration: 5, clipEnd: 5 }),
+        clip('b', 'v1', { startTime: 5, duration: 5, clipEnd: 5 }),
+        clip('c', 'v1', { startTime: 10, duration: 5, clipEnd: 5 }),
+      ]),
+    ]);
+    // The agent's own context applies and reconciles the delete.
+    const { toolContext } = createVideoEditingAgent({
+      llmApiUrl: 'http://localhost:9999',
+      llmApiKey: 'sk-test',
+      llmModel: 'gpt-4o-mini',
+      timelineState: context.timelineState,
+      materials: [],
+      conversationHistory: [{ id: 'u1', role: 'user', content: 'hi', timestamp: new Date() }],
+      apiBaseUrl: 'http://localhost:3088',
+    });
+
+    const result = await createDeleteClipTool(toolContext).execute('tc-1', { clipId: 'b' });
+
+    expect(result.details).toMatchObject({ success: true, shiftedClips: [{ clipId: 'c', from: 10, to: 5 }] });
   });
 });

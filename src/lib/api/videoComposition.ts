@@ -12,7 +12,7 @@
  * `RequestOptions.retries` to the wrapper directly.
  */
 
-import { http } from '@/lib/api/http-client';
+import { ApiError, http } from '@/lib/api/http-client';
 
 /**
  * Transition applied to a clip edge — wire shape (snake_case-agnostic; the
@@ -169,14 +169,25 @@ export interface VideoCompositionRequest {
 }
 
 /**
+ * One clip the backend could not use — the fields the UI reads from the
+ * pydantic `VideoProcessingError` (`video_models.py`).
+ */
+export interface CompositionFailedVideo {
+  video_name: string;
+  stage?: string;
+  error_message?: string;
+}
+
+/**
  * Failure details the backend attaches to a failed composition — mirrors the
  * pydantic `CompositionErrorDetails` (`video_models.py`). The async-exception
  * path only records `{ error }`, so every field is optional on the wire.
+ * `error_summary` and `recovery_suggestions` are backend English: logs only.
  */
 export interface CompositionErrorDetails {
   error_summary?: string;
   recovery_suggestions?: string[];
-  failed_videos?: unknown[];
+  failed_videos?: CompositionFailedVideo[];
   composition_stage?: string;
   error?: string;
 }
@@ -187,6 +198,16 @@ export interface CompositionErrorDetails {
  * still returned it.
  */
 export type CompositionStatus = 'processing' | 'completed' | 'failed' | 'error';
+
+/** Where a running composition is (EXO-07). `queued` waits for a free slot. */
+export type CompositionStage =
+  | 'queued'
+  | 'resolving'
+  | 'normalizing'
+  | 'compositing'
+  | 'mixing'
+  | 'overlays'
+  | 'finalizing';
 
 /**
  * Something that did not make it into a finished video (S7): an image overlay,
@@ -224,6 +245,16 @@ export interface CompositionStatusResponse {
   status: CompositionStatus;
   progress: number;
   start_time: number;
+  /** Absent on backends older than round 3; the UI then falls back to progress. */
+  stage?: CompositionStage;
+  /**
+   * Unix seconds of the last ffmpeg `-progress` write while a long command
+   * runs (RV3-02). A change means the export is still working even though
+   * progress and stage stay put.
+   */
+  activity_at?: number;
+  /** Failure stage; `cancelled` when the user cancelled the export. */
+  composition_stage?: string;
   processing_time?: number;
   output_file_size?: number;
   error_details?: CompositionErrorDetails;
@@ -242,6 +273,38 @@ export interface CompositionStatusResponse {
   /** Content left out of a finished video (S7); may be non-empty on `completed`. */
   degradations?: CompositionDegradation[];
 }
+
+export interface PollCompositionOptions {
+  /** Delay between status requests (default 2 s). */
+  pollIntervalMs?: number;
+  /**
+   * Give up after this long without any change in progress, stage or ffmpeg
+   * activity (default 10 minutes). Time spent queued never counts.
+   */
+  stallTimeoutMs?: number;
+  /** Aborting stops polling and rejects with an `AbortError`. */
+  signal?: AbortSignal;
+}
+
+/**
+ * A composition the backend reported as failed. `message` keeps the backend
+ * summary for the logs; the UI reads `details` (stage and failed clips) and
+ * words the failure itself (EX3-08).
+ */
+export class CompositionFailedError extends Error {
+  readonly details: CompositionErrorDetails;
+
+  constructor(summary: string, details: CompositionErrorDetails) {
+    super(summary);
+    this.name = 'CompositionFailedError';
+    this.details = details;
+  }
+}
+
+const DEFAULT_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_STALL_TIMEOUT_MS = 600_000;
+/** Cancel answers meaning "nothing left to cancel": already settled, or unknown. */
+const SETTLED_CANCEL_STATUSES: ReadonlySet<number> = new Set([404, 409]);
 
 /**
  * Validate the composition request body before any network call.
@@ -287,19 +350,20 @@ function firstNonBlank(candidates: Array<string | undefined>): string | undefine
 }
 
 /**
- * User-facing message for a failed composition status. Reads the backend's
- * `error_summary` first (the old code read only `error_details.error`, which
- * the structured failure path never sets, so users always saw
- * "Unknown error"), then appends the first recovery suggestion.
+ * The failure a `failed` / `error` status rejects with. The summary is read
+ * from `error_summary` first (the structured failure path never sets
+ * `error_details.error`); a top-level `composition_stage` fills in a missing
+ * one so a cancelled export is recognisable either way.
  */
-function buildCompositionFailureMessage(status: CompositionStatusResponse): string {
-  const details = status.error_details;
+function toCompositionFailedError(status: CompositionStatusResponse): CompositionFailedError {
+  const details = status.error_details ?? {};
   const reason =
-    firstNonBlank([details?.error_summary, details?.error, status.error]) ??
-    'Unknown error';
-  const suggestion = firstNonBlank([details?.recovery_suggestions?.[0]]);
-  const message = `Composition failed: ${reason}`;
-  return suggestion ? `${message}\n${suggestion}` : message;
+    firstNonBlank([details.error_summary, details.error, status.error]) ?? 'Unknown error';
+  const compositionStage = details.composition_stage ?? status.composition_stage;
+  return new CompositionFailedError(`Composition failed: ${reason}`, {
+    ...details,
+    ...(compositionStage ? { composition_stage: compositionStage } : {}),
+  });
 }
 
 function createPollingAbortError(): DOMException {
@@ -307,11 +371,87 @@ function createPollingAbortError(): DOMException {
 }
 
 // Named like http-client's own timeout so callers can tell "polling gave up"
-// apart from a backend failure whose text merely mentions a timeout.
+// apart from a backend failure whose text merely mentions a timeout. The code
+// tells it apart from one status request that timed out, which is no stall.
 function createPollingTimeoutError(): Error {
-  const error = new Error('Composition polling timeout');
-  error.name = 'TimeoutError';
-  return error;
+  return Object.assign(new Error('Composition polling timeout'), {
+    name: 'TimeoutError',
+    code: 'COMPOSITION_STALLED',
+  });
+}
+
+/** Failed status requests in a row tolerated before polling gives up. */
+const MAX_CONSECUTIVE_STATUS_FAILURES = 3;
+
+/**
+ * Counts failed status requests in a row (EXO-07). The local service can miss
+ * an answer while ffmpeg keeps rendering (a request timeout, a network error,
+ * a 5xx); that is retried on the next poll instead of abandoning an export the
+ * backend is still producing. Anything else, e.g. a 404, ends polling at once.
+ */
+function createStatusFailureBudget(compositionId: string) {
+  let consecutiveFailures = 0;
+  return {
+    reset(): void {
+      consecutiveFailures = 0;
+    },
+    /** Logs a retryable failure and returns true; false means polling ends with it. */
+    absorb(error: unknown): boolean {
+      const isTransient = error instanceof ApiError
+        ? error.status === 0 || error.status >= 500
+        : error instanceof Error && error.name === 'TimeoutError';
+      consecutiveFailures += 1;
+      if (!isTransient || consecutiveFailures >= MAX_CONSECUTIVE_STATUS_FAILURES) {
+        return false;
+      }
+      console.warn('[videoComposition] status request failed; polling again', {
+        compositionId,
+        attempt: consecutiveFailures,
+        error: String(error),
+      });
+      return true;
+    },
+  };
+}
+
+/**
+ * Measures "no progress" time (EXO-07). A long export is not a stalled one:
+ * any change of progress, stage or ffmpeg activity restarts the clock, and a
+ * composition waiting in the queue is not running yet.
+ */
+function createStallWatch(stallTimeoutMs: number) {
+  let lastSignature: string | null = null;
+  let lastChangeAt = Date.now();
+  return {
+    hasStalled(status: CompositionStatusResponse): boolean {
+      const signature = JSON.stringify([
+        status.progress, status.stage ?? null, status.activity_at ?? null,
+      ]);
+      if (status.stage === 'queued' || signature !== lastSignature) {
+        lastSignature = signature;
+        lastChangeAt = Date.now();
+        return false;
+      }
+      return Date.now() - lastChangeAt >= stallTimeoutMs;
+    },
+  };
+}
+
+/** The error that ends polling on this status, or null to resolve / keep polling. */
+function pollingFailure(
+  status: CompositionStatusResponse,
+  stallWatch: ReturnType<typeof createStallWatch>,
+): Error | null {
+  if (status.status === 'completed') return null;
+  if (status.status === 'failed' || status.status === 'error') {
+    return toCompositionFailedError(status);
+  }
+  if (status.status !== 'processing') {
+    // Anything else never turns into completed/failed; polling it would leave
+    // the user waiting for nothing (EXO-08).
+    return new Error(`Unexpected composition status "${String(status.status)}"`);
+  }
+  return stallWatch.hasStalled(status) ? createPollingTimeoutError() : null;
 }
 
 /**
@@ -352,6 +492,30 @@ export class VideoCompositionAPI {
   }
 
   /**
+   * Ask the backend to stop a queued or running composition (EXO-07). The
+   * backend stops at its next stage boundary. A composition that already
+   * settled, or that the backend no longer knows, needs no cancel: that is
+   * logged and resolves. Any other failure is thrown for the caller to log.
+   */
+  async cancelComposition(compositionId: string): Promise<void> {
+    try {
+      await http.post(`/api/video-compose/${compositionId}/cancel`, undefined, {
+        timeoutMs: 30_000,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && SETTLED_CANCEL_STATUSES.has(error.status)) {
+        console.warn('[videoComposition] nothing left to cancel', {
+          compositionId,
+          status: error.status,
+          code: error.code,
+        });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Trigger authenticated download of a composed video.
    *
    * **Phase 3.8 (2026-04-07) bug fix.** This previously used a hidden
@@ -384,19 +548,27 @@ export class VideoCompositionAPI {
   /**
    * Poll composition status until completion.
    *
-   * Aborting `signal` clears the pending poll and rejects with a
-   * `DOMException` named `AbortError`; a status request already in flight is
-   * ignored once it returns (no `onProgress`, no further scheduling).
+   * Rejects with `CompositionFailedError` on a failed composition, and with a
+   * `TimeoutError` only after `stallTimeoutMs` without progress (see
+   * {@link PollCompositionOptions}). A status request that times out or hits
+   * a network error / 5xx is retried on the next poll, up to
+   * `MAX_CONSECUTIVE_STATUS_FAILURES` in a row. Aborting `signal` clears the
+   * pending poll and rejects with a `DOMException` named `AbortError`; a
+   * status request already in flight is ignored once it returns.
    */
   async pollCompositionStatus(
     compositionId: string,
     onProgress?: (status: CompositionStatusResponse) => void,
-    pollInterval: number = 2000,
-    maxAttempts: number = 300, // 10 minutes at 2s intervals
-    signal?: AbortSignal,
+    options: PollCompositionOptions = {},
   ): Promise<CompositionStatusResponse> {
+    const {
+      pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+      stallTimeoutMs = DEFAULT_STALL_TIMEOUT_MS,
+      signal,
+    } = options;
+    const stallWatch = createStallWatch(stallTimeoutMs);
+    const statusFailures = createStatusFailureBudget(compositionId);
     return new Promise((resolve, reject) => {
-      let attempts = 0;
       let settled = false;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -411,29 +583,26 @@ export class VideoCompositionAPI {
 
       const poll = async () => {
         try {
-          attempts++;
           const status = await this.getCompositionStatus(compositionId);
           if (settled) return; // aborted while the request was in flight
+          statusFailures.reset();
 
           onProgress?.(status);
 
-          if (status.status === 'completed') {
+          const failure = pollingFailure(status, stallWatch);
+          if (failure) {
+            finish(() => reject(failure));
+          } else if (status.status === 'completed') {
             finish(() => resolve(status));
-          } else if (status.status === 'failed' || status.status === 'error') {
-            const message = buildCompositionFailureMessage(status);
-            finish(() => reject(new Error(message)));
-          } else if (status.status !== 'processing') {
-            // Anything else never turns into completed/failed; polling it to the
-            // cap would leave the user waiting ten minutes for nothing (EXO-08).
-            const unexpected = new Error(`Unexpected composition status "${String(status.status)}"`);
-            finish(() => reject(unexpected));
-          } else if (attempts >= maxAttempts) {
-            finish(() => reject(createPollingTimeoutError()));
           } else {
-            timeoutId = setTimeout(poll, pollInterval);
+            timeoutId = setTimeout(poll, pollIntervalMs);
           }
         } catch (error) {
-          finish(() => reject(error));
+          if (!settled && statusFailures.absorb(error)) {
+            timeoutId = setTimeout(poll, pollIntervalMs);
+          } else {
+            finish(() => reject(error));
+          }
         }
       };
 
@@ -456,3 +625,8 @@ export class VideoCompositionAPI {
 
 // Export a default instance
 export const videoCompositionAPI = new VideoCompositionAPI();
+
+/** Cancel a queued or running composition; see {@link VideoCompositionAPI.cancelComposition}. */
+export function cancelComposition(compositionId: string): Promise<void> {
+  return videoCompositionAPI.cancelComposition(compositionId);
+}

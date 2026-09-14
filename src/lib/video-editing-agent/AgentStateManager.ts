@@ -31,6 +31,8 @@ export interface InternalToolCallRecord {
   params: Record<string, unknown>;
   status: 'executing' | 'completed' | 'error' | 'cancelled';
   result?: unknown;
+  /** The client applied this step's operation to the timeline. */
+  changedTimeline?: boolean;
 }
 
 export interface AgentStateManagerSnapshot {
@@ -69,6 +71,8 @@ export class AgentStateManager {
   private thinkingContent = '';
   private isThinking = false;
   private isCancelled = false;
+  /** Set by the first markCancelled, whoever asked for the stop. */
+  private isSealed = false;
 
   // -- Subscription --
   private listeners = new Set<StateChangeListener>();
@@ -135,6 +139,20 @@ export class AgentStateManager {
     this.scheduleFlush();
   }
 
+  /**
+   * Flag a tool call whose operation the client applied to the timeline, so
+   * single-step undo lists it (noop / skipped / rejected steps stay unflagged).
+   */
+  markTimelineChanged(toolCallId: string): void {
+    const idx = this.toolCalls.findIndex(tc => tc.id === toolCallId);
+    if (idx === -1) {
+      console.warn('[AgentStateManager] markTimelineChanged for unknown tool call', { toolCallId });
+      return;
+    }
+    this.toolCalls[idx] = { ...this.toolCalls[idx], changedTimeline: true };
+    this.scheduleFlush();
+  }
+
   /** Record an agent operation (timeline, material, script, storyboard, or async task). */
   addOperation(operation: AgentOperation): void {
     this.pendingOperations.push(operation);
@@ -158,10 +176,10 @@ export class AgentStateManager {
   }
 
   /**
-   * Seal the in-flight execution as user-cancelled. Any tool call still in
-   * `executing` is demoted to `cancelled`; the assistant message is flagged
-   * `isCancelled` so the next-turn `messageConverter` injects the proper
-   * "previous turn was stopped" system note.
+   * Seal the in-flight execution as cancelled. Any tool call still in
+   * `executing` is demoted to `cancelled`. Only a stop by the user flags the
+   * assistant message `isCancelled`, which makes the next-turn
+   * `messageConverter` inject the "previous turn was stopped" system note.
    *
    * Idempotent — calling twice is a no-op after the first call.
    *
@@ -169,11 +187,14 @@ export class AgentStateManager {
    *   accumulated content (only if non-empty). Set to false for the
    *   conversation-switch / unmount path which should not pollute the
    *   resume system note (spec §2.6.2).
+   * @param byUser — false for a stop the user did not ask for (server
+   *   timeout): the turn is sealed but not recorded as stopped by the user.
    */
-  markCancelled(options: { appendMarker?: boolean } = {}): void {
-    if (this.isCancelled) return;
-    this.isCancelled = true;
-    const { appendMarker = true } = options;
+  markCancelled(options: { appendMarker?: boolean; byUser?: boolean } = {}): void {
+    if (this.isSealed) return;
+    this.isSealed = true;
+    const { appendMarker = true, byUser = true } = options;
+    this.isCancelled = byUser;
     for (let i = 0; i < this.toolCalls.length; i++) {
       if (this.toolCalls[i].status === 'executing') {
         this.toolCalls[i] = { ...this.toolCalls[i], status: 'cancelled' };
@@ -319,6 +340,7 @@ export class AgentStateManager {
       params: tc.params,
       status: tc.status,
       result: tc.result,
+      ...(tc.changedTimeline ? { changedTimeline: true } : {}),
     }));
 
     return {

@@ -31,6 +31,12 @@ import type { UseCompositionPlaybackReturn } from '../../hooks/useCompositionPla
 
 export type PlaybackMode = 'composition' | 'preview';
 
+/** Progress bar fill in [0, 100]; 0 for an empty or unknown duration (N-06). */
+export function computeProgressPercent(currentTime: number, totalDuration: number): number {
+  if (!(totalDuration > 0)) return 0;
+  return Math.min(100, Math.max(0, (currentTime / totalDuration) * 100));
+}
+
 export interface MediaReadiness {
   allReady: boolean;
   readyCount: number;
@@ -236,11 +242,6 @@ export function useCompositionTransport(
     }
   }, [playbackMode, compositionPlayback, handleCompositionSeek, handleTimeSeek, updateCompositionCurrentTime]);
 
-  const getCurrentTime = useCallback(
-    () => (playbackMode === 'composition' ? compositionCurrentTime : currentTime),
-    [playbackMode, compositionCurrentTime, currentTime],
-  );
-
   const getTotalDuration = useCallback(() => {
     if (playbackMode === 'composition') {
       return compositionPlayback?.totalCompositionDuration || 0;
@@ -249,6 +250,14 @@ export function useCompositionTransport(
     if (!hasItems) return 0;
     return timelineState?.totalDuration || 0;
   }, [playbackMode, compositionPlayback, timelineState]);
+
+  // N-06: the store playhead may sit past the render end (hidden tracks, blank
+  // subtitles count there); the preview shows the last frame, so report that.
+  const getCurrentTime = useCallback(() => {
+    if (playbackMode !== 'composition') return currentTime;
+    const total = compositionPlayback?.totalCompositionDuration || 0;
+    return total > 0 ? Math.min(compositionCurrentTime, total) : compositionCurrentTime;
+  }, [playbackMode, compositionPlayback, compositionCurrentTime, currentTime]);
 
   const getCurrentlyPlaying = useCallback(
     () => (playbackMode === 'composition' ? isCompositionPlaying : isPlaying),

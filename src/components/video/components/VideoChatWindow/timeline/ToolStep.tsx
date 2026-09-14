@@ -355,7 +355,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
               {Object.keys(step.params).length > 0 && (
                 <div>
                   <div className="text-xs text-muted-foreground dark:text-zinc-500 mb-1">
-                    Parameters
+                    {t.agentTimeline.parameters}
                   </div>
                   <div className="bg-background dark:bg-zinc-800 rounded px-2 py-1.5 text-xs font-mono space-y-0.5">
                     {Object.entries(step.params).map(([key, val]) => (
@@ -374,7 +374,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
               {step.result != null && (
                 <div>
                   <div className="text-xs text-muted-foreground dark:text-zinc-500 mb-1">
-                    Result
+                    {t.agentTimeline.result}
                   </div>
                   <div className="bg-background dark:bg-zinc-800 rounded px-2 py-1.5 text-xs font-mono text-foreground dark:text-zinc-300 break-all whitespace-pre-wrap max-h-40 overflow-y-auto">
                     {resultText}

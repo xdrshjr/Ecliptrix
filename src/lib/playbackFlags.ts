@@ -28,6 +28,13 @@ const PREVIEW_PROXY_FLAG_KEY = 'ecliptrix-preview-proxy';
  * generation).
  */
 const LOCAL_PREVIEW_FLAG_KEY = 'ecliptrix-local-preview';
+/**
+ * Preview volume-boost flag (docs/plans/ai-and-manual-editing-reliability-r3
+ * ME-06). Default-ON: clip volume above 100% is heard in the preview through a
+ * WebAudio gain stage for same-origin sources. Turning it OFF writes the element
+ * volume clamped to [0,1] as before — the one-switch rollback for R3.
+ */
+const PREVIEW_VOLUME_BOOST_FLAG_KEY = 'ecliptrix-preview-volume-boost';
 
 /**
  * Resolve the preview-proxy flag (spec §3.2.1 / §3.2.4 G4).
@@ -90,9 +97,31 @@ export function isLocalPreviewEnabled(): boolean {
 }
 
 /**
+ * Resolve the preview volume-boost flag (ME-06). Same resolution order as
+ * {@link isPreviewProxyEnabled}: localStorage
+ * `ecliptrix-preview-volume-boost` → `NEXT_PUBLIC_PREVIEW_VOLUME_BOOST_ENABLED`
+ * → default **true**. Returns false outside the browser (no WebAudio there).
+ */
+export function isPreviewVolumeBoostEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.localStorage.getItem(PREVIEW_VOLUME_BOOST_FLAG_KEY);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+  } catch {
+    // localStorage may be unavailable (incognito quota, embedded webviews).
+  }
+  const env = process.env.NEXT_PUBLIC_PREVIEW_VOLUME_BOOST_ENABLED;
+  if (env === 'true') return true;
+  if (env === 'false') return false;
+  return true;
+}
+
+/**
  * Storage key constants exposed for tests / DevTools.
  */
 export const PLAYBACK_FLAG_KEYS = {
   previewProxy: PREVIEW_PROXY_FLAG_KEY,
   localPreview: LOCAL_PREVIEW_FLAG_KEY,
+  previewVolumeBoost: PREVIEW_VOLUME_BOOST_FLAG_KEY,
 } as const;

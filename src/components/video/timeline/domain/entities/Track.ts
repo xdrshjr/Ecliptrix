@@ -267,6 +267,17 @@ export class Track {
   }
 
   /**
+   * Overwrite lock, mute and visibility together, bypassing the lock guard.
+   * Used when restoring content so the flags the user set since stay as they
+   * are (S12): they are view state, not part of the edit being restored.
+   */
+  applyViewFlags(flags: { isLocked: boolean; isMuted: boolean; isVisible: boolean }): void {
+    this._isLocked = flags.isLocked;
+    this._isMuted = flags.isMuted;
+    this._isVisible = flags.isVisible;
+  }
+
+  /**
    * Set the track-level volume.
    * @throws TrackLockedError if the track is locked.
    */

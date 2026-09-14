@@ -152,6 +152,23 @@ describe('OperationApplier — track patch undo', () => {
     expect({ items: itemIds(state.value), undoable: applier.hasUndoableRecord('tc-1') })
       .toEqual({ items: ['a'], undoable: false });
   });
+
+  it('undoing a packed delete restores original positions', async () => {
+    const state = { value: makeState() };
+    state.value.tracks[0].items = [item('a', 0, 2), item('b', 2, 2), item('c', 4, 2)];
+    const applier = makeApplier(state);
+    const positions = () => state.value.tracks[0].items.map(i => [i.id, i.startTime]);
+
+    await applier.apply({ type: 'delete_clip', clipId: 'b', trackId: 'v1' }, 'tc-1');
+    const afterDelete = positions();
+    const undone = applier.undoOperation('tc-1');
+
+    expect({ afterDelete, undone, restored: positions() }).toEqual({
+      afterDelete: [['a', 0], ['c', 2]],
+      undone: { ok: true },
+      restored: [['a', 0], ['b', 2], ['c', 4]],
+    });
+  });
 });
 
 describe('OperationApplier — apply outcomes (AG2-02 / AG2-08 / AG2-16)', () => {

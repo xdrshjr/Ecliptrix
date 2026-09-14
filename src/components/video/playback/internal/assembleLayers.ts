@@ -20,16 +20,12 @@
 
 import { activeClipAt } from '../TrackScheduler';
 import { alphaFor, type TransitionClip } from '../TransitionLayer';
-import {
-  activeSubtitlesAt,
-  resolveSubtitleStyle,
-  wrapText,
-  type TextMeasurer,
-} from '../SubtitleLayer';
+import { SubtitleLayer } from '../SubtitleLayer';
 import { buildImageLayersAt, type ImageOverlayInput, type FitRect } from '../ImageOverlayLayer';
 import { resolveCameraDraw } from '../camera/resolveCameraDraw';
 import type { CompositorLayer, VideoTrackGroup } from '../types';
 import type { VideoSequenceItem, SubtitleSequenceItem } from '../../types';
+import type { OutputSize } from '../../lib/subtitleLayout';
 
 /**
  * Minimal `<video>`-readable surface for layer assembly (decode source).
@@ -64,10 +60,8 @@ export interface AssembleLayersInput {
   imageItems: readonly ImageOverlayInput[];
   /** Composition time (seconds). */
   t: number;
-  /** Max text width (px) for subtitle wrapping. */
-  subtitleMaxWidthPx: number;
-  /** Text measurer for subtitle layout (injected; jsdom uses a stub). */
-  measureSubtitle: TextMeasurer;
+  /** The exported frame size subtitles are laid out against (EXO-09). */
+  output: OutputSize;
   /** Optional fit-rect for image overlays (defaults to full canvas inside the layer). */
   imageFit?: FitRect;
   /** Base z applied to subtitle/image layers so they sit ABOVE all video. */
@@ -143,25 +137,26 @@ export function buildVideoLayers(
   return layers;
 }
 
+/** Shared layout cache: a stable subtitle is laid out once, not every frame. */
+const subtitleLayouts = new SubtitleLayer();
+
 /**
- * Build the subtitle layers active at `t`. Each active subtitle is wrapped via
- * the SubtitleLayer's pure layout (`wrapText` + `resolveSubtitleStyle`) so the
- * compositor only draws pre-laid-out lines. Empty layouts are dropped.
+ * Build the subtitle layers active at `t`. Each active subtitle is laid out in
+ * OUTPUT pixels with the export's drawtext rules (EXO-09), so the compositor
+ * only scales and draws. Subtitles with no visible line are dropped.
  */
 export function buildSubtitleLayers(
   items: readonly SubtitleSequenceItem[],
   t: number,
-  maxWidthPx: number,
-  measure: TextMeasurer,
+  output: OutputSize,
   baseZ: number,
 ): Extract<CompositorLayer, { kind: 'subtitle' }>[] {
-  const active = activeSubtitlesAt(items, t);
+  const active = subtitleLayouts.activeAt(items, t);
   const layers: Extract<CompositorLayer, { kind: 'subtitle' }>[] = [];
   active.forEach((item, index) => {
     if (!item.text) return;
-    const style = resolveSubtitleStyle(item.style);
-    const lines = wrapText(item.text, style, maxWidthPx, measure);
-    if (lines.length === 0) return;
+    const { lines, style } = subtitleLayouts.layout(item.text, item.style, output);
+    if (!lines.some((line) => line.text)) return;
     layers.push({
       kind: 'subtitle',
       id: item.id,
@@ -170,11 +165,9 @@ export function buildSubtitleLayers(
         fontSize: style.fontSize,
         color: style.color,
         background: style.background,
-        bold: style.bold,
-        italic: style.italic,
-        align: style.align,
-        vAnchor: style.vAnchor,
+        fontFamily: style.fontFamily,
       },
+      outputHeight: output.height,
       opacity: 1,
       z: baseZ + index,
     });
@@ -203,8 +196,7 @@ export function assembleLayers(input: AssembleLayersInput): CompositorLayer[] {
   const subtitles = buildSubtitleLayers(
     input.subtitleItems,
     input.t,
-    input.subtitleMaxWidthPx,
-    input.measureSubtitle,
+    input.output,
     // Subtitles sit above images so a caption is never occluded by an overlay.
     baseZ * 2,
   );

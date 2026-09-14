@@ -43,6 +43,10 @@ export interface VideoChatWindowProps {
   onUndoAll?: (messageId: string) => void;
   onUndoSingle?: (messageId: string, toolCallId: string) => void;
   onCancel?: () => void;
+  /** Clears the error card of a run that already ended. */
+  onDismissError?: () => void;
+  /** Agent messages whose steps can still be undone one by one this session. */
+  singleUndoMessageIds?: ReadonlySet<string>;
 }
 
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
@@ -61,6 +65,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onUndoAll,
   onUndoSingle,
   onCancel,
+  onDismissError,
+  singleUndoMessageIds,
 }) => {
   const { t } = useLocale();
   const { showConfirm } = useNotification();
@@ -213,6 +219,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           onUndoSingle={handleUndoSingle}
           onCancel={handleCancel}
           undoDisabled={agentIsExecuting}
+          onDismiss={onDismissError}
+          singleUndoMessageIds={singleUndoMessageIds}
         />
       ) : (
         <div className="flex-1 min-h-0" />

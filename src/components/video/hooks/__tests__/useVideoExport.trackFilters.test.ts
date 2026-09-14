@@ -327,20 +327,20 @@ describe('useVideoExport failure messages', () => {
     });
   }
 
-  it('keeps the backend reason when a failure message mentions a timeout', async () => {
+  it('does not report a failure that mentions a timeout as the polling timeout', async () => {
+    // Backend English never reaches the UI (EX3-08); the text is only logged.
     await exportWithPollingError(
       new Error('Composition failed: ffprobe timeout on clip 2'),
     );
 
-    expect(showError).toHaveBeenCalledWith(
-      'failed: Composition failed: ffprobe timeout on clip 2',
-      15000,
-    );
+    expect(showError).toHaveBeenCalledWith('failed', 15000);
   });
 
   it('shows the timeout notice when polling gives up', async () => {
-    const timeout = new Error('Composition polling timeout');
-    timeout.name = 'TimeoutError';
+    const timeout = Object.assign(new Error('Composition polling timeout'), {
+      name: 'TimeoutError',
+      code: 'COMPOSITION_STALLED',
+    });
 
     await exportWithPollingError(timeout);
 

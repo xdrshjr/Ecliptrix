@@ -97,12 +97,23 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   // Sync: merge Zustand store materials into local state.
   // Agent tools add materials via SSE → AgentEventRouter → Zustand store.
   // This effect bridges the store → local useState so MaterialsPanel re-renders.
+  // "Not in the panel" is not the same as "new": ids already merged once or
+  // deleted in the panel are never merged again, so a deleted material cannot
+  // come back the next time the agent adds any material (DS3-02).
   const storeMaterials = useVideoEditingStore(state => state.materials);
+  const mergedStoreIdsRef = useRef(new Set<string>());
   useEffect(() => {
     setMaterials(prev => {
       const localIds = new Set(prev.map(m => m.id));
-      const newFromStore = storeMaterials.filter(m => !localIds.has(m.id));
+      const newFromStore = storeMaterials.filter(m => !localIds.has(m.id) && !mergedStoreIdsRef.current.has(m.id));
+      const blocked = storeMaterials.filter(m => !localIds.has(m.id) && mergedStoreIdsRef.current.has(m.id));
+      if (blocked.length > 0) {
+        console.warn('[materials] store material already merged or deleted; not re-added', {
+          ids: blocked.map(m => m.id),
+        });
+      }
       if (newFromStore.length === 0) return prev;
+      newFromStore.forEach(m => mergedStoreIdsRef.current.add(m.id));
       return [...prev, ...newFromStore];
     });
   }, [storeMaterials]);
@@ -212,13 +223,13 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
 
   // Spec 06 §2.3 — cascade-delete a material's source + derived files on the
   // backend (fire-and-forget; never blocks the local state removal). The
-  // delete client never throws, so a backend error degrades to a log line.
+  // delete client never throws; resolves whether the cleanup succeeded.
   // `survivors` stay in the library: a source file one of them still owns is kept.
-  const cascadeDeleteMaterial = useCallback((materialId: string, survivors: readonly MaterialItem[]) => {
+  const cascadeDeleteMaterial = useCallback((materialId: string, survivors: readonly MaterialItem[]): Promise<boolean> => {
     const material = materialsSnapshotRef.current.find(m => m.id === materialId);
     const sourcePath = sourcePathForDelete(material, survivors);
     const extraKeys = extraThumbnailKeysForDelete(material, survivors);
-    void deleteMaterialDerived({ materialId, sourcePath, extraKeys }).then(result => {
+    return deleteMaterialDerived({ materialId, sourcePath, extraKeys }).then(result => {
       if (!result.success) {
         logger.warn('素材派生文件后端清理未成功（已本地移除）', {
           materialId, message: result.message,
@@ -228,11 +239,15 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
           materialId, deleted: result.deleted,
         });
       }
+      return result.success;
     });
   }, [logger]);
 
   // 实际执行删除操作的函数
-  const executeDelete = useCallback((materialIds: string[]) => {
+  // reportCleanupFailure: tell the user when files stayed on disk (N-08);
+  // off for placeholders the app discards on its own.
+  const executeDelete = useCallback((materialIds: string[], options: { reportCleanupFailure?: boolean } = {}) => {
+    const { reportCleanupFailure = true } = options;
     logger.info('开始执行素材删除', {
       materialIds,
       materialCount: materialIds.length
@@ -242,9 +257,23 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     // files on the backend BEFORE state removal so the asset leaves nothing
     // stale behind (caches keyed by materialId; backend keyed by id + stem).
     const survivors = materialsSnapshotRef.current.filter(material => !materialIds.includes(material.id));
-    materialIds.forEach(id => {
+    const cleanups = materialIds.map(id => {
       evictMaterialCaches(id);
-      cascadeDeleteMaterial(id, survivors);
+      return cascadeDeleteMaterial(id, survivors);
+    });
+    void Promise.all(cleanups).then(results => {
+      const failedCount = results.filter(succeeded => !succeeded).length;
+      if (failedCount > 0 && reportCleanupFailure && isMountedRef.current) {
+        showWarning(t.materialsPanel.deleteCleanupFailed.replace('{count}', String(failedCount)));
+      }
+    });
+
+    // DS3-02: the shared store must forget the material too, and the id stays
+    // blocked from the store → panel merge.
+    const store = useVideoEditingStore.getState();
+    materialIds.forEach(id => {
+      store.removeMaterial(id);
+      mergedStoreIdsRef.current.add(id);
     });
 
     setMaterials(prev => {
@@ -265,7 +294,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
       materialIds.forEach(id => newSet.delete(id));
       return newSet;
     });
-  }, [logger, evictMaterialCaches, cascadeDeleteMaterial]);
+  }, [logger, evictMaterialCaches, cascadeDeleteMaterial, showWarning, t]);
 
   /** Shows why a delete is refused; returns true when it was. */
   const warnIfDeleteBlocked = useCallback((plan: MaterialDeletePlan): boolean => {
@@ -310,7 +339,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
   const discardPendingMaterials = useCallback((materialIds: string[]) => {
     if (materialIds.length === 0) return;
     logger.info('Discarding pending placeholder materials', { materialIds });
-    executeDelete(materialIds);
+    executeDelete(materialIds, { reportCleanupFailure: false });
   }, [executeDelete, logger]);
 
   // 处理素材删除（单个或批量）
@@ -468,6 +497,29 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleStoryboardGenerate,
   } = useMaterialGeneration({ logger, isMountedRef, setMaterials, addOrReplaceMaterial });
 
+  /**
+   * DS3-03: clearing the library goes through the same usage plan as a
+   * delete — clips using the materials are removed as one undo step, a locked
+   * clip or the agent lock refuses — instead of leaving every clip without its
+   * material. Returns false when the clear was refused.
+   */
+  const clearLibraryMaterials = useCallback((): boolean => {
+    const current = materialsSnapshotRef.current;
+    if (current.length === 0) return true;
+    // The timeline may have changed while the dialog was open: plan again.
+    const plan = planMaterialDelete(current.map(m => m.id));
+    if (plan.kind !== 'ready' || warnIfDeleteBlocked(plan)) return false;
+    if (plan.itemIds.length > 0) {
+      removeItemsAction(() => useTimelineStore.getState(), plan.itemIds);
+    }
+    current.forEach(m => evictMaterialCaches(m.id));
+    setMaterials([]);
+    setSelectedMaterials(new Set());
+    clearMaterials();
+    mergedStoreIdsRef.current.clear();
+    return true;
+  }, [clearMaterials, evictMaterialCaches, warnIfDeleteBlocked]);
+
   // 清除所有素材
   const handleClearAllMaterials = useCallback((
     onAfterClear?: () => void | Promise<void>,
@@ -479,19 +531,29 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     const total = materials.length + extraCount;
     if (total === 0) return;
 
+    let message = t.materialsPanel.clearAllConfirmMessage.replace('{count}', String(total));
+    if (materials.length > 0) {
+      const plan = planMaterialDelete(materials.map(m => m.id));
+      if (plan.kind !== 'ready') {
+        warnIfDeleteBlocked(plan);
+        return;
+      }
+      if (plan.itemIds.length > 0) {
+        message = t.materialsPanel.clearAllInUseMessage
+          .replace('{count}', String(total))
+          .replace('{clipCount}', String(plan.itemIds.length));
+      }
+    }
+
     setConfirmationDialog({
       isOpen: true,
       title: t.materialsPanel.clearAllConfirmTitle,
-      message: t.materialsPanel.clearAllConfirmMessage.replace('{count}', String(total)),
+      message,
       type: 'danger',
       onConfirm: async () => {
-        logger.info('用户确认清除所有素材', { materials: materials.length, extraCount });
-        if (materials.length > 0) {
-          setMaterials([]);
-          setSelectedMaterials(new Set());
-          clearMaterials();
-        }
+        logger.info('用户确认清除所有素材', { materials: materialsSnapshotRef.current.length, extraCount });
         setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+        if (!clearLibraryMaterials()) return;
         try {
           await onAfterClear?.();
         } catch (e) {
@@ -499,7 +561,7 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
         }
       },
     });
-  }, [materials.length, isUploading, clearMaterials, t, logger]);
+  }, [materials, isUploading, t, logger, warnIfDeleteBlocked, clearLibraryMaterials]);
 
   // 过滤后的素材列表
   const filteredMaterials = useMemo(() => {

@@ -1,4 +1,4 @@
-import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage } from '@/types';
+import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage, AgentMaterialData } from '@/types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 
@@ -55,13 +55,9 @@ export type TimelineOperation =
         originalDuration: number;
         volume: number;
       };
-      material: {
-        id: string;
-        name: string;
-        type: string;
-        url: string;
-        thumbnailUrl?: string;
-      };
+      /** Playback snapshot (`toAgentClipMaterial`): the clip keeps previewing
+       *  after its material leaves the library. */
+      material: AgentMaterialData;
     }
   | {
       type: 'trim_clip';
@@ -126,6 +122,23 @@ export type AgentOperation =
 
 // --- SSE Events (sent from API route to frontend) ---
 
+/**
+ * Why an agent run failed, carried on SSE `error` events so the client can
+ * show a localised, actionable message. Older clients ignore it and show
+ * `message`.
+ */
+export type AgentStreamErrorCode =
+  | 'provider_auth'
+  | 'provider_rate_limit'
+  | 'context_overflow'
+  | 'provider_error'
+  | 'empty_response'
+  | 'server_timeout'
+  /** The circuit breaker stopped the run after consecutive tool failures. */
+  | 'tool_failures'
+  /** The route failed outside the model request; `message` is the detail. */
+  | 'agent_error';
+
 export type SSEEvent =
   | { type: 'thinking_start' }
   | { type: 'thinking_delta'; content: string }
@@ -151,7 +164,7 @@ export type SSEEvent =
       operation: AgentOperation | null;
     }
   | { type: 'script_delta'; content: string }
-  | { type: 'error'; message: string }
+  | { type: 'error'; message: string; code?: AgentStreamErrorCode }
   | {
       type: 'cancelled';
       reason: 'client_aborted' | 'server_timeout' | 'thinking_aborted';

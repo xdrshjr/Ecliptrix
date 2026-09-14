@@ -78,6 +78,42 @@ describe('hydrateTimelineFromProjectData — repair', () => {
     expect(opened.timelineRecoveryBackup).toBe(earliest);
   });
 
+  it('a negative start elsewhere does not drop an agent-added image', () => {
+    // A legacy agent image (clipEnd 0) is valid for the aggregate; only the
+    // negative start on another clip makes the import throw (DS3-01).
+    const image = {
+      ...clip('image', 0, 4), trackId: 'image-track-1', clipStart: 0, clipEnd: 0, originalMaterialType: 'image',
+    };
+    const projectData = projectWithTimeline([
+      track('video-track-1', [clip('neg', -3, 5)]),
+      track('image-track-1', [image]),
+    ]);
+
+    const result = hydrateTimelineFromProjectData(projectData);
+
+    expect({
+      result,
+      imageIds: useTimelineStore.getState().tracks
+        .find((entry) => entry.id === 'image-track-1')?.items.map((item) => item.id),
+    }).toEqual({
+      result: { status: 'repaired', report: { clampedItemIds: ['neg'], droppedItemIds: [] } },
+      imageIds: ['image'],
+    });
+  });
+
+  it('a repair that drops an item keeps a recovery backup', () => {
+    const projectData = projectWithTimeline([track('video-track-1', [clip('neg', -3, 5), null])]);
+    const original = (projectData.uiState as { currentTimelineState: unknown }).currentTimelineState;
+
+    const result = hydrateTimelineFromProjectData(projectData);
+    const opened = withTimelineRecoveryBackup(projectData, result, NOW);
+
+    expect({ result, backup: opened.timelineRecoveryBackup }).toEqual({
+      result: { status: 'repaired', report: { clampedItemIds: ['neg'], droppedItemIds: ['video-track-1#1'] } },
+      backup: { savedAt: NOW.toISOString(), data: original },
+    });
+  });
+
   it('a fresh project and a null timeline have nothing to recover', () => {
     expect(hydrateTimelineFromProjectData({})).toEqual({ status: 'loaded' });
     expect(hydrateTimelineFromProjectData({ uiState: { currentTimelineState: null } })).toEqual({ status: 'loaded' });

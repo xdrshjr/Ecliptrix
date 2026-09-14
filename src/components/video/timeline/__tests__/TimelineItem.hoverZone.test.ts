@@ -22,7 +22,8 @@ describe('TimelineItem hover zones', () => {
   });
 
   it('the hover zone stays frozen from press to release', () => {
-    expect(src).toMatch(/if \(isInteracting \|\| isTrackLocked\) return;/);
+    // The inline caption editor also freezes it: the pointer is in a text field (UI3-04).
+    expect(src).toMatch(/if \(isInteracting \|\| isTrackLocked \|\| isEditingSubtitle\) return;/);
     expect(src).toMatch(/if \(!isInteracting\) setHoverZone\('move'\)/);
     expect(src).not.toMatch(/isDragging \|\| isResizing/);
   });

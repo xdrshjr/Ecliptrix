@@ -1,8 +1,10 @@
 /**
  * useAgentExecution — event ordering (AG-03), terminal track patches (AG-02)
- * and restart handling (AG-01). The SSE transport is replaced by a fake whose
- * config callbacks the tests drive directly; the applier, router and state
- * manager are real.
+ * and restart handling (AG-01); round 3: sealing only live turns (AG3-04),
+ * retired turns (AG3-05 / N-21), default baseline (AG2-04), per-message
+ * single-step undo (AG2-05) and the request body (AG2-13). The SSE transport
+ * is replaced by a fake whose config callbacks the tests drive directly; the
+ * applier, router and state manager are real.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
@@ -11,9 +13,13 @@ import type { ChatMessage, Conversation, MaterialItem, TimelineItem, TimelineSta
 import type { SSEStreamManagerConfig } from '@/lib/video-editing-agent/SSEStreamManager';
 import type { AgentOperation, SSEEvent } from '@/lib/video-editing-agent/types';
 import { AgentEventRouter } from '@/lib/video-editing-agent/AgentEventRouter';
-import { StreamErrorType } from '@/lib/video-editing-agent/errorRecovery';
+import { StreamErrorType, type StreamError } from '@/lib/video-editing-agent/errorRecovery';
+import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
+import { getTranslations } from '@/lib/i18n';
 import { useAgentExecution } from '../useAgentExecution';
 import { FINISHING_WATCHDOG_MS } from '../useAgentExecutionState';
+
+const en = getTranslations('en');
 
 const streams = vi.hoisted(() => ({
   managers: [] as Array<{ config: SSEStreamManagerConfig; isRunning: boolean }>,
@@ -38,20 +44,37 @@ vi.mock('@/lib/video-editing-agent/SSEStreamManager', () => ({
   },
 }));
 
-vi.mock('@/contexts/LocaleContext', () => ({
-  useLocale: () => ({
-    locale: 'en',
-    setLocale: () => undefined,
-    t: {
-      agentUndo: { conflict: 'conflict', notUndoable: 'not undoable', blockedWhileRunning: 'blocked' },
-      agentApply: { finishingTimedOut: 'timed out' },
-    },
-  }),
-}));
+vi.mock('@/contexts/LocaleContext', async () => {
+  const { getTranslations: translationsFor } = await import('@/lib/i18n');
+  const t = translationsFor('en');
+  return { useLocale: () => ({ locale: 'en', setLocale: () => undefined, t }) };
+});
 
 const DELETE_A: AgentOperation = { type: 'delete_clip', clipId: 'a', trackId: 'v1' };
 const MOVE_B_TO_START: AgentOperation = {
   type: 'move_clip', clipId: 'b', fromTrackId: 'v1', toTrackId: 'v1', newStartTime: 0,
+};
+const ADD_TO_DEFAULT_VIDEO_TRACK: AgentOperation = {
+  type: 'add_clip',
+  clip: {
+    id: 'added', materialId: 'm1', trackId: 'video-track-1', startTime: 0, duration: 4,
+    clipStart: 0, clipEnd: 4, originalDuration: 4, volume: 1,
+  },
+  material: { id: 'm1', name: 'clip', type: 'video', url: '/api/storage/files/video/clip.mp4' },
+};
+const ADD_TO_V1_END: AgentOperation = {
+  type: 'add_clip',
+  clip: {
+    id: 'c', materialId: 'm1', trackId: 'v1', startTime: 3, duration: 2,
+    clipStart: 0, clipEnd: 2, originalDuration: 10, volume: 1,
+  },
+  material: { id: 'm1', name: 'clip', type: 'video', url: '/api/storage/files/video/clip.mp4' },
+};
+const CONNECTION_LOST: StreamError = {
+  type: StreamErrorType.NETWORK_DROP,
+  message: 'socket closed',
+  userMessage: 'connection lost',
+  recoverable: false,
 };
 
 function clip(id: string, startTime: number, duration: number): TimelineItem {
@@ -83,13 +106,20 @@ function renderAgent(
   options: {
     onNotification?: (type: string, message: string) => void;
     materials?: MaterialItem[];
+    initialTimeline?: TimelineState | null;
+    initialMessages?: ChatMessage[];
   } = {},
 ) {
   const writes: ChatMessage[][] = [];
   const hook = renderHook(() => {
-    const [timelineState, setTimelineState] = useState<TimelineState | null>(twoClipTimeline);
+    const [timelineState, setTimelineState] = useState<TimelineState | null>(() =>
+      options.initialTimeline === undefined ? twoClipTimeline() : options.initialTimeline,
+    );
     const [conversations, setConversations] = useState<Conversation[]>(() => [
-      { id: 'c1', title: 'Chat', messages: [], createdAt: new Date(0), updatedAt: new Date(0) },
+      {
+        id: 'c1', title: 'Chat', messages: options.initialMessages ?? [],
+        createdAt: new Date(0), updatedAt: new Date(0),
+      },
     ]);
     const updateConversationMessages = useCallback(
       (conversationId: string, messages: ChatMessage[]) => {
@@ -151,8 +181,9 @@ function toolResult(toolCallId: string, operation: AgentOperation): SSEEvent {
 
 beforeEach(() => {
   streams.managers.length = 0;
+  // Date is faked too, so a test can send two turns in the same millisecond.
   vi.useFakeTimers({
-    toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'],
+    toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'Date'],
   });
 });
 
@@ -222,12 +253,7 @@ describe('useAgentExecution — serialised events and terminal patches', () => {
         if (ending === 'cancelled') {
           result.current.agent.cancelExecution();
         } else {
-          stream.config.onError({
-            type: StreamErrorType.NETWORK_DROP,
-            message: 'socket closed',
-            userMessage: 'connection lost',
-            recoverable: false,
-          });
+          stream.config.onError(CONNECTION_LOST);
         }
       });
       await advance(100);
@@ -241,15 +267,17 @@ describe('useAgentExecution — serialised events and terminal patches', () => {
     const onNotification = vi.fn();
     const { result, writes } = renderAgent({ onNotification });
     const stream = await startTurn(result);
+    // Since N-10 a delete packs the track, so a later move of b to 0 would be
+    // a no-op step; the undone step must be one that changed the timeline.
     act(() => {
       stream.config.onEvent(toolResult('tc-delete', DELETE_A));
-      stream.config.onEvent(toolResult('tc-move', MOVE_B_TO_START));
+      stream.config.onEvent(toolResult('tc-add', ADD_TO_V1_END));
       stream.config.onComplete();
     });
     await advance(100);
     const messageId = lastAgentMessage(writes).id;
 
-    act(() => result.current.agent.undoSingleOperation(messageId, 'tc-move'));
+    act(() => result.current.agent.undoSingleOperation(messageId, 'tc-add'));
     act(() => result.current.agent.undoAllOperations(messageId));
 
     expect(onNotification).not.toHaveBeenCalledWith('error', expect.anything());
@@ -338,7 +366,7 @@ describe('useAgentExecution — serialised events and terminal patches', () => {
     expect({
       notified: onNotification.mock.calls,
       items: result.current.timelineState?.tracks[0].items.map(i => i.id),
-    }).toEqual({ notified: [['warning', 'blocked']], items: ['b'] });
+    }).toEqual({ notified: [['warning', en.agentUndo.blockedWhileRunning]], items: ['b'] });
   });
 
   it('the request body carries no inline thumbnails', async () => {
@@ -378,7 +406,9 @@ describe('useAgentExecution — serialised events and terminal patches', () => {
       beforeWatchdog,
       executing: result.current.agent.agentIsExecuting,
       status: result.current.agent.executionState.status,
-      warned: onNotification.mock.calls.some(([type, message]) => type === 'warning' && message === 'timed out'),
+      warned: onNotification.mock.calls.some(
+        ([type, message]) => type === 'warning' && message === en.agentApply.finishingTimedOut,
+      ),
     }).toEqual({ beforeWatchdog: true, executing: false, status: 'completed', warned: true });
   });
 
@@ -416,6 +446,235 @@ describe('useAgentExecution — serialised events and terminal patches', () => {
     await advance(0);
 
     expect(streams.managers.length).toBe(2);
+  });
+
+  it('cancel after a turn ended does not mark it stopped by the user', async () => {
+    const { result, writes } = renderAgent();
+    const stream = await startTurn(result);
+    act(() => stream.config.onEvent({ type: 'text_delta', content: 'Deleting clip a.' }));
+    await advance(20);
+    act(() => {
+      stream.config.onError(CONNECTION_LOST);
+      stream.isRunning = false;
+    });
+    await advance(100);
+    const writesAfterError = writes.length;
+
+    act(() => result.current.agent.cancelExecution());
+    await advance(100);
+
+    const message = lastAgentMessage(writes);
+    expect({
+      status: result.current.agent.executionState.status,
+      newWrites: writes.length - writesAfterError,
+      isCancelled: message.isCancelled,
+      stoppedMarker: message.content.includes('_[Stopped by user]_'),
+    }).toEqual({ status: 'error', newWrites: 0, isCancelled: undefined, stoppedMarker: false });
+  });
+
+  it('dismissing the error of an ended run clears the error state', async () => {
+    const { result } = renderAgent();
+    const stream = await startTurn(result);
+    act(() => {
+      stream.config.onError(CONNECTION_LOST);
+      stream.isRunning = false;
+    });
+    await advance(100);
+    const statusBefore = result.current.agent.executionState.status;
+
+    act(() => result.current.agent.dismissExecutionError());
+
+    expect({ statusBefore, status: result.current.agent.executionState.status })
+      .toEqual({ statusBefore: 'error', status: 'idle' });
+  });
+
+  it('a stream error is reported in the UI language', async () => {
+    const onNotification = vi.fn();
+    const { result, writes } = renderAgent({ onNotification });
+    const stream = await startTurn(result);
+
+    act(() => {
+      stream.config.onError(CONNECTION_LOST);
+      stream.isRunning = false;
+    });
+    await advance(100);
+
+    const text = en.agentStream.errors.connectionLost;
+    expect({
+      notified: onNotification.mock.calls,
+      content: lastAgentMessage(writes).content.includes(text),
+    }).toEqual({
+      notified: [['error', en.agentTimeline.errorPrefix.replace('{message}', text)]],
+      content: true,
+    });
+  });
+
+  it('the finishing watchdog seals the stuck turn\'s message as not streaming', async () => {
+    const { result, writes } = renderAgent();
+    const stream = await startTurn(result);
+    const stuck = vi
+      .spyOn(AgentEventRouter.prototype, 'handleEvent')
+      .mockImplementationOnce(() => new Promise<void>(() => undefined));
+    act(() => {
+      stream.config.onEvent({ type: 'text_delta', content: 'working' });
+      completeStream(stream);
+    });
+
+    await advance(FINISHING_WATCHDOG_MS);
+    stuck.mockRestore();
+
+    expect({
+      status: result.current.agent.executionState.status,
+      streaming: lastAgentMessage(writes).isStreaming,
+    }).toEqual({ status: 'completed', streaming: false });
+  });
+
+  it('a stuck step that settles after the next turn started updates only its own message', async () => {
+    const { result, writes } = renderAgent();
+    const first = await startTurn(result);
+    const realHandleEvent = AgentEventRouter.prototype.handleEvent;
+    let releaseStuckStep: () => void = () => undefined;
+    const stuck = vi
+      .spyOn(AgentEventRouter.prototype, 'handleEvent')
+      .mockImplementationOnce(function stuckStep(this: AgentEventRouter, event: SSEEvent) {
+        return new Promise<void>((resolve) => {
+          releaseStuckStep = () => {
+            void realHandleEvent.call(this, event).then(resolve);
+          };
+        });
+      });
+    act(() => {
+      first.config.onEvent({ type: 'text_delta', content: 'first answer' });
+      completeStream(first);
+    });
+    await advance(FINISHING_WATCHDOG_MS);
+    stuck.mockRestore();
+
+    const second = await startTurn(result);
+    act(() => {
+      second.config.onEvent({ type: 'text_delta', content: 'second answer' });
+      completeStream(second);
+    });
+    await advance(100);
+    act(() => releaseStuckStep());
+    await advance(100);
+
+    const conversation = writes[writes.length - 1];
+    expect(conversation.map(message => [message.role, message.content, !!message.isStreaming])).toEqual([
+      ['user', 'tidy up the timeline', false],
+      ['assistant', 'first answer', false],
+      ['user', 'tidy up the timeline', false],
+      ['assistant', 'second answer', false],
+    ]);
+  });
+
+  it('a turn that starts from no timeline can be undone as a whole', async () => {
+    const { result, writes } = renderAgent({ initialTimeline: null });
+    const stream = await startTurn(result);
+    act(() => {
+      stream.config.onEvent(toolResult('tc-add', ADD_TO_DEFAULT_VIDEO_TRACK));
+      completeStream(stream);
+    });
+    await advance(100);
+    const message = lastAgentMessage(writes);
+    const clipsBeforeUndo = result.current.timelineState?.tracks.flatMap(track => track.items).length;
+
+    act(() => result.current.agent.undoAllOperations(message.id));
+
+    const sent = (stream.config.body as { timelineState: TimelineState }).timelineState;
+    expect({
+      sentTracks: sent.tracks.map(track => track.id),
+      patches: message.timelineTrackPatches?.map(patch => patch.trackId),
+      clipsBeforeUndo,
+      clipsAfterUndo: result.current.timelineState?.tracks.flatMap(track => track.items).length,
+    }).toEqual({
+      sentTracks: createDefaultAgentTimelineState().tracks.map(track => track.id),
+      patches: ['video-track-1'],
+      clipsBeforeUndo: 1,
+      clipsAfterUndo: 0,
+    });
+  });
+
+  it('undo single works on a step of an earlier turn in the same session', async () => {
+    const onNotification = vi.fn();
+    const { result, writes } = renderAgent({ onNotification });
+    const first = await startTurn(result);
+    act(() => {
+      first.config.onEvent(toolResult('tc-delete', DELETE_A));
+      completeStream(first);
+    });
+    await advance(100);
+    const firstTurnId = lastAgentMessage(writes).id;
+    const second = await startTurn(result);
+    act(() => {
+      second.config.onEvent({ type: 'text_delta', content: 'Nothing else to do.' });
+      completeStream(second);
+    });
+    await advance(100);
+
+    act(() => result.current.agent.undoSingleOperation(firstTurnId, 'tc-delete'));
+
+    expect({
+      errors: onNotification.mock.calls.filter(([type]) => type === 'error'),
+      clips: result.current.timelineState?.tracks[0].items.map(i => i.id).sort(),
+    }).toEqual({ errors: [], clips: ['a', 'b'] });
+  });
+
+  it('turns without live undo records hide undo single', async () => {
+    const earlier: ChatMessage = {
+      id: 'msg-earlier-agent', role: 'assistant', content: 'Deleted a clip.', timestamp: new Date(0),
+      isAgentMessage: true,
+      agentToolCalls: [
+        { id: 'tc-old', name: 'delete_clip', params: {}, status: 'completed', changedTimeline: true },
+      ],
+    };
+    const { result, writes } = renderAgent({ initialMessages: [earlier] });
+    const stream = await startTurn(result);
+    act(() => {
+      stream.config.onEvent(toolResult('tc-delete', DELETE_A));
+      completeStream(stream);
+    });
+    await advance(100);
+
+    const ids = result.current.agent.singleUndoMessageIds;
+    expect({ earlier: ids.has(earlier.id), live: ids.has(lastAgentMessage(writes).id) })
+      .toEqual({ earlier: false, live: true });
+  });
+
+  it('two turns sent in the same millisecond get distinct message ids', async () => {
+    const { result, writes } = renderAgent();
+    vi.setSystemTime(1_000);
+    const first = await startTurn(result);
+    act(() => completeStream(first));
+    await advance(100);
+    vi.setSystemTime(1_000);
+
+    await startTurn(result);
+
+    const ids = writes[writes.length - 1].map(message => message.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('the request body carries no timelineTrackPatches', async () => {
+    const earlier: ChatMessage = {
+      id: 'msg-earlier-agent', role: 'assistant', content: 'Deleted a clip.', timestamp: new Date(0),
+      isAgentMessage: true,
+      agentToolCalls: [{ id: 'tc-old', name: 'delete_clip', params: {}, status: 'completed' }],
+      timelineTrackPatches: [{ trackId: 'v1', before: null, after: null }],
+      pendingOperations: [DELETE_A],
+      thinkingContent: 'plan the edit',
+    };
+    const { result } = renderAgent({ initialMessages: [earlier] });
+
+    const stream = await startTurn(result);
+
+    const [sent] = (stream.config.body as { messages: ChatMessage[] }).messages;
+    expect({
+      patches: 'timelineTrackPatches' in sent,
+      operations: 'pendingOperations' in sent,
+      thinking: 'thinkingContent' in sent,
+      toolCalls: sent.agentToolCalls?.length,
+    }).toEqual({ patches: false, operations: false, thinking: false, toolCalls: 1 });
   });
 
   it('unmounting while finishing leaves no watchdog to report a timeout', async () => {

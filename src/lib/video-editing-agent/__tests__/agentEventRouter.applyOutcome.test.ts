@@ -16,6 +16,7 @@ function setup(outcome: ApplyOutcome) {
   const applier = {
     apply: vi.fn().mockResolvedValue(outcome),
     applyBatch: vi.fn().mockResolvedValue(outcome),
+    applyRepack: vi.fn().mockReturnValue(outcome),
     recordNonTimelineOperation: vi.fn(),
   } as unknown as OperationApplier;
   const onOperationApplied = vi.fn();
@@ -65,6 +66,25 @@ describe('AgentEventRouter — client apply outcome', () => {
     });
 
     expect(stateManager.getSnapshot().toolCalls[0].status).toBe('error');
+  });
+
+  it('an applied operation marks its tool call as changing the timeline; a noop does not', async () => {
+    const applied = setup({ status: 'applied' });
+    const noop = setup({ status: 'noop', reason: 'no-change' });
+
+    await applied.router.handleEvent(DELETE_RESULT);
+    await noop.router.handleEvent({
+      type: 'tool_result',
+      toolCallId: 'tc-1',
+      toolName: 'auto_fix_overlaps',
+      result: { success: true, operations: [{ type: 'move_clip', clipId: 'a', fromTrackId: 'v1', toTrackId: 'v1', newStartTime: 0 }] },
+      operation: null,
+    });
+
+    expect({
+      applied: applied.stateManager.toMessageUpdate().agentToolCalls?.[0].changedTimeline,
+      noop: noop.stateManager.toMessageUpdate().agentToolCalls?.[0].changedTimeline,
+    }).toEqual({ applied: true, noop: undefined });
   });
 
   it('an applied operation keeps the tool card completed', async () => {

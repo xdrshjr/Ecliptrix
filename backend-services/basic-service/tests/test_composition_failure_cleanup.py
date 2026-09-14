@@ -5,11 +5,14 @@ Failure paths used to REPLACE the whole status dict (losing ``task_id``,
 """
 
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from app.config import settings
 from app.services.composition.media_resolution import NonLocalMediaError
+from app.services.local_media_resolver import composed_output_dir
 from tests.composition_harness import (
     MODULE,
     FakeFfmpeg,
@@ -74,3 +77,52 @@ def test_intermediate_files_are_removed_after_a_successful_export(tmp_path):
     assert response.success is True
     assert sorted(p.name for p in service.output_dir.iterdir()) == ["composed_cleanup-3.mp4"]
     assert not _temp_dir("cleanup-3").exists()
+
+
+def _settled(service, composition_id: str, hours_ago: float) -> Path:
+    output = service.output_dir / f"composed_{composition_id}.mp4"
+    output.write_bytes(b"video")
+    service.compositions[composition_id] = {
+        "id": composition_id, "status": "completed", "output_file_path": str(output),
+        "completed_at": datetime.utcnow() - timedelta(hours=hours_ago),
+    }
+    return output
+
+
+def test_settled_composition_older_than_ttl_is_evicted_with_file(tmp_path):
+    service = make_service(tmp_path)
+    output = _settled(service, "old", hours_ago=2)
+
+    evicted = service._evict_settled_compositions()
+
+    assert evicted == 1
+    assert "old" not in service.compositions
+    assert not output.exists()
+
+
+def test_recent_completed_composition_stays_downloadable(tmp_path):
+    service = make_service(tmp_path)
+    output = _settled(service, "fresh", hours_ago=0.1)
+
+    service._evict_settled_compositions()
+
+    assert service.get_download_info("fresh")["file_path"] == str(output)
+
+
+def test_settled_composition_drops_request_payload(tmp_path):
+    service = make_service(tmp_path, composition_id="cleanup-4")
+    request = _single_clip_request(tmp_path)
+    service.compositions["cleanup-4"]["request"] = request
+
+    with composing(FakeFfmpeg()):
+        service._compose_video_sync("cleanup-4", request)
+
+    assert service.compositions["cleanup-4"]["status"] == "completed"
+    assert "request" not in service.compositions["cleanup-4"]
+
+
+def test_exports_are_written_under_storage_root(tmp_path, monkeypatch):
+    """The packaged backend's CWD is its install dir; exports belong in STORAGE_ROOT."""
+    monkeypatch.setattr(settings.storage, "root", str(tmp_path))
+
+    assert composed_output_dir() == tmp_path / "static" / "video" / "composed"

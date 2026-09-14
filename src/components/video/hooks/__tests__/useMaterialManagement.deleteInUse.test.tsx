@@ -123,6 +123,11 @@ function timelineItemIds(): string[] {
     .sort();
 }
 
+/** Lets the fire-and-forget cleanup promise chain settle (a macrotask drains every microtask). */
+function flushPromises(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function renderManagement(materials: MaterialItem[]) {
   return renderHook(() => useMaterialManagement('task-1', materials));
 }
@@ -217,6 +222,67 @@ describe('useMaterialManagement — deleting a material in use', () => {
     expect(notify.showError).toHaveBeenCalledWith(en.materialsPanel.deleteFailedClipsRemoved);
     expect(timelineItemIds()).toEqual(['c2']);
     expect(result.current.allMaterials.map((entry) => entry.id)).toContain('m1');
+  });
+
+  it('clearing all materials removes their clips as one undo step', async () => {
+    seedTimeline([lane('video-track-1', [clip('c1', 'm1', 'video-track-1', 0), clip('c2', 'kept', 'video-track-1', 5)])]);
+    const { result } = renderManagement([material('m1'), material('m2')]);
+
+    act(() => result.current.handleClearAllMaterials());
+    expect(result.current.confirmationDialog.message).toBe(
+      en.materialsPanel.clearAllInUseMessage.replace('{count}', '2').replace('{clipCount}', '1'),
+    );
+    await act(async () => { await (result.current.confirmationDialog.onConfirm() as unknown); });
+
+    expect({ clips: timelineItemIds(), materials: result.current.allMaterials }).toEqual({ clips: ['c2'], materials: [] });
+    expect(filmstripEvict.mock.calls.map(([id]) => id)).toEqual(['m1', 'm2']);
+    act(() => useTimelineStore.getState().undo());
+    expect(timelineItemIds()).toEqual(['c1', 'c2']);
+  });
+
+  it('clearing all materials is refused while a used clip is on a locked track', () => {
+    seedTimeline([lane('video-track-1', [clip('c1', 'm1', 'video-track-1', 0)], true)]);
+    const { result } = renderManagement([material('m1')]);
+
+    act(() => result.current.handleClearAllMaterials());
+
+    expect({
+      warnings: notify.showWarning.mock.calls,
+      isOpen: result.current.confirmationDialog.isOpen,
+      materials: result.current.allMaterials.map((entry) => entry.id),
+    }).toEqual({
+      warnings: [[en.materialsPanel.deleteBlockedLocked.replace('{count}', '1')]],
+      isOpen: false,
+      materials: ['m1'],
+    });
+  });
+
+  it('warns once when the backend cleanup of a delete fails', async () => {
+    deleteMaterialDerived.mockResolvedValue({ success: false, deleted: { source: false, thumbnails: 0, waveform: false } });
+    seedTimeline([]);
+    const { result } = renderManagement([material('m1'), material('m2')]);
+
+    act(() => result.current.handleMaterialDelete(['m1', 'm2']));
+    await act(async () => {
+      result.current.confirmationDialog.onConfirm();
+      await flushPromises();
+    });
+
+    expect(notify.showWarning.mock.calls).toEqual([[en.materialsPanel.deleteCleanupFailed.replace('{count}', '2')]]);
+  });
+
+  it('discarding placeholders never warns about cleanup', async () => {
+    deleteMaterialDerived.mockResolvedValue({ success: false, deleted: { source: false, thumbnails: 0, waveform: false } });
+    seedTimeline([]);
+    const { result } = renderManagement([material('placeholder')]);
+
+    await act(async () => {
+      result.current.discardPendingMaterials(['placeholder']);
+      await flushPromises();
+    });
+
+    expect({ warnings: notify.showWarning.mock.calls, materials: result.current.allMaterials })
+      .toEqual({ warnings: [], materials: [] });
   });
 
   it('does not delete the source file of a material that shares it', () => {

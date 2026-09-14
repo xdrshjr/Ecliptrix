@@ -10,12 +10,15 @@ from __future__ import annotations
 import shutil
 import subprocess
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
+from PIL import Image
 
-from app.models.video_models import ImageCompositionItem, ImagePosition
+from app.models.video_models import ImageCompositionItem, ImagePosition, SubtitleCompositionItem
 from app.services.composition.camera_motion import CameraFilterCaps, CameraMotionConfig
 from app.services.video_composition_service import VideoCompositionService, _image_stack_key
+from tests.composition_harness import MODULE, FakeFfmpeg
 
 RESOLUTION = {"width": 64, "height": 36}
 
@@ -35,7 +38,7 @@ def service(monkeypatch):
 def _image(tmp_path, name, *, z_index=None, opacity=1.0, start=0.0, duration=2.0):
     path = tmp_path / f"{name}.png"
     if not path.exists():
-        path.write_bytes(b"not-a-real-png")
+        Image.new("RGB", (4, 4), (255, 0, 0)).save(path, format="PNG")
     position = {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}
     if z_index is not None:
         position["zIndex"] = z_index
@@ -43,6 +46,45 @@ def _image(tmp_path, name, *, z_index=None, opacity=1.0, start=0.0, duration=2.0
         id=name, name=f"{name}.png", url=str(path), start_time=start, duration=duration,
         track_id="image-track-1", position=ImagePosition(**position), opacity=opacity,
     )
+
+
+def _corrupt_image(tmp_path, name):
+    """A PNG signature followed by zero bytes: exists, but nothing can decode it."""
+    signature = bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    (tmp_path / f"{name}.png").write_bytes(signature + bytes(64))
+    return _image(tmp_path, name)
+
+
+def test_corrupt_image_is_skipped_and_other_images_render(service, tmp_path):
+    """EX3-05: one undecodable image failed the shared command for every image."""
+    good, bad = _image(tmp_path, "good"), _corrupt_image(tmp_path, "bad")
+
+    _, entries, _, skipped = service._build_still_overlay_inputs(
+        [good, bad], "base.mp4", str(tmp_path), RESOLUTION, 30, "ffmpeg",
+    )
+
+    assert [entry["item"].id for entry in entries] == ["good"]
+    assert [(item.item.id, item.reason) for item in skipped] == [("bad", "image file cannot be decoded")]
+
+
+def test_corrupt_image_in_combined_pass_reports_only_that_image(service, tmp_path):
+    service.subtitle_service = MagicMock()
+    service.subtitle_service.build_drawtext_filters_for_items.return_value = ["drawtext=textfile=x"]
+    good, bad = _image(tmp_path, "good"), _corrupt_image(tmp_path, "bad")
+    subtitle = SubtitleCompositionItem(
+        id="s1", name="s1", text="hi", start_time=0.0, duration=2.0, track_id="subtitle-track-1",
+    )
+    ffmpeg = FakeFfmpeg()
+
+    with patch(f"{MODULE}.subprocess.run", side_effect=ffmpeg):
+        success, _ = service._process_overlays_and_subtitles_combined(
+            [good, bad], [subtitle], "base.mp4", str(tmp_path / "merged.mp4"), str(tmp_path),
+            RESOLUTION, 30, composition_id="c1",
+        )
+
+    assert success is True
+    assert good.url in ffmpeg.commands[-1] and bad.url not in ffmpeg.commands[-1]
+    assert [d["item_ids"] for d in service.compositions["c1"]["degradations"]] == [["bad"]]
 
 
 def _entry_ids(service, tmp_path, items):

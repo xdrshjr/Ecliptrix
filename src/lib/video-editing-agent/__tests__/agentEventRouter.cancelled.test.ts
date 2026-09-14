@@ -33,9 +33,10 @@ describe('AgentEventRouter — cancelled SSE event', () => {
     expect(update.agentToolCalls?.[0].status).toBe('cancelled');
   });
 
-  it('does NOT append the marker for server_timeout reason', async () => {
+  it('a server timeout is not recorded as stopped by the user', async () => {
     const stateManager = new AgentStateManager('msg-2');
     stateManager.appendText('working on it');
+    stateManager.addToolCall({ id: 'tc-1', name: 'add_to_track', params: {}, status: 'executing' });
 
     const router = new AgentEventRouter({
       stateManager,
@@ -45,7 +46,37 @@ describe('AgentEventRouter — cancelled SSE event', () => {
     await router.handleEvent({ type: 'cancelled', reason: 'server_timeout', timestamp: 0 });
 
     const update = stateManager.toMessageUpdate();
-    expect(update.content).toBe('working on it');
-    expect(update.isCancelled).toBe(true);
+    expect({
+      content: update.content,
+      isCancelled: update.isCancelled,
+      isStreaming: update.isStreaming,
+      toolStatus: update.agentToolCalls?.[0].status,
+    }).toEqual({
+      content: 'working on it',
+      isCancelled: undefined,
+      isStreaming: false,
+      toolStatus: 'cancelled',
+    });
+  });
+
+  it('a server error event is shown through the localiser with its code', async () => {
+    const stateManager = new AgentStateManager('msg-3');
+    const onError = vi.fn();
+    const router = new AgentEventRouter({
+      stateManager,
+      operationApplier: makeApplier(),
+      onError,
+      describeError: (error) => `localised:${error.code ?? 'none'}`,
+    });
+
+    await router.handleEvent({ type: 'error', message: '401 invalid_api_key', code: 'provider_auth' });
+
+    expect({
+      notified: onError.mock.calls,
+      error: stateManager.getSnapshot().errorMessage,
+    }).toEqual({
+      notified: [['localised:provider_auth']],
+      error: 'localised:provider_auth',
+    });
   });
 });

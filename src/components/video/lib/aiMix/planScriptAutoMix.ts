@@ -38,7 +38,7 @@ export interface AutoMixSegmentReport {
   segmentNumber: number;
   segmentId: string;
   /** 'video-short' wins over the others: the video lane has a hole under the voice-over. */
-  status: 'placed' | 'skipped-no-audio' | 'video-reused' | 'video-looped' | 'video-short';
+  status: 'placed' | 'skipped-no-audio' | 'skipped-no-video' | 'video-reused' | 'video-looped' | 'video-short';
   reusedFromSegment?: number;
 }
 
@@ -263,7 +263,7 @@ function place(
   };
 }
 
-/** No segment has a voice-over: videos end to end at full length. */
+/** No segment has a voice-over: videos end to end at full length; a segment without videos is skipped. */
 function planVideoOnly(segments: readonly Segment[]) {
   const placements: AutoMixPlacement[] = [];
   let cursor = 0;
@@ -273,7 +273,7 @@ function planVideoOnly(segments: readonly Segment[]) {
     cursor = roundTime(cursor + length);
   }));
   const reports = segments.map(({ segmentId, segmentNumber, videos }): AutoMixSegmentReport => ({
-    segmentId, segmentNumber, status: videos.length > 0 ? 'placed' : 'skipped-no-audio',
+    segmentId, segmentNumber, status: videos.length > 0 ? 'placed' : 'skipped-no-video',
   }));
   return { placements, reports, cursor };
 }

@@ -57,13 +57,18 @@ class StubLogger {
 
 beforeAll(() => {
   const base = { react: React, 'react/jsx-runtime': jsxRuntime };
-  const dialogModule = compileModule(dialogSource, { ...base, './focusTrap': focusTrap });
+  const localeContext = {
+    useLocale: () => ({ locale: activeLocale, setLocale: () => {}, t: getTranslations(activeLocale) }),
+  };
+  const dialogModule = compileModule(dialogSource, {
+    ...base,
+    './focusTrap': focusTrap,
+    '@/contexts/LocaleContext': localeContext,
+  });
   const modalModule = compileModule(modalSource, {
     ...base,
     '../../utils': { VideoEditingLogger: StubLogger },
-    '@/contexts/LocaleContext': {
-      useLocale: () => ({ locale: activeLocale, setLocale: () => {}, t: getTranslations(activeLocale) }),
-    },
+    '@/contexts/LocaleContext': localeContext,
     '@/components/ui/ConfirmationDialog': dialogModule,
     '@/components/ui/focusTrap': focusTrap,
   });

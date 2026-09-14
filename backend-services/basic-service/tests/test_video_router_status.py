@@ -76,6 +76,23 @@ def test_status_endpoint_whitelists_degradations(monkeypatch):
     assert "request" not in body
 
 
+def test_status_reports_stage(monkeypatch):
+    """The client never times a queued export and resets its stall timer on activity."""
+    body = _status(monkeypatch, {
+        "id": "c1", "task_id": "t1", "status": "processing", "progress": 0.52,
+        "stage": "normalizing", "activity_at": 1789400123.4,
+    })
+    assert (body["stage"], body["activity_at"]) == ("normalizing", 1789400123.4)
+
+
+def test_cancelled_status_names_the_cancelled_stage(monkeypatch):
+    body = _status(monkeypatch, {
+        "id": "c1", "task_id": "t1", "status": "failed", "progress": 0.52, "stage": "normalizing",
+        "error_details": {"composition_stage": "cancelled", "error_summary": "cancelled by user"},
+    })
+    assert (body["composition_stage"], body["error_summary"]) == ("cancelled", "cancelled by user")
+
+
 def _image_item() -> ImageCompositionItem:
     return ImageCompositionItem(
         id="img", name="img.png", url="/api/storage/files/images/img.png",

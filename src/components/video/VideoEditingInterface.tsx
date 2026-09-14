@@ -6,12 +6,20 @@ import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, Materia
 import { useVideoEditingStore } from '@/stores';
 import ScriptPanel from './ScriptPanel';
 import { TimelinePanel, useTimelineStore } from './timeline';
-import { shouldGlobalSpaceTogglePlayback } from './timeline/shortcutOwnership';
-import { updateImagePositionAction } from './timeline/store/actions/updateItemFields';
+import { resolveGlobalSpaceAction } from './timeline/shortcutOwnership';
+import { getInputModality, installInputModalityTracking } from './timeline/inputModality';
+import {
+  imageEditBlocker,
+  readImagePosition,
+  updateImagePositionAction,
+} from './timeline/store/actions/updateItemFields';
+import { resolveImagePositionCommit } from './lib/imagePositionCommit';
 import { nextExternalUpdateId } from './timeline/lib/externalUpdateId';
 import { isEditLocked } from './timeline/store/editLock';
 import { useScriptAutoMix, toScriptSegmentRefs } from './hooks/useScriptAutoMix';
-import { buildDerivedMaterial } from './lib/derivedMaterial';
+import type { VideoCutClipRequest } from '@/types';
+import { buildClipPlaceholder, buildCutClipMaterial, matchClipCutResults } from './lib/clipCutResults';
+import { describeClipCutOutcome } from './lib/clipCutNotices';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import '../../styles/video-editing.css';
 import { shouldRestrictVideoEditing, getDeviceType, getDeviceInfo } from '@/lib/utils/deviceDetection';
@@ -398,10 +406,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 全局键盘事件处理 - 空格键播放/暂停功能
   useEffect(() => {
+    // Space activates a control reached with the keyboard (Tab) but plays after
+    // a mouse click on the same control (TL2-13); a held Space auto-repeats and
+    // is swallowed so playback does not flicker (UI3-11).
+    const disposeModalityTracking = installInputModalityTracking(document);
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Space yields only to text inputs and modal dialogs. A focused clip or
-      // toolbar button does NOT own it: Space after clicking one still plays.
-      if (event.code !== 'Space' || !shouldGlobalSpaceTogglePlayback(event)) return;
+      const action = resolveGlobalSpaceAction(event, getInputModality());
+      if (action === 'yield') return;
+      if (action === 'swallow') {
+        event.preventDefault();
+        return;
+      }
       const target = event.target as HTMLElement;
       const ref = videoPlayerRef.current;
       if (!ref) return;
@@ -431,6 +446,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      disposeModalityTracking();
       logger.debug('全局键盘事件监听器已移除', { taskId });
     };
   }, [taskId, logger]);
@@ -1313,171 +1329,64 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 处理导出切片到素材管理面板
   const handleExportClips = useCallback(async (clips: VideoClip[], originalMaterial: MaterialItem) => {
-    console.log(`[VideoEditingInterface] 导出视频切片到素材管理面板`, {
-      taskId,
-      clipsCount: clips.length,
-      originalMaterialId: originalMaterial.id,
-      originalMaterialName: originalMaterial.name,
-      timestamp: new Date().toISOString()
-    });
-
+    const clipCutMessages = t.videoEditing.clipCut;
+    // 占位素材由应用自己创建且从未上轨：失败时直接丢弃，不弹删除确认
+    let pendingIds: string[] = [];
     try {
-      // 首先创建带有加载状态的临时素材项
-      const tempClipMaterials: MaterialItem[] = [];
-      clips.forEach((clip, index) => {
-        // ME-01：切片是新文件，存储身份（storageKey / cacheUrl / localResolvedUrl）
-        // 一律不继承原片，预览、导出与删除都不会落到原文件上
-        const tempClipMaterial: MaterialItem = {
-          ...buildDerivedMaterial(
-            originalMaterial,
-            { url: '', duration: clip.duration, thumbnailUrl: originalMaterial.thumbnailUrl }, // url 临时为空，后续更新
-            {
-              id: `${originalMaterial.id}_clip_${clip.id}`,
-              name: `${originalMaterial.name} - ${clip.name}`,
-              metadata: {
-                ...originalMaterial.metadata,
-                isClip: true,
-                originalMaterialId: originalMaterial.id,
-                originalMaterialDuration: originalMaterial.duration, // 保存原始素材的时长
-                clipStartTime: clip.startTime,
-                clipEndTime: clip.endTime,
-                clipDuration: clip.duration,
-                clipIndex: index + 1,
-                totalClips: clips.length
-              }
-            },
-          ),
-          type: 'video' as const,
-          format: originalMaterial.format || 'mp4',
-          size: 0, // 临时设置为0，后续更新
-          description: `从"${originalMaterial.name}"剪切的片段，时间范围：${formatTime(clip.startTime)} - ${formatTime(clip.endTime)}`,
-          analysisResult: undefined, // 原片的解析描述的是整段视频，不适用于切片
-          uploadStatus: 'uploading', // 复用素材进度状态，表示本地切分保存中
-          uploadProgress: 0,
-        };
-        tempClipMaterials.push(tempClipMaterial);
-      });
+      const clipRequests: VideoCutClipRequest[] = clips.map(({ id, name, startTime, endTime, duration }) => (
+        { id, name, start_time: startTime, end_time: endTime, duration }));
+      // 占位不继承原片的存储身份（ME-01）与脚本段归属（N-13）
+      const pending = clipRequests.map((request, index) =>
+        buildClipPlaceholder(
+          originalMaterial, request, index, clipRequests.length, clipCutMessages.clipDescription));
+      pendingIds = pending.map(entry => entry.material.id);
+      pending.forEach(entry => materialManagement.addOrReplaceMaterial?.(entry.material));
+      showSuccess(clipCutMessages.processing.replace('{count}', String(clips.length)));
 
-      // 立即添加临时素材到素材管理（显示加载状态）
-      tempClipMaterials.forEach(tempMaterial => {
-        if (materialManagement.addOrReplaceMaterial) {
-          materialManagement.addOrReplaceMaterial(tempMaterial);
-        }
-      });
-
-      showSuccess(`正在处理 ${clips.length} 个视频切片，请稍候...`);
-
-      // 动态导入视频切分API
       const { videoCutAPI } = await import('@/lib/api/videoCut');
-
-      // 准备视频切分请求
       const sourceRef =
         originalMaterial.metadata?.localResolvedUrl ||
         originalMaterial.cacheUrl ||
         originalMaterial.url ||
         originalMaterial.serverUrl ||
         '';
-      const cutRequest = {
-        task_id: taskId,
-        source_ref: sourceRef,
-        video_url: sourceRef,
-        material_id: originalMaterial.id,
-        clips: clips.map(clip => ({
-          id: clip.id,
-          name: clip.name,
-          start_time: clip.startTime,
-          end_time: clip.endTime,
-          duration: clip.duration
-        })),
-        generate_thumbnails: true
-      };
-
       console.log(`[VideoEditingInterface] 开始视频切分处理`, {
         taskId,
-        sourceRef: cutRequest.source_ref?.slice(0, 100) + '...',
-        clipsCount: cutRequest.clips.length
+        originalMaterialId: originalMaterial.id,
+        sourceRef: sourceRef.slice(0, 100) + '...',
+        clipsCount: clipRequests.length
+      });
+      const cutResponse = await videoCutAPI.cutVideoClips({
+        task_id: taskId, source_ref: sourceRef, video_url: sourceRef,
+        material_id: originalMaterial.id, clips: clipRequests, generate_thumbnails: true,
       });
 
-      // 调用视频切分API
-      const cutResponse = await videoCutAPI.cutVideoClips(cutRequest);
-
-      if (cutResponse.success && cutResponse.clips.length > 0) {
-        // 成功切分，更新素材项
-        cutResponse.clips.forEach((cutClip, index) => {
-          const tempMaterial = tempClipMaterials[index];
-          // 按切分结果重建存储身份：本地引用与存储键都指向切片自身的文件（ME-01）
-          const updatedMaterial: MaterialItem = {
-            ...buildDerivedMaterial(
-              originalMaterial,
-              {
-                url: cutClip.video_url,
-                thumbnailUrl: cutClip.thumbnail_url || tempMaterial.thumbnailUrl,
-                duration: tempMaterial.duration,
-              },
-              {
-                id: tempMaterial.id,
-                name: tempMaterial.name,
-                metadata: { ...tempMaterial.metadata, cutClipResult: cutClip },
-              },
-            ),
-            type: 'video' as const,
-            description: tempMaterial.description,
-            analysisResult: undefined,
-            size: cutClip.file_size,
-            width: cutClip.width,
-            height: cutClip.height,
-            format: cutClip.format,
-            uploadStatus: 'completed',
-            uploadProgress: 100,
-          };
-
-          // 替换临时素材
-          if (materialManagement.addOrReplaceMaterial) {
-            materialManagement.addOrReplaceMaterial(updatedMaterial);
-          }
-        });
-
-        console.log(`[VideoEditingInterface] 视频切分完成`, {
-          taskId,
-          successfulClips: cutResponse.clips.length,
-          processingTime: cutResponse.processing_time
-        });
-
-        showSuccess(`已成功处理 ${cutResponse.clips.length} 个视频切片并保存到本地素材库`);
-      } else {
-                 // 切分失败，移除临时素材并显示错误
-         const tempMaterialIds = tempClipMaterials.map(m => m.id);
-         // 占位素材由应用自己创建且从未上轨：不弹删除确认
-         materialManagement.discardPendingMaterials(tempMaterialIds);
-
-        console.error(`[VideoEditingInterface] 视频切分失败`, {
-          taskId,
-          error: cutResponse.message
-        });
-
-        showError(`视频切分失败: ${cutResponse.message}`);
-      }
-
+      // DS3-04：后端只返回切分成功的片段，按 id（而非下标）配对占位素材；没配上的占位即切分失败
+      const { matched, unmatched } = cutResponse.success
+        ? matchClipCutResults(pending, cutResponse.clips)
+        : { matched: [], unmatched: pending };
+      matched.forEach(({ pending: entry, result }) =>
+        materialManagement.addOrReplaceMaterial?.(buildCutClipMaterial(originalMaterial, entry, result)));
+      materialManagement.discardPendingMaterials(unmatched.map(entry => entry.material.id));
+      const logCutResult = matched.length > 0 ? console.log : console.error;
+      logCutResult(`[VideoEditingInterface] 视频切分结束`, {
+        taskId, cutClips: matched.length, failedClips: unmatched.length, message: cutResponse.message,
+      });
+      // 全部失败时后端仍返回 success 与「Successfully cut and saved 0 ...」，不能当作失败原因展示
+      const notices = describeClipCutOutcome(clipCutMessages, {
+        requestSucceeded: cutResponse.success, backendMessage: cutResponse.message,
+        cutCount: matched.length, requestedCount: pending.length,
+      });
+      if (notices.error) showError(notices.error);
+      if (notices.warning) showWarning(notices.warning);
+      if (notices.success) showSuccess(notices.success);
     } catch (error) {
-      console.error(`[VideoEditingInterface] 视频切分处理错误`, {
-        taskId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-
-             // 移除临时素材
-       const tempIds = clips.map(clip => `${originalMaterial.id}_clip_${clip.id}`);
-       materialManagement.discardPendingMaterials(tempIds);
-
-      showError(`视频切分处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[VideoEditingInterface] 视频切分处理错误`, { taskId, error: message });
+      materialManagement.discardPendingMaterials(pendingIds);
+      showError(clipCutMessages.failed.replace('{message}', message));
     }
-  }, [taskId, materialManagement.addOrReplaceMaterial, materialManagement.discardPendingMaterials, showSuccess, showError]);
-
-  // 格式化时间显示（用于切片描述）
-  const formatTime = useCallback((seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }, []);
+  }, [taskId, t, materialManagement.addOrReplaceMaterial, materialManagement.discardPendingMaterials, showSuccess, showError, showWarning]);
 
   // 处理视频AI解析
   const handleVideoAnalysis = useCallback(async (material: MaterialItem, frameInterval?: number, useThumbnail?: boolean) => {
@@ -1875,14 +1784,23 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [timelineComposition]);
 
   const handleImagePositionConfirm = useCallback((itemId: string, position: ImagePosition) => {
-    // S9: the store refuses as well; the warning tells the user why nothing stuck.
-    if (isEditLocked(useTimelineStore.getState())) {
-      showWarning(t.timeline.messages.editLockedByAgent);
+    const getStore = () => useTimelineStore.getState();
+    const commit = resolveImagePositionCommit(
+      imageEditBlocker(getStore, itemId),
+      readImagePosition(getStore, itemId),
+    );
+    if (commit.kind === 'ignore') return;
+    if (commit.kind === 'revert') {
+      // S13: the drag already moved preview / export / autosave; put them back on the store value.
+      handleImagePositionChange(itemId, commit.position);
+      showWarning(commit.reason === 'agent-lock'
+        ? t.timeline.messages.editLockedByAgent
+        : t.timeline.track.trackLocked);
       return;
     }
     // One undoable step; the live drag preview above stays out of history.
-    updateImagePositionAction(() => useTimelineStore.getState(), itemId, position);
-  }, [showWarning, t]);
+    updateImagePositionAction(getStore, itemId, position);
+  }, [handleImagePositionChange, showWarning, t]);
 
   // AI自动混剪：按当前脚本把最新配音与匹配视频一次性排到视频轨 1 / 音频轨 1，其余轨道不变。
   // 编排、确认时按最新数据重新排布与结果提示均在 useScriptAutoMix（AS2-02 / AS2-04）。
@@ -2295,6 +2213,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             externalTimelineState={currentTimelineState || undefined}
             externalTimelineUpdateId={externalTimelineUpdateId || undefined}
             onRetryLocalDownload={materialManagement.retryLocalDownload}
+            // content 非空即素材库已从项目数据载入；此前不标记「素材缺失」(N-01)
+            materialsLoaded={content !== null}
           />
         </div>
       </div>
@@ -2322,6 +2242,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           onUndoAll: agent.undoAllOperations,
           onUndoSingle: agent.undoSingleOperation,
           onCancel: agent.cancelExecution,
+          onDismissError: agent.dismissExecutionError,
+          singleUndoMessageIds: agent.singleUndoMessageIds,
         }}
       />
 

@@ -173,6 +173,7 @@ function buildHarness(opts: {
     resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
     resolveAudioElement: () => audioEl,
     resolveSource: opts.resolveSource ?? ((s) => `/api/storage/files/video/${s.id}.mp4`),
+    outputSize: { width: 1920, height: 1080 },
     timeline: {
       getVideoTrackGroups: () => opts.videoGroups,
       getAudioSyncGroups: () => opts.audioGroups ?? [],
@@ -222,6 +223,23 @@ describe('MultiTrackPlaybackEngine — play tick pipeline', () => {
     expect(h.videoEl.paused).toBe(false); // playing
     expect(h.audioEl.paused).toBe(false); // audio synced + playing
     expect(h.currentTime.value).toBeCloseTo(2, 1); // playhead advanced
+  });
+
+  it('master volume 0 silences every preview element', () => {
+    const h = buildHarness({
+      videoGroups: [{ trackId: 't1', z: 0, items: [vseq({ id: 'a', volume: 1 })], volumeScale: 0 }],
+      audioGroups: [
+        { trackId: 'aud', muted: false, volume: 0, kind: 'audio', items: [{ id: 'c', startTime: 0, duration: 10, clipStart: 0, clipEnd: 10, volume: 1, url: '/api/storage/files/audio/c.mp3' }] },
+      ],
+      total: 10,
+    });
+    h.engine.play();
+    h.control.advance(500);
+    h.control.tick();
+    h.control.advance(500);
+    h.control.tick();
+    const videoVolume = (h.videoEl as { volume?: number }).volume;
+    expect({ video: videoVolume, audio: h.audioEl.volume }).toEqual({ video: 0, audio: 0 });
   });
 
   it('stops the clock and goes ended when the tick reaches total duration', () => {
@@ -307,6 +325,7 @@ describe('MultiTrackPlaybackEngine — multi-track + audioDetached', () => {
       },
       resolveAudioElement: () => null,
       resolveSource: (s) => `/${s.id}.mp4`,
+      outputSize: { width: 1920, height: 1080 },
       timeline: {
         getVideoTrackGroups: () => [
           { trackId: 'bottom', z: 0, items: [vseq({ id: 'a' })] },
@@ -345,6 +364,7 @@ describe('MultiTrackPlaybackEngine — multi-track + audioDetached', () => {
       resolveTrackElements: () => ({ active: detachedVideoEl, prewarm: null }),
       resolveAudioElement: () => pairedAudio,
       resolveSource: (s) => `/${s.id}.mp4`,
+      outputSize: { width: 1920, height: 1080 },
       timeline: {
         getVideoTrackGroups: () => [{ trackId: 'v', z: 0, items: [vseq({ id: 'a', audioDetached: true })] }],
         // Only an independent 'audio' track is routed to the AudioSyncPool.
@@ -436,6 +456,7 @@ function buildReadinessHarness(videoEl: VideoElementLike) {
     resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
     resolveAudioElement: () => null,
     resolveSource: (s) => `/${s.id}.mp4`,
+    outputSize: { width: 1920, height: 1080 },
     timeline: {
       getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
       getAudioSyncGroups: () => [],
@@ -487,6 +508,60 @@ describe('MultiTrackPlaybackEngine — §5.3 readiness repaint', () => {
     expect(renderSpy.mock.calls.length).toBe(after);
   });
 
+  it('a decode element recycled for a cross-origin src still repaints the paused frame when it loads (ME-06)', () => {
+    const routed = fakeEventfulVideoEl();
+    const fresh = fakeEventfulVideoEl();
+    let active: VideoElementLike = routed;
+    const control = makeControlledClock();
+    const { canvas } = makeMockCanvas();
+    const compositor = new CanvasCompositor(() => 0);
+    const renderSpy = vi.spyOn(compositor, 'renderFrame');
+    const engine = new MultiTrackPlaybackEngine({
+      clock: control.clock,
+      compositor,
+      playhead: new PlayheadController({ throttleMs: 0, now: () => 0 }),
+      now: () => 0,
+    });
+    engine.attach({
+      canvas,
+      resolveTrackElements: () => ({ active, prewarm: null }),
+      resolveAudioElement: () => null,
+      resolveSource: (s) =>
+        s.id === 'remote' ? 'https://cdn.example.com/remote.mp4' : `/${s.id}.mp4`,
+      outputSize: { width: 1920, height: 1080 },
+      // The host swaps a gain-routed element before it is given a cross-origin url.
+      prepareElementForSrc: (_trackId, _role, element, url) => {
+        if (element !== routed || !url.startsWith('https://')) return element;
+        active = fresh;
+        return fresh;
+      },
+      timeline: {
+        getVideoTrackGroups: () => [
+          {
+            trackId: 't1',
+            z: 0,
+            items: [vseq({ id: 'local' }), vseq({ id: 'remote', startTime: 10 })],
+          },
+        ],
+        getAudioSyncGroups: () => [],
+        getSubtitleItems: () => [],
+        getImageItems: () => [],
+        getTotalDuration: () => 20,
+        getCurrentTime: () => 0,
+        setCurrentTime: () => undefined,
+      },
+    });
+
+    engine.seek(15);
+    const before = renderSpy.mock.calls.length;
+    fresh.dispatchEvent('loadeddata');
+
+    expect({ swapped: fresh.src, repaints: renderSpy.mock.calls.length - before }).toEqual({
+      swapped: 'https://cdn.example.com/remote.mp4',
+      repaints: 1,
+    });
+  });
+
   it('readiness_bind_skips_plain_fake: a fake without addEventListener is skipped (no throw)', () => {
     expect(() =>
       buildHarness({
@@ -532,6 +607,7 @@ describe('MultiTrackPlaybackEngine — 方案 A start re-anchor (mid-clip play)'
       resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
       resolveAudioElement: () => null,
       resolveSource: (s) => `/${s.id}.mp4`,
+      outputSize: { width: 1920, height: 1080 },
       timeline: {
         getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
         getAudioSyncGroups: () => [],
@@ -700,6 +776,7 @@ describe('MultiTrackPlaybackEngine — mid-clip cold-seek black-screen (Bug A ro
       resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
       resolveAudioElement: () => null,
       resolveSource: (s) => `/${s.id}.mp4`,
+      outputSize: { width: 1920, height: 1080 },
       timeline: {
         getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a' })] }],
         getAudioSyncGroups: () => [],
@@ -818,6 +895,7 @@ describe('MultiTrackPlaybackEngine — round-3 cross-layer scrub-echo spiral (�
       resolveTrackElements: () => ({ active: videoEl, prewarm: null }),
       resolveAudioElement: () => null,
       resolveSource: (s) => `/${s.id}.mp4`,
+      outputSize: { width: 1920, height: 1080 },
       timeline: {
         getVideoTrackGroups: () => [{ trackId: 't1', z: 0, items: [vseq({ id: 'a', duration: 30 })] }],
         getAudioSyncGroups: () => [],

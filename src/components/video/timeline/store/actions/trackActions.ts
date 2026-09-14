@@ -1,8 +1,10 @@
 /**
  * trackActions — Orchestrated actions for track-level operations.
  *
- * Each action records history before the mutation and schedules
- * after-snapshot capture, following the same pattern as item actions.
+ * Content actions record history before the mutation and capture the
+ * after-snapshot, following the same pattern as item actions. Lock, mute and
+ * visibility are view flags (S12, D-27): toggling them records nothing, so it
+ * never clears the redo stack and undo never flips them back.
  */
 
 import type { TimelineStore } from '../useTimelineStore';
@@ -10,45 +12,36 @@ import { isEditLocked } from '../editLock';
 import { clampVolume, getDefaultTrackHeight, type TrackKind } from '../../constants';
 
 /**
- * Toggle the locked state of a track.
+ * Toggle the locked state of a track. Not an undoable edit.
  */
 export function toggleTrackLockAction(
   get: () => TimelineStore,
   trackId: string,
 ): void {
   if (isEditLocked(get())) return;
-  const state = get();
-  state.recordAction('TRACK_LOCK', { trackId });
-  state.toggleTrackLock(trackId);
-  scheduleNextStateCapture(get);
+  get().toggleTrackLock(trackId);
 }
 
 /**
- * Toggle the muted state of a track.
+ * Toggle the muted state of a track. Not an undoable edit.
  */
 export function toggleTrackMuteAction(
   get: () => TimelineStore,
   trackId: string,
 ): void {
   if (isEditLocked(get())) return;
-  const state = get();
-  state.recordAction('TRACK_MUTE', { trackId });
-  state.toggleTrackMute(trackId);
-  scheduleNextStateCapture(get);
+  get().toggleTrackMute(trackId);
 }
 
 /**
- * Toggle the visibility of a track.
+ * Toggle the visibility of a track. Not an undoable edit.
  */
 export function toggleTrackVisibilityAction(
   get: () => TimelineStore,
   trackId: string,
 ): void {
   if (isEditLocked(get())) return;
-  const state = get();
-  state.recordAction('TRACK_VISIBILITY', { trackId });
-  state.toggleTrackVisibility(trackId);
-  scheduleNextStateCapture(get);
+  get().toggleTrackVisibility(trackId);
 }
 
 /**
@@ -118,6 +111,22 @@ export function commitTrackVolumeAction(
   get().setTrackVolume(trackId, clampVolume(preGestureVolume));
   if (isEditLocked(get())) return;
   setTrackVolumeAction(get, trackId, finalVolume);
+}
+
+/**
+ * Abandon a volume gesture (Escape, window blur, unmount mid-drag): put the
+ * pre-gesture value back and record nothing. Unlike the preview and commit
+ * actions this ignores the edit lock — restoring the value the store held
+ * before the gesture is always safe, and the lock must not strand a preview.
+ *
+ * @param preGestureVolume  track.volume captured before the gesture started.
+ */
+export function revertTrackVolumePreviewAction(
+  get: () => TimelineStore,
+  trackId: string,
+  preGestureVolume: number,
+): void {
+  get().setTrackVolume(trackId, clampVolume(preGestureVolume));
 }
 
 // ---------------------------------------------------------------------------

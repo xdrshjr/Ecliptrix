@@ -17,7 +17,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useTimelineStore } from '../../useTimelineStore';
 import {
-  setTrackVolumeAction,
   setTrackVolumePreviewAction,
   commitTrackVolumeAction,
 } from '../trackActions';
@@ -87,13 +86,16 @@ describe('setTrackVolumePreviewAction (live preview, no history)', () => {
 
   it('a full gesture (many preview ticks + one commit) yields ONE history entry at the final value', () => {
     // Simulate a drag: a burst of live-preview ticks, then the release commit.
+    const preGesture = trackVolume();
     for (const v of [55, 70, 85, 120, 140]) {
       setTrackVolumePreviewAction(() => useTimelineStore.getState(), 'audio-track-1', v);
     }
     expect(historyLength()).toBe(0); // nothing committed yet
     expect(trackVolume()).toBe(140); // but preview tracks the latest value
 
-    setTrackVolumeAction(() => useTimelineStore.getState(), 'audio-track-1', 140);
+    // The release goes through the gesture commit: a plain set at the value
+    // the preview already wrote changes nothing and records nothing (S12).
+    commitTrackVolumeAction(() => useTimelineStore.getState(), 'audio-track-1', preGesture, 140);
     expect(historyLength()).toBe(1); // exactly one undo entry for the whole gesture
     expect(useTimelineStore.getState()._historyService.getHistory()[0].type).toBe('TRACK_VOLUME');
     expect(trackVolume()).toBe(140);

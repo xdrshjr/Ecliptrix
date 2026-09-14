@@ -47,7 +47,7 @@ ROUTE_PREFIXES: tuple[tuple[str, Path | None, SourceKind], ...] = (
     ("/api/audio/generated/", Path("static/audio/generated"), "audio_generated"),
     ("/api/audio/subtitles/", Path("static/audio/subtitles"), "audio_subtitle"),
     ("/static/timeline_exports/", Path("static/timeline_exports"), "timeline_export"),
-    ("/api/video/compose/", Path("static/video/composed"), "video_composed"),
+    ("/api/video/compose/", None, "video_composed"),
 )
 
 
@@ -66,11 +66,23 @@ def _absolute_root(root: Path) -> Path:
 # (B2) so projects saved before the migration still resolve their old references.
 _AUDIO_GENERATED_REL = Path("static/audio/generated")
 _AUDIO_SUBTITLE_REL = Path("static/audio/subtitles")
+_COMPOSED_VIDEO_REL = Path("static/video/composed")
 
 
 def _storage_root() -> Path:
     """Absolute STORAGE_ROOT (anchored to SERVICE_ROOT when configured relative)."""
     return _absolute_root(Path(settings.storage.root))
+
+
+def composed_output_dir() -> Path:
+    """Canonical on-disk dir for finished exports, under STORAGE_ROOT (EX3-06).
+
+    The packaged backend runs with its install dir as CWD, so the old
+    CWD-relative ``static/video/composed`` wrote every export into the
+    installation. The directory is not created here: the compositor creates it
+    before its first write.
+    """
+    return _storage_root() / _COMPOSED_VIDEO_REL
 
 
 def audio_generated_dir() -> Path:
@@ -104,6 +116,8 @@ def _candidate_roots(source_kind: SourceKind, root: Path | None) -> list[Path]:
         return [audio_generated_dir(), legacy_audio_generated_dir()]
     if source_kind == "audio_subtitle":
         return [audio_subtitle_dir(), legacy_audio_subtitle_dir()]
+    if source_kind == "video_composed":
+        return [composed_output_dir()]
     if root is None:
         return [_absolute_root(Path(settings.storage.root))]
     return [_absolute_root(root)]
@@ -115,7 +129,7 @@ def _allowed_roots() -> list[Path]:
         _absolute_root(Path("static/audio/generated")),
         _absolute_root(Path("static/audio/subtitles")),
         _absolute_root(Path("static/timeline_exports")),
-        _absolute_root(Path("static/video/composed")),
+        composed_output_dir(),
         # Spec 05 §2.3 (R7): export may reference frame thumbnails (filmstrip
         # posters). Whitelist the thumbnails dir so they resolve, while the path
         # guard still rejects traversal outside it.

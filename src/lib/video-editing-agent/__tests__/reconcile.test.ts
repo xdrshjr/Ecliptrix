@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { reconcileOverlapsAfterAgentOp } from '../reconcile';
 import type { TimelineState, TimelineItem } from '@/types';
 import type { TimelineOperation } from '../types';
+import type { TimelineData } from '@/components/video/timeline/domain/types';
+import { findOrganizeDrift } from '@/test/organizeFixedPoint';
 
 function item(id: string, startTime: number, duration: number, trackId: string, type: TimelineItem['type'] = 'video'): TimelineItem {
   return { id, name: id, type, startTime, duration, trackId, color: '#000', volume: 1 };
@@ -112,5 +114,20 @@ describe('reconcileOverlapsAfterAgentOp', () => {
     reconcileOverlapsAfterAgentOp(s, op);
     const r2 = reconcileOverlapsAfterAgentOp(s, op);
     expect(r2.operations).toEqual([]);
+  });
+
+  it('delete_clip leaves its track an organize fixed point', () => {
+    // b [5, 10] was just removed from a [0, 5] b c [10, 15].
+    const s = state([
+      { id: 'v1', name: 'v', type: 'video', height: 80, isLocked: false, isMuted: false, isVisible: true, volume: 100, order: 0,
+        items: [item('a', 0, 5, 'v1'), item('c', 10, 5, 'v1')] },
+    ]);
+
+    const r = reconcileOverlapsAfterAgentOp(s, { type: 'delete_clip', clipId: 'b', trackId: 'v1' });
+
+    expect({
+      moved: r.operations.map(o => (o.type === 'move_clip' ? [o.clipId, o.newStartTime] : null)),
+      drift: findOrganizeDrift(s as unknown as TimelineData),
+    }).toEqual({ moved: [['c', 5]], drift: [] });
   });
 });

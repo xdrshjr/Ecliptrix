@@ -39,7 +39,7 @@ const TimelineConnector: React.FC<TimelineConnectorProps> = ({
         <div
           className={`w-0.5 h-full rounded-full ${CSS_ANIMATIONS.flow}`}
           style={{
-            background: 'linear-gradient(180deg, var(--primary) 0%, hsl(var(--primary) / 0.4) 50%, transparent 100%)',
+            background: 'linear-gradient(180deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 40%, transparent) 50%, transparent 100%)',
             backgroundSize: '100% 200%',
           }}
         />

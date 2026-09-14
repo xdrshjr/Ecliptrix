@@ -8,6 +8,8 @@ EXO-18: remote images were downloaded with an unbounded ``requests.get``.
 
 import os
 import subprocess
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -26,6 +28,7 @@ from tests.composition_harness import (
     FakeFfmpeg,
     audio_item,
     camera_seams,
+    composing,
     composition_request,
     image_item,
     make_service,
@@ -213,3 +216,148 @@ def test_degradation_reason_is_one_short_line_without_url_query_strings(tmp_path
     assert entry["reason"].startswith("https://cdn.example.com/cover.png refused x")
     assert "secret" not in entry["reason"]
     assert len(entry["reason"]) == 300
+
+
+def _canvas_command(ffmpeg: FakeFfmpeg):
+    return next(c for c in ffmpeg.commands if any(p.startswith("color=c=black") for p in c))
+
+
+def test_canvas_command_has_one_input_per_run(tmp_path):
+    """N-04: a contiguous run is joined first, so the canvas decodes it as one input."""
+    service = make_service(tmp_path)
+    ffmpeg = FakeFfmpeg()
+    base_run = [video_item(tmp_path, f"base-{n}", "video-track-1", float(n), 1.0) for n in range(5)]
+    request = composition_request(
+        video_items=[*base_run, video_item(tmp_path, "top", "video-track-2", 1.0, 2.0)],
+        total_duration=5.0,
+    )
+
+    with composing(ffmpeg):
+        response = service._compose_video_sync("comp-1", request)
+
+    concat = next(c for c in ffmpeg.commands if "concat" in c)
+    assert response.success is True
+    assert _canvas_command(ffmpeg).count("-i") == 2
+    assert concat[-1].endswith("run_0.mp4")
+
+
+def test_canvas_over_the_input_limit_is_refused_before_it_runs(tmp_path):
+    service = make_service(tmp_path)
+    ffmpeg = FakeFfmpeg()
+    request = composition_request(
+        video_items=[
+            video_item(tmp_path, "base", "video-track-1", 0.0, 4.0),
+            video_item(tmp_path, "top", "video-track-2", 1.0, 1.0),
+        ],
+        total_duration=4.0,
+    )
+
+    with composing(ffmpeg), patch(f"{MODULE}.MAX_CANVAS_INPUTS", 1):
+        response = service._compose_video_sync("comp-1", request)
+
+    details = service.compositions["comp-1"]["error_details"]
+    assert response.success is False
+    assert (details["composition_stage"], details["error_summary"]) == (
+        "compose", "too many inputs for one FFmpeg command",
+    )
+    assert not any(any(p.startswith("color=c=black") for p in c) for c in ffmpeg.commands)
+
+
+def test_command_line_over_the_windows_limit_fails_the_stage_readably(tmp_path):
+    """WinError 206 used to surface as an opaque 'finalization' failure (EX3-04)."""
+
+    class _CommandTooLong(OSError):
+        winerror = 206
+
+    def refuse_long_canvas(cmd, *args, **kwargs):
+        if any(str(part).startswith("color=c=black") for part in cmd):
+            raise _CommandTooLong("The filename or extension is too long")
+        return FakeFfmpeg()(cmd)
+
+    service = make_service(tmp_path)
+    request = composition_request(
+        video_items=[
+            video_item(tmp_path, "base", "video-track-1", 0.0, 4.0),
+            video_item(tmp_path, "top", "video-track-2", 1.0, 1.0),
+        ],
+        total_duration=4.0,
+    )
+
+    with composing(FakeFfmpeg()), patch(f"{MODULE}.subprocess.run", side_effect=refuse_long_canvas):
+        service._compose_video_sync("comp-1", request)
+
+    details = service.compositions["comp-1"]["error_details"]
+    assert (details["composition_stage"], details["error_summary"]) == (
+        "compose", "too many inputs for one FFmpeg command",
+    )
+
+
+def test_400_clip_audio_inputs_keep_every_command_under_limit(tmp_path):
+    service = make_service(tmp_path)
+    ffmpeg = FakeFfmpeg()
+    items = [audio_item(tmp_path, f"a{n:03d}", n * 0.5, 0.5) for n in range(400)]
+    request = composition_request(audio_items=items, total_duration=200.0)
+
+    with patch(f"{MODULE}.subprocess.run", side_effect=ffmpeg), \
+            patch.object(VideoCompositionService, "_convert_url_to_local_path", lambda self, url: url):
+        result = service._process_audio_tracks(request, str(tmp_path / "work"), "ffmpeg", 200.0)
+
+    def inputs_of(cmd):
+        return [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "-i"]
+
+    parts = [c for c in ffmpeg.commands if "[out]" in c and "mix_part_" in c[-1]]
+    final = [c for c in ffmpeg.commands if "[out]" in c and c[-1].endswith("audio_mix.wav")]
+    assert (result.path is not None, result.dropped) == (True, [])
+    assert all(len(subprocess.list2cmdline(cmd)) < 32767 for cmd in ffmpeg.commands)
+    assert (len(parts), len(final)) == (7, 1)
+    assert len(set(path for cmd in parts for path in inputs_of(cmd))) == 400
+    assert inputs_of(final[0]) == [cmd[-1] for cmd in parts]
+    assert all(cmd[cmd.index("-c:a") + 1] == "pcm_f32le" for cmd in parts)
+
+
+def test_normalization_progress_advances_per_clip(tmp_path):
+    service = make_service(tmp_path)
+    recorded = []
+
+    class _RecordingStatus(dict):
+        def __setitem__(self, key, value):
+            super().__setitem__(key, value)
+            if key == "progress":
+                recorded.append((self.get("stage"), round(value, 4)))
+
+    service.compositions["comp-1"] = _RecordingStatus(service.compositions["comp-1"])
+    clips = [video_item(tmp_path, f"clip-{n}", f"video-track-{n}", 0.0, 2.0) for n in range(3)]
+
+    with composing(FakeFfmpeg()):
+        service._compose_video_sync("comp-1", composition_request(video_items=clips, total_duration=2.0))
+
+    assert [p for stage, p in recorded if stage == "normalizing"] == [0.4, 0.5, 0.6, 0.7]
+
+
+def test_cancel_between_stages_cleans_temp_dir(tmp_path):
+    service = make_service(tmp_path)
+
+    def cancel_during_canvas(cmd):
+        if any(part.startswith("color=c=black") for part in cmd):
+            service.cancel_composition("comp-1")
+        return False
+
+    ffmpeg = FakeFfmpeg(fail_when=cancel_during_canvas)
+    request = composition_request(
+        video_items=[
+            video_item(tmp_path, "base", "video-track-1", 0.0, 6.0),
+            video_item(tmp_path, "top", "video-track-2", 2.0, 2.0),
+        ],
+        audio_items=[audio_item(tmp_path, "voice", 0.0, 6.0)],
+        total_duration=6.0,
+    )
+
+    with composing(ffmpeg):
+        response = service._compose_video_sync("comp-1", request)
+
+    info = service.compositions["comp-1"]
+    assert response.success is False
+    assert (info["status"], info["error_details"]["composition_stage"]) == ("failed", "cancelled")
+    assert not any(cmd[-1].endswith("audio_mix.wav") for cmd in ffmpeg.commands)
+    assert not (Path(tempfile.gettempdir()) / "video_compose_comp-1").exists()
+    assert list(service.output_dir.iterdir()) == []

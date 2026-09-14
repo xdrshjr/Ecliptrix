@@ -387,6 +387,18 @@ describe('useAIMixedEditing', () => {
     expect(notify.showError.mock.calls).toEqual([[en.aiMixingProgress.errorImportFailed]]);
   });
 
+  it('an unreachable backend during import reads as unreachable, not as an unusable plan', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    post.mockImplementation((path: string) => (path === '/api/ai-mixed-editing'
+      ? Promise.resolve({ success: true, timelineData: { metadata: { warnings: [] } } })
+      : Promise.reject(new ApiError(502, 'BACKEND_UNREACHABLE', 'Backend unreachable: fetch failed'))));
+    const { result } = renderHook(() => useAIMixedEditing(hookOptions()));
+
+    await act(async () => { await result.current.start(QUICK); });
+
+    expect(notify.showError.mock.calls).toEqual([[en.aiMixingProgress.errorBackendUnreachable]]);
+  });
+
   it('counts packed items in the partial warning', async () => {
     const gapped: TimelineState = {
       ...importedPlan,

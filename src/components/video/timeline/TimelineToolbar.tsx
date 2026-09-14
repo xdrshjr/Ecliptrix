@@ -8,6 +8,25 @@ import type { TimelineToolType } from './store';
 import { cameraMotionIneligibleReason } from '../playback/camera/eligibility';
 import type { CameraIneligibleReason } from '../playback/camera/eligibility';
 import { useShallow } from 'zustand/react/shallow';
+import PortalTooltip from './PortalTooltip';
+
+/** One toolbar icon button. */
+interface ToolbarButtonConfig {
+  id: string;
+  icon: React.ReactNode;
+  label: string;
+  shortcut?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  /** Why the button is disabled; appended to the tooltip. */
+  disabledHint?: string;
+  comingSoon?: boolean;
+  loading?: boolean;
+  /** A two-state tool (e.g. Cut): exposes `aria-pressed`. */
+  toggle?: boolean;
+  isActive?: boolean;
+  className?: string;
+}
 
 interface TimelineToolbarProps {
   onExportJSON: () => void;
@@ -108,9 +127,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   };
 
   // 导入项目按钮配置
-  const importButton = {
+  const importButton: ToolbarButtonConfig = {
     id: 'import',
-    action: handleImportClick,
+    onClick: handleImportClick,
     icon: (
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
         <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
@@ -126,9 +145,9 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   };
 
   // 剪切/分割工具按钮（toggle）。激活后在时间轴 clip 上点击即按点切分。
-  const cutButton = {
+  const cutButton: ToolbarButtonConfig = {
     id: 'cut',
-    action: handleToggleCut,
+    onClick: handleToggleCut,
     icon: (
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
         <path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/>
@@ -138,13 +157,15 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     shortcut: t.timeline.shortcuts.cutShortcut,
     disabled: isEditLocked,
     disabledHint: editLockedHint,
+    toggle: true,
+    isActive: isCutActive,
   };
 
   // 基础编辑按钮配置
-  const basicEditButtons = [
+  const basicEditButtons: ToolbarButtonConfig[] = [
     {
       id: 'copy',
-      action: onCopy,
+      onClick: onCopy,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
@@ -158,7 +179,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'delete',
-      action: handleDelete,
+      onClick: handleDelete,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -172,10 +193,10 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   ];
 
   // 历史操作按钮
-  const historyButtons = [
+  const historyButtons: ToolbarButtonConfig[] = [
     {
       id: 'undo',
-      action: undo,
+      onClick: undo,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
@@ -188,7 +209,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'redo',
-      action: redo,
+      onClick: redo,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/>
@@ -201,7 +222,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'organize',
-      action: onOrganizeMaterials,
+      onClick: onOrganizeMaterials,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
@@ -242,10 +263,10 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         : t.timeline.cameraMotion.disabledNoSelection;
 
   // 高级功能按钮
-  const advancedButtons = [
+  const advancedButtons: ToolbarButtonConfig[] = [
     {
       id: 'motion',
-      action: onOpenCameraMotion,
+      onClick: onOpenCameraMotion,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4zM10 15.5v-7l5 3.5-5 3.5z"/>
@@ -258,7 +279,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'export-json',
-      action: onExportJSON,
+      onClick: onExportJSON,
       icon: isExporting ? (
         <div className="relative w-4 h-4">
           <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
@@ -277,7 +298,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'effects',
-      action: onAddEffect,
+      onClick: onAddEffect,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -290,7 +311,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'transitions',
-      action: onAddTransition,
+      onClick: onAddTransition,
       icon: (
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H3v16h2l2-4h3l2 4h2l-2-4h3l2 4h2l-2-4h3l2 4h2V4z"/>
@@ -303,7 +324,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     },
     {
       id: 'subtitles',
-      action: onAddSubtitle,
+      onClick: onAddSubtitle,
       icon: isExtractingSubtitles ? (
         <div className="relative w-4 h-4">
           <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
@@ -322,58 +343,48 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     }
   ];
 
+  // Tooltip text, built once per button. It renders through PortalTooltip: an
+  // in-button bubble was clipped by `.timeline-toolbar button { overflow:
+  // hidden }` and never showed, and a native `title` would duplicate it.
+  const tooltipText = (button: ToolbarButtonConfig): string => {
+    if (button.comingSoon) return t.timeline.messages.featureComingSoon;
+    if (button.disabled && button.disabledHint) return `${button.label} — ${button.disabledHint}`;
+    return button.shortcut ? `${button.label} (${button.shortcut})` : button.label;
+  };
+
   // 渲染图标按钮
-  const renderIconButton = (button: any, isActive = false) => (
-    <div key={button.id} className="relative group">
+  const renderIconButton = (button: ToolbarButtonConfig) => (
+    <PortalTooltip key={button.id} className="relative" label={tooltipText(button)}>
       <button
+        type="button"
         onClick={() => {
           if (!button.disabled) {
-            button.action();
+            button.onClick();
           }
         }}
         className={`
           relative p-2 rounded-md transition-all duration-200 flex items-center justify-center w-8 h-8
-          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/15 focus-visible:ring-offset-1
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
           ${button.disabled
             ? 'text-muted-foreground cursor-not-allowed bg-muted'
-            : isActive
-              ? 'text-primary bg-primary/15 border border-transparent shadow-inner'
+            : button.isActive
+              ? 'text-primary bg-primary-a/15 border border-transparent shadow-inner'
               : button.className || 'text-foreground hover:text-foreground hover:bg-muted active:bg-accent border border-transparent'
           }
         `}
         disabled={button.disabled}
+        aria-pressed={button.toggle ? Boolean(button.isActive) : undefined}
         aria-label={
           button.comingSoon
             ? `${button.label} — ${t.timeline.messages.featureComingSoon}`
             : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
         }
-        title={
-          button.comingSoon
-            ? t.timeline.messages.featureComingSoon
-            : (button.disabled && button.disabledHint)
-              ? `${button.label} — ${button.disabledHint}`
-              : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)
-        }
       >
         <span className={button.disabled ? 'opacity-50' : ''}>
           {button.icon}
         </span>
-
-        {/* 悬停提示 — also shows on keyboard focus (round 17 a11y pattern) */}
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-[9999] pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-200">
-          <div className="bg-background text-foreground text-xs px-3 py-2 rounded-md whitespace-nowrap border border-border">
-            {button.comingSoon
-              ? t.timeline.messages.featureComingSoon
-              : (button.disabled && button.disabledHint)
-                ? `${button.label} — ${button.disabledHint}`
-                : (button.shortcut ? `${button.label} (${button.shortcut})` : button.label)}
-            <div className="absolute top-full left-1/2 transform -translate-x-1/2">
-              <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-background"></div>
-            </div>
-          </div>
-        </div>
       </button>
-    </div>
+    </PortalTooltip>
   );
 
   return (
@@ -397,7 +408,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         <div className="w-px h-4 bg-border mx-1" />
 
         <div className="flex items-center space-x-1">
-          {renderIconButton(cutButton, isCutActive)}
+          {renderIconButton(cutButton)}
           {basicEditButtons.map(button => renderIconButton(button))}
         </div>
 
@@ -411,7 +422,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       {/* 中间状态显示 */}
       <div className="flex items-center space-x-3 text-xs text-muted-foreground">
         {selectedItemsCount > 0 && (
-          <div className="flex items-center space-x-1 bg-primary/10 px-2 py-1 rounded-full">
+          <div className="flex items-center space-x-1 bg-primary-a/10 px-2 py-1 rounded-full">
             <svg className="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
             </svg>
@@ -421,8 +432,13 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           </div>
         )}
 
-        <div className="hidden md:flex items-center space-x-1 text-xs">
-          <span>{t.timeline.status.currentTool.replace('{tool}', t.timeline.toolbar.select)}</span>
+        <div className="hidden md:flex items-center space-x-1 text-xs" aria-live="polite">
+          <span>
+            {t.timeline.status.currentTool.replace(
+              '{tool}',
+              isCutActive ? t.timeline.toolbar.cut : t.timeline.toolbar.select,
+            )}
+          </span>
         </div>
       </div>
 

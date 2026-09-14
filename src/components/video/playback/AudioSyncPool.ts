@@ -28,6 +28,7 @@
 import { mapTimelineTimeToSourceTime } from '../timeline/domain/services/ClipTimeMapping';
 import { activeClipAt, type SchedulableClip } from './TrackScheduler';
 import { AUDIO_DRIFT_EPSILON_SEC } from './internal/constants';
+import { MAX_EFFECTIVE_VOLUME } from '../timeline/infrastructure/effectiveVolume';
 
 /** One audio-bearing clip item the pool can read. */
 export interface AudioSyncClip extends SchedulableClip {
@@ -69,7 +70,11 @@ export interface AudioSyncAction {
   action: AudioSyncActionKind;
   /** Target source-media time (seconds) when `action` is 'seek'. */
   targetSourceTime?: number;
-  /** Effective volume to apply (clamped [0,1]) when not pausing. */
+  /**
+   * Effective volume in [0, MAX_EFFECTIVE_VOLUME] when not pausing. Values above
+   * 1 reach the injected `applyVolume` (ME-06 gain); the default writer clamps
+   * the element to [0,1].
+   */
   volume?: number;
   /**
    * Source URL the element must hold before play/seek. Carried on 'play'/'seek'
@@ -99,11 +104,10 @@ export interface ComputeAudioSyncOptions {
   driftEpsilonSec?: number;
 }
 
-function clampVolume(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
+/** Clamp to the effective range export applies; NaN/±∞ → 0. */
+function clampEffectiveVolume(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(value, MAX_EFFECTIVE_VOLUME);
 }
 
 /**
@@ -128,15 +132,33 @@ function normalizeSrc(src: string | null | undefined): string {
 }
 
 /**
- * Effective per-clip volume = clip.volume (default 1) * track.volume, clamped
- * to [0,1] (spec 02 §2.5).
+ * Effective per-clip volume = clip.volume (default 1) * group volume (the
+ * preview master volume), clamped to [0, MAX_EFFECTIVE_VOLUME] (spec 02 §2.5,
+ * ME-06). The element write clamps it again to [0,1] unless a gain stage
+ * carries the part above 1.
  */
 export function computeMediaElementVolume(
   clipVolume: number | undefined,
   trackVolume: number,
 ): number {
   const item = clipVolume === undefined ? 1 : clipVolume;
-  return clampVolume(item * trackVolume);
+  return clampEffectiveVolume(item * trackVolume);
+}
+
+/** Preview audio hooks injected by the host (ME-06). Both default to plain element writes. */
+export interface AudioSyncPoolOptions {
+  /** Writes an effective [0, MAX_EFFECTIVE_VOLUME] volume to the track's element. */
+  applyVolume?: (trackId: string, element: AudioElementLike, volume: number) => void;
+  /**
+   * Called before `src` is assigned; returns the element to assign on — a fresh
+   * one when the current element is gain-routed and cannot play `url`.
+   */
+  prepareElementForSrc?: (trackId: string, element: AudioElementLike, url: string) => AudioElementLike;
+}
+
+/** The default volume writer: the element's own [0,1] range, no gain. */
+function writeElementVolume(_trackId: string, element: AudioElementLike, volume: number): void {
+  element.volume = Math.min(1, clampEffectiveVolume(volume));
 }
 
 /**
@@ -265,9 +287,13 @@ type AudioCanplayRetryTarget = AudioElementLike & {
  */
 export class AudioSyncPool {
   private readonly _resolve: AudioElementResolver;
+  private readonly _applyVolume: NonNullable<AudioSyncPoolOptions['applyVolume']>;
+  private readonly _prepareElementForSrc: AudioSyncPoolOptions['prepareElementForSrc'];
 
-  constructor(resolveElement: AudioElementResolver) {
+  constructor(resolveElement: AudioElementResolver, options: AudioSyncPoolOptions = {}) {
     this._resolve = resolveElement;
+    this._applyVolume = options.applyVolume ?? writeElementVolume;
+    this._prepareElementForSrc = options.prepareElementForSrc;
   }
 
   /**
@@ -305,34 +331,39 @@ export class AudioSyncPool {
   }
 
   private _apply(action: AudioSyncAction): void {
-    const el = this._resolve(action.trackId);
-    if (!el) return;
+    const resolved = this._resolve(action.trackId);
+    if (!resolved) return;
     switch (action.action) {
       case 'pause':
-        this._disarmCanplayRetry(el);
-        if (!el.paused) el.pause();
+        this._disarmCanplayRetry(resolved);
+        if (!resolved.paused) resolved.pause();
         return;
       case 'seek': {
         // Assign src BEFORE currentTime: a new src resets the element to time 0,
         // so the seek must follow it. No-op (normalized compare) when unchanged,
         // so a pure drift seek never churns src → no AbortError.
-        const srcJustSwapped = this._ensureSrc(el, action.url);
+        const { element, swapped } = this._ensureSrc(action.trackId, resolved, action.url);
         if (action.targetSourceTime !== undefined) {
-          this._assignCurrentTime(el, action.targetSourceTime, srcJustSwapped);
+          this._assignCurrentTime(element, action.targetSourceTime, swapped);
         }
-        if (action.volume !== undefined) el.volume = action.volume;
-        this._ensurePlaying(el);
+        this._writeVolume(action, element);
+        this._ensurePlaying(element);
         return;
       }
-      case 'play':
-        this._ensureSrc(el, action.url);
-        if (action.volume !== undefined) el.volume = action.volume;
-        this._ensurePlaying(el);
+      case 'play': {
+        const { element } = this._ensureSrc(action.trackId, resolved, action.url);
+        this._writeVolume(action, element);
+        this._ensurePlaying(element);
         return;
+      }
       case 'hold':
-        if (action.volume !== undefined) el.volume = action.volume;
+        this._writeVolume(action, resolved);
         return;
     }
+  }
+
+  private _writeVolume(action: AudioSyncAction, element: AudioElementLike): void {
+    if (action.volume !== undefined) this._applyVolume(action.trackId, element, action.volume);
   }
 
   /**
@@ -341,16 +372,22 @@ export class AudioSyncPool {
    * compare key equals the assigned value and src is never re-written every
    * frame (which would interrupt play() and raise AbortError).
    *
-   * Returns `true` when it actually swapped the src this tick — the caller uses
-   * it as the `srcJustSwapped` exception for the in-flight seek guard (a fresh
-   * src genuinely needs its initial seek, even while still loading).
+   * Returns the element that now holds the src (the host may swap a gain-routed
+   * one, ME-06) and whether it actually swapped the src this tick — the caller
+   * uses that as the `srcJustSwapped` exception for the in-flight seek guard (a
+   * fresh src genuinely needs its initial seek, even while still loading).
    */
-  private _ensureSrc(el: AudioElementLike, url: string | undefined): boolean {
-    if (!url) return false;
-    if (normalizeSrc(el.src) === normalizeSrc(url)) return false;
+  private _ensureSrc(
+    trackId: string,
+    el: AudioElementLike,
+    url: string | undefined,
+  ): { element: AudioElementLike; swapped: boolean } {
+    if (!url) return { element: el, swapped: false };
+    if (normalizeSrc(el.src) === normalizeSrc(url)) return { element: el, swapped: false };
     this._disarmCanplayRetry(el);
-    el.src = url;
-    return true;
+    const element = this._prepareElementForSrc ? this._prepareElementForSrc(trackId, el, url) : el;
+    element.src = url;
+    return { element, swapped: true };
   }
 
   /**

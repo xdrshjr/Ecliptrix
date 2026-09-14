@@ -1,15 +1,25 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model, KnownApi } from '@mariozechner/pi-ai';
-import type { AgentMaterialData, MaterialType, TimelineState } from '@/types';
-import type { ToolContext, TimelineOperation, AgentOperation, SSEEvent, VideoEditingAgentConfig } from './types';
+import type { MaterialType, TimelineState } from '@/types';
+import type {
+  ToolContext,
+  TimelineOperation,
+  AgentOperation,
+  AgentStreamErrorCode,
+  SSEEvent,
+  VideoEditingAgentConfig,
+} from './types';
 import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
+import { compactHistoryForModel } from './historyBudget';
 import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
 import { scanExploredCategories } from './historyScan';
 import { reconcileOverlapsAfterAgentOp } from './reconcile';
 import { validateOperationTargets } from './operationGuards';
+
+export type { AgentStreamErrorCode } from './types';
 
 /**
  * Optional debug switch — when set, dumps the full final system prompt to
@@ -108,7 +118,9 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
 
   // 5. Convert conversation history (exclude last user message — it goes to agent.prompt())
   const history = config.conversationHistory.slice(0, -1);
-  const initialMessages = convertToAgentMessages(history);
+  // Older turns are compacted to a size budget so long conversations stay
+  // inside the model's context window.
+  const initialMessages = compactHistoryForModel(convertToAgentMessages(history));
 
   // 6. Build the L0 system prompt.
   //    - exploredCategories: replays any advanced categories the user already
@@ -169,6 +181,138 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
  */
 const MAX_CONSECUTIVE_TOOL_FAILURES = 5;
 
+const EMPTY_RESPONSE_MESSAGE =
+  'The model returned an empty response. It may not support tool-use required by the editing agent. Please try a model that supports function calling (e.g., GPT-4, Claude, Qwen).';
+
+/** Error text shown to the user is cut to this many characters. */
+const ERROR_DETAIL_MAX_CHARS = 300;
+
+// Checked in this order: a context-length message can mention "401 more
+// tokens", which must not read as an authentication failure. Providers word
+// an overflow differently (OpenAI, Anthropic, Gemini, Kimi, DashScope,
+// Zhipu); an unmatched one only gets the generic "request failed" hint.
+const CONTEXT_OVERFLOW_PATTERN = new RegExp(
+  [
+    'context.?length',
+    'maximum context',
+    'context window',
+    'too many tokens',
+    'context_length_exceeded',
+    'prompt is too long',
+    'prompt exceeds max length',
+    'input token count',
+    'model token limit',
+    'range of input length',
+  ].join('|'),
+  'i',
+);
+const RATE_LIMIT_PATTERN = /\b429\b|rate.?limit/i;
+const AUTH_FAILURE_PATTERN = /\b401\b|invalid[_ ]api[_ ]key|unauthorized/i;
+
+/** Credential shapes an error may echo back; never forwarded to the UI. */
+const SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
+  [/\bsk-[A-Za-z0-9_-]{4,}/g, 'sk-[redacted]'],
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]'],
+  [/((?:api[_-]?key|access[_-]?token|secret|password)["'\s:=]+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[redacted]'],
+  // A scheme-less or Basic credential: `Authorization: <token>`.
+  [/(authorization["'\s:=]+(?:basic\s+)?)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[redacted]'],
+  // A key carried in a URL, e.g. Google's `?key=`.
+  [/([?&](?:key|token)=)[^&\s"']{8,}/gi, '$1[redacted]'],
+];
+
+function redactSecrets(text: string): string {
+  return SECRET_PATTERNS.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), text);
+}
+
+function truncateDetail(text: string): string {
+  return text.length > ERROR_DETAIL_MAX_CHARS ? `${text.slice(0, ERROR_DETAIL_MAX_CHARS)}…` : text;
+}
+
+/** Error text safe to show the user: credentials removed, cut to a readable length. */
+export function formatErrorDetail(raw: string): string {
+  return truncateDetail(redactSecrets(raw).trim());
+}
+
+function classifyProviderError(text: string): AgentStreamErrorCode {
+  if (CONTEXT_OVERFLOW_PATTERN.test(text)) return 'context_overflow';
+  if (RATE_LIMIT_PATTERN.test(text)) return 'provider_rate_limit';
+  if (AUTH_FAILURE_PATTERN.test(text)) return 'provider_auth';
+  return 'provider_error';
+}
+
+/**
+ * Turn a model provider's error message (pi-ai `errorMessage`) into an SSE
+ * error: a code the UI localises, plus the provider text with credentials
+ * removed and cut to a readable length.
+ */
+export function formatProviderError(raw?: string): { code: AgentStreamErrorCode; message: string } {
+  // Classified before truncation: the telling phrase can sit past the cut.
+  const text = redactSecrets(raw ?? '').trim();
+  return {
+    code: classifyProviderError(text),
+    message: truncateDetail(text) || 'The model request failed without an error message.',
+  };
+}
+
+/** Per-message flags `subscribeAgentEvents` resets on every message_start. */
+interface AssistantMessageFlags {
+  textDeltaSent: boolean;
+  toolCallMade: boolean;
+}
+
+/** The fields of a pi-ai message that event forwarding reads. */
+interface AssistantMessageLike {
+  role?: string;
+  content?: Array<{ type: string; text?: string }>;
+  stopReason?: string;
+  errorMessage?: string;
+}
+
+/**
+ * Forward an assistant message_end; returns true when an error event was sent.
+ *
+ * - `stopReason: 'error'` is a provider failure (401, 429, context overflow)
+ *   and is reported with its cause.
+ * - Non-streaming models (e.g., Kimi) skip text_delta and only provide the
+ *   final content here, so it is sent as one text_delta.
+ * - Only a message with neither text nor tool calls is an empty response. An
+ *   `aborted` message was stopped on purpose (user, watchdog, circuit
+ *   breaker) and that reason was already reported.
+ */
+function forwardMessageEnd(
+  message: AssistantMessageLike | undefined,
+  flags: AssistantMessageFlags,
+  send: (data: SSEEvent) => void,
+): boolean {
+  let errorSent = false;
+  if (message?.role === 'assistant' && message.stopReason === 'error') {
+    send({ type: 'error', ...formatProviderError(message.errorMessage) });
+    errorSent = true;
+  } else if (message?.role === 'assistant') {
+    if (!flags.textDeltaSent && Array.isArray(message.content)) {
+      const fullText = message.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text ?? '')
+        .join('');
+      if (fullText) {
+        send({ type: 'text_delta', content: fullText });
+        flags.textDeltaSent = true;
+      }
+      // pi-agent-core normalizes tool calls to "toolCall" (not Anthropic's
+      // "tool_use"), and tool_execution_start fires AFTER message_end.
+      if (message.content.some(block => block.type === 'toolCall' || block.type === 'tool_use')) {
+        flags.toolCallMade = true;
+      }
+    }
+    if (!flags.textDeltaSent && !flags.toolCallMade && message.stopReason !== 'aborted') {
+      send({ type: 'error', code: 'empty_response', message: EMPTY_RESPONSE_MESSAGE });
+      errorSent = true;
+    }
+  }
+  send({ type: 'message_end' });
+  return errorSent;
+}
+
 /**
  * Subscribe to agent events and forward them as SSE events.
  */
@@ -184,8 +328,8 @@ export function subscribeAgentEvents(
   // assistant message. Non-streaming models (e.g., Kimi) skip text_delta and
   // only provide final content in the message_end event. Tool-only messages
   // (no text, only tool_use) are normal in multi-turn agent loops.
-  let textDeltaSent = false;
-  let toolCallMade = false;
+  const messageFlags: AssistantMessageFlags = { textDeltaSent: false, toolCallMade: false };
+  let runErrorSent = false;
 
   // Consecutive failure counter for the circuit breaker.
   let consecutiveFailures = 0;
@@ -197,9 +341,16 @@ export function subscribeAgentEvents(
         send({ type: 'agent_start' });
         break;
 
-      case 'agent_end':
+      case 'agent_end': {
+        // A request that throws before streaming ends the run with an error
+        // message but no message_end, so its cause is reported here.
+        const last = event.messages[event.messages.length - 1] as AssistantMessageLike | undefined;
+        if (!runErrorSent && last?.role === 'assistant' && last.stopReason === 'error') {
+          send({ type: 'error', ...formatProviderError(last.errorMessage) });
+        }
         send({ type: 'agent_end' });
         break;
+      }
 
       case 'turn_start':
         send({ type: 'turn_start' });
@@ -210,69 +361,28 @@ export function subscribeAgentEvents(
         break;
 
       case 'message_start':
-        textDeltaSent = false;
-        toolCallMade = false;
+        messageFlags.textDeltaSent = false;
+        messageFlags.toolCallMade = false;
         send({ type: 'message_start' });
         break;
 
-      case 'message_end': {
-        // Fallback for non-streaming models (e.g., Kimi): if no text_delta
-        // events were emitted during streaming, extract text content from
-        // the final message and send it as a text_delta before message_end.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const msg = event.message as any;
-        if (
-          !textDeltaSent &&
-          msg &&
-          msg.role === 'assistant' &&
-          Array.isArray(msg.content)
-        ) {
-          const fullText = msg.content
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .filter((c: any) => c.type === 'text')
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((c: any) => c.text)
-            .join('');
-          if (fullText) {
-            send({ type: 'text_delta', content: fullText });
-            textDeltaSent = true;
-          }
-
-          // Detect toolCall blocks in message content — pi-agent-core normalizes
-          // tool calls to type "toolCall" (not Anthropic's "tool_use").
-          // This runs BEFORE the error check because tool_execution_start fires
-          // AFTER message_end in pi-agent-core's event ordering.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const hasToolCall = msg.content.some((c: any) => c.type === 'toolCall' || c.type === 'tool_use');
-          if (hasToolCall) {
-            toolCallMade = true;
-          }
+      case 'message_end':
+        if (forwardMessageEnd(event.message as AssistantMessageLike, messageFlags, send)) {
+          runErrorSent = true;
         }
-
-        // Only emit error if the assistant message had neither text nor tool calls.
-        // Tool-only messages (no text) are normal during multi-turn agent loops.
-        if (!textDeltaSent && !toolCallMade && msg && msg.role === 'assistant') {
-          send({
-            type: 'error',
-            message: 'The model returned an empty response. It may not support tool-use required by the editing agent. Please try a model that supports function calling (e.g., GPT-4, Claude, Qwen).',
-          });
-        }
-
-        send({ type: 'message_end' });
         break;
-      }
 
       case 'message_update': {
         const evt = event.assistantMessageEvent;
         if (evt.type === 'text_delta') {
-          textDeltaSent = true;
+          messageFlags.textDeltaSent = true;
           send({ type: 'text_delta', content: evt.delta });
         }
         break;
       }
 
       case 'tool_execution_start':
-        toolCallMade = true;
+        messageFlags.toolCallMade = true;
         onToolActivity?.();
         onToolExecutionStart?.();
         send({
@@ -327,6 +437,8 @@ export function subscribeAgentEvents(
           );
           send({
             type: 'error',
+            // Coded: the raw English sentence below reached zh-CN users as is.
+            code: 'tool_failures',
             message: `Agent aborted: ${consecutiveFailures} consecutive tool calls failed. This usually indicates a network/auth problem with internal APIs — please retry, and if the problem persists, check server logs for '[VideoEditingAgent]'.`,
           });
           // Fire-and-forget: abort() is synchronous in pi-agent-core, but
@@ -351,7 +463,7 @@ function addClipLocally(state: TimelineState, operation: AddClipOperation): void
   const track = state.tracks.find(t => t.id === operation.clip.trackId);
   if (!track) return;
   // Editing tools send `toAgentClipMaterial`, which carries the playback fields.
-  const material = operation.material as AgentMaterialData;
+  const { material } = operation;
   track.items.push({
     id: operation.clip.id,
     name: operation.material.name,

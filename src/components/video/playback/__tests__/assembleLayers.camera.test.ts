@@ -104,8 +104,7 @@ describe('assembleLayers — still cameraInput survives the z re-map', () => {
       ],
       subtitleItems: [],
       t: 5,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: (text: string) => text.length * 10,
+      output: { width: 1920, height: 1080 },
     });
 
     const image = layers.find((layer) => layer.kind === 'image');
@@ -124,8 +123,7 @@ describe('assembleLayers — still cameraInput survives the z re-map', () => {
       ],
       subtitleItems: [],
       t: 1,
-      subtitleMaxWidthPx: 800,
-      measureSubtitle: (text: string) => text.length * 10,
+      output: { width: 1920, height: 1080 },
     });
     const image = layers.find((layer) => layer.kind === 'image');
     expect(image).toBeDefined();

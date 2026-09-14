@@ -77,3 +77,58 @@ export function fitContain(input: FitContainInput): FitRect {
   const y = (destHeight - height) / 2;
   return { x, y, width, height };
 }
+
+/**
+ * Export scales straight to the frame (no padding) when the source and frame
+ * aspect ratios differ by less than this — `video_scaling.py` does the same.
+ */
+const FRAME_ASPECT_TOLERANCE = 0.01;
+
+const ZERO_RECT: FitRect = { x: 0, y: 0, width: 0, height: 0 };
+
+/**
+ * The output frame inside the canvas: the project aspect ratio contained in
+ * the canvas. Every preview layer (video, image, subtitle) is laid out against
+ * this rect, whether or not a video is ready (S11).
+ */
+export function outputFrameRect(
+  destWidth: number,
+  destHeight: number,
+  targetAspect: number,
+): FitRect {
+  return fitContain({
+    sourceWidth: destWidth,
+    sourceHeight: destHeight,
+    destWidth,
+    destHeight,
+    targetAspectRatio: targetAspect,
+  });
+}
+
+/**
+ * A source contained inside the output frame by its OWN aspect ratio, offset
+ * by the frame origin — the preview mirror of export's scale-then-pad (PV3-01).
+ * A non-positive size yields a zero rect; a ratio within
+ * {@link FRAME_ASPECT_TOLERANCE} of the frame fills it, like export.
+ */
+export function fitSourceInFrame(
+  sourceWidth: number,
+  sourceHeight: number,
+  frame: FitRect,
+): FitRect {
+  if (sourceWidth <= 0 || sourceHeight <= 0 || frame.width <= 0 || frame.height <= 0) {
+    return ZERO_RECT;
+  }
+  const sourceRatio = sourceWidth / sourceHeight;
+  const frameRatio = frame.width / frame.height;
+  if (Math.abs(sourceRatio - frameRatio) < FRAME_ASPECT_TOLERANCE) {
+    return { ...frame };
+  }
+  const inner = fitContain({
+    sourceWidth,
+    sourceHeight,
+    destWidth: frame.width,
+    destHeight: frame.height,
+  });
+  return { ...inner, x: frame.x + inner.x, y: frame.y + inner.y };
+}

@@ -49,7 +49,6 @@ export {
 } from './services/ClipTimeMapping';
 
 // Service-related types
-export type { ResizeResult, InteractionType } from './services/DragCalculationService';
 export type { TimelineAction } from './services/HistoryService';
 export type { ClipTimeRef } from './services/ClipTimeMapping';
 export type { SplitResult } from './services/SplitService';

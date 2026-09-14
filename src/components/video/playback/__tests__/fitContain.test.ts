@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fitContain } from '../internal/fitContain';
+import { fitContain, fitSourceInFrame, outputFrameRect } from '../internal/fitContain';
 
 describe('fitContain', () => {
   it('returns zero rect when source dims are zero', () => {
@@ -80,5 +80,38 @@ describe('fitContain', () => {
       targetAspectRatio: -1,
     });
     expect(r.width).toBe(0);
+  });
+});
+
+describe('outputFrameRect / fitSourceInFrame (PV3-01)', () => {
+  it('outputFrameRect contains the project aspect inside the canvas', () => {
+    const frame = outputFrameRect(1600, 1200, 16 / 9);
+    expect(frame.width).toBe(1600);
+    expect(frame.height).toBeCloseTo(900, 5);
+    expect(frame.y).toBeCloseTo(150, 5);
+  });
+
+  it('fitSourceInFrame contains the source inside an offset frame', () => {
+    const frame = { x: 0, y: 150, width: 1600, height: 900 };
+    const content = fitSourceInFrame(1080, 1920, frame);
+    expect(content.height).toBeCloseTo(900, 5);
+    expect(content.width).toBeCloseTo(506.25, 5);
+    expect(content.x).toBeCloseTo(546.875, 5);
+    expect(content.y).toBeCloseTo(150, 5);
+  });
+
+  it('a source within 0.01 of the frame ratio fills the frame like export', () => {
+    const frame = { x: 10, y: 20, width: 1920, height: 1080 };
+    // 1918×1080 differs from 16:9 by ~0.002 — export scales straight, no bars.
+    expect(fitSourceInFrame(1918, 1080, frame)).toEqual(frame);
+  });
+
+  it('returns a zero rect for a non-positive source size', () => {
+    expect(fitSourceInFrame(0, 1080, { x: 0, y: 0, width: 10, height: 10 })).toEqual({
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import { findClip, trackEditError, toolErrorResponse, isStillClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning } from './index';
+import { findClip, trackEditError, toolErrorResponse, isStillClip, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning, collectClipStarts, diffClipStarts } from './index';
 
 const parameters = Type.Object({
   clipId: Type.String({ description: 'The ID of the clip to trim' }),
@@ -18,7 +18,8 @@ export function createTrimClipTool(context: ToolContext): AgentTool<typeof param
     name: 'trim_clip',
     label: 'Trim Clip',
     description:
-      'Trim a video or audio clip by adjusting its in-point (clipStart) and/or out-point (clipEnd). This changes which portion of the source material is shown, without moving the clip on the timeline. Images have no source range: use resize_clip for them.',
+      'Trim a video or audio clip by adjusting its in-point (clipStart) and/or out-point (clipEnd). This changes which portion of the source material is shown, without moving the clip on the timeline. Images have no source range: use resize_clip for them. ' +
+      'Clips on video and audio tracks sit end to end, so a shorter clip moves the clips after it earlier (a longer one moves them later); shiftedClips lists them.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -64,6 +65,7 @@ export function createTrimClipTool(context: ToolContext): AgentTool<typeof param
 
       const newDuration = newEnd - newStart;
 
+      const before = collectClipStarts(context.timelineState, [found.trackId]);
       context.updateTimeline(toolCallId, {
         type: 'trim_clip',
         clipId: params.clipId,
@@ -71,15 +73,21 @@ export function createTrimClipTool(context: ToolContext): AgentTool<typeof param
         clipEnd: newEnd,
         duration: newDuration,
       });
+      const shiftedClips = diffClipStarts(
+        before,
+        collectClipStarts(context.timelineState, [found.trackId]),
+        params.clipId,
+      );
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
-      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapReports = runOverlapPostCheck(context.timelineState, [found.trackId]);
       const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {
         success: true,
         clip: { id: params.clipId, clipStart: newStart, clipEnd: newEnd, duration: newDuration },
+        ...(shiftedClips.length > 0 ? { shiftedClips } : {}),
         ...(warning ? { warning } : {}),
         ...(overlapWarning ? { overlapWarning, overlapCount: overlapReports.length } : {}),
       };

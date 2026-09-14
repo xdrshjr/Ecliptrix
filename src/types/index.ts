@@ -97,6 +97,12 @@ export interface AgentToolCallRecord {
   params: Record<string, unknown>;
   status: 'executing' | 'completed' | 'error' | 'undone' | 'cancelled';
   result?: unknown;
+  /**
+   * The client applied this step to the timeline. Only such steps are
+   * offered for single-step undo; messages saved before the flag existed
+   * leave it unset (their whole-turn undo is unaffected).
+   */
+  changedTimeline?: boolean;
 }
 
 /**

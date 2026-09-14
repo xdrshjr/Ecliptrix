@@ -10,7 +10,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, List, Literal, Optional, Sequence, Tuple
 import cv2
 
 from app.logger import get_logger
@@ -19,7 +19,7 @@ from app.services.composition.composition_outcome import (
     CompositionStageError,
     last_stderr_line,
 )
-from app.services.composition.ffmpeg_args import video_filter_args
+from app.services.composition.ffmpeg_args import progress_args, video_filter_args
 
 logger = get_logger(__name__)
 
@@ -28,6 +28,32 @@ logger = get_logger(__name__)
 SUBTITLE_BURN_TIMEOUT_SECONDS = 300
 
 _HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+
+#: Which glyphs a subtitle needs; everything except 'latin' wraps by character.
+SubtitleScript = Literal["cjk", "kana", "hangul", "latin"]
+_KANA_RANGES = ((0x3040, 0x30FA), (0x30FC, 0x30FF), (0x31F0, 0x31FF))
+_KATAKANA_MIDDLE_DOT = chr(0x30FB)  # a Chinese name dot too; kana fonts lack 说 / 这
+_HANGUL_RANGES = ((0xAC00, 0xD7AF), (0x1100, 0x11FF), (0x3130, 0x318F))
+_WINDOWS_SCRIPT_FONTS = {  # before the Chinese fonts: partial kana / hangul
+    "kana": [f"C:/Windows/Fonts/{name}" for name in ("YuGothM.ttc", "meiryo.ttc", "msgothic.ttc")],
+    "hangul": [f"C:/Windows/Fonts/{name}" for name in ("malgun.ttf", "gulim.ttc")],
+}
+# FFmpeg unescapes a filter option twice: the filter graph, then the option parser.
+_OPTION_SPECIAL_CHARS = re.compile(r"([\\:'])")
+_GRAPH_SPECIAL_CHARS = re.compile(r"([\\'\[\],;])")
+
+
+def escape_filter_option_value(value: str) -> str:
+    """Escape an unquoted filter option value for both FFmpeg parser levels (N-15).
+
+    The old quoting broke on one apostrophe in a path such as ``C:/Users/O'Neil``.
+    """
+    option_escaped = _OPTION_SPECIAL_CHARS.sub(r"\\\1", value)
+    return _GRAPH_SPECIAL_CHARS.sub(r"\\\1", option_escaped)
+
+
+def _has_code_point_in(text: str, ranges: Sequence[Tuple[int, int]]) -> bool:
+    return any(start <= ord(char) <= end for char in text for start, end in ranges)
 
 
 @dataclass(frozen=True)
@@ -291,11 +317,9 @@ class SubtitleService:
                 wrapped_lines.append('')
                 continue
             
-            # Check if text contains Chinese characters
-            has_chinese = self._contains_chinese(paragraph)
-            
-            if has_chinese:
-                # For Chinese text, wrap by characters
+            # CJK ideographs, kana and hangul wrap by character: kana-only text
+            # has no spaces and used to overflow as one long "word" (N-15)
+            if self._detect_script(paragraph) != "latin":
                 wrapped_lines.extend(self._wrap_chinese_text(paragraph, max_line_width))
             else:
                 # For English text, wrap by words
@@ -399,6 +423,16 @@ class SubtitleService:
                     return True
         return False
 
+    def _detect_script(self, text: str) -> SubtitleScript:
+        """Script deciding font and wrapping; kana first, as Japanese mixes in kanji."""
+        if _has_code_point_in(text, _KANA_RANGES):
+            return "kana"
+        if _has_code_point_in(text, _HANGUL_RANGES):
+            return "hangul"
+        if self._contains_chinese(text) or _KATAKANA_MIDDLE_DOT in text:
+            return "cjk"
+        return "latin"
+
     @staticmethod
     def _is_cjk_capable_font(font_path: str) -> bool:
         """
@@ -416,13 +450,16 @@ class SubtitleService:
             "droidsansfallback",          # Linux
             "msyh", "simhei", "simsun",    # Windows (微软雅黑/黑体/宋体)
             "pingfang", "songti", "stheiti",  # macOS
+            "yugoth", "meiryo", "msgothic",   # Windows Japanese
+            "malgun", "gulim",                # Windows Korean
         )
         return any(marker in name for marker in cjk_markers)
 
     def _get_font_path(self, font_family: str = "default", text_content: str = "") -> Optional[str]:
         """
         Get available font path for the specified font family with cross-platform support.
-        Prioritizes Chinese fonts when Chinese characters are detected.
+        Prioritizes CJK-capable fonts when the text needs them, with Japanese /
+        Korean fonts first for kana / hangul on Windows (N-15).
         
         Args:
             font_family: Font family type (default, serif, sans-serif, monospace)
@@ -434,9 +471,10 @@ class SubtitleService:
         import platform
         
         system = platform.system().lower()
-        has_chinese = self._contains_chinese(text_content) if text_content else False
+        script = self._detect_script(text_content) if text_content else "latin"
+        needs_cjk_font = script != "latin"
         
-        logger.info(f"Getting font path for system: {system}, family: {font_family}, has_chinese: {has_chinese}, text_preview: '{text_content[:50] if text_content else ''}'")
+        logger.info(f"Getting font path for system: {system}, family: {font_family}, script: {script}, text_preview: '{text_content[:50] if text_content else ''}'")
         
         # Font paths by system and font family
         font_paths_map = {}
@@ -456,9 +494,10 @@ class SubtitleService:
             ]
             
             # 根据是否包含中文决定字体优先级
-            if has_chinese:
-                default_fonts = chinese_fonts + latin_fonts
-                logger.info("Chinese characters detected in Windows subtitle, prioritizing Chinese fonts (微软雅黑, 黑体, 宋体)")
+            if needs_cjk_font:
+                # 微软雅黑 still covers kanji when no Japanese font is installed.
+                default_fonts = _WINDOWS_SCRIPT_FONTS.get(script, []) + chinese_fonts + latin_fonts
+                logger.info(f"{script} text detected in Windows subtitle, prioritizing CJK-capable fonts")
             else:
                 default_fonts = latin_fonts + chinese_fonts
                 logger.info("No Chinese characters detected in Windows subtitle, prioritizing Latin fonts (Arial, Calibri)")
@@ -493,9 +532,9 @@ class SubtitleService:
             ]
             
             # 根据是否包含中文决定字体优先级
-            if has_chinese:
+            if needs_cjk_font:
                 default_fonts = chinese_fonts + latin_fonts
-                logger.info("Chinese characters detected in macOS subtitle, prioritizing Chinese fonts (PingFang, Songti)")
+                logger.info(f"{script} text detected in macOS subtitle, prioritizing CJK fonts (PingFang, Songti)")
             else:
                 default_fonts = latin_fonts + chinese_fonts
                 logger.info("No Chinese characters detected in macOS subtitle, prioritizing Latin fonts (Helvetica, Arial)")
@@ -543,9 +582,9 @@ class SubtitleService:
             ]
             
             # 根据是否包含中文决定字体优先级
-            if has_chinese:
+            if needs_cjk_font:
                 default_fonts = chinese_fonts + latin_fonts
-                logger.info("Chinese characters detected, prioritizing Chinese fonts")
+                logger.info(f"{script} text detected, prioritizing CJK fonts")
             else:
                 default_fonts = latin_fonts + chinese_fonts
                 logger.info("No Chinese characters detected, using standard font priority")
@@ -583,8 +622,8 @@ class SubtitleService:
         
         for i, font_path in enumerate(font_paths):
             if os.path.exists(font_path):
-                logger.info(f"✓ Found suitable font (#{i+1}/{len(font_paths)}): {font_path}")
-                if has_chinese and not self._is_cjk_capable_font(font_path):
+                logger.info(f"[ok] Found suitable font (#{i+1}/{len(font_paths)}): {font_path}")
+                if needs_cjk_font and not self._is_cjk_capable_font(font_path):
                     # Degraded state: Chinese text present but no CJK font is installed,
                     # so the search fell through to a Latin-only font. We STILL return it
                     # (returning None would drop fontfile= and let ffmpeg fall back to
@@ -592,24 +631,24 @@ class SubtitleService:
                     # producing the same boxes, or breaking the whole export pass). Make
                     # the failure LOUD instead of silently emitting tofu (□□□).
                     logger.error(
-                        f"❌ Chinese characters detected but no CJK font is installed; "
+                        f"[fail] {script} text detected but no CJK font is installed; "
                         f"falling back to non-CJK font '{os.path.basename(font_path)}'. "
-                        f"Chinese subtitles WILL render as missing-glyph boxes (□□□). "
+                        f"These subtitles WILL render as missing-glyph boxes. "
                         f"Install a CJK font on the host, e.g. "
                         f"`apt-get install -y fonts-noto-cjk && fc-cache -f`."
                     )
                 else:
-                    logger.info(f"Font selection result: Using '{os.path.basename(font_path)}' for {'Chinese' if has_chinese else 'English'} subtitle rendering")
+                    logger.info(f"Font selection result: Using '{os.path.basename(font_path)}' for {script} subtitle rendering")
                 return font_path
             else:
-                logger.debug(f"✗ Font not found (#{i+1}/{len(font_paths)}): {font_path}")
+                logger.debug(f"[fail] Font not found (#{i+1}/{len(font_paths)}): {font_path}")
         
         # If no specific font found, try default fonts
         if font_family != "default":
             logger.warning(f"No {font_family} font found, trying default fonts")
             return self._get_font_path("default", text_content)
         
-        logger.error("❌ No suitable font found on the system! This will cause subtitle rendering issues.")
+        logger.error("[fail] No suitable font found on the system! This will cause subtitle rendering issues.")
         logger.error("Please install appropriate fonts for proper subtitle support:")
         logger.error("  Windows: Ensure Arial/Calibri (English) and 微软雅黑/黑体 (Chinese) are installed")
         logger.error("  macOS: Ensure Helvetica/Arial (English) and PingFang/Songti (Chinese) are installed")
@@ -693,19 +732,20 @@ class SubtitleService:
         output_path: str,
         filters: List[str],
         temp_dir: str,
-        timeout: Optional[float],
+        timeout: Optional[float], progress_path: Optional[str] = None,
     ) -> None:
         """Burn ``filters`` into ``video_path``; raises CompositionStageError on failure.
 
-        The composition passes ``timeout=None``: a long export must not lose its
-        subtitles to a fixed wall-clock limit (EXO-16). A long chain reaches
-        FFmpeg through a script file (EXO-05).
+        The composition passes ``timeout=None`` so long exports keep their
+        subtitles (EXO-16); long chains use a script file (EXO-05). Six params:
+        ``progress_path`` (IM3-60) is an optional tail so callers stay as-is.
         """
         cmd = [
             "ffmpeg", "-y", "-i", video_path,
             *video_filter_args(",".join(filters), temp_dir, "ffmpeg"),
             "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
             "-c:a", "copy",
+            *(progress_args(progress_path) if progress_path else []),
             output_path,
         ]
         logger.info(f"Burning {len(filters)} subtitle drawtext filters into {video_path}")
@@ -891,11 +931,11 @@ class SubtitleService:
         cue: SubtitleCue,
     ) -> str:
         """The drawtext filter for one wrapped line."""
-        escaped_path = text_file_path.replace('\\', '/').replace(':', '\\:')
-        drawtext_filter = f"drawtext=textfile='{escaped_path}'"
+        text_file = escape_filter_option_value(Path(text_file_path).as_posix())
+        drawtext_filter = f"drawtext=textfile={text_file}"
         if font_path:
-            escaped_font_path = font_path.replace('\\', '\\\\').replace(':', '\\:')
-            drawtext_filter += f":fontfile='{escaped_font_path}'"
+            font_file = escape_filter_option_value(Path(font_path).as_posix())
+            drawtext_filter += f":fontfile={font_file}"
         drawtext_filter += (
             f":fontsize={style.font_size}"
             f":fontcolor={style.font_color}"

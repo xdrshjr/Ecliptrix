@@ -149,6 +149,66 @@ function needsIdentityRepair(material: MaterialItem): boolean {
 }
 
 /**
+ * Metadata a script match or TTS writes to tie a material to a script segment.
+ * A clip or a silence-removed copy is a new material and must not inherit it:
+ * the auto-mix planner would treat the copy as the segment's newest match
+ * (N-13). Watermark removal replaces the material under the same id and keeps it.
+ */
+export const SCRIPT_SEGMENT_METADATA_FIELDS = [
+  'segment_id', 'segment_number', 'segment_title', 'segment_assigned_at', 'video_index_in_segment', 'segment_text_hash',
+] as const;
+
+/** A copy of `metadata` without the script segment fields. */
+export function withoutScriptSegment(metadata: MaterialMetadata | undefined): MaterialMetadata {
+  return omitKeys(metadata ?? {}, SCRIPT_SEGMENT_METADATA_FIELDS) as MaterialMetadata;
+}
+
+function hasFiniteTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * Whether a clip / silence-removed copy still carries the membership its
+ * original had when it was made. A match written after the copy existed is
+ * stamped later than the copy's createdAt and is kept. Without a usable stamp
+ * or createdAt, the membership is inherited when the original has the same segment.
+ */
+function inheritedSegmentMembership(
+  material: MaterialItem,
+  byId: ReadonlyMap<string, MaterialItem>,
+): boolean {
+  const metadata = material.metadata;
+  if (!metadata || (metadata.isClip !== true && metadata.isSilenceRemoved !== true)) return false;
+  const segmentId: unknown = metadata.segment_id;
+  if (typeof segmentId !== 'string' || segmentId === '') return false;
+  const stamp: unknown = metadata.segment_assigned_at;
+  // createdAt is typed Date but persisted materials come back as ISO strings.
+  const createdAt = new Date(material.createdAt).getTime();
+  if (hasFiniteTime(stamp) && Number.isFinite(createdAt)) return stamp < createdAt;
+  const originalId: unknown = metadata.originalMaterialId;
+  const original = typeof originalId === 'string' ? byId.get(originalId) : undefined;
+  return original?.metadata?.segment_id === segmentId;
+}
+
+/**
+ * Strip script segment membership that clips and silence-removed copies saved
+ * before N-13 inherited from their original. Idempotent; untouched materials
+ * keep their reference.
+ */
+export function repairInheritedSegmentMembership(
+  materials: readonly MaterialItem[],
+): { materials: MaterialItem[]; repairedIds: string[] } {
+  const byId = new Map(materials.map((material) => [material.id, material] as const));
+  const repairedIds: string[] = [];
+  const repaired = materials.map((material) => {
+    if (!inheritedSegmentMembership(material, byId)) return material;
+    repairedIds.push(material.id);
+    return { ...material, metadata: withoutScriptSegment(material.metadata) };
+  });
+  return { materials: repaired, repairedIds };
+}
+
+/**
  * Repair derived materials saved before identity rebuilding existed: any
  * derived material whose local reference or storage key points at a file
  * other than its own `url` gets its storage identity rebuilt from `url`.

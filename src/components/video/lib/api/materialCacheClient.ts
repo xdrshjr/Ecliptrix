@@ -71,7 +71,9 @@ export async function deleteMaterialDerived(
   try {
     const result = await http.del<MaterialDeleteResult>(path, { signal });
     return result ?? FAILED_RESULT;
-  } catch {
+  } catch (error) {
+    // Never swallow silently (N-08): the caller only sees success:false.
+    console.warn('[materials] delete request failed', { materialId: params.materialId, error });
     return FAILED_RESULT;
   }
 }

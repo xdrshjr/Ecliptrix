@@ -18,23 +18,15 @@ import type {
 // Tool display name mapping
 // ---------------------------------------------------------------------------
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  get_timeline: 'Get Timeline',
-  search_materials: 'Search Materials',
-  add_to_track: 'Add to Track',
-  trim_clip: 'Trim Clip',
-  delete_clip: 'Delete Clip',
-  move_clip: 'Move Clip',
-  resize_clip: 'Resize Clip',
-  split_clip: 'Split Clip',
-  adjust_volume: 'Adjust Volume',
-  add_text_overlay: 'Add Text Overlay',
-  add_transition: 'Add Transition',
-  set_clip_speed: 'Set Clip Speed',
-};
+/** Localised tool names (`t.agentTimeline.toolNames`). */
+export type ToolNameLabels = Readonly<Record<string, string>>;
 
-export function getToolDisplayName(toolName: string): string {
-  return TOOL_DISPLAY_NAMES[toolName] ?? toolName;
+/** Localised name of a tool; unknown tools (or no labels) show the raw name. */
+export function getToolDisplayName(toolName: string, toolNames?: ToolNameLabels): string {
+  if (toolNames && Object.prototype.hasOwnProperty.call(toolNames, toolName)) {
+    return toolNames[toolName];
+  }
+  return toolName;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,11 +100,14 @@ export function formatResult(result: unknown): string {
 // AgentToolCallRecord → ToolStepData
 // ---------------------------------------------------------------------------
 
-export function toolCallToStepData(tc: AgentToolCallRecord): ToolStepData {
+export function toolCallToStepData(
+  tc: AgentToolCallRecord,
+  toolNames?: ToolNameLabels,
+): ToolStepData {
   return {
     id: tc.id,
     name: tc.name,
-    displayName: getToolDisplayName(tc.name),
+    displayName: getToolDisplayName(tc.name, toolNames),
     status: tc.status as ToolStepStatus,
     params: tc.params,
     result: tc.result,
@@ -138,8 +133,18 @@ export function toolCallToStepData(tc: AgentToolCallRecord): ToolStepData {
  * A single agent message may produce up to 3 nodes (thinking + execution + response)
  * depending on which fields are populated. During streaming, the split evolves over
  * time as tool calls begin and content finalizes.
+ *
+ * `labels.emptyResponse` is the localised text shown for a finished agent
+ * message that produced neither text nor tool calls.
  */
-export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
+export interface TimelineNodeLabels {
+  emptyResponse: string;
+}
+
+export function mapMessageToNodes(
+  message: ChatMessage,
+  labels: TimelineNodeLabels,
+): TimelineNodeData[] {
   const nodes: TimelineNodeData[] = [];
 
   if (!message.isAgentMessage) {
@@ -210,11 +215,14 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
     });
   }
 
-  // 3. Response node: finalized text after streaming ends
-  if (!isStreaming && message.content) {
-    // Only turns that recorded track patches can be reverted. Older messages
-    // (whole-timeline snapshots) hide the button instead of wiping later edits.
-    const patchCount = message.timelineTrackPatches?.length ?? 0;
+  // 3. Response node: finalized text after streaming ends. A turn stopped
+  //    after its tool calls but before any text still gets one (with no
+  //    text), because this node carries the turn's only "Undo all" button.
+  // Only turns that recorded track patches can be reverted. Older messages
+  // (whole-timeline snapshots) hide the button instead of wiping later edits.
+  const patchCount = message.timelineTrackPatches?.length ?? 0;
+  const isToolOnlyTurn = !message.content && hasToolCalls && patchCount > 0;
+  if (!isStreaming && (message.content || isToolOnlyTurn)) {
     nodes.push({
       kind: 'response',
       id: `${message.id}-response`,
@@ -235,7 +243,7 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
       kind: 'response',
       id: `${message.id}-response`,
       timestamp: message.timestamp,
-      content: 'The model did not return a response.',
+      content: labels.emptyResponse,
       toolCalls: [],
       isUndone: false,
       messageId: message.id,
@@ -251,6 +259,9 @@ export function mapMessageToNodes(message: ChatMessage): TimelineNodeData[] {
  * Flatten all conversation messages into a sorted list of TimelineNodeData.
  * Used by TimelineChatPanel.
  */
-export function messagesToTimelineNodes(messages: ChatMessage[]): TimelineNodeData[] {
-  return messages.flatMap(mapMessageToNodes);
+export function messagesToTimelineNodes(
+  messages: ChatMessage[],
+  labels: TimelineNodeLabels,
+): TimelineNodeData[] {
+  return messages.flatMap(message => mapMessageToNodes(message, labels));
 }

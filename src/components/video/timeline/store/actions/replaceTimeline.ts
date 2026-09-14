@@ -15,6 +15,8 @@ import type { TimelineStore } from '../useTimelineStore';
 import { TimelineAggregate } from '../../domain';
 import type { TimelineData } from '../../domain';
 import { isEditLocked } from '../editLock';
+import { tracksEqual } from '../../domain/services/snapshotEquality';
+import { carryViewFlags } from '../../domain/services/trackViewFlags';
 
 /** Where an external whole-timeline write came from (history payload only). */
 export type ReplaceTimelineReason =
@@ -46,6 +48,10 @@ const LOCK_EXEMPT_REASONS: ReadonlySet<ReplaceTimelineReason> = new Set<ReplaceT
  * Only tracks are taken from `data`: zoom, scroll and playhead stay as the
  * user left them, with the playhead clamped to the new end (TL2-04).
  *
+ * Lock, mute and visibility are view flags (S12, D-31): every write except a
+ * JSON import keeps the flags tracks with the same id have now, so undoing an
+ * agent turn never unmutes a track the user muted after it.
+ *
  * @returns whether a history entry was written.
  * @throws when `data` cannot be turned into a timeline — before any history
  *   entry or state change exists.
@@ -59,15 +65,18 @@ export function replaceTimelineAction(
     console.warn('[replaceTimelineAction] refused while edit-locked', { reason });
     return false;
   }
+  const tracks = reason === 'import'
+    ? data.tracks
+    : carryViewFlags(data.tracks, get().exportToData().tracks);
   // Construct first: a malformed timeline throws here, before any history
   // entry, state change or cancelled gesture exists (AG2-08).
-  const incoming = TimelineAggregate.fromPlainObject(data);
+  const incoming = TimelineAggregate.fromPlainObject({ ...data, tracks });
   const incomingTracks = incoming.toPlainObject().tracks;
   // A write landing under a live drag would be overwritten by its release.
   if (get().isInteracting) get().cancelDrag();
 
   const state = get();
-  if (JSON.stringify(incomingTracks) === JSON.stringify(state.exportToData().tracks)) {
+  if (tracksEqual(incomingTracks, state.exportToData().tracks)) {
     return false;
   }
 
@@ -76,7 +85,7 @@ export function replaceTimelineAction(
   const totalDuration = incoming.calculateTotalDuration().value;
   state.importFromData({
     ...view,
-    tracks: data.tracks,
+    tracks,
     totalDuration,
     currentTime: Math.min(view.currentTime, totalDuration),
   });

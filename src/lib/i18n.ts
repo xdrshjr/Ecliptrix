@@ -330,6 +330,14 @@ export interface Translations {
     closeAnyway: string;
     timelineRepaired: string;
     timelineUnreadable: string;
+    restoreBackup: string;
+    restoreBackupConfirmTitle: string;
+    restoreBackupConfirmBody: string;
+    backupRestored: string;
+    backupRestoredAll: string;
+    backupUnreadable: string;
+    discardBackup: string;
+    discardBackupConfirmBody: string;
     title: string;
     projectActions: string;
     closeMenu: string;
@@ -450,6 +458,7 @@ export interface Translations {
       imageTrack: string;
       mute: string;
       unmute: string;
+      materialMissing: string;
       lock: string;
       unlock: string;
       show: string;
@@ -498,6 +507,9 @@ export interface Translations {
         operationReplaced: string;
         organizeMaterialsSuccess: string;
         organizeMaterialsNoItems: string;
+        organizeMaterialsAlreadyTidy: string;
+        durationUnknownFallback: string;
+        probingDuration: string;
         featureComingSoon: string;
         effectsRequireSelection: string;
         transitionsRequireSelection: string;
@@ -554,6 +566,8 @@ export interface Translations {
       cancel: string;
       reset: string;
       discardConfirm: string;
+      discardTitle: string;
+      discardAction: string;
       webglDegraded: string;
       qualityHintCover: string;
       qualityHintRoll: string;
@@ -672,10 +686,11 @@ export interface Translations {
       resetZoomAriaLabel: string;
     };
     sentenceSegment: {
-      sentence: string;
       timeLabel: string;
       durationUnit: string;
+      sentenceCount: string;
     };
+    panelAriaLabel: string;
   };
   materialsPanel: {
     deleteConfirmTitle: string;
@@ -844,6 +859,8 @@ export interface Translations {
     clearAllMaterials: string;
     clearAllConfirmTitle: string;
     clearAllConfirmMessage: string;
+    clearAllInUseMessage: string;
+    deleteCleanupFailed: string;
     clearAllSuccess: string;
     noMaterialsToClear: string;
     clearAllPartialFail: string;
@@ -907,6 +924,7 @@ export interface Translations {
   imageOverlay: {
     done: string;
     revert: string;
+    overlayLabel: string;
   };
   agentApply: {
     notApplied: string;
@@ -918,6 +936,86 @@ export interface Translations {
     };
     finishing: string;
     finishingTimedOut: string;
+  };
+  agentTimeline: {
+    responseAuthor: string;
+    undoneTag: string;
+    undoAll: string;
+    undoAllTitle: string;
+    undoStep: string;
+    undoStepItem: string;
+    undoneNotice: string;
+    executing: string;
+    executed: string;
+    stop: string;
+    collapsedSummary: string;
+    collapsedSummaryErrors: string;
+    cancelledNotice: string;
+    parameters: string;
+    result: string;
+    liveRetrying: string;
+    liveTool: string;
+    liveProgress: string;
+    liveWorking: string;
+    thinking: string;
+    thoughtProcess: string;
+    analyzing: string;
+    userAuthor: string;
+    retry: string;
+    retriesUsed: string;
+    dismiss: string;
+    errorPrefix: string;
+    toolNames: {
+      add_material_to_library: string;
+      add_to_track: string;
+      auto_fix_overlaps: string;
+      batch_generate_tts: string;
+      batch_storyboard_video: string;
+      check_timeline_overlaps: string;
+      compose_storyboard: string;
+      delete_clip: string;
+      describe_storyboard: string;
+      expand_video_script: string;
+      explore_tools: string;
+      generate_ai_image: string;
+      generate_ai_video: string;
+      generate_storyboard: string;
+      generate_tts: string;
+      generate_video_script: string;
+      get_timeline: string;
+      image_to_video: string;
+      list_materials: string;
+      move_clip: string;
+      remove_material: string;
+      resize_clip: string;
+      search_audio: string;
+      search_image: string;
+      search_materials: string;
+      search_video: string;
+      trim_clip: string;
+      understand_video_script: string;
+    };
+  };
+  agentStream: {
+    errors: {
+      connectionLost: string;
+      stalled: string;
+      totalTimeout: string;
+      idleTimeout: string;
+      parseError: string;
+      serverError: string;
+      toolError: string;
+      cancelled: string;
+      interruptedAfterTools: string;
+      serverTimeout: string;
+      providerAuth: string;
+      providerRateLimit: string;
+      contextOverflow: string;
+      providerError: string;
+      emptyResponse: string;
+      toolFailures: string;
+      agentError: string;
+    };
   };
   batchAnalysisModal: {
     title: string;
@@ -1013,6 +1111,7 @@ export interface Translations {
       play: string;
       pause: string;
       compositionPlay: string;
+      volumeBoostUnavailable: string;
       // Round-2 client-preview readiness gate (spec §3.3.6)
       materialsDownloading: string;
       materialsStreamingNotice: string;
@@ -1060,6 +1159,7 @@ export interface Translations {
   videoExportProgressModal: {
     title: string;
     progressStages: {
+      queued: string;
       preparing: string;
       processing: string;
       composing: string;
@@ -1152,9 +1252,10 @@ export interface Translations {
     exportCompletedButDownloadFailed: string;
     exportTimeout: string;
     exportFailed: string;
-    exportFailedWithError: string;
-    failedVideos: string;
-    recoverySuggestions: string;
+    exportCancelled: string;
+    failedStageMediaResolution: string;
+    failedStageNormalization: string;
+    failedStageCompose: string;
     compositionWarningsTitle: string;
   };
   videoSearch: {
@@ -1378,11 +1479,19 @@ export interface Translations {
       replaceConfirmBody: string;
       applied: string;
       skippedNoAudio: string;
+      skippedNoVideo: string;
       duplicatesIgnored: string;
       trackLocked: string;
       noTargetTrack: string;
       confirm: string;
       cancel: string;
+    };
+    clipCut: {
+      processing: string;
+      done: string;
+      partialFailed: string;
+      failed: string;
+      clipDescription: string;
     };
     agentDock: {
       fabLabel: string;
@@ -2830,6 +2939,14 @@ export const translations: Record<string, Translations> = {
       closeAnyway: 'Close anyway',
       timelineRepaired: '{count} clips in this project had invalid data and were repaired',
       timelineUnreadable: "The timeline couldn't be read. A backup of the original data was kept and the project opened with an empty timeline",
+      restoreBackup: 'Restore backed-up timeline',
+      restoreBackupConfirmTitle: 'Restore the backed-up timeline?',
+      restoreBackupConfirmBody: 'The timeline backed up on {date} replaces the current one. Press Ctrl+Z to undo.',
+      backupRestored: 'Restored the backed-up timeline ({count} unreadable clips skipped)',
+      backupRestoredAll: 'Restored the backed-up timeline',
+      backupUnreadable: "The backed-up timeline still can't be read",
+      discardBackup: 'Discard backup',
+      discardBackupConfirmBody: 'Delete the backed-up timeline for good?',
       title: 'Video Projects',
       projectActions: 'Project actions',
       closeMenu: 'Close menu',
@@ -3064,6 +3181,8 @@ export const translations: Record<string, Translations> = {
       clearAllMaterials: 'Clear All Materials',
       clearAllConfirmTitle: 'Clear All Materials',
       clearAllConfirmMessage: 'Are you sure you want to clear all {count} materials? This action cannot be undone.',
+      clearAllInUseMessage: "Clear all {count} materials? {clipCount} clips on the timeline use them and will be removed too. Press Ctrl+Z to restore the clips; the materials can't be restored.",
+      deleteCleanupFailed: "{count} deleted materials couldn't be removed from disk. They're gone from this project, but their files still use space.",
       clearAllSuccess: 'All materials cleared',
       noMaterialsToClear: 'No materials to clear',
       clearAllPartialFail: 'Failed to delete {failed} pack(s). Please retry.',
@@ -3127,6 +3246,7 @@ export const translations: Record<string, Translations> = {
     imageOverlay: {
       done: 'Done',
       revert: 'Revert position',
+      overlayLabel: 'Image overlay. Drag, or use the arrow keys to move it (hold Shift for larger steps).',
     },
     agentApply: {
       notApplied: "This step couldn't be applied to the timeline",
@@ -3138,6 +3258,86 @@ export const translations: Record<string, Translations> = {
       },
       finishing: 'Applying the last changes to the timeline…',
       finishingTimedOut: 'Some changes took too long to apply. The timeline is unlocked, so check the result',
+    },
+    agentTimeline: {
+      responseAuthor: 'AI',
+      undoneTag: '(undone)',
+      undoAll: 'Undo all',
+      undoAllTitle: 'Undo every timeline change in this response',
+      undoStep: 'Undo a step',
+      undoStepItem: 'Undo {index}. {tool}',
+      undoneNotice: 'Changes undone',
+      executing: 'Executing',
+      executed: 'Executed',
+      stop: 'Stop',
+      collapsedSummary: '{count} steps — click to expand',
+      collapsedSummaryErrors: '{count} steps (with errors) — click to expand',
+      cancelledNotice: 'Stopped. Completed steps were kept.',
+      parameters: 'Parameters',
+      result: 'Result',
+      liveRetrying: 'Retrying (attempt {n})…',
+      liveTool: 'Running {tool}…',
+      liveProgress: '{count} steps done, continuing…',
+      liveWorking: 'Agent is working…',
+      thinking: 'Thinking…',
+      thoughtProcess: 'Thought process',
+      analyzing: 'AI is analyzing…',
+      userAuthor: 'You',
+      retry: 'Retry',
+      retriesUsed: 'Retried {n} of {max} times',
+      dismiss: 'Dismiss',
+      errorPrefix: 'Agent error: {message}',
+      toolNames: {
+        add_material_to_library: 'Add to library',
+        add_to_track: 'Add to track',
+        auto_fix_overlaps: 'Fix overlaps',
+        batch_generate_tts: 'Generate voice-overs',
+        batch_storyboard_video: 'Generate storyboard videos',
+        check_timeline_overlaps: 'Check overlaps',
+        compose_storyboard: 'Compose storyboard',
+        delete_clip: 'Delete clip',
+        describe_storyboard: 'Describe storyboard',
+        expand_video_script: 'Expand script',
+        explore_tools: 'Explore tools',
+        generate_ai_image: 'Generate image',
+        generate_ai_video: 'Generate video',
+        generate_storyboard: 'Generate storyboard',
+        generate_tts: 'Generate voice-over',
+        generate_video_script: 'Write video script',
+        get_timeline: 'Read timeline',
+        image_to_video: 'Image to video',
+        list_materials: 'List materials',
+        move_clip: 'Move clip',
+        remove_material: 'Remove material',
+        resize_clip: 'Change duration',
+        search_audio: 'Search audio',
+        search_image: 'Search images',
+        search_materials: 'Search materials',
+        search_video: 'Search videos',
+        trim_clip: 'Trim clip',
+        understand_video_script: 'Understand video',
+      },
+    },
+    agentStream: {
+      errors: {
+        connectionLost: 'Connection lost. Reconnecting…',
+        stalled: 'The agent stopped responding. Retrying…',
+        totalTimeout: 'The run reached its maximum length and was stopped.',
+        idleTimeout: 'No progress for 30 minutes. The run was stopped.',
+        parseError: 'Could not read the response. Try again later.',
+        serverError: 'The server hit an error. Try again later.',
+        toolError: 'A tool failed. The agent is trying another way…',
+        cancelled: 'Run cancelled.',
+        interruptedAfterTools: 'Connection lost after the agent started using tools. It was not retried to avoid running them twice; any completed edits stay on the timeline.',
+        serverTimeout: 'The agent made no progress for 30 minutes and was stopped. Finished steps were kept; try smaller steps.',
+        providerAuth: 'The model provider rejected the API key. Check Settings › Models.',
+        providerRateLimit: 'The model provider is rate limiting requests. Wait a moment and try again.',
+        contextOverflow: 'This conversation is too long for the model. Clear the chat or start a new one.',
+        providerError: 'The model request failed: {detail}',
+        emptyResponse: 'The model returned an empty response. It may not support tool calling.',
+        toolFailures: 'Stopped after 5 tool calls failed in a row. This usually means a local service or network problem. Try again.',
+        agentError: 'The run stopped unexpectedly: {detail}',
+      },
     },
     batchAnalysisModal: {
       title: 'Select Batch Analysis Mode',
@@ -3217,6 +3417,7 @@ export const translations: Record<string, Translations> = {
           imageTrack: 'Image Track',
           mute: 'Mute',
         unmute: 'Unmute',
+        materialMissing: "Material deleted — this clip won't render",
         lock: 'Lock Track',
         unlock: 'Unlock Track',
         show: 'Show Track',
@@ -3264,6 +3465,9 @@ export const translations: Record<string, Translations> = {
         operationReplaced: 'Replaced',
         organizeMaterialsSuccess: 'All materials have been successfully aligned to the left',
         organizeMaterialsNoItems: 'Nothing to organize yet.',
+        organizeMaterialsAlreadyTidy: 'Clips are already packed.',
+        durationUnknownFallback: "Couldn't read this clip's length; it was added as 5 s",
+        probingDuration: "Reading the clip's length…",
         featureComingSoon: 'This feature is coming soon',
         effectsRequireSelection: 'Select a clip on the timeline first to add effects. (Feature coming soon)',
         transitionsRequireSelection: 'Select two adjacent clips first to add a transition. (Feature coming soon)',
@@ -3320,6 +3524,8 @@ export const translations: Record<string, Translations> = {
         cancel: 'Cancel',
         reset: 'Reset',
         discardConfirm: 'Discard unapplied changes?',
+        discardTitle: 'Discard camera motion changes?',
+        discardAction: 'Discard',
         webglDegraded: '3D preview degraded (WebGL unavailable) - export is still full 3D',
         qualityHintCover: 'Wide 3D angle crops more of the frame; sharpness may drop.',
         qualityHintRoll: 'Roll crops the frame for the whole clip; sharpness may drop.',
@@ -3441,10 +3647,11 @@ export const translations: Record<string, Translations> = {
         resetZoomAriaLabel: 'Reset zoom, current {percent}%',
       },
       sentenceSegment: {
-        sentence: 'Sentence {order}',
         timeLabel: 'Time: ',
         durationUnit: 's',
+        sentenceCount: '{count} sentences',
       },
+      panelAriaLabel: 'Timeline',
     },
     videoSearchModal: {
       title: 'Search Online Videos',
@@ -3523,6 +3730,7 @@ export const translations: Record<string, Translations> = {
         play: 'Play',
         pause: 'Pause',
         compositionPlay: 'Composition Play',
+        volumeBoostUnavailable: 'Volume above 100% is not audible in preview until this clip is downloaded; the export applies it.',
         materialsDownloading: 'Materials downloading, please wait ({ready}/{total} ready)',
         materialsStreamingNotice: '{count} clip(s) will stream',
         localMediaOverBudget: 'Preview media exceeds the memory budget; playback stability may be affected',
@@ -3569,6 +3777,7 @@ export const translations: Record<string, Translations> = {
     videoExportProgressModal: {
       title: 'Export Video',
       progressStages: {
+        queued: 'Waiting for another export to finish',
         preparing: 'Preparing export...',
         processing: 'Processing video...',
         composing: 'Composing...',
@@ -3659,11 +3868,12 @@ export const translations: Record<string, Translations> = {
       noContentToExportDesc: 'Please add video materials to the timeline before exporting',
       noContentToExportFull: 'No content to export. Please add video materials to the timeline before exporting.',
       exportCompletedButDownloadFailed: 'Video export completed but download failed. Please refresh the page and try again, or contact support.',
-      exportTimeout: 'Video export timed out: processing exceeded the 10-minute limit. Try reducing video duration or complexity, or try again later.',
+      exportTimeout: 'The export made no progress for 10 minutes and was stopped. Try again, or export a shorter timeline.',
       exportFailed: 'Video export failed',
-      exportFailedWithError: 'Video export failed:',
-      failedVideos: 'Failed videos:',
-      recoverySuggestions: 'Suggested solutions:',
+      exportCancelled: 'Export cancelled',
+      failedStageMediaResolution: '{count} clips use materials that are not on this computer: {names}. Re-import or download them first',
+      failedStageNormalization: '{count} clips could not be processed: {names}. The files may be damaged or unsupported',
+      failedStageCompose: 'Something went wrong while rendering the video. Try again',
       compositionWarningsTitle: 'Export finished, but some clips did not render their camera motion as previewed:',
     },
     videoSearch: {
@@ -3884,11 +4094,19 @@ export const translations: Record<string, Translations> = {
        replaceConfirmBody: '{count} clips on Video 1 and Audio 1 will be replaced. Other tracks stay unchanged. Undo with Ctrl+Z',
        applied: 'Arranged {segments} segments',
        skippedNoAudio: 'Segments {list} have no voice-over yet and were skipped',
+       skippedNoVideo: 'Segments {list} have no matched video and were skipped',
        duplicatesIgnored: 'Ignored {count} outdated material versions',
        trackLocked: 'Video 1 or Audio 1 is locked',
        noTargetTrack: 'Add a video track and an audio track before arranging automatically',
        confirm: 'Replace',
        cancel: 'Cancel',
+     },
+     clipCut: {
+       processing: 'Cutting {count} clips…',
+       done: 'Saved {count} clips to the library',
+       partialFailed: "{failed} of {total} clips couldn't be cut and were removed",
+       failed: "Couldn't cut the video: {message}",
+       clipDescription: 'Clip cut from "{name}", {start} - {end}',
      },
      agentDock: {
        fabLabel: 'AI editing assistant',
@@ -5344,6 +5562,14 @@ export const translations: Record<string, Translations> = {
       closeAnyway: '仍然关闭',
       timelineRepaired: '项目中有 {count} 个片段的数据无效，已自动修复',
       timelineUnreadable: '时间轴数据无法读取，已保留原始数据的备份，并以空时间轴打开',
+      restoreBackup: '恢复备份的时间轴',
+      restoreBackupConfirmTitle: '恢复备份的时间轴？',
+      restoreBackupConfirmBody: '将用 {date} 备份的时间轴替换当前时间轴，可按 Ctrl+Z 撤销。',
+      backupRestored: '已恢复备份的时间轴（跳过 {count} 个无法读取的片段）',
+      backupRestoredAll: '已恢复备份的时间轴',
+      backupUnreadable: '备份的时间轴仍无法读取',
+      discardBackup: '丢弃备份',
+      discardBackupConfirmBody: '永久删除备份的时间轴？',
       title: '视频项目',
       projectActions: '项目操作',
       closeMenu: '关闭菜单',
@@ -5578,6 +5804,8 @@ export const translations: Record<string, Translations> = {
       clearAllMaterials: '清除所有素材',
       clearAllConfirmTitle: '清除所有素材',
       clearAllConfirmMessage: '确定要清除所有 {count} 个素材吗？此操作不可撤销。',
+      clearAllInUseMessage: '确定要清除全部 {count} 个素材吗？时间轴上有 {clipCount} 个片段使用这些素材，将一并移除（按 Ctrl+Z 可恢复片段，素材不可恢复）。',
+      deleteCleanupFailed: '有 {count} 个已删除素材的文件未能从磁盘清理。素材已从项目中移除，但文件仍占用空间。',
       clearAllSuccess: '已清除所有素材',
       noMaterialsToClear: '没有可清除的素材',
       clearAllPartialFail: '部分素材包删除失败（{failed} 项），请稍后重试',
@@ -5641,6 +5869,7 @@ export const translations: Record<string, Translations> = {
     imageOverlay: {
       done: '完成',
       revert: '还原位置',
+      overlayLabel: '图片叠加层。可拖动，或用方向键移动（按住 Shift 移动更多）。',
     },
     agentApply: {
       notApplied: '该步骤未能应用到时间轴',
@@ -5652,6 +5881,86 @@ export const translations: Record<string, Translations> = {
       },
       finishing: '正在把最后的修改应用到时间轴…',
       finishingTimedOut: '部分修改应用超时，时间轴已解锁，请检查结果',
+    },
+    agentTimeline: {
+      responseAuthor: 'AI',
+      undoneTag: '（已撤销）',
+      undoAll: '撤销本轮',
+      undoAllTitle: '撤销本轮回复对时间轴的全部修改',
+      undoStep: '撤销单步',
+      undoStepItem: '撤销 {index}. {tool}',
+      undoneNotice: '修改已撤销',
+      executing: '执行中',
+      executed: '已执行',
+      stop: '停止',
+      collapsedSummary: '共 {count} 步，点击展开',
+      collapsedSummaryErrors: '共 {count} 步（有失败），点击展开',
+      cancelledNotice: '已停止，已完成的步骤已保留。',
+      parameters: '参数',
+      result: '结果',
+      liveRetrying: '正在重试（第 {n} 次）…',
+      liveTool: '正在执行 {tool}…',
+      liveProgress: '已完成 {count} 步，继续执行中…',
+      liveWorking: 'Agent 执行中…',
+      thinking: '思考中…',
+      thoughtProcess: '思考过程',
+      analyzing: 'AI 分析中…',
+      userAuthor: '我',
+      retry: '重试',
+      retriesUsed: '已重试 {n}/{max} 次',
+      dismiss: '关闭',
+      errorPrefix: 'Agent 出错：{message}',
+      toolNames: {
+        add_material_to_library: '添加到素材库',
+        add_to_track: '添加到轨道',
+        auto_fix_overlaps: '修复重叠',
+        batch_generate_tts: '批量生成配音',
+        batch_storyboard_video: '批量生成分镜视频',
+        check_timeline_overlaps: '检查重叠',
+        compose_storyboard: '合成分镜',
+        delete_clip: '删除片段',
+        describe_storyboard: '描述分镜',
+        expand_video_script: '扩写脚本',
+        explore_tools: '查看可用工具',
+        generate_ai_image: '生成图片',
+        generate_ai_video: '生成视频',
+        generate_storyboard: '生成分镜',
+        generate_tts: '生成配音',
+        generate_video_script: '生成视频脚本',
+        get_timeline: '读取时间轴',
+        image_to_video: '图片生成视频',
+        list_materials: '列出素材',
+        move_clip: '移动片段',
+        remove_material: '删除素材',
+        resize_clip: '调整时长',
+        search_audio: '搜索音频',
+        search_image: '搜索图片',
+        search_materials: '搜索素材',
+        search_video: '搜索视频',
+        trim_clip: '裁剪片段',
+        understand_video_script: '理解视频内容',
+      },
+    },
+    agentStream: {
+      errors: {
+        connectionLost: '网络连接中断，正在尝试重新连接…',
+        stalled: 'Agent 响应超时，正在重试…',
+        totalTimeout: '执行时间超过最长限制，已停止。',
+        idleTimeout: '连续 30 分钟没有进展，已停止。',
+        parseError: '数据解析异常，请稍后重试。',
+        serverError: '服务端发生错误，请稍后重试。',
+        toolError: '工具执行失败，Agent 正在尝试其他方案…',
+        cancelled: '已取消执行。',
+        interruptedAfterTools: '连接中断：Agent 已开始调用工具，为避免重复执行未自动重连。已完成的更改保留在时间轴上，可继续对话。',
+        serverTimeout: 'Agent 连续 30 分钟无进展，已停止。已完成的步骤已保留，请拆分为更小的任务。',
+        providerAuth: '模型服务拒绝了 API Key，请在设置 › 模型中检查。',
+        providerRateLimit: '模型服务请求过于频繁，请稍后重试。',
+        contextOverflow: '对话内容超出模型上下文长度，请清空聊天或新建对话。',
+        providerError: '模型请求失败：{detail}',
+        emptyResponse: '模型返回了空内容，可能不支持工具调用。',
+        toolFailures: '连续 5 次工具调用失败，已自动停止。通常是本地服务或网络异常，请重试。',
+        agentError: '运行意外中断：{detail}',
+      },
     },
     batchAnalysisModal: {
       title: '选择批量解析模式',
@@ -5731,6 +6040,7 @@ export const translations: Record<string, Translations> = {
           imageTrack: '图片轨道',
           mute: '静音',
         unmute: '取消静音',
+        materialMissing: '素材已删除，此片段无法预览与导出',
         lock: '锁定轨道',
         unlock: '解锁轨道',
         show: '显示轨道',
@@ -5778,6 +6088,9 @@ export const translations: Record<string, Translations> = {
           operationReplaced: '替换',
           organizeMaterialsSuccess: '所有素材已向左对齐成功',
           organizeMaterialsNoItems: '暂无素材可整理',
+          organizeMaterialsAlreadyTidy: '素材已经排列整齐',
+          durationUnknownFallback: '无法读取片段时长，已按 5 秒添加',
+          probingDuration: '正在读取片段时长…',
           featureComingSoon: '该功能即将推出',
           effectsRequireSelection: '请先在时间轴上选中片段，再添加特效。（功能开发中）',
           transitionsRequireSelection: '请先选中两段相邻片段，再添加转场。（功能开发中）',
@@ -5834,6 +6147,8 @@ export const translations: Record<string, Translations> = {
         cancel: '取消',
         reset: '重置',
         discardConfirm: '放弃尚未应用的修改？',
+        discardTitle: '放弃运镜修改？',
+        discardAction: '放弃',
         webglDegraded: '3D 预览已降级（WebGL 不可用），导出仍为完整 3D',
         qualityHintCover: '3D 角度较大，裁切较多，画质可能下降。',
         qualityHintRoll: '旋转运镜全程都有裁切，画质可能下降。',
@@ -5953,10 +6268,11 @@ export const translations: Record<string, Translations> = {
         resetZoomAriaLabel: '重置缩放，当前 {percent}%',
       },
       sentenceSegment: {
-        sentence: '句子 {order}',
         timeLabel: '时间: ',
         durationUnit: '秒',
+        sentenceCount: '{count} 句',
       },
+      panelAriaLabel: '时间轴',
     },
     videoSearchModal: {
       title: '搜索在线视频',
@@ -6035,6 +6351,7 @@ export const translations: Record<string, Translations> = {
         play: '播放',
         pause: '暂停',
         compositionPlay: '组合播放',
+        volumeBoostUnavailable: '该片段下载完成前，预览中听不出超过 100% 的音量；导出会按设置生效。',
         materialsDownloading: '素材下载中，请稍候（已就绪 {ready}/{total}）',
         materialsStreamingNotice: '{count} 个片段将以流式预览',
         localMediaOverBudget: '预览素材已超出内存预算，可能影响播放稳定性',
@@ -6081,6 +6398,7 @@ export const translations: Record<string, Translations> = {
     videoExportProgressModal: {
       title: '导出视频',
       progressStages: {
+        queued: '正在等待其他导出完成',
         preparing: '准备导出...',
         processing: '处理视频...',
         composing: '合成中...',
@@ -6171,11 +6489,12 @@ export const translations: Record<string, Translations> = {
       noContentToExportDesc: '请先添加视频素材到时间轴',
       noContentToExportFull: '没有视频内容可导出，请先添加视频素材到时间轴',
       exportCompletedButDownloadFailed: '视频导出已完成但下载失败。请刷新页面后重试，或联系技术支持。',
-      exportTimeout: '视频导出超时：处理时间超过10分钟限制。请尝试减少视频时长或复杂度，降低输出分辨率，或稍后重试。',
+      exportTimeout: '导出已 10 分钟没有进展，已停止。请重试，或先导出较短的时间轴。',
       exportFailed: '视频导出失败',
-      exportFailedWithError: '视频导出失败：',
-      failedVideos: '失败的视频：',
-      recoverySuggestions: '建议解决方案：',
+      exportCancelled: '已取消导出',
+      failedStageMediaResolution: '{count} 个片段的素材不在本地：{names}。请先重新导入或下载这些素材',
+      failedStageNormalization: '{count} 个片段无法处理：{names}。文件可能已损坏或格式不受支持',
+      failedStageCompose: '合成视频时出错，请稍后重试',
       compositionWarningsTitle: '导出已完成，但部分片段的运镜未能按预览渲染：',
     },
     videoSearch: {
@@ -6396,11 +6715,19 @@ export const translations: Record<string, Translations> = {
        replaceConfirmBody: '将替换视频轨 1 与音频轨 1 中的 {count} 个片段，其他轨道保持不变，可按 Ctrl+Z 撤销',
        applied: '已按 {segments} 个段落完成排布',
        skippedNoAudio: '第 {list} 段尚未生成配音，已跳过',
+       skippedNoVideo: '第 {list} 段没有匹配的视频，已跳过',
        duplicatesIgnored: '已忽略 {count} 个旧版本素材',
        trackLocked: '视频轨 1 或音频轨 1 已锁定',
        noTargetTrack: '时间轴缺少视频轨或音频轨，无法自动排布',
        confirm: '替换',
        cancel: '取消',
+     },
+     clipCut: {
+       processing: '正在处理 {count} 个视频切片，请稍候…',
+       done: '已成功处理 {count} 个视频切片并保存到本地素材库',
+       partialFailed: '{total} 个切片中有 {failed} 个切分失败，已移除',
+       failed: '视频切分失败：{message}',
+       clipDescription: '从"{name}"剪切的片段，时间范围：{start} - {end}',
      },
      agentDock: {
        fabLabel: 'AI 剪辑助手',

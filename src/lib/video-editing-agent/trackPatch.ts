@@ -25,6 +25,7 @@ import type {
 } from '@/types';
 import { Track as TrackEntity } from '@/components/video/timeline/domain/entities/Track';
 import type { TrackData } from '@/components/video/timeline/domain/types';
+import { readViewFlags } from '@/components/video/timeline/domain/services/trackViewFlags';
 import { isInlineMediaUrl } from '@/lib/inlineUrl';
 
 export type { AgentTrackPatch } from '@/types';
@@ -108,27 +109,46 @@ function toSemanticItem(item: TimelineItem) {
   };
 }
 
+export interface SemanticTrackKeyOptions {
+  /**
+   * Leave lock, mute and visibility out. They are view flags, not content
+   * (S12): a user toggling them after an agent turn must not block undoing
+   * that turn, and the undo keeps whatever the user set (RV3-05).
+   */
+  ignoreViewFlags?: boolean;
+}
+
 /**
  * Comparison key over the fields an edit can change. Display-only data
  * (thumbnails, waveforms, colours, names) is left out, so a slimmed patch
  * still matches the live track.
  */
-export function semanticTrackKey(track: Track | null | undefined): string {
+export function semanticTrackKey(
+  track: Track | null | undefined,
+  options: SemanticTrackKeyOptions = {},
+): string {
   if (!track) return 'null';
   const canonical = canonicalTrack(track);
   const items = [...canonical.items]
     .sort(compareItemsForKey)
     .map(toSemanticItem);
+  const viewFlags = options.ignoreViewFlags
+    ? {}
+    : {
+      isLocked: !!canonical.isLocked,
+      isVisible: canonical.isVisible !== false,
+      isMuted: !!canonical.isMuted,
+    };
   return JSON.stringify({
     id: canonical.id,
     type: canonical.type,
-    isLocked: !!canonical.isLocked,
-    isVisible: canonical.isVisible !== false,
-    isMuted: !!canonical.isMuted,
+    ...viewFlags,
     volume: roundForKey(canonical.volume ?? 100),
     items,
   });
 }
+
+const IGNORE_VIEW_FLAGS: SemanticTrackKeyOptions = { ignoreViewFlags: true };
 
 /**
  * Copy a track for storage in a patch. Patches are persisted with the
@@ -192,7 +212,7 @@ export function revertTrackPatches(
   const conflictTrackIds = patches
     .filter(patch => {
       const live = current.tracks.find(track => track.id === patch.trackId);
-      return semanticTrackKey(live) !== semanticTrackKey(patch.after);
+      return semanticTrackKey(live, IGNORE_VIEW_FLAGS) !== semanticTrackKey(patch.after, IGNORE_VIEW_FLAGS);
     })
     .map(patch => patch.trackId);
   if (conflictTrackIds.length > 0) {
@@ -235,7 +255,9 @@ export function rebaseTrackPatches(
       };
     })
     .filter(
-      patch => semanticTrackKey(patch.before) !== semanticTrackKey(patch.after),
+      patch =>
+        semanticTrackKey(patch.before, IGNORE_VIEW_FLAGS) !==
+        semanticTrackKey(patch.after, IGNORE_VIEW_FLAGS),
     );
 }
 
@@ -253,7 +275,8 @@ function restoreTrack(
   const live = index === -1 ? undefined : state.tracks[index];
   const restored = reattachThumbnails(deepClone(patch.before), thumbnails);
   if (live) {
-    state.tracks[index] = restored;
+    // Content comes back; the lock / mute / visibility the user set stays.
+    state.tracks[index] = { ...restored, ...readViewFlags(live) };
     return;
   }
   const insertAt = state.tracks.findIndex(

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 
 interface ModalProps {
   isOpen: boolean;
@@ -25,6 +25,14 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<Element | null>(null);
+  // Callers pass inline close handlers that change with their own state (the
+  // camera-motion panel's changes on every edit). Re-running the open effect
+  // for a new handler returned focus to the opener and re-focused the dialog,
+  // swallowing the next keystroke in a field; the effect reads it via a ref.
+  const onCloseRef = useRef(onClose);
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -33,9 +41,11 @@ export const Modal: React.FC<ModalProps> = ({
     if (root && !root.contains(document.activeElement)) root.focus();
 
     const onKey = (e: KeyboardEvent) => {
+      // A nested dialog (e.g. a discard confirmation) that handled the key owns it.
+      if (e.defaultPrevented) return;
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab' && root) {
@@ -60,13 +70,13 @@ export const Modal: React.FC<ModalProps> = ({
       const prev = previouslyFocused.current as HTMLElement | null;
       if (prev && typeof prev.focus === 'function') prev.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div
-      className={className ?? 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60'}
+      className={className ?? 'fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60'}
       onClick={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}

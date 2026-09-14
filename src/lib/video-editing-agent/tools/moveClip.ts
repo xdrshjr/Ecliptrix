@@ -74,7 +74,7 @@ export function createMoveClipTool(context: ToolContext): AgentTool<typeof param
 
       const constraintCheck = checkTrackDurationConstraint(context.timelineState);
       const warning = formatDurationWarning(constraintCheck);
-      const overlapReports = runOverlapPostCheck(context.timelineState);
+      const overlapReports = runOverlapPostCheck(context.timelineState, affectedTrackIds);
       const overlapWarning = formatOverlapWarning(overlapReports);
 
       const result = {

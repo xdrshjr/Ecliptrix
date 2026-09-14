@@ -7,6 +7,7 @@ import { useTimelineStore, splitAction } from './store';
 import { updateSubtitleTextAction } from './store/actions/updateItemFields';
 import type { TimelineItemData } from './domain/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
+import { projectSentencesOntoClip } from './lib/sentenceWindow';
 import AudioWaveformCanvas from './AudioWaveformCanvas';
 import { formatTimelineTime } from './timeFormat';
 import { ZoomLevel } from './domain/value-objects/ZoomLevel';
@@ -71,7 +72,15 @@ interface TimelineItemProps {
    * Wired by the parent; omitted → double-click and the badge are inert.
    */
   onOpenCameraMotion?: (itemId: string) => void;
+  /** The clip's material is gone from the library: preview skips it, export refuses it (N-01). */
+  isMaterialMissing?: boolean;
 }
+
+/** Red dashed ring on a clip whose material is gone (N-01). */
+const MISSING_MATERIAL_OUTLINE: React.CSSProperties = {
+  outline: '2px dashed #dc2626',
+  outlineOffset: '-2px',
+};
 
 // ---------------------------------------------------------------------------
 // Component
@@ -86,10 +95,11 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   onRetryLocalDownload,
   onDetachAudio,
   onOpenCameraMotion,
+  isMaterialMissing = false,
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
-  const { showInfo } = useNotification();
+  const { showInfo, showWarning } = useNotification();
 
   // ---------------------------------------------------------------------------
   // Store reads (selector pattern for render perf)
@@ -222,11 +232,28 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     return src || null;
   }, [item.type, item.materialId, item.url, item.cacheUrl, item.serverUrl]);
 
+  // Sentences inside this clip's source window: after a split or trim the clip
+  // shows only part of the recording (TL2-11). None visible → waveform instead.
+  const visibleSentenceCount = useMemo(
+    () => projectSentencesOntoClip(
+      item.sentenceSegments?.sentences ?? [],
+      item.clipStart ?? 0,
+      item.duration,
+    ).length,
+    [item.sentenceSegments, item.clipStart, item.duration],
+  );
+
   // ---------------------------------------------------------------------------
   // Event handlers — delegate to store
   // ---------------------------------------------------------------------------
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    // A press inside the inline subtitle editor places the caret or selects
+    // text: no clip drag, and no preventDefault that would block it (UI3-04).
+    if (isEditingSubtitle) {
+      e.stopPropagation();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
 
@@ -237,11 +264,16 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 
     // Cut tool: split this clip at the click point instead of dragging. The cut
     // time maps the pixel offset to a track-timeline time via clipStart-anchored
-    // arithmetic (pixelsPerSecond is the live zoom→px scale). Locked tracks and
-    // a click exactly on an edge are no-ops handled downstream (splitAction).
-    if (activeTool === 'cut' && !isTrackLocked) {
-      const tCut = item.startTime + relativeX / pixelsPerSecond;
+    // arithmetic (pixelsPerSecond is the live zoom→px scale). A click exactly on
+    // an edge is a no-op handled downstream (splitAction); a locked lane says
+    // why nothing happened instead of staying silent (TL3-05).
+    if (activeTool === 'cut') {
       selectItem(item.id);
+      if (isTrackLocked) {
+        showWarning(t.timeline.track.trackLocked);
+        return;
+      }
+      const tCut = item.startTime + relativeX / pixelsPerSecond;
       const outcome = splitAction(() => useTimelineStore.getState(), tCut, 'selected');
       if (outcome === 'too-close') {
         showInfo(t.timeline.messages.splitTooCloseToEdge);
@@ -259,10 +291,12 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     // Locked tracks keep click-to-select but never start a move or trim.
     if (isTrackLocked) return;
 
-    // A still image has no source length, so its edges can extend freely.
-    // Legacy items without originalDuration must not feed `undefined` into
-    // the machine's clamp maths (it turned into NaN).
-    const isStill = item.originalMaterialType === 'image';
+    // A still image has no source length and a subtitle has no source media
+    // at all, so their edges extend freely — a caption's left edge used to be
+    // clamped as if its in-point were 0 (TL3-03). Legacy items without
+    // originalDuration must not feed `undefined` into the machine's clamp
+    // maths (it turned into NaN).
+    const hasFreeEdges = item.originalMaterialType === 'image' || item.type === 'subtitle';
 
     // Start drag via store (state machine decides move vs resize)
     startDrag({
@@ -278,10 +312,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       zoomLevel,
       clipStart: item.clipStart,
       clipEnd: item.clipEnd,
-      originalMediaDuration: isStill
+      originalMediaDuration: hasFreeEdges
         ? Number.POSITIVE_INFINITY
         : (item.originalDuration ?? Number.POSITIVE_INFINITY),
-      isStill,
+      isStill: hasFreeEdges,
     });
   };
 
@@ -289,7 +323,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     // From press to release the drag machine owns the gesture. Re-detecting
     // while the pointer drifts inside the drag threshold would flip a trim
     // started near the handle's inner edge to "grab" for the whole trim.
-    if (isInteracting || isTrackLocked) return;
+    if (isInteracting || isTrackLocked || isEditingSubtitle) return;
     const rect = itemRef.current?.getBoundingClientRect();
     if (!rect) return;
     const zone = detectInteractionType(e.clientX - rect.left, width);
@@ -310,6 +344,12 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const cameraMotionEnabled = !!onOpenCameraMotion && cameraMotionEligible;
 
   const handleDoubleClick = (e: React.MouseEvent) => {
+    // Double-clicking a word in the open editor selects it; re-opening the
+    // editor here would reset what the user typed to the stored text (UI3-04).
+    if (isEditingSubtitle) {
+      e.stopPropagation();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
 
@@ -380,6 +420,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   // handler delete; Escape clears selection. Locked tracks + active inline
   // subtitle editing bypass this handler entirely.
   const handleItemKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Keys aimed at a control inside the clip (camera-motion badge, retry
+    // download) belong to that control; preventing them here swallowed its
+    // Enter / Space activation (UI3-03).
+    if (e.target !== e.currentTarget) return;
     if (isEditingSubtitle) return;
     if (isTrackLocked) return;
 
@@ -422,7 +466,9 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 
   // Locked lanes keep click-to-select, so they say "not allowed" (IM-05);
   // otherwise the cursor predicts what a press does at this spot (TL2-06).
-  const itemCursor = isTrackLocked
+  const itemCursor = isEditingSubtitle
+    ? 'text'
+    : isTrackLocked
     ? 'not-allowed'
     : isThisItemDragging
       ? 'grabbing'
@@ -432,7 +478,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   // shrink (to nothing) on narrow clips so a 12px move zone always survives.
   const trimHandleWidth = edgeHandleWidthPx(width);
   const showTrimHandles =
-    !isTrackLocked && trimHandleWidth > 0 && (isSelected || visibleHoverZone !== 'move');
+    !isTrackLocked && !isEditingSubtitle && trimHandleWidth > 0 &&
+    (isSelected || visibleHoverZone !== 'move');
 
   const getItemStyles = () =>
     computeItemStyles({
@@ -523,13 +570,14 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       case 'audio':
         return (
           <div style={contentStyle}>
-            {item.sentenceSegments && item.sentenceSegments.sentences.length > 0 ? (
+            {item.sentenceSegments && visibleSentenceCount > 0 ? (
               <>
                 <SentenceSegmentBar
                   sentenceSegments={item.sentenceSegments}
                   width={width}
                   height={trackHeight}
                   duration={item.duration}
+                  clipStart={item.clipStart ?? 0}
                 />
                 <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
                   <div className="flex items-center space-x-1 min-w-0">
@@ -553,7 +601,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                       className="text-white opacity-90 bg-black bg-opacity-30 px-1.5 py-0.5 rounded text-xs font-medium "
                       style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
                     >
-                      {item.sentenceSegments.sentences.length} 句
+                      {t.timeline.sentenceSegment.sentenceCount.replace('{count}', String(visibleSentenceCount))}
                     </span>
                     <span
                       className="text-white opacity-75 "
@@ -675,9 +723,14 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         `${formatTimelineTime(item.startTime, { showMs: true })}–` +
         `${formatTimelineTime(item.startTime + item.duration, { showMs: true })}` +
         `${isSelected ? ` (${t.timeline.track.selected})` : ''}` +
-        `${isTrackLocked ? ` (${t.timeline.track.trackLocked})` : ''}`
+        `${isTrackLocked ? ` (${t.timeline.track.trackLocked})` : ''}` +
+        `${isMaterialMissing ? ` (${t.timeline.track.materialMissing})` : ''}`
       }
-      style={{ ...getItemStyles(), cursor: itemCursor }}
+      style={{
+        ...getItemStyles(),
+        cursor: itemCursor,
+        ...(isMaterialMissing ? MISSING_MATERIAL_OUTLINE : {}),
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handleHoverMove}
       onPointerLeave={handleHoverLeave}
@@ -693,6 +746,19 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       }
     >
       {renderItemContent()}
+
+      {isMaterialMissing && (
+        <span
+          role="img"
+          aria-label={t.timeline.track.materialMissing}
+          title={t.timeline.track.materialMissing}
+          data-testid="clip-material-missing"
+          className="absolute left-1 top-1 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full
+            bg-red-600 text-[10px] font-bold leading-none text-white shadow-sm"
+        >
+          !
+        </span>
+      )}
 
       {/* 运镜徽标：已配置运镜的 clip 右上角一枚 12px 摄像机标，点击再次打开面板。
           stopPropagation 防止触发 clip 拖拽。 */}

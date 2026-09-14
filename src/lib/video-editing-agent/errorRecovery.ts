@@ -1,15 +1,19 @@
 /**
  * Error classification and recovery strategy for SSE stream connections.
  *
- * Provides a typed error taxonomy, user-friendly messages (zh-CN + en fallback),
- * and a `classifyError` function that maps raw exceptions / HTTP status codes
- * into actionable `StreamError` objects consumed by `SSEStreamManager` and
- * `useAgentExecutionState`.
+ * Provides a typed error taxonomy and a `classifyError` function that maps
+ * raw exceptions / HTTP status codes into actionable `StreamError` objects
+ * consumed by `SSEStreamManager` and `useAgentExecutionState`.
+ *
+ * No user-facing text lives here: the UI localises an error through
+ * `streamErrorMessageKey` / `serverErrorMessageKey` and
+ * `t.agentStream.errors`. `userMessage` is only an English fallback for logs.
  *
  * @module errorRecovery
  */
 
-import type { SSEEvent } from './types';
+import type { Translations } from '@/lib/i18n';
+import type { AgentStreamErrorCode, SSEEvent } from './types';
 
 // ---------------------------------------------------------------------------
 // Error type enum
@@ -41,12 +45,19 @@ export interface StreamError {
   type: StreamErrorType;
   /** Developer-readable message (English) */
   message: string;
-  /** User-facing localised message */
+  /**
+   * English fallback description. The UI never shows it directly: it reads
+   * `t.agentStream.errors[streamErrorMessageKey(error)]`.
+   */
   userMessage: string;
   /** Whether automatic retry is appropriate for this error */
   recoverable: boolean;
   /** HTTP status code when available */
   httpStatus?: number;
+  /** TOTAL_TIMEOUT only: no progress for too long, or the hard run cap. */
+  timeoutKind?: 'idle' | 'max';
+  /** The stream dropped after tool calls started, so it was not retried. */
+  sideEffectsStarted?: boolean;
   /** Additional context for retry / debugging */
   context?: StreamErrorContext;
 }
@@ -90,30 +101,26 @@ const RECOVERABLE_MAP: Record<StreamErrorType, boolean | 'conditional'> = {
 };
 
 // ---------------------------------------------------------------------------
-// User-friendly messages
+// Fallback descriptions (English, logs only) and localisation keys
 // ---------------------------------------------------------------------------
 
-const USER_MESSAGES: Record<StreamErrorType, string> = {
-  [StreamErrorType.NETWORK_DROP]: '网络连接中断，正在尝试重新连接…',
-  [StreamErrorType.HEARTBEAT_TIMEOUT]: 'Agent 响应超时，正在重试…',
-  [StreamErrorType.TOTAL_TIMEOUT]:
-    '执行时间超过限制，请尝试简化您的请求。',
-  [StreamErrorType.PARSE_ERROR]: '数据解析异常，请稍后重试。',
-  [StreamErrorType.SERVER_ERROR]: '服务端发生错误，请稍后重试。',
-  [StreamErrorType.TOOL_ERROR]: '工具执行失败，Agent 正在尝试其他方案…',
-  [StreamErrorType.CANCELLED]: '已取消执行。',
+const FALLBACK_MESSAGES: Record<StreamErrorType, string> = {
+  [StreamErrorType.NETWORK_DROP]: 'Connection lost. Reconnecting…',
+  [StreamErrorType.HEARTBEAT_TIMEOUT]: 'The agent stopped responding. Retrying…',
+  [StreamErrorType.TOTAL_TIMEOUT]: 'The run reached its maximum length and was stopped.',
+  [StreamErrorType.PARSE_ERROR]: 'Could not read the response. Try again later.',
+  [StreamErrorType.SERVER_ERROR]: 'The server hit an error. Try again later.',
+  [StreamErrorType.TOOL_ERROR]: 'A tool failed. The agent is trying another way…',
+  [StreamErrorType.CANCELLED]: 'Run cancelled.',
 };
 
 /**
- * Shown when the stream drops after the agent started calling tools. The
- * route cannot resume a turn and a rerun could execute those tools twice, so
- * the stream manager does not reconnect.
- * en: "Connection lost after the agent started using tools. It was not
- * retried to avoid running them twice; any completed edits stay on the
- * timeline."
+ * Fallback for a stream that dropped after the agent started calling tools.
+ * The route cannot resume a turn and a rerun could execute those tools
+ * twice, so the stream manager does not reconnect.
  */
 export const INTERRUPTED_AFTER_TOOLS_MESSAGE =
-  '连接中断：Agent 已开始调用工具，为避免重复执行未自动重连。已完成的更改保留在时间轴上，可继续对话。';
+  'Connection lost after the agent started using tools. It was not retried to avoid running them twice; any completed edits stay on the timeline.';
 
 /**
  * Turn a recoverable stream error into a terminal one because tool calls
@@ -125,7 +132,47 @@ export function toNonRetryableAfterSideEffects(error: StreamError): StreamError 
     recoverable: false,
     message: `${error.message} (not retried: tool calls already started)`,
     userMessage: INTERRUPTED_AFTER_TOOLS_MESSAGE,
+    sideEffectsStarted: true,
   };
+}
+
+export type AgentStreamMessageKey = keyof Translations['agentStream']['errors'];
+
+const STREAM_ERROR_KEYS: Record<StreamErrorType, AgentStreamMessageKey> = {
+  [StreamErrorType.NETWORK_DROP]: 'connectionLost',
+  [StreamErrorType.HEARTBEAT_TIMEOUT]: 'stalled',
+  [StreamErrorType.TOTAL_TIMEOUT]: 'totalTimeout',
+  [StreamErrorType.PARSE_ERROR]: 'parseError',
+  [StreamErrorType.SERVER_ERROR]: 'serverError',
+  [StreamErrorType.TOOL_ERROR]: 'toolError',
+  [StreamErrorType.CANCELLED]: 'cancelled',
+};
+
+/** Which `t.agentStream.errors` entry describes a stream (transport) error. */
+export function streamErrorMessageKey(
+  error: Pick<StreamError, 'type' | 'timeoutKind' | 'sideEffectsStarted'>,
+): AgentStreamMessageKey {
+  if (error.sideEffectsStarted) return 'interruptedAfterTools';
+  if (error.type === StreamErrorType.TOTAL_TIMEOUT && error.timeoutKind === 'idle') {
+    return 'idleTimeout';
+  }
+  return STREAM_ERROR_KEYS[error.type] ?? 'serverError';
+}
+
+const SERVER_ERROR_KEYS: Record<AgentStreamErrorCode, AgentStreamMessageKey> = {
+  server_timeout: 'serverTimeout',
+  provider_auth: 'providerAuth',
+  provider_rate_limit: 'providerRateLimit',
+  context_overflow: 'contextOverflow',
+  provider_error: 'providerError',
+  empty_response: 'emptyResponse',
+  tool_failures: 'toolFailures',
+  agent_error: 'agentError',
+};
+
+/** Which `t.agentStream.errors` entry describes an SSE `error` event code. */
+export function serverErrorMessageKey(code: AgentStreamErrorCode): AgentStreamMessageKey {
+  return SERVER_ERROR_KEYS[code] ?? 'serverError';
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +208,10 @@ export function classifyError(input: ClassifyErrorInput): StreamError {
     return buildStreamError(StreamErrorType.HEARTBEAT_TIMEOUT, rawMessage, httpStatus, context);
   }
   if (disconnectReason === 'total_timeout') {
-    return buildStreamError(StreamErrorType.TOTAL_TIMEOUT, rawMessage, httpStatus, context);
+    return {
+      ...buildStreamError(StreamErrorType.TOTAL_TIMEOUT, rawMessage, httpStatus, context),
+      timeoutKind: isIdleTimeoutMessage(rawMessage) ? 'idle' : 'max',
+    };
   }
   if (disconnectReason === 'cancelled') {
     return buildStreamError(StreamErrorType.CANCELLED, rawMessage, httpStatus, context);
@@ -221,6 +271,16 @@ export function classifyError(input: ClassifyErrorInput): StreamError {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * SSEStreamManager ends both timeouts as `total_timeout`; only the message
+ * (`IDLE_TIMEOUT_ERROR_MESSAGE` there) tells the idle one apart. Matched by
+ * keyword because importing the constant would make the two modules import
+ * each other; `TimelineChatPanel.errorCard.test.tsx` pins the pairing.
+ */
+function isIdleTimeoutMessage(message: string): boolean {
+  return /\bidle timeout\b/i.test(message);
+}
+
 function buildStreamError(
   type: StreamErrorType,
   rawMessage: string,
@@ -230,7 +290,7 @@ function buildStreamError(
   return {
     type,
     message: rawMessage,
-    userMessage: USER_MESSAGES[type],
+    userMessage: FALLBACK_MESSAGES[type],
     recoverable: resolveRecoverable(type, httpStatus),
     httpStatus,
     context: context ? { ...context, rawError: undefined } : undefined,

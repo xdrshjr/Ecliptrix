@@ -107,45 +107,30 @@ class TestVideoCompositionService:
         mock_cv2.return_value = mock_cap
         
         width, height, fps = service._get_video_properties("/fake/path.mp4")
-        
+
         assert width is None
         assert height is None
         assert fps is None
-    
-    @patch('app.services.video_composition_service.subprocess.run')
-    @patch('app.services.video_composition_service.os.path.getsize')
-    @patch('app.services.video_composition_service.os.path.exists')
-    def test_download_video_success(self, mock_exists, mock_getsize, mock_run, service):
-        """Test successful video download."""
-        mock_run.return_value.returncode = 0
-        mock_exists.return_value = True
-        mock_getsize.return_value = 1024 * 1024  # 1MB
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            result = service._download_video(
-                "https://example.com/video.mp4", 
-                temp_dir, 
-                0
-            )
-        
-        assert result["success"] is True
-        assert "output_path" in result
-    
-    @patch('app.services.video_composition_service.subprocess.run')
-    def test_download_video_failure(self, mock_run, service):
-        """Test video download failure."""
-        mock_run.return_value.returncode = 1
-        mock_run.return_value.stderr = "Download failed"
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            result = service._download_video(
-                "https://example.com/video.mp4", 
-                temp_dir, 
-                0
-            )
-        
-        assert result["success"] is False
-        assert "error" in result
+
+    @patch('app.services.video_composition_service.probe_video_stream', return_value=None)
+    @patch('app.services.video_composition_service.cv2.VideoCapture', side_effect=RuntimeError("codec"))
+    def test_get_video_properties_is_empty_when_opencv_raises(self, _mock_cv2, _mock_probe, service):
+        """Callers unpack three values; a bare None crashed normalization and subtitles."""
+        assert service._get_video_properties("/fake/path.mp4") == (None, None, None)
+
+    @patch('app.services.video_composition_service.cv2.VideoCapture')
+    @patch('app.services.video_composition_service.probe_video_stream', return_value=None)
+    def test_unprobeable_source_runs_ffprobe_once(self, mock_probe, mock_cv2, service):
+        """The OpenCV fallback must not spawn ffprobe (and its 30 s timeout) a second time."""
+        mock_cap = Mock()
+        mock_cap.isOpened.return_value = True
+        mock_cap.get.side_effect = [640, 360, 25.0, 250]  # width, height, fps, frame count
+        mock_cv2.return_value = mock_cap
+
+        info = service._describe_source("/fake/path.mp4", "ffmpeg")
+
+        assert mock_probe.call_count == 1
+        assert (info.width, info.height, info.duration) == (640, 360, 10.0)
     
     def test_get_composition_status(self, service):
         """Test getting composition status."""
@@ -201,56 +186,6 @@ class TestVideoCompositionService:
         result = service.get_download_info(composition_id)
         assert result is None
     
-    @patch('app.services.video_composition_service.VideoCompositionService._download_video')
-    @patch('app.services.video_composition_service.VideoCompositionService._normalize_video')
-    @patch('app.services.video_composition_service.VideoCompositionService._get_video_properties')
-    @patch('app.services.video_composition_service.subprocess.run')
-    @patch('app.services.video_composition_service.shutil.rmtree')
-    @patch('app.services.video_composition_service.os.makedirs')
-    def test_compose_video_success(self, mock_makedirs, mock_rmtree, mock_run, 
-                                 mock_get_props, mock_normalize, mock_download, 
-                                 service, sample_video_request):
-        """Test successful video composition."""
-        # Mock successful downloads
-        mock_download.return_value = {"success": True, "output_path": "/fake/video.mp4"}
-        
-        # Mock successful normalization
-        mock_normalize.return_value = {
-            "success": True, 
-            "normalized_path": "/fake/normalized.mp4",
-            "used_duration": 5.0,
-            "index": 0
-        }
-        
-        # Mock video properties
-        mock_get_props.return_value = (1920, 1080, 30.0)
-        
-        # Mock successful ffmpeg concat
-        mock_run.return_value.returncode = 0
-        
-        # Mock output file
-        with patch.object(service.output_dir, 'stat') as mock_stat:
-            mock_stat.return_value.st_size = 1024 * 1024
-            
-            result = service.compose_video(sample_video_request)
-        
-        assert result.success is True
-        assert result.status == "completed"
-        assert result.composition_id is not None
-        assert result.output_file_size == 1024 * 1024
-    
-    @patch('app.services.video_composition_service.VideoCompositionService._download_video')
-    def test_compose_video_download_failure(self, mock_download, service, sample_video_request):
-        """Test video composition with download failure."""
-        mock_download.return_value = {"success": False, "error": "Download failed"}
-        
-        result = service.compose_video(sample_video_request)
-        
-        assert result.success is False
-        assert result.status == "failed"
-        assert "Download failed" in result.message
-
-
 class TestVideoCompositionModels:
     """Test cases for video composition data models."""
     
