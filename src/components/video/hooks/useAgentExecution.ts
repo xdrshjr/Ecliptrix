@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useRef, useEffect, useState } from 'react';
+import { describeTtsFailure, getTtsFailure, type TtsFailure } from '@/lib/ttsErrors';
 import type {
   TimelineState,
   MaterialItem,
@@ -374,10 +375,22 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   /** Localised text for an SSE `error` event; an old server sends no code. */
   const describeServerError = useCallback(
-    ({ message, code }: { message: string; code?: AgentStreamErrorCode }): string =>
-      code
+    ({ message, code, cause }: {
+      message: string; code?: AgentStreamErrorCode; cause?: TtsFailure;
+    }): string => {
+      if (code === 'tool_failures') {
+        const failure = getTtsFailure(cause);
+        if (!failure) return t.agentStream.errors.toolFailures;
+        const description = describeTtsFailure(failure, t);
+        return t.agentStream.errors.toolFailuresWithCause.replace(
+          '{detail}', [description.summary, description.action]
+            .filter(Boolean).join(' '),
+        );
+      }
+      return code
         ? t.agentStream.errors[serverErrorMessageKey(code)].replace('{detail}', message)
-        : message,
+        : message;
+    },
     [t],
   );
 
@@ -476,6 +489,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           writeAgentMessage({
             ...stateManager.toMessageUpdate(),
             isStreaming: false,
+            isThinking: false,
             timelineTrackPatches: computeTurnPatches(turnStart),
           });
           retire();
@@ -781,54 +795,6 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
     console.log('[useAgentExecution] Single operation undone:', toolCallId);
   }, [isAgentUndoBlocked, onTimelineUpdate, onNotification, updateConversationMessages, t]);
-
-  // -----------------------------------------------------------------------
-  // Cleanup stale streaming messages on mount (e.g. after page refresh)
-  // -----------------------------------------------------------------------
-  //
-  // Per spec §2.6.3 — the on-mount sweep makes the resume contract
-  // identical regardless of how the prior turn ended:
-  //   • `isStreaming: true` is demoted to false.
-  //   • The same messages are flagged `isCancelled: true` so the next-turn
-  //     converter knows to inject the resume system note.
-  //   • Any tool call still in `executing` status is demoted to `cancelled`.
-  //   • Empty stub turns (no content, no tool calls) are dropped.
-
-  useEffect(() => {
-    for (const conv of conversations) {
-      const dirty = conv.messages.some(
-        m => m.isStreaming || (m.agentToolCalls?.some(tc => tc.status === 'executing'))
-      );
-      if (!dirty) continue;
-      const cleaned: ChatMessage[] = [];
-      for (const msg of conv.messages) {
-        const hasInFlightTool = msg.agentToolCalls?.some(tc => tc.status === 'executing');
-        if (!msg.isStreaming && !hasInFlightTool) {
-          cleaned.push(msg);
-          continue;
-        }
-        const isStub =
-          !msg.content &&
-          (!msg.agentToolCalls || msg.agentToolCalls.length === 0);
-        if (isStub) {
-          // Drop empty turns — matches existing behaviour where a stub is
-          // never displayed to the user.
-          continue;
-        }
-        cleaned.push({
-          ...msg,
-          isStreaming: false,
-          isCancelled: true,
-          agentToolCalls: msg.agentToolCalls?.map(tc =>
-            tc.status === 'executing' ? { ...tc, status: 'cancelled' as const } : tc
-          ),
-        });
-      }
-      updateConversationMessages(conv.id, cleaned);
-    }
-    // Only run on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // -----------------------------------------------------------------------
   // Cancel execution on conversation switch (uses cancelByNavigation —

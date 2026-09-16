@@ -18,6 +18,8 @@ import type { ToolRegistry } from './registry';
 import { scanExploredCategories } from './historyScan';
 import { reconcileOverlapsAfterAgentOp } from './reconcile';
 import { validateOperationTargets } from './operationGuards';
+import { getTtsFailure } from '@/lib/ttsErrors';
+import type { TtsFailure } from '@/lib/ttsErrors';
 
 export type { AgentStreamErrorCode } from './types';
 
@@ -333,6 +335,7 @@ export function subscribeAgentEvents(
 
   // Consecutive failure counter for the circuit breaker.
   let consecutiveFailures = 0;
+  let latestTtsFailure: TtsFailure | undefined;
   let circuitBreakerTripped = false;
 
   return agent.subscribe((event: AgentEvent) => {
@@ -367,6 +370,10 @@ export function subscribeAgentEvents(
         break;
 
       case 'message_end':
+        if (circuitBreakerTripped) {
+          send({ type: 'message_end' });
+          break;
+        }
         if (forwardMessageEnd(event.message as AssistantMessageLike, messageFlags, send)) {
           runErrorSent = true;
         }
@@ -415,8 +422,11 @@ export function subscribeAgentEvents(
 
         if (failed) {
           consecutiveFailures++;
+          latestTtsFailure = ['generate_tts', 'batch_generate_tts']
+            .includes(event.toolName) ? getTtsFailure(details) : undefined;
         } else {
           consecutiveFailures = 0;
+          latestTtsFailure = undefined;
         }
 
         send({
@@ -432,14 +442,18 @@ export function subscribeAgentEvents(
           consecutiveFailures >= MAX_CONSECUTIVE_TOOL_FAILURES
         ) {
           circuitBreakerTripped = true;
+          runErrorSent = true;
           console.error(
             `[VideoEditingAgent] Circuit breaker tripped after ${consecutiveFailures} consecutive tool failures — aborting agent.`
           );
           send({
             type: 'error',
-            // Coded: the raw English sentence below reached zh-CN users as is.
+            // 保留错误类别和根因，交由渲染器按当前语言展示。
             code: 'tool_failures',
-            message: `Agent aborted: ${consecutiveFailures} consecutive tool calls failed. This usually indicates a network/auth problem with internal APIs — please retry, and if the problem persists, check server logs for '[VideoEditingAgent]'.`,
+            message: latestTtsFailure
+              ? `连续 5 次工具调用失败，已停止。最近一次失败：${latestTtsFailure.error}`
+              : '连续 5 次工具调用失败，已停止。请查看失败步骤的具体原因。',
+            ...(latestTtsFailure ? { cause: latestTtsFailure } : {}),
           });
           // Fire-and-forget: abort() is synchronous in pi-agent-core, but
           // wrap in try/catch just in case the controller is already gone.

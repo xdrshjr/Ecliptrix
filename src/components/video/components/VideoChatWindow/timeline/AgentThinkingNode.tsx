@@ -12,32 +12,34 @@
 'use client';
 
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig, useReducedMotion } from 'framer-motion';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentThinkingNodeData } from './types';
 import { formatTimestamp } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
-import { nodeVariants, TIMING, CSS_ANIMATIONS } from './animations';
+import { nodeVariants, CSS_ANIMATIONS } from './animations';
 
 interface AgentThinkingNodeProps {
   node: AgentThinkingNodeData;
 }
 
-const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = ({ node }) => {
+// 两个展示分支保留原结构，避免改变历史思考的折叠状态。
+const ThinkingContent: React.FC<AgentThinkingNodeProps> = ({ node }) => {
   const { t } = useLocale();
   const [collapsed, setCollapsed] = useState(false);
+  const reduced = useReducedMotion();
 
   if (node.isThinkingPhase) {
     return (
       <motion.div
         className="flex items-start gap-0"
-        variants={nodeVariants}
-        initial="initial"
+        variants={reduced ? undefined : nodeVariants}
+        initial={reduced ? false : 'initial'}
         animate="animate"
-        exit="exit"
-        layout="position"
+        exit={reduced ? undefined : 'exit'}
+        layout={reduced ? false : 'position'}
       >
-        <TimelineNodeIcon variant="thinking" />
+        <TimelineNodeIcon variant={node.isStreaming ? 'thinking' : 'thinking-idle'} />
 
         <div className="flex-1 min-w-0 pt-1">
           <div className="rounded-md border border-primary/20 dark:border-primary/15 bg-primary/5 dark:bg-primary/8 overflow-hidden">
@@ -63,10 +65,10 @@ const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = ({ node }) => {
             <AnimatePresence initial={false}>
               {!collapsed && (
                 <motion.div
-                  initial={{ height: 0, opacity: 0 }}
+                  initial={reduced ? false : { height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
+                  transition={{ duration: reduced ? 0 : 0.2 }}
                   className="overflow-hidden"
                 >
                   <div className="px-3 pb-2 pt-1 text-xs text-foreground/70 dark:text-zinc-400 leading-relaxed border-t border-primary/10 dark:border-primary/8 whitespace-pre-wrap">
@@ -91,14 +93,14 @@ const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = ({ node }) => {
   return (
     <motion.div
       className="flex items-start gap-0"
-      variants={nodeVariants}
-      initial="initial"
+      variants={reduced ? undefined : nodeVariants}
+      initial={reduced ? false : 'initial'}
       animate="animate"
-      exit="exit"
-      layout="position"
+      exit={reduced ? undefined : 'exit'}
+      layout={reduced ? false : 'position'}
     >
       {/* Icon column */}
-      <TimelineNodeIcon variant="thinking" />
+      <TimelineNodeIcon variant={node.isStreaming ? 'thinking' : 'thinking-idle'} />
 
       {/* Content */}
       <div className="flex-1 min-w-0 pt-1">
@@ -108,29 +110,30 @@ const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = ({ node }) => {
             {formatTimestamp(node.timestamp)}
           </span>
           <span className="text-xs font-medium text-primary dark:text-primary/90">
-            {t.agentTimeline.analyzing}
+            {node.isStreaming ? t.agentTimeline.analyzing : t.agentTimeline.thoughtProcess}
           </span>
         </div>
 
         {/* Streaming text + blinking cursor */}
         <div className="text-sm text-foreground/80 dark:text-zinc-300 leading-relaxed">
           {node.content}
-          <AnimatePresence>
             {node.isStreaming && (
-              <motion.span
-                key="cursor"
+              <span
                 className={`inline-block ml-0.5 align-text-bottom font-light text-primary/70 dark:text-primary/60 select-none ${CSS_ANIMATIONS.cursorBlink}`}
-                initial={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: TIMING.CURSOR_FADE_OUT } }}
               >
                 |
-              </motion.span>
+              </span>
             )}
-          </AnimatePresence>
         </div>
       </div>
     </motion.div>
   );
 };
+
+const AgentThinkingNode: React.FC<AgentThinkingNodeProps> = props => (
+  <MotionConfig reducedMotion="user">
+    <ThinkingContent {...props} />
+  </MotionConfig>
+);
 
 export default AgentThinkingNode;

@@ -231,7 +231,7 @@ export function useAgentExecutionState() {
         return;
       }
       const executionId = executionIdRef.current;
-      updateState({ status: 'finishing' });
+      updateState({ status: 'finishing', isThinking: false });
       const wait = settleWithin(work, FINISHING_WATCHDOG_MS);
       pendingWatchdogsRef.current.add(wait.cancel);
       const drained = await wait.result;
@@ -259,6 +259,8 @@ export function useAgentExecutionState() {
           break;
 
         case 'thinking_end':
+        case 'error':
+        case 'agent_end':
           updateState({ isThinking: false });
           break;
 
@@ -307,7 +309,7 @@ export function useAgentExecutionState() {
           // value) so the busy-bar / live indicator stop showing a phantom
           // in-flight tool after the stream ends.
           setState(prev => {
-            if (!prev.currentTool) return prev;
+            if (!prev.currentTool) return { ...prev, isThinking: false };
             const sealed: ToolCallRecord = {
               ...prev.currentTool,
               status: 'error',
@@ -316,6 +318,7 @@ export function useAgentExecutionState() {
               ...prev,
               completedTools: [...prev.completedTools, sealed],
               currentTool: null,
+              isThinking: false,
             };
           });
           break;

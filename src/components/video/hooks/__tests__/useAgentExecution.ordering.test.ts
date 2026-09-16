@@ -509,9 +509,29 @@ describe('useAgentExecution — serialised events and terminal patches', () => {
     });
   });
 
+  it('工具熔断保留最近的 TTS 原因并按当前语言显示', async () => {
+    const onNotification = vi.fn();
+    const { result, writes } = renderAgent({ onNotification });
+    const stream = await startTurn(result);
+    act(() => stream.config.onEvent({
+      type: 'error', code: 'tool_failures', message: '连续失败',
+      cause: {
+        error_code: 'TTS_INSUFFICIENT_BALANCE', error: '余额不足',
+        error_details: { source: 'provider', retryable: false, attempts: 1 },
+      },
+    }));
+    await advance(100);
+    expect(lastAgentMessage(writes).content).toContain(
+      en.ttsErrors.summary.TTS_INSUFFICIENT_BALANCE,
+    );
+    expect(onNotification).toHaveBeenCalledTimes(1);
+  });
+
   it('the finishing watchdog seals the stuck turn\'s message as not streaming', async () => {
     const { result, writes } = renderAgent();
     const stream = await startTurn(result);
+    act(() => stream.config.onEvent({ type: 'thinking_start' }));
+    await advance(0);
     const stuck = vi
       .spyOn(AgentEventRouter.prototype, 'handleEvent')
       .mockImplementationOnce(() => new Promise<void>(() => undefined));
@@ -526,7 +546,8 @@ describe('useAgentExecution — serialised events and terminal patches', () => {
     expect({
       status: result.current.agent.executionState.status,
       streaming: lastAgentMessage(writes).isStreaming,
-    }).toEqual({ status: 'completed', streaming: false });
+      thinking: lastAgentMessage(writes).isThinking,
+    }).toEqual({ status: 'completed', streaming: false, thinking: false });
   });
 
   it('a stuck step that settles after the next turn started updates only its own message', async () => {

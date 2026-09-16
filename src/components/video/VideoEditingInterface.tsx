@@ -1,5 +1,8 @@
 'use client';
 
+// 既有编辑器编排文件超出 1000 行；本次仅接线与替换历史清理入口，
+// 保留各编辑功能的现有生命周期，避免扩大为整份编辑器重构。
+
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { VideoEditingLogger } from './utils/logger';
 import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment, StoryboardScriptSegment, ScriptSegment } from '@/types';
@@ -38,6 +41,7 @@ import {
   useNarrationDirectScript
 } from './hooks';
 import { useAgentExecution } from './hooks/useAgentExecution';
+import { useInterruptedConversationCleanup } from './hooks/agentTurnLifecycle';
 import { useAIMixedEditing } from './hooks/useAIMixedEditing';
 import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
 import { generateNarrationVideoScript } from '@/lib/api/narrationVideoScript';
@@ -358,33 +362,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     return () => clearTimeout(settleTimer);
   }, [timelineCurrentTime, content, onUpdateContent]);
 
-  // 组件挂载时清理残留的 isStreaming 状态
-  // 持久化的消息可能带有 isStreaming: true（如果上次会话在流式传输中中断），
-  // 但挂载时不可能有活跃的流，所以需要重置
-  useEffect(() => {
-    if (!content?.conversations) return;
-
-    const hasStaleStreaming = content.conversations.some(conv =>
-      conv.messages.some(msg => msg.isStreaming)
-    );
-
-    if (hasStaleStreaming) {
-      logger.info('清理残留的 isStreaming 状态', { taskId });
-
-      const cleanedConversations = content.conversations.map(conv => ({
-        ...conv,
-        messages: conv.messages.map(msg =>
-          msg.isStreaming ? { ...msg, isStreaming: false } : msg
-        ),
-      }));
-
-      onUpdateContent({
-        ...content,
-        conversations: cleanedConversations,
-      });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 仅在挂载时运行一次
+  const isConversationReady = useInterruptedConversationCleanup({
+    projectKey: projectId ?? taskId, content, onUpdateContent,
+  });
 
   // Mobile device detection effect - backup safety check
   useEffect(() => {
@@ -1982,6 +1962,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // --- Unified send handler: routes to agent or regular based on agentMode ---
   const handleSendChatMessage = useCallback(async (message: string) => {
+    if (!isConversationReady) return;
     if (agent.agentMode) {
       return agent.sendAgentMessage(message);
     }
@@ -2101,7 +2082,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     } finally {
       setIsChatLoading(false);
     }
-  }, [content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, agent.agentMode, agent.sendAgentMessage]);
+  }, [isConversationReady, content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, agent.agentMode, agent.sendAgentMessage]);
 
   // 获取当前活动的聊天对话
   const activeConversation = content?.conversations?.find(
@@ -2219,18 +2200,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         </div>
       </div>
 
-      {/* 浮动 Agent 对话 Dock：关闭态为右下角圆形 FAB，打开态为 30%×80% 浮窗，
-          内部原样挂载 VideoChatWindow（对话/Agent模式/执行/撤销/取消逻辑零改动） */}
+      {/* 浮动助手最小化后保留聊天实例；面板尺寸受工作区安全边约束。 */}
       <AgentChatDock
         isOpen={isAgentDockOpen}
         onOpen={() => setIsAgentDockOpen(true)}
-        onClose={() => setIsAgentDockOpen(false)}
+        onMinimize={() => setIsAgentDockOpen(false)}
         agentIsExecuting={agent.agentIsExecuting}
         chatProps={{
           conversation: activeConversation,
           onSendMessage: handleSendChatMessage,
           onClearMessages: handleClearChatMessages,
-          isLoading: isChatLoading,
+          isLoading: isChatLoading || !isConversationReady,
           onCreativeBrainstormingClick: handleCreativeBrainstormingClick,
           onPolishClick: handlePolishClick,
           onConvertMessageToScript: handleConvertMessageToScript,

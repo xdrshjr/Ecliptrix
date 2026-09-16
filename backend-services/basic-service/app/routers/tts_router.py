@@ -2,10 +2,12 @@
 Text-to-Speech API routes.
 """
 
+import asyncio
 import os
 import uuid as _uuid
 from typing import Union
 import aiofiles
+from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse, FileResponse
 
@@ -21,7 +23,10 @@ from app.models.tts_models import (
 )
 from app.models.voice_clone_models import AIAudioSynthesizeRequest
 from app.services.tts_service import tts_service
-from app.services.batch_tts_service import BatchTTSService
+from app.services.batch_tts_service import (
+    BatchTTSService, batch_response, failed_segment,
+)
+from app.services.tts_errors import TTSServiceError, make_tts_error
 from app.services.sentence_tts_service import SentenceTTSService
 from app.services.local_media_resolver import (
     audio_generated_dir,
@@ -48,80 +53,28 @@ sentence_tts_service = SentenceTTSService()
 async def convert_text_to_speech(
     request: TTSRequest,
 ) -> Union[TTSResponse, TTSErrorResponse]:
-    """
-    将文本转换为语音文件
-
-    Args:
-        request: TTS转换请求，包含文本内容、音色类型等参数
-
-    Returns:
-        TTSResponse: 转换成功的响应，包含音频文件URL等信息
-        TTSErrorResponse: 转换失败的错误响应
-    """
+    """同步供应商与文件操作在线程池执行，错误详情由服务层定义。"""
     try:
-        logger.info(
-            "收到TTS转换请求",
-            {
-                "text_length": len(request.text),
-                "voice_type": request.voice_type,
-                "speed_ratio": request.speed_ratio,
-                "segment_id": request.segment_id,
-                "task_id": request.task_id,
-            },
-        )
-
-        # 调用TTS服务进行转换
-        result = tts_service.convert_text_to_speech(
-            text=request.text,
-            voice_type=request.voice_type,
-            speed_ratio=request.speed_ratio,
-            segment_id=request.segment_id,
+        logger.info('收到TTS转换请求', {'text_length': len(request.text)})
+        result = await run_in_threadpool(
+            tts_service.convert_text_to_speech,
+            text=request.text, voice_type=request.voice_type,
+            speed_ratio=request.speed_ratio, segment_id=request.segment_id,
             task_id=request.task_id,
+            storage_loop=asyncio.get_running_loop(),
         )
-
-        logger.info(
-            "TTS转换请求处理成功",
-            {
-                "audio_url": result["audio_url"],
-                "file_size": result["file_size"],
-                "voice_type": result["voice_type"],
-                "segment_id": request.segment_id,
-                "task_id": request.task_id,
-            },
-        )
-
-        return TTSResponse(success=True, message="语音转换成功", data=result)
-
-    except HTTPException as e:
-        # FastAPI HTTPException，直接抛出
-        logger.error(
-            "TTS转换HTTP异常",
-            {
-                "status_code": e.status_code,
-                "detail": e.detail,
-                "segment_id": request.segment_id,
-                "task_id": request.task_id,
-            },
-        )
-        raise e
-
-    except Exception as e:
-        # 其他异常，包装为TTSErrorResponse
-        error_msg = str(e)
-        logger.error(
-            "TTS转换未知错误",
-            {
-                "error": error_msg,
-                "segment_id": request.segment_id,
-                "task_id": request.task_id,
-            },
-        )
-
-        return TTSErrorResponse(
-            success=False,
-            message=f"语音转换失败: {error_msg}",
-            error_code="CONVERSION_FAILED",
-        )
+        return TTSResponse(success=True, message='语音转换成功', data=result)
+    except TTSServiceError as error:
+        failure = error
+    except HTTPException:
+        raise
+    except Exception:
+        failure = make_tts_error('TTS_UNKNOWN_ERROR', 'backend')
+    logger.warning('TTS转换失败', {'error_code': failure.error_code})
+    return TTSErrorResponse(
+        success=False, message=failure.message,
+        error_code=failure.error_code, error_details=failure.error_details,
+    )
 
 
 @router.post(
@@ -130,74 +83,27 @@ async def convert_text_to_speech(
     summary="批量文本转语音",
     description="批量将多个文本段落转换为语音文件，支持并发处理",
 )
-async def convert_batch_text_to_speech(request: BatchTTSRequest) -> BatchTTSResponse:
-    """
-    批量将文本转换为语音文件
-
-    Args:
-        request: 批量TTS转换请求，包含多个文本段落和配置参数
-
-    Returns:
-        BatchTTSResponse: 批量转换响应，包含每个段落的处理结果
-    """
+async def convert_batch_text_to_speech(
+    request: BatchTTSRequest,
+) -> BatchTTSResponse:
     try:
-        logger.info(
-            "收到批量TTS转换请求",
-            {
-                "segments_count": len(request.segments),
-                "voice_type": request.voice_type,
-                "speed_ratio": request.speed_ratio,
-                "task_id": request.task_id,
-                "concurrent_threads": request.concurrent_threads,
-                "total_text_length": sum(len(seg.text) for seg in request.segments),
-            },
-        )
-
-        # 调用批量TTS服务进行转换
-        result = batch_tts_service.convert_batch(request)
-
-        logger.info(
-            "批量TTS转换请求处理完成",
-            {
-                "success": result.success,
-                "total_segments": result.total_segments,
-                "successful_segments": result.successful_segments,
-                "failed_segments": result.failed_segments,
-                "total_processing_time": result.total_processing_time,
-                "task_id": request.task_id,
-            },
-        )
-
-        return result
-
-    except HTTPException as e:
-        # FastAPI HTTPException，直接抛出
-        logger.error(
-            "批量TTS转换HTTP异常",
-            {
-                "status_code": e.status_code,
-                "detail": e.detail,
-                "task_id": request.task_id,
-            },
-        )
-        raise e
-
-    except Exception as e:
-        # 其他异常，包装为BatchTTSResponse
-        error_msg = str(e)
-        logger.error(
-            "批量TTS转换未知错误", {"error": error_msg, "task_id": request.task_id}
-        )
-
-        return BatchTTSResponse(
-            success=False,
-            message=f"批量语音转换失败: {error_msg}",
-            total_segments=len(request.segments),
-            successful_segments=0,
-            failed_segments=len(request.segments),
-            total_processing_time=0.0,
-            results=[],
-        )
+        logger.info('收到批量TTS请求', {
+            'segments_count': len(request.segments),
+        })
+        return await run_in_threadpool(batch_tts_service.convert_batch,
+                                       request,
+                                       storage_loop=asyncio.get_running_loop())
+    except TTSServiceError as error:
+        failure = error
+    except HTTPException:
+        raise
+    except Exception:
+        failure = make_tts_error('TTS_UNKNOWN_ERROR', 'backend')
+    logger.warning('批量TTS转换失败', {'error_code': failure.error_code})
+    results = {segment.segment_id: failed_segment(segment.segment_id,
+                                                 failure)
+               for segment in request.segments}
+    return batch_response(request, results, 0.0)
 
 
 @router.post(
@@ -363,13 +269,14 @@ async def tts_health_check():
 
         return JSONResponse(status_code=status.HTTP_200_OK, content=health_info)
 
-    except HTTPException as e:
-        # 配置验证失败
+    except (HTTPException, TTSServiceError) as e:
+        # 配置缺失改为结构化错误后，健康检查仍保持原有 503 契约。
         error_info = {
             "service": "TTS",
             "status": "unhealthy",
             "config_valid": False,
-            "message": e.detail,
+            "message": (e.message if isinstance(e, TTSServiceError)
+                        else e.detail),
         }
 
         logger.error("TTS健康检查失败", error_info)
@@ -546,10 +453,12 @@ async def ai_audio_synthesize(
                 },
             )
         else:
-            result = tts_service.convert_text_to_speech(
+            result = await run_in_threadpool(
+                tts_service.convert_text_to_speech,
                 text=text,
                 voice_type=voice_type,
                 speed_ratio=speed_ratio,
+                storage_loop=asyncio.get_running_loop(),
             )
             return TTSResponse(
                 success=True,

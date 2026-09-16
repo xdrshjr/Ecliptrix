@@ -1,6 +1,7 @@
 import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage, AgentMaterialData } from '@/types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
+import type { TtsFailure } from '@/lib/ttsErrors';
 
 // --- Tool Context ---
 
@@ -164,7 +165,10 @@ export type SSEEvent =
       operation: AgentOperation | null;
     }
   | { type: 'script_delta'; content: string }
-  | { type: 'error'; message: string; code?: AgentStreamErrorCode }
+  | {
+      type: 'error'; message: string; code?: AgentStreamErrorCode;
+      cause?: TtsFailure;
+    }
   | {
       type: 'cancelled';
       reason: 'client_aborted' | 'server_timeout' | 'thinking_aborted';

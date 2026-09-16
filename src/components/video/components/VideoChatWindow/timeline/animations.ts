@@ -342,4 +342,14 @@ export const TIMELINE_ANIMATION_CSS = `
 .timeline-anim-flash-red {
   animation: timeline-flash-red 0.3s ease-out forwards;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="timeline-anim-"],
+  .timeline-chat-panel .animate-ping,
+  .timeline-chat-panel .animate-pulse,
+  .timeline-chat-panel .animate-spin {
+    animation: none !important;
+    transition: none !important;
+  }
+}
 `;

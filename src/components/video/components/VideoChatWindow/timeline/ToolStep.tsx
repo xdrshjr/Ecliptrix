@@ -18,10 +18,14 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentClientApplyError, OperationRejectReason } from '@/types';
 import type { Translations } from '@/lib/i18n';
+import {
+  describeTtsFailure, getTtsFailure, getLegacyTtsFailure, isTtsRecord,
+  type TtsFailure,
+} from '@/lib/ttsErrors';
 import type { ToolStepData, ToolStepStatus } from './types';
 import { formatElapsedTime, formatParamValue, formatResult } from './utils';
 import {
@@ -37,7 +41,18 @@ import {
 // Status icon sub-component — enhanced with framer-motion transitions
 // ---------------------------------------------------------------------------
 
-const StatusIcon: React.FC<{ status: ToolStepStatus }> = ({ status }) => {
+// 既有 SVG 变体占用超过 60 行；集中维护便于核对所有状态的占位尺寸。
+const StatusIcon: React.FC<{
+  status: ToolStepStatus; isPartial: boolean;
+}> = ({ status, isPartial }) => {
+  const reduced = useReducedMotion();
+  if (isPartial) return (
+    <svg className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0"
+      viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" strokeWidth="2" />
+      <path d="M12 7v6m0 3v1" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
   switch (status) {
     case 'executing':
       return (
@@ -62,8 +77,8 @@ const StatusIcon: React.FC<{ status: ToolStepStatus }> = ({ status }) => {
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
-          variants={iconScaleInVariants}
-          initial="initial"
+          variants={reduced ? undefined : iconScaleInVariants}
+          initial={reduced ? false : 'initial'}
           animate="animate"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -77,8 +92,8 @@ const StatusIcon: React.FC<{ status: ToolStepStatus }> = ({ status }) => {
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
-          variants={iconScaleInVariants}
-          initial="initial"
+          variants={reduced ? undefined : iconScaleInVariants}
+          initial={reduced ? false : 'initial'}
           animate="animate"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -94,7 +109,7 @@ const StatusIcon: React.FC<{ status: ToolStepStatus }> = ({ status }) => {
           viewBox="0 0 24 24"
           initial={{ opacity: 1 }}
           animate={{ opacity: 0.6 }}
-          transition={{ duration: TIMING.UNDO }}
+          transition={{ duration: reduced ? 0 : TIMING.UNDO }}
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
         </motion.svg>
@@ -107,8 +122,8 @@ const StatusIcon: React.FC<{ status: ToolStepStatus }> = ({ status }) => {
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
-          variants={iconScaleInVariants}
-          initial="initial"
+          variants={reduced ? undefined : iconScaleInVariants}
+          initial={reduced ? false : 'initial'}
           animate="animate"
         >
           <circle cx="12" cy="12" r="9" strokeWidth={2} />
@@ -226,8 +241,86 @@ interface ToolStepProps {
   isLast?: boolean;
 }
 
+interface PresentedFailure { failure: TtsFailure; inputIndex?: number }
+
+function readTtsPresentation(step: ToolStepData, hasApplyError: boolean) {
+  const isTts = step.name === 'generate_tts' || step.name === 'batch_generate_tts';
+  const result = isTtsRecord(step.result) ? step.result : {};
+  const isPartial = isTts && !hasApplyError && step.status === 'completed' &&
+    result.success === true && result.partial === true;
+  const failures: PresentedFailure[] = [];
+  if (!isTts || hasApplyError || step.status === 'cancelled' ||
+    step.status === 'undone' || step.status === 'executing') {
+    return { isTts, isPartial: false, failures, result };
+  }
+  if (isPartial && Array.isArray(result.failures)) {
+    for (const value of result.failures) {
+      const failure = getTtsFailure(value);
+      if (!failure || !isTtsRecord(value)) continue;
+      const inputIndex = typeof value.input_index === 'number' &&
+        Number.isInteger(value.input_index) && value.input_index >= 0
+        ? value.input_index : undefined;
+      failures.push({ failure, inputIndex });
+    }
+  } else if (step.status === 'error' || result.success === false) {
+    failures.push({ failure: getTtsFailure(result) ?? getLegacyTtsFailure(
+      typeof step.result === 'string' ? step.result : result.error,
+    ) });
+  }
+  return { isTts, isPartial, failures, result };
+}
+
+function TtsFailureReason({ entry, t }: {
+  entry: PresentedFailure; t: Translations;
+}) {
+  const { summary, action } = describeTtsFailure(entry.failure, t);
+  return (
+    <div className="space-y-1 text-xs [overflow-wrap:anywhere]">
+      {entry.inputIndex !== undefined && <div className="font-medium">
+        {t.ttsErrors.segmentFailure.replace('{index}', String(entry.inputIndex + 1))}
+      </div>}
+      <p className="text-red-600 dark:text-red-400 break-words">{summary}</p>
+      {action && <p className="text-muted-foreground break-words">{action}</p>}
+    </div>
+  );
+}
+
+function TtsDiagnostics({ failure, t }: {
+  failure: TtsFailure; t: Translations;
+}) {
+  const { details } = describeTtsFailure(failure, t);
+  const copy = t.ttsErrors;
+  const fields = [
+    [copy.errorCode, failure.error_code],
+    [copy.source, details?.source && copy.sources[details.source]],
+    [copy.providerMessage, details?.provider_message],
+    [copy.providerCode, details?.provider_code],
+    [copy.requestId, details?.request_id],
+    [copy.attempts, details?.attempts],
+    [copy.httpStatus, details?.http_status],
+  ];
+  return (
+    <section className="text-xs space-y-1 [overflow-wrap:anywhere]">
+      <h4 className="font-medium text-muted-foreground">{copy.diagnostics}</h4>
+      <dl className="space-y-1">
+        {fields.filter(([, value]) => value !== undefined).map(([label, value]) => (
+          <div key={String(label)} className="flex flex-wrap gap-x-2">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="min-w-0 break-words">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {details?.voice_fallback && <p>{copy.voiceFallback}</p>}
+    </section>
+  );
+}
+
+// 保留既有参数、状态与展开结构；TTS 诊断以独立小组件隔离。
 const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
   const { t } = useLocale();
+  const reduced = useReducedMotion();
+  const applyErrorText = formatClientApplyError(step.result, t);
+  const tts = readTtsPresentation(step, !!applyErrorText);
   const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [flashClass, setFlashClass] = useState('');
@@ -238,6 +331,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = step.status;
 
+    if (reduced || tts.isPartial || applyErrorText) { setFlashClass(''); return; }
     if (prev === 'executing' && step.status === 'completed') {
       setFlashClass(CSS_ANIMATIONS.flashGreen);
       const timer = setTimeout(() => setFlashClass(''), 400);
@@ -248,7 +342,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
       const timer = setTimeout(() => setFlashClass(''), 400);
       return () => clearTimeout(timer);
     }
-  }, [step.status]);
+  }, [step.status, reduced, tts.isPartial, applyErrorText]);
 
   const toggleExpand = useCallback(() => {
     setIsExpanded((prev) => !prev);
@@ -261,12 +355,18 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
   // "[inline media omitted]" placeholder instead of data: thumbnails, which
   // would show as a broken picture if it ever became an image source.
   const resultText = step.result != null ? formatResult(step.result) : '';
-  const applyErrorText = formatClientApplyError(step.result, t);
-  const summaryText = applyErrorText ?? step.summary;
+  const summaryText = tts.isTts && applyErrorText ? '' : applyErrorText ?? (
+    tts.failures.length || tts.isPartial ? '' : step.summary
+  );
   const errorText = applyErrorText ?? resultText;
   const isUndone = step.status === 'undone';
   const isExecuting = step.status === 'executing';
   const isError = step.status === 'error';
+  const hasTtsFailurePresentation = tts.failures.length > 0 || tts.isPartial;
+  const showOriginalResult = !tts.isTts || (
+    !hasTtsFailurePresentation && !applyErrorText &&
+    isTtsRecord(step.result) && step.result.success === true
+  );
 
   // Real-time elapsed timer (only ticks while executing)
   const liveElapsed = useElapsedTimer(isExecuting, containerRef);
@@ -275,7 +375,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
   let bgClass = '';
   if (isExecuting) {
     bgClass = 'relative';
-  } else if (isError) {
+  } else if (isError && !tts.isTts) {
     bgClass = 'bg-red-50/50 dark:bg-red-900/5';
   }
 
@@ -292,16 +392,20 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
       {/* Compact row */}
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent/50 dark:hover:bg-zinc-700/50 transition-colors text-left relative z-[1]"
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent/50 dark:hover:bg-zinc-700/50 transition-colors text-left relative z-[1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
         onClick={hasDetails ? toggleExpand : undefined}
         disabled={!hasDetails}
         aria-expanded={isExpanded}
       >
-        <StatusIcon status={step.status} />
+        <StatusIcon status={step.status} isPartial={tts.isPartial} />
 
         <span className={`font-medium text-xs text-foreground dark:text-zinc-200 ${isUndone ? 'line-through decoration-muted-foreground/50' : ''}`}>
           {step.displayName}
         </span>
+
+        {tts.isPartial && <span className="text-xs text-amber-700 dark:text-amber-400">
+          {t.ttsErrors.partial}
+        </span>}
 
         {/* One-line summary (collapsed only) */}
         {!isExpanded && summaryText && !isExecuting && (
@@ -332,22 +436,42 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
             stroke="currentColor"
             viewBox="0 0 24 24"
             animate={{ rotate: isExpanded ? 180 : 0 }}
-            transition={{ duration: TIMING.ARROW_ROTATE }}
+            transition={{ duration: reduced ? 0 : TIMING.ARROW_ROTATE }}
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </motion.svg>
         )}
       </button>
 
+      {tts.isTts && applyErrorText && (
+        <p className="px-3 pb-2 text-xs text-red-600 dark:text-red-400 break-words">
+          {applyErrorText}
+        </p>
+      )}
+
+      {(tts.isPartial || tts.failures.length > 0) && (
+        <div className="px-3 pb-3 space-y-2 relative z-[1]">
+          {tts.isPartial && <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+            {t.ttsErrors.partialSummary
+              .replace('{successful}', String(tts.result.successful_segments ?? 0))
+              .replace('{total}', String(tts.result.total_segments ?? 0))
+              .replace('{failed}', String(tts.result.failed_segments ?? 0))}
+          </p>}
+          {tts.failures.map((entry, index) => (
+            <TtsFailureReason key={index} entry={entry} t={t} />
+          ))}
+        </div>
+      )}
+
       {/* Expanded details with enhanced animation */}
       <AnimatePresence initial={false}>
         {isExpanded && hasDetails && (
           <motion.div
             key="details"
-            variants={expandVariants}
-            initial="collapsed"
+            variants={reduced ? undefined : expandVariants}
+            initial={reduced ? false : 'collapsed'}
             animate="expanded"
-            exit="collapsed"
+            exit={reduced ? undefined : 'collapsed'}
             className="overflow-hidden"
           >
             <div className="px-3 pb-2 space-y-1.5 pt-1 relative z-[1]">
@@ -371,7 +495,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
               )}
 
               {/* Result */}
-              {step.result != null && (
+              {step.result != null && showOriginalResult && (
                 <div>
                   <div className="text-xs text-muted-foreground dark:text-zinc-500 mb-1">
                     {t.agentTimeline.result}
@@ -383,10 +507,14 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
               )}
 
               {/* Error message slide-in */}
-              {isError && step.result != null && (
+              {tts.failures.map((entry, index) => (
+                <TtsDiagnostics key={index} failure={entry.failure} t={t} />
+              ))}
+
+              {isError && step.result != null && !tts.isTts && (
                 <motion.div
-                  variants={errorSlideInVariants}
-                  initial="initial"
+                  variants={reduced ? undefined : errorSlideInVariants}
+                  initial={reduced ? false : 'initial'}
                   animate="animate"
                   className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/15 rounded px-2 py-1.5"
                 >
@@ -399,10 +527,10 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
       </AnimatePresence>
 
       {/* Inline error summary (when collapsed) */}
-      {isError && !isExpanded && step.result != null && (
+      {isError && !isExpanded && step.result != null && !tts.isTts && (
         <motion.div
-          variants={errorSlideInVariants}
-          initial="initial"
+          variants={reduced ? undefined : errorSlideInVariants}
+          initial={reduced ? false : 'initial'}
           animate="animate"
           className="px-3 pb-2 relative z-[1]"
         >

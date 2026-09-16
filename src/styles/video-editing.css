@@ -1450,43 +1450,100 @@
   100% { opacity: 0; transform: scale(1.25); }
 }
 
-/* 打开态：右下角 30%×80% 浮窗外壳。
+/* 工作区内的非模态助手浮窗。
  * z-index 由 JSX 上的 z-dock-panel 工具类提供（=860 > lock-overlay 的 50，见 spec R-2）；
  * 浮窗下半部与时间轴锁定遮罩重叠，必须高于它，否则执行期输入框/取消按钮不可点。 */
 .agent-chat-floating-panel {
   position: absolute;
   right: 24px;
   bottom: 24px;
-  width: 30%;
-  height: 80%;
+  width: min(calc(100% - 16px), clamp(360px, 32%, 520px));
+  height: min(calc(100% - 16px), clamp(320px, 80%, 760px));
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
   overflow: hidden;
-  animation: agent-panel-in 0.2s ease-out;
+  transform-origin: center;
 }
 
-@keyframes agent-panel-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+.dark .agent-chat-floating-panel {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+.agent-chat-panel-header {
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.agent-chat-minimize {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  transition: background-color 150ms, color 150ms;
+}
+
+.agent-chat-minimize:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+.agent-chat-floating-panel :is(button, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.agent-chat-messages {
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.agent-chat-toolbar { padding: 12px 16px 0; }
+.agent-chat-input-area { padding: 12px 16px 16px; }
+.agent-chat-input { min-height: 40px; max-height: 120px; }
+
+.agent-chat-floating-panel[data-compact] .agent-chat-panel-header {
+  height: 44px;
+  padding-inline: 8px;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-messages {
+  padding: 8px;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-toolbar {
+  padding: 8px 8px 0;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-input-area {
+  padding: 8px;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-input {
+  max-height: 80px;
+  overflow-y: auto !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-fab,
-  .agent-chat-floating-panel {
-    animation: none;
-    transition: none;
-  }
-}
-
-/* 窄屏下放宽浮窗宽度，避免 30% 在手机上过窄 */
-@media (max-width: 768px) {
-  .agent-chat-floating-panel {
-    width: min(90%, 30rem);
+  .agent-chat-fab::after,
+  .agent-chat-floating-panel,
+  .agent-chat-floating-panel *,
+  .agent-chat-floating-panel *::before,
+  .agent-chat-floating-panel *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

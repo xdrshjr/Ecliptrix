@@ -1,112 +1,160 @@
-'use client';
+﻿'use client';
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { FabPosition } from './useDraggableFab';
+import type { DockPresence } from './useDockPresence';
 
 interface AgentChatFloatingPanelProps {
-  onClose: () => void;
-  /** 标题栏文案（来自 i18n） */
+  onMinimize: () => void;
   title: string;
-  /** 关闭按钮的无障碍标签 / tooltip 文案（来自 i18n） */
-  closeLabel: string;
-  /** 浮窗主体内容，内部为 <VideoChatWindow {...chatProps} /> */
+  minimizeLabel: string;
   children: React.ReactNode;
-  /** FAB 当前锚点（距工作区右/下，px）；null = CSS 默认右下角。据此算半遮挡位置。 */
   anchor: FabPosition | null;
+  isOpen: boolean;
+  panelId: string;
+  panelRef: React.RefObject<HTMLDivElement | null>;
+  presence: DockPresence;
+  onFabOcclusionChange: (occluded: boolean) => void;
+  onKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
+  onFocusCapture: React.FocusEventHandler<HTMLDivElement>;
 }
 
-/** FAB 边长的一半（px）：Panel 底边落在 FAB 垂直中线上，恰好遮挡上半。 */
 const FAB_HALF = 28;
-/** 钳制安全边（px）：保证 Panel 完整留在工作区内。 */
 const SAFE = 8;
-/** Panel 未量到真实尺寸时的退化估算比例（与 CSS width:30%/height:80% 对齐）。 */
-const EST_W_RATIO = 0.3;
-const EST_H_RATIO = 0.8;
+const GRAB_SIZE = 24;
 
 function clamp(value: number, min: number, max: number): number {
-  if (max < min) return min;
-  return Math.min(Math.max(value, min), max);
+  return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
-/**
- * The 30%×80% floating shell. It anchors itself to the FAB so the panel covers
- * the FAB's upper half (FAB's lower 28px stays visible below the panel's bottom
- * edge) — the "half-covered, button never disappears" invariant (spec 2.4 B).
- *
- * Geometry: panel right = FAB right (right-edge aligned), panel bottom = FAB
- * bottom + 28. The position is clamped using the panel's real
- * getBoundingClientRect() (spec R3) so it never overflows the workspace; clamping
- * keeps "panel fully on-screen" first (spec R4), the FAB stays visible via its own
- * independent clamp. `anchor == null` falls back to the default bottom-right + 28px
- * lift so the default state is also half-covered.
- *
- * The `z-dock-panel` utility class (=860) keeps the panel above the timeline lock
- * overlay (z-index:50) so the input box and "cancel" button stay clickable while
- * the Agent is executing.
- */
-const AgentChatFloatingPanel: React.FC<AgentChatFloatingPanelProps> = ({
-  onClose,
-  title,
-  closeLabel,
-  children,
-  anchor,
-}) => {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [style, setStyle] = useState<React.CSSProperties>(() =>
-    anchor ? { right: anchor.right, bottom: anchor.bottom + FAB_HALF } : { right: 24, bottom: 24 + FAB_HALF },
-  );
+interface PanelGeometry {
+  right: number;
+  bottom: number;
+  translateX: number;
+  translateY: number;
+  compact: boolean;
+}
 
+/** 下半圆中心的 24×24 抓取区完整落在圆形按钮内，不能计算透明角落。 */
+function isFabOccluded(bounds: {
+  fabLeft: number; fabTop: number; panelLeft: number; panelTop: number;
+  panelWidth: number; panelHeight: number;
+}) {
+  const { fabLeft, fabTop, panelLeft, panelTop,
+    panelWidth, panelHeight } = bounds;
+  const grabLeft = fabLeft + FAB_HALF - GRAB_SIZE / 2;
+  const grabTop = fabTop + FAB_HALF;
+  return grabLeft < panelLeft + panelWidth &&
+    grabLeft + GRAB_SIZE > panelLeft &&
+    grabTop < panelTop + panelHeight &&
+    grabTop + GRAB_SIZE > panelTop;
+}
+
+// 布局测量、观察器与回传保持同一生命周期，防止隐藏 DOM 零尺寸污染锚点。
+function usePanelGeometry(props: AgentChatFloatingPanelProps) {
+  const { panelRef, anchor, presence, onFabOcclusionChange } = props;
+  const { isHidden, settle } = presence;
+  const previousRef = useRef('');
+  const [geometry, setGeometry] = useState<PanelGeometry>({
+    right: 24, bottom: 52, translateX: 0, translateY: 0, compact: false,
+  });
   useLayoutEffect(() => {
+    if (isHidden) {
+      onFabOcclusionChange(false);
+      previousRef.current = '';
+      return;
+    }
+    const element = panelRef.current;
+    const parent = element?.offsetParent as HTMLElement | null;
+    if (!element || !parent) return;
     const recompute = () => {
-      const el = panelRef.current;
-      if (!el) return;
-      const parent = el.offsetParent as HTMLElement | null;
-      const workspaceW = parent ? parent.clientWidth : window.innerWidth;
-      const workspaceH = parent ? parent.clientHeight : window.innerHeight;
-      const rect = el.getBoundingClientRect();
-      const panelW = rect.width || workspaceW * EST_W_RATIO;
-      const panelH = rect.height || workspaceH * EST_H_RATIO;
-      const rawRight = anchor ? anchor.right : 24;
-      const rawBottom = (anchor ? anchor.bottom : 24) + FAB_HALF;
-      const right = clamp(rawRight, SAFE, Math.max(SAFE, workspaceW - panelW - SAFE));
-      const bottom = clamp(rawBottom, SAFE, Math.max(SAFE, workspaceH - panelH - SAFE));
-      setStyle({ right, bottom });
+      const width = parent.clientWidth;
+      const height = parent.clientHeight;
+      const panelWidth = element.offsetWidth;
+      const panelHeight = element.offsetHeight;
+      if (!width || !height || !panelWidth || !panelHeight) return;
+      const fabRight = anchor?.right ?? 24;
+      const fabBottom = anchor?.bottom ?? 24;
+      const right = clamp(fabRight, SAFE, width - panelWidth - SAFE);
+      const bottom = clamp(fabBottom + FAB_HALF,
+        SAFE, height - panelHeight - SAFE);
+      const panelLeft = width - right - panelWidth;
+      const panelTop = height - bottom - panelHeight;
+      const fabLeft = width - fabRight - FAB_HALF * 2;
+      const fabTop = height - fabBottom - FAB_HALF * 2;
+      const signature = [width, height, panelWidth, panelHeight,
+        fabRight, fabBottom].join(':');
+      if (previousRef.current && previousRef.current !== signature) settle();
+      previousRef.current = signature;
+      setGeometry({ right, bottom,
+        translateX: fabLeft + FAB_HALF - panelLeft - panelWidth / 2,
+        translateY: fabTop + FAB_HALF - panelTop - panelHeight / 2,
+        compact: height < 420,
+      });
+      onFabOcclusionChange(isFabOccluded({ fabLeft, fabTop,
+        panelLeft, panelTop, panelWidth, panelHeight }));
     };
     recompute();
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null : new ResizeObserver(recompute);
+    observer?.observe(parent);
+    observer?.observe(element);
     window.addEventListener('resize', recompute);
-    return () => window.removeEventListener('resize', recompute);
-  }, [anchor]);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', recompute);
+    };
+  }, [anchor, isHidden, panelRef, settle, onFabOcclusionChange]);
+  return geometry;
+}
 
+/** 非模态工作区浮窗；隐藏时保留聊天实例与执行结果。 */
+const AgentChatFloatingPanel: React.FC<AgentChatFloatingPanelProps> = (props) => {
+  const { onMinimize, title, minimizeLabel, children, panelRef,
+    panelId, isOpen, presence, onKeyDown, onFocusCapture } = props;
+  const geometry = usePanelGeometry(props);
+  const expanded = presence.expanded;
+  const style: React.CSSProperties = {
+    right: geometry.right, bottom: geometry.bottom,
+    display: presence.isHidden ? 'none' : undefined,
+    pointerEvents: presence.isInteractive ? undefined : 'none',
+    transform: expanded ? 'translate(0px, 0px) scale(1)' :
+      `translate(${geometry.translateX}px, ${geometry.translateY}px) scale(.12)`,
+    opacity: expanded ? 1 : 0,
+    transition: presence.transitionEnabled
+      ? `transform ${isOpen ? 200 : 180}ms ease, opacity ${isOpen ? 200 : 180}ms ease`
+      : 'none',
+  };
   return (
     <div
       ref={panelRef}
+      id={panelId}
       className="agent-chat-floating-panel z-dock-panel"
       role="dialog"
+      aria-modal={false}
       aria-label={title}
+      aria-hidden={!isOpen}
+      inert={!presence.isInteractive}
+      data-phase={presence.phase}
+      data-compact={geometry.compact || undefined}
       style={style}
+      onTransitionEnd={presence.onTransitionEnd}
+      onKeyDown={onKeyDown}
+      onFocusCapture={onFocusCapture}
     >
-      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3 flex-shrink-0">
+      <div className="agent-chat-panel-header">
         <span className="text-sm font-semibold text-foreground">{title}</span>
         <button
           type="button"
-          onClick={onClose}
-          aria-label={closeLabel}
-          title={closeLabel}
-          className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          onClick={onMinimize}
+          data-dock-minimize
+          aria-label={minimizeLabel}
+          title={minimizeLabel}
+          className="agent-chat-minimize"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor"
+            viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeWidth={2} d="M5 12h14" />
           </svg>
         </button>
       </div>

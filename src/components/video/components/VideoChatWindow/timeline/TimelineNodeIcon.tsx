@@ -16,12 +16,13 @@
 'use client';
 
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { CSS_ANIMATIONS, EASING, TIMING } from './animations';
 
 export type NodeIconVariant =
   | 'user'
   | 'thinking'
+  | 'thinking-idle'
   | 'execution-active'
   | 'execution-done'
   | 'execution-error'
@@ -34,12 +35,14 @@ interface TimelineNodeIconProps {
 
 /** Container shared by all variants — 32x32 centered flex. */
 const IconContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex-shrink-0 relative w-[32px] h-[32px] flex items-center justify-center">
+  <div aria-hidden="true" className="flex-shrink-0 relative w-[32px] h-[32px] flex items-center justify-center">
     {children}
   </div>
 );
 
+// 变体 switch 超过 60 行，保留统一图标布局以避免各状态尺寸漂移。
 const TimelineNodeIcon: React.FC<TimelineNodeIconProps> = ({ variant }) => {
+  const reducedMotion = useReducedMotion();
   switch (variant) {
     // -----------------------------------------------------------------------
     // User — static neutral circle
@@ -60,6 +63,17 @@ const TimelineNodeIcon: React.FC<TimelineNodeIconProps> = ({ variant }) => {
           <div
             className={`w-4 h-4 rounded-full border-2 border-primary border-t-transparent ${CSS_ANIMATIONS.spin}`}
           />
+        </IconContainer>
+      );
+
+    case 'thinking-idle':
+      return (
+        <IconContainer>
+          <svg className="w-4 h-4 text-primary" fill="none"
+            stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeWidth={1.8} strokeLinecap="round"
+              d="M9 18h6m-5 3h4M8.5 14.5a6 6 0 117 0L15 17H9z" />
+          </svg>
         </IconContainer>
       );
 
@@ -88,7 +102,7 @@ const TimelineNodeIcon: React.FC<TimelineNodeIconProps> = ({ variant }) => {
               className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center"
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={EASING.spring}
+              transition={reducedMotion ? { duration: 0 } : EASING.spring}
             >
               <svg
                 className="w-3 h-3 text-green-600 dark:text-green-400"
@@ -120,7 +134,7 @@ const TimelineNodeIcon: React.FC<TimelineNodeIconProps> = ({ variant }) => {
               className={`w-5 h-5 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center ${CSS_ANIMATIONS.shake}`}
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={EASING.spring}
+              transition={reducedMotion ? { duration: 0 } : EASING.spring}
             >
               <svg
                 className="w-3 h-3 text-red-600 dark:text-red-400"
@@ -160,7 +174,7 @@ const TimelineNodeIcon: React.FC<TimelineNodeIconProps> = ({ variant }) => {
             className="w-3 h-3 rounded-full bg-muted-foreground/40 dark:bg-zinc-500/40"
             initial={{ opacity: 1 }}
             animate={{ opacity: 0.5 }}
-            transition={{ duration: TIMING.UNDO }}
+            transition={{ duration: reducedMotion ? 0 : TIMING.UNDO }}
           />
         </IconContainer>
       );

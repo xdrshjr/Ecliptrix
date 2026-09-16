@@ -1,4 +1,26 @@
+import type { TtsErrorCode } from './ttsErrors';
+
+// 沿用项目集中式中英文翻译表；文件超过 1000 行，本次只补助手相关键。
+
 export interface Translations {
+  ttsErrors: {
+    summary: Record<TtsErrorCode, string>;
+    action: Record<TtsErrorCode, string>;
+    clientTimeout: string;
+    diagnostics: string;
+    providerMessage: string;
+    errorCode: string;
+    providerCode: string;
+    requestId: string;
+    attempts: string;
+    source: string;
+    httpStatus: string;
+    voiceFallback: string;
+    partial: string;
+    partialSummary: string;
+    segmentFailure: string;
+    sources: Record<'provider' | 'backend' | 'client' | 'local', string>;
+  };
   common: {
     newTask: string;
     projects: string;
@@ -947,6 +969,7 @@ export interface Translations {
     undoneNotice: string;
     executing: string;
     executed: string;
+    partial: string;
     stop: string;
     collapsedSummary: string;
     collapsedSummaryErrors: string;
@@ -1014,6 +1037,7 @@ export interface Translations {
       providerError: string;
       emptyResponse: string;
       toolFailures: string;
+      toolFailuresWithCause: string;
       agentError: string;
     };
   };
@@ -1497,6 +1521,7 @@ export interface Translations {
       fabLabel: string;
       panelTitle: string;
       close: string;
+      minimize: string;
       busy: string;
     };
   };
@@ -2608,6 +2633,63 @@ export interface Translations {
 
 export const translations: Record<string, Translations> = {
   en: {
+    ttsErrors: {
+      summary: {
+        TTS_INSUFFICIENT_BALANCE: 'The speech service balance is insufficient or overdue.',
+        TTS_RATE_LIMITED: 'Speech requests are too frequent or exceed concurrency limits.',
+        TTS_QUOTA_EXHAUSTED: 'The speech service usage quota is exhausted.',
+        TTS_AUTH_FAILED: 'The speech service credentials are invalid.',
+        TTS_VOICE_UNAVAILABLE: 'The selected voice is unavailable.',
+        TTS_PERMISSION_DENIED: 'The speech service or voice is not authorized.',
+        TTS_INVALID_REQUEST: 'The speech request parameters are invalid.',
+        TTS_TIMEOUT: 'The speech service timed out.',
+        TTS_NETWORK_ERROR: 'Unable to connect to the speech service.',
+        TTS_PROVIDER_ERROR: 'The speech service returned an error.',
+        TTS_INVALID_RESPONSE: 'The speech service returned invalid data.',
+        TTS_LOCAL_IO_ERROR: 'Unable to save the speech file.',
+        TTS_UNKNOWN_ERROR: 'Speech generation failed without a recognizable reason.',
+        TTS_CONFIG_MISSING: 'Speech service credentials are not configured.',
+        TTS_BACKEND_TIMEOUT: 'Local speech processing timed out; the generation result is unconfirmed.',
+        TTS_BACKEND_UNAVAILABLE: 'The local speech service is unavailable.',
+      },
+      action: {
+        TTS_INSUFFICIENT_BALANCE: 'Top up in the Volcengine console and try again.',
+        TTS_RATE_LIMITED: 'Wait a moment and try again.',
+        TTS_QUOTA_EXHAUSTED: 'Check your resource package or activate the required service.',
+        TTS_AUTH_FAILED: 'Check the TTS API Key in Settings.',
+        TTS_VOICE_UNAVAILABLE: 'Check that the voice matches the selected resource.',
+        TTS_PERMISSION_DENIED: 'Check service activation and voice permissions.',
+        TTS_INVALID_REQUEST: 'Check the text, voice, and speech speed.',
+        TTS_TIMEOUT: 'Wait a moment and try again.',
+        TTS_NETWORK_ERROR: 'Check your network and try again.',
+        TTS_PROVIDER_ERROR: 'Review the diagnostics before trying again.',
+        TTS_INVALID_RESPONSE: 'Try again later; check the speech service settings if it persists.',
+        TTS_LOCAL_IO_ERROR: 'Check available storage and directory permissions.',
+        TTS_UNKNOWN_ERROR: 'Review the diagnostics in the failed step.',
+        TTS_CONFIG_MISSING: 'Configure the TTS credentials in Settings.',
+        TTS_BACKEND_TIMEOUT: 'Check whether audio was generated before deciding to generate it again.',
+        TTS_BACKEND_UNAVAILABLE: 'Check the local desktop service and restart the app if needed.',
+      },
+      clientTimeout: 'The speech request timed out; the generation result is unconfirmed.',
+      diagnostics: 'Diagnostics',
+      providerMessage: 'Service message',
+      errorCode: 'Error category',
+      providerCode: 'Service error code',
+      requestId: 'Request ID',
+      attempts: 'Attempts',
+      source: 'Error source',
+      httpStatus: 'HTTP status',
+      voiceFallback: 'Default voice was tried',
+      partial: 'Partially completed',
+      partialSummary: 'Generated {successful}/{total} segments; {failed} failed',
+      segmentFailure: 'Segment {index}',
+      sources: {
+        provider: 'Speech provider',
+        backend: 'Local service',
+        client: 'Assistant request',
+        local: 'Local configuration or file',
+      },
+    },
     common: {
       newTask: 'New Task',
       projects: 'Projects',
@@ -3269,6 +3351,7 @@ export const translations: Record<string, Translations> = {
       undoneNotice: 'Changes undone',
       executing: 'Executing',
       executed: 'Executed',
+      partial: 'Partially completed',
       stop: 'Stop',
       collapsedSummary: '{count} steps — click to expand',
       collapsedSummaryErrors: '{count} steps (with errors) — click to expand',
@@ -3335,7 +3418,8 @@ export const translations: Record<string, Translations> = {
         contextOverflow: 'This conversation is too long for the model. Clear the chat or start a new one.',
         providerError: 'The model request failed: {detail}',
         emptyResponse: 'The model returned an empty response. It may not support tool calling.',
-        toolFailures: 'Stopped after 5 tool calls failed in a row. This usually means a local service or network problem. Try again.',
+        toolFailures: 'Stopped after 5 consecutive tool failures. Review the failed steps for the specific reasons.',
+        toolFailuresWithCause: 'Stopped after 5 consecutive tool failures. Most recent failure: {detail}',
         agentError: 'The run stopped unexpectedly: {detail}',
       },
     },
@@ -4112,6 +4196,7 @@ export const translations: Record<string, Translations> = {
        fabLabel: 'AI editing assistant',
        panelTitle: 'AI Editing Assistant',
        close: 'Close',
+       minimize: 'Minimize assistant',
        busy: 'Agent running…',
      },
    },
@@ -5231,6 +5316,63 @@ export const translations: Record<string, Translations> = {
     },
   },
   'zh-CN': {
+    ttsErrors: {
+      summary: {
+        TTS_INSUFFICIENT_BALANCE: '语音服务余额不足或已欠费。',
+        TTS_RATE_LIMITED: '语音请求过于频繁或并发超限。',
+        TTS_QUOTA_EXHAUSTED: '语音服务额度已用完。',
+        TTS_AUTH_FAILED: '语音服务凭据无效。',
+        TTS_VOICE_UNAVAILABLE: '当前音色不可用。',
+        TTS_PERMISSION_DENIED: '语音服务或音色未获授权。',
+        TTS_INVALID_REQUEST: '语音请求参数无效。',
+        TTS_TIMEOUT: '语音服务响应超时。',
+        TTS_NETWORK_ERROR: '无法连接语音服务。',
+        TTS_PROVIDER_ERROR: '语音服务返回错误。',
+        TTS_INVALID_RESPONSE: '语音服务返回了无效数据。',
+        TTS_LOCAL_IO_ERROR: '无法保存语音文件。',
+        TTS_UNKNOWN_ERROR: '语音生成失败，服务未返回可识别的原因。',
+        TTS_CONFIG_MISSING: '尚未配置语音服务凭据。',
+        TTS_BACKEND_TIMEOUT: '本地语音处理等待超时，生成结果尚未确认。',
+        TTS_BACKEND_UNAVAILABLE: '本地语音服务不可用。',
+      },
+      action: {
+        TTS_INSUFFICIENT_BALANCE: '请在火山引擎控制台充值后重试。',
+        TTS_RATE_LIMITED: '请稍后重试。',
+        TTS_QUOTA_EXHAUSTED: '请检查资源包或开通相应服务。',
+        TTS_AUTH_FAILED: '请在设置中检查 TTS API Key。',
+        TTS_VOICE_UNAVAILABLE: '请检查音色与所选资源是否匹配。',
+        TTS_PERMISSION_DENIED: '请检查服务开通状态及音色权限。',
+        TTS_INVALID_REQUEST: '请检查文本、音色和语速。',
+        TTS_TIMEOUT: '请稍后重试。',
+        TTS_NETWORK_ERROR: '请检查网络后重试。',
+        TTS_PROVIDER_ERROR: '请查看诊断信息后重试。',
+        TTS_INVALID_RESPONSE: '请稍后重试；若持续失败，请检查语音服务配置。',
+        TTS_LOCAL_IO_ERROR: '请检查存储空间和目录权限。',
+        TTS_UNKNOWN_ERROR: '请查看失败步骤的诊断信息。',
+        TTS_CONFIG_MISSING: '请在设置中配置 TTS 凭据。',
+        TTS_BACKEND_TIMEOUT: '请先检查是否已生成素材，再决定是否重新生成。',
+        TTS_BACKEND_UNAVAILABLE: '请检查桌面本地服务，必要时重启应用。',
+      },
+      clientTimeout: '语音请求等待超时，生成结果尚未确认。',
+      diagnostics: '诊断信息',
+      providerMessage: '服务原文',
+      errorCode: '错误类别',
+      providerCode: '服务错误码',
+      requestId: '请求 ID',
+      attempts: '实际尝试次数',
+      source: '错误来源',
+      httpStatus: 'HTTP 状态',
+      voiceFallback: '已尝试默认音色',
+      partial: '部分完成',
+      partialSummary: '成功 {successful}/{total} 段，{failed} 段失败',
+      segmentFailure: '第 {index} 段',
+      sources: {
+        provider: '语音服务',
+        backend: '本地服务',
+        client: '助手请求',
+        local: '本地配置或文件',
+      },
+    },
     common: {
       newTask: '新建任务',
       projects: '项目',
@@ -5892,6 +6034,7 @@ export const translations: Record<string, Translations> = {
       undoneNotice: '修改已撤销',
       executing: '执行中',
       executed: '已执行',
+      partial: '部分完成',
       stop: '停止',
       collapsedSummary: '共 {count} 步，点击展开',
       collapsedSummaryErrors: '共 {count} 步（有失败），点击展开',
@@ -5958,7 +6101,8 @@ export const translations: Record<string, Translations> = {
         contextOverflow: '对话内容超出模型上下文长度，请清空聊天或新建对话。',
         providerError: '模型请求失败：{detail}',
         emptyResponse: '模型返回了空内容，可能不支持工具调用。',
-        toolFailures: '连续 5 次工具调用失败，已自动停止。通常是本地服务或网络异常，请重试。',
+        toolFailures: '连续 5 次工具调用失败，已停止。请查看失败步骤的具体原因。',
+        toolFailuresWithCause: '连续 5 次工具调用失败，已停止。最近一次失败：{detail}',
         agentError: '运行意外中断：{detail}',
       },
     },
@@ -6733,6 +6877,7 @@ export const translations: Record<string, Translations> = {
        fabLabel: 'AI 剪辑助手',
        panelTitle: 'AI 剪辑助手',
        close: '收起',
+       minimize: '最小化助手',
        busy: 'Agent 执行中…',
      },
    },

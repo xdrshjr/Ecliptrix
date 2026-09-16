@@ -1,186 +1,122 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
+import type { MaterialItem } from '@/types';
 import type { ToolContext } from '../types';
-import { toolFetch, parseToolResponse } from './apiHelper';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import { toolFetch } from './apiHelper';
+import {
+  assertTtsNotAborted, invalidTtsRequest, normalizeSingleTtsResponse,
+  readTtsResponse, ttsRequestFailure, ttsToolResult,
+} from './ttsResponse';
 
 const DEFAULT_VOICE_TYPE = 'zh_female_qingxinnvsheng_uranus_bigtts';
 const MAX_TEXT_LENGTH = 5000;
 
-// ---------------------------------------------------------------------------
-// Parameters
-// ---------------------------------------------------------------------------
-
 const parameters = Type.Object({
-  text: Type.String({ description: 'The text to convert to speech' }),
-  voice_type: Type.Optional(
-    Type.String({
-      description:
-        'Voice ID (Volcano TTS 2.0, *_uranus_bigtts). Popular options: zh_female_qingxinnvsheng_uranus_bigtts (female, default), zh_female_shuangkuaisisi_uranus_bigtts (crisp female), zh_male_shaonianzixin_uranus_bigtts (male), zh_female_tianmeixiaoyuan_uranus_bigtts (sweet female), zh_male_jieshuoxiaoming_uranus_bigtts (narrator), en_female_dacey_uranus_bigtts (English female). Use explore_tools("tts_tools") to see all available voices. Defaults to zh_female_qingxinnvsheng_uranus_bigtts.',
-    }),
-  ),
-  speed: Type.Optional(
-    Type.Number({
-      description: 'Speech speed multiplier (0.5–2.0). Default: 1.0',
-    }),
-  ),
+  text: Type.String({ description: '需要转换成语音的文本。' }),
+  voice_type: Type.Optional(Type.String({
+    description: '火山语音音色 ID；默认清新女声。通过 explore_tools("tts_tools") 查看音色。',
+  })),
+  speed: Type.Optional(Type.Number({
+    description: '语速倍数，0.5–2.0，默认为 1.0。',
+  })),
 });
 
 type Params = Static<typeof parameters>;
 
-// ---------------------------------------------------------------------------
-// Tool factory
-// ---------------------------------------------------------------------------
-
-export function createGenerateTtsTool(context: ToolContext): AgentTool<typeof parameters> {
+export function createGenerateTtsTool(
+  context: ToolContext,
+): AgentTool<typeof parameters> {
   return {
     name: 'generate_tts',
-    label: 'Generate TTS',
-    description:
-      'Convert text to speech. Supports 100+ voice types. The generated audio is automatically added to the material library.',
+    label: '生成配音',
+    description: '将文本转换成语音并加入素材库。仅音色不可用时尝试一次默认音色；其他失败返回具体原因。',
     parameters,
-
     execute: async (toolCallId, params: Params) => {
-      // --- Validate text ---
-      const text = params.text?.trim();
-      if (!text) {
-        const err = { success: false, error: 'Text must not be empty' };
-        return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+      assertTtsNotAborted(context);
+      const text = typeof params.text === 'string' ? params.text.trim() : '';
+      if (!text || text.length > MAX_TEXT_LENGTH ||
+          (params.speed !== undefined && !Number.isFinite(params.speed)) ||
+          (params.voice_type !== undefined && !params.voice_type.trim())) {
+        return ttsToolResult({ success: false, ...invalidTtsRequest() });
       }
-
-      if (text.length > MAX_TEXT_LENGTH) {
-        const err = {
-          success: false,
-          error: `Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters (got ${text.length}). Use batch_generate_tts for longer content.`,
-        };
-        return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
-      }
-
-      // --- Validate & default optional params ---
-      const voiceType = params.voice_type || DEFAULT_VOICE_TYPE;
-      const speed = clamp(params.speed ?? 1.0, 0.5, 2.0);
-
-      // --- Call TTS API (with voice fallback) ---
+      const voiceType = params.voice_type ?? DEFAULT_VOICE_TYPE;
+      const speed = Math.max(0.5, Math.min(2, params.speed ?? 1));
       try {
-        let usedVoice = voiceType;
-        let result = await callTtsApi(context, text, usedVoice, speed);
-
-        // If the requested voice failed and it's not the default, retry with default voice
-        if (!result.success && usedVoice !== DEFAULT_VOICE_TYPE) {
-          console.warn(`[generate_tts] Voice "${usedVoice}" failed, retrying with default voice "${DEFAULT_VOICE_TYPE}"`);
-          usedVoice = DEFAULT_VOICE_TYPE;
-          result = await callTtsApi(context, text, usedVoice, speed);
-        }
-
-        if (!result.success || !('data' in result) || !result.data?.audio_url) {
-          const err = {
-            success: false,
-            error: ('message' in result && result.message) || ('error' in result && (result as { error: string }).error) || 'TTS conversion failed',
-          };
-          return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
-        }
-
-        // --- Build MaterialItem and record operation ---
-        const audioUrl: string = result.data.audio_url;
-        const duration: number = result.data.duration ?? 0;
-        const materialId = `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const displayName =
-          text.length > 30 ? `TTS: ${text.slice(0, 27)}...` : `TTS: ${text}`;
-
-        const material = {
-          id: materialId,
-          name: displayName,
-          type: 'audio' as const,
-          format: 'mp3',
-          size: 0,
-          duration,
-          url: audioUrl,
-          serverUrl: audioUrl,
-          createdAt: new Date(),
-          tags: ['tts', 'generated'],
-          description: `Generated speech: "${text.slice(0, 100)}"`,
-        };
-
-        // Push to context for same-turn visibility
+        const result = await generateSpeech(context, text, voiceType, speed);
+        assertTtsNotAborted(context);
+        if (!result.success) return ttsToolResult(result);
+        const material = createSpeechMaterial(text, result);
+        assertTtsNotAborted(context);
         context.materials.push(material);
         context.recordOperation(toolCallId, { type: 'add_material', material });
-
-        const payload = {
+        return ttsToolResult({
           success: true,
           material: {
-            id: materialId,
-            name: displayName,
-            type: 'audio',
-            duration,
-            url: audioUrl,
-            format: 'mp3',
+            id: material.id, name: material.name, type: 'audio',
+            duration: material.duration, url: material.url, format: 'mp3',
           },
-          message: `TTS audio generated successfully (${duration.toFixed(1)}s)`,
-        };
-
-        return {
-          content: [{ type: 'text', text: JSON.stringify(payload) }],
-          details: payload,
-        };
+          message: '配音已生成并加入素材库。',
+        });
       } catch (error) {
-        const isTimeout =
-          error instanceof DOMException && error.name === 'TimeoutError';
-        const errorMessage = isTimeout
-          ? 'TTS request timed out after 60 seconds'
-          : `TTS request failed: ${error instanceof Error ? error.message : String(error)}`;
-        const err = { success: false, error: errorMessage };
-        return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+        return ttsToolResult({ success: false, ...ttsRequestFailure(error, context) });
       }
     },
   };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-type TtsApiResult = {
-  success: boolean;
-  message?: string;
-  error?: string;
-  data?: { audio_url?: string; duration?: number };
-};
+async function generateSpeech(
+  context: ToolContext,
+  text: string,
+  voiceType: string,
+  speed: number,
+) {
+  let result = await callTtsApi(context, text, voiceType, speed);
+  assertTtsNotAborted(context);
+  if (result.success || result.error_code !== 'TTS_VOICE_UNAVAILABLE' ||
+      voiceType === DEFAULT_VOICE_TYPE) return result;
+  try {
+    result = await callTtsApi(context, text, DEFAULT_VOICE_TYPE, speed);
+  } catch (error) {
+    result = { success: false, ...ttsRequestFailure(error, context) };
+  }
+  assertTtsNotAborted(context);
+  return result.success ? result : {
+    ...result,
+    error_details: {
+      ...result.error_details,
+      source: result.error_details?.source ?? 'client' as const,
+      retryable: result.error_details?.retryable ?? false,
+      voice_fallback: true,
+    },
+  };
+}
 
 async function callTtsApi(
   context: ToolContext,
   text: string,
   voiceType: string,
   speed: number,
-): Promise<TtsApiResult> {
+) {
+  assertTtsNotAborted(context);
   const response = await toolFetch(context, '/api/tts/convert', {
-    method: 'POST',
-    timeout: 60_000,
-    body: JSON.stringify({
-      text,
-      voice_type: voiceType,
-      speed_ratio: speed,
-    }),
+    method: 'POST', timeout: 130_000, retry: false,
+    body: JSON.stringify({ text, voice_type: voiceType, speed_ratio: speed }),
   });
-
-  if (!response.ok) {
-    let detail = '';
-    try {
-      detail = await response.text();
-    } catch {
-      // ignore read errors
-    }
-    return {
-      success: false,
-      error: `TTS service error (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
-    };
-  }
-
-  return parseToolResponse<TtsApiResult>(response);
+  assertTtsNotAborted(context);
+  const parsed = await readTtsResponse(response, [text]);
+  assertTtsNotAborted(context);
+  return normalizeSingleTtsResponse(parsed);
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
+function createSpeechMaterial(
+  text: string,
+  audio: { audio_url: string; duration: number },
+): MaterialItem {
+  return {
+    id: `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: text.length > 30 ? `TTS: ${text.slice(0, 27)}...` : `TTS: ${text}`,
+    type: 'audio', format: 'mp3', size: 0, duration: audio.duration,
+    url: audio.audio_url, serverUrl: audio.audio_url, createdAt: new Date(),
+    tags: ['tts', 'generated'], description: '生成的配音',
+  };
 }

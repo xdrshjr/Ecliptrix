@@ -99,6 +99,8 @@ export type ConnectorState = 'default' | 'active' | 'undone';
 // ---------------------------------------------------------------------------
 
 export interface TimelineChatPanelProps {
+  /** 最小化时暂停自动滚动，重开恢复当前会话的阅读位置。 */
+  isVisible?: boolean;
   messages: ChatMessage[];
   /** Real-time execution state provided by useAgentExecution (google-dev-04). */
   executionState: AgentExecutionState | null;

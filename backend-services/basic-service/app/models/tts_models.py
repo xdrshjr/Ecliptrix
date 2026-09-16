@@ -2,9 +2,32 @@
 Text-to-Speech (TTS) models for Volcano TTS API integration.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 from enum import Enum
 from pydantic import BaseModel, Field, validator
+from pydantic_core import PydanticCustomError
+
+
+class TTSErrorDetails(BaseModel):
+    """可公开的语音诊断字段；禁止宽松数值和布尔转换。"""
+
+    source: Literal['provider', 'backend', 'client', 'local']
+    provider: Optional[Literal['volcengine']] = None
+    provider_code: Optional[str] = Field(
+        None, max_length=64, pattern=r'^[A-Za-z0-9._-]+$',
+    )
+    provider_message: Optional[str] = Field(None, max_length=240)
+    http_status: Optional[int] = Field(None, strict=True, ge=100, le=599)
+    request_id: Optional[str] = Field(
+        None, max_length=128, pattern=r'^[A-Za-z0-9_-]+$',
+    )
+    attempts: Optional[int] = Field(None, strict=True, ge=0)
+    retryable: bool = Field(..., strict=True)
+    voice_fallback: Optional[bool] = Field(None, strict=True)
+
+    class Config:
+        frozen = True
+        extra = 'forbid'
 
 
 class VoiceType(str, Enum):
@@ -88,7 +111,9 @@ class TTSRequest(BaseModel):
         # 这里可以添加动态验证逻辑，从配置文件加载有效的语音类型
         # 暂时允许所有字符串类型，由TTS服务进行实际验证
         if not v or not isinstance(v, str):
-            raise ValueError('Voice type must be a non-empty string')
+            raise PydanticCustomError(
+                'tts_voice_empty', 'Voice type must be a non-empty string',
+            )
         return v
     
     class Config:
@@ -109,6 +134,15 @@ class BatchTTSSegmentRequest(BaseModel):
     segment_id: str = Field(..., description="Unique segment identifier")
     text: str = Field(..., description="Text to convert to speech", max_length=5000)
     title: Optional[str] = Field(None, description="Segment title for reference")
+    voice_type: Optional[str] = None
+
+    @validator('voice_type')
+    def validate_segment_voice(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise PydanticCustomError(
+                'tts_voice_empty', 'Voice type must be a non-empty string',
+            )
+        return value
 
 
 class BatchTTSRequest(BaseModel):
@@ -133,11 +167,22 @@ class BatchTTSRequest(BaseModel):
         le=10
     )
     
+    @validator('segments')
+    def validate_unique_segments(cls, segments):
+        identifiers = [segment.segment_id for segment in segments]
+        if len(identifiers) != len(set(identifiers)):
+            raise PydanticCustomError(
+                'tts_duplicate_segment', 'Segment IDs must be unique',
+            )
+        return segments
+
     @validator('voice_type')
     def validate_voice_type(cls, v):
         """验证语音类型是否有效"""
         if not v or not isinstance(v, str):
-            raise ValueError('Voice type must be a non-empty string')
+            raise PydanticCustomError(
+                'tts_voice_empty', 'Voice type must be a non-empty string',
+            )
         return v
     
     class Config:
@@ -172,6 +217,8 @@ class BatchTTSSegmentResult(BaseModel):
     duration: Optional[float] = Field(None, description="Audio duration in seconds")
     file_size: Optional[int] = Field(None, description="Audio file size in bytes")
     error: Optional[str] = Field(None, description="Error message if conversion failed")
+    error_code: Optional[str] = None
+    error_details: Optional[TTSErrorDetails] = None
     processing_time: Optional[float] = Field(None, description="Processing time in seconds")
 
 
@@ -185,6 +232,8 @@ class BatchTTSResponse(BaseModel):
     failed_segments: int = Field(..., description="Number of failed segments")
     total_processing_time: float = Field(..., description="Total processing time in seconds")
     results: List[BatchTTSSegmentResult] = Field(..., description="Individual segment results")
+    error_code: Optional[str] = None
+    error_details: Optional[TTSErrorDetails] = None
     
     class Config:
         json_schema_extra = {
@@ -247,6 +296,7 @@ class TTSErrorResponse(BaseModel):
     success: bool = Field(False, description="Conversion success status")
     message: str = Field(..., description="Error message")
     error_code: Optional[str] = Field(None, description="Error code")
+    error_details: Optional[TTSErrorDetails] = None
     
     class Config:
         json_schema_extra = {
@@ -436,4 +486,4 @@ class SentenceBatchTTSResponse(BaseModel):
                     }
                 ]
             }
-        } 
+        }

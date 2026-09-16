@@ -14,7 +14,85 @@
  * @module agentTurnLifecycle
  */
 
-import type { AgentToolCallRecord, ChatMessage } from '@/types';
+import { useEffect, useRef, useState } from 'react';
+import type {
+  AgentToolCallRecord, ChatMessage, VideoEditingTaskContent,
+} from '@/types';
+
+/** 恢复历史时仅结束残留活动，不删除思考内容或已完成的操作。 */
+export function normalizeInterruptedAgentMessages(
+  messages: ChatMessage[],
+): ChatMessage[] {
+  let changed = false;
+  const normalized = messages.flatMap(message => {
+    if (!message.isAgentMessage) {
+      if (!message.isStreaming) return [message];
+      changed = true;
+      return [{ ...message, isStreaming: false }];
+    }
+    const hasActiveTool = message.agentToolCalls?.some(
+      tool => tool.status === 'executing',
+    );
+    if (!message.isStreaming && !message.isThinking && !hasActiveTool) {
+      return [message];
+    }
+    changed = true;
+    if (!message.content && !message.thinkingContent &&
+      !message.agentToolCalls?.length) return [];
+    return [{
+      ...message, isStreaming: false, isThinking: false, isCancelled: true,
+      ...(hasActiveTool ? {
+        agentToolCalls: message.agentToolCalls?.map(tool =>
+          tool.status === 'executing'
+            ? { ...tool, status: 'cancelled' as const } : tool,
+        ),
+      } : {}),
+    }];
+  });
+  return changed ? normalized : messages;
+}
+
+interface ConversationCleanupOptions {
+  projectKey: string;
+  content: VideoEditingTaskContent | null;
+  onUpdateContent: (content: VideoEditingTaskContent) => void;
+}
+
+/** 编辑器是唯一调用者；历史合并写回，父级确认接纳后才能开始新轮次。 */
+export function useInterruptedConversationCleanup({
+  projectKey, content, onUpdateContent,
+}: ConversationCleanupOptions): boolean {
+  const initialized = useRef<string | null>(null);
+  const pending = useRef<{
+    projectKey: string; content: VideoEditingTaskContent;
+  } | null>(null);
+  const [readyProject, setReadyProject] = useState<string | null>(null);
+  useEffect(() => {
+    if (initialized.current === projectKey || !content) return;
+    const conversations = content.conversations;
+    const normalized = conversations?.map(conversation => {
+      const messages = normalizeInterruptedAgentMessages(conversation.messages);
+      return messages === conversation.messages
+        ? conversation : { ...conversation, messages };
+    });
+    const changed = normalized?.some(
+      (conversation, index) => conversation !== conversations?.[index],
+    );
+    if (changed) {
+      if (pending.current?.projectKey === projectKey &&
+          pending.current.content === content) return;
+      // 其他初始化 effect 可能整份写回旧会话；按最新快照补偿，保留其字段。
+      pending.current = { projectKey, content };
+      onUpdateContent({ ...content, conversations: normalized });
+      return;
+    }
+    initialized.current = projectKey;
+    pending.current = null;
+    setReadyProject(projectKey);
+  }, [projectKey, content, onUpdateContent]);
+  return readyProject === projectKey && !!content &&
+    initialized.current === projectKey;
+}
 
 let turnSequence = 0;
 

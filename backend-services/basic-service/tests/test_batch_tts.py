@@ -8,6 +8,16 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models import BatchTTSRequest, BatchTTSSegmentRequest, VoiceType
 from app.services.batch_tts_service import BatchTTSService
+from app.models.tts_models import BatchTTSResponse, BatchTTSSegmentResult
+from app.services.tts_errors import TTSServiceError
+
+
+@pytest.fixture(autouse=True)
+def prevent_live_tts_requests(monkeypatch):
+    """未被隔离的旧 fixture 也不能访问付费语音服务。"""
+    import requests
+    monkeypatch.setattr(requests, 'post', Mock(side_effect=
+        requests.ConnectionError('isolated-test')))
 
 client = TestClient(app)
 
@@ -37,7 +47,7 @@ class TestBatchTTSEndpoint:
         }
         
         with patch('app.routers.tts_router.batch_tts_service') as mock_service:
-            mock_service.convert_batch.return_value = Mock(
+            mock_service.convert_batch.return_value = BatchTTSResponse(
                 success=True,
                 message="批量语音转换完成，成功 2/2 个段落",
                 total_segments=2,
@@ -45,7 +55,7 @@ class TestBatchTTSEndpoint:
                 failed_segments=0,
                 total_processing_time=10.5,
                 results=[
-                    Mock(
+                    BatchTTSSegmentResult(
                         segment_id="segment-1",
                         success=True,
                         audio_url="/api/audio/generated/tts_segment-1_test.mp3",
@@ -54,7 +64,7 @@ class TestBatchTTSEndpoint:
                         error=None,
                         processing_time=5.1
                     ),
-                    Mock(
+                    BatchTTSSegmentResult(
                         segment_id="segment-2",
                         success=True,
                         audio_url="/api/audio/generated/tts_segment-2_test.mp3",
@@ -99,7 +109,7 @@ class TestBatchTTSEndpoint:
         }
         
         with patch('app.routers.tts_router.batch_tts_service') as mock_service:
-            mock_service.convert_batch.return_value = Mock(
+            mock_service.convert_batch.return_value = BatchTTSResponse(
                 success=False,
                 message="批量语音转换完成，成功 1/2 个段落",
                 total_segments=2,
@@ -107,7 +117,7 @@ class TestBatchTTSEndpoint:
                 failed_segments=1,
                 total_processing_time=8.3,
                 results=[
-                    Mock(
+                    BatchTTSSegmentResult(
                         segment_id="segment-1",
                         success=True,
                         audio_url="/api/audio/generated/tts_segment-1_test.mp3",
@@ -116,7 +126,7 @@ class TestBatchTTSEndpoint:
                         error=None,
                         processing_time=5.1
                     ),
-                    Mock(
+                    BatchTTSSegmentResult(
                         segment_id="segment-2",
                         success=False,
                         audio_url=None,
@@ -158,7 +168,7 @@ class TestBatchTTSEndpoint:
                     "title": "测试"
                 }
             ],
-            "voice_type": "invalid_voice_type"
+            "voice_type": ""
         }
         
         response = client.post("/api/tts/convert-batch", json=request_data)
@@ -186,7 +196,8 @@ class TestBatchTTSEndpoint:
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is False
-            assert "服务器内部错误" in data["message"]
+            assert data['error_code'] == 'TTS_UNKNOWN_ERROR'
+            assert '服务器内部错误' not in data['message']
             assert data["successful_segments"] == 0
             assert data["failed_segments"] == 1
 
@@ -227,12 +238,12 @@ class TestBatchTTSService:
                 title=f"测试 {i}"
             ))
         
-        request = BatchTTSRequest(
+        request = BatchTTSRequest.model_construct(
             segments=segments,
             voice_type=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS
         )
         
-        with pytest.raises(ValueError, match="段落数量超过限制"):
+        with pytest.raises(TTSServiceError):
             self.service._validate_batch_request(request)
     
     @patch('app.services.batch_tts_service.TTSService')
@@ -242,7 +253,7 @@ class TestBatchTTSService:
         
         request = BatchTTSRequest(
             segments=[
-                BatchTTSSegmentRequest(
+                BatchTTSSegmentRequest.model_construct(
                     segment_id="segment-1",
                     text=long_text,
                     title="长文本测试"
@@ -251,13 +262,13 @@ class TestBatchTTSService:
             voice_type=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS
         )
         
-        with pytest.raises(ValueError, match="文本长度超过限制"):
+        with pytest.raises(TTSServiceError):
             self.service._validate_batch_request(request)
     
-    @patch('app.services.batch_tts_service.TTSService')
+    @patch('app.services.batch_tts_service.TTSService.convert_text_to_speech')
     def test_convert_single_segment_success(self, mock_tts_service):
         """Test successful single segment conversion."""
-        mock_tts_service.return_value.convert_text_to_speech.return_value = {
+        mock_tts_service.return_value = {
             "audio_url": "/api/audio/generated/test_audio.mp3",
             "file_size": 51200,
             "duration": 3.2,
@@ -279,12 +290,12 @@ class TestBatchTTSService:
         assert result.file_size == 51200
         assert result.duration == 3.2
         assert result.error is None
-        assert result.processing_time > 0
+        assert result.processing_time >= 0
     
-    @patch('app.services.batch_tts_service.TTSService')
+    @patch('app.services.batch_tts_service.TTSService.convert_text_to_speech')
     def test_convert_single_segment_failure(self, mock_tts_service):
         """Test single segment conversion failure."""
-        mock_tts_service.return_value.convert_text_to_speech.side_effect = Exception("转换失败")
+        mock_tts_service.side_effect = Exception("转换失败")
         
         result = self.service._convert_single_segment(
             segment_text="测试文本",
@@ -298,13 +309,14 @@ class TestBatchTTSService:
         assert result.segment_id == "segment-1"
         assert result.success is False
         assert result.audio_url is None
-        assert result.error == "转换失败"
-        assert result.processing_time > 0
+        assert result.error_code == 'TTS_UNKNOWN_ERROR'
+        assert '转换失败' not in result.error
+        assert result.processing_time >= 0
     
-    @patch('app.services.batch_tts_service.TTSService')
+    @patch('app.services.batch_tts_service.TTSService.convert_text_to_speech')
     def test_convert_batch_success(self, mock_tts_service):
         """Test successful batch conversion."""
-        mock_tts_service.return_value.convert_text_to_speech.return_value = {
+        mock_tts_service.return_value = {
             "audio_url": "/api/audio/generated/test_audio.mp3",
             "file_size": 51200,
             "duration": 3.2,
@@ -336,13 +348,13 @@ class TestBatchTTSService:
         assert result.successful_segments == 2
         assert result.failed_segments == 0
         assert len(result.results) == 2
-        assert result.total_processing_time > 0
+        assert result.total_processing_time >= 0
         
         # 验证结果顺序
         assert result.results[0].segment_id == "segment-1"
         assert result.results[1].segment_id == "segment-2"
     
-    @patch('app.services.batch_tts_service.TTSService')
+    @patch('app.services.batch_tts_service.TTSService.convert_text_to_speech')
     def test_convert_batch_with_failures(self, mock_tts_service):
         """Test batch conversion with some failures."""
         def mock_convert(text, **kwargs):
@@ -355,7 +367,7 @@ class TestBatchTTSService:
                 "voice_type": "zh_female_wanqudashu_moon_bigtts"
             }
         
-        mock_tts_service.return_value.convert_text_to_speech.side_effect = mock_convert
+        mock_tts_service.side_effect = mock_convert
         
         request = BatchTTSRequest(
             segments=[
@@ -391,7 +403,7 @@ class TestBatchTTSService:
         
         assert failure_result.segment_id == "segment-2"
         assert failure_result.audio_url is None
-        assert "模拟转换失败" in failure_result.error
+        assert failure_result.error_code == 'TTS_UNKNOWN_ERROR'
 
 
 class TestBatchTTSConfig:

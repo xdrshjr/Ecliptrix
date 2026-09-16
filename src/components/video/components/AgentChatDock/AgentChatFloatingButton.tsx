@@ -1,10 +1,13 @@
 'use client';
 
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useState } from 'react';
 import type { FabPosition } from './useDraggableFab';
 
 interface AgentChatFloatingButtonProps {
   isExecuting: boolean;
+  isOpen: boolean;
+  panelId: string;
+  isOccluded: boolean;
   /** 无障碍标签 / tooltip 文案（来自 i18n） */
   label: string;
   /** null = 用 CSS 默认右下角锚点；否则内联 right/bottom（px）覆盖。 */
@@ -29,8 +32,8 @@ interface AgentChatFloatingButtonProps {
  * only half-covers it) and can be dragged via Pointer Events. While the Agent is
  * executing it shows a pulsing ring (the `is-busy` modifier).
  *
- * The `z-dock` utility class is the single source of truth for stacking (=850),
- * keeping the FAB above the timeline lock overlay (z-index:50) during execution.
+ * `z-dock` (=850) keeps the FAB above the timeline lock overlay. Occlusion,
+ * focus and dragging temporarily lift it above its own panel (=861).
  *
  * Activation goes through a single path (spec R1): the native `onClick` covers
  * mouse click, touch tap (synthesized click) and keyboard Enter/Space. After a
@@ -40,9 +43,15 @@ interface AgentChatFloatingButtonProps {
 const AgentChatFloatingButton = forwardRef<
   HTMLButtonElement,
   AgentChatFloatingButtonProps
->(({ isExecuting, label, position, isDragging, onActivate, movedRef, dragHandlers }, ref) => {
-  const handleClick = () => {
-    if (movedRef.current) return; // 吞掉拖拽后的合成 click
+>(({ isExecuting, isOpen, panelId, isOccluded, label, position,
+  isDragging, onActivate, movedRef, dragHandlers }, ref) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (movedRef.current && event.detail !== 0) {
+      movedRef.current = false;
+      return; // 吞掉拖拽后的合成 click，随后键盘仍可激活。
+    }
+    movedRef.current = false;
     onActivate();
   };
 
@@ -52,9 +61,16 @@ const AgentChatFloatingButton = forwardRef<
       type="button"
       onClick={handleClick}
       {...dragHandlers}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
       aria-label={label}
+      aria-expanded={isOpen}
+      aria-controls={panelId}
       title={label}
-      style={position ? { right: position.right, bottom: position.bottom } : undefined}
+      style={{
+        ...(position ? { right: position.right, bottom: position.bottom } : {}),
+        zIndex: isOccluded || isFocused || isDragging ? 861 : undefined,
+      }}
       className={`agent-chat-fab z-dock${isExecuting ? ' is-busy' : ''}${isDragging ? ' is-dragging' : ''}`}
     >
       <svg

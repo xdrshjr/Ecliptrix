@@ -141,6 +141,7 @@ export interface TimelineNodeLabels {
   emptyResponse: string;
 }
 
+// 映射分支保留在一起以确保节点顺序和稳定 ID；既有函数超过 60 行。
 export function mapMessageToNodes(
   message: ChatMessage,
   labels: TimelineNodeLabels,
@@ -176,7 +177,7 @@ export function mapMessageToNodes(
   // --- Agent message: may produce agent_thinking + thinking + execution + response ---
 
   const hasToolCalls = (message.agentToolCalls?.length ?? 0) > 0;
-  const isStreaming = !!message.isStreaming;
+  const isStreaming = message.isStreaming === true && !message.isCancelled;
   const hasThinkingContent = !!message.thinkingContent;
 
   // 0. Agent thinking-phase node: shows the pre-execution analysis
@@ -186,7 +187,7 @@ export function mapMessageToNodes(
       id: `${message.id}-agent-thinking`,
       timestamp: message.timestamp,
       content: message.thinkingContent ?? '',
-      isStreaming: !!message.isThinking,
+      isStreaming: message.isThinking === true && isStreaming,
       thinkingContent: message.thinkingContent,
       isThinkingPhase: true,
     });
@@ -238,7 +239,7 @@ export function mapMessageToNodes(
 
   // 4. Fallback: finalized agent message with no content and no tool calls
   //    (e.g., model returned empty response). Prevents a blank gap in the UI.
-  if (!isStreaming && !message.content && !hasToolCalls) {
+  if (!isStreaming && !message.content && !hasToolCalls && !hasThinkingContent) {
     nodes.push({
       kind: 'response',
       id: `${message.id}-response`,

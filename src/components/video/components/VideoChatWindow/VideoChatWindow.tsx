@@ -25,6 +25,8 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 
 export interface VideoChatWindowProps {
+  /** 最小化只暂停展示工作，不影响会话与 Agent 执行。 */
+  isVisible?: boolean;
   conversation: Conversation | undefined;
   onSendMessage: (message: string) => Promise<void>;
   onClearMessages: () => void;
@@ -49,6 +51,20 @@ export interface VideoChatWindowProps {
   singleUndoMessageIds?: ReadonlySet<string>;
 }
 
+const INPUT_MIN_HEIGHT = 40;
+const INPUT_MAX_HEIGHT = 120;
+const INPUT_COMPACT_MAX_HEIGHT = 80;
+
+function resizeInput(textarea: HTMLTextAreaElement) {
+  const compact = textarea.closest('[data-compact="true"]');
+  const maxHeight = compact ? INPUT_COMPACT_MAX_HEIGHT : INPUT_MAX_HEIGHT;
+  textarea.style.height = 'auto';
+  textarea.style.height = `${Math.max(INPUT_MIN_HEIGHT,
+    Math.min(textarea.scrollHeight, maxHeight))}px`;
+  textarea.style.overflow = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+}
+
+// 保留既有输入、工具栏与执行接线，避免本次浮窗调整扩大成聊天组件重构。
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   conversation,
   onSendMessage,
@@ -67,6 +83,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onCancel,
   onDismissError,
   singleUndoMessageIds,
+  isVisible = true,
 }) => {
   const { t } = useLocale();
   const { showConfirm } = useNotification();
@@ -77,7 +94,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = '32px';
+      resizeInput(textareaRef.current);
     }
   }, []);
 
@@ -94,7 +111,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         setInputMessage('');
 
         if (textareaRef.current) {
-          textareaRef.current.style.height = '32px';
+          textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`;
           textareaRef.current.style.overflow = 'hidden';
         }
       }
@@ -104,6 +121,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSubmit(e);
@@ -116,31 +134,18 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     const newValue = e.target.value;
     setInputMessage(newValue);
 
-    const textarea = e.target;
-    textarea.style.height = 'auto';
-
-    const minHeight = 32;
-    const maxHeight = 80;
-    const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
-    textarea.style.height = newHeight + 'px';
-    textarea.style.overflow = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    resizeInput(e.target);
   }, []);
 
   const handleFocus = useCallback(() => {
     if (!textareaRef.current) return;
-    const textarea = textareaRef.current;
-    textarea.style.height = 'auto';
-    const minHeight = 32;
-    const maxHeight = 80;
-    const contentHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
-    textarea.style.height = contentHeight + 'px';
-    textarea.style.overflow = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    resizeInput(textareaRef.current);
   }, []);
 
   const handleBlur = useCallback(() => {
     if (!textareaRef.current) return;
     if (!inputMessage.trim()) {
-      textareaRef.current.style.height = '32px';
+      textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`;
       textareaRef.current.style.overflow = 'hidden';
     }
   }, [inputMessage]);
@@ -207,7 +212,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   // unconditionally so the popup is immediately chat-ready (round 2 requirement).
 
   return (
-    <div className="flex flex-col h-full bg-background min-h-0">
+    <div className="agent-chat-window flex flex-col h-full bg-card min-h-0">
       {/* Messages Area — rendered by TimelineChatPanel. While there are no
           messages yet the area stays blank (an empty flex spacer) so the panel
           opens straight into the chat surface instead of a welcome landing. */}
@@ -221,13 +226,14 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           undoDisabled={agentIsExecuting}
           onDismiss={onDismissError}
           singleUndoMessageIds={singleUndoMessageIds}
+          isVisible={isVisible}
         />
       ) : (
         <div className="flex-1 min-h-0" />
       )}
 
       {/* Action Buttons Bar - Above Input Area */}
-      <div className="flex-shrink-0 px-6 py-3 border-t border-border bg-muted dark:bg-zinc-900">
+      <div className="agent-chat-toolbar flex-shrink-0 border-t border-border bg-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             {/* Creative Brainstorming button */}
@@ -268,6 +274,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               type="button"
               role="switch"
               aria-checked={agentMode}
+              aria-label={t.videoChatWindow.agentToggleLabel}
               disabled={agentIsExecuting}
               onClick={() => onAgentModeChange(!agentMode)}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -311,7 +318,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       )}
 
       {/* Input Area */}
-      <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-card dark:bg-zinc-900">
+      <div className="agent-chat-input-area flex-shrink-0 bg-card">
         <form onSubmit={handleSubmit} className="flex items-center space-x-2">
           <div className="flex-1 relative flex items-center">
             <textarea
@@ -323,10 +330,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               onBlur={handleBlur}
               placeholder={placeholderText}
               aria-label={t.videoChatWindow.inputAriaLabel}
-              className="w-full px-3 py-2 border border-border dark:border-zinc-600 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent max-h-24 bg-muted dark:bg-zinc-800 min-h-[32px] transition-all text-sm text-foreground dark:text-zinc-200"
+              className="agent-chat-input w-full px-3 py-2 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-muted text-sm text-foreground"
               rows={1}
               disabled={inputDisabled}
-              style={{ height: '32px', overflow: 'hidden' }}
+              style={{ height: `${INPUT_MIN_HEIGHT}px`, overflow: 'hidden' }}
             />
           </div>
           {/* Clear Chat Button */}

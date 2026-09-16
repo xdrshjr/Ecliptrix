@@ -47,10 +47,9 @@ describe('AgentChatDock — FAB always mounted + panel overlay', () => {
   it('renders_fab_always: the FAB is mounted unconditionally (no closed-state early return)', () => {
     // FAB now stays mounted while the panel is open (half-covered, never disappears):
     // the old `if (!isOpen) { return <FAB/> }` early-return block is gone.
-    expect(dock).not.toContain('if (!isOpen) {');
     expect(dock).toContain('<AgentChatFloatingButton');
-    // the panel is rendered only when open, overlaying the always-mounted FAB
-    expect(dock).toContain('{isOpen && (');
+    expect(dock).toContain('{presence.mounted && (');
+    expect(dock).not.toContain('{isOpen && (');
   });
 
   it('toggles_panel_on_fab_activate: the FAB activation is wired to a toggle (not onClick={onOpen})', () => {
@@ -58,19 +57,20 @@ describe('AgentChatDock — FAB always mounted + panel overlay', () => {
     expect(dock).not.toContain('onClick={onOpen}');
     expect(dock).toContain('onActivate={toggle}');
     expect(dock).toContain('const toggle = ()');
-    expect(dock).toContain('if (isOpen) onClose();');
-    expect(dock).toContain('else onOpen();');
+    expect(dock).toContain('if (isOpen) minimize();');
+    expect(dock).toContain('onOpen();');
     // open branch renders the panel hosting VideoChatWindow
     expect(dock).toContain('<AgentChatFloatingPanel');
-    expect(dock).toContain('<VideoChatWindow {...chatProps} />');
+    expect(dock).toContain('key={conversationKey} {...chatProps}');
+    expect(dock).toContain('isVisible={isOpen && !presence.isHidden}');
   });
 
-  it('closes_panel_on_close_button_and_escape: Escape and close button both call onClose', () => {
-    expect(dock).toContain("event.key === 'Escape'");
-    expect(dock).toContain('onClose()');
-    expect(dock).toContain("addEventListener('keydown'");
-    // the panel's close button is wired to onClose
-    expect(panel).toContain('onClick={onClose}');
+  it('局部 Escape 和水平短线按钮最小化助手', () => {
+    expect(dock).toContain("event.key !== 'Escape'");
+    expect(dock).toContain('onMinimize()');
+    expect(dock).not.toContain("addEventListener('keydown'");
+    expect(panel).toContain('onClick={onMinimize}');
+    expect(panel).toContain('d="M5 12h14"');
   });
 
   it('returns focus to the FAB after closing (a11y, spec R-4)', () => {
@@ -110,7 +110,7 @@ describe('AgentChatDock — draggable FAB (spec 2.4)', () => {
 
   it('single activation path: onClick guarded by movedRef, pointerup never activates (spec R1)', () => {
     expect(fab).toContain('movedRef');
-    expect(fab).toContain('if (movedRef.current) return;');
+    expect(fab).toContain('movedRef.current && event.detail !== 0');
     expect(fab).toContain('onActivate()');
     // the hook's pointer handlers must NOT call onActivate (no double-trigger)
     expect(hook).not.toContain('onActivate');
@@ -126,10 +126,12 @@ describe('AgentChatDock — draggable FAB (spec 2.4)', () => {
     expect(hook).toContain("addEventListener('resize'");
   });
 
-  it('the panel anchors to the FAB position with real-rect clamping (half-occlusion)', () => {
+  it('面板使用布局尺寸钳制，并观察工作区及面板尺寸变化', () => {
     expect(dock).toContain('anchor={position}');
     expect(panel).toContain('anchor');
-    expect(panel).toContain('getBoundingClientRect');
+    expect(panel).toContain('element.offsetWidth');
+    expect(panel).toContain('element.offsetHeight');
+    expect(panel).toContain('new ResizeObserver');
     expect(panel).toContain('FAB_HALF');
   });
 
@@ -162,12 +164,13 @@ describe('AgentChatDock — z-index tokens applied (spec R-2)', () => {
     expect(tailwindSrc).toContain("'dock-panel': '860'");
   });
 
-  it('the CSS deliberately omits z-index (token is the single source of truth)', () => {
+  it('工作区内宽高夹定，移除旧入场动画和窄屏规则', () => {
     expect(cssSrc).toContain('.agent-chat-fab');
     expect(cssSrc).toContain('.agent-chat-floating-panel');
-    // FAB/panel sizing matches the 30% x 80% spec
-    expect(cssSrc).toContain('width: 30%');
-    expect(cssSrc).toContain('height: 80%');
+    expect(cssSrc).toContain('clamp(360px, 32%, 520px)');
+    expect(cssSrc).toContain('clamp(320px, 80%, 760px)');
+    expect(cssSrc).not.toContain('agent-panel-in');
+    expect(fab).toContain('isOccluded || isFocused || isDragging ? 861');
   });
 });
 
@@ -182,7 +185,7 @@ describe('i18n agentDock keys (interface + en + zh)', () => {
     expect(i18nSrc).toContain('agentDock: {');
     expect(i18nSrc).toContain('fabLabel: string;');
     expect(i18nSrc).toContain('panelTitle: string;');
-    expect(i18nSrc).toContain('close: string;');
+    expect(i18nSrc).toContain('minimize: string;');
     expect(i18nSrc).toContain('busy: string;');
   });
 
@@ -207,7 +210,7 @@ describe('VideoEditingInterface — DaVinci layout + dock wiring', () => {
     expect(interfaceSrc).toContain('<AgentChatDock');
     expect(interfaceSrc).toContain('isOpen={isAgentDockOpen}');
     expect(interfaceSrc).toContain('onOpen={() => setIsAgentDockOpen(true)}');
-    expect(interfaceSrc).toContain('onClose={() => setIsAgentDockOpen(false)}');
+    expect(interfaceSrc).toContain('onMinimize={() => setIsAgentDockOpen(false)}');
     expect(interfaceSrc).toContain('chatProps={{');
   });
 

@@ -5,7 +5,7 @@ Tests for TTS (Text-to-Speech) router endpoints.
 import pytest
 import os
 import subprocess
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import ANY, Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -13,6 +13,14 @@ from app.models.tts_models import VoiceType
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def prevent_live_tts_requests(monkeypatch):
+    """旧用例的 mock 失效时也不允许访问付费语音服务。"""
+    import requests
+    monkeypatch.setattr(requests, 'post', Mock(side_effect=
+        requests.ConnectionError('isolated-test')))
 
 
 class TestTTSRouter:
@@ -177,7 +185,8 @@ class TestTTSRouter:
             voice_type=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS,
             speed_ratio=1.0,
             segment_id="test_segment",
-            task_id="test_task"
+            task_id="test_task",
+            storage_loop=ANY,
         )
 
     def test_convert_text_to_speech_empty_text(self):
@@ -189,14 +198,14 @@ class TestTTSRouter:
         
         response = client.post("/api/tts/convert", json=request_data)
         
-        # Should return validation error due to empty text
-        assert response.status_code == 422
+        # 空文本沿用服务层 HTTP 400。
+        assert response.status_code == 400
 
     def test_convert_text_to_speech_invalid_voice_type(self):
         """Test conversion with invalid voice type."""
         request_data = {
             "text": "测试文本",
-            "voice_type": "invalid_voice_type"
+            "voice_type": ""
         }
         
         response = client.post("/api/tts/convert", json=request_data)
@@ -209,7 +218,7 @@ class TestTTSRouter:
         request_data = {
             "text": "测试文本",
             "voice_type": "zh_female_wanqudashu_moon_bigtts",
-            "speed_ratio": 3.0  # Invalid: should be between 0.5 and 2.0
+            "speed_ratio": 3.1  # 现有范围是 0.1 到 3.0。
         }
         
         response = client.post("/api/tts/convert", json=request_data)
@@ -251,8 +260,8 @@ class TestTTSRouter:
         data = response.json()
         
         assert data["success"] is False
-        assert "语音转换失败" in data["message"]
-        assert data["error_code"] == "CONVERSION_FAILED"
+        assert "语音生成失败" in data["message"]
+        assert data["error_code"] == "TTS_UNKNOWN_ERROR"
 
     def test_convert_text_to_speech_minimal_request(self):
         """Test conversion with minimal required parameters."""
@@ -286,10 +295,11 @@ class TestTTSRouter:
             # Verify default values were used
             mock_convert.assert_called_once_with(
                 text="最小测试",
-                voice_type=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS,
+                voice_type="zh_male_shaonianzixin_uranus_bigtts",
                 speed_ratio=1.0,
                 segment_id=None,
-                task_id=None
+                task_id=None,
+                storage_loop=ANY,
             )
 
     def test_convert_text_to_speech_long_text(self):
@@ -368,7 +378,8 @@ class TestTTSRouter:
             voice_type=VoiceType.ZH_FEMALE_WANQUDASHU_MOON_BIGTTS,
             speed_ratio=1.0,
             segment_id="test_segment",
-            task_id="test_task"
+            task_id="test_task",
+            storage_loop=ANY,
         )
 
     @patch('app.services.tts_service.tts_service.convert_text_to_speech')
@@ -526,6 +537,7 @@ class TestTTSService:
         from app.services.tts_service import TTSService
         
         service = TTSService()
+        service.api_key = 'invalid-' + 'configured-fixture'
         # Should not raise any exception
         service.validate_config()
 
@@ -533,15 +545,16 @@ class TestTTSService:
     def test_validate_config_missing_appid(self):
         """Test configuration validation with missing app ID."""
         from app.services.tts_service import TTSService
-        from fastapi import HTTPException
+        from app.services.tts_errors import TTSServiceError
         
         service = TTSService()
+        service.api_key = ''
         
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(TTSServiceError) as exc_info:
             service.validate_config()
         
-        assert exc_info.value.status_code == 500
-        assert "TTS配置不完整" in exc_info.value.detail
+        assert exc_info.value.error_code == 'TTS_CONFIG_MISSING'
+        assert exc_info.value.error_details.attempts == 0
 
     def test_get_available_voice_types(self):
         """Test getting available voice types."""
@@ -642,9 +655,8 @@ class TestTTSService:
         
         # Should contain at least one fallback voice
         fallback_voice_ids = [
-            'zh_female_wanqudashu_moon_bigtts',
-            'zh_female_sweet',
-            'zh_male_warm'
+            'zh_female_qingxinnvsheng_uranus_bigtts',
+            'zh_male_shaonianzixin_uranus_bigtts',
         ]
         
         found_fallback = False
@@ -776,4 +788,82 @@ class TestTTSDownloadEndpoint:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__]) 
+    pytest.main([__file__])
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('batch', [False, True])
+async def test_synthesis_does_not_block_event_loop(monkeypatch, batch):
+    """合成被事件屏障挡住时，轻量请求必须先完成。"""
+    import asyncio
+    import threading
+    import httpx
+    from fastapi import FastAPI
+    from app.routers import tts_router
+    from app.services.tts_errors import make_tts_error
+
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    failure = make_tts_error('TTS_INSUFFICIENT_BALANCE', 'provider', 1)
+    def blocking_synthesis(*args, **kwargs):
+        loop.call_soon_threadsafe(started.set)
+        release.wait(timeout=3)
+        finished.set()
+        raise failure
+    service = (tts_router.batch_tts_service if batch
+               else tts_router.tts_service)
+    method = 'convert_batch' if batch else 'convert_text_to_speech'
+    monkeypatch.setattr(service, method, blocking_synthesis)
+    isolated = FastAPI()
+    isolated.include_router(tts_router.router, prefix='/api')
+    @isolated.get('/probe')
+    async def probe():
+        return {'ready': True}
+    payload = ({'segments': [{'segment_id': 'one', 'text': '语音'}]}
+               if batch else {'text': '语音'})
+    path = '/api/tts/convert-batch' if batch else '/api/tts/convert'
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=isolated),
+                                base_url='http://local.test') as api:
+        task = asyncio.create_task(api.post(path, json=payload))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=4)
+            response = await api.get('/probe')
+            assert response.json() == {'ready': True}
+            assert not finished.is_set()
+        finally:
+            release.set()
+            result = await task
+    details = result.json()['error_details']
+    assert details['source'] == 'provider'
+    assert details['attempts'] == 1
+    assert result.json()['error_code'] == 'TTS_INSUFFICIENT_BALANCE'
+
+
+def test_missing_configuration_is_structured_business_failure(monkeypatch):
+    from app.routers.tts_router import tts_service
+    monkeypatch.setattr(tts_service, 'api_key', '')
+    response = client.post('/api/tts/convert', json={'text': '语音'})
+    assert response.status_code == 200
+    assert response.json()['error_code'] == 'TTS_CONFIG_MISSING'
+    assert response.json()['error_details']['attempts'] == 0
+
+
+def test_health_without_actual_configuration_remains_unhealthy(monkeypatch):
+    from app.routers.tts_router import tts_service
+    monkeypatch.setattr(tts_service, 'api_key', '')
+    response = client.get('/api/tts/health')
+    assert response.status_code == 503
+    assert response.json()['status'] == 'unhealthy'
+    assert response.json()['config_valid'] is False
+
+
+@pytest.mark.parametrize('segments', [
+    [{'segment_id': 'same', 'text': '一'},
+     {'segment_id': 'same', 'text': '二'}],
+    [{'segment_id': 'one', 'text': '一', 'voice_type': ' '}],
+])
+def test_batch_validation_returns_serializable_422(segments):
+    response = client.post('/api/tts/convert-batch',
+                           json={'segments': segments})
+    assert response.status_code == 422

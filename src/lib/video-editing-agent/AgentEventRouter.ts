@@ -10,6 +10,8 @@
  */
 
 import type { AgentClientApplyError } from '@/types';
+import { getTtsFailure } from '@/lib/ttsErrors';
+import type { TtsFailure } from '@/lib/ttsErrors';
 import type {
   SSEEvent,
   AgentOperation,
@@ -47,7 +49,9 @@ export interface AgentEventRouterConfig {
    * on the message). The router has no locale, so the consumer localises by
    * `code`; without it the server's raw message is used.
    */
-  describeError?: (error: { message: string; code?: AgentStreamErrorCode }) => string;
+  describeError?: (error: {
+    message: string; code?: AgentStreamErrorCode; cause?: TtsFailure;
+  }) => string;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,7 +119,11 @@ export class AgentEventRouter {
         break;
 
       case 'error': {
-        const text = this.describeError?.({ message: event.message, code: event.code }) ?? event.message;
+        const cause = getTtsFailure(event.cause);
+        const text = this.describeError?.({
+          message: event.message, code: event.code,
+          ...(cause ? { cause } : {}),
+        }) ?? event.message;
         this.stateManager.setError(text);
         this.onError?.(text);
         break;

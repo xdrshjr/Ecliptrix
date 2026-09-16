@@ -19,7 +19,9 @@
 
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import React, {
+  useRef, useEffect, useLayoutEffect, useCallback, useMemo,
+} from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useLocale } from '@/contexts/LocaleContext';
 import { streamErrorMessageKey } from '@/lib/video-editing-agent/errorRecovery';
@@ -49,7 +51,6 @@ function getConnectorState(
 ): ConnectorState {
   // If the next node is an active execution or thinking → active line
   if (nextNode.kind === 'thinking' && nextNode.isStreaming) return 'active';
-  if (nextNode.kind === 'thinking' && nextNode.isThinkingPhase) return 'active';
   if (nextNode.kind === 'execution' && nextNode.isActive) return 'active';
 
   // If the next node is an undone response → undone line
@@ -158,6 +159,46 @@ type TimelineChatPanelComponentProps = TimelineChatPanelProps & {
   singleUndoMessageIds?: ReadonlySet<string>;
 };
 
+/** 持续保存可见状态的快照，不能在 display:none 后读取零尺寸。 */
+function useVisibleScroll(isVisible: boolean) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const visibleRef = useRef(isVisible);
+  const snapshotRef = useRef({ top: 0, follow: true });
+  visibleRef.current = isVisible;
+
+  const scrollToBottom = useCallback(() => {
+    const container = containerRef.current;
+    if (!visibleRef.current || !container || !snapshotRef.current.follow) return;
+    container.scrollTop = Math.max(0,
+      container.scrollHeight - container.clientHeight);
+    snapshotRef.current.top = container.scrollTop;
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!visibleRef.current || !container) return;
+    // 程序恢复产生的 scroll 事件不得改变用户此前选择的跟随策略。
+    if (container.scrollTop === snapshotRef.current.top) return;
+    snapshotRef.current = {
+      top: container.scrollTop,
+      follow: container.scrollHeight - container.scrollTop -
+        container.clientHeight < 100,
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!isVisible || !container) return;
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    container.scrollTop = snapshotRef.current.follow
+      ? maxTop : Math.min(snapshotRef.current.top, maxTop);
+    snapshotRef.current.top = container.scrollTop;
+  }, [isVisible]);
+
+  return { containerRef, scrollToBottom, handleScroll };
+}
+
+// 保留现有时间线渲染集中接线，本次仅修改可见性与连接线判断。
 const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   messages,
   executionState,
@@ -167,45 +208,21 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   undoDisabled: undoDisabledProp = false,
   onDismiss,
   singleUndoMessageIds,
+  isVisible = true,
 }) => {
   const { t } = useLocale();
   const isFinishing = executionState?.status === 'finishing';
   const undoDisabled = undoDisabledProp || isAgentRunning(executionState?.status);
-  const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const shouldAutoScrollRef = useRef(true);
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-
-  // ----- Auto-scroll logic (optimized) -----
-
-  const isNearBottom = useCallback(() => {
-    if (!containerRef.current) return true;
-    const c = containerRef.current;
-    return c.scrollHeight - c.scrollTop - c.clientHeight < 100;
-  }, []);
-
-  const scrollToBottom = useCallback(
-    (force = false) => {
-      if (!shouldAutoScrollRef.current && !force) return;
-      const c = containerRef.current;
-      if (c) c.scrollTop = c.scrollHeight;
-    },
-    [],
-  );
-
-  const handleScroll = useCallback(() => {
-    const nearBottom = isNearBottom();
-    if (nearBottom !== shouldAutoScrollRef.current) {
-      shouldAutoScrollRef.current = nearBottom;
-      setShouldAutoScroll(nearBottom);
-    }
-  }, [isNearBottom]);
+  const { containerRef, scrollToBottom, handleScroll } =
+    useVisibleScroll(isVisible);
 
   // Scroll when messages change
   useEffect(() => {
+    if (!isVisible) return;
     const timer = setTimeout(() => scrollToBottom(), 100);
     return () => clearTimeout(timer);
-  }, [messages, scrollToBottom]);
+  }, [messages, scrollToBottom, isVisible]);
 
   // Scroll during streaming — 150ms interval to avoid excess operations
   const hasStreaming = useMemo(
@@ -214,12 +231,11 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   );
 
   useEffect(() => {
-    if (!hasStreaming && !isAgentRunning(executionState?.status)) return;
-    const id = setInterval(() => {
-      if (shouldAutoScrollRef.current) scrollToBottom();
-    }, 150);
+    if (!isVisible ||
+        (!hasStreaming && !isAgentRunning(executionState?.status))) return;
+    const id = setInterval(scrollToBottom, 150);
     return () => clearInterval(id);
-  }, [hasStreaming, executionState?.status, scrollToBottom]);
+  }, [hasStreaming, executionState?.status, scrollToBottom, isVisible]);
 
   // ----- Map messages to timeline nodes -----
 
@@ -261,7 +277,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 min-h-0"
+      className="agent-chat-messages flex-1 overflow-y-auto overscroll-contain px-4 py-4 min-h-0"
       onScroll={handleScroll}
     >
       {/* Inject CSS @keyframes once */}
@@ -276,7 +292,7 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
           return (
             <div key={node.id}>
               {/* Connector line between nodes (skip before first) */}
-              {idx > 0 && <TimelineConnector state={connectorState} height={16} />}
+              {idx > 0 && <TimelineConnector state={connectorState} height={12} />}
 
               {/* The node itself */}
               {node.kind === 'user' && <UserMessageNode node={node} />}
