@@ -8,6 +8,7 @@ import uuid
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from fastapi import HTTPException
 
 from app.config import settings
 from app.logger import get_logger
@@ -19,6 +20,9 @@ from app.models import (
 )
 from app.services.local_media_resolver import audio_generated_dir
 from app.services.tts_service import TTSService
+from app.services.tts_errors import (
+    TTSServiceError, make_tts_error, safe_identifier,
+)
 
 logger = get_logger(__name__)
 
@@ -87,155 +91,118 @@ class SentenceTTSService:
         })
     
     def _convert_single_sentence(
-        self, 
-        sentence: SentenceTTSRequest,
-        voice_type: str,
-        speed_ratio: float,
-        segment_id: str,
-        task_id: Optional[str]
+        self, sentence: SentenceTTSRequest, voice_type: str,
+        speed_ratio: float, segment_id: str, task_id: Optional[str],
     ) -> SentenceTTSResult:
-        """转换单个句子并保存到本地，支持重试机制"""
-        start_time = time.time()
-        max_retries = 3
-        
-        logger.info(f"开始处理句子 {sentence.sentence_id}", {
-            "sentence_id": sentence.sentence_id,
-            "segment_id": segment_id,
-            "order": sentence.order,
-            "text_length": len(sentence.text),
-            "voice_type": voice_type,
-            "max_retries": max_retries,
-            "task_id": task_id
-        })
-        
-        for attempt in range(max_retries):
-            try:
-                attempt_start_time = time.time()
-                
-                logger.info(f"句子 {sentence.sentence_id} 开始第 {attempt + 1}/{max_retries} 次尝试", {
-                    "sentence_id": sentence.sentence_id,
-                    "segment_id": segment_id,
-                    "attempt": attempt + 1,
-                    "max_retries": max_retries,
-                    "task_id": task_id
-                })
-                
-                # 生成本地文件名（每次尝试都生成新的文件名）
-                timestamp = int(time.time())
-                local_filename = f"{segment_id}_{sentence.sentence_id}_sentence_{timestamp}_{uuid.uuid4().hex[:8]}.mp3"
-                local_audio_path = self.audio_dir / local_filename
-                
-                # 调用TTS服务转换并保存到本地
-                result = self.tts_service.convert_text_to_speech_local(
-                    text=sentence.text,
-                    voice_type=voice_type,
-                    speed_ratio=speed_ratio,
-                    output_path=str(local_audio_path),
-                    segment_id=f"{segment_id}_{sentence.sentence_id}",
-                    task_id=task_id
-                )
-                
-                # 验证本地文件是否存在
-                if not local_audio_path.exists():
-                    raise Exception(f"本地音频文件创建失败: {local_audio_path}")
-                
-                file_size = local_audio_path.stat().st_size
-                if file_size == 0:
-                    raise Exception(f"本地音频文件为空: {local_audio_path}")
-                
-                local_audio_url = f"/api/audio/generated/{local_filename}"
-                attempt_processing_time = time.time() - attempt_start_time
-                total_processing_time = time.time() - start_time
-                
-                logger.info(f"句子 {sentence.sentence_id} 第 {attempt + 1} 次尝试成功", {
-                    "sentence_id": sentence.sentence_id,
-                    "segment_id": segment_id,
-                    "attempt": attempt + 1,
-                    "local_path": str(local_audio_path),
-                    "file_size": file_size,
-                    "duration": result.get("duration"),
-                    "attempt_processing_time": attempt_processing_time,
-                    "total_processing_time": total_processing_time,
-                    "task_id": task_id
-                })
-                
-                return SentenceTTSResult(
-                    sentence_id=sentence.sentence_id,
-                    order=sentence.order,
-                    success=True,
-                    audio_url=local_audio_url,
-                    duration=result.get("duration"),
-                    file_size=file_size,
-                    processing_time=total_processing_time
-                    # start_time 和 end_time 将在音频拼接后设置
-                )
-                
-            except Exception as e:
-                attempt_processing_time = time.time() - attempt_start_time
-                # 兼容 starlette<=0.27 的 HTTPException：其 str(e) 为空，
-                # 会导致错误信息被吞成 "重试N次后失败: "（空尾）。
-                error_msg = str(e) or getattr(e, "detail", "") or repr(e)
-                
-                logger.error(f"句子 {sentence.sentence_id} 第 {attempt + 1}/{max_retries} 次尝试失败", {
-                    "sentence_id": sentence.sentence_id,
-                    "segment_id": segment_id,
-                    "attempt": attempt + 1,
-                    "max_retries": max_retries,
-                    "error": error_msg,
-                    "attempt_processing_time": attempt_processing_time,
-                    "task_id": task_id
-                })
-                
-                # 清理失败的文件
-                if 'local_audio_path' in locals() and local_audio_path.exists():
-                    try:
-                        if local_audio_path.stat().st_size == 0:
-                            local_audio_path.unlink()
-                            logger.debug(f"清理空文件: {local_audio_path}")
-                    except Exception as cleanup_error:
-                        logger.warning(f"清理失败文件异常: {cleanup_error}")
-                
-                # 如果不是最后一次尝试，等待后重试
-                if attempt < max_retries - 1:
-                    retry_delay = 2 * (attempt + 1)  # 递增延迟：2秒, 4秒, 6秒
-                    logger.info(f"句子 {sentence.sentence_id} 等待 {retry_delay} 秒后重试", {
-                        "sentence_id": sentence.sentence_id,
-                        "segment_id": segment_id,
-                        "retry_delay": retry_delay,
-                        "next_attempt": attempt + 2,
-                        "task_id": task_id
-                    })
-                    time.sleep(retry_delay)
-                else:
-                    # 最后一次尝试也失败了
-                    total_processing_time = time.time() - start_time
-                    
-                    logger.error(f"句子 {sentence.sentence_id} 所有重试尝试均失败", {
-                        "sentence_id": sentence.sentence_id,
-                        "segment_id": segment_id,
-                        "max_retries": max_retries,
-                        "final_error": error_msg,
-                        "total_processing_time": total_processing_time,
-                        "task_id": task_id
-                    })
-                    
-                    return SentenceTTSResult(
-                        sentence_id=sentence.sentence_id,
-                        order=sentence.order,
-                        success=False,
-                        error=f"重试{max_retries}次后失败: {error_msg}",
-                        processing_time=total_processing_time
-                    )
-        
-        # 这里不应该到达，但作为安全措施
-        total_processing_time = time.time() - start_time
-        return SentenceTTSResult(
-            sentence_id=sentence.sentence_id,
-            order=sentence.order,
-            success=False,
-            error="未知错误：重试循环异常退出",
-            processing_time=total_processing_time
+        # 保留线程池的既有位置参数签名；每次 local 调用仅尝试一次。
+        started = time.monotonic()
+        max_attempts = 3
+        provider_attempts: Optional[int] = 0
+        options = dict(voice_type=voice_type, speed_ratio=speed_ratio,
+                       segment_id=segment_id, task_id=task_id)
+        identifier = safe_identifier(
+            sentence.sentence_id, (self.tts_service.api_key, sentence.text),
+            True,
         )
+        for attempt in range(1, max_attempts + 1):
+            try:
+                result = self._convert_sentence_attempt(sentence, options)
+                elapsed = time.monotonic() - started
+                logger.info(
+                    '句子语音合成成功 sentence_id=%s worker_attempt=%s '
+                    'file_size=%s processing_time=%s',
+                    identifier, attempt, result.get('file_size'), elapsed,
+                )
+                return self._successful_sentence(sentence, result, elapsed)
+            except TTSServiceError as error:
+                failure = error
+            except HTTPException as error:
+                is_preflight = error.status_code in {400, 422}
+                failure = make_tts_error(
+                    'TTS_INVALID_REQUEST' if is_preflight else
+                    'TTS_UNKNOWN_ERROR', 'local', 0 if is_preflight else None,
+                )
+            except Exception:
+                failure = make_tts_error('TTS_UNKNOWN_ERROR', 'local', None)
+            provider_attempts = self._accumulate_attempts(
+                provider_attempts, failure.error_details.attempts,
+            )
+            failure = (failure.with_attempts(provider_attempts)
+                       if provider_attempts is not None else TTSServiceError(
+                           failure.error_code, failure.error_details.model_copy(
+                               update={'attempts': None})))
+            logger.warning(
+                '句子语音合成失败 sentence_id=%s error_code=%s retryable=%s '
+                'worker_attempt=%s provider_attempts=%s request_id=%s',
+                identifier, failure.error_code, failure.error_details.retryable,
+                attempt, provider_attempts, failure.error_details.request_id,
+            )
+            if not failure.error_details.retryable or attempt == max_attempts:
+                break
+            logger.info(
+                '句子语音合成等待 sentence_id=%s retry_delay=%s next_attempt=%s',
+                identifier, 2 * attempt, attempt + 1,
+            )
+            time.sleep(2 * attempt)
+        return self._failed_sentence(
+            sentence, failure, time.monotonic() - started,
+        )
+
+    def _convert_sentence_attempt(
+        self, sentence: SentenceTTSRequest, options: dict,
+    ) -> Dict[str, Any]:
+        timestamp = int(time.time())
+        segment_id = options['segment_id']
+        filename = (
+            f'{segment_id}_{sentence.sentence_id}_sentence_'
+            f'{timestamp}_{uuid.uuid4().hex[:8]}.mp3'
+        )
+        return self.tts_service.convert_text_to_speech_local(
+            text=sentence.text, voice_type=options['voice_type'],
+            speed_ratio=options['speed_ratio'],
+            output_path=str(self.audio_dir / filename),
+            segment_id=f'{segment_id}_{sentence.sentence_id}',
+            task_id=options['task_id'],
+        )
+
+    @staticmethod
+    def _successful_sentence(
+        sentence: SentenceTTSRequest, result: dict, elapsed: float,
+    ) -> SentenceTTSResult:
+        return SentenceTTSResult(
+            sentence_id=sentence.sentence_id, order=sentence.order,
+            success=True, audio_url=result['audio_url'],
+            duration=result.get('duration'), file_size=result['file_size'],
+            processing_time=elapsed,
+        )
+
+    @staticmethod
+    def _failed_sentence(
+        sentence: SentenceTTSRequest, failure: TTSServiceError,
+        elapsed: Optional[float],
+    ) -> SentenceTTSResult:
+        return SentenceTTSResult(
+            sentence_id=sentence.sentence_id, order=sentence.order,
+            success=False, error=failure.message, error_code=failure.error_code,
+            error_details=failure.error_details, processing_time=elapsed,
+        )
+
+    @staticmethod
+    def _accumulate_attempts(
+        total: Optional[int], current: Optional[int],
+    ) -> Optional[int]:
+        # 未知请求数不能用 worker 的循环次数代替。
+        return None if total is None or current is None else total + current
+
+    @staticmethod
+    def _sentence_failure_summary(
+        results: List[SentenceTTSResult],
+    ) -> Optional[str]:
+        failed = [result for result in results if not result.success]
+        if not failed:
+            return None
+        first = min(failed, key=lambda result: result.order)
+        return make_tts_error(first.error_code or 'TTS_UNKNOWN_ERROR').message
     
     def _concatenate_audio_files_pydub(
         self, 
@@ -458,6 +425,7 @@ class SentenceTTSService:
     
     def convert_sentence_batch(self, request: SentenceBatchTTSRequest) -> SentenceBatchTTSResponse:
         """批量转换句子为语音并拼接"""
+        # 既有批量调度超过行数限制；本轮仅修改结果汇总，保留拼接与清理流程。
         batch_start_time = time.time()
         
         logger.info("开始句子级批量TTS转换", {
@@ -499,12 +467,12 @@ class SentenceTTSService:
                         request.segment_id,
                         request.task_id
                     )
-                    future_to_sentence[future] = sentence.sentence_id
+                    future_to_sentence[future] = sentence
                 
                 # 收集结果
                 processed_count = 0
                 for future in as_completed(future_to_sentence, timeout=self.config.batch_timeout):
-                    sentence_id = future_to_sentence[future]
+                    sentence = future_to_sentence[future]
                     try:
                         result = future.result(timeout=self.config.request_timeout)
                         sentence_results.append(result)
@@ -526,23 +494,27 @@ class SentenceTTSService:
                                 "task_id": request.task_id
                             })
                             
-                    except Exception as e:
-                        logger.error(f"句子 {sentence_id} 处理异常", {
-                            "sentence_id": sentence_id,
-                            "segment_id": request.segment_id,
-                            "error": str(e),
-                            "task_id": request.task_id
-                        })
-                        sentence_results.append(SentenceTTSResult(
-                            sentence_id=sentence_id,
-                            order=-1,  # 将在后续处理中修正
-                            success=False,
-                            error=f"处理超时或异常: {str(e)}",
-                            processing_time=self.config.request_timeout
+                    except Exception:
+                        failure = make_tts_error('TTS_UNKNOWN_ERROR',
+                                                 'local', None)
+                        identifier = safe_identifier(
+                            sentence.sentence_id,
+                            (self.tts_service.api_key, sentence.text), True,
+                        )
+                        logger.error(
+                            '句子处理异常 sentence_id=%s error_code=%s '
+                            'retryable=%s provider_attempts=%s request_id=%s',
+                            identifier, failure.error_code,
+                            failure.error_details.retryable,
+                            failure.error_details.attempts,
+                            failure.error_details.request_id,
+                        )
+                        sentence_results.append(self._failed_sentence(
+                            sentence, failure, None,
                         ))
             
             # 按顺序排序结果
-            sentence_results.sort(key=lambda r: r.order if r.order >= 0 else 999)
+            sentence_results.sort(key=lambda r: r.order)
             
             # 统计结果
             successful_sentences = sum(1 for r in sentence_results if r.success)
@@ -612,9 +584,16 @@ class SentenceTTSService:
                 "task_id": request.task_id
             })
             
+            message = (
+                '句子级语音转换完成，成功 '
+                f'{successful_sentences}/{len(request.sentences)} 个句子'
+            )
+            failure_summary = self._sentence_failure_summary(sentence_results)
+            if failure_summary:
+                message += f'。{failure_summary}'
             return SentenceBatchTTSResponse(
                 success=failed_sentences == 0 and concatenated_audio_url is not None,
-                message=f"句子级语音转换完成，成功 {successful_sentences}/{len(request.sentences)} 个句子",
+                message=message,
                 segment_id=request.segment_id,
                 total_sentences=len(request.sentences),
                 successful_sentences=successful_sentences,

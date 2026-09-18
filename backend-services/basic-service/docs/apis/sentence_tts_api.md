@@ -9,7 +9,7 @@
 - **并发处理**: 支持多个句子同时进行语音转换，大幅提升转换效率
 - **音频拼接**: 自动将多个句子的音频按顺序拼接成完整音频
 - **精确时间信息**: 返回每个句子在拼接音频中的精确开始和结束时间
-- **错误处理**: 支持部分句子转换失败的情况，仍能生成可用的拼接音频
+- **错误处理**: 失败句子返回具体原因，成功句子仍可拼接；部分成功时整体 `success=false`
 - **灵活配置**: 支持自定义并发线程数和语音参数
 
 ## API 端点
@@ -95,7 +95,30 @@
 | start_time | float | 在拼接音频中的开始时间（秒） |
 | end_time | float | 在拼接音频中的结束时间（秒） |
 | error | string | 错误信息（如果失败） |
-| processing_time | float | 该句子的处理时间（秒） |
+| error_code | string / null | 可选的稳定错误码；成功时为空 |
+| error_details | object / null | 可选的结构化诊断，字段见下文 |
+| processing_time | float / null | 该句子的处理时间（秒）；无法确认时为空 |
+
+`error_code` 和 `error_details` 向后兼容：旧服务可能省略，新服务成功时返回 `null`。
+`error` 保留为安全中文摘要，不包含异常原文。`message` 保留成功数量统计，
+并在有失败句子时追加按 `order` 排列的第一条安全原因。
+
+诊断沿用公共 `TTSErrorDetails`：
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| source | string | 错误来源，本接口通常为 `provider` 或 `local` |
+| provider | string / null | 供应商标识，火山为 `volcengine` |
+| provider_code | string / null | 经过安全过滤的供应商错误码 |
+| provider_message | string / null | 经过安全过滤、长度受限的供应商说明 |
+| http_status | int / null | 已确认的供应商 HTTP 状态 |
+| request_id | string / null | 经过安全过滤的请求标识 |
+| attempts | int / null | 该句累计已确认的供应商调用次数；预检失败为 0，无法确认时为 null |
+| retryable | boolean | 错误类别是否允许重试，不代表客户端应重试整个批次 |
+| voice_fallback | boolean / null | 可选的音色回退诊断，本次不新增回退行为 |
+
+有效请求可返回 HTTP 200 且 `success=false`，调用方必须检查业务字段。
+仅当全部句子成功且拼接 URL 存在时，整体 `success` 才为 `true`。
 
 #### 成功响应示例
 
@@ -151,6 +174,40 @@
 
 #### 错误响应示例
 
+以下为单句遇到非法音频响应的 HTTP 200 业务失败示例：
+
+```json
+{
+  "success": false,
+  "message": "句子级语音转换完成，成功 0/1 个句子。语音服务返回了无效音频数据。",
+  "segment_id": "segment-1",
+  "total_sentences": 1,
+  "successful_sentences": 0,
+  "failed_sentences": 1,
+  "total_processing_time": 0.5,
+  "concatenated_audio_url": null,
+  "total_duration": null,
+  "concatenated_file_size": null,
+  "sentence_results": [{
+    "sentence_id": "sentence-1",
+    "order": 0,
+    "success": false,
+    "audio_url": null,
+    "error": "语音服务返回了无效音频数据。",
+    "error_code": "TTS_INVALID_RESPONSE",
+    "error_details": {
+      "source": "provider",
+      "provider": "volcengine",
+      "attempts": 1,
+      "retryable": false
+    },
+    "processing_time": 0.5
+  }]
+}
+```
+
+批量校验失败仍使用原有响应结构：
+
 ```json
 {
   "success": false,
@@ -181,7 +238,7 @@
 - **并发处理**: 支持多线程并发转换，显著提升处理速度
 - **智能拼接**: 使用 pydub 或 ffmpeg 进行高质量音频拼接
 - **精确计时**: 提供毫秒级精度的时间信息
-- **错误恢复**: 部分句子失败不影响整体拼接结果
+- **错误恢复**: 成功句子仍参与拼接，但部分失败时不将其标为完整旁白
 
 ## 使用场景
 
@@ -238,10 +295,28 @@ with ThreadPoolExecutor(max_workers=concurrent_threads) as executor:
 
 ### 错误处理策略
 
-- **部分失败容忍**: 部分句子失败不影响整体拼接
+- **部分失败容忍**: 保留成功句子的拼接结果，整体仍返回 `success=false`
 - **顺序保证**: 即使并发处理，也保证拼接顺序正确
 - **资源清理**: 自动清理临时文件和资源
-- **详细日志**: 提供完整的处理日志用于调试
+- **安全诊断**: 逐句日志包含错误码、重试决策和调用次数，不输出文本或凭据
+
+每句只有一个自动重试预算：首次调用加最多两次重试，总计最多三次供应商请求。
+超时、网络故障、临时限流以及已分类为可重试的供应商错误，分别等待 2 秒、4 秒；
+最后一次失败后不再等待。凭据、权限、余额、额度、参数、非法响应和本地文件错误
+立即结束该句，其他句子继续独立处理。未知异常使用固定安全文案且不自动重试。
+
+最终诊断保留最后一次错误。`attempts` 累计底层报告的实际请求数，
+例如超时一次后发生输出路径冲突时为 1；一开始缺少配置或路径冲突时为 0。
+任一次调用数无法确认时，累计值保持 `null`，不使用循环次数猜测。
+单个任务在结果收集阶段异常时保留原句 ID 和顺序，耗时及请求数均为空。
+
+`retryable=true` 表示该类错误具备重试条件，返回失败时本次自动预算可能已经耗尽。
+客户端不得据此自动重跑整个批次，以免重复生成已成功的句子。
+请求次数限制不构成严格的总耗时上限；前端超时不代表后端已经取消。
+
+火山成功响应允许音频之间或之后出现 `data: null` 的元信息和完成帧。
+仍会严格校验所有非空行，只有完整响应合法且含有音频字节时才落盘；
+尾部业务错误、坏帧和空音频不会被当作成功。
 
 ## 最佳实践
 

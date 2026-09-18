@@ -162,9 +162,11 @@ class TTSClient:
             code = int(code)
         if isinstance(code, bool) or not isinstance(code, int):
             raise ValueError('无效业务码')
-        for field in ('message', 'data'):
-            if field in frame and not isinstance(frame[field], str):
-                raise ValueError('无效语音字段')
+        if 'message' in frame and not isinstance(frame['message'], str):
+            raise ValueError('无效语音消息')
+        data = frame.get('data')
+        if data is not None and not isinstance(data, str):
+            raise ValueError('无效语音载荷')
         return code
 
     @staticmethod
@@ -405,10 +407,13 @@ class TTSService:
             except Exception:
                 failure = make_tts_error('TTS_UNKNOWN_ERROR',
                                          attempts=attempt)
-            logger.warning('语音合成失败', {
-                'error_code': failure.error_code,
-                'attempts': failure.error_details.attempts,
-            })
+            logger.warning(
+                '语音合成失败 error_code=%s retryable=%s '
+                'attempts=%s request_id=%s',
+                failure.error_code, failure.error_details.retryable,
+                failure.error_details.attempts,
+                failure.error_details.request_id,
+            )
             if not failure.error_details.retryable or attempt == retries:
                 raise failure from None
             time.sleep(2 * attempt)

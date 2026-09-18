@@ -1,5 +1,6 @@
 import { http } from '@/lib/api/http-client';
 import { ScriptSegment } from '@/types';
+import type { TtsErrorDetails } from '@/lib/ttsErrors';
 
 /**
  * Text-to-Speech (TTS) API client
@@ -108,6 +109,8 @@ export interface SentenceTTSResult {
   start_time?: number;
   end_time?: number;
   error?: string;
+  error_code?: string | null;
+  error_details?: TtsErrorDetails | null;
   processing_time?: number;
 }
 

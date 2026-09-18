@@ -42,6 +42,103 @@ def response(status=200, frames=None, payload=None):
     return result
 
 
+def audio_frame(audio=b'first', code=0):
+    return {'code': code, 'data': base64.b64encode(audio).decode()}
+
+
+def test_audio_metadata_null_and_terminal_null_are_saved(synthesis):
+    service, post = synthesis
+    post.return_value = response(frames=[
+        audio_frame(), audio_frame(b'second'),
+        {'code': 0, 'data': None, 'sentence': {}},
+        {'code': 20000000, 'message': 'OK', 'data': None},
+    ])
+    result = service.convert_text_to_speech_local('空帧回归')
+    assert Path(result['file_path']).read_bytes() == b'firstsecond'
+    post.assert_called_once()
+
+
+@pytest.mark.parametrize('control', [
+    {'code': 0}, {'code': 0, 'data': None}, {'code': 0, 'data': ''},
+    {'code': '20000000', 'data': None},
+])
+def test_empty_control_frames_do_not_drop_adjacent_audio(synthesis, control):
+    service, post = synthesis
+    post.return_value = response(frames=[
+        control, audio_frame(), control, audio_frame(b'second'), control,
+    ])
+    post.return_value.text = '\n \n' + post.return_value.text + '\n\t\n'
+    result = service.convert_text_to_speech_local('空帧回归')
+    assert Path(result['file_path']).read_bytes() == b'firstsecond'
+    post.assert_called_once()
+
+
+def test_null_only_response_is_not_audio(synthesis):
+    service, post = synthesis
+    post.return_value = response(frames=[
+        {'code': 0, 'data': None, 'sentence': {}},
+        {'code': 20000000, 'data': None},
+    ])
+    with pytest.raises(RuntimeError) as error:
+        service.convert_text_to_speech_local('空帧回归')
+    assert error.value.error_code == 'TTS_INVALID_RESPONSE'
+    assert error.value.error_details.attempts == 1
+    assert error.value.error_details.retryable is False
+    assert not list(Path(service.audio_dir).iterdir())
+    post.assert_called_once()
+
+
+@pytest.mark.parametrize('tail', [
+    'broken-json', '[]', 'null', '{}',
+    *[json.dumps({'code': code}) for code in
+      [None, True, 0.0, '', ' 0', '0x0', '0.0']],
+    *[json.dumps({'code': 0, 'data': data}) for data in
+      [False, 0, [], {}, '@@@', 'Y Q==']],
+    *[json.dumps({'code': 0, 'message': message})
+      for message in [None, {}]],
+])
+def test_invalid_frame_after_audio_discards_response(synthesis, tail):
+    service, post = synthesis
+    post.return_value = response(frames=[audio_frame()])
+    post.return_value.text += '\n' + tail
+    with pytest.raises(RuntimeError) as error:
+        service.convert_text_to_speech_local('坏帧回归')
+    assert error.value.error_code == 'TTS_INVALID_RESPONSE'
+    assert error.value.error_details.retryable is False
+    assert not list(Path(service.audio_dir).iterdir())
+    post.assert_called_once()
+
+
+@pytest.mark.parametrize('terminal', [False, True])
+def test_business_error_with_null_data_preserves_reason(synthesis, terminal):
+    service, post = synthesis
+    frames = [audio_frame()]
+    if terminal:
+        frames.append({'code': 20000000, 'data': None})
+    frames.append({'code': 45000000, 'data': None,
+                   'message': 'insufficient balance'})
+    post.return_value = response(frames=frames)
+    with pytest.raises(RuntimeError) as error:
+        service.convert_text_to_speech_local('业务错误回归')
+    assert error.value.error_code == 'TTS_INSUFFICIENT_BALANCE'
+    assert not list(Path(service.audio_dir).iterdir())
+    post.assert_called_once()
+
+
+@pytest.mark.parametrize('terminal_audio', [False, True])
+def test_audio_without_terminal_keeps_existing_compatibility(
+    synthesis, terminal_audio,
+):
+    service, post = synthesis
+    frames = [audio_frame(code='0')]
+    if terminal_audio:
+        frames.append(audio_frame(b'second', code='20000000'))
+    post.return_value = response(frames=frames)
+    result = service.convert_text_to_speech_local('兼容性回归')
+    expected = b'firstsecond' if terminal_audio else b'first'
+    assert Path(result['file_path']).read_bytes() == expected
+
+
 @pytest.mark.parametrize('status,message,expected', [
     (403, 'insufficient balance', 'TTS_INSUFFICIENT_BALANCE'),
     (403, 'resource access denied', 'TTS_PERMISSION_DENIED'),

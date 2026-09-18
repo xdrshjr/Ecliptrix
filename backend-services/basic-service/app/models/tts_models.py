@@ -430,6 +430,8 @@ class SentenceTTSResult(BaseModel):
     start_time: Optional[float] = Field(None, description="Start time in concatenated audio (seconds)")
     end_time: Optional[float] = Field(None, description="End time in concatenated audio (seconds)")
     error: Optional[str] = Field(None, description="Error message if conversion failed")
+    error_code: Optional[str] = None
+    error_details: Optional[TTSErrorDetails] = None
     processing_time: Optional[float] = Field(None, description="Processing time in seconds")
 
 
