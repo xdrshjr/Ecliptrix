@@ -242,7 +242,11 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
     >
       {/* 工具栏 */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 bg-black bg-opacity-60 rounded-md px-4 py-2 z-10">
-        <span className="text-white text-sm font-medium">{material.name}</span>
+        {/* 前缀标明这是素材本身，而不是成片预览（spec §3.4.3） */}
+        <span className="text-white text-sm font-medium">
+          <span className="opacity-70">{t.workbench.preview.materialPreviewPrefix} · </span>
+          {material.name}
+        </span>
         
         {/* 图片缩放控制 */}
         {material.type === 'image' && (

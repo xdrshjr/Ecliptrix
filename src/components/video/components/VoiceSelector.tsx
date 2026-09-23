@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useId, useMemo } from 'react';
+import React, { useState, useEffect, useId, useMemo, useRef } from 'react';
 import { VoiceType, getVoiceTypes } from '@/lib/api/tts';
 import { useLocale } from '@/contexts/LocaleContext';
 import { VideoEditingLogger } from '../utils/logger';
@@ -9,6 +9,9 @@ interface VoiceSelectorProps {
   selectedVoiceId: string;
   onVoiceChange: (voiceId: string) => void;
   className?: string;
+  /** Reports the selected voice's display name once the list resolves it
+   *  (the workbench default-voice bar shows it without opening the list). */
+  onVoiceMetaChange?: (meta: { id: string; name: string }) => void;
 }
 
 type GenderFilter = 'all' | 'male' | 'female';
@@ -16,7 +19,8 @@ type GenderFilter = 'all' | 'male' | 'female';
 const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   selectedVoiceId,
   onVoiceChange,
-  className = ''
+  className = '',
+  onVoiceMetaChange,
 }) => {
   const { t, locale } = useLocale();
   const [voiceTypes, setVoiceTypes] = useState<Record<string, VoiceType>>({});
@@ -89,6 +93,15 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   };
 
   const selectedVoice = voiceTypes[selectedVoiceId];
+  const selectedVoiceName = selectedVoice?.name;
+
+  // Callback kept in a ref so an inline parent callback does not re-fire the effect.
+  const onVoiceMetaChangeRef = useRef(onVoiceMetaChange);
+  onVoiceMetaChangeRef.current = onVoiceMetaChange;
+  useEffect(() => {
+    if (selectedVoiceName === undefined) return;
+    onVoiceMetaChangeRef.current?.({ id: selectedVoiceId, name: selectedVoiceName });
+  }, [selectedVoiceId, selectedVoiceName]);
   const voiceList = useMemo(() => Object.values(voiceTypes), [voiceTypes]);
 
   // iter5: search + gender filter

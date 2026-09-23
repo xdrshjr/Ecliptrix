@@ -5,11 +5,12 @@ import VideoEditingInterface from '@/components/video/VideoEditingInterface';
 import { resetVideoEditingStore } from '@/stores/videoEditingStore';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
-import { getVideoProject } from '@/lib/api/videoProjects';
+import { getVideoProject, updateVideoProject } from '@/lib/api/videoProjects';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useTimelineStore } from '@/components/video/timeline/store';
 import type { Conversation, MaterialItem, VideoEditingTaskContent } from '@/types';
 import { useProjectAutosave } from './hooks/useProjectAutosave';
+import type { EditorProjectChrome } from '../workbench/EditorTopBar';
 import {
   hydrateTimelineFromProjectData,
   restoreTimelineBackup,
@@ -19,23 +20,6 @@ import {
   type HydrationResult,
 } from './hydrateTimeline';
 import { repairDerivedMaterialIdentity, repairInheritedSegmentMembership } from '../lib/derivedMaterial';
-
-/** Render a project's `updated_at` ISO string for the editor top strip.
- *  Mirrors ProjectCard's relative formatting so list ↔ editor agree. */
-function formatLastUpdated(iso: string | undefined, fallback: string): string {
-  if (!iso) return fallback;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return fallback;
-  const diff = Date.now() - date.getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return date.toLocaleTimeString();
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d`;
-  return date.toLocaleDateString();
-}
 
 /** Convert a value that was persisted as JSON back into a `Date`. Returns
  *  `undefined` for unparseable input so callers can fall back. */
@@ -135,6 +119,7 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectMeta, setProjectMeta] = useState<{ name: string; updatedAt: string } | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const lastShownErrorRef = useRef<string | null>(null);
   // Read by the load effect, which must not refetch the project on a locale change.
   const translationsRef = useRef(t);
@@ -216,10 +201,11 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
   );
 
   // Autosave (R-C). Suppress saves while still loading.
-  useProjectAutosave(loading || error ? null : projectId, content, {
+  const autosave = useProjectAutosave(loading || error ? null : projectId, content, {
     onSaveStart: () => setSaveStatus('saving'),
     onSaveSuccess: () => {
       setSaveStatus('saved');
+      setLastSavedAt(Date.now());
       // Refresh the displayed last-updated timestamp to match what the
       // backend now records. Using the local clock is acceptable since
       // updateVideoProject() set updated_at server-side at this same moment.
@@ -270,6 +256,37 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
     setContent((current) => (current ? withoutTimelineRecoveryBackup(current) : current));
   }, [closeBackupDialog]);
 
+  // In-place rename from the editor top bar: the same API the project list
+  // uses. Autosave only sends `project_data`, so the two never overwrite
+  // each other (RV-10).
+  const openProjectIdRef = useRef(projectId);
+  openProjectIdRef.current = projectId;
+  const handleRenameProject = useCallback(async (name: string) => {
+    await updateVideoProject(projectId, { name });
+    // A rename that lands after switching projects must not relabel the new one.
+    if (openProjectIdRef.current !== projectId) return;
+    setProjectMeta((prev) => (prev ? { name, updatedAt: new Date().toISOString() } : prev));
+  }, [projectId]);
+
+  const handleRenameFailed = useCallback((err: unknown) => {
+    console.error('[VideoEditorContainer] Failed to rename project', { projectId, err });
+    showError(t.workbench.topBar.renameFailed);
+  }, [projectId, showError, t]);
+
+  const projectChrome: EditorProjectChrome = {
+    projectName: projectMeta?.name ?? '',
+    updatedAt: projectMeta?.updatedAt ?? null,
+    saveStatus,
+    lastSavedAt,
+    hasRecoveryBackup: !!recoveryBackup,
+    onBack: onCloseProject,
+    onRenameProject: handleRenameProject,
+    onRenameFailed: handleRenameFailed,
+    onRetrySave: autosave.retryNow,
+    onRequestRestoreBackup: () => setBackupDialog({ isOpen: true, kind: 'restore' }),
+    onRequestDiscardBackup: () => setBackupDialog({ isOpen: true, kind: 'discard' }),
+  };
+
   // Render
   if (loading) {
     return (
@@ -296,65 +313,13 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Top strip: Back to projects + project meta + save status.
-          Uses bg-background + border so it picks up both light/dark themes
-          uniformly (was bg-muted/20, which had insufficient contrast). */}
-      <div className="flex items-center gap-3 px-4 h-9 border-b border-border bg-background flex-shrink-0">
-        <button
-          type="button"
-          onClick={onCloseProject}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-        >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          {t.videoProjects.backToProjects}
-        </button>
-        {projectMeta && (
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-xs font-medium text-foreground truncate">
-              {projectMeta.name || t.videoProjects.untitled}
-            </span>
-            <span className="text-xs text-muted-foreground/70 truncate flex-shrink-0">
-              · {t.videoProjects.lastUpdated}:{' '}
-              {formatLastUpdated(projectMeta.updatedAt, t.videoProjects.neverOpened)}
-            </span>
-          </div>
-        )}
-        {recoveryBackup && (
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setBackupDialog({ isOpen: true, kind: 'restore' })}
-              className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-xs font-medium text-primary hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5" />
-              </svg>
-              {t.videoProjects.restoreBackup}
-            </button>
-            <button
-              type="button"
-              onClick={() => setBackupDialog({ isOpen: true, kind: 'discard' })}
-              className="inline-flex items-center h-6 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {t.videoProjects.discardBackup}
-            </button>
-          </div>
-        )}
-        <div className="text-xs text-muted-foreground flex-shrink-0" aria-live="polite">
-          {saveStatus === 'saving' && t.videoProjects.saving}
-          {saveStatus === 'saved' && t.videoProjects.saved}
-          {saveStatus === 'error' && t.videoProjects.saveError}
-        </div>
-      </div>
-
       <VideoEditingInterface
         key={projectId}
         projectId={projectId}
         taskId={taskId}
         content={content}
         onUpdateContent={handleUpdateContent}
+        projectChrome={projectChrome}
       />
 
       <ConfirmationDialog

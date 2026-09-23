@@ -57,6 +57,13 @@ describe('computeItemStyles', () => {
     expect(computeItemStyles(inputs({ isSwapTarget: true })).zIndex).toBe(9);
   });
 
+  it('lifts a segment-linked clip above its neighbours but below the selection', () => {
+    expect([
+      computeItemStyles(inputs({ isLinked: true })).zIndex,
+      computeItemStyles(inputs({ isLinked: true, isSelected: true })).zIndex,
+    ]).toEqual([2, 10]);
+  });
+
   it('fades the dragged item more heavily when a swap target is active', () => {
     expect(computeItemStyles(inputs({ isThisItemDragging: true })).opacity).toBe(0.8);
     expect(

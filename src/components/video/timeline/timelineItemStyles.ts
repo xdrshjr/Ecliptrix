@@ -17,6 +17,12 @@ export interface ItemStyleInputs {
   isThisItemResizing: boolean;
   isSwapTarget: boolean;
   hasActiveSwapTarget: boolean;
+  /**
+   * Linked to the selected script segment (spec §3.8). The ring itself is the
+   * `ws-item-linked` class; here it only lifts the clip one layer so the ring
+   * is not painted over by its neighbour.
+   */
+  isLinked?: boolean;
 }
 
 /**
@@ -36,6 +42,7 @@ export function computeItemStyles(inputs: ItemStyleInputs): CSSProperties {
     isThisItemResizing,
     isSwapTarget,
     hasActiveSwapTarget,
+    isLinked = false,
   } = inputs;
 
   const padding = Math.max(2, Math.floor(trackHeight * 0.125));
@@ -55,7 +62,7 @@ export function computeItemStyles(inputs: ItemStyleInputs): CSSProperties {
     cursor: isThisItemDragging ? 'grabbing' : 'grab',
     userSelect: 'none' as const,
     transition: isThisItemDragging || isThisItemResizing ? 'none' : 'all 0.2s ease',
-    zIndex: isSwapTarget ? 9 : (isSelected ? 10 : 1),
+    zIndex: isSwapTarget ? 9 : isSelected ? 10 : isLinked ? 2 : 1,
     opacity: isThisItemDragging ? draggedOpacity : 1,
   };
 

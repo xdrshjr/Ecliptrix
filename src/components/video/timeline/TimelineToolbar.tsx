@@ -56,8 +56,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
 
   // Read from store
   const {
-    canUndo,
-    canRedo,
     isExporting,
     isImporting,
     isExtractingSubtitles,
@@ -68,8 +66,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     activeTool,
   } = useTimelineStore(
     useShallow((state) => ({
-      canUndo: state.canUndo,
-      canRedo: state.canRedo,
       isExporting: state.isExporting,
       isImporting: state.isImporting,
       isExtractingSubtitles: state.isExtractingSubtitles,
@@ -79,8 +75,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         state.tracks.some((track) => !track.isLocked && track.items.some((item) => item.id === id)),
       ).length,
       isEditLocked: state.externalEditLock !== null,
-      // A drag in flight owns the timeline: undo/redo/delete under it would
-      // be overwritten by the release (TL2-18).
+      // A drag in flight owns the timeline: a delete under it would be
+      // overwritten by the release (TL2-18).
       isInteracting: state.isInteracting,
       activeTool: state.activeTool,
     })),
@@ -88,8 +84,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
   const editLockedHint = isEditLocked ? t.timeline.messages.editLockedByAgent : undefined;
 
   // Store actions
-  const undo = useTimelineStore((state) => state.undo);
-  const redo = useTimelineStore((state) => state.redo);
   const setActiveTool = useTimelineStore((state) => state.setActiveTool);
 
   // Toggle the cut/split tool. When 'cut' is active, clicking a clip on the
@@ -192,48 +186,20 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     }
   ];
 
-  // 历史操作按钮
-  const historyButtons: ToolbarButtonConfig[] = [
-    {
-      id: 'undo',
-      onClick: undo,
-      icon: (
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
-        </svg>
-      ),
-      label: t.timeline.toolbar.undo,
-      shortcut: t.timeline.shortcuts.undoShortcut,
-      disabled: !canUndo || isEditLocked || isInteracting,
-      disabledHint: editLockedHint,
-    },
-    {
-      id: 'redo',
-      onClick: redo,
-      icon: (
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/>
-        </svg>
-      ),
-      label: t.timeline.toolbar.redo,
-      shortcut: t.timeline.shortcuts.redoShortcut,
-      disabled: !canRedo || isEditLocked || isInteracting,
-      disabledHint: editLockedHint,
-    },
-    {
-      id: 'organize',
-      onClick: onOrganizeMaterials,
-      icon: (
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
-        </svg>
-      ),
-      label: t.timeline.toolbar.organizeMaterials,
-      // Organizing repacks every lane, so it is an edit like any other.
-      disabled: isEditLocked,
-      disabledHint: editLockedHint,
-    }
-  ];
+  // 整理：撤销 / 重做已上移到编辑器顶栏（spec §3.8），快捷键仍由 TimelinePanel 处理。
+  const organizeButton: ToolbarButtonConfig = {
+    id: 'organize',
+    onClick: onOrganizeMaterials,
+    icon: (
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+      </svg>
+    ),
+    label: t.timeline.toolbar.organizeMaterials,
+    // Organizing repacks every lane, so it is an edit like any other.
+    disabled: isEditLocked,
+    disabledHint: editLockedHint,
+  };
 
   // 运镜按钮可用性：走 canApplyCameraMotion 单一判据（§4.5.1 / P2-7），并把
   // 「为什么不可用」映射成一条解释性 tooltip，避免用户对着灰按钮猜。
@@ -262,8 +228,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         ? t.timeline.cameraMotion.disabledNotVisual
         : t.timeline.cameraMotion.disabledNoSelection;
 
-  // 高级功能按钮
-  const advancedButtons: ToolbarButtonConfig[] = [
+  // 轨道功能：运镜、字幕、导出 / 导入 JSON
+  const trackFeatureButtons: ToolbarButtonConfig[] = [
     {
       id: 'motion',
       onClick: onOpenCameraMotion,
@@ -276,6 +242,25 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       shortcut: t.timeline.shortcuts.motionShortcut,
       disabled: !cameraMotionEligibility.enabled,
       disabledHint: cameraMotionDisabledHint,
+    },
+    {
+      id: 'subtitles',
+      onClick: onAddSubtitle,
+      icon: isExtractingSubtitles ? (
+        <div className="relative w-4 h-4">
+          <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+          </svg>
+        </div>
+      ) : (
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
+        </svg>
+      ),
+      label: isExtractingSubtitles ? t.timeline.toolbar.extractingSubtitles : t.timeline.toolbar.subtitles,
+      shortcut: t.timeline.shortcuts.subtitlesShortcut,
+      disabled: isExtractingSubtitles || isEditLocked,
+      disabledHint: editLockedHint,
     },
     {
       id: 'export-json',
@@ -296,6 +281,11 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       shortcut: t.timeline.shortcuts.exportShortcut,
       disabled: isExporting
     },
+    importButton,
+  ];
+
+  // 即将推出：特效、转场
+  const comingSoonButtons: ToolbarButtonConfig[] = [
     {
       id: 'effects',
       onClick: onAddEffect,
@@ -321,25 +311,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       shortcut: t.timeline.shortcuts.transitionsShortcut,
       comingSoon: true,
       disabled: true,
-    },
-    {
-      id: 'subtitles',
-      onClick: onAddSubtitle,
-      icon: isExtractingSubtitles ? (
-        <div className="relative w-4 h-4">
-          <svg className="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-          </svg>
-        </div>
-      ) : (
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
-        </svg>
-      ),
-      label: isExtractingSubtitles ? t.timeline.toolbar.extractingSubtitles : t.timeline.toolbar.subtitles,
-      shortcut: t.timeline.shortcuts.subtitlesShortcut,
-      disabled: isExtractingSubtitles || isEditLocked,
-      disabledHint: editLockedHint,
     }
   ];
 
@@ -363,7 +334,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
           }
         }}
         className={`
-          relative p-2 rounded-md transition-all duration-200 flex items-center justify-center w-8 h-8
+          relative p-1.5 rounded-md transition-all duration-200 flex items-center justify-center w-7 h-7
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
           ${button.disabled
             ? 'text-muted-foreground cursor-not-allowed bg-muted'
@@ -387,8 +358,16 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
     </PortalTooltip>
   );
 
+  // Groups (spec §3.8): 编辑 | 整理 | 运镜、字幕、JSON | 即将推出 — 1px apart.
+  const buttonGroups: ToolbarButtonConfig[][] = [
+    [cutButton, ...basicEditButtons],
+    [organizeButton],
+    trackFeatureButtons,
+    comingSoonButtons,
+  ];
+
   return (
-    <div className="timeline-toolbar h-8 bg-card border-b border-border flex items-center justify-between px-4 relative overflow-visible">
+    <div className="timeline-toolbar h-9 bg-card border-b border-border flex items-center justify-between px-3 relative overflow-visible">
       {/* 隐藏的文件输入 */}
       <input
         ref={fileInputRef}
@@ -398,28 +377,18 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
         className="hidden"
       />
 
-      {/* 左侧基础编辑工具 */}
-      <div className="flex items-center space-x-1">
-        {/* 导入项目文件按钮 */}
-        <div className="flex items-center space-x-1">
-          {renderIconButton(importButton)}
-        </div>
-
-        <div className="w-px h-4 bg-border mx-1" />
-
-        <div className="flex items-center space-x-1">
-          {renderIconButton(cutButton)}
-          {basicEditButtons.map(button => renderIconButton(button))}
-        </div>
-
-        <div className="w-px h-4 bg-border mx-2" />
-
-        <div className="flex items-center space-x-1">
-          {historyButtons.map(button => renderIconButton(button))}
-        </div>
+      <div className="flex items-center">
+        {buttonGroups.map((group, index) => (
+          <React.Fragment key={group[0].id}>
+            {index > 0 && <div className="w-px h-4 bg-border mx-1.5" aria-hidden="true" />}
+            <div className="flex items-center gap-0.5">
+              {group.map(button => renderIconButton(button))}
+            </div>
+          </React.Fragment>
+        ))}
       </div>
 
-      {/* 中间状态显示 */}
+      {/* 状态显示 */}
       <div className="flex items-center space-x-3 text-xs text-muted-foreground">
         {selectedItemsCount > 0 && (
           <div className="flex items-center space-x-1 bg-primary-a/10 px-2 py-1 rounded-full">
@@ -440,11 +409,6 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
             )}
           </span>
         </div>
-      </div>
-
-      {/* 右侧高级功能 */}
-      <div className="flex items-center space-x-1">
-        {advancedButtons.map(button => renderIconButton(button))}
       </div>
     </div>
   );

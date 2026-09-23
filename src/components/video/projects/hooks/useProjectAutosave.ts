@@ -43,6 +43,16 @@ const RETRY_DELAY_MS = 3000;
 // registry key, or the second would hide the first from the close guard.
 let unmountFlushSequence = 0;
 
+export interface UseProjectAutosaveReturn {
+  /**
+   * Save now after a failure (RV-09). During the 5xx back-off it ends the wait
+   * so the queued retry runs now; with no save in flight it flushes; with one
+   * in flight it only marks dirty so the in-flight save re-runs when done.
+   * At most one PUT is ever in flight.
+   */
+  retryNow(): void;
+}
+
 export interface UseProjectAutosaveOptions {
   onSaveStart?: () => void;
   onSaveSuccess?: () => void;
@@ -85,7 +95,7 @@ export function useProjectAutosave(
   projectId: string | null,
   content: VideoEditingTaskContent | null,
   opts: UseProjectAutosaveOptions = {},
-): void {
+): UseProjectAutosaveReturn {
   const lastSavedJsonRef = useRef<string>('');
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaveAtRef = useRef<number>(Date.now());
@@ -298,4 +308,18 @@ export function useProjectAutosave(
         .finally(unregister);
     };
   }, []);
+
+  const retryNow = useRef<() => void>(() => {});
+  retryNow.current = () => {
+    if (retryWaitRef.current) {
+      endRetryWait(retryWaitRef);
+      return;
+    }
+    if (inFlightPromiseRef.current) {
+      dirtyRef.current = true;
+      return;
+    }
+    void flush.current();
+  };
+  return useRef<UseProjectAutosaveReturn>({ retryNow: () => retryNow.current() }).current;
 }

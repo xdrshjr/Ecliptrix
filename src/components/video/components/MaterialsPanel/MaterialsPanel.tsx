@@ -27,12 +27,25 @@ import { listPacks, deletePack } from '@/lib/api/storyboard';
 import { listImagePacks, deleteImagePack, ImagePack } from '@/lib/api/imagePack';
 import { listFramePacks, deleteFramePack, deleteFrameFromPack } from '@/lib/api/framePack';
 import FramePackView from './FramePackView';
-import MaterialThumbnail from './MaterialThumbnail';
 import { http, ApiError } from '@/lib/api/http-client';
-import MaterialCacheBadge from '../MaterialCacheBadge';
-import { canPreviewDirectLocalMaterial } from '../../lib/localMaterial';
 import { buildDerivedMaterial, withoutScriptSegment } from '../../lib/derivedMaterial';
-import { MATERIAL_DRAG_MIME_PREFIX } from '../../timeline/lib/materialDragTypes';
+import MaterialCard, { resolveAnalysisStatus, type MaterialCardActions } from './MaterialCard';
+import AudioMaterialRow from './AudioMaterialRow';
+import MaterialFilterBar from './MaterialFilterBar';
+import MaterialMoreMenu, { type MaterialMenuItem } from './MaterialMoreMenu';
+import { MaterialIcon } from './materialIcons';
+import {
+  DEFAULT_PACK_FILTER,
+  filterMaterials,
+  isListRowMaterial,
+  isPackMaterialFilter,
+  matchesMaterialQuery,
+  toMaterialTypeFilter,
+  toPrimaryMaterialFilter,
+  type MaterialFilterState,
+  type PackMaterialFilter,
+  type PrimaryMaterialFilter,
+} from './materialFilter';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
   onSearchVideos: () => void;
@@ -56,6 +69,10 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
    *  refresh. */
   projectId?: string;
   className?: string;
+  /** Called right before a library preview opens — the editor pauses the
+   *  composition so material and cut never sound together (spec §3.4.3).
+   *  Closing the preview does not resume playback. */
+  onBeforePreview?: () => void;
 }
 
 const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
@@ -84,6 +101,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   taskId,
   projectId,
   className = '',
+  onBeforePreview,
   // 新增的删除功能
   handleMaterialDelete,
   confirmationDialog,
@@ -187,31 +205,57 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   useEffect(() => { scenePacksRef.current = scenePacks; }, [scenePacks]);
   useEffect(() => { framePacksRef.current = framePacks; }, [framePacks]);
 
+  // 素材页分类：一级「全部/视频/音频/图片/素材包」+ 素材包二级芯片，内部仍写回原
+  // selectedMaterialType（spec §3.7.1）。lastPackFilter 只记住上次看的素材包子类。
+  const [lastPackFilter, setLastPackFilter] = useState<PackMaterialFilter>(DEFAULT_PACK_FILTER);
+  const [searchQuery, setSearchQuery] = useState('');
+  const hasSearchQuery = searchQuery.trim() !== '';
+  const materialFilterState = useMemo<MaterialFilterState>(() => ({
+    primary: toPrimaryMaterialFilter(selectedMaterialType),
+    pack: isPackMaterialFilter(selectedMaterialType) ? selectedMaterialType : lastPackFilter,
+    query: searchQuery,
+  }), [selectedMaterialType, lastPackFilter, searchQuery]);
+
   // Visible-after-filter sets used by the empty-state branch.
   // Bug-fix iter4 #3: empty-state must reflect the *filtered* visible set, not the raw `materials.length`.
   // Otherwise picking a tab whose backing collection is empty (e.g., "image" when only audio exists)
   // shows an empty grid instead of the proper "no image materials" hint.
-  const visibleMaterials = useMemo(() => (
-    selectedMaterialType === 'all'
-      ? materials.filter(m => m.type !== 'storyboard_pack')
-      : materials.filter(m => m.type === selectedMaterialType)
-  ), [materials, selectedMaterialType]);
+  const visibleMaterials = useMemo(
+    () => filterMaterials(materials, materialFilterState),
+    [materials, materialFilterState],
+  );
+  const visualMaterials = useMemo(
+    () => visibleMaterials.filter((m) => !isListRowMaterial(m)),
+    [visibleMaterials],
+  );
+  const rowMaterials = useMemo(
+    () => visibleMaterials.filter(isListRowMaterial),
+    [visibleMaterials],
+  );
+
+  // 搜索同样作用于素材包（按提示词 / 标题 / 来源素材名），保证「在当前分类内过滤」。
+  const searchedPacks = useMemo(() => ({
+    storyboard: storyboardPacks.filter((p) => matchesMaterialQuery([p.scriptTitle, p.prompt], searchQuery)),
+    character: characterPacks.filter((p) => matchesMaterialQuery([p.prompt], searchQuery)),
+    scene: scenePacks.filter((p) => matchesMaterialQuery([p.prompt], searchQuery)),
+    frame: framePacks.filter((p) => matchesMaterialQuery([p.prompt, p.source_material_name], searchQuery)),
+  }), [storyboardPacks, characterPacks, scenePacks, framePacks, searchQuery]);
 
   const visiblePacks = useMemo(() => {
     switch (selectedMaterialType) {
-      case 'storyboard_pack': return storyboardPacks as Array<StoryboardPack | ImagePack>;
-      case 'character_pack': return characterPacks as Array<StoryboardPack | ImagePack>;
-      case 'scene_pack':     return scenePacks as Array<StoryboardPack | ImagePack>;
-      case 'frame_pack':     return framePacks as Array<StoryboardPack | ImagePack>;
+      case 'storyboard_pack': return searchedPacks.storyboard as Array<StoryboardPack | ImagePack>;
+      case 'character_pack': return searchedPacks.character as Array<StoryboardPack | ImagePack>;
+      case 'scene_pack':     return searchedPacks.scene as Array<StoryboardPack | ImagePack>;
+      case 'frame_pack':     return searchedPacks.frame as Array<StoryboardPack | ImagePack>;
       case 'all':            return [
-        ...storyboardPacks,
-        ...characterPacks,
-        ...scenePacks,
-        ...framePacks,
+        ...searchedPacks.storyboard,
+        ...searchedPacks.character,
+        ...searchedPacks.scene,
+        ...searchedPacks.frame,
       ] as Array<StoryboardPack | ImagePack>;
       default: return [] as Array<StoryboardPack | ImagePack>;
     }
-  }, [selectedMaterialType, storyboardPacks, characterPacks, scenePacks, framePacks]);
+  }, [selectedMaterialType, searchedPacks]);
 
   const isFilteredEmpty = visibleMaterials.length === 0 && visiblePacks.length === 0;
 
@@ -257,17 +301,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   }>({ visible: false, material: null, position: { x: 0, y: 0 } });
   const popoverRef = useRef<HTMLDivElement | null>(null);
   
-  // Material Library Dropdown state
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false);
-  const aiDropdownRef = useRef<HTMLDivElement | null>(null);
-  const materialTypeScrollRef = useRef<HTMLDivElement | null>(null);
-
-  // Menu bar dropdown state
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
   // Effect selection state
   const [selectedEffect, setSelectedEffect] = useState('');
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
@@ -615,115 +648,48 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     onSearchImages();
   };
 
-  // Material Library Dropdown handlers
-  const handleMaterialLibraryClick = useCallback(() => {
-    logger.info('用户点击素材库���钮', {
-      materialsCount: materials.length,
-      selectedType: selectedMaterialType,
-      dropdownOpen: !isDropdownOpen
-    });
-
-    if (!isDropdownOpen) {
-      setIsMenuOpen(false);
-      setIsAiDropdownOpen(false);
-    }
-    setIsDropdownOpen(!isDropdownOpen);
-  }, [isDropdownOpen, materials.length, selectedMaterialType, logger]);
-
-  const handleDropdownOptionClick = useCallback((option: 'video' | 'audio' | 'image') => {
-    logger.info('用户选择素材库选项', {
-      option,
-      materialsCount: materials.length,
-      selectedType: selectedMaterialType
-    });
-    
-    setIsDropdownOpen(false);
-    
-    switch (option) {
-      case 'video':
-        onSearchVideos();
-        break;
-      case 'audio':
-        onSearchAudios();
-        break;
-      case 'image':
-        onSearchImages();
-        break;
-    }
-  }, [materials.length, selectedMaterialType, logger, onSearchVideos, onSearchAudios, onSearchImages]);
-
-  // Handle click outside dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        if (isDropdownOpen) {
-          logger.info('素材库下拉菜单因点击外部而关闭');
-          setIsDropdownOpen(false);
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isDropdownOpen, logger]);
-
-  // Handle mouse leave dropdown
-  const handleDropdownMouseLeave = useCallback(() => {
-    if (isDropdownOpen) {
-      logger.info('素材库下拉菜单因鼠标离开而关闭');
-      setIsDropdownOpen(false);
-    }
-  }, [isDropdownOpen, logger]);
-
-  // AI Create dropdown handlers
-  const handleAiDropdownToggle = useCallback(() => {
-    setIsAiDropdownOpen(prev => {
-      const next = !prev;
-      if (next) {
-        setIsDropdownOpen(false);
-        setIsMenuOpen(false);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleAiDropdownOptionClick = useCallback((option: 'image' | 'video' | 'audio') => {
-    setIsAiDropdownOpen(false);
+  // 「⊕ 添加 ▾」里的 AI 创建三项：与原底部「AI 创建」下拉打开同一批弹窗
+  const handleAiCreateOptionClick = useCallback((option: 'image' | 'video' | 'audio') => {
     if (option === 'image') setIsAiImageModalOpen(true);
     else if (option === 'video') setIsAiVideoModalOpen(true);
     else setIsAiAudioModalOpen(true);
   }, []);
 
-  const handleAiDropdownMouseLeave = useCallback(() => {
-    if (isAiDropdownOpen) setIsAiDropdownOpen(false);
-  }, [isAiDropdownOpen]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (aiDropdownRef.current && !aiDropdownRef.current.contains(event.target as Node)) {
-        if (isAiDropdownOpen) setIsAiDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isAiDropdownOpen]);
-
-  // Menu bar toggle (mutual exclusion with material library dropdown)
-  const handleMenuToggle = useCallback(() => {
-    setIsMenuOpen(prev => {
-      if (!prev) {
-        setIsDropdownOpen(false);
-        setIsAiDropdownOpen(false);
-      }
-      return !prev;
+  const handleBatchAnalysisClick = async () => {
+    const videoMaterials = materials.filter(m => m.type === 'video');
+    logger.userAction('AI批量解析视频', 'batchVideoAnalysisButton', {
+      materialsCount: materials.length,
+      videoMaterialsCount: videoMaterials.length,
+      videoMaterials: videoMaterials.map(m => ({
+        id: m.id,
+        name: m.name,
+        url: m.url
+      })),
+      taskId
     });
-  }, []);
+    await onBatchVideoAnalysis?.();
+  };
+
+  const handleAutoMixClick = () => {
+    logger.userAction('AI自动混剪', 'autoMixButton', {
+      materialsCount: materials.length,
+      audioMaterialsCount: materials.filter(m => m.type === 'audio').length,
+      taskId
+    });
+    onAutoMixAudio?.();
+  };
+
+  const handlePrimaryFilterChange = (primary: PrimaryMaterialFilter) => {
+    handleTypeFilter(toMaterialTypeFilter(primary, lastPackFilter));
+  };
+
+  const handlePackFilterChange = (pack: PackMaterialFilter) => {
+    setLastPackFilter(pack);
+    handleTypeFilter(pack);
+  };
 
   // Handle clear all materials with storyboard/character/scene packs (含远程 DELETE)
   const handleClearAllWithStoryboards = useCallback(() => {
-    setIsMenuOpen(false);
     // 直接使用 state 值判断，避免 ref 同步延迟导致误判
     const packExtra = storyboardPacks.length + characterPacks.length + scenePacks.length + framePacks.length;
 
@@ -794,22 +760,6 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     refreshFramePacks,
   ]);
 
-  // Click outside menu bar dropdown
-  useEffect(() => {
-    const handleClickOutsideMenu = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        if (isMenuOpen) {
-          setIsMenuOpen(false);
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutsideMenu);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutsideMenu);
-    };
-  }, [isMenuOpen]);
-
   // 处理单个素材删除按钮点击
   const handleSingleMaterialDelete = (material: MaterialItem, e: React.MouseEvent) => {
     // 阻止事件冒泡，避免触发素材点击事件
@@ -825,7 +775,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   };
 
   // 拖拽开始处理
-  const handleDragStart = (e: React.DragEvent, material: MaterialItem) => {
+  // 负载写入在 MaterialCard.writeMaterialDragData（逐字节保持原样），这里只记日志和拖拽态
+  const handleDragStart = (material: MaterialItem) => {
     logger.info('开始拖拽素材', {
       materialId: material.id,
       materialName: material.name,
@@ -834,54 +785,28 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     });
 
     setDraggedMaterial(material);
-    
-    // 设置拖拽数据
-    e.dataTransfer.setData('application/json', JSON.stringify({
-      type: 'material',
-      material: material
-    }));
-    // dragenter/dragover can read DataTransfer.types but not getData, so the
-    // tracks learn the material type from this entry (ME-10).
-    e.dataTransfer.setData(`${MATERIAL_DRAG_MIME_PREFIX}${material.type}`, material.id);
-    
-    // 设置拖拽效果
-    e.dataTransfer.effectAllowed = 'copy';
-    
-    // 设置拖拽图像（可选）
-    if (material.thumbnailUrl) {
-      const img = new Image();
-      img.src = material.thumbnailUrl;
-      e.dataTransfer.setDragImage(img, 50, 50);
-    }
   };
 
   // 拖拽结束处理
-  const handleDragEnd = (e: React.DragEvent, material: MaterialItem) => {
+  const handleDragEnd = (material: MaterialItem, dropEffect: string) => {
     logger.info('拖拽素材结束', {
       materialId: material.id,
       materialName: material.name,
-      dropEffect: e.dataTransfer.dropEffect
+      dropEffect
     });
 
     setDraggedMaterial(null);
   };
 
-  // 素材项点击处理
-  const handleMaterialClick = (material: MaterialItem) => {
-    logger.info('素材项点击', {
+  // 卡片「+ 添加」：与原卡片右上角按钮同一回调
+  const handleAddToTimelineClick = (material: MaterialItem) => {
+    if (!onAddToTimeline) return;
+    logger.userAction('添加素材到时间轴', 'addToTimelineButton', {
       materialId: material.id,
       materialName: material.name,
       materialType: material.type
     });
-    
-    // 如果是音频文件，播放/暂停音频
-    if (material.type === 'audio') {
-      handleAudioPlayPause(material);
-    } else if (material.type === 'subtitle') {
-      handleSubtitleDownload(material);
-    } else {
-      // 实现其他类型素材的点击处理逻辑（预览、编辑等）
-    }
+    onAddToTimeline(material);
   };
 
   // 预览素材
@@ -900,6 +825,12 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       isOpen: true,
       material
     });
+  };
+
+  // 素材页发起的预览（双击 / Enter / ⋯→预览）：先让编辑器暂停成片，避免两路同时发声
+  const handlePreviewFromLibrary = (material: MaterialItem) => {
+    onBeforePreview?.();
+    handlePreviewMaterial(material);
   };
 
   // 关闭预览弹窗
@@ -1773,180 +1704,204 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
     convertImageToVideo(effect, 5.0, options);
   };
 
-  return (
-    <div className={`h-full flex flex-col ${className}`}>
-      <div className="materials-panel-header">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-primary/10 rounded-md flex items-center justify-center">
-              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-            </div>
-            <h3 className="text-sm font-semibold text-foreground">{t.materialsPanel.title}</h3>
-          </div>
-          <div className="flex items-center space-x-2">
-            {/* 新增：AI解析视频按钮 */}
-            {onBatchVideoAnalysis && (
-              <button
-                onClick={async () => {
-                  const videoMaterials = materials.filter(m => m.type === 'video');
-                  logger.userAction('AI批量解析视频', 'batchVideoAnalysisButton', {
-                    materialsCount: materials.length,
-                    videoMaterialsCount: videoMaterials.length,
-                    videoMaterials: videoMaterials.map(m => ({
-                      id: m.id,
-                      name: m.name,
-                      url: m.url
-                    })),
-                    taskId
-                  });
-                  await onBatchVideoAnalysis();
-                }}
-                className="p-2 text-accent-foreground bg-accent border border-border rounded-md hover:bg-accent/80 hover:border-border transition-colors"
-                title={t.materialsPanel.batchAnalysisTooltip}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              </button>
-            )}
-            
-            {/* 新增：AI自动混剪按钮 */}
-            {onAutoMixAudio && (
-              <button
-                onClick={() => {
-                  logger.userAction('AI自动混剪', 'autoMixButton', {
-                    materialsCount: materials.length,
-                    audioMaterialsCount: materials.filter(m => m.type === 'audio').length,
-                    taskId
-                  });
-                  onAutoMixAudio();
-                }}
-                className="p-2 text-accent-foreground bg-accent border border-border rounded-md hover:bg-accent/80 hover:border-border transition-colors"
-                title={t.materialsPanel.aiAutoMixTooltip}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              </button>
-            )}
-            
-            {/* 上传按钮 */}
-            <button
-              onClick={handleUploadClick}
-              disabled={isUploading}
-              className="p-2 text-primary bg-primary/10 border border-primary/20 rounded-md hover:bg-primary/20 hover:border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title={isUploading ? `${t.materialsPanel.uploadingProgress} ${uploadProgress.toFixed(0)}%` : t.materialsPanel.uploadTooltip}
-            >
-              {isUploading ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+  const addMenuItems: MaterialMenuItem[] = [
+    {
+      key: 'upload',
+      label: t.workbench.materials.uploadFiles,
+      icon: isUploading ? 'spinner' : 'upload',
+      disabled: isUploading,
+      disabledReason: `${t.materialsPanel.uploadingProgress} ${uploadProgress.toFixed(0)}%`,
+      onSelect: handleUploadClick,
+    },
+    { key: 'search-videos', label: t.materialsPanel.searchVideos, icon: 'search', separatorBefore: true, onSelect: handleSearchClick },
+    { key: 'search-audios', label: t.materialsPanel.searchAudios, icon: 'music', onSelect: handleSearchAudiosClick },
+    { key: 'search-images', label: t.materialsPanel.searchImages, icon: 'image', onSelect: handleSearchImagesClick },
+    { key: 'ai-image', label: t.materialsPanel.aiImage, icon: 'wand', separatorBefore: true, onSelect: () => handleAiCreateOptionClick('image') },
+    { key: 'ai-video', label: t.materialsPanel.aiVideo, icon: 'wand', onSelect: () => handleAiCreateOptionClick('video') },
+    { key: 'ai-audio', label: t.materialsPanel.aiAudio, icon: 'wand', onSelect: () => handleAiCreateOptionClick('audio') },
+  ];
 
-      {/* 菜单栏 */}
-      <div className="flex items-center h-8 px-3 bg-muted/50 border-b border-border flex-shrink-0">
-        <div ref={menuRef} className="relative">
-          <button
-            onClick={handleMenuToggle}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded transition-colors"
-          >
-            {t.materialsPanel.menuMaterialManagement}
-            <svg
-              className={`w-3 h-3 transition-transform duration-200 ${isMenuOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {isMenuOpen && (
-            <div className="absolute left-0 top-full mt-1 min-w-[180px] bg-popover border border-border rounded-md shadow-md z-50 py-1">
-              <button
-                onClick={handleClearAllWithStoryboards}
-                disabled={isUploading}
-                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                  isUploading
-                    ? 'text-muted-foreground opacity-50 cursor-not-allowed'
-                    : 'text-destructive hover:bg-destructive/10'
-                }`}
-              >
-                {t.materialsPanel.clearAllMaterials}
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="w-px h-4 bg-border mx-2"></div>
-        <button
-          onClick={() => setIsVideoProcessingOpen(true)}
-          className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded transition-colors"
-          title={t.materialsPanel.videoProcessingTitle}
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
-          </svg>
-          <span>{t.materialsPanel.videoProcessing}</span>
-        </button>
-      </div>
+  const toolMenuItems: MaterialMenuItem[] = [
+    ...(onBatchVideoAnalysis ? [{
+      key: 'batch-analysis', label: t.materialsPanel.batchAnalysisTooltip, icon: 'sparkles' as const,
+      onSelect: () => { void handleBatchAnalysisClick(); },
+    }] : []),
+    ...(onAutoMixAudio ? [{
+      key: 'auto-mix', label: t.materialsPanel.aiAutoMix, icon: 'wand' as const, onSelect: handleAutoMixClick,
+    }] : []),
+    { key: 'video-processing', label: t.materialsPanel.videoProcessing, icon: 'scissors', onSelect: () => setIsVideoProcessingOpen(true) },
+    {
+      key: 'clear-all', label: t.materialsPanel.clearAllMaterials, icon: 'trash', danger: true,
+      separatorBefore: true, disabled: isUploading, onSelect: handleClearAllWithStoryboards,
+    },
+  ];
 
-      <div className="materials-panel-content">
-        {/* 素材类型筛选标签 — 窄屏可横向滚动 */}
-        <div
-          ref={materialTypeScrollRef}
-          className="flex space-x-1 mb-4 p-1 bg-muted rounded-md overflow-x-auto scrollbar-thin"
-          style={{ scrollbarWidth: 'thin' }}
-        >
-          {(['all', 'video', 'audio', 'image', 'storyboard_pack', 'character_pack', 'scene_pack', 'frame_pack'] as const).map((type) => (
-            <button
-              key={type}
-              data-material-type={type}
-              onClick={(e) => {
-                handleTypeFilter(type);
-                (e.currentTarget as HTMLButtonElement).scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
-              }}
-              className={`flex-shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                selectedMaterialType === type
-                  ? 'bg-card text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {type === 'all' ? t.materialsPanel.filterAll :
-               type === 'video' ? t.materialsPanel.filterVideo :
-               type === 'audio' ? t.materialsPanel.filterAudio :
-               type === 'image' ? t.materialsPanel.filterImage :
-               type === 'storyboard_pack' ? t.materialsPanel.storyboardPack :
-               type === 'character_pack' ? t.materialsPanel.filterCharacterPack :
-               type === 'scene_pack' ? t.materialsPanel.filterScenePack :
-               (t.materialsPanel.filterFramePack ?? t.materialsPanel.framePack ?? '帧包')}
-            </button>
+  const cardActions: MaterialCardActions = {
+    onAddToTimeline: onAddToTimeline ? handleAddToTimelineClick : undefined,
+    onPreview: handlePreviewFromLibrary,
+    onAnalyze: handleVideoAnalysis,
+    onImageToVideo: handleImageToVideo,
+    onCut: handleCutMaterial,
+    onRemoveWatermark: handleWatermarkRemoval,
+    onDownload: handleDownloadMaterial,
+    onDelete: handleSingleMaterialDelete,
+    onRetryDownload,
+    onDragStart: handleDragStart,
+    onDragEnd: handleDragEnd,
+  };
+
+  const renderPackCards = () => (
+    <>
+      {/* 分镜包卡片 — 在 all 或 storyboard_pack 筛选时显示 */}
+      {(selectedMaterialType === 'all' || selectedMaterialType === 'storyboard_pack') &&
+        searchedPacks.storyboard.map((pack) => (
+          <StoryboardPackCard
+            key={`sp_${pack.packId}`}
+            pack={pack}
+            onClick={(p) => setStoryboardPackModal({ isOpen: true, pack: p })}
+            onDoubleClick={(p) => setCurrentStoryboardPack(p)}
+            onDelete={handleDeleteStoryboardPack}
+          />
+        ))
+      }
+      {/* 人物建模包 */}
+      {(selectedMaterialType === 'all' || selectedMaterialType === 'character_pack') &&
+        searchedPacks.character.map((pack) => (
+          <GridPackCard
+            key={`cp_${pack.pack_id}`}
+            pack={pack}
+            onClick={(p) => setGridPackModal({ isOpen: true, pack: p })}
+            onDelete={(p) => setImagePackDeleteConfirm({ isOpen: true, packType: 'character', packId: p.pack_id })}
+          />
+        ))
+      }
+      {/* 场景建模包 */}
+      {(selectedMaterialType === 'all' || selectedMaterialType === 'scene_pack') &&
+        searchedPacks.scene.map((pack) => (
+          <GridPackCard
+            key={`scn_${pack.pack_id}`}
+            pack={pack}
+            onClick={(p) => setGridPackModal({ isOpen: true, pack: p })}
+            onDelete={(p) => setImagePackDeleteConfirm({ isOpen: true, packType: 'scene', packId: p.pack_id })}
+          />
+        ))
+      }
+      {/* 视频帧提取包 */}
+      {(selectedMaterialType === 'all' || selectedMaterialType === 'frame_pack') &&
+        searchedPacks.frame.map((pack) => (
+          <GridPackCard
+            key={`fp_${pack.pack_id}`}
+            pack={pack}
+            onClick={(p) => setCurrentFramePack(p)}
+            onDelete={(p) => setFramePackDeleteConfirm({ isOpen: true, packId: p.pack_id })}
+          />
+        ))
+      }
+    </>
+  );
+
+  const renderEmptyState = () => (hasSearchQuery ? (
+    <div className="ws-empty" role="status">
+      <MaterialIcon name="search" size={24} />
+      <p>{t.workbench.materials.noMatch.replace('{query}', searchQuery.trim())}</p>
+      <button type="button" className="ws-btn ws-btn--sm" onClick={() => setSearchQuery('')}>
+        {t.workbench.materials.clearSearch}
+      </button>
+    </div>
+  ) : (
+    <div className="ws-empty">
+      <MaterialIcon name="video" size={24} />
+      <h3 className="text-sm font-semibold text-foreground">{emptyHint.title}</h3>
+      <p>{emptyHint.desc}</p>
+      <p>{t.materialsPanel.empty.dragHint}</p>
+    </div>
+  ));
+
+  const renderLibrary = () => (
+    <>
+      {/* 分镜包 / 建模包 / 帧包 + 视频、图片：2 列大缩略图 */}
+      {(visiblePacks.length > 0 || visualMaterials.length > 0) && (
+        <div className="ws-materials-grid">
+          {renderPackCards()}
+          {visualMaterials.map((material) => (
+            <MaterialCard
+              key={material.id}
+              material={material}
+              actions={cardActions}
+              analysisStatus={resolveAnalysisStatus(material, getVideoAnalysisStatus)}
+              isWaitingAnalysis={material.type === 'video' && getVideoAnalysisStatus?.(material.url || '') === 'waiting'}
+              isDragging={draggedMaterial?.id === material.id}
+              isDownloading={downloadingMaterials.has(material.id)}
+              isConvertingToVideo={imageToVideoStatus[material.id] === 'converting'}
+              showTypeIcon={materialFilterState.primary === 'all'}
+            />
           ))}
         </div>
+      )}
+      {/* 音频 / 字幕：紧凑列表 */}
+      {rowMaterials.length > 0 && (
+        <div className="ws-materials-list">
+          {rowMaterials.map((material) => (
+            <AudioMaterialRow
+              key={material.id}
+              material={material}
+              actions={cardActions}
+              isPlaying={playingAudio === material.id}
+              onTogglePlay={handleAudioPlayPause}
+              onDownloadSubtitle={handleSubtitleDownload}
+              isDragging={draggedMaterial?.id === material.id}
+              isDownloading={downloadingMaterials.has(material.id)}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
 
-        {/* AI 创建分镜包入口 — 在分镜包筛选下显示 primary 按钮 */}
+  return (
+    <div className={`h-full flex flex-col ws-materials-panel ${className}`}>
+      {/* 标题由 RightPanel 的「素材 | 属性」页签承担；这里只留搜索、分类和操作 */}
+      <MaterialFilterBar
+        primary={materialFilterState.primary}
+        pack={materialFilterState.pack}
+        query={searchQuery}
+        onPrimaryChange={handlePrimaryFilterChange}
+        onPackChange={handlePackFilterChange}
+        onQueryChange={setSearchQuery}
+        actions={(
+          <>
+            <MaterialMoreMenu
+              label={t.workbench.materials.addMaterial}
+              items={addMenuItems}
+              triggerClassName="ws-btn ws-btn--sm ws-materials-add"
+              trigger={(
+                <>
+                  <MaterialIcon name={isUploading ? 'spinner' : 'plus'} size={14} />
+                  {t.workbench.materials.add}
+                  <MaterialIcon name="chevronDown" size={14} />
+                </>
+              )}
+            />
+            <MaterialMoreMenu
+              label={t.workbench.materials.tools}
+              items={toolMenuItems}
+              trigger={<MaterialIcon name="tools" />}
+            />
+          </>
+        )}
+      />
+
+      <div className="ws-materials-content">
+        {/* AI 创建分镜包入口 — 素材包 › 分镜包视图顶部 */}
         {selectedMaterialType === 'storyboard_pack' && !currentStoryboardPack && (
-          <div className="mb-3">
-            <button
-              onClick={() => setCreateStoryboardModalOpen(true)}
-              className="w-full px-3 py-2 text-xs font-medium rounded-md bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 transition-colors flex items-center justify-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span>{locale === 'zh-CN' ? 'AI 创建分镜包' : 'AI Storyboard Pack'}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setCreateStoryboardModalOpen(true)}
+            className="ws-btn ws-btn--outline-primary ws-materials-create-pack"
+          >
+            <MaterialIcon name="sparkles" />
+            <span>{locale === 'zh-CN' ? 'AI 创建分镜包' : 'AI Storyboard Pack'}</span>
+          </button>
         )}
 
         {/* 分镜包内部视图 — 当 currentStoryboardPack 非空时显示 */}
@@ -2023,633 +1978,27 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
             </div>
           )}
 
-          {isFilteredEmpty ? (
-            <div className="flex flex-col items-center justify-center py-12 px-4">
-              <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">{emptyHint.title}</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-sm">
-                {emptyHint.desc}
-              </p>
-              <p className="text-sm text-muted-foreground text-center max-w-sm mt-2">
-                {t.materialsPanel.empty.dragHint}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-3">
-              {/* 分镜包卡片 — 在 all 或 storyboard_pack 筛选时显示 */}
-              {(selectedMaterialType === 'all' || selectedMaterialType === 'storyboard_pack') &&
-                storyboardPacks.map((pack) => (
-                  <StoryboardPackCard
-                    key={`sp_${pack.packId}`}
-                    pack={pack}
-                    onClick={(p) => setStoryboardPackModal({ isOpen: true, pack: p })}
-                    onDoubleClick={(p) => setCurrentStoryboardPack(p)}
-                    onDelete={handleDeleteStoryboardPack}
-                  />
-                ))
-              }
-              {/* 人物建模包 */}
-              {(selectedMaterialType === 'all' || selectedMaterialType === 'character_pack') &&
-                characterPacks.map((pack) => (
-                  <GridPackCard
-                    key={`cp_${pack.pack_id}`}
-                    pack={pack}
-                    onClick={(p) => setGridPackModal({ isOpen: true, pack: p })}
-                    onDelete={(p) => setImagePackDeleteConfirm({ isOpen: true, packType: 'character', packId: p.pack_id })}
-                  />
-                ))
-              }
-              {/* 场景建模包 */}
-              {(selectedMaterialType === 'all' || selectedMaterialType === 'scene_pack') &&
-                scenePacks.map((pack) => (
-                  <GridPackCard
-                    key={`scn_${pack.pack_id}`}
-                    pack={pack}
-                    onClick={(p) => setGridPackModal({ isOpen: true, pack: p })}
-                    onDelete={(p) => setImagePackDeleteConfirm({ isOpen: true, packType: 'scene', packId: p.pack_id })}
-                  />
-                ))
-              }
-              {/* 视频帧提取包 */}
-              {(selectedMaterialType === 'all' || selectedMaterialType === 'frame_pack') &&
-                framePacks.map((pack) => (
-                  <GridPackCard
-                    key={`fp_${pack.pack_id}`}
-                    pack={pack}
-                    onClick={(p) => setCurrentFramePack(p)}
-                    onDelete={(p) => setFramePackDeleteConfirm({ isOpen: true, packId: p.pack_id })}
-                  />
-                ))
-              }
-              {/* 普通素材卡片 — storyboard_pack 类型由上方的 StoryboardPackCard 渲染 */}
-              {selectedMaterialType !== 'storyboard_pack' && materials
-                .filter(material => material.type !== 'storyboard_pack' && (selectedMaterialType === 'all' || material.type === selectedMaterialType))
-                .map((material) => (
-                <div
-                  key={material.id}
-                  draggable={material.downloadStatus !== 'downloading' && material.downloadStatus !== 'generating' && material.uploadStatus !== 'uploading' && material.uploadStatus !== 'waiting' && material.cacheStatus !== 'pending' && material.cacheStatus !== 'downloading'}
-                  onDragStart={(e) => handleDragStart(e, material)}
-                  onDragEnd={(e) => handleDragEnd(e, material)}
-                  className={`group bg-card border border-border rounded-md overflow-hidden transition-all ${
-                    material.downloadStatus === 'downloading' || material.downloadStatus === 'generating' || material.uploadStatus === 'uploading' || material.uploadStatus === 'waiting' || material.cacheStatus === 'pending' || material.cacheStatus === 'downloading'
-                      ? 'opacity-60 cursor-not-allowed'
-                      : 'cursor-grab active:cursor-grabbing'
-                  } ${
-                    draggedMaterial?.id === material.id ? 'opacity-50 scale-95' : ''
-                  } ${material.type === 'audio' ? 'cursor-pointer' : ''}`}
-                  onClick={() => handleMaterialClick(material)}
-                >
-                  {/* 缩略图区域 */}
-                  <div className="aspect-video bg-muted relative">
-                    <MaterialThumbnail material={material} />
-
-                    {/* 音频播放控制覆盖层 */}
-                    {material.type === 'audio' && (
-                      <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                        <div className={`w-10 h-10 rounded-md bg-card bg-opacity-90 flex items-center justify-center transition-all duration-200 ${
-                          playingAudio === material.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}>
-                          {playingAudio === material.id ? (
-                            <svg className="w-5 h-5 text-foreground" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5 text-foreground ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z"/>
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 字幕下载控制覆盖层 */}
-                    {material.type === 'subtitle' && (
-                      <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                        <div className="w-10 h-10 rounded-md bg-card bg-opacity-90 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100">
-                          <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* YouTube视频下载状态覆盖层 */}
-                    {material.downloadStatus === 'downloading' && (
-                      <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center">
-                        <div className="w-8 h-8 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <span className="text-primary-foreground text-xs font-medium">{t.materialsPanel.downloadingVideo}</span>
-                        {material.downloadProgress !== undefined && (
-                          <div className="w-16 bg-accent rounded-full h-1 mt-1">
-                            <div
-                              className="bg-primary h-1 rounded-full transition-all duration-300"
-                              style={{ width: `${material.downloadProgress}%` }}
-                            ></div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 素材等待上传状态覆盖层 */}
-                    {material.uploadStatus === 'waiting' && (
-                      <div className="absolute inset-0 bg-warning bg-opacity-50 flex flex-col items-center justify-center">
-                        <svg className="w-8 h-8 text-primary-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="text-primary-foreground text-xs font-medium text-center px-1">等待上传...</span>
-                      </div>
-                    )}
-
-                    {/* 视频AI解析等待状态覆盖层 */}
-                    {material.type === 'video' && getVideoAnalysisStatus && getVideoAnalysisStatus(material.url || '') === 'waiting' && (
-                      <div className="absolute inset-0 bg-warning bg-opacity-50 flex flex-col items-center justify-center">
-                        <svg className="w-8 h-8 text-primary-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="text-primary-foreground text-xs font-medium text-center px-1">等待AI解析...</span>
-                      </div>
-                    )}
-
-                    {/* 素材上传状态覆盖层 */}
-                    {material.uploadStatus === 'uploading' && (
-                      <div className="absolute inset-0 bg-primary bg-opacity-50 flex flex-col items-center justify-center">
-                        <div className="w-8 h-8 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <span className="text-primary-foreground text-xs font-medium">{t.materialsPanel.uploadingMaterial}</span>
-                        {material.uploadProgress !== undefined && (
-                          <div className="w-16 bg-accent rounded-full h-1 mt-1">
-                            <div
-                              className="bg-primary-foreground h-1 rounded-full transition-all duration-300"
-                              style={{ width: `${material.uploadProgress}%` }}
-                            ></div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* AI生成状态覆盖层（用于 AI视频/数字人等 downloadStatus='generating' 的素材） */}
-                    {material.downloadStatus === 'generating' && (
-                      <div className="absolute inset-0 bg-primary bg-opacity-50 flex flex-col items-center justify-center">
-                        <div className="w-8 h-8 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <span className="text-primary-foreground text-xs font-medium text-center px-1">{t.materialsPanel.generating}</span>
-                        {material.downloadProgress !== undefined && (
-                          <div className="w-16 bg-accent rounded-full h-1 mt-1">
-                            <div
-                              className="bg-primary-foreground h-1 rounded-full transition-all duration-300"
-                              style={{ width: `${material.downloadProgress}%` }}
-                            ></div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* FLUX生成状态覆盖层 */}
-                    {material.metadata?.source === 'flux-generating' && (
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/70 bg-opacity-90 flex flex-col items-center justify-center">
-                        <div className="w-8 h-8 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <span className="text-primary-foreground text-xs font-medium text-center px-1">{t.materialsPanel.fluxGenerating}</span>
-                        <div className="w-16 bg-card bg-opacity-30 rounded-full h-1 mt-1">
-                          <div className="bg-card h-1 rounded-full animate-pulse"></div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 下载错误状态覆盖层 */}
-                    {material.downloadStatus === 'error' && (
-                      <div className="absolute inset-0 bg-destructive bg-opacity-50 flex flex-col items-center justify-center">
-                        <svg className="w-6 h-6 text-destructive-foreground mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="text-destructive-foreground text-xs font-medium text-center px-1">{t.materialsPanel.downloadFailed}</span>
-                        {material.downloadError && (
-                          <span className="text-destructive-foreground text-xs opacity-80 text-center px-1 mt-1" title={material.downloadError}>
-                            {material.downloadError.length > 20 ? `${material.downloadError.substring(0, 20)}...` : material.downloadError}
-                          </span>
-                        )}
-                        {onRetryDownload && (
-                          <button
-                            onClick={() => onRetryDownload(material)}
-                            className="mt-2 px-3 py-1 text-xs font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors"
-                            title={t.materialsPanel.retryDownload}
-                          >
-                            {t.materialsPanel.retryDownload}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* 类型标识 */}
-                    <div className="absolute top-1 left-1">
-                      <span className={`px-1 py-0.5 text-xs font-medium rounded ${
-                        material.type === 'video' ? 'bg-primary/10 text-primary' :
-                        material.type === 'audio' ? 'bg-accent text-accent-foreground' :
-                        material.type === 'subtitle' ? 'bg-muted text-muted-foreground' :
-                        'bg-accent text-accent-foreground'
-                      }`}>
-                        {material.type === 'video' ? t.materialsPanel.typeVideo :
-                         material.type === 'audio' ? t.materialsPanel.typeAudio : 
-                         material.type === 'subtitle' ? t.materialsPanel.typeSubtitle : t.materialsPanel.typeImage}
-                      </span>
-                    </div>
-                    
-                    {/* 右上角按钮组 - 添加到时间轴和删除按钮 */}
-                    <div className="absolute top-1 right-1 flex items-center space-x-1">
-                      {/* 添加到时间轴按钮 */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onAddToTimeline) {
-                            logger.userAction('添加素材到时间轴', 'addToTimelineButton', {
-                              materialId: material.id,
-                              materialName: material.name,
-                              materialType: material.type
-                            });
-                            onAddToTimeline(material);
-                          }
-                        }}
-                        className="w-6 h-6 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
-                        title={t.materialsPanel.addToTimelineTooltip}
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                      </button>
-                      
-                      {/* 删除按钮 */}
-                      <button
-                        onClick={(e) => handleSingleMaterialDelete(material, e)}
-                        className="w-6 h-6 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
-                        title={t.materialsPanel.deleteMaterialTooltip.replace('{name}', material.name)}
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                    
-                    {/* 远程素材预缓存徽章（仅 video 远程资源；同源素材不显示）*/}
-                    {material.type === 'video' && !canPreviewDirectLocalMaterial(material) && (
-                      <div className="absolute bottom-1 left-1 z-10">
-                        <MaterialCacheBadge
-                          material={material}
-                          onRetry={onRetryDownload ? () => onRetryDownload(material) : undefined}
-                        />
-                      </div>
-                    )}
-
-                    {/* 右下角区域 - 时长和功能按钮 */}
-                    <div className="absolute bottom-1 right-1 flex items-center space-x-1">
-                      {/* AI素材解析按钮 - 对视频和图片素材显示 */}
-                      {(material.type === 'video' || material.type === 'image') && (() => {
-                        const analysisStatus = material.analysisResult
-                          ? (material.analysisResult.status === 'pending' ? 'analyzing'
-                            : material.analysisResult.status === 'completed' ? 'completed'
-                            : material.analysisResult.status === 'error' ? 'idle'
-                            : 'idle')
-                          : (getVideoAnalysisStatus ? getVideoAnalysisStatus(material.url || '') : 'idle');
-                        const isWaiting = analysisStatus === 'waiting';
-                        const isAnalyzing = analysisStatus === 'analyzing';
-                        const isCompleted = analysisStatus === 'completed';
-                        
-                        // 获取队列位置（如果处于等待状态）
-                        const queuePosition = isWaiting ? (material as any)._queuePosition : undefined;
-                        
-                        return (
-                          <button
-                            onClick={(e) => handleVideoAnalysis(material, e)}
-                            disabled={isAnalyzing || isWaiting}
-                            className={`w-5 h-5 rounded flex items-center justify-center transition-all hover:scale-110 ${
-                              isWaiting
-                                ? 'bg-muted cursor-not-allowed'
-                                : isAnalyzing
-                                  ? 'bg-muted cursor-not-allowed'
-                                  : isCompleted
-                                    ? 'bg-primary hover:bg-primary/90'
-                                    : 'bg-accent hover:bg-accent/80'
-                            } text-primary-foreground`}
-                            title={
-                              isWaiting
-                                ? `等待解析...`
-                                : isAnalyzing 
-                                  ? t.materialsPanel.aiAnalyzing 
-                                  : isCompleted 
-                                    ? t.materialsPanel.viewAnalysisResult 
-                                    : t.materialsPanel.aiVideoAnalysis
-                            }
-                          >
-                            {isWaiting ? (
-                              // 等待图标
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                            ) : isAnalyzing ? (
-                              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                            ) : isCompleted ? (
-                              // 放大镜图标
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                              </svg>
-                            ) : (
-                              // 齿轮图标
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              </svg>
-                            )}
-                          </button>
-                        );
-                      })()}
-
-                      {/* 图片转视频按钮 - 仅对图片素材显示 */}
-                      {material.type === 'image' && (
-                        <button
-                          onClick={(e) => handleImageToVideo(material, e)}
-                          disabled={imageToVideoStatus[material.id] === 'converting'}
-                          className={`w-5 h-5 rounded flex items-center justify-center transition-all hover:scale-110 ${
-                            imageToVideoStatus[material.id] === 'converting'
-                              ? 'bg-primary cursor-not-allowed'
-                              : 'bg-accent hover:bg-accent/80'
-                          } text-primary-foreground`}
-                          title={
-                            imageToVideoStatus[material.id] === 'converting'
-                              ? '正在转换为视频...'
-                              : '转视频'
-                          }
-                        >
-                          {imageToVideoStatus[material.id] === 'converting' ? (
-                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                          ) : (
-                            // 视频转换图标
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                          )}
-                        </button>
-                      )}
-                      
-                      {/* 时长显示 */}
-                      {material.duration && (
-                        <span className="px-1 py-0.5 bg-foreground/75 text-background text-xs rounded">
-                          {material.duration.toFixed(2)}s
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 拖拽指示器 - 移到左下角 */}
-                    <div className="absolute bottom-1 left-1">
-                      <div className="w-4 h-4 bg-card bg-opacity-80 rounded flex items-center justify-center">
-                        <svg className="w-3 h-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* 操作按钮横条 */}
-                  <div className="border-b border-border bg-muted px-1.5 py-0.5 flex items-center justify-center space-x-1">
-                    <button
-                      onClick={(e) => handlePreviewMaterial(material, e)}
-                      className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors group"
-                      title={t.materialsPanel.previewMaterial}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
-                    
-                    {/* 剪切素材按钮 - 仅对视频素材显示 */}
-                    {material.type === 'video' && (
-                      <>
-                        <div className="w-px h-3 bg-border"></div>
-                        <button
-                          onClick={(e) => handleCutMaterial(material, e)}
-                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-muted-foreground hover:text-accent-foreground hover:bg-accent rounded transition-colors group"
-                          title="剪切素材"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
-                          </svg>
-                        </button>
-                        
-                        {/* 去除水印按钮 */}
-                        <div className="w-px h-3 bg-border"></div>
-                        <button
-                          onClick={(e) => handleWatermarkRemoval(material, e)}
-                          className="flex-1 flex items-center justify-center px-1.5 py-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors group"
-                          title="去除水印"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                          </svg>
-                        </button>
-                      </>
-                    )}
-                    
-                    <div className="w-px h-3 bg-border"></div>
-                    
-                    <button
-                      onClick={(e) => handleDownloadMaterial(material, e)}
-                      disabled={downloadingMaterials.has(material.id)}
-                      className={`flex-1 flex items-center justify-center px-1.5 py-0.5 rounded transition-colors group ${
-                        downloadingMaterials.has(material.id)
-                          ? 'text-primary bg-primary/10 cursor-not-allowed'
-                          : 'text-muted-foreground hover:text-accent-foreground hover:bg-accent'
-                      }`}
-                      title={downloadingMaterials.has(material.id) ? '下载中...' : t.materialsPanel.downloadMaterial}
-                    >
-                      {downloadingMaterials.has(material.id) ? (
-                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      ) : (
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* 素材信息 */}
-                  <div className="p-1.5">
-                    <h4 className="text-xs font-medium text-foreground truncate mb-1" title={material.name}>{material.name}</h4>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      {material.width && material.height && (
-                        <span className="text-xs">{material.width}×{material.height}</span>
-                      )}
-                      <span className="text-primary text-xs">{material.format?.toUpperCase()}</span>
-                    </div>
-                  </div>
-
-                </div>
-              ))}
-            </div>
-          )}
+          {isFilteredEmpty ? renderEmptyState() : renderLibrary()}
         </div>
         )}
 
         {/* 底部操作栏 */}
-        <div className="border-t pt-3 flex-shrink-0">
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center space-x-3">
-              {/* Material Library Dropdown */}
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={handleMaterialLibraryClick}
-                  className="flex items-center space-x-1 text-muted-foreground hover:text-foreground bg-muted hover:bg-accent px-2 py-1 rounded-md transition-colors"
-                  title={t.materialsPanel.materialLibraryTooltip}
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <span>{t.materialsPanel.materialLibrary}</span>
-                  <svg 
-                    className={`w-3 h-3 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {/* Dropdown Menu */}
-                {isDropdownOpen && (
-                  <div 
-                    className="absolute bottom-full left-0 mb-1 w-48 bg-card border border-border rounded-md z-50 animate-in slide-in-from-bottom-2 duration-200"
-                    onMouseLeave={handleDropdownMouseLeave}
-                  >
-                    <div className="py-1">
-                      <button
-                        onClick={() => handleDropdownOptionClick('video')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-primary hover:text-primary hover:bg-primary/10 transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        <span>{t.materialsPanel.searchVideos}</span>
-                      </button>
-                      
-                      <button
-                        onClick={() => handleDropdownOptionClick('audio')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-foreground hover:text-foreground hover:bg-accent transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                        </svg>
-                        <span>{t.materialsPanel.searchAudios}</span>
-                      </button>
-                      
-                      <button
-                        onClick={() => handleDropdownOptionClick('image')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-foreground hover:text-foreground hover:bg-accent transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span>{t.materialsPanel.searchImages}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={onAIMixedEditing}
-                className="flex items-center space-x-1 text-muted-foreground hover:text-foreground bg-muted hover:bg-accent px-2 py-1 rounded-md transition-colors"
-                title={t.materialsPanel.aiMixingTooltip}
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <span>{t.materialsPanel.aiMixing}</span>
-              </button>
-
-              {/* AI Create Dropdown */}
-              <div className="relative" ref={aiDropdownRef}>
-                <button
-                  onClick={handleAiDropdownToggle}
-                  className="flex items-center space-x-1 text-accent-foreground hover:text-foreground bg-accent hover:bg-accent/80 px-2 py-1 rounded transition-colors"
-                  title={locale === 'zh-CN' ? 'AI 创建' : 'AI Create'}
-                  aria-haspopup="menu"
-                  aria-expanded={isAiDropdownOpen}
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  <span>{locale === 'zh-CN' ? 'AI 创建' : 'AI Create'}</span>
-                  <svg
-                    className={`w-3 h-3 transition-transform duration-200 ${isAiDropdownOpen ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {isAiDropdownOpen && (
-                  <div
-                    className="absolute bottom-full left-0 mb-1 w-48 bg-card border border-border rounded-md z-50 animate-in slide-in-from-bottom-2 duration-200"
-                    onMouseLeave={handleAiDropdownMouseLeave}
-                    role="menu"
-                  >
-                    <div className="py-1">
-                      <button
-                        onClick={() => handleAiDropdownOptionClick('image')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        title={t.materialsPanel.aiImageTitle}
-                        role="menuitem"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span>{t.materialsPanel.aiImage}</span>
-                      </button>
-                      <button
-                        onClick={() => handleAiDropdownOptionClick('video')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        title={t.materialsPanel.aiVideoTitle}
-                        role="menuitem"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                        </svg>
-                        <span>{t.materialsPanel.aiVideo}</span>
-                      </button>
-                      <button
-                        onClick={() => handleAiDropdownOptionClick('audio')}
-                        className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        title={t.materialsPanel.aiAudioTitle}
-                        role="menuitem"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                        </svg>
-                        <span>{t.materialsPanel.aiAudio}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-            </div>
-            <div className="text-muted-foreground">
-              {materials.length}{t.materialsPanel.materialsCount}
-            </div>
-          </div>
+        <div className="ws-materials-footer">
+          <button
+            type="button"
+            onClick={onAIMixedEditing}
+            className="ws-btn ws-btn--sm"
+            title={t.materialsPanel.aiMixingTooltip}
+          >
+            <MaterialIcon name="film" size={14} />
+            <span>{t.materialsPanel.aiMixing}</span>
+          </button>
+          <span className="ws-tabular">
+            {materials.length}{t.materialsPanel.materialsCount}
+          </span>
         </div>
       </div>
-      
+
       {/* 确认删除对话框 */}
       <ConfirmationDialog
         isOpen={confirmationDialog.isOpen}

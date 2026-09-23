@@ -14,6 +14,8 @@
 // ---------------------------------------------------------------------------
 
 export { default as TimelinePanel } from './TimelinePanel';
+export type { TimelinePanelHandle } from './TimelinePanel';
+export { default as DragTimeBadge } from './DragTimeBadge';
 export { default as TimelineToolbar } from './TimelineToolbar';
 export { default as TimelineRuler } from './TimelineRuler';
 export { default as TrackContainer } from './TrackContainer';

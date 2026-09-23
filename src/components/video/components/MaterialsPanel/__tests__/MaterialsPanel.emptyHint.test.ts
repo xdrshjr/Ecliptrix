@@ -11,15 +11,21 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const PANEL = resolve(__dirname, '..', 'MaterialsPanel.tsx');
+const FILTER = resolve(__dirname, '..', 'materialFilter.ts');
 const I18N = resolve(__dirname, '..', '..', '..', '..', '..', 'lib', 'i18n.ts');
 
 const panelSrc = readFileSync(PANEL, 'utf-8');
+const filterSrc = readFileSync(FILTER, 'utf-8');
 const i18nSrc = readFileSync(I18N, 'utf-8');
 
 describe('MaterialsPanel — filtered empty state', () => {
   it('derives visibleMaterials filtered by selectedMaterialType', () => {
+    // The type match now lives in the pure materialFilter helper, fed with
+    // the category derived from selectedMaterialType (workbench §3.7.1).
     expect(panelSrc).toMatch(/visibleMaterials\s*=\s*useMemo/);
-    expect(panelSrc).toMatch(/m\.type\s*===\s*selectedMaterialType/);
+    expect(panelSrc).toMatch(/toPrimaryMaterialFilter\(selectedMaterialType\)/);
+    expect(panelSrc).toMatch(/filterMaterials\(materials,\s*materialFilterState\)/);
+    expect(filterSrc).toMatch(/material\.type\s*===\s*f\.primary/);
   });
 
   it('derives visiblePacks via switch on selectedMaterialType', () => {

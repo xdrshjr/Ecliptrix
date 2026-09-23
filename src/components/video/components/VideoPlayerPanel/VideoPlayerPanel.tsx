@@ -4,9 +4,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
 import { TimelineState, MaterialItem, ImagePosition } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
-import { useVideoExport } from '../../hooks/useVideoExport';
 import type { RemoteMaterialPatch } from '../../hooks/useRemoteMaterialPrefetch';
-import VideoExportProgressModal from './VideoExportProgressModal';
 import ImageOverlay from './ImageOverlay';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -20,6 +18,8 @@ import { buildAspectRatios, aspectRatioToNumber, computeContainBox, type AspectR
 import { getImageOverlayPlaybackTime, selectActiveImageOverlays } from './imageOverlays';
 import { useCompositionTransport, computeProgressPercent, type MediaReadiness } from './useCompositionTransport';
 import { usePlayStateMirror } from './usePlayStateMirror';
+import { resolveConsoleTime } from './consoleTime';
+import CanvasMenu from './CanvasMenu';
 import { outputSizeForAspect } from '../../lib/subtitleLayout';
 import { useTimelineStore } from '../../timeline/store';
 import { fitImagePositionAction } from '../../timeline/store/actions/updateItemFields';
@@ -41,7 +41,7 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   currentTimelineTime?: number;
   // 新增：更新序列索引
   onSequenceIndexUpdate?: (sequenceIndex: number) => void;
-  // 新增：导出功能相关props
+  // 时间轴与素材：驱动合成预览、图片叠加与空状态（导出已上移到顶栏）
   timelineState?: TimelineState;
   materials?: MaterialItem[];
   /**
@@ -56,6 +56,14 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   // 新增：项目元信息，供 Cover 模态使用（无 projectId 时按钮隐藏）
   projectId?: string;
   projectName?: string;
+  /**
+   * Controlled aspect ratio id (spec §3.2 「状态上移」): the parent owns it so
+   * the top-bar export and this preview read the same value (R2).
+   */
+  aspectRatioId: string;
+  onAspectRatioChange: (id: string) => void;
+  /** Empty-state 「打开素材」: switch the right panel to the materials tab. */
+  onOpenMaterials?: () => void;
 }
 
 // 新增：VideoPlayerPanel ref接口，用于外部调用内部方法
@@ -101,6 +109,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   onImagePositionConfirm,
   projectId,
   projectName,
+  aspectRatioId,
+  onAspectRatioChange,
+  onOpenMaterials,
 }, ref) => {
   const { t } = useLocale();
   const { showWarning } = useNotification();
@@ -135,12 +146,9 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     setCompositionCurrentTime(time);
   }, []);
 
-  // 新增：视频比例状态
-  const [selectedAspectRatioId, setSelectedAspectRatioId] = useState<string>(ASPECT_RATIOS[0].id);
-
-  // Cover modal open state — opened from the CoverButton in the aspect-ratio row.
+  // Cover modal open state — opened from the CoverButton in the canvas menu.
   const [isCoverModalOpen, setIsCoverModalOpen] = useState<boolean>(false);
-  const selectedAspectRatio = ASPECT_RATIOS.find(ar => ar.id === selectedAspectRatioId) || ASPECT_RATIOS[0];
+  const selectedAspectRatio = ASPECT_RATIOS.find(ar => ar.id === aspectRatioId) || ASPECT_RATIOS[0];
 
   // 新增：图片叠加相关状态
   const [selectedImageOverlay, setSelectedImageOverlay] = useState<string | null>(null);
@@ -239,7 +247,6 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   const {
     handlePlayPauseClick,
     handleTimeSeekClick,
-    getCurrentTime,
     getTotalDuration,
     getCurrentlyPlaying,
     allTimelineMediaReady,
@@ -372,164 +379,121 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     }
   }, [volume, handleVolumeChange]);
 
-  // 使用导出hook（仅在有timelineState时启用）
-  const videoExport = useVideoExport({
-    timelineState: timelineState || {
-      currentTime: 0,
-      totalDuration: 0,
-      zoomLevel: 1,
-      selectedItems: [],
-      tracks: [],
-      playbackRate: 1,
-      isPlaying: false,
-      snapToGrid: false,
-      gridSize: 1,
-      scrollLeft: 0
-    },
-    materials: materials || [],
-    taskId,
-    // The export session is per project: another project of this task is not blocked (RV3-07).
-    projectId,
-    aspectRatio: selectedAspectRatio.id // Pass selected aspect ratio to export hook
-  });
-
-  // Whether any track in the timeline has at least one item — gates the export button.
-  const hasAnyExportableItem = useMemo(
+  // 时间轴是否有任何条目：决定画布区显示空状态引导还是预览。
+  const hasTimelineContent = useMemo(
     () => (timelineState?.tracks ?? []).some(track => (track.items?.length ?? 0) > 0),
     [timelineState],
   );
 
-  // 处理视频比例切换
+  // 处理视频比例切换（受控：状态归父组件，导出与预览读同一值）
   const handleAspectRatioChange = useCallback((aspectRatio: AspectRatio) => {
-    if (selectedAspectRatio.id === aspectRatio.id) return;
-    setSelectedAspectRatioId(aspectRatio.id);
+    if (aspectRatioId === aspectRatio.id) return;
+    onAspectRatioChange(aspectRatio.id);
     logger.info('视频比例切换完成', {
       newRatio: aspectRatio.id,
       newRatioValue: aspectRatio.ratio,
     });
-  }, [selectedAspectRatioId, logger]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aspectRatioId, onAspectRatioChange, logger]);
 
-  // 处理视频导出（带比例信息记录）
-  const handleVideoExport = useCallback(async () => {
-    logger.info('用户点击导出视频按钮', {
-      selectedAspectRatio: selectedAspectRatio.id,
-      playbackMode,
-      tracksCount: timelineState?.tracks.length || 0,
-      materialsCount: materials?.length || 0,
-    });
-    await videoExport.handleExport();
-  }, [selectedAspectRatioId, playbackMode, timelineState, materials, videoExport.handleExport, logger]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 全屏只作用于预览容器；状态跟随 fullscreenchange（Esc 退出也能同步）。
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setIsFullscreen(
+      document.fullscreenElement !== null && document.fullscreenElement === videoContainerRef.current,
+    );
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+  const handleToggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await videoContainerRef.current?.requestFullscreen();
+    } catch (error) {
+      logger.warn('切换全屏失败', { error: error instanceof Error ? error.message : String(error) });
+    }
+  }, [logger]);
+  const fullscreenLabel = isFullscreen ? t.workbench.preview.exitFullscreen : t.workbench.preview.fullscreen;
 
   // Player Console 渲染派生值：进度条已播放填充、音量填充、可拖动门。
   // 空/未知时长时 isSeekable=false → 进度条 disabled、播放键 disabled、--progress 兜底 0%。
+  // 时间文字与进度条只读 resolveConsoleTime（与喂给合成器的时间同源，RV-06）；
+  // useCompositionTransport.getCurrentTime / 命令式句柄语义不变。
   const totalForBar = getTotalDuration();
   const isSeekable = totalForBar > 0;
-  const progressPercent = computeProgressPercent(getCurrentTime(), totalForBar);
+  const consoleTime = resolveConsoleTime({
+    playbackMode,
+    currentTimelineTime,
+    compositionCurrentTime,
+    currentTime,
+    totalDuration: totalForBar,
+  });
+  const progressPercent = computeProgressPercent(consoleTime, totalForBar);
   const volumePercent = Math.round(volume * 100);
+
+  // 空状态（时间轴无内容）：引导生成初稿或拖入素材，「打开素材」切到右栏素材页。
+  const renderEmptyState = () => (
+    <div className="ws-empty ws-preview-empty">
+      <p>{t.workbench.preview.emptyHint}</p>
+      {onOpenMaterials && (
+        <button type="button" className="ws-btn ws-btn--outline-primary" onClick={onOpenMaterials}>
+          {t.workbench.preview.openMaterials}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div
-      className={`video-editing-composition-panel ${className}`}
+      className={`ws-preview ${className}`}
       tabIndex={0}
       aria-label={t.videoPlayerPanel.accessibility.videoCompositionPanel}
     >
-      <div className="composition-panel-header">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-primary/10 rounded-md flex items-center justify-center">
-              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m6-1a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="text-sm font-semibold text-foreground">
-              {playbackMode === 'composition' ? t.videoPlayerPanel.playback.videoCompositionPlayback : t.videoPlayerPanel.playback.videoPreviewPlayback}
-            </h3>
-            {playbackMode === 'composition' && (
-              <div className="flex items-center space-x-2">
-                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
-                  {compositionPlayback?.videoSequences.length || 0} {t.videoPlayerPanel.playback.videosCount}
-                </span>
-                {compositionPlayback?.audioSequences && compositionPlayback.audioSequences.length > 0 && (
-                  <span className="text-xs bg-accent text-accent-foreground px-2 py-1 rounded">
-                    {compositionPlayback.audioSequences.length} {t.videoPlayerPanel.playback.audioCount}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 导出视频按钮 */}
-          {timelineState && timelineState.tracks.length > 0 && (
-            <button
-              onClick={handleVideoExport}
-              disabled={videoExport.isExporting || !hasAnyExportableItem}
-              title={
-                !hasAnyExportableItem && !videoExport.isExporting
-                  ? t.videoPlayerPanel.export.emptyTimeline
-                  : undefined
-              }
-              className={`
-                flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-                ${videoExport.isExporting
-                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                  : 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80'
-                }
-              `}
-              aria-label={
-                videoExport.isExporting
-                  ? `${t.videoPlayerPanel.export.exporting} (${selectedAspectRatio.id})...`
-                  : !hasAnyExportableItem
-                    ? t.videoPlayerPanel.export.emptyTimeline
-                    : `${t.videoPlayerPanel.export.exportVideo} (${selectedAspectRatio.id})`
-              }
-              onKeyDown={(e) => {
-                if ((e.key === 'Enter' || e.key === ' ') && !videoExport.isExporting && hasAnyExportableItem) {
-                  e.preventDefault();
-                  handleVideoExport();
-                }
-              }}
-            >
-              {videoExport.isExporting ? (
-                <>
-                  <div className="relative w-3 h-3">
-                    <svg className="w-3 h-3 animate-spin" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                    </svg>
-                    {videoExport.exportProgress > 0 && (
-                      <div className="absolute -top-0.5 -right-0.5 text-[8px] bg-primary text-primary-foreground rounded-full w-2 h-2 flex items-center justify-center">
-                        {Math.round(videoExport.exportProgress)}
-                      </div>
-                    )}
-                  </div>
-                  <span>
-                    {videoExport.exportProgress > 0
-                      ? t.videoPlayerPanel.export.exportingProgress.replace('{progress}', Math.round(videoExport.exportProgress).toString())
-                      : t.videoPlayerPanel.export.exporting
-                    }
-                  </span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
-                  </svg>
-                  <span>{t.videoPlayerPanel.export.exportVideo}</span>
-                </>
-              )}
-            </button>
-          )}
-        </div>
+      <div className="ws-panel-header ws-preview-header">
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+          className="ws-preview-title-icon"
+        >
+          <rect x="3" y="4" width="18" height="13" rx="2" />
+          <path d="M10 8.5v5l4-2.5z" />
+          <path d="M8 21h8M12 17v4" />
+        </svg>
+        <h3 className="ws-panel-title">{t.workbench.preview.title}</h3>
+        <CanvasMenu
+          aspectRatios={ASPECT_RATIOS}
+          selectedId={selectedAspectRatio.id}
+          onSelect={handleAspectRatioChange}
+          videoCount={compositionPlayback?.videoSequences.length || 0}
+          audioCount={compositionPlayback?.audioSequences?.length || 0}
+          coverSlot={projectId ? <CoverButton onClick={() => setIsCoverModalOpen(true)} /> : undefined}
+        />
+        <button
+          type="button"
+          className="ws-icon-btn ws-preview-fullscreen"
+          onClick={handleToggleFullscreen}
+          aria-label={fullscreenLabel}
+          title={fullscreenLabel}
+          aria-pressed={isFullscreen}
+        >
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+          >
+            {isFullscreen
+              ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+              : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+          </svg>
+        </button>
       </div>
 
       <div className="composition-panel-content">
         <div className="video-player-container">
-          {/* 视频播放器区域 - 固定占用70%高度 */}
+          {/* 画布区：吃满剩余高度，比例帧按 contain-box 居中（几何不变） */}
           <div className="video-player-wrapper">
-            {/* 视频预览容器 - 固定高度70% */}
             <div
               ref={videoContainerRef}
               className="video-preview-container">
-              {playbackMode === 'composition' && compositionPlayback ? (
+              {!hasTimelineContent ? renderEmptyState() : playbackMode === 'composition' && compositionPlayback ? (
                 // 组合播放模式 - 稳定的宽高比容器
                 <div
                   className={`${selectedAspectRatio.cssClass} bg-black rounded-md overflow-hidden relative`}
@@ -625,147 +589,93 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
             </div>
           </div>
 
-          {/* 播放控制台 Player Console —— 进度条 / 走带行 / 分隔线 / 设置行
-              四段式单卡片，取代原先割裂的播放控制栏 + 宽高比信息栏两条横栏。 */}
+          {/* 播放条 Player Console —— 单行：播放键 / 时间 / 进度条 / 音量（spec §3.6） */}
           <div className="player-console">
-            {/* 进度条：全宽，已播放段填充（--progress 见 §2.2） */}
-            <div className="console-scrubber-row">
+            <button
+              type="button"
+              onClick={handlePlayPauseClick}
+              className="console-play-btn"
+              // G3 (round-3): keep the button clickable while materials are
+              // still downloading — only disable when there is nothing to play
+              // (getTotalDuration()===0). Clicking before ready must reach
+              // handlePlayPauseClick so its readiness guard can surface the toast.
+              disabled={getTotalDuration() === 0}
+              aria-disabled={!allTimelineMediaReady || undefined}
+              title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
+              aria-label={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
+            >
+              {getCurrentlyPlaying() ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              )}
+            </button>
+
+            <div className="console-time">
+              <span className="current-time">{formatTime(consoleTime)}</span>
+              <span className="time-separator">/</span>
+              <span className="total-time">{formatTime(getTotalDuration())}</span>
+            </div>
+
+            <input
+              type="range"
+              min={0}
+              max={isSeekable ? totalForBar : 1}
+              step="any"
+              value={consoleTime}
+              disabled={!isSeekable}
+              onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
+              aria-label={t.videoPlayerPanel.controls.seekAriaLabel}
+              aria-valuetext={formatTime(consoleTime)}
+              className="console-scrubber"
+              style={{ ['--progress']: `${progressPercent}%` } as React.CSSProperties}
+            />
+
+            <div className="console-volume">
+              <button
+                type="button"
+                className="console-icon-btn"
+                onClick={handleVolumeToggleMute}
+                title={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
+                aria-label={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
+                aria-pressed={volume === 0}
+              >
+                <svg
+                  width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                >
+                  <path d="M11 5L6 9H3v6h3l5 4z" />
+                  {volume === 0 ? (
+                    <path d="M16 9l5 6M21 9l-5 6" />
+                  ) : (
+                    <>
+                      <path d="M15.5 8.5a5 5 0 010 7" />
+                      {volume >= 0.5 && <path d="M18.5 5.5a9 9 0 010 13" />}
+                    </>
+                  )}
+                </svg>
+              </button>
               <input
                 type="range"
                 min={0}
-                max={isSeekable ? totalForBar : 1}
-                step="any"
-                value={getCurrentTime()}
-                disabled={!isSeekable}
-                onChange={(e) => handleTimeSeekClick(parseFloat(e.target.value))}
-                aria-label={t.videoPlayerPanel.controls.seekAriaLabel}
-                aria-valuetext={formatTime(getCurrentTime())}
-                className="console-scrubber"
-                style={{ ['--progress']: `${progressPercent}%` } as React.CSSProperties}
+                max={1}
+                step={0.1}
+                value={volume}
+                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                aria-label={t.videoPlayerPanel.controls.previewVolumeAriaLabel}
+                aria-valuetext={`${volumePercent}%`}
+                className="console-volume-slider"
+                style={{ ['--vol']: `${volumePercent}%` } as React.CSSProperties}
               />
-            </div>
-
-            {/* 走带行：播放键 + 时间 ｜ 音量 */}
-            <div className="console-transport-row">
-              <div className="console-transport-left">
-                <button
-                  type="button"
-                  onClick={handlePlayPauseClick}
-                  className="console-play-btn"
-                  // G3 (round-3): keep the button clickable while materials are
-                  // still downloading — only disable when there is nothing to play
-                  // (getTotalDuration()===0). Clicking before ready must reach
-                  // handlePlayPauseClick so its readiness guard can surface the toast.
-                  disabled={getTotalDuration() === 0}
-                  aria-disabled={!allTimelineMediaReady || undefined}
-                  title={getCurrentlyPlaying() ? t.videoPlayerPanel.playback.pause : t.videoPlayerPanel.playback.play}
-                >
-                  {getCurrentlyPlaying() ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  )}
-                </button>
-
-                <div className="console-time">
-                  <span className="current-time">{formatTime(getCurrentTime())}</span>
-                  <span className="time-separator">/</span>
-                  <span className="total-time">{formatTime(getTotalDuration())}</span>
-                </div>
-              </div>
-
-              <div className="console-transport-right">
-                <div className="console-volume">
-                  <button
-                    type="button"
-                    className="console-icon-btn"
-                    onClick={handleVolumeToggleMute}
-                    title={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
-                    aria-label={volume === 0 ? t.videoPlayerPanel.controls.unmute : t.videoPlayerPanel.controls.mute}
-                    aria-pressed={volume === 0}
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      {volume === 0 ? (
-                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
-                      ) : volume < 0.5 ? (
-                        <path d="M3 9v6h4l5 5V4L7 9H3z"/>
-                      ) : volume < 1 ? (
-                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-                      ) : (
-                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                      )}
-                    </svg>
-                  </button>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={volume}
-                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                    aria-label={t.videoPlayerPanel.controls.previewVolumeAriaLabel}
-                    aria-valuetext={`${volumePercent}%`}
-                    className="console-volume-slider"
-                    style={{ ['--vol']: `${volumePercent}%` } as React.CSSProperties}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="console-divider" />
-
-            {/* 设置行：宽高比分段控件 + 封面入口 */}
-            <div className="console-settings-row">
-              <div className="console-ratio">
-                <span className="console-ratio-label">{t.videoPlayerPanel.info.aspectRatio}</span>
-                <div
-                  className="console-ratio-segmented"
-                  role="group"
-                  aria-label={t.videoPlayerPanel.info.aspectRatio}
-                >
-                  {ASPECT_RATIOS.map((aspectRatio) => {
-                    const isSelected = selectedAspectRatio.id === aspectRatio.id;
-                    return (
-                      <button
-                        key={aspectRatio.id}
-                        type="button"
-                        onClick={() => handleAspectRatioChange(aspectRatio)}
-                        className="console-ratio-seg"
-                        title={aspectRatio.description}
-                        aria-pressed={isSelected}
-                        aria-label={
-                          isSelected
-                            ? `${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description} — ${t.videoPlayerPanel.accessibility.selected}`
-                            : `${t.videoPlayerPanel.accessibility.selectAspectRatio} ${aspectRatio.description}`
-                        }
-                      >
-                        {aspectRatio.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              {projectId && (
-                <CoverButton onClick={() => setIsCoverModalOpen(true)} />
-              )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* 视频导出进度弹窗 */}
-      <VideoExportProgressModal
-        isOpen={videoExport.isExporting}
-        progress={videoExport.exportProgress}
-        startTime={videoExport.exportStartTime}
-        stage={videoExport.exportStage}
-        allowCancel={videoExport.canCancelExport}
-        onCancel={videoExport.cancelExport}
-      />
 
       {/* Video Cover authoring modal — only mounted when a projectId is bound. */}
       {projectId && (

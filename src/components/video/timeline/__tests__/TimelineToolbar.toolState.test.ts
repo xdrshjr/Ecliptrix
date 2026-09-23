@@ -76,8 +76,46 @@ describe('TimelineToolbar — active tool', () => {
 
   it('buttons that are not toggles expose no aria-pressed', () => {
     renderToolbar();
-    const undo = screen.getAllByRole('button')
-      .find((candidate) => candidate.getAttribute('aria-label')?.startsWith(t.timeline.toolbar.undo));
-    expect(undo?.hasAttribute('aria-pressed')).toBe(false);
+    const copy = screen.getAllByRole('button')
+      .find((candidate) => candidate.getAttribute('aria-label')?.startsWith(t.timeline.toolbar.copy));
+    expect(copy?.hasAttribute('aria-pressed')).toBe(false);
+  });
+});
+
+describe('TimelineToolbar — layout', () => {
+  // Undo / redo moved to the editor top bar (spec §3.8); Ctrl+Z / Ctrl+Y stay
+  // in TimelinePanel's keyboard handler.
+  it('toolbar_has_no_undo_redo_buttons', () => {
+    renderToolbar();
+    const labels = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? '');
+    expect(labels.filter((label) =>
+      label.startsWith(t.workbench.topBar.undo) || label.startsWith(t.workbench.topBar.redo),
+    )).toEqual([]);
+  });
+
+  it('toolbar_keeps_every_other_entry_in_spec_group_order', () => {
+    renderToolbar();
+    const labels = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? '');
+    const order = [
+      t.timeline.toolbar.cut,
+      t.timeline.toolbar.copy,
+      t.timeline.toolbar.delete,
+      t.timeline.toolbar.organizeMaterials,
+      t.timeline.toolbar.motion,
+      t.timeline.toolbar.subtitles,
+      t.timeline.toolbar.exportJson,
+      t.timeline.toolbar.importProject,
+      t.timeline.toolbar.effects,
+      t.timeline.toolbar.transitions,
+    ];
+    expect(order.map((label) => labels.findIndex((candidate) => candidate.startsWith(label))))
+      .toEqual(order.map((_, index) => index));
+  });
+
+  it('toolbar_buttons_have_28px_hit_areas', () => {
+    renderToolbar();
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.every((button) => button.className.includes('w-7') && button.className.includes('h-7')))
+      .toBe(true);
   });
 });

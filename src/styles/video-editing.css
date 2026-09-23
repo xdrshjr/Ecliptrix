@@ -1,64 +1,5 @@
 /* Video Editing Workspace Styles */
 
-/* 达芬奇式布局：工作区铺满全宽（左侧常驻 Chat 列已移除，改为右下角浮动 Dock） */
-.video-editing-right-area {
-  width: 100%;
-  height: 100%;
-  flex: 1;
-  overflow: hidden;
-}
-
-/* 新布局：上方面板区域 - 在右侧区域的上方 */
-.video-editing-upper-panels {
-  height: 70%; /* 上方面板占右侧区域的70%高度 */
-  flex-shrink: 0;
-}
-
-/* 新布局：下方时间轴区域 - 在右侧区域的下方，全宽度 */
-.video-editing-timeline-section {
-  height: 30%; /* 下方区域占右侧区域的30%高度 */
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-/* 达芬奇式布局：左翼文本脚本 - 占上方面板区域的25%宽度 */
-.video-editing-script-panel {
-  width: 25%;
-  height: 100%;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-/* 达芬奇式布局：右翼素材管理 - 占上方面板区域的25%宽度 */
-.video-editing-materials-panel {
-  width: 25%;
-  height: 100%;
-  flex-shrink: 0;
-  overflow: hidden;
-  background-color: var(--card);
-}
-
-/* 达芬奇式布局：中央播放/合成预览 - 主舞台，填充两翼之外的剩余空间（≈50%） */
-.video-editing-player-panel {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-  background-color: var(--card);
-  display: flex;
-  flex-direction: column;
-}
-
-/* 视频合成面板 - 填充整个播放器面板 */
-.video-editing-composition-panel {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
 /* MD编辑器区域 - 扩展占用更多空间 */
 .video-editing-markdown-section {
   flex: 1 !important;
@@ -224,39 +165,6 @@
 .video-editing-markdown-section .flex-1 {
   min-height: 0 !important;
   overflow: hidden !important;
-}
-
-/* 响应式设计 - 达芬奇式布局适配。中等屏幕(≤1024px)保持 25/50/25 三栏，
- * 无需覆盖宽度（基础规则已是 25/50/25）。 */
-
-@media (max-width: 768px) {
-  /* 小屏幕：上方三栏改为垂直堆叠 */
-  .video-editing-right-area {
-    width: 100%;
-    height: 100%;
-  }
-
-  .video-editing-upper-panels {
-    height: 70%;
-    flex-direction: column;
-  }
-
-  .video-editing-timeline-section {
-    height: 30%;
-  }
-
-  .video-editing-script-panel,
-  .video-editing-materials-panel,
-  .video-editing-player-panel {
-    width: 100%;
-    height: 33.33%;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .video-editing-player-panel {
-    border-bottom: none;
-  }
 }
 
 /* 移除旧的预览面板样式，因为现在使用新的布局结构 */
@@ -450,23 +358,8 @@
   font-weight: 500;
 }
 
-/* 视频合成播放面板内部样式 - 统一标题栏高度 */
-.composition-panel-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--border);
-  background-color: var(--card);
-  min-height: 60px;
-  max-height: 60px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
+/* 成片预览面板内容区：头部改用 .ws-panel-header（36px），这里只负责画布 + 播放条的纵向排布 */
 .composition-panel-content {
-  padding: 16px;
-  height: calc(100% - 60px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1394,119 +1287,7 @@
   cursor: not-allowed;
 }
 
-/* ============================================
-   Floating Agent Chat Dock (Notion-style FAB + panel)
-   ============================================ */
-
-/* 关闭态：右下角圆形浮动按钮（FAB）。
- * z-index 由 JSX 上的 z-dock 工具类提供（=850 > lock-overlay 的 50，见 spec R-2）；
- * 此处刻意不写 z-index，保持语义 token 单一真源。 */
-.agent-chat-fab {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  width: 56px;
-  height: 56px;
-  border-radius: 9999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary);
-  color: var(--card);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  cursor: grab;
-  /* Pointer 拖动在触屏不被滚动手势抢断 */
-  touch-action: none;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.agent-chat-fab:hover {
-  transform: translateY(-1px) scale(1.04);
-}
-
-/* 拖动中：抓取光标、去掉 hover 缩放，避免位移与缩放叠加抖动 */
-.agent-chat-fab.is-dragging {
-  cursor: grabbing;
-  transform: none;
-}
-
-.agent-chat-fab:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 3px;
-}
-
-/* 执行中脉冲环：浮窗关闭时仍能感知 Agent 正在工作 */
-.agent-chat-fab.is-busy::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 9999px;
-  border: 2px solid var(--primary);
-  animation: agent-fab-pulse 1.2s ease-out infinite;
-}
-
-@keyframes agent-fab-pulse {
-  0% { opacity: 0.7; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.25); }
-}
-
-/* 工作区内的非模态助手浮窗。
- * z-index 由 JSX 上的 z-dock-panel 工具类提供（=860 > lock-overlay 的 50，见 spec R-2）；
- * 浮窗下半部与时间轴锁定遮罩重叠，必须高于它，否则执行期输入框/取消按钮不可点。 */
-.agent-chat-floating-panel {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  width: min(calc(100% - 16px), clamp(360px, 32%, 520px));
-  height: min(calc(100% - 16px), clamp(320px, 80%, 760px));
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
-  overflow: hidden;
-  transform-origin: center;
-}
-
-.dark .agent-chat-floating-panel {
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
-}
-
-.agent-chat-panel-header {
-  height: 52px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.agent-chat-minimize {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  color: var(--muted-foreground);
-  transition: background-color 150ms, color 150ms;
-}
-
-.agent-chat-minimize:hover {
-  color: var(--foreground);
-  background: var(--accent);
-}
-
-.agent-chat-floating-panel :is(button, textarea, summary, a):focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
+/* Agent chat body (hosted by the workbench assistant drawer). */
 .agent-chat-messages {
   font-size: 14px;
   line-height: 1.6;
@@ -1517,44 +1298,14 @@
 .agent-chat-input-area { padding: 12px 16px 16px; }
 .agent-chat-input { min-height: 40px; max-height: 120px; }
 
-.agent-chat-floating-panel[data-compact] .agent-chat-panel-header {
-  height: 44px;
-  padding-inline: 8px;
-}
-.agent-chat-floating-panel[data-compact] .agent-chat-messages {
-  padding: 8px;
-}
-.agent-chat-floating-panel[data-compact] .agent-chat-toolbar {
-  padding: 8px 8px 0;
-}
-.agent-chat-floating-panel[data-compact] .agent-chat-input-area {
-  padding: 8px;
-}
-.agent-chat-floating-panel[data-compact] .agent-chat-input {
-  max-height: 80px;
-  overflow-y: auto !important;
-}
+/* ===== Player Console（单行播放条，spec segment-centric-editor-workbench §3.6） ===== */
+.player-console{flex:0 0 44px;height:44px;display:flex;align-items:center;gap:10px;
+  padding:0 12px;background:var(--ws-panel, var(--card));
+  border-top:1px solid var(--ws-border-subtle, var(--border));}
 
-@media (prefers-reduced-motion: reduce) {
-  .agent-chat-fab,
-  .agent-chat-fab::after,
-  .agent-chat-floating-panel,
-  .agent-chat-floating-panel *,
-  .agent-chat-floating-panel *::before,
-  .agent-chat-floating-panel *::after {
-    animation: none !important;
-    transition: none !important;
-  }
-}
-
-/* ===== Player Console ===== */
-.player-console{flex:0 0 auto;display:flex;flex-direction:column;gap:10px;padding:12px;
-  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);}
-
-/* 进度条：已播放填充 */
-.console-scrubber-row{width:100%;}
-.console-scrubber{--progress:0%;-webkit-appearance:none;appearance:none;width:100%;height:4px;
-  border-radius:999px;cursor:pointer;
+/* 进度条：flex:1，已播放填充 */
+.console-scrubber{--progress:0%;-webkit-appearance:none;appearance:none;flex:1 1 auto;min-width:48px;
+  height:4px;border-radius:999px;cursor:pointer;
   background:linear-gradient(to right,var(--primary) var(--progress),
     color-mix(in srgb,var(--muted-foreground) 32%,transparent) var(--progress));}
 .console-scrubber::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;
@@ -1567,79 +1318,55 @@
 .console-scrubber::-moz-range-progress{background:var(--primary);height:4px;border-radius:999px;}
 .console-scrubber::-moz-range-track{background:color-mix(in srgb,var(--muted-foreground) 32%,transparent);
   height:4px;border-radius:999px;}
-.console-scrubber:disabled{cursor:not-allowed;opacity:.6;}
+.console-scrubber:disabled{cursor:not-allowed;opacity:.45;}
 .console-scrubber:focus-visible{outline:2px solid var(--ring);outline-offset:4px;}
 
-/* 走带行 */
-.console-transport-row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
-.console-transport-left{display:flex;align-items:center;gap:12px;min-width:0;}
-.console-transport-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
-.console-play-btn{width:40px;height:40px;flex-shrink:0;border:none;border-radius:50%;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;background:var(--primary);color:var(--primary-foreground);
+/* 播放键：36px 圆钮 */
+.console-play-btn{width:36px;height:36px;flex-shrink:0;border:none;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--ws-primary-solid, var(--primary));color:var(--ws-on-primary, var(--primary-foreground));
   transition:background-color .15s ease,transform .1s ease;}
-.console-play-btn:hover{background:var(--primary-hover);}
+.console-play-btn:hover:not(:disabled){background:var(--ws-primary-solid-hover, var(--primary-hover));}
 .console-play-btn:active{transform:scale(.94);}
-.console-play-btn:disabled{background:var(--muted);color:var(--muted-foreground);cursor:not-allowed;}
+.console-play-btn:disabled{opacity:.45;cursor:not-allowed;}
 .console-play-btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
-.console-play-btn svg{width:20px;height:20px;}
-.console-time{display:flex;align-items:center;gap:4px;font-family:var(--font-mono);
+.console-play-btn svg{width:16px;height:16px;}
+.console-time{display:flex;align-items:center;gap:4px;flex-shrink:0;
   font-variant-numeric:tabular-nums;font-size:12px;line-height:1;white-space:nowrap;
-  color:var(--muted-foreground);min-width:96px;}
-.console-time .current-time{color:var(--foreground);font-weight:600;}
+  color:var(--ws-text-secondary, var(--muted-foreground));}
+.console-time .current-time{color:var(--ws-text, var(--foreground));font-weight:600;}
 .console-time .time-separator{opacity:.55;}
 
-/* 音量 */
-.console-volume{display:flex;align-items:center;gap:6px;flex-shrink:0;}
-.console-icon-btn{width:32px;height:32px;border-radius:var(--radius);border:1px solid transparent;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;background:transparent;color:var(--muted-foreground);
+/* 音量：静音键 + 80px 滑条 */
+.console-volume{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.console-icon-btn{width:32px;height:32px;border-radius:6px;border:1px solid transparent;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;background:transparent;
+  color:var(--ws-text-secondary, var(--muted-foreground));
   transition:background-color .15s ease,color .15s ease;}
-.console-icon-btn:hover{background:var(--accent);color:var(--foreground);}
+.console-icon-btn:hover{background:var(--ws-hover, var(--accent));color:var(--ws-text, var(--foreground));}
 .console-icon-btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
 .console-icon-btn svg{width:16px;height:16px;}
-.console-volume-slider{--vol:100%;-webkit-appearance:none;appearance:none;width:64px;height:4px;
+.console-volume-slider{--vol:100%;-webkit-appearance:none;appearance:none;width:80px;height:4px;
   border-radius:999px;cursor:pointer;
   background:linear-gradient(to right,var(--foreground) var(--vol),
     color-mix(in srgb,var(--muted-foreground) 32%,transparent) var(--vol));}
 .console-volume-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:10px;height:10px;
   border-radius:50%;background:var(--foreground);cursor:pointer;}
 .console-volume-slider::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:var(--foreground);}
+.console-volume-slider:focus-visible{outline:2px solid var(--ring);outline-offset:4px;}
 
-/* 分隔线 */
-.console-divider{height:1px;background:var(--border);}
-
-/* 设置行：宽高比分段控件 + 封面 */
-.console-settings-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-.console-ratio{display:flex;align-items:center;gap:8px;min-width:0;}
-.console-ratio-label{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
-  color:var(--muted-foreground);white-space:nowrap;flex-shrink:0;}
-.console-ratio-segmented{display:flex;align-items:center;gap:2px;padding:2px;border-radius:var(--radius);
-  background:var(--muted);border:1px solid var(--border);}
-.console-ratio-seg{appearance:none;border:none;cursor:pointer;height:26px;min-width:34px;padding:4px 10px;
-  font-size:11px;font-weight:600;line-height:1;border-radius:calc(var(--radius) - 2px);
-  background:transparent;color:var(--muted-foreground);
+/* 封面入口：CoverButton 现在位于「画布」下拉内，按菜单项排版 */
+.console-cover-btn{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:0 10px;
+  border:none;border-radius:4px;cursor:pointer;background:transparent;
+  color:var(--ws-text, var(--foreground));font-size:13px;white-space:nowrap;text-align:left;
   transition:background-color .15s ease,color .15s ease;}
-.console-ratio-seg:hover{color:var(--foreground);background:color-mix(in srgb,var(--foreground) 8%,transparent);}
-.console-ratio-seg[aria-pressed="true"]{background:var(--primary);color:var(--primary-foreground);}
-.console-ratio-seg:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
-.console-cover-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;flex-shrink:0;
-  border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;background:transparent;
-  color:var(--muted-foreground);font-size:11px;font-weight:600;white-space:nowrap;
-  transition:background-color .15s ease,color .15s ease;}
-.console-cover-btn:hover{background:var(--accent);color:var(--foreground);}
-.console-cover-btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px;}
-.console-cover-btn svg{width:14px;height:14px;}
-
-/* 响应式：窄列收敛 */
-@media (max-width:768px){
-  .player-console{padding:10px;gap:8px;}
-  .console-ratio-label{display:none;}
-  .console-ratio-seg{min-width:30px;padding:4px 8px;height:24px;font-size:10px;}
-  .console-play-btn{width:36px;height:36px;}
-  .console-volume-slider{width:52px;}
-}
+.console-cover-btn:hover{background:var(--ws-hover, var(--accent));}
+.console-cover-btn:focus-visible{outline:2px solid var(--ring);outline-offset:1px;}
+.console-cover-btn svg{width:16px;height:16px;}
+.console-cover-btn:disabled{opacity:.45;cursor:not-allowed;}
 
 /* 降低动效偏好 */
 @media (prefers-reduced-motion: reduce){
-  .console-play-btn,.console-ratio-seg,.console-icon-btn,.console-cover-btn,
+  .console-play-btn,.console-icon-btn,.console-cover-btn,
   .console-scrubber::-webkit-slider-thumb{transition:none;}
 }

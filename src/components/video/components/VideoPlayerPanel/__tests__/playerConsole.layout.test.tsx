@@ -29,35 +29,54 @@ const CSS = readFileSync(
   'utf-8',
 );
 
-describe('Player Console — JSX structure', () => {
-  it('renders the single Player Console card with its four sections', () => {
-    expect(PANEL).toMatch(/className="player-console"/);
-    expect(PANEL).toMatch(/className="console-scrubber-row"/);
-    expect(PANEL).toMatch(/className="console-transport-row"/);
-    expect(PANEL).toMatch(/className="console-divider"/);
-    expect(PANEL).toMatch(/className="console-settings-row"/);
+describe('Player Console — single-row play bar (workbench §3.6, RV-13)', () => {
+  const consoleBlock = PANEL.match(/className="player-console"[\s\S]*?Video Cover authoring modal/);
+
+  it('renders play, time, scrubber and volume as direct children of one row', () => {
+    expect(consoleBlock).not.toBeNull();
+    const block = consoleBlock![0];
+    const order = [
+      'className="console-play-btn"',
+      'className="console-time"',
+      'className="console-scrubber"',
+      'className="console-volume"',
+    ].map((needle) => block.indexOf(needle));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('drops the old two-row structure and the settings row', () => {
+    for (const dead of [
+      'console-scrubber-row',
+      'console-transport-row',
+      'console-transport-left',
+      'console-transport-right',
+      'console-divider',
+      'console-settings-row',
+      'console-ratio-segmented',
+    ]) {
+      expect(PANEL).not.toContain(dead);
+    }
   });
 
   it('drives the scrubber fill via the --progress custom property and gates seeking on duration', () => {
-    expect(PANEL).toMatch(/className="console-scrubber"/);
     expect(PANEL).toMatch(/\['--progress'\]:\s*`\$\{progressPercent\}%`/);
     expect(PANEL).toMatch(/max=\{isSeekable \? totalForBar : 1\}/);
     expect(PANEL).toMatch(/disabled=\{!isSeekable\}/);
   });
 
-  it('renders the time read-out as current / separator / total', () => {
-    expect(PANEL).toMatch(/className="console-time"/);
-    expect(PANEL).toMatch(/className="current-time"/);
+  it('renders the time read-out as current / separator / total from the console time', () => {
+    expect(PANEL).toMatch(/className="current-time">\{formatTime\(consoleTime\)\}/);
     expect(PANEL).toMatch(/className="time-separator"/);
     expect(PANEL).toMatch(/className="total-time"/);
+    expect(PANEL).toMatch(/value=\{consoleTime\}/);
   });
 
-  it('renders the aspect-ratio segmented control over ASPECT_RATIOS with aria-pressed', () => {
-    expect(PANEL).toMatch(/className="console-ratio-segmented"[\s\S]*?role="group"/);
-    expect(PANEL).toMatch(/ASPECT_RATIOS\.map\(\(aspectRatio\) =>/);
-    expect(PANEL).toMatch(/className="console-ratio-seg"/);
-    // Each segment's active state is driven purely by aria-pressed (no -active class).
-    expect(PANEL).toMatch(/aria-pressed=\{isSelected\}/);
+  it('moves the aspect ratio into the canvas menu, driven by the controlled id', () => {
+    expect(PANEL).toMatch(/<CanvasMenu[\s\S]*?aspectRatios=\{ASPECT_RATIOS\}/);
+    expect(PANEL).toMatch(/onSelect=\{handleAspectRatioChange\}/);
+    expect(PANEL).not.toMatch(/selectedAspectRatioId/);
+    expect(PANEL).toMatch(/ar\.id === aspectRatioId/);
   });
 });
 
@@ -71,6 +90,11 @@ describe('Player Console — accessibility preserved', () => {
     expect(PANEL).toMatch(
       /aria-label=\{volume === 0 \? t\.videoPlayerPanel\.controls\.unmute : t\.videoPlayerPanel\.controls\.mute\}/,
     );
+  });
+
+  it('keeps the seek slider aria-label / aria-valuetext', () => {
+    expect(PANEL).toMatch(/aria-label=\{t\.videoPlayerPanel\.controls\.seekAriaLabel\}/);
+    expect(PANEL).toMatch(/aria-valuetext=\{formatTime\(consoleTime\)\}/);
   });
 
   it('keeps the play button disabled/aria-disabled guards intact', () => {
@@ -105,10 +129,17 @@ describe('Player Console — old control classes fully retired', () => {
 
 describe('Player Console — CSS contract', () => {
   it('defines the authoritative console selectors', () => {
-    expect(CSS).toMatch(/\.player-console\{/);
-    expect(CSS).toMatch(/\.console-scrubber\{/);
-    expect(CSS).toMatch(/\.console-ratio-seg\[aria-pressed="true"\]\{/);
+    expect(CSS).toMatch(/\.player-console\{[^}]*height:44px/);
+    expect(CSS).toMatch(/\.console-scrubber\{[^}]*flex:1 1 auto/);
+    expect(CSS).toMatch(/\.console-volume-slider\{[^}]*width:80px/);
+    expect(CSS).toMatch(/\.console-play-btn\{width:36px;height:36px;/);
     expect(CSS).toMatch(/\.console-cover-btn\{/);
+  });
+
+  it('removes the retired two-row console selectors', () => {
+    expect(CSS).not.toMatch(/\.console-transport-row/);
+    expect(CSS).not.toMatch(/\.console-settings-row/);
+    expect(CSS).not.toMatch(/\.console-ratio-seg/);
   });
 
   it('lets the preview fill the column (flex:1 1 auto) instead of the old 70% lock', () => {

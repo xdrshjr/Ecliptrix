@@ -34,6 +34,7 @@ import {
   createAsyncTaskSlice,
   type AsyncTaskSlice,
 } from './slices/asyncTaskSlice';
+import { useEditorFocusStore } from './editorFocusStore';
 
 // ---------------------------------------------------------------------------
 // Combined store type
@@ -86,4 +87,7 @@ export function resetVideoEditingStore(): void {
   s.setTimelineState(null);
   // async-task slice — drop ALL tasks (including in-flight ones)
   useVideoEditingStore.setState({ tasks: {} });
+  // workbench focus — selection belongs to the previous project; the
+  // followPlayback / right-panel-tab preferences survive (RV-12)
+  useEditorFocusStore.getState().reset();
 }

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Sparkles } from '../SegmentCard/icons';
 import { useLocale } from '@/contexts/LocaleContext';
 
 interface AiGenerateMenuProps {
@@ -10,7 +11,7 @@ interface AiGenerateMenuProps {
   disabled?: boolean;
   /** 复用原 isGenerating 在触发按钮上显示 spinner。 */
   isBusy?: boolean;
-  /** 触发按钮文案，默认取 t.scriptPanel.header.aiGenerate。 */
+  /** 触发按钮文案，默认取 t.workbench.script.generateDraft（「生成初稿」，spec §3.5.1）。 */
   label?: string;
   /** 选中「统一转换所有语音」时调用；传入则在菜单尾部追加该项。 */
   onConvertAllSpeech?: () => void;
@@ -60,7 +61,7 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
   const [position, setPosition] = useState<MenuPosition | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const buttonLabel = label ?? t.scriptPanel.header.aiGenerate;
+  const buttonLabel = label ?? t.workbench.script.generateDraft;
 
   const items: AiGenerateMenuItem[] = [
     {
@@ -215,7 +216,7 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
         disabled={disabled || isBusy}
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/30 rounded-md hover:bg-primary/20 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="ws-btn ws-btn--outline-primary ws-btn--sm"
         title={buttonLabel}
       >
         {isBusy ? (
@@ -224,9 +225,7 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
         ) : (
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-          </svg>
+          <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
         )}
         <span>{buttonLabel}</span>
         <svg

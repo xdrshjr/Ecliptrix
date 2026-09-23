@@ -29,6 +29,8 @@ import TimelineItemFilmstrip from './TimelineItemFilmstrip';
 import TimelineItemDownloadOverlay, {
   type LocalProxyMaskState,
 } from './TimelineItemDownloadOverlay';
+import { useSegmentLinksValue } from '../lib/segments/SegmentLinksContext';
+import type { SegmentIndexEntry } from '../lib/segments/segmentLinks';
 
 // Re-export so existing consumers (TimelinePanel / Track / TrackContainer)
 // keep importing the type from './TimelineItem' unchanged.
@@ -80,6 +82,35 @@ interface TimelineItemProps {
 const MISSING_MATERIAL_OUTLINE: React.CSSProperties = {
   outline: '2px dashed #dc2626',
   outlineOffset: '-2px',
+};
+
+interface ClipNameProps {
+  name: string;
+  segment: SegmentIndexEntry | null;
+  fontSize: number;
+}
+
+/**
+ * Main clip label (spec §3.8): 「[01] 丝滑亮相」 — the same ordinal badge and
+ * title as the script card — when the clip belongs to a segment; otherwise
+ * the file name, exactly as before. The file name moves to the tooltip.
+ */
+const ClipName: React.FC<ClipNameProps> = ({ name, segment, fontSize }) => {
+  if (!segment) return <>{name}</>;
+  // Compact badge: it has to fit the shortest lane (clip height ≈ 16px).
+  const badgeSize = Math.max(12, fontSize + 2);
+  return (
+    <>
+      <span
+        className="ws-badge-ordinal mr-1 align-middle"
+        style={{ height: badgeSize, minWidth: badgeSize, fontSize: Math.max(9, fontSize - 2) }}
+        aria-hidden="true"
+      >
+        {segment.badge}
+      </span>
+      {segment.title}
+    </>
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -135,6 +166,13 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   const toggleItemSelection = useTimelineStore(s => s.toggleItemSelection);
   const deselectAll = useTimelineStore(s => s.deselectAll);
   const setEditingSubtitle = useTimelineStore(s => s.setEditingSubtitle);
+
+  // Segment links: one context read per clip, O(1) map lookups, no prop
+  // drilling through Track (spec §3.8). Subtitles keep showing their text.
+  const { itemSegmentMap, segmentIndex, highlightedItemIds } = useSegmentLinksValue();
+  const linkedSegmentId = item.type === 'subtitle' ? undefined : itemSegmentMap.get(item.id);
+  const segmentEntry = (linkedSegmentId && segmentIndex.get(linkedSegmentId)) || null;
+  const isLinked = highlightedItemIds.has(item.id);
 
   // ---------------------------------------------------------------------------
   // Local UI state (subtitle editing only)
@@ -492,6 +530,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       isThisItemResizing,
       isSwapTarget,
       hasActiveSwapTarget,
+      isLinked,
     });
 
   const renderFilmstrip = () => (
@@ -552,7 +591,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                     textShadow: '0 1px 2px rgba(0,0,0,0.7)',
                   }}
                 >
-                  {item.name}
+                  <ClipName name={item.name} segment={segmentEntry} fontSize={fontSize} />
                 </span>
               </div>
               <span
@@ -593,7 +632,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                       className="text-white font-medium truncate "
                       style={{ fontSize: `${fontSize}px` }}
                     >
-                      {item.name}
+                      <ClipName name={item.name} segment={segmentEntry} fontSize={fontSize} />
                     </span>
                   </div>
                   <div className="flex items-center space-x-1 flex-shrink-0">
@@ -640,7 +679,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
                     className="text-white font-medium truncate"
                     style={{ fontSize: `${fontSize}px` }}
                   >
-                    {item.name}
+                    <ClipName name={item.name} segment={segmentEntry} fontSize={fontSize} />
                   </span>
                 </div>
                 {/* Static placeholder bars only when there is no real waveform
@@ -707,6 +746,14 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     }
   };
 
+  // Hover text / accessible name. A linked clip leads with its segment
+  // 「01 丝滑亮相 · {file} · {start}–{end}」; an unlinked one is unchanged.
+  const startLabel = formatTimelineTime(item.startTime, { showMs: true });
+  const endLabel = formatTimelineTime(item.startTime + item.duration, { showMs: true });
+  const clipSummary = segmentEntry
+    ? `${segmentEntry.label} · ${item.name} · ${startLabel}–${endLabel}`
+    : null;
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -719,9 +766,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       aria-pressed={isSelected}
       aria-disabled={isTrackLocked || undefined}
       aria-label={
-        `${item.name} ` +
-        `${formatTimelineTime(item.startTime, { showMs: true })}–` +
-        `${formatTimelineTime(item.startTime + item.duration, { showMs: true })}` +
+        (clipSummary ?? `${item.name} ${startLabel}–${endLabel}`) +
         `${isSelected ? ` (${t.timeline.track.selected})` : ''}` +
         `${isTrackLocked ? ` (${t.timeline.track.trackLocked})` : ''}` +
         `${isMaterialMissing ? ` (${t.timeline.track.materialMissing})` : ''}`
@@ -737,13 +782,12 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onKeyDown={handleItemKeyDown}
-      className="timeline-item focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-      data-clip-id={item.id}
-      title={
-        `${item.name} ` +
-        `${formatTimelineTime(item.startTime, { showMs: true })} - ` +
-        `${formatTimelineTime(item.startTime + item.duration, { showMs: true })}`
+      className={
+        'timeline-item focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1' +
+        (isLinked ? ' ws-item-linked' : '')
       }
+      data-clip-id={item.id}
+      title={clipSummary ?? `${item.name} ${startLabel} - ${endLabel}`}
     >
       {renderItemContent()}
 

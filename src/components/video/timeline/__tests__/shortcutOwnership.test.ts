@@ -188,6 +188,26 @@ describe('resolveGlobalSpaceAction', () => {
     ]).toEqual(['yield', 'yield']);
   });
 
+  // Workbench text fields (spec §3.11) are plain inputs, so typing a space
+  // into them must never reach the global play/pause handler.
+  it('space_in_project_name_input_does_not_toggle_playback', () => {
+    const host = mount('<header><input type="text" aria-label="项目名" value="我的项目" /></header>');
+    const input = host.querySelector('input');
+    expect([
+      resolveGlobalSpaceAction(spaceEvent(input), 'pointer'),
+      resolveGlobalSpaceAction(spaceEvent(input), 'keyboard'),
+    ]).toEqual(['yield', 'yield']);
+  });
+
+  it('space_in_material_search_does_not_toggle_playback', () => {
+    const host = mount('<div role="search"><input type="search" placeholder="搜索素材" /></div>');
+    const input = host.querySelector('input');
+    expect([
+      resolveGlobalSpaceAction(spaceEvent(input), 'pointer'),
+      resolveGlobalSpaceAction(spaceEvent(input, true), 'keyboard'),
+    ]).toEqual(['yield', 'yield']);
+  });
+
   it('keys other than Space yield', () => {
     expect(resolveGlobalSpaceAction({ code: 'KeyK', target: null, repeat: false }, 'pointer')).toBe('yield');
   });

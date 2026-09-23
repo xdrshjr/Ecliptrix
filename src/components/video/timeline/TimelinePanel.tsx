@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { TimelineState, Track, TimelineItem, MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -19,6 +19,7 @@ import { useShallow } from 'zustand/react/shallow';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
+import DragTimeBadge from './DragTimeBadge';
 import type { LocalProxyMaskState } from './TimelineItem';
 import { isLocalPreviewEnabled } from '@/lib/playbackFlags';
 import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
@@ -53,6 +54,7 @@ import { findTrackForMaterial } from './lib/trackForMaterial';
 import { isClipVisibleInLane } from './lib/clipVisibility';
 import { useAnchoredZoom, useTimelineWheel } from './hooks/useTimelineWheel';
 import { useFollowPlayhead } from './hooks/useFollowPlayhead';
+import { useRevealSelectedSegment } from './hooks/useRevealSelectedSegment';
 import { TRACK_HEADER_WIDTH } from './theme/timelineTheme';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { canApplyCameraMotion } from '../playback/camera/eligibility';
@@ -123,10 +125,33 @@ interface TimelinePanelProps {
   materialsLoaded?: boolean;
 }
 
+/**
+ * Imperative entry points for the Properties inspector (spec §3.7.2). Each
+ * reuses the handler the timeline's own buttons call, so the inspector can
+ * never open a dialog the timeline would have refused.
+ */
+export interface TimelinePanelHandle {
+  /** Camera-motion panel for a clip; ignored when the clip is ineligible. */
+  openCameraMotion(itemId: string): void;
+  /** Subtitle edit / style dialog for a subtitle track. */
+  openSubtitleStyle(trackId: string): void;
+}
+
+/**
+ * Script-selection → timeline scroll, in its own leaf so segment-context
+ * updates re-render nothing but this null component.
+ */
+const SelectedSegmentReveal: React.FC<{
+  trackScrollRef: React.RefObject<HTMLDivElement | null>;
+}> = ({ trackScrollRef }) => {
+  useRevealSelectedSegment(trackScrollRef);
+  return null;
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-const TimelinePanel: React.FC<TimelinePanelProps> = ({
+const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(({
   className = '',
   onTimelineStateChange,
   externalCurrentTime,
@@ -140,7 +165,7 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   externalTimelineUpdateId,
   onRetryLocalDownload,
   materialsLoaded = false,
-}) => {
+}, ref) => {
   const { t, locale } = useLocale();
   const { showSuccess, showError, showInfo, showWarning } = useNotification();
 
@@ -176,6 +201,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   // Hooks for side-effect features
   const videoCache = useVideoCache(taskId);
   const timelineExport = useTimelineExport(taskId);
+
+  // Positioned root: the drag time badge is placed relative to it.
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll sync refs
   const rulerScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1389,12 +1417,18 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
   handleAddTransitionRef.current = handleAddTransition;
   handleAddSubtitleRef.current = handleAddSubtitle;
 
+  useImperativeHandle(ref, () => ({
+    openCameraMotion: (itemId: string) => handleOpenCameraMotion(itemId),
+    openSubtitleStyle: (trackId: string) => handleEditSubtitles(trackId),
+  }), [handleOpenCameraMotion, handleEditSubtitles]);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
     <div
-      className={`timeline-panel flex flex-col h-full bg-card ${className}`}
+      className={`timeline-panel relative flex flex-col h-full bg-card ${className}`}
+      ref={panelRef}
       tabIndex={-1}
       role="region"
       aria-label={t.timeline.panelAriaLabel}
@@ -1433,6 +1467,9 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
         onMaterialDrop={handleMaterialDropById}
         isMaterialMissing={isMaterialMissing}
       />
+
+      <DragTimeBadge containerRef={panelRef} />
+      <SelectedSegmentReveal trackScrollRef={trackScrollRef} />
 
       {portalHost && createPortal(
         <>
@@ -1480,6 +1517,8 @@ const TimelinePanel: React.FC<TimelinePanelProps> = ({
       )}
     </div>
   );
-};
+});
+
+TimelinePanel.displayName = 'TimelinePanel';
 
 export default TimelinePanel;

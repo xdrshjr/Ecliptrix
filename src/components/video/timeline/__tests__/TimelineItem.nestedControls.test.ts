@@ -16,6 +16,7 @@ import * as zoomLevelModule from '../domain/value-objects/ZoomLevel';
 import * as dragMachine from '../domain/machines/dragMachine';
 import * as selectPlaybackUrl from '../../lib/selectPlaybackUrl';
 import * as itemStyles from '../timelineItemStyles';
+import * as segmentLinksContext from '../../lib/segments/SegmentLinksContext';
 import * as presetLabels from '../../components/CameraMotionModal/presetLabels';
 import * as eligibility from '../../playback/camera/eligibility';
 import { applyPreset } from '../../playback/camera/cameraPresets';
@@ -65,6 +66,7 @@ beforeAll(() => {
     '../playback/camera/eligibility': eligibility,
     './TimelineItemFilmstrip': Nothing,
     './TimelineItemDownloadOverlay': Nothing,
+    '../lib/segments/SegmentLinksContext': segmentLinksContext,
   });
 });
 

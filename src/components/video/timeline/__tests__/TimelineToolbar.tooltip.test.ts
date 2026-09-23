@@ -55,9 +55,9 @@ function renderToolbar(): HTMLElement {
 describe('TimelineToolbar — tooltips', () => {
   it('hovering a toolbar button portals its tooltip to document.body', () => {
     const container = renderToolbar();
-    const label = `${t.timeline.toolbar.undo} (${t.timeline.shortcuts.undoShortcut})`;
-    const undo = screen.getAllByRole('button').find((button) => button.getAttribute('aria-label') === label)!;
-    fireEvent.mouseEnter(undo);
+    const label = `${t.timeline.toolbar.cut} (${t.timeline.shortcuts.cutShortcut})`;
+    const cut = screen.getAllByRole('button').find((button) => button.getAttribute('aria-label') === label)!;
+    fireEvent.mouseEnter(cut);
     const tooltip = Array.from(document.body.querySelectorAll('div'))
       .find((element) => element.textContent === label && !container.contains(element));
     expect(tooltip).toBeDefined();

@@ -426,8 +426,6 @@ export interface Translations {
         copy: string;
         paste: string;
         delete: string;
-        undo: string;
-        redo: string;
         organizeMaterials: string;
         motion: string;
         effects: string;
@@ -451,8 +449,6 @@ export interface Translations {
       copyShortcut: string;
       pasteShortcut: string;
       deleteShortcut: string;
-      undoShortcut: string;
-      redoShortcut: string;
       motionShortcut: string;
       effectsShortcut: string;
       transitionsShortcut: string;
@@ -478,6 +474,12 @@ export interface Translations {
       audioTrack: string;
       subtitleTrack: string;
       imageTrack: string;
+      mainVisual: string;
+      visualTrack: string;
+      narrationTrack: string;
+      imageShort: string;
+      audioShort: string;
+      subtitleShort: string;
       mute: string;
       unmute: string;
       materialMissing: string;
@@ -1516,13 +1518,6 @@ export interface Translations {
       partialFailed: string;
       failed: string;
       clipDescription: string;
-    };
-    agentDock: {
-      fabLabel: string;
-      panelTitle: string;
-      close: string;
-      minimize: string;
-      busy: string;
     };
   };
   videoScript: {
@@ -2623,6 +2618,218 @@ export interface Translations {
     splitFooterHint: string;
     defaultSegmentTitle: string;
   };
+  workbench: {
+    regions: {
+      topBar: string;
+      rail: string;
+      script: string;
+      preview: string;
+      side: string;
+      timeline: string;
+    };
+    topBar: {
+      back: string;
+      renameHint: string;
+      renameLabel: string;
+      renameFailed: string;
+      lastModified: string;
+      saving: string;
+      saved: string;
+      savedAt: string;
+      saveError: string;
+      saveErrorRetry: string;
+      idle: string;
+      backupFound: string;
+      undo: string;
+      redo: string;
+      undoTitle: string;
+      redoTitle: string;
+      historyLockedAgent: string;
+      assistant: string;
+      assistantBusy: string;
+      assistantShortcut: string;
+      exportVideo: string;
+      exporting: string;
+      exportEmpty: string;
+    };
+    taskCenter: {
+      button: string;
+      buttonCount: string;
+      title: string;
+      empty: string;
+      recent: string;
+      segmentVoice: string;
+      exportTask: string;
+      statusPending: string;
+      statusProcessing: string;
+      statusCompleted: string;
+      statusFailed: string;
+      displayOnlyNote: string;
+      types: {
+        ai_video: string;
+        ai_image: string;
+        image_to_video: string;
+        tts: string;
+        batch_tts: string;
+        storyboard_video: string;
+      };
+    };
+    rail: {
+      script: string;
+      materials: string;
+      properties: string;
+      assistant: string;
+      layout: string;
+      scriptTitle: string;
+      materialsTitle: string;
+      propertiesTitle: string;
+      layoutTitle: string;
+      presetScript: string;
+      presetEdit: string;
+      presetScriptHint: string;
+      presetEditHint: string;
+      resetLayout: string;
+    };
+    layout: {
+      splitterLeft: string;
+      splitterRight: string;
+      splitterTimeline: string;
+      tooNarrow: string;
+    };
+    script: {
+      title: string;
+      summary: string;
+      followPlayback: string;
+      generateDraft: string;
+      defaultVoice: string;
+      defaultVoiceUnset: string;
+      changeVoice: string;
+      changeVoiceDisabled: string;
+      segmentList: string;
+      placeholderHint: string;
+    };
+    segmentCard: {
+      nowPlaying: string;
+      audition: string;
+      stopAudition: string;
+      auditionUnavailable: string;
+      auditionFailed: string;
+      replaceVisual: string;
+      replaceVisualDisabled: string;
+      more: string;
+      generateVoice: string;
+      regenerateVoice: string;
+      updateVoice: string;
+      aiMatch: string;
+      locate: string;
+      revealNewVoice: string;
+      locateUnavailable: string;
+      delete: string;
+      noVisual: string;
+      visualConfigured: string;
+      visualMissing: string;
+      voiceReady: string;
+      voiceOutdated: string;
+      voiceOutdatedHint: string;
+      voiceStale: string;
+      voiceGenerating: string;
+      voiceNone: string;
+      subtitleReady: string;
+      subtitleNone: string;
+      visualDescriptions: string;
+      duration: string;
+      segmentLabel: string;
+    };
+    side: {
+      tabMaterials: string;
+      tabProperties: string;
+    };
+    materials: {
+      searchPlaceholder: string;
+      searchLabel: string;
+      clearSearch: string;
+      noMatch: string;
+      add: string;
+      addMaterial: string;
+      filterAll: string;
+      filterVideo: string;
+      filterAudio: string;
+      filterImage: string;
+      filterPacks: string;
+      usedInSegment: string;
+      more: string;
+      preview: string;
+      addToTimeline: string;
+      playAudio: string;
+      pauseAudio: string;
+      convertToVideo: string;
+      convertingToVideo: string;
+      cut: string;
+      removeWatermark: string;
+      downloading: string;
+      deleteMaterial: string;
+      downloadSubtitle: string;
+      analysisWaiting: string;
+      uploadFiles: string;
+      tools: string;
+      aiCreate: string;
+      packKinds: string;
+      categories: string;
+    };
+    inspector: {
+      empty: string;
+      editLocked: string;
+      segment: string;
+      segmentOf: string;
+      timeRange: string;
+      linkedClips: string;
+      track: string;
+      start: string;
+      end: string;
+      duration: string;
+      sourceMaterial: string;
+      resolution: string;
+      format: string;
+      position: string;
+      sentences: string;
+      voice: string;
+      trackVolume: string;
+      subtitleText: string;
+      subtitleTextHint: string;
+      subtitleStyle: string;
+      cameraMotion: string;
+      fitImage: string;
+      multiSelected: string;
+      totalDuration: string;
+      fileName: string;
+      type: string;
+      source: string;
+      cache: string;
+      usedIn: string;
+      notUsed: string;
+      none: string;
+    };
+    canvas: {
+      menu: string;
+      title: string;
+      ratioNote: string;
+      counts: string;
+    };
+    preview: {
+      title: string;
+      materialPreviewPrefix: string;
+      emptyHint: string;
+      openMaterials: string;
+      fullscreen: string;
+      exitFullscreen: string;
+    };
+    assistant: {
+      title: string;
+      contextSegment: string;
+      contextProject: string;
+      close: string;
+    };
+  };
   videoUnderstandingPlaceholder: {
     title: string;
     comingSoon: string;
@@ -3447,8 +3654,6 @@ export const translations: Record<string, Translations> = {
         copy: 'Copy',
         paste: 'Paste',
         delete: 'Delete',
-        undo: 'Undo',
-        redo: 'Redo',
         organizeMaterials: 'Organize Materials',
         motion: 'Camera Motion',
         effects: 'Effects',
@@ -3472,8 +3677,6 @@ export const translations: Record<string, Translations> = {
         copyShortcut: 'Ctrl+C',
         pasteShortcut: 'Ctrl+V',
         deleteShortcut: 'Del',
-        undoShortcut: 'Ctrl+Z',
-        redoShortcut: 'Ctrl+Y',
         motionShortcut: 'M',
         effectsShortcut: 'E',
         transitionsShortcut: 'T',
@@ -3499,6 +3702,12 @@ export const translations: Record<string, Translations> = {
           audioTrack: 'Audio Track',
           subtitleTrack: 'Subtitle Track',
           imageTrack: 'Image Track',
+          mainVisual: 'Main Visual',
+          visualTrack: 'Visual',
+          narrationTrack: 'Narration',
+          imageShort: 'Image',
+          audioShort: 'Audio',
+          subtitleShort: 'Subtitles',
           mute: 'Mute',
         unmute: 'Unmute',
         materialMissing: "Material deleted — this clip won't render",
@@ -4191,13 +4400,6 @@ export const translations: Record<string, Translations> = {
        partialFailed: "{failed} of {total} clips couldn't be cut and were removed",
        failed: "Couldn't cut the video: {message}",
        clipDescription: 'Clip cut from "{name}", {start} - {end}',
-     },
-     agentDock: {
-       fabLabel: 'AI editing assistant',
-       panelTitle: 'AI Editing Assistant',
-       close: 'Close',
-       minimize: 'Minimize assistant',
-       busy: 'Agent running…',
      },
    },
    videoScript: {
@@ -5308,6 +5510,218 @@ export const translations: Record<string, Translations> = {
       splitFooterHint: 'Edit, add or delete sentences, then Append below or Replace the existing narration.',
       defaultSegmentTitle: 'Narration segment',
     },
+    workbench: {
+      regions: {
+        topBar: 'Editor toolbar',
+        rail: 'Tool windows',
+        script: 'Script and segments',
+        preview: 'Final preview',
+        side: 'Materials and properties',
+        timeline: 'Timeline',
+      },
+      topBar: {
+        back: 'Back to projects',
+        renameHint: 'Click to rename (Enter / F2)',
+        renameLabel: 'Project name',
+        renameFailed: 'Could not rename the project',
+        lastModified: 'Modified {time}',
+        saving: 'Saving…',
+        saved: 'Saved',
+        savedAt: 'Saved at {time}',
+        saveError: 'Save failed',
+        saveErrorRetry: 'Save failed — click to retry now',
+        idle: 'No changes',
+        backupFound: 'Unrestored backup found',
+        undo: 'Undo',
+        redo: 'Redo',
+        undoTitle: 'Undo (Ctrl+Z)',
+        redoTitle: 'Redo (Ctrl+Y)',
+        historyLockedAgent: 'The AI assistant is running; undo is unavailable for now',
+        assistant: 'AI assistant',
+        assistantBusy: 'AI assistant running…',
+        assistantShortcut: 'AI assistant (Ctrl+Alt+A)',
+        exportVideo: 'Export video',
+        exporting: 'Exporting {progress}%',
+        exportEmpty: 'The timeline is empty — add materials first',
+      },
+      taskCenter: {
+        button: 'Tasks',
+        buttonCount: 'Tasks {count}',
+        title: 'Tasks',
+        empty: 'No running tasks',
+        recent: 'Recent',
+        segmentVoice: 'Segment {index} voice-over',
+        exportTask: 'Video export',
+        statusPending: 'Queued',
+        statusProcessing: 'In progress',
+        statusCompleted: 'Completed',
+        statusFailed: 'Failed',
+        displayOnlyNote: 'Cancel a task where it was started.',
+        types: {
+          ai_video: 'AI video',
+          ai_image: 'AI image',
+          image_to_video: 'Image to video',
+          tts: 'Voice-over',
+          batch_tts: 'Batch voice-over',
+          storyboard_video: 'Storyboard video',
+        },
+      },
+      rail: {
+        script: 'Script',
+        materials: 'Media',
+        properties: 'Props',
+        assistant: 'AI',
+        layout: 'Layout',
+        scriptTitle: 'Script panel',
+        materialsTitle: 'Materials',
+        propertiesTitle: 'Properties',
+        layoutTitle: 'Layout presets',
+        presetScript: 'Script layout',
+        presetEdit: 'Editing layout',
+        presetScriptHint: 'More room for the script (Ctrl+Alt+1)',
+        presetEditHint: 'More room for the timeline (Ctrl+Alt+2)',
+        resetLayout: 'Reset layout',
+      },
+      layout: {
+        splitterLeft: 'Resize the script panel',
+        splitterRight: 'Resize the materials panel',
+        splitterTimeline: 'Resize the timeline',
+        tooNarrow: 'The window is too narrow. Please enlarge it.',
+      },
+      script: {
+        title: 'Script',
+        summary: '{segments} segments · {sentences} sentences',
+        followPlayback: 'Follow playback',
+        generateDraft: 'Generate draft',
+        defaultVoice: 'Project default voice',
+        defaultVoiceUnset: 'Not selected',
+        changeVoice: 'Change',
+        changeVoiceDisabled: 'Voice-over is being generated; change the voice when it finishes',
+        segmentList: 'Segment list',
+        placeholderHint: 'No script yet. Use “Generate draft” to write one.',
+      },
+      segmentCard: {
+        nowPlaying: 'Playing',
+        audition: 'Listen',
+        stopAudition: 'Stop',
+        auditionUnavailable: 'Generate this segment\'s voice-over first',
+        auditionFailed: 'Could not play this voice-over',
+        replaceVisual: 'Replace visuals',
+        replaceVisualDisabled: 'Generate this segment\'s voice-over first so visuals can match its length',
+        more: 'More actions',
+        generateVoice: 'Generate voice-over',
+        regenerateVoice: 'Regenerate voice-over',
+        updateVoice: 'Update voice-over',
+        aiMatch: 'Find visuals (AI match)',
+        locate: 'Locate on timeline',
+        revealNewVoice: 'Show new voice-over in materials',
+        locateUnavailable: 'This segment is not on the timeline yet',
+        delete: 'Delete segment',
+        noVisual: 'No visuals',
+        visualConfigured: 'Visuals set',
+        visualMissing: 'No visuals',
+        voiceReady: 'Voice ready',
+        voiceOutdated: 'New voice not on timeline',
+        voiceOutdatedHint: 'The library has a new voice-over, but the timeline and export still use the old one. Delete the old narration clip on the timeline, then drag the new voice-over from Materials onto the narration track.',
+        voiceStale: 'Voice needs update',
+        voiceGenerating: 'Generating voice',
+        voiceNone: 'No voice-over',
+        subtitleReady: 'Subtitles ready',
+        subtitleNone: 'No subtitles',
+        visualDescriptions: 'Shot descriptions ({count})',
+        duration: '{value}s',
+        segmentLabel: 'Segment {index}',
+      },
+      side: {
+        tabMaterials: 'Materials',
+        tabProperties: 'Properties',
+      },
+      materials: {
+        searchPlaceholder: 'Search materials by name',
+        searchLabel: 'Search materials',
+        clearSearch: 'Clear search',
+        noMatch: 'No materials match “{query}”',
+        add: 'Add',
+        addMaterial: 'Add materials',
+        filterAll: 'All',
+        filterVideo: 'Video',
+        filterAudio: 'Audio',
+        filterImage: 'Image',
+        filterPacks: 'Packs',
+        usedInSegment: 'Used in segment {index}',
+        more: 'More actions',
+        preview: 'Preview',
+        addToTimeline: 'Add to timeline',
+        playAudio: 'Play',
+        pauseAudio: 'Pause',
+        convertToVideo: 'To video',
+        convertingToVideo: 'Converting to video…',
+        cut: 'Cut',
+        removeWatermark: 'Remove watermark',
+        downloading: 'Downloading…',
+        deleteMaterial: 'Delete',
+        downloadSubtitle: 'Download subtitles',
+        analysisWaiting: 'Waiting for analysis…',
+        uploadFiles: 'Upload local files',
+        tools: 'Material tools',
+        aiCreate: 'AI create',
+        packKinds: 'Pack type',
+        categories: 'Material categories',
+      },
+      inspector: {
+        empty: 'Select a clip on the timeline or a material in Materials to view and edit its properties here.',
+        editLocked: 'The AI assistant is running; properties cannot be changed right now',
+        segment: 'Segment',
+        segmentOf: 'Segment',
+        timeRange: 'Time range',
+        linkedClips: 'Linked clips',
+        track: 'Track',
+        start: 'Start',
+        end: 'End',
+        duration: 'Duration',
+        sourceMaterial: 'Source material',
+        resolution: 'Resolution',
+        format: 'Format',
+        position: 'Position',
+        sentences: 'Sentences',
+        voice: 'Voice',
+        trackVolume: 'Track volume',
+        subtitleText: 'Subtitle text',
+        subtitleTextHint: 'Saved on blur or Ctrl+Enter',
+        subtitleStyle: 'Subtitle style…',
+        cameraMotion: 'Camera motion…',
+        fitImage: 'Fit to frame',
+        multiSelected: '{count} clips selected',
+        totalDuration: 'Total duration',
+        fileName: 'File name',
+        type: 'Type',
+        source: 'Source',
+        cache: 'Local cache',
+        usedIn: 'Used in',
+        notUsed: 'Not used by a segment',
+        none: '—',
+      },
+      canvas: {
+        menu: 'Canvas {ratio}',
+        title: 'Canvas',
+        ratioNote: 'The ratio sets the size of the preview and the export; material with a different ratio is letterboxed.',
+        counts: '{video} video · {audio} audio',
+      },
+      preview: {
+        title: 'Final preview',
+        materialPreviewPrefix: 'Material preview',
+        emptyHint: 'Generate a draft from the script on the left, or drag materials from the right onto the timeline.',
+        openMaterials: 'Open materials',
+        fullscreen: 'Fullscreen',
+        exitFullscreen: 'Exit fullscreen',
+      },
+      assistant: {
+        title: 'AI assistant',
+        contextSegment: 'Assisting: segment {index} · {title}',
+        contextProject: 'Assisting: the whole project',
+        close: 'Close',
+      },
+    },
     videoUnderstandingPlaceholder: {
       title: 'Narration — from video',
       comingSoon: 'Coming soon',
@@ -6130,8 +6544,6 @@ export const translations: Record<string, Translations> = {
         copy: '复制',
         paste: '粘贴',
         delete: '删除',
-        undo: '撤销',
-        redo: '重做',
         organizeMaterials: '整理轨道中素材',
         motion: '运镜',
         effects: '特效',
@@ -6155,8 +6567,6 @@ export const translations: Record<string, Translations> = {
         copyShortcut: 'Ctrl+C',
         pasteShortcut: 'Ctrl+V',
         deleteShortcut: 'Del',
-        undoShortcut: 'Ctrl+Z',
-        redoShortcut: 'Ctrl+Y',
         motionShortcut: 'M',
         effectsShortcut: 'E',
         transitionsShortcut: 'T',
@@ -6182,6 +6592,12 @@ export const translations: Record<string, Translations> = {
           audioTrack: '音频轨道',
           subtitleTrack: '字幕轨道',
           imageTrack: '图片轨道',
+          mainVisual: '主画面',
+          visualTrack: '画面',
+          narrationTrack: '旁白',
+          imageShort: '图片',
+          audioShort: '音频',
+          subtitleShort: '字幕',
           mute: '静音',
         unmute: '取消静音',
         materialMissing: '素材已删除，此片段无法预览与导出',
@@ -6872,13 +7288,6 @@ export const translations: Record<string, Translations> = {
        partialFailed: '{total} 个切片中有 {failed} 个切分失败，已移除',
        failed: '视频切分失败：{message}',
        clipDescription: '从"{name}"剪切的片段，时间范围：{start} - {end}',
-     },
-     agentDock: {
-       fabLabel: 'AI 剪辑助手',
-       panelTitle: 'AI 剪辑助手',
-       close: '收起',
-       minimize: '最小化助手',
-       busy: 'Agent 执行中…',
      },
    },
    videoScript: {
@@ -7987,6 +8396,218 @@ export const translations: Record<string, Translations> = {
       emptyDraftHint: '请先撰写解说文案，再点击「下一步」。',
       splitFooterHint: '可编辑 / 新增 / 删除句子，然后「追加」到下方，或「替换」现有解说文案。',
       defaultSegmentTitle: '解说段落',
+    },
+    workbench: {
+      regions: {
+        topBar: '编辑器顶栏',
+        rail: '工具窗口',
+        script: '文案与段落',
+        preview: '成片预览',
+        side: '素材与属性',
+        timeline: '时间轴',
+      },
+      topBar: {
+        back: '返回项目列表',
+        renameHint: '点击重命名（Enter / F2）',
+        renameLabel: '项目名称',
+        renameFailed: '项目重命名失败',
+        lastModified: '最近修改 {time}',
+        saving: '保存中…',
+        saved: '已保存',
+        savedAt: '保存于 {time}',
+        saveError: '保存失败',
+        saveErrorRetry: '保存失败，点击立即重试',
+        idle: '未修改',
+        backupFound: '发现未恢复的备份',
+        undo: '撤销',
+        redo: '重做',
+        undoTitle: '撤销 (Ctrl+Z)',
+        redoTitle: '重做 (Ctrl+Y)',
+        historyLockedAgent: 'AI 助手执行中，暂不能撤销',
+        assistant: 'AI 助手',
+        assistantBusy: 'AI 助手执行中…',
+        assistantShortcut: 'AI 助手 (Ctrl+Alt+A)',
+        exportVideo: '导出视频',
+        exporting: '导出中 {progress}%',
+        exportEmpty: '时间轴为空，先添加素材',
+      },
+      taskCenter: {
+        button: '任务',
+        buttonCount: '任务 {count}',
+        title: '任务中心',
+        empty: '暂无进行中的任务',
+        recent: '最近完成',
+        segmentVoice: '第 {index} 段配音',
+        exportTask: '视频导出',
+        statusPending: '排队中',
+        statusProcessing: '生成中',
+        statusCompleted: '已完成',
+        statusFailed: '失败',
+        displayOnlyNote: '如需取消，请在任务发起处操作。',
+        types: {
+          ai_video: 'AI 视频',
+          ai_image: 'AI 图片',
+          image_to_video: '图片转视频',
+          tts: '配音',
+          batch_tts: '批量配音',
+          storyboard_video: '分镜视频',
+        },
+      },
+      rail: {
+        script: '脚本',
+        materials: '素材',
+        properties: '属性',
+        assistant: 'AI 助手',
+        layout: '布局',
+        scriptTitle: '脚本面板',
+        materialsTitle: '素材',
+        propertiesTitle: '属性',
+        layoutTitle: '布局预设',
+        presetScript: '脚本布局',
+        presetEdit: '剪辑布局',
+        presetScriptHint: '给文案更多空间 (Ctrl+Alt+1)',
+        presetEditHint: '给时间轴更多空间 (Ctrl+Alt+2)',
+        resetLayout: '重置布局',
+      },
+      layout: {
+        splitterLeft: '调整脚本面板宽度',
+        splitterRight: '调整素材面板宽度',
+        splitterTimeline: '调整时间轴高度',
+        tooNarrow: '窗口过窄，请放大窗口',
+      },
+      script: {
+        title: '文案 / 脚本',
+        summary: '{segments} 个片段 · {sentences} 句',
+        followPlayback: '跟随播放',
+        generateDraft: '生成初稿',
+        defaultVoice: '全片默认音色',
+        defaultVoiceUnset: '未选择',
+        changeVoice: '更换',
+        changeVoiceDisabled: '配音生成中，完成后才能更换音色',
+        segmentList: '段落列表',
+        placeholderHint: '还没有脚本。点击「生成初稿」开始创作。',
+      },
+      segmentCard: {
+        nowPlaying: '正在播放',
+        audition: '试听',
+        stopAudition: '停止',
+        auditionUnavailable: '先生成本段配音',
+        auditionFailed: '配音试听失败',
+        replaceVisual: '更换画面',
+        replaceVisualDisabled: '先生成本段配音，才能按时长匹配画面',
+        more: '更多操作',
+        generateVoice: '生成本段配音',
+        regenerateVoice: '重新生成本段配音',
+        updateVoice: '更新本段配音',
+        aiMatch: '为本段找画面（AI 匹配）',
+        locate: '定位到时间轴',
+        revealNewVoice: '在素材页中显示新配音',
+        locateUnavailable: '本段还没有放到时间轴上',
+        delete: '删除段落',
+        noVisual: '未配置画面',
+        visualConfigured: '画面已配置',
+        visualMissing: '画面未配置',
+        voiceReady: '配音已生成',
+        voiceOutdated: '新配音未上时间轴',
+        voiceOutdatedHint: '素材库已有新配音；时间轴和导出仍使用旧配音。可在时间轴删除旧旁白片段，再从素材页把新配音拖到旁白轨',
+        voiceStale: '配音待更新',
+        voiceGenerating: '配音生成中',
+        voiceNone: '未生成配音',
+        subtitleReady: '字幕已生成',
+        subtitleNone: '字幕未生成',
+        visualDescriptions: '画面描述 ({count})',
+        duration: '{value}s',
+        segmentLabel: '第 {index} 段',
+      },
+      side: {
+        tabMaterials: '素材',
+        tabProperties: '属性',
+      },
+      materials: {
+        searchPlaceholder: '搜索素材（名称）',
+        searchLabel: '搜索素材',
+        clearSearch: '清除搜索',
+        noMatch: '没有匹配“{query}”的素材',
+        add: '添加',
+        addMaterial: '添加素材',
+        filterAll: '全部',
+        filterVideo: '视频',
+        filterAudio: '音频',
+        filterImage: '图片',
+        filterPacks: '素材包',
+        usedInSegment: '已用于第 {index} 段',
+        more: '更多操作',
+        preview: '预览',
+        addToTimeline: '添加到时间轴',
+        playAudio: '播放',
+        pauseAudio: '暂停',
+        convertToVideo: '转视频',
+        convertingToVideo: '正在转换为视频…',
+        cut: '剪切',
+        removeWatermark: '去除水印',
+        downloading: '下载中…',
+        deleteMaterial: '删除',
+        downloadSubtitle: '下载字幕',
+        analysisWaiting: '等待解析…',
+        uploadFiles: '上传本地文件',
+        tools: '素材工具',
+        aiCreate: 'AI 创建',
+        packKinds: '素材包类型',
+        categories: '素材分类',
+      },
+      inspector: {
+        empty: '在时间轴选中一个片段，或在素材页选中一个素材，即可在这里查看和修改属性。',
+        editLocked: 'AI 助手执行中，属性暂不可修改',
+        segment: '段落',
+        segmentOf: '所属段落',
+        timeRange: '时间范围',
+        linkedClips: '关联片段',
+        track: '轨道',
+        start: '开始',
+        end: '结束',
+        duration: '时长',
+        sourceMaterial: '源素材',
+        resolution: '分辨率',
+        format: '格式',
+        position: '位置',
+        sentences: '句子数',
+        voice: '音色',
+        trackVolume: '轨道音量',
+        subtitleText: '字幕文本',
+        subtitleTextHint: '失焦或 Ctrl+Enter 保存',
+        subtitleStyle: '字幕样式…',
+        cameraMotion: '运镜…',
+        fitImage: '适配画面',
+        multiSelected: '已选中 {count} 个片段',
+        totalDuration: '总时长',
+        fileName: '文件名',
+        type: '类型',
+        source: '来源',
+        cache: '本地缓存',
+        usedIn: '已用于',
+        notUsed: '未关联段落',
+        none: '—',
+      },
+      canvas: {
+        menu: '画布 {ratio}',
+        title: '画布',
+        ratioNote: '比例决定成片与导出尺寸；画面比例不同时会留边。',
+        counts: '视频 {video} · 音频 {audio}',
+      },
+      preview: {
+        title: '成片预览',
+        materialPreviewPrefix: '素材预览',
+        emptyHint: '从左侧脚本生成初稿，或从右侧素材拖到时间轴',
+        openMaterials: '打开素材',
+        fullscreen: '全屏',
+        exitFullscreen: '退出全屏',
+      },
+      assistant: {
+        title: 'AI 助手',
+        contextSegment: '正在协助：第 {index} 段 · {title}',
+        contextProject: '正在协助：整个项目',
+        close: '关闭',
+      },
     },
     videoUnderstandingPlaceholder: {
       title: '视频理解生成',

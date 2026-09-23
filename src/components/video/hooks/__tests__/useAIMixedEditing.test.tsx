@@ -305,7 +305,7 @@ describe('useAIMixedEditing', () => {
     act(() => { result.current.openModeModal(); });
 
     expect(result.current.timelineImpact.preservedTrackNames)
-      .toEqual([`${en.timeline.track.subtitleTrack} 1`]);
+      .toEqual([`${en.timeline.track.subtitleShort} 1`]);
   });
 
   it('reports an unchanged timeline instead of offering an undo', async () => {

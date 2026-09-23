@@ -20,11 +20,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const BADGE = resolve(__dirname, '..', 'MaterialCacheBadge.tsx');
+// The material card moved out of MaterialsPanel into MaterialCard
+// (workbench §3.7.1); the badge travels with it.
 const PANEL = resolve(
   __dirname,
   '..',
   'MaterialsPanel',
-  'MaterialsPanel.tsx',
+  'MaterialCard.tsx',
 );
 const I18N = resolve(__dirname, '../../../..', 'lib', 'i18n.ts');
 
@@ -68,14 +70,14 @@ describe('MaterialCacheBadge source structure', () => {
   });
 });
 
-describe('MaterialsPanel integration', () => {
+describe('MaterialCard integration', () => {
   it('imports the badge', () => {
     expect(panelSrc).toContain("import MaterialCacheBadge from '../MaterialCacheBadge'");
   });
 
   it('renders the badge for video materials with onRetry wired', () => {
     expect(panelSrc).toContain('<MaterialCacheBadge');
-    expect(panelSrc).toContain('onRetry={onRetryDownload');
+    expect(panelSrc).toContain('onRetry={actions.onRetryDownload');
   });
 });
 

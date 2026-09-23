@@ -3,14 +3,8 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
 import { 
-  convertTextToSpeech, 
-  convertBatchTextToSpeech,
-  convertScriptSegmentsToBatchRequest,
   convertSentencesToSpeech,
   convertScriptSegmentToSentenceRequest,
-  TTSRequest,
-  BatchTTSResponse,
-  SentenceBatchTTSResponse,
   SentenceTTSResult 
 } from '@/lib/api/tts';
 import {
@@ -20,8 +14,23 @@ import {
   SubtitleItem,
   AudioTranscriptionResponse
 } from '@/lib/api/audioTranscription';
-import VoiceSelector from './components/VoiceSelector';
 import { AiGenerateMenu } from './components/AiGenerateMenu';
+import { FileText, Loader2, Plus, Sparkles } from './components/SegmentCard/icons';
+import {
+  SegmentCardList, SegmentNarrationEditor, SegmentSentenceList, SegmentVideoCarousel,
+} from './components/SegmentCard';
+import type {
+  NarrationEditState,
+  SegmentListAvailability,
+  SegmentListHandlers,
+  SentenceActions,
+  SentenceEditState,
+  SentenceTiming,
+  VideoCarouselHandlers,
+} from './components/SegmentCard';
+import DefaultVoiceBar from './components/SegmentCard/DefaultVoiceBar';
+import FollowPlaybackSwitch from './components/SegmentCard/FollowPlaybackSwitch';
+import { useEditorFocusStore } from '@/stores/editorFocusStore';
 import VideoSearchModal from './components/VideoSearchModal/VideoSearchModal';
 import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
@@ -74,6 +83,12 @@ interface ScriptPanelProps {
   ) => void;
   // 「解说直接生成」句卡片「重新生成」AI 视频脚本：父级桥接 generateNarrationVideoScript。
   onRegenerateVideoScript?: (segmentId: string, sentenceId: string) => void;
+  /** 段落试听开始前暂停成片预览（spec §3.5.2 useSegmentAudition）。 */
+  onPauseComposition?: () => void;
+  /** 段落卡 ⋯「定位到时间轴」：播放头移到该段起点。 */
+  onLocateSegment?: (segmentId: string) => void;
+  /** 段落卡 ⋯「在素材页中显示新配音」：切到素材页并选中该素材。 */
+  onRevealMaterial?: (materialId: string) => void;
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -96,6 +111,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   onGenerateAiVideoForSentence,
   onRegenerateVideoScript,
   projectId,
+  onPauseComposition,
+  onLocateSegment,
+  onRevealMaterial,
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -1899,91 +1917,237 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     });
   }, [segments, onUpdateSegments, logger, showSuccess, handleCloseConfirmationDialog]);
 
-  return (
-    <div className={`flex flex-col h-full ${className}`}>
-      {/* 标题栏 - 与其他面板保持一致的样式 */}
-      <div className="script-panel-header relative">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-primary/10 rounded-md flex items-center justify-center">
-              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <h3 className="text-sm font-semibold text-foreground">{t.scriptPanel.header.title}</h3>
-            {activeTab === 'narration' && (
-              <span className="text-xs text-muted-foreground ml-3">
-                {t.scriptPanel.header.segmentsCount.replace('{count}', segments.length.toString())} · {t.scriptPanel.header.sentencesCount.replace('{count}', segments.reduce((sum, segment) => sum + segment.sentences.length, 0).toString())}
-              </span>
-            )}
+  // 句子级 AI 视频弹窗：优先画面脚本 videoScript（narration-direct 句），其次 aiVideoPrompt，
+  // 最后回退旁白兜底，避免 ARK 句级初始提示词取到旁白原文（spec §7 / R6）。
+  const handleOpenSentenceAi = useCallback(
+    (segment: ScriptSegment, sentence: ScriptSentence, sentenceTiming: SentenceTiming) => {
+      const raw = (sentence.text || '').trim();
+      const fallbackPrompt = raw.length < 8 && segment.narrationText
+        ? `${raw}（上下文：${segment.narrationText.slice(0, 100)}）`
+        : raw;
+      const initialPrompt = (sentence.videoScript && sentence.videoScript.trim())
+        ? sentence.videoScript
+        : (sentence.aiVideoPrompt && sentence.aiVideoPrompt.trim())
+          ? sentence.aiVideoPrompt
+          : fallbackPrompt;
+      setSentenceAiModal({
+        open: true,
+        segmentId: segment.id,
+        sentenceId: sentence.id,
+        initialPrompt,
+        initialDuration: mapSentenceDurationToArkBucket(sentenceTiming.duration),
+        sentenceActualDuration: sentenceTiming.duration,
+      });
+    },
+    [],
+  );
+
+  const handleVideoPlayingChange = useCallback((videoKey: string, isPlaying: boolean) => {
+    setPlayingVideos(prev => {
+      const next = new Set(prev);
+      if (isPlaying) next.add(videoKey);
+      else next.delete(videoKey);
+      return next;
+    });
+  }, []);
+
+  // 重置加载状态并重新加载视频元素
+  const handleVideoRetry = useCallback((videoKey: string) => {
+    setVideoLoadingStates(prev => {
+      const newState = { ...prev };
+      delete newState[videoKey];
+      return newState;
+    });
+    const videoElement = document.querySelector(`[data-video-key="${videoKey}"]`) as HTMLVideoElement;
+    if (videoElement) {
+      videoElement.load();
+    }
+  }, []);
+
+  // 焦点仓库只读镜像逐段 TTS 状态，供顶栏任务中心计数（spec RV-03）
+  const setFocusConvertingIds = useEditorFocusStore(state => state.setConvertingSegmentIds);
+  useEffect(() => {
+    setFocusConvertingIds(convertingSegments);
+  }, [convertingSegments, setFocusConvertingIds]);
+  useEffect(() => () => setFocusConvertingIds(new Set()), [setFocusConvertingIds]);
+
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const segmentListAvailability: SegmentListAvailability = {
+    isVoiceBusy: (segmentId) => convertingSegments.has(segmentId) || isBatchConverting,
+    replaceVisualBlockReason: (segmentId) => {
+      if (keywordGeneratingSegments.has(segmentId)) return 'Generating search keywords...';
+      if (!completedSegments.has(segmentId)) return t.workbench.segmentCard.replaceVisualDisabled;
+      return null;
+    },
+    aiMatchBlockReason: (segmentId) => {
+      if (!completedSegments.has(segmentId)) return t.scriptPanel.actions.completeConversionFirst;
+      if (!getVideoAnalysisResult) return t.scriptPanel.actions.aiMatchNotConfigured;
+      if (!hasAvailableAnalyzedVideos(segmentId)) return t.scriptPanel.actions.noAvailableAnalyzedVideos;
+      if (videoAIMatch.matchState.isMatching) return t.scriptPanel.actions.aiMatching;
+      return null;
+    },
+  };
+
+  const segmentListHandlers: SegmentListHandlers = {
+    onGenerateVoice: (segment) => handleConvertToSpeech(segment),
+    onReplaceVisual: (segmentId) => handleOpenVideoSearch(segmentId),
+    onAiMatchVisual: (segmentId) => handleAIMatchVideos(segmentId),
+    onDeleteSegment: handleDeleteSegment,
+    onLocateSegment,
+    onRevealMaterial,
+  };
+
+  const narrationEdit: NarrationEditState = {
+    editingSegmentId: editingNarrationSegmentId,
+    editingText: editingNarrationText,
+    onChangeText: setEditingNarrationText,
+    onKeyDown: handleNarrationKeyDown,
+    onStartEdit: handleStartNarrationEdit,
+    onSave: handleSaveNarrationEdit,
+    onCancel: handleCancelNarrationEdit,
+  };
+
+  const sentenceEdit: SentenceEditState = {
+    editingSentenceId,
+    editingText,
+    onChangeText: setEditingText,
+    onKeyDown: handleKeyDown,
+    onStartEdit: handleStartEdit,
+    onSave: handleSaveEdit,
+    onCancel: handleCancelEdit,
+  };
+
+  const sentenceActions: SentenceActions = {
+    onDeleteSentence: handleDeleteSentence,
+    onAddSentence: handleAddSentence,
+    onOpenSentenceAi: onGenerateAiVideoForSentence ? handleOpenSentenceAi : undefined,
+    onRegenerateVideoScript,
+    formatTime,
+  };
+
+  const carouselHandlers: VideoCarouselHandlers = {
+    onPlayPause: handleVideoPlayPause,
+    onLoadStart: handleVideoLoadStart,
+    onCanPlay: handleVideoCanPlay,
+    onError: handleVideoError,
+    onPlayingChange: handleVideoPlayingChange,
+    onRetry: handleVideoRetry,
+    onNavigate: handleVideoNavigation,
+    getMediaErrorType,
+  };
+
+  // 选中展开态主体（spec §5.3 renderExpanded）：状态全部仍归 ScriptPanel 所有
+  const renderSegmentDetails = (segment: ScriptSegment) => (
+    <>
+      {segment.narrationText && (
+        <SegmentNarrationEditor
+          segmentId={segment.id}
+          narrationText={segment.narrationText}
+          edit={narrationEdit}
+        />
+      )}
+      {ttsProgress[segment.id] !== undefined && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-muted-foreground">{t.scriptPanel.progress.conversionProgress}</span>
+            <span className="text-xs text-muted-foreground ws-tabular">{ttsProgress[segment.id]}%</span>
           </div>
-          <div className="flex items-center space-x-2">
-            {activeTab === 'storyboard' ? (
-              /* AI分镜 tab — action buttons are inside the tab content */
-              null
-            ) : activeTab === 'narration' ? (
-              <>
-                {/* AI 生成下拉菜单：解说直接生成 / 视频理解生成 / 统一转换所有语音
-                    （后者由独立外部按钮收纳进下拉，spec script-panel-toolbar-and-draggable-chat-dock） */}
-                {onSelectNarrationDirect && onSelectVideoUnderstanding && (
-                  <AiGenerateMenu
-                    onSelectNarrationDirect={onSelectNarrationDirect}
-                    onSelectVideoUnderstanding={onSelectVideoUnderstanding}
-                    isBusy={isGenerating || isBatchConverting}
-                    onConvertAllSpeech={handleBatchConvertToSpeech}
-                    convertAllSpeechDisabled={segments.length === 0}
-                    isConvertingAllSpeech={isBatchConverting}
-                  />
-                )}
-              </>
-            ) : (
-              /* AI视频脚本 tab - AI生成 + 添加场景按钮 */
-              <>
-                {onGenerateAIVideoScript && (
-                  <button
-                    onClick={onGenerateAIVideoScript}
-                    disabled={isGeneratingAIVideoScript}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/30 rounded-md hover:bg-primary/20 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title={t.scriptPanel.aiVideoScript.aiGenerate}
-                  >
-                    {isGeneratingAIVideoScript ? (
-                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                      </svg>
-                    )}
-                    <span>{isGeneratingAIVideoScript ? t.scriptPanel.aiVideoScript.aiGenerating : t.scriptPanel.aiVideoScript.aiGenerate}</span>
-                  </button>
-                )}
-                {onUpdateAIVideoScriptSegments && (
-                  <button
-                    onClick={() => {
-                      const title = t.scriptPanel.aiVideoScript.segmentTitle.replace('{index}', String(aiVideoScriptSegments.length + 1));
-                      onUpdateAIVideoScriptSegments([...aiVideoScriptSegments, createAIVideoSegment(title)]);
-                    }}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/30 rounded-md hover:bg-primary/20 hover:border-primary/40 transition-colors"
-                    title={t.scriptPanel.aiVideoScript.addSegment}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    <span>{t.scriptPanel.aiVideoScript.addSegment}</span>
-                  </button>
-                )}
-              </>
-            )}
+          <div className="w-full bg-accent rounded-full h-1.5">
+            <div
+              className="bg-primary h-1.5 rounded-full transition-all duration-300"
+              style={{ width: `${ttsProgress[segment.id]}%` }}
+            ></div>
           </div>
         </div>
+      )}
+      <SegmentSentenceList
+        segment={segment}
+        isOpen={expandedScriptSegments.has(segment.id)}
+        onToggle={() => toggleScriptExpanded(segment.id)}
+        timings={getSentenceTimingDisplay(segment.id)}
+        edit={sentenceEdit}
+        actions={sentenceActions}
+      />
+      <SegmentVideoCarousel
+        segment={segment}
+        currentIndex={segmentVideoIndexes[segment.id] || 0}
+        loadStates={videoLoadingStates}
+        handlers={carouselHandlers}
+        logger={logger}
+      />
+    </>
+  );
 
-        {/* Tab 栏 */}
+  const narrationSummary = t.workbench.script.summary
+    .replace('{segments}', String(segments.length))
+    .replace('{sentences}', String(segments.reduce((sum, segment) => sum + segment.sentences.length, 0)));
+
+  return (
+    <div ref={panelRef} className={`script-panel flex flex-col h-full ${className}`}>
+      {/* 标题栏 36px（spec §3.5.1） */}
+      <div className="ws-panel-header">
+        <h3 className="ws-panel-title">{t.workbench.script.title}</h3>
+        <span className="ws-panel-subtitle ws-tabular flex-1 min-w-0">
+          {activeTab === 'narration' ? narrationSummary : null}
+        </span>
+        {activeTab === 'narration' ? (
+          <>
+            <FollowPlaybackSwitch />
+            {/* AI 生成下拉菜单：解说直接生成 / 视频理解生成 / 统一转换所有语音
+                （后者由独立外部按钮收纳进下拉，spec script-panel-toolbar-and-draggable-chat-dock） */}
+            {onSelectNarrationDirect && onSelectVideoUnderstanding && (
+              <AiGenerateMenu
+                onSelectNarrationDirect={onSelectNarrationDirect}
+                onSelectVideoUnderstanding={onSelectVideoUnderstanding}
+                isBusy={isGenerating || isBatchConverting}
+                onConvertAllSpeech={handleBatchConvertToSpeech}
+                convertAllSpeechDisabled={segments.length === 0}
+                isConvertingAllSpeech={isBatchConverting}
+              />
+            )}
+          </>
+        ) : activeTab === 'aiVideo' ? (
+          /* AI视频脚本 tab - AI生成 + 添加场景按钮；AI分镜 tab 的操作在 tab 内容里 */
+          <>
+            {onGenerateAIVideoScript && (
+              <button
+                type="button"
+                onClick={onGenerateAIVideoScript}
+                disabled={isGeneratingAIVideoScript}
+                className="ws-btn ws-btn--outline-primary ws-btn--sm"
+                title={t.scriptPanel.aiVideoScript.aiGenerate}
+              >
+                {isGeneratingAIVideoScript
+                  ? <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+                  : <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />}
+                <span>{isGeneratingAIVideoScript ? t.scriptPanel.aiVideoScript.aiGenerating : t.scriptPanel.aiVideoScript.aiGenerate}</span>
+              </button>
+            )}
+            {onUpdateAIVideoScriptSegments && (
+              <button
+                type="button"
+                onClick={() => {
+                  const title = t.scriptPanel.aiVideoScript.segmentTitle.replace('{index}', String(aiVideoScriptSegments.length + 1));
+                  onUpdateAIVideoScriptSegments([...aiVideoScriptSegments, createAIVideoSegment(title)]);
+                }}
+                className="ws-btn ws-btn--ghost ws-btn--sm"
+                title={t.scriptPanel.aiVideoScript.addSegment}
+              >
+                <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+                <span>{t.scriptPanel.aiVideoScript.addSegment}</span>
+              </button>
+            )}
+          </>
+        ) : null}
+      </div>
+
+      {/* 分段控件：原三 tab，名称与键盘导航不变 */}
+      <div className="script-panel__tabs">
         <div
           role="tablist"
           aria-label={t.scriptPanel.tabsLabel}
-          className="flex space-x-1 mt-3 p-1 bg-muted rounded-md"
+          className="ws-segmented w-full"
           onKeyDown={(e) => {
             const order: Array<typeof activeTab> = ['narration', 'aiVideo', 'storyboard'];
             const idx = order.indexOf(activeTab);
@@ -2008,9 +2172,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             aria-selected={activeTab === 'narration'}
             aria-controls="panel-narration"
             tabIndex={activeTab === 'narration' ? 0 : -1}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              activeTab === 'narration' ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className="flex-1"
             onClick={() => setActiveTab('narration')}
           >
             {t.scriptPanel.tabs.narrationScript}
@@ -2021,9 +2183,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             aria-selected={activeTab === 'aiVideo'}
             aria-controls="panel-aivideo"
             tabIndex={activeTab === 'aiVideo' ? 0 : -1}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              activeTab === 'aiVideo' ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className="flex-1"
             onClick={() => setActiveTab('aiVideo')}
           >
             {t.scriptPanel.tabs.aiVideoScript}
@@ -2034,9 +2194,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
             aria-selected={activeTab === 'storyboard'}
             aria-controls="panel-storyboard"
             tabIndex={activeTab === 'storyboard' ? 0 : -1}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              activeTab === 'storyboard' ? 'bg-card text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className="flex-1"
             onClick={() => setActiveTab('storyboard')}
           >
             {t.scriptPanel.actions.aiStoryboard}
@@ -2081,692 +2239,31 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         )
       ) : (!segments || segments.length === 0) ? (
         /* 解说脚本空状态 */
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center">
-            <svg className="w-12 h-12 text-muted-foreground mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <p className="text-sm text-muted-foreground">{t.scriptPanel.emptyState.noScript}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {t.scriptPanel.emptyState.scriptWillAppear}
-            </p>
-          </div>
+        <div className="ws-empty flex-1">
+          <FileText size={32} strokeWidth={1.75} aria-hidden="true" />
+          <p>{t.scriptPanel.emptyState.noScript}</p>
+          <p className="text-xs">{t.scriptPanel.emptyState.scriptWillAppear}</p>
         </div>
       ) : (
       <>
-      {/* 脚本内容区域 */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-3">
-        {segments.map((segment, segmentIndex) => (
-          <div 
-            key={segment.id} 
-            className="script-segment bg-card border border-border rounded-md p-3 transition-shadow duration-200"
-          >
-            {/* 片段标题 */}
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-medium text-foreground flex items-center">
-                <span className="w-6 h-6 bg-primary/10 text-primary rounded-full text-xs font-semibold flex items-center justify-center mr-2">
-                  {segmentIndex + 1}
-                </span>
-                {segment.title}
-              </h4>
-              <div className="flex items-center space-x-2">
-                {/* 转换语音按钮 - 修改为图标形式 */}
-                <button
-                  onClick={() => handleConvertToSpeech(segment)}
-                  disabled={convertingSegments.has(segment.id) || isBatchConverting}
-                  className="p-1.5 text-primary bg-primary/10 border border-primary/30 rounded hover:bg-primary/20 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title={t.scriptPanel.actions.convertSpeech}
-                >
-                  {convertingSegments.has(segment.id) ? (
-                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 14.142M9 9a3 3 0 000 6 3 3 0 000-6zM9 9a3 3 0 000 6 3 3 0 000-6z" />
-                    </svg>
-                  )}
-                </button>
-
-                {/* 搜索在线视频按钮 - 一直显示，但只有转换完成后才可点击 */}
-                <button
-                  onClick={() => handleOpenVideoSearch(segment.id)}
-                  disabled={!completedSegments.has(segment.id) || keywordGeneratingSegments.has(segment.id)}
-                  className={`p-1.5 border rounded transition-colors ${
-                    completedSegments.has(segment.id) && !keywordGeneratingSegments.has(segment.id)
-                      ? 'text-primary bg-primary/10 border-primary/30 hover:bg-primary/20 hover:border-primary/40'
-                      : 'text-muted-foreground bg-muted border-border cursor-not-allowed opacity-50'
-                  }`}
-                  title={keywordGeneratingSegments.has(segment.id)
-                    ? 'Generating search keywords...'
-                    : completedSegments.has(segment.id) ? t.scriptPanel.actions.searchOnlineVideos : t.scriptPanel.actions.completeConversionFirst}
-                  aria-label={keywordGeneratingSegments.has(segment.id)
-                    ? 'Generating search keywords...'
-                    : completedSegments.has(segment.id)
-                    ? t.scriptPanel.actions.searchOnlineVideos
-                    : `${t.scriptPanel.actions.searchOnlineVideos} — ${t.scriptPanel.actions.completeConversionFirst}`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </button>
-
-                {/* AI匹配视频按钮 - 需要转换完成且有已分析的视频 */}
-                <button
-                  onClick={() => handleAIMatchVideos(segment.id)}
-                  disabled={
-                    !completedSegments.has(segment.id) || 
-                    !getVideoAnalysisResult ||
-                    !hasAvailableAnalyzedVideos(segment.id) ||
-                    videoAIMatch.matchState.isMatching
-                  }
-                  className={`p-1.5 border rounded transition-colors ${
-                    completedSegments.has(segment.id) && 
-                    getVideoAnalysisResult &&
-                    hasAvailableAnalyzedVideos(segment.id) &&
-                    !videoAIMatch.matchState.isMatching
-                      ? 'text-primary bg-primary/10 border-primary/30 hover:bg-primary/20 hover:border-primary/40'
-                      : 'text-muted-foreground bg-muted border-border cursor-not-allowed opacity-50'
-                  }`}
-                  title={
-                    !completedSegments.has(segment.id)
-                      ? t.scriptPanel.actions.completeConversionFirst
-                      : !getVideoAnalysisResult
-                        ? t.scriptPanel.actions.aiMatchNotConfigured
-                        : !hasAvailableAnalyzedVideos(segment.id)
-                          ? t.scriptPanel.actions.noAvailableAnalyzedVideos
-                          : videoAIMatch.matchState.isMatching
-                            ? t.scriptPanel.actions.aiMatching
-                            : t.scriptPanel.actions.aiMatchVideo
-                  }
-                  aria-label={(() => {
-                    const verb = t.scriptPanel.actions.aiMatchVideo;
-                    if (!completedSegments.has(segment.id)) return `${verb} — ${t.scriptPanel.actions.completeConversionFirst}`;
-                    if (!getVideoAnalysisResult)            return `${verb} — ${t.scriptPanel.actions.aiMatchNotConfigured}`;
-                    if (!hasAvailableAnalyzedVideos(segment.id)) return `${verb} — ${t.scriptPanel.actions.noAvailableAnalyzedVideos}`;
-                    if (videoAIMatch.matchState.isMatching) return `${verb} — ${t.scriptPanel.actions.aiMatching}`;
-                    return verb;
-                  })()}
-                >
-                  {videoAIMatch.matchState.isMatching ? (
-                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                  )}
-                </button>
-
-                {/* 删除段落按钮 */}
-                <button
-                  onClick={() => handleDeleteSegment(segment.id, segment.title)}
-                  className="p-1.5 text-destructive bg-destructive/10 border border-red-200 rounded hover:bg-red-100 hover:border-red-300 transition-colors"
-                  title={t.scriptPanel.actions.deleteSegment}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-
-              </div>
-            </div>
-
-            {/* 转换进度条 */}
-            {ttsProgress[segment.id] !== undefined && (
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-muted-foreground">{t.scriptPanel.progress.conversionProgress}</span>
-                  <span className="text-xs text-muted-foreground">{ttsProgress[segment.id]}%</span>
-                </div>
-                <div className="w-full bg-accent rounded-full h-1.5">
-                  <div
-                    className="bg-primary h-1.5 rounded-full transition-all duration-300"
-                    style={{ width: `${ttsProgress[segment.id]}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
-            {/* 解说文案区域 */}
-            {segment.narrationText && (
-              <div className="mb-3 p-2.5 bg-primary/5 border border-primary/20 rounded-md">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-primary">
-                    {t.scriptPanel.narration.label}
-                  </span>
-                  {editingNarrationSegmentId !== segment.id && (
-                    <button
-                      onClick={() => handleStartNarrationEdit(segment.id, segment.narrationText || '')}
-                      className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
-                      title={t.scriptPanel.narration.editTooltip}
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                {editingNarrationSegmentId === segment.id ? (
-                  <div>
-                    <textarea
-                      value={editingNarrationText}
-                      onChange={(e) => setEditingNarrationText(e.target.value)}
-                      onKeyDown={handleNarrationKeyDown}
-                      className="w-full p-2 text-sm border border-primary/30 rounded resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-background"
-                      rows={3}
-                      autoFocus
-                    />
-                    <div className="flex items-center space-x-2 mt-2">
-                      <button
-                        onClick={handleSaveNarrationEdit}
-                        className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
-                      >
-                        {t.scriptPanel.editing.save}
-                      </button>
-                      <button
-                        onClick={handleCancelNarrationEdit}
-                        className="px-2 py-1 text-xs bg-muted-foreground text-primary-foreground rounded hover:bg-muted-foreground/80 transition-colors"
-                      >
-                        {t.scriptPanel.editing.cancel}
-                      </button>
-                      <span className="text-xs text-muted-foreground">{t.scriptPanel.editing.saveHint}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-foreground leading-relaxed">
-                    {segment.narrationText}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* 视频脚本区域（可折叠） */}
-            <div className="mb-2">
-              <button
-                onClick={() => toggleScriptExpanded(segment.id)}
-                className="flex items-center space-x-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
-              >
-                <svg
-                  className={`w-3 h-3 transition-transform duration-200 ${expandedScriptSegments.has(segment.id) ? 'rotate-90' : ''}`}
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <span>{t.scriptPanel.tabs.aiVideoScript} ({segment.sentences.length})</span>
-              </button>
-            </div>
-
-            {/* 句子列表（可折叠） */}
-            {expandedScriptSegments.has(segment.id) && <div className="space-y-2">
-              {segment.sentences.map((sentence, sentenceIndex) => (
-                <div
-                  key={sentence.id}
-                  className="script-sentence p-2 rounded border border-border hover:border-border transition-colors"
-                >
-                  {(() => {
-                    const timingDisplay = getSentenceTimingDisplay(segment.id);
-                    const sentenceTiming = timingDisplay?.find(t => t.sentenceId === sentence.id);
-                    const aiVideoStatus = sentence.aiVideoStatus ?? 'idle';
-                    const canTriggerAiVideo =
-                      !!onGenerateAiVideoForSentence && aiVideoStatus !== 'generating' && !!sentenceTiming;
-                    const aiVideoBtnLabel =
-                      aiVideoStatus === 'generating' ? t.scriptPanel.aiVideoScript.sentenceAiVideoGenerating :
-                      aiVideoStatus === 'succeeded' ? t.scriptPanel.aiVideoScript.sentenceAiVideoSucceeded :
-                      aiVideoStatus === 'failed' ? t.scriptPanel.aiVideoScript.sentenceAiVideoFailed :
-                      t.scriptPanel.aiVideoScript.sentenceAiVideoButton;
-                    const aiVideoBtnClass =
-                      aiVideoStatus === 'generating'
-                        ? 'bg-purple-500/30 text-white/70 cursor-not-allowed'
-                        : aiVideoStatus === 'succeeded'
-                          ? 'border border-purple-500 text-purple-600 hover:bg-purple-500/10 dark:text-purple-300'
-                          : aiVideoStatus === 'failed'
-                            ? 'border border-red-500 text-red-500 hover:bg-red-500/10'
-                            : 'bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700';
-                    const handleOpenSentenceAi = () => {
-                      if (!canTriggerAiVideo || !sentenceTiming) return;
-                      const raw = (sentence.text || '').trim();
-                      const fallbackPrompt = raw.length < 8 && segment.narrationText
-                        ? `${raw}（上下文：${segment.narrationText.slice(0, 100)}）`
-                        : raw;
-                      // 优先用画面脚本 videoScript（narration-direct 句），其次 aiVideoPrompt，
-                      // 最后回退旁白兜底，避免 ARK 句级初始提示词取到旁白原文（spec §7 / R6）。
-                      const initialPrompt = (sentence.videoScript && sentence.videoScript.trim())
-                        ? sentence.videoScript
-                        : (sentence.aiVideoPrompt && sentence.aiVideoPrompt.trim())
-                          ? sentence.aiVideoPrompt
-                          : fallbackPrompt;
-                      const initialDuration = mapSentenceDurationToArkBucket(sentenceTiming.duration);
-                      setSentenceAiModal({
-                        open: true,
-                        segmentId: segment.id,
-                        sentenceId: sentence.id,
-                        initialPrompt,
-                        initialDuration,
-                        sentenceActualDuration: sentenceTiming.duration,
-                      });
-                    };
-                    return (
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-2 flex-1 min-w-0">
-                      <span className="text-xs text-muted-foreground mt-1 font-mono">
-                        {String(sentenceIndex + 1).padStart(2, '0')}
-                      </span>
-                      {editingSentenceId === sentence.id ? (
-                        <div className="flex-1">
-                          <textarea
-                            value={editingText}
-                            onChange={(e) => setEditingText(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            className="w-full p-2 text-sm border border-primary/30 rounded resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                            rows={2}
-                            autoFocus
-                          />
-                          <div className="flex items-center space-x-2 mt-2">
-                            <button
-                              onClick={handleSaveEdit}
-                              className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
-                            >
-                              {t.scriptPanel.editing.save}
-                            </button>
-                            <button
-                              onClick={handleCancelEdit}
-                              className="px-2 py-1 text-xs bg-muted-foreground text-primary-foreground rounded hover:bg-muted-foreground/80 transition-colors"
-                            >
-                              {t.scriptPanel.editing.cancel}
-                            </button>
-                            <span className="text-xs text-muted-foreground">
-                              {t.scriptPanel.editing.saveHint}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex-1 min-w-0">
-                          {/* 「AI 视频脚本」正文按 videoScriptStatus 优先级渲染（spec §7）：
-                              generating → 生成中…；videoScript 非空 → 画面脚本；failed → 失败 + 重新生成；
-                              其余（videoScriptStatus===undefined，常规链路句）→ 渲染 sentence.text（行为不变）。
-                              永不把旁白当脚本静默展示。 */}
-                          {(() => {
-                            const videoScriptText = (sentence.videoScript ?? '').trim();
-                            if (sentence.videoScriptStatus === 'generating') {
-                              return (
-                                <p className="text-sm text-muted-foreground leading-relaxed flex items-center gap-2">
-                                  <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                  </svg>
-                                  <span>{t.scriptPanel.aiVideoScript.videoScriptGenerating}</span>
-                                </p>
-                              );
-                            }
-                            if (videoScriptText) {
-                              return (
-                                <p
-                                  className="text-sm text-foreground leading-relaxed cursor-pointer"
-                                  onClick={() => handleStartEdit(sentence)}
-                                >
-                                  {videoScriptText}
-                                </p>
-                              );
-                            }
-                            if (sentence.videoScriptStatus === 'failed') {
-                              return (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm text-red-500">
-                                    {t.scriptPanel.aiVideoScript.videoScriptFailed}
-                                  </span>
-                                  {onRegenerateVideoScript && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onRegenerateVideoScript(segment.id, sentence.id)}
-                                      className="text-xs font-medium px-2 py-0.5 rounded border border-red-500 text-red-500 hover:bg-red-500/10 transition-colors"
-                                    >
-                                      {t.scriptPanel.aiVideoScript.videoScriptRetry}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            }
-                            return (
-                              <p
-                                className="text-sm text-foreground leading-relaxed cursor-pointer"
-                                onClick={() => handleStartEdit(sentence)}
-                              >
-                                {sentence.text}
-                              </p>
-                            );
-                          })()}
-                          {/* 时间信息显示在句子下方 */}
-                          {sentenceTiming ? (
-                            <div className="flex items-center space-x-2 mt-1">
-                              <span className="text-xs text-primary font-mono bg-primary/10 px-1 py-0.5 rounded">
-                                {formatTime(sentenceTiming.startTime)}-{formatTime(sentenceTiming.endTime)}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {t.scriptPanel.video.duration}: {sentenceTiming.duration.toFixed(1)}s
-                              </span>
-                            </div>
-                          ) : (sentence.startTime !== undefined && sentence.endTime !== undefined) ? (
-                            <div className="mt-1">
-                              <span className="text-xs text-muted-foreground font-mono bg-muted px-1 py-0.5 rounded">
-                                {sentence.startTime}s-{sentence.endTime}s
-                              </span>
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                    {editingSentenceId !== sentence.id && (
-                      <div className="flex items-center space-x-1 ml-2 shrink-0">
-                        <button
-                          onClick={() => handleStartEdit(sentence)}
-                          className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
-                          title={t.scriptPanel.actions.editSentence}
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSentence(segment.id, sentence.id)}
-                          className="p-1 text-destructive hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
-                          title={t.scriptPanel.actions.deleteSentence}
-                          disabled={segment.sentences.length <= 1}
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                        {sentenceTiming && onGenerateAiVideoForSentence && (
-                          <button
-                            type="button"
-                            onClick={handleOpenSentenceAi}
-                            disabled={aiVideoStatus === 'generating'}
-                            className={`text-xs font-medium px-2 py-0.5 rounded transition-colors ml-1 ${aiVideoBtnClass}`}
-                            title={aiVideoBtnLabel}
-                          >
-                            {aiVideoBtnLabel}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                    );
-                  })()}
-                </div>
-              ))}
-              
-              {/* 添加句子按钮 */}
-              <div className="mt-3 pt-2">
-                <button
-                  onClick={() => handleAddSentence(segment.id)}
-                  className="w-full py-1.5 text-sm text-muted-foreground hover:text-foreground bg-muted hover:bg-accent rounded transition-colors flex items-center justify-center space-x-2"
-                  title={t.scriptPanel.actions.addSentence}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                  <span>{t.scriptPanel.actions.addSentence}</span>
-                </button>
-              </div>
-            </div>}
-
-            {/* 视频预览区域 */}
-            {segment.videos && segment.videos.length > 0 && (
-              <div className="mt-4 p-3 bg-muted rounded-md border border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <h5 className="text-xs font-medium text-muted-foreground flex items-center">
-                    {t.scriptPanel.video.associatedVideos}
-                    {segment.videos.length > 1 && (
-                      <span className="ml-1 text-xs text-primary bg-primary/10 px-1 py-0.5 rounded">
-                        {t.scriptPanel.video.multipleVideos}
-                      </span>
-                    )}
-                  </h5>
-                  <span className="text-xs text-muted-foreground">
-                    {(segmentVideoIndexes[segment.id] || 0) + 1} / {segment.videos.length}
-                  </span>
-                </div>
-                
-                {(() => {
-                  const currentIndex = segmentVideoIndexes[segment.id] || 0;
-                  const currentVideo = segment.videos[currentIndex];
-                  
-                  if (!currentVideo) return null;
-                  
-                  return (
-                    <div className="space-y-2">
-                      {/* 视频预览 */}
-                      <div className="relative bg-black rounded-md overflow-hidden aspect-video">
-                        {currentVideo.type === 'video' && currentVideo.url ? (
-                          // 检查是否为YouTube视频
-                          currentVideo.metadata?.source === 'youtube' && currentVideo.metadata?.youtubeId ? (
-                            // YouTube视频使用嵌入式播放器
-                            <iframe
-                              key={`${segment.id}_${currentVideo.id}`}
-                              src={`https://www.youtube.com/embed/${currentVideo.metadata.youtubeId}?autoplay=0&controls=1&modestbranding=1&rel=0`}
-                              className="w-full h-full"
-                              frameBorder="0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                              onLoad={() => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                logger.info('YouTube视频预览加载完成', {
-                                  segmentId: segment.id,
-                                  videoId: currentVideo.id,
-                                  youtubeId: currentVideo.metadata?.youtubeId,
-                                  videoKey
-                                });
-                              }}
-                              onError={(e) => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                logger.error('YouTube视频预览加载失败', new Error('YouTube iframe load error'), {
-                                  segmentId: segment.id,
-                                  videoId: currentVideo.id,
-                                  youtubeId: currentVideo.metadata?.youtubeId,
-                                  videoKey
-                                });
-                              }}
-                            />
-                          ) : (
-                            // 其他视频使用video元素
-                            <video
-                              key={`${segment.id}_${currentVideo.id}`} // 强制重新创建元素
-                              className="w-full h-full object-contain cursor-pointer"
-                              poster={currentVideo.thumbnailUrl}
-                              controls
-                              preload="metadata"
-                              data-video-key={`${segment.id}_${currentVideo.id}`}
-                              onClick={(e) => {
-                                const videoElement = e.currentTarget;
-                                handleVideoPlayPause(videoElement, currentVideo, segment.id);
-                              }}
-                              onLoadStart={() => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                handleVideoLoadStart(videoKey, currentVideo, segment.id);
-                              }}
-                              onCanPlay={() => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                handleVideoCanPlay(videoKey, currentVideo, segment.id);
-                              }}
-                              onLoadedMetadata={() => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                logger.info('视频元数据加载完成', {
-                                  segmentId: segment.id,
-                                  videoId: currentVideo.id,
-                                  videoKey
-                                });
-                              }}
-                              onError={(e) => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                const error = e.currentTarget.error;
-                                const errorDetails = error ? {
-                                  code: error.code,
-                                  message: error.message,
-                                  errorType: getMediaErrorType(error.code)
-                                } : { message: 'Unknown video error' };
-                                
-                                handleVideoError(videoKey, currentVideo, segment.id, errorDetails);
-                              }}
-                              onPlay={() => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                setPlayingVideos(prev => new Set(prev).add(videoKey));
-                                logger.info('视频开始播放', {
-                                  segmentId: segment.id,
-                                  videoId: currentVideo.id
-                                });
-                              }}
-                              onPause={() => {
-                                const videoKey = `${segment.id}_${currentVideo.id}`;
-                                setPlayingVideos(prev => {
-                                  const newSet = new Set(prev);
-                                  newSet.delete(videoKey);
-                                  return newSet;
-                                });
-                                logger.info('视频暂停播放', {
-                                  segmentId: segment.id,
-                                  videoId: currentVideo.id
-                                });
-                              }}
-                            >
-                              <source 
-                                src={currentVideo.url} 
-                                type={currentVideo.format ? `video/${currentVideo.format}` : 'video/mp4'} 
-                              />
-                              {t.scriptPanel.video.browserNotSupported}
-                            </video>
-                          )
-                        ) : currentVideo.thumbnailUrl ? (
-                          <img 
-                            src={currentVideo.thumbnailUrl}
-                            alt={currentVideo.name}
-                            className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={() => {
-                              logger.userAction('点击非视频素材预览', 'materialPreview', {
-                                segmentId: segment.id,
-                                materialId: currentVideo.id,
-                                materialName: currentVideo.name,
-                                materialType: currentVideo.type
-                              });
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                        )}
-                        
-                        {/* 加载状态指示器 */}
-                        {(() => {
-                          const videoKey = `${segment.id}_${currentVideo.id}`;
-                          const loadingState = videoLoadingStates[videoKey];
-                          if (loadingState === 'loading') {
-                            return (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                                <div className="flex flex-col items-center space-y-2">
-                                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                  <div className="text-white text-xs">{t.scriptPanel.video.loading}</div>
-                                </div>
-                              </div>
-                            );
-                          } else if (loadingState === 'error') {
-                            return (
-                              <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
-                                <div className="text-center p-4">
-                                  <div className="text-destructive mb-2">
-                                    <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                                    </svg>
-                                  </div>
-                                  <div className="text-white text-sm font-medium">{t.scriptPanel.video.loadingFailed}</div>
-                                  <div className="text-muted-foreground text-xs mt-1">{t.scriptPanel.video.checkNetwork}</div>
-                                  <button 
-                                    className="mt-2 px-3 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs rounded transition-colors"
-                                    onClick={() => {
-                                      // 重置加载状态，触发重新加载
-                                      setVideoLoadingStates(prev => {
-                                        const newState = { ...prev };
-                                        delete newState[videoKey];
-                                        return newState;
-                                      });
-                                      
-                                      // 重新加载视频
-                                      const videoElement = document.querySelector(`[data-video-key="${videoKey}"]`) as HTMLVideoElement;
-                                      if (videoElement) {
-                                        videoElement.load();
-                                      }
-                                    }}
-                                  >
-                                    {t.scriptPanel.video.retry}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
-                      
-                      {/* 视频信息 */}
-                      <div className="text-xs text-muted-foreground">
-                        <div className="font-medium truncate">{currentVideo.name}</div>
-                        <div className="text-muted-foreground mt-1">
-                          {currentVideo.duration && `${Math.ceil(currentVideo.duration)}${t.scriptPanel.video.seconds}`}
-                          {currentVideo.width && currentVideo.height && ` · ${currentVideo.width}x${currentVideo.height}`}
-                        </div>
-                      </div>
-                      
-                      {/* 导航按钮 */}
-                      {segment.videos.length > 1 && (
-                        <div className="flex items-center justify-center space-x-2">
-                          <button
-                            onClick={() => handleVideoNavigation(segment.id, 'prev')}
-                            className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
-                            title={t.scriptPanel.actions.previousVideo}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleVideoNavigation(segment.id, 'next')}
-                            className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
-                            title={t.scriptPanel.actions.nextVideo}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* 字幕显示区域 */}
-
-
-
-          </div>
-        ))}
+      {/* 段落卡列表（spec §3.5.2） */}
+      <div className="flex-1 overflow-y-auto script-panel__list">
+        <SegmentCardList
+          segments={segments}
+          handlers={segmentListHandlers}
+          availability={segmentListAvailability}
+          renderSegmentDetails={renderSegmentDetails}
+          onPauseComposition={onPauseComposition}
+          panelRef={panelRef}
+        />
       </div>
 
-      {/* 音色选择器 */}
-      <div className="border-t border-border p-3">
-        <div className={`${isBatchConverting || convertingSegments.size > 0 ? 'opacity-50 pointer-events-none' : ''}`}>
-          <VoiceSelector
-            selectedVoiceId={selectedVoiceId}
-            onVoiceChange={setSelectedVoiceId}
-          />
-        </div>
-      </div>
+      {/* 全片默认音色底栏：TTS 转换中置灰（保持原行为） */}
+      <DefaultVoiceBar
+        selectedVoiceId={selectedVoiceId}
+        onVoiceChange={setSelectedVoiceId}
+        disabled={isBatchConverting || convertingSegments.size > 0}
+      />
 
       {/* 视频搜索模态框 */}
             <VideoSearchModal

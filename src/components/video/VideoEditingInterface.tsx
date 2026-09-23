@@ -25,6 +25,7 @@ import { buildClipPlaceholder, buildCutClipMaterial, matchClipCutResults } from 
 import { describeClipCutOutcome } from './lib/clipCutNotices';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import '../../styles/video-editing.css';
+import '../../styles/editor-workbench.css';
 import { shouldRestrictVideoEditing, getDeviceType, getDeviceInfo } from '@/lib/utils/deviceDetection';
 import { MobileWarningDialog } from '@/components/ui';
 import { 
@@ -62,7 +63,6 @@ import { http, ApiError } from '@/lib/api/http-client';
 import type { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import {
   DocumentPanel,
-  AIAssistantPanel,
   MaterialsPanel,
   VideoPlayerPanel,
   VideoSearchModal,
@@ -87,6 +87,10 @@ import { AsyncTaskPoller } from './components/AsyncTaskPoller';
 import { Conversation, ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
+import { EditorTopBar, EditorWorkbench, InspectorPanel, RightPanel, ToolWindowRail,
+  useEditorExportWiring, useWorkbenchWiring, type EditorProjectChrome } from './workbench';
+import { useSegmentLinks } from './hooks/useSegmentLinks';
+import { PlayingSegmentContext, SegmentLinksContext } from './lib/segments/SegmentLinksContext';
 
 /**
  * Parse agent-generated markdown script into ScriptSegment[] format.
@@ -142,6 +146,8 @@ interface VideoEditingInterfaceProps {
   projectId?: string;
   content: VideoEditingTaskContent | null;
   onUpdateContent: (content: VideoEditingTaskContent) => void;
+  /** Project name / save state / back / backup for the workbench top bar. */
+  projectChrome: EditorProjectChrome;
 }
 
 const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
@@ -149,6 +155,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   projectId,
   content,
   onUpdateContent,
+  projectChrome,
 }) => {
   // 获取国际化上下文
   const { locale, t } = useLocale();
@@ -2089,107 +2096,110 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     conv => conv.id === content?.activeConversationId
   );
 
+  // 段落中心工作台（spec segment-centric-editor-workbench §3）。段落派生唯一来源（RV-01）：
+  // 与传给 ScriptPanel / MaterialsPanel 的是同一对值；其余接线在 useWorkbenchWiring。
+  const editorSegments = useMemo(
+    () => content?.scriptSegments || getMockScriptSegments(locale), [content?.scriptSegments, locale]);
+  const { links: segmentLinks, playingSegmentId } = useSegmentLinks({ segments: editorSegments,
+    materials: materialManagement.allMaterials, isPlaceholderScript: !content?.scriptSegments,
+    currentTime: timelineCurrentTime });
+  const workbench = useWorkbenchWiring({ segmentLinks, videoPlayerRef, onSeek: handleTimelineTimeChange,
+    isAssistantOpen: isAgentDockOpen, setAssistantOpen: setIsAgentDockOpen });
+  const editorExport = useEditorExportWiring({ taskId, projectId, timelineState: currentTimelineState,
+    materials: materialManagement.allMaterials, aspectRatioId: workbench.aspectRatioId });
+
   return (
+    <SegmentLinksContext.Provider value={segmentLinks}>
+    <PlayingSegmentContext.Provider value={playingSegmentId}>
     <div className="flex-1 flex min-h-0 overflow-hidden relative">
-      {/* 主工作区 - 全宽，达芬奇式布局（脚本25% | 预览50% | 素材25% + 贯穿全宽时间轴）。
-          AI Chat 不再常驻，改为右下角浮动 Dock，见本组件末尾的 <AgentChatDock /> */}
-      <div className="video-editing-right-area flex flex-col min-h-0 overflow-hidden">
-        {/* 上方面板区域 */}
-        <div className="video-editing-upper-panels flex min-h-0 overflow-hidden">
-          {/* Text Script 面板 */}
-          <div className="video-editing-script-panel bg-muted border-r border-border">
-            <ScriptPanel
-              segments={content?.scriptSegments || getMockScriptSegments(locale)}
-              className="h-full"
-              onSelectNarrationDirect={() => narrationDirectScript.open()}
-              onSelectVideoUnderstanding={() => setIsVideoUnderstandingPlaceholderOpen(true)}
-              isGenerating={scriptGeneration.isGeneratingScript}
-              onUpdateSegments={scriptGeneration.handleUpdateSegments}
-              onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
-              taskId={taskId}
-              projectId={projectId}
-              // 使用 allMaterials：ScriptPanel 内部按 type 过滤素材用于音频/视频匹配，
-              // 类型筛选会让跨类型匹配丢素材
-              materials={materialManagement.allMaterials}
-              getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
-              aiVideoScriptSegments={content?.aiVideoScriptSegments || []}
-              onUpdateAIVideoScriptSegments={handleUpdateAIVideoScriptSegments}
-              onGenerateAIVideoScript={handleAIVideoScriptGenerationClick}
-              isGeneratingAIVideoScript={isGeneratingAIVideoScript}
-              storyboardScriptSegments={content?.storyboardScriptSegments || []}
-              onUpdateStoryboardScriptSegments={handleUpdateStoryboardScriptSegments}
-              onGenerateAiVideoForSentence={handleGenerateAiVideoForSentence}
-              onRegenerateVideoScript={handleRegenerateVideoScript}
-            />
-          </div>
-
-          {/* Play Preview 面板 - 中央主舞台，占50%宽度 */}
-          <div className="video-editing-player-panel bg-card border-r border-border">
-            <VideoPlayerPanel
-              ref={videoPlayerRef}
-              {...videoPlayback}
-              videoPreview={mockVideoPreview}
-              taskId={taskId}
-              compositionPlayback={timelineComposition.compositionPlayback}
-              onCompositionPlayPause={timelineComposition.handleCompositionPlay}
-              onCompositionSeek={timelineComposition.handleCompositionSeek}
-              onNextSequence={timelineComposition.handleNextSequence}
-              onCompositionTimeUpdate={timelineComposition.handleCompositionTimeUpdate}
-              onTimelineTimeUpdate={handleVideoTimeUpdate}
-              currentTimelineTime={timelineCurrentTime}
-              onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
-              timelineState={currentTimelineState || undefined}
-              // 使用 allMaterials：导出依赖此 prop 解析音频/视频素材的 URL，类型筛选会导致跨类型素材 miss
-              materials={materialManagement.allMaterials}
-              onPatchMaterialCache={materialManagement.patchMaterialCache}
-              onImagePositionChange={handleImagePositionChange}
-              onImagePositionConfirm={handleImagePositionConfirm}
-              projectId={projectId}
-              projectName=""
-            />
-          </div>
-
-          {/* Materials Management 面板 - 右翼，占25%宽度 */}
-          <MaterialsPanel
-            {...materialManagement}
-            onSearchVideos={videoSearch.openSearchModal}
-            onSearchAudios={audioSearch.openSearchModal}
-            onSearchImages={imageSearch.openSearchModal}
-            onAIMixedEditing={aiMix.openModeModal}
-            onAutoMixAudio={scriptAutoMix.requestAutoMix}
-            onVideoAnalysis={handleVideoAnalysis}
-            onBatchVideoAnalysis={handleBatchVideoAnalysis}
-            getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
-            onRetryDownload={videoSearch.retryVideoDownload}
-            onAddToTimeline={handleAddMaterialToTimeline}
-            onCutMaterial={handleCutMaterial}
-            onWatermarkRemoval={handleWatermarkRemoval}
-            taskId={taskId}
-            projectId={projectId}
-            className="video-editing-materials-panel bg-card"
+      {/* 以「视频段落」为核心的工作台：顶栏｜工具窗口条｜脚本·成片预览·素材/属性｜可拖高时间轴 */}
+      <EditorWorkbench
+        layout={workbench.layout}
+        isTimelineLocked={agent.agentIsExecuting}
+        topBar={<EditorTopBar project={projectChrome} isAssistantOpen={isAgentDockOpen}
+          isAgentBusy={agent.agentIsExecuting} onToggleAssistant={workbench.toggleAssistant}
+          exportState={editorExport.exportState} onExport={() => void editorExport.handleExport()} />}
+        rail={<ToolWindowRail {...workbench.railProps} />}
+        left={
+          <ScriptPanel
+            segments={editorSegments} className="h-full" taskId={taskId} projectId={projectId}
+            onSelectNarrationDirect={() => narrationDirectScript.open()}
+            onSelectVideoUnderstanding={() => setIsVideoUnderstandingPlaceholderOpen(true)}
+            isGenerating={scriptGeneration.isGeneratingScript}
+            onUpdateSegments={scriptGeneration.handleUpdateSegments}
+            onAddMaterial={(material) => materialManagement.addOrReplaceMaterial(material)}
+            // 使用 allMaterials：ScriptPanel 内部按 type 过滤素材用于音频/视频匹配，
+            // 类型筛选会让跨类型匹配丢素材
+            materials={materialManagement.allMaterials}
+            getVideoAnalysisResult={videoAnalysis.getAnalysisResult}
+            aiVideoScriptSegments={content?.aiVideoScriptSegments || []}
+            onUpdateAIVideoScriptSegments={handleUpdateAIVideoScriptSegments}
+            onGenerateAIVideoScript={handleAIVideoScriptGenerationClick}
+            isGeneratingAIVideoScript={isGeneratingAIVideoScript}
+            storyboardScriptSegments={content?.storyboardScriptSegments || []}
+            onUpdateStoryboardScriptSegments={handleUpdateStoryboardScriptSegments}
+            onGenerateAiVideoForSentence={handleGenerateAiVideoForSentence}
+            onRegenerateVideoScript={handleRegenerateVideoScript}
+            onPauseComposition={workbench.pauseComposition}
+            onLocateSegment={workbench.locateSegment} onRevealMaterial={workbench.revealMaterial}
           />
-        </div>
-
-        {/* 下方时间轴面板 - 在右侧区域的下方，全宽度 */}
-        {/* S9：Agent 执行期间 inert 一次性移除时间轴区域的指针与 Tab 路径（含轨道头、添加轨道）；
-            文档级快捷键（空格播放、导出）不受影响 */}
-        <div
-          className="video-editing-timeline-section border-t border-border bg-muted relative"
-          inert={agent.agentIsExecuting ? true : undefined}
-        >
-          {agent.agentIsExecuting && (
-            <div className="agent-timeline-lock-overlay" />
-          )}
+        }
+        center={
+          <VideoPlayerPanel
+            ref={videoPlayerRef} {...videoPlayback} videoPreview={mockVideoPreview} taskId={taskId}
+            compositionPlayback={timelineComposition.compositionPlayback}
+            onCompositionPlayPause={timelineComposition.handleCompositionPlay}
+            onCompositionSeek={timelineComposition.handleCompositionSeek}
+            onNextSequence={timelineComposition.handleNextSequence}
+            onCompositionTimeUpdate={timelineComposition.handleCompositionTimeUpdate}
+            onTimelineTimeUpdate={handleVideoTimeUpdate}
+            currentTimelineTime={timelineCurrentTime}
+            onSequenceIndexUpdate={timelineComposition.handleSequenceIndexUpdate}
+            timelineState={currentTimelineState || undefined}
+            // 使用 allMaterials：组合预览需按 materialId 解析音频/视频素材，类型筛选会导致跨类型素材 miss
+            materials={materialManagement.allMaterials}
+            onPatchMaterialCache={materialManagement.patchMaterialCache}
+            onImagePositionChange={handleImagePositionChange} onImagePositionConfirm={handleImagePositionConfirm}
+            projectId={projectId} projectName={projectChrome.projectName}
+            aspectRatioId={workbench.aspectRatioId} onAspectRatioChange={workbench.setAspectRatioId}
+            onOpenMaterials={() => workbench.openSideTab('materials')}
+          />
+        }
+        right={<RightPanel
+          materialsPanel={
+            <MaterialsPanel
+              {...materialManagement}
+              onSearchVideos={videoSearch.openSearchModal} onSearchAudios={audioSearch.openSearchModal}
+              onSearchImages={imageSearch.openSearchModal}
+              onAIMixedEditing={aiMix.openModeModal} onAutoMixAudio={scriptAutoMix.requestAutoMix}
+              onVideoAnalysis={handleVideoAnalysis} onBatchVideoAnalysis={handleBatchVideoAnalysis}
+              getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
+              onRetryDownload={videoSearch.retryVideoDownload}
+              onAddToTimeline={handleAddMaterialToTimeline}
+              onCutMaterial={handleCutMaterial} onWatermarkRemoval={handleWatermarkRemoval}
+              onBeforePreview={workbench.pauseComposition}
+              taskId={taskId} projectId={projectId} className="h-full"
+            />
+          }
+          inspectorPanel={
+            <InspectorPanel
+              materials={materialManagement.allMaterials} taskId={taskId}
+              onOpenCameraMotion={(itemId) => workbench.timelinePanelRef.current?.openCameraMotion(itemId)}
+              onOpenSubtitleStyle={(trackId) => workbench.timelinePanelRef.current?.openSubtitleStyle(trackId)}
+              onAddMaterialToTimeline={handleAddMaterialToTimeline}
+              onBeforePreview={workbench.pauseComposition} onLocateSegment={workbench.locateSegment}
+            />
+          }
+        />}
+        timeline={
           <TimelinePanel
-            className="h-full"
+            ref={workbench.timelinePanelRef} className="h-full" taskId={taskId}
             onTimelineStateChange={handleTimelineStateChange}
-            externalCurrentTime={timelineCurrentTime}
-            onCurrentTimeChange={handleTimelineTimeChange}
+            externalCurrentTime={timelineCurrentTime} onCurrentTimeChange={handleTimelineTimeChange}
             // 使用 allMaterials：时间轴需要按 materialId 解析任意类型素材，类型筛选会丢素材
             materials={materialManagement.allMaterials}
             onTimelineCompositionChange={timelineComposition.handleTimelineStateChange}
             materialsToAdd={materialsToAddToTimeline}
-            taskId={taskId}
             onImportComplete={handleImportComplete}
             externalTimelineState={currentTimelineState || undefined}
             externalTimelineUpdateId={externalTimelineUpdateId || undefined}
@@ -2197,50 +2207,31 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             // content 非空即素材库已从项目数据载入；此前不标记「素材缺失」(N-01)
             materialsLoaded={content !== null}
           />
-        </div>
-      </div>
-
-      {/* 浮动助手最小化后保留聊天实例；面板尺寸受工作区安全边约束。 */}
-      <AgentChatDock
-        isOpen={isAgentDockOpen}
-        onOpen={() => setIsAgentDockOpen(true)}
-        onMinimize={() => setIsAgentDockOpen(false)}
-        agentIsExecuting={agent.agentIsExecuting}
-        chatProps={{
-          conversation: activeConversation,
-          onSendMessage: handleSendChatMessage,
-          onClearMessages: handleClearChatMessages,
-          isLoading: isChatLoading || !isConversationReady,
-          onCreativeBrainstormingClick: handleCreativeBrainstormingClick,
-          onPolishClick: handlePolishClick,
-          onConvertMessageToScript: handleConvertMessageToScript,
-          agentMode: agent.agentMode,
-          onAgentModeChange: agent.setAgentMode,
-          agentIsExecuting: agent.agentIsExecuting,
-          executionState: agent.executionState,
-          onAgentUndo: undefined,
-          onUndoAll: agent.undoAllOperations,
-          onUndoSingle: agent.undoSingleOperation,
-          onCancel: agent.cancelExecution,
-          onDismissError: agent.dismissExecutionError,
-          singleUndoMessageIds: agent.singleUndoMessageIds,
-        }}
+        }
+        // 顶栏「AI 助手」打开的右侧抽屉；只覆盖上半区，不遮挡时间轴（§3.9）
+        drawer={
+          <AgentChatDock
+            isOpen={isAgentDockOpen} onMinimize={() => setIsAgentDockOpen(false)}
+            contextLabel={workbench.assistantContextLabel}
+            chatProps={{
+              conversation: activeConversation, onSendMessage: handleSendChatMessage,
+              onClearMessages: handleClearChatMessages, isLoading: isChatLoading || !isConversationReady,
+              onCreativeBrainstormingClick: handleCreativeBrainstormingClick, onPolishClick: handlePolishClick,
+              onConvertMessageToScript: handleConvertMessageToScript,
+              agentMode: agent.agentMode, onAgentModeChange: agent.setAgentMode,
+              agentIsExecuting: agent.agentIsExecuting, executionState: agent.executionState,
+              onAgentUndo: undefined, onUndoAll: agent.undoAllOperations, onUndoSingle: agent.undoSingleOperation,
+              onCancel: agent.cancelExecution, onDismissError: agent.dismissExecutionError,
+              singleUndoMessageIds: agent.singleUndoMessageIds,
+            }}
+          />
+        }
       />
+      {editorExport.progressModal}
 
-      <VideoSearchModal
-        {...videoSearch}
-        taskId={taskId}
-      />
-
-      <AudioSearchModal
-        {...audioSearch}
-        taskId={taskId}
-      />
-
-      <ImageSearchModal
-        {...imageSearch}
-        taskId={taskId}
-      />
+      <VideoSearchModal {...videoSearch} taskId={taskId} />
+      <AudioSearchModal {...audioSearch} taskId={taskId} />
+      <ImageSearchModal {...imageSearch} taskId={taskId} />
       
       <ContentPolishModal
         isOpen={isPolishModalOpen}
@@ -2374,6 +2365,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       {/* Background async task polling for AI generation tasks */}
       <AsyncTaskPoller />
     </div>
+    </PlayingSegmentContext.Provider>
+    </SegmentLinksContext.Provider>
   );
 };
 
