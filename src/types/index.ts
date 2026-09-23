@@ -247,6 +247,23 @@ export interface ScriptSegment {
   thumbnail?: string; // 预留给未来的缩略图
   videos?: MaterialItem[]; // 关联的视频素材
   keywords?: string[]; // 视频搜索关键词，用于自动填充搜索框
+  voiceId?: string; // 本段音色；缺省 = 全片默认音色
+  voiceSpeed?: number; // 本段语速 0.8–1.2；缺省 = 1.0
+  appliedVoiceMaterialId?: string; // 用户明确应用到时间轴的配音素材 id
+  appliedVoiceAt?: string; // 应用配音的时刻（ISO），用于判定候选是否更新
+}
+
+/** 画布适配方式：保持完整 / 填满画布 / 背景填充。 */
+export type CanvasFit = 'contain' | 'cover' | 'blur';
+
+/** 导出前检查中允许按工程永久忽略的提示项。 */
+export type DismissibleExportAdvisory = 'subtitle-none' | 'letterbox';
+
+/** 工程级画布设置（放在 content 顶层：uiState 持久化会丢弃未知键）。 */
+export interface CanvasSettings {
+  aspectRatioId?: string; // 缺省 '16:9'
+  fit?: CanvasFit; // 缺省 'contain'
+  dismissedAdvisories?: DismissibleExportAdvisory[];
 }
 
 export interface AIVideoScriptSegment {
@@ -297,6 +314,8 @@ export interface VideoEditingTaskContent {
   pendingMaterials?: MaterialItem[]; // 待导入的素材数据
   // 时间轴水合修复后仍无法读取时，保留一次原始 uiState.currentTimelineState（放顶层：uiState 持久化会丢弃未知键）
   timelineRecoveryBackup?: { savedAt: string; data: unknown };
+  defaultVoiceId?: string; // 全片默认音色；缺省 = 'zh_male_shaonianzixin_uranus_bigtts'
+  canvasSettings?: CanvasSettings; // 画布比例与画面适配
   // Chat conversations for AI assistant
   conversations?: Conversation[];
   activeConversationId?: string | null;

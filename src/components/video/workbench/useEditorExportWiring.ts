@@ -11,10 +11,16 @@
  * the preview, so the exported size always matches what is previewed (R2).
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { MaterialItem, TimelineState } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useVideoExport } from '../hooks/useVideoExport';
+import { useEditorFocusStore } from '@/stores/editorFocusStore';
+import { useVideoExport, type ExportPreflight } from '../hooks/useVideoExport';
+import { collectExportAdvisories, type ExportAdvisory } from '../hooks/exportAdvisories';
+import { BLACK_TAIL_NOTICE_SECONDS } from '../hooks/videoExportItems';
+import type { SegmentLinksValue } from '../lib/segments/SegmentLinksContext';
+import type { UseWorkbenchWiringReturn } from './useWorkbenchWiring';
+import ExportPreflightSheet from './ExportPreflightSheet';
 import { VideoEditingLogger } from '../utils/logger';
 import VideoExportProgressModal from '../components/VideoPlayerPanel/VideoExportProgressModal';
 
@@ -26,6 +32,10 @@ export interface UseEditorExportWiringOptions {
   /** Controlled aspect ratio id shared with the preview (e.g. '16:9'). */
   aspectRatioId: string;
   logger?: VideoEditingLogger;
+  /** Canvas fit and project-level dismissed advisories (R2 §3.9 / §3.11). */
+  workbench?: Pick<UseWorkbenchWiringReturn, 'canvasFit' | 'dismissedAdvisories' | 'dismissAdvisory'>;
+  /** Segment statuses for the pre-export notes; without it there is no sheet. */
+  segmentLinks?: SegmentLinksValue;
 }
 
 export interface EditorExportState {
@@ -73,6 +83,29 @@ export function useEditorExportWiring(
     [taskId],
   );
   const logger = options.logger ?? fallbackLogger;
+  const [advisories, setAdvisories] = useState<ExportAdvisory[] | null>(null);
+  const latestRef = useRef(options);
+  latestRef.current = options;
+  const preflight = useMemo<ExportPreflight | undefined>(() => (options.segmentLinks ? {
+    collect: (blackTailSeconds) => {
+      const { segmentLinks, workbench, timelineState: tl, materials: list, aspectRatioId: ratio } = latestRef.current;
+      // A placeholder script has no voice notes, but the black-tail note must
+      // still show: with a preflight the export no longer toasts it itself.
+      const hasScript = segmentLinks !== undefined && !segmentLinks.isPlaceholderScript;
+      return collectExportAdvisories({
+        segmentIds: hasScript ? Array.from(segmentLinks.segmentIndex.keys()) : [],
+        statusById: segmentLinks?.statusById ?? new Map(),
+        tracks: tl?.tracks ?? [],
+        materialsById: new Map((list ?? []).map((material) => [material.id, material])),
+        fit: workbench?.canvasFit ?? 'contain',
+        aspectRatioId: ratio,
+        blackTailSeconds,
+        blackTailThreshold: BLACK_TAIL_NOTICE_SECONDS,
+        dismissed: workbench?.dismissedAdvisories ?? [],
+      });
+    },
+    onAdvisories: setAdvisories,
+  } : undefined), [options.segmentLinks !== undefined]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const videoExport = useVideoExport({
     timelineState: timelineState || EMPTY_TIMELINE,
@@ -81,6 +114,8 @@ export function useEditorExportWiring(
     // The export session is per project: another project of this task is not blocked (RV3-07).
     projectId,
     aspectRatio: aspectRatioId,
+    fitMode: options.workbench?.canvasFit,
+    preflight,
   });
   const { handleExport: runExport } = videoExport;
 
@@ -103,14 +138,32 @@ export function useEditorExportWiring(
       : undefined,
   };
 
-  const progressModal = React.createElement(VideoExportProgressModal, {
-    isOpen: videoExport.isExporting,
-    progress: videoExport.exportProgress,
-    startTime: videoExport.exportStartTime,
-    stage: videoExport.exportStage,
-    allowCancel: videoExport.canCancelExport,
-    onCancel: videoExport.cancelExport,
-  });
+  const progressModal = React.createElement(React.Fragment, null,
+    React.createElement(VideoExportProgressModal, {
+      isOpen: videoExport.isExporting,
+      progress: videoExport.exportProgress,
+      startTime: videoExport.exportStartTime,
+      stage: videoExport.exportStage,
+      allowCancel: videoExport.canCancelExport,
+      onCancel: videoExport.cancelExport,
+    }),
+    advisories && React.createElement(ExportPreflightSheet, {
+      advisories,
+      onClose: () => setAdvisories(null),
+      onExportAnyway: () => {
+        setAdvisories(null);
+        void runExport({ skipAdvisories: true });
+      },
+      onReviewSegment: (segmentId: string) => {
+        setAdvisories(null);
+        useEditorFocusStore.getState().selectSegment(segmentId, 'script');
+      },
+      onOpenCanvas: () => {
+        setAdvisories(null);
+        document.querySelector<HTMLElement>('.ws-canvas-trigger')?.click();
+      },
+      onDismiss: (code) => options.workbench?.dismissAdvisory(code),
+    }));
 
   return { exportState, handleExport, progressModal };
 }

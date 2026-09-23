@@ -9,10 +9,19 @@ logging, which mirrors the original method logging.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from app.logger import get_logger
 from app.models import AspectRatio
+from app.services.composition.canvas_fit import (
+    FIT_BLUR,
+    FIT_CONTAIN,
+    FIT_COVER,
+    CanvasFitError,
+    blur_graph,
+    cover_steps,
+    require_fit_mode,
+)
 
 logger = get_logger(__name__)
 
@@ -59,6 +68,7 @@ def calculate_video_scaling(
     source_height: int,
     target_width: int,
     target_height: int,
+    fit_mode: str = FIT_CONTAIN,
 ) -> Dict[str, Any]:
     """Compute scale + pad params preserving aspect ratio (letter/pillarbox).
 
@@ -67,10 +77,61 @@ def calculate_video_scaling(
         source_height: Original video height.
         target_width: Target output width.
         target_height: Target output height.
+        fit_mode: canvas fit (spec r2 §3.9). ``contain`` returns exactly the
+            pre-feature dict; ``cover`` / ``blur`` add the ``cover_*`` rect
+            and ``fit_mode`` keys on top of it.
 
     Returns:
         Dict of scale/pad parameters consumed by :func:`build_video_filter`.
     """
+    require_fit_mode(fit_mode)
+    params = _contain_scaling(
+        source_width, source_height, target_width, target_height
+    )
+    if fit_mode == FIT_CONTAIN:
+        return params
+    cover = _cover_rect(
+        source_width, source_height,
+        params["pad_width"], params["pad_height"],
+    )
+    return {**params, **cover, "fit_mode": fit_mode}
+
+
+def _rescale(value: int, numerator: int, denominator: int) -> int:
+    """``value × numerator / denominator`` rounded half up (``av_rescale``)."""
+    return (value * numerator + denominator // 2) // denominator
+
+
+def _cover_rect(
+    source_width: int, source_height: int, frame_width: int, frame_height: int
+) -> Dict[str, int]:
+    """The enlarged rect ``scale=…:force_original_aspect_ratio=increase`` makes.
+
+    Mirrors FFmpeg's own arithmetic so the geometry the tests compare against
+    the preview is the geometry the export really renders. The offsets are
+    negative: the rect overhangs the frame and ``crop`` centres it.
+    """
+    cover_width = max(
+        _rescale(frame_height, source_width, source_height), frame_width
+    )
+    cover_height = max(
+        _rescale(frame_width, source_height, source_width), frame_height
+    )
+    return {
+        "cover_width": cover_width,
+        "cover_height": cover_height,
+        "cover_x": -((cover_width - frame_width) // 2),
+        "cover_y": -((cover_height - frame_height) // 2),
+    }
+
+
+def _contain_scaling(
+    source_width: int,
+    source_height: int,
+    target_width: int,
+    target_height: int,
+) -> Dict[str, Any]:
+    """Today's letter/pillarbox geometry, unchanged (the ``contain`` fit)."""
     source_ratio = source_width / source_height
     target_ratio = target_width / target_height
 
@@ -132,8 +193,18 @@ def _boxed_scale_params(
     }
 
 
-def build_video_filter(scaling_params: Dict[str, Any], camera_chain: str = "") -> str:
+def build_video_filter(
+    scaling_params: Dict[str, Any],
+    camera_chain: str = "",
+    fit_mode: str = FIT_CONTAIN,
+) -> str:
     """Build the FFmpeg ``-vf`` string for the given scale/pad params.
+
+    ``fit_mode`` (spec r2 §3.9.3): ``contain`` takes the pre-feature code path
+    below untouched. ``cover`` / ``blur`` need ``scaling_params`` computed with
+    the same mode and raise :class:`CanvasFitError` otherwise — never a quiet
+    ``contain`` render. A same-aspect source fills the frame in every mode, so
+    it keeps the plain scale string (``contain`` stretches a <1% mismatch).
 
     ``camera_chain`` (camera-motion-2d-3d D4) is injected immediately AFTER
     ``scale`` and BEFORE ``pad``/``setsar``. That position is the whole WYSIWYG
@@ -147,6 +218,10 @@ def build_video_filter(scaling_params: Dict[str, Any], camera_chain: str = "") -
     CHARACTER-IDENTICAL to the pre-feature function (the zero-regression
     guarantee, asserted per-branch in the tests).
     """
+    require_fit_mode(fit_mode)
+    if fit_mode != FIT_CONTAIN and scaling_params["needs_padding"]:
+        return _build_fill_filter(scaling_params, camera_chain, fit_mode)
+
     camera_part = f",{camera_chain}" if camera_chain else ""
 
     if not scaling_params["needs_padding"]:
@@ -164,3 +239,82 @@ def build_video_filter(scaling_params: Dict[str, Any], camera_chain: str = "") -
     )
 
     return f"{scale_filter}{camera_part},{pad_filter},setsar=1:1"
+
+
+def camera_frame_size(scaling_params: Dict[str, Any]) -> Tuple[int, int]:
+    """Size of the picture the camera motion acts on (its "content rect").
+
+    ``contain`` / ``blur``: the scaled picture, as before the feature.
+    ``cover``: the cropped frame — motion runs after ``crop`` (RV2-08), the
+    same rect the preview moves.
+    """
+    if scaling_params.get("fit_mode") == FIT_COVER and (
+        scaling_params["needs_padding"]
+    ):
+        return scaling_params["pad_width"], scaling_params["pad_height"]
+    return scaling_params["scale_width"], scaling_params["scale_height"]
+
+
+def fit_content_rect(
+    scaling_params: Dict[str, Any],
+) -> Tuple[int, int, int, int]:
+    """``(x, y, width, height)`` of the picture on the canvas.
+
+    For ``cover`` the rect overhangs the canvas (negative offsets).
+    """
+    if scaling_params.get("fit_mode") == FIT_COVER and (
+        scaling_params["needs_padding"]
+    ):
+        return _cover_tuple(scaling_params)
+    return (
+        scaling_params["pad_x"], scaling_params["pad_y"],
+        scaling_params["scale_width"], scaling_params["scale_height"],
+    )
+
+
+def fit_background_rect(
+    scaling_params: Dict[str, Any],
+) -> Optional[Tuple[int, int, int, int]]:
+    """The blurred background rect of ``blur``; ``None`` in other modes."""
+    if scaling_params.get("fit_mode") != FIT_BLUR:
+        return None
+    if not scaling_params["needs_padding"]:
+        return None
+    return _cover_tuple(scaling_params)
+
+
+def _cover_tuple(scaling_params: Dict[str, Any]) -> Tuple[int, int, int, int]:
+    return (
+        scaling_params["cover_x"], scaling_params["cover_y"],
+        scaling_params["cover_width"], scaling_params["cover_height"],
+    )
+
+
+def _build_fill_filter(
+    scaling_params: Dict[str, Any], camera_chain: str, fit_mode: str
+) -> str:
+    """``-vf`` string of a ``cover`` / ``blur`` fit (spec r2 §3.9.3).
+
+    ``-vf`` accepts a single-input, single-output graph with internal labels,
+    so ``blur`` stays a plain string and the "retry without camera" path of
+    the caller keeps working unchanged.
+    """
+    if scaling_params.get("fit_mode") != fit_mode:
+        raise CanvasFitError(
+            f"Scaling params were computed for "
+            f"{scaling_params.get('fit_mode', FIT_CONTAIN)!r}, "
+            f"not {fit_mode!r}"
+        )
+    width = scaling_params["pad_width"]
+    height = scaling_params["pad_height"]
+    camera_part = f",{camera_chain}" if camera_chain else ""
+    if fit_mode == FIT_COVER:
+        return ",".join(cover_steps(width, height)) + (
+            f"{camera_part},setsar=1:1"
+        )
+    foreground = (
+        f'scale={scaling_params["scale_width"]}:'
+        f'{scaling_params["scale_height"]}'
+    )
+    graph = blur_graph(width, height, foreground, camera_chain)
+    return f"{graph},setsar=1:1"

@@ -7,7 +7,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { VideoEditingLogger } from './utils/logger';
 import { VideoEditingTaskContent, ScriptGenerationConfig, TimelineState, MaterialItem, ImagePosition, AIVideoScriptSegment, StoryboardScriptSegment, ScriptSegment } from '@/types';
 import { useVideoEditingStore } from '@/stores';
-import ScriptPanel from './ScriptPanel';
+import ScriptPanel, { DEFAULT_VOICE_ID } from './ScriptPanel';
 import { TimelinePanel, useTimelineStore } from './timeline';
 import { resolveGlobalSpaceAction } from './timeline/shortcutOwnership';
 import { getInputModality, installInputModalityTracking } from './timeline/inputModality';
@@ -87,10 +87,11 @@ import { AsyncTaskPoller } from './components/AsyncTaskPoller';
 import { Conversation, ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
-import { EditorTopBar, EditorWorkbench, InspectorPanel, RightPanel, ToolWindowRail,
+import { EditorTopBar, EditorWorkbench, InspectorPanel, RightPanel, SegmentDialogsHost, ToolWindowRail,
   useEditorExportWiring, useWorkbenchWiring, type EditorProjectChrome } from './workbench';
 import { useSegmentLinks } from './hooks/useSegmentLinks';
-import { PlayingSegmentContext, SegmentLinksContext } from './lib/segments/SegmentLinksContext';
+import { useSegmentCommands } from './hooks/useSegmentCommands';
+import { PlayingSegmentContext, SegmentCommandsContext, SegmentLinksContext } from './lib/segments/SegmentLinksContext';
 
 /**
  * Parse agent-generated markdown script into ScriptSegment[] format.
@@ -1941,9 +1942,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       else if (type === 'warning') showWarning(message);
       else showSuccess(message);
     },
-    agentMode,
-    setAgentMode,
-    projectId,
+    agentMode, setAgentMode, projectId, getEditorContext: () => workbench.getEditorContext(),
   });
 
   // External edit lock: agent operations are undoable, so a keyboard/toolbar
@@ -2102,14 +2101,19 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     () => content?.scriptSegments || getMockScriptSegments(locale), [content?.scriptSegments, locale]);
   const { links: segmentLinks, playingSegmentId } = useSegmentLinks({ segments: editorSegments,
     materials: materialManagement.allMaterials, isPlaceholderScript: !content?.scriptSegments,
-    currentTime: timelineCurrentTime });
+    currentTime: timelineCurrentTime, defaultVoiceId: content?.defaultVoiceId });
   const workbench = useWorkbenchWiring({ segmentLinks, videoPlayerRef, onSeek: handleTimelineTimeChange,
-    isAssistantOpen: isAgentDockOpen, setAssistantOpen: setIsAgentDockOpen });
+    isAssistantOpen: isAgentDockOpen, setAssistantOpen: setIsAgentDockOpen, content, onUpdateContent });
   const editorExport = useEditorExportWiring({ taskId, projectId, timelineState: currentTimelineState,
-    materials: materialManagement.allMaterials, aspectRatioId: workbench.aspectRatioId });
+    materials: materialManagement.allMaterials, aspectRatioId: workbench.aspectRatioId, workbench, segmentLinks });
+  // 段落命令唯一入口（spec R2 §3.1）：卡片 / 素材 / 时间轴拖放 / 检查器经 context 调用
+  const segmentCommands = useSegmentCommands({ getSegments: () => scriptSegmentsRef.current,
+    commitSegments: commitNarrationSegments, getMaterials: () => materialManagement.allMaterials,
+    addMaterial: materialManagement.addOrReplaceMaterial, getLinks: () => segmentLinks,
+    getDefaultVoiceId: () => content?.defaultVoiceId ?? DEFAULT_VOICE_ID });
 
   return (
-    <SegmentLinksContext.Provider value={segmentLinks}>
+    <SegmentLinksContext.Provider value={segmentLinks}><SegmentCommandsContext.Provider value={segmentCommands}>
     <PlayingSegmentContext.Provider value={playingSegmentId}>
     <div className="flex-1 flex min-h-0 overflow-hidden relative">
       {/* 以「视频段落」为核心的工作台：顶栏｜工具窗口条｜脚本·成片预览·素材/属性｜可拖高时间轴 */}
@@ -2142,6 +2146,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onRegenerateVideoScript={handleRegenerateVideoScript}
             onPauseComposition={workbench.pauseComposition}
             onLocateSegment={workbench.locateSegment} onRevealMaterial={workbench.revealMaterial}
+            defaultVoiceId={workbench.defaultVoiceId} onDefaultVoiceChange={workbench.setDefaultVoiceId}
           />
         }
         center={
@@ -2162,6 +2167,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onImagePositionChange={handleImagePositionChange} onImagePositionConfirm={handleImagePositionConfirm}
             projectId={projectId} projectName={projectChrome.projectName}
             aspectRatioId={workbench.aspectRatioId} onAspectRatioChange={workbench.setAspectRatioId}
+            canvasFit={workbench.canvasFit} onCanvasFitChange={workbench.setCanvasFit}
             onOpenMaterials={() => workbench.openSideTab('materials')}
           />
         }
@@ -2227,7 +2233,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           />
         }
       />
-      {editorExport.progressModal}
+      {editorExport.progressModal}<SegmentDialogsHost />
 
       <VideoSearchModal {...videoSearch} taskId={taskId} />
       <AudioSearchModal {...audioSearch} taskId={taskId} />
@@ -2313,12 +2319,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         currentContent={documentState.markdownValue}
       />
 
-      <VideoAnalysisModal
-        isOpen={videoAnalysis.isModalOpen}
-        onClose={videoAnalysis.closeAnalysisModal}
-        analysisResult={videoAnalysis.currentAnalysisResult}
-        videoUrl={videoAnalysis.currentVideoUrl || undefined}
-      />
+      <VideoAnalysisModal isOpen={videoAnalysis.isModalOpen} onClose={videoAnalysis.closeAnalysisModal}
+        analysisResult={videoAnalysis.currentAnalysisResult} videoUrl={videoAnalysis.currentVideoUrl || undefined} />
 
       {/* AI混剪模式选择弹窗（含「将替换 / 保留的轨道」提示） */}
       <AIMixingModeSelectionModal
@@ -2329,35 +2331,22 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       />
 
       {/* 批量解析模式选择弹窗 */}
-      <BatchAnalysisModeSelectionModal
-        isOpen={isBatchAnalysisModalOpen}
-        onClose={() => setIsBatchAnalysisModalOpen(false)}
-        onConfirm={handleBatchAnalysisConfirm}
-      />
+      <BatchAnalysisModeSelectionModal isOpen={isBatchAnalysisModalOpen}
+        onClose={() => setIsBatchAnalysisModalOpen(false)} onConfirm={handleBatchAnalysisConfirm} />
 
       {/* AI混剪进度弹窗：分阶段步骤条，可取消，无伪进度 */}
       <AIMixingProgressModal runState={aiMix.runState} onCancel={aiMix.cancel} />
 
       {/* AI自动混剪替换确认：锁定/缺轨已在打开前检查；确认时按最新素材与脚本重新排布 */}
-      <ConfirmationDialog
-        isOpen={scriptAutoMix.confirmState.isOpen}
-        type="warning"
+      <ConfirmationDialog isOpen={scriptAutoMix.confirmState.isOpen} type="warning"
         title={t.videoEditing.autoMix.replaceConfirmTitle}
         message={t.videoEditing.autoMix.replaceConfirmBody.replace('{count}', String(scriptAutoMix.confirmState.replacedItemCount))}
-        confirmText={t.videoEditing.autoMix.confirm}
-        cancelText={t.videoEditing.autoMix.cancel}
-        onConfirm={scriptAutoMix.confirmAutoMix}
-        onCancel={scriptAutoMix.cancelAutoMix}
-      />
+        confirmText={t.videoEditing.autoMix.confirm} cancelText={t.videoEditing.autoMix.cancel}
+        onConfirm={scriptAutoMix.confirmAutoMix} onCancel={scriptAutoMix.cancelAutoMix} />
 
       {/* 视频剪切弹窗 */}
-      <VideoCutModal
-        isOpen={videoCutModal.isOpen}
-        material={videoCutModal.material}
-        onClose={handleCloseCutModal}
-        onExportClips={handleExportClips}
-        taskId={taskId}
-      />
+      <VideoCutModal isOpen={videoCutModal.isOpen} material={videoCutModal.material}
+        onClose={handleCloseCutModal} onExportClips={handleExportClips} taskId={taskId} />
 
       {/* Mobile Warning Dialog - Backup Safety Check (Legacy) */}
       {/* Note: Global mobile detection is now handled at app level, this is kept as fallback */}
@@ -2366,7 +2355,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       <AsyncTaskPoller />
     </div>
     </PlayingSegmentContext.Provider>
-    </SegmentLinksContext.Provider>
+    </SegmentCommandsContext.Provider></SegmentLinksContext.Provider>
   );
 };
 

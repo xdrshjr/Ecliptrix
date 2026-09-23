@@ -1465,7 +1465,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
         onRetryLocalDownload={onRetryLocalDownload}
         onOpenCameraMotion={handleOpenCameraMotion}
         onMaterialDrop={handleMaterialDropById}
-        isMaterialMissing={isMaterialMissing}
+        isMaterialMissing={isMaterialMissing} projectId={taskId}
       />
 
       <DragTimeBadge containerRef={panelRef} />

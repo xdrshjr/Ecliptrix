@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { getTranslations, defaultLocale, type SupportedLocale } from '@/lib/i18n';
 import {
   useTimelineStore,
@@ -8,6 +8,7 @@ import {
   toggleTrackLockAction,
   toggleTrackMuteAction,
   toggleTrackVisibilityAction,
+  renameTrackAction,
 } from './store';
 import type { MissingMaterialPredicate } from './lib/missingMaterial';
 import type { TrackData } from './domain/types';
@@ -22,6 +23,14 @@ import { buildGridBackground } from './lib/timelineGrid';
 import { readDraggedMaterialType } from './lib/materialDragTypes';
 import { isTrackCompatibleWithMaterial } from './lib/trackForMaterial';
 import { CLIP } from './theme/timelineTheme';
+import TrackNameEditor from './TrackNameEditor';
+import EmptyTrackStrip from './EmptyTrackStrip';
+import DropHintBadge from './DropHintBadge';
+import { describeDropHint } from './lib/dropHint';
+import { useEmptyTrackExpansion } from './hooks/useEmptyTrackExpansion';
+
+/** Height of a folded empty image / subtitle lane (spec R2 §3.10). */
+const COLLAPSED_TRACK_HEIGHT = 20;
 
 /**
  * Material id + type from the materials panel's JSON drag payload, or null for
@@ -71,6 +80,8 @@ interface TrackProps {
   onMaterialDrop: (materialId: string, trackId: string) => void;
   /** Whether a clip's material is gone; omitted until the library has loaded (N-01). */
   isMaterialMissing?: MissingMaterialPredicate;
+  /** Scopes the remembered open/folded state of empty lanes. */
+  projectId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,8 +100,10 @@ const Track: React.FC<TrackProps> = ({
   onOpenCameraMotion,
   onMaterialDrop,
   isMaterialMissing,
+  projectId,
 }) => {
   const volumeButtonRef = useRef<HTMLButtonElement>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Store reads
@@ -108,6 +121,7 @@ const Track: React.FC<TrackProps> = ({
   const clearMaterialDragOver = useTimelineStore(s => s.clearMaterialDragOver);
   const showVolumeSliderForTrack = useTimelineStore(s => s.showVolumeSliderForTrack);
   const hideVolumeSlider = useTimelineStore(s => s.hideVolumeSlider);
+  const emptyLane = useEmptyTrackExpansion(projectId, track);
 
   // i18n
   const t = getTranslations(locale);
@@ -129,6 +143,13 @@ const Track: React.FC<TrackProps> = ({
   const allItemsSelected = track.items.length > 0 && track.items.every(item => selectedItems.includes(item.id));
   const volumeSliderOpen = showVolumeSlider?.trackId === trackId;
   const volumePopoverId = `volume-popover-${track.id}`;
+  const tools = t.workbench.timelineTools;
+  const laneHeight = emptyLane.isCollapsed ? COLLAPSED_TRACK_HEIGHT : trackHeight;
+  // The badge reuses the lane's own verdict, so it never disagrees with the drop.
+  const dropHint = dragOver && describeDropHint({
+    track, materialType: dragOver.materialType, isCompatible: dragOver.isCompatible,
+    copy: tools, typeLabels: t.materialsPanel,
+  });
 
   // ---------------------------------------------------------------------------
   // Drag-and-drop handlers (material panel -> track)
@@ -210,6 +231,11 @@ const Track: React.FC<TrackProps> = ({
   const handleVisibilityClick = () => {
     if (track.isLocked) return;
     toggleTrackVisibilityAction(() => useTimelineStore.getState(), trackId);
+  };
+
+  const handleRenameCommit = (name: string) => {
+    setIsRenaming(false);
+    renameTrackAction(() => useTimelineStore.getState(), trackId, name);
   };
 
   const handleSelectAllClick = () => {
@@ -347,25 +373,40 @@ const Track: React.FC<TrackProps> = ({
         style={{ boxShadow: `inset 3px 0 0 0 ${getTrackAccent()}` }}
       >
         <div
-          className={`flex items-center justify-between p-2 transition-opacity ${
-            track.isVisible ? '' : 'opacity-60'
-          }`}
-          style={{ height: trackHeight }}
+          className={`flex items-center justify-between transition-opacity ${
+            emptyLane.isCollapsed ? 'px-2 py-0' : 'p-2'
+          } ${track.isVisible ? '' : 'opacity-60'}`}
+          style={{ height: laneHeight }}
         >
           {/* Left: icon + name */}
           <div className="flex items-center space-x-1.5 flex-1 min-w-0">
             <div className={`${getTrackColor()}`}>
               {getTrackIcon()}
             </div>
-            <span className="text-xs font-medium text-foreground truncate" title={trackDisplayName}>
-              {trackDisplayName}
-            </span>
+            {isRenaming ? (
+              <TrackNameEditor
+                initialName={trackDisplayName}
+                ariaLabel={tools.renameLabel}
+                onCommit={handleRenameCommit}
+                onCancel={() => setIsRenaming(false)}
+              />
+            ) : (
+              <span
+                className="text-xs font-medium text-foreground truncate"
+                title={`${trackDisplayName} · ${tools.renameHint}`}
+                data-testid={`track-name-${track.id}`}
+                onDoubleClick={() => setIsRenaming(true)}
+              >
+                {trackDisplayName}
+              </span>
+            )}
           </div>
 
           {/* Right: control buttons — tightened gap (space-x-0.5) so the widened
               header still leaves the track name enough room without exceeding
               the "not too long" budget (see analysis 缺陷 1 / 1A). */}
-          <div className="flex items-center space-x-0.5">
+          {/* A folded lane is 20px: its buttons return once it is opened. */}
+          {!emptyLane.isCollapsed && <div className="flex items-center space-x-0.5">
             {/* Volume button (audio + video tracks) */}
             {(track.type === 'audio' || (track.type === 'video' && !track.id.startsWith('image-track'))) && (() => {
               const volumeBase = track.isLocked
@@ -599,7 +640,7 @@ const Track: React.FC<TrackProps> = ({
                 </svg>
               </button>
             </PortalTooltip>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -618,7 +659,7 @@ const Track: React.FC<TrackProps> = ({
           // Hidden reads dimmest; a muted audio lane is dimmed too, so it is
           // visible at a glance which lanes will not be heard (ME-12).
           opacity: !track.isVisible ? 0.3 : track.type === 'audio' && track.isMuted ? 0.6 : 1,
-          height: trackHeight,
+          height: laneHeight,
         }}
         onDragEnter={evaluateMaterialDrag}
         onDragOver={evaluateMaterialDrag}
@@ -632,6 +673,15 @@ const Track: React.FC<TrackProps> = ({
           className="absolute inset-0 pointer-events-none"
           style={buildGridBackground(pixelsPerSecond, gridIntervals)}
         />
+
+        {emptyLane.isCollapsed && (
+          <EmptyTrackStrip
+            label={track.id.startsWith('image-track') ? tools.addImage : tools.addSubtitle}
+            title={tools.expandEmpty}
+            onExpand={emptyLane.expand}
+          />
+        )}
+        {dropHint && <DropHintBadge hint={dropHint} />}
 
         {/* Render all items on this track */}
         {track.items.map((item) => (
@@ -649,7 +699,7 @@ const Track: React.FC<TrackProps> = ({
         ))}
 
         {/* Empty track placeholder */}
-        {track.items.length === 0 && (
+        {track.items.length === 0 && !emptyLane.isCollapsed && (
           <div className={`absolute inset-0 flex items-center justify-center text-muted-foreground text-xs pointer-events-none ${
             isDropAccepted ? 'text-primary' : ''
           } ${track.isLocked ? 'opacity-50' : ''}`}>
@@ -670,7 +720,7 @@ const Track: React.FC<TrackProps> = ({
         )}
 
         {/* Drag-over overlay: where it lands, or why it can't */}
-        {isDropAccepted && (
+        {isDropAccepted && !emptyLane.isCollapsed && (
           <div className="absolute inset-0 flex items-center justify-center bg-primary-a/10 pointer-events-none">
             <div className="bg-primary text-primary-foreground px-2 py-1 rounded">
               <div className="flex items-center space-x-1">
@@ -682,7 +732,7 @@ const Track: React.FC<TrackProps> = ({
             </div>
           </div>
         )}
-        {dragOver && !isDropAccepted && (
+        {dragOver && !isDropAccepted && !emptyLane.isCollapsed && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="bg-card text-muted-foreground border border-border px-2 py-1 rounded shadow-sm">
               <div className="flex items-center space-x-1">

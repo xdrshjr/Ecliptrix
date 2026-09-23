@@ -134,7 +134,7 @@ describe('ConfirmationDialog focus and keyboard behaviour', () => {
   });
 
   it('dialog root sits on the z-modal layer above the agent dock', () => {
-    // The agent dock (z-dock 850 / z-dock-panel 860) must stay below every modal.
+    // Every modal sits on the semantic z-modal layer, never an arbitrary z-[…] value.
     render(React.createElement(ConfirmationDialog, dialogProps()));
     const rootClasses = screen.getByRole('dialog').parentElement!.className.split(/\s+/);
     expect({ modalLayer: rootClasses.includes('z-modal'), arbitraryLayer: rootClasses.some((c) => c.startsWith('z-[')) })

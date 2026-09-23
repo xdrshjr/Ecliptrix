@@ -1,0 +1,234 @@
+{
+  "description": "Shared canvas-fit geometry (spec segment-centric-editor-workbench-r2 §3.9, T-FIT-2). Rects are [x, y, width, height] in canvas pixels, frame at the origin; both the Python export geometry and the TS preview geometry must match within 1px.",
+  "tolerance_px": 1,
+  "cases": [
+    {
+      "name": "src 16:9 on canvas 16:9",
+      "source": { "width": 1920, "height": 1080 },
+      "canvas": { "width": 1920, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [0, 0, 1920, 1080],
+          "background": null
+        },
+        "cover": {
+          "content": [0, 0, 1920, 1080],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 0, 1920, 1080],
+          "background": null
+        }
+      }
+    },
+    {
+      "name": "src 16:9 on canvas 9:16",
+      "source": { "width": 1920, "height": 1080 },
+      "canvas": { "width": 1080, "height": 1920 },
+      "expected": {
+        "contain": {
+          "content": [0, 656, 1080, 608],
+          "background": null
+        },
+        "cover": {
+          "content": [-1167, 0, 3413, 1920],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 656, 1080, 608],
+          "background": [-1167, 0, 3413, 1920]
+        }
+      }
+    },
+    {
+      "name": "src 16:9 on canvas 1:1",
+      "source": { "width": 1920, "height": 1080 },
+      "canvas": { "width": 1080, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [0, 236, 1080, 608],
+          "background": null
+        },
+        "cover": {
+          "content": [-420, 0, 1920, 1080],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 236, 1080, 608],
+          "background": [-420, 0, 1920, 1080]
+        }
+      }
+    },
+    {
+      "name": "src 9:16 on canvas 16:9",
+      "source": { "width": 1080, "height": 1920 },
+      "canvas": { "width": 1920, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [656, 0, 608, 1080],
+          "background": null
+        },
+        "cover": {
+          "content": [0, -1167, 1920, 3413],
+          "background": null
+        },
+        "blur": {
+          "content": [656, 0, 608, 1080],
+          "background": [0, -1167, 1920, 3413]
+        }
+      }
+    },
+    {
+      "name": "src 9:16 on canvas 9:16",
+      "source": { "width": 1080, "height": 1920 },
+      "canvas": { "width": 1080, "height": 1920 },
+      "expected": {
+        "contain": {
+          "content": [0, 0, 1080, 1920],
+          "background": null
+        },
+        "cover": {
+          "content": [0, 0, 1080, 1920],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 0, 1080, 1920],
+          "background": null
+        }
+      }
+    },
+    {
+      "name": "src 9:16 on canvas 1:1",
+      "source": { "width": 1080, "height": 1920 },
+      "canvas": { "width": 1080, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [236, 0, 608, 1080],
+          "background": null
+        },
+        "cover": {
+          "content": [0, -420, 1080, 1920],
+          "background": null
+        },
+        "blur": {
+          "content": [236, 0, 608, 1080],
+          "background": [0, -420, 1080, 1920]
+        }
+      }
+    },
+    {
+      "name": "src 4:3 on canvas 16:9",
+      "source": { "width": 1440, "height": 1080 },
+      "canvas": { "width": 1920, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [240, 0, 1440, 1080],
+          "background": null
+        },
+        "cover": {
+          "content": [0, -180, 1920, 1440],
+          "background": null
+        },
+        "blur": {
+          "content": [240, 0, 1440, 1080],
+          "background": [0, -180, 1920, 1440]
+        }
+      }
+    },
+    {
+      "name": "src 4:3 on canvas 9:16",
+      "source": { "width": 1440, "height": 1080 },
+      "canvas": { "width": 1080, "height": 1920 },
+      "expected": {
+        "contain": {
+          "content": [0, 555, 1080, 810],
+          "background": null
+        },
+        "cover": {
+          "content": [-740, 0, 2560, 1920],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 555, 1080, 810],
+          "background": [-740, 0, 2560, 1920]
+        }
+      }
+    },
+    {
+      "name": "src 4:3 on canvas 1:1",
+      "source": { "width": 1440, "height": 1080 },
+      "canvas": { "width": 1080, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [0, 135, 1080, 810],
+          "background": null
+        },
+        "cover": {
+          "content": [-180, 0, 1440, 1080],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 135, 1080, 810],
+          "background": [-180, 0, 1440, 1080]
+        }
+      }
+    },
+    {
+      "name": "src 1:1 on canvas 16:9",
+      "source": { "width": 1080, "height": 1080 },
+      "canvas": { "width": 1920, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [420, 0, 1080, 1080],
+          "background": null
+        },
+        "cover": {
+          "content": [0, -420, 1920, 1920],
+          "background": null
+        },
+        "blur": {
+          "content": [420, 0, 1080, 1080],
+          "background": [0, -420, 1920, 1920]
+        }
+      }
+    },
+    {
+      "name": "src 1:1 on canvas 9:16",
+      "source": { "width": 1080, "height": 1080 },
+      "canvas": { "width": 1080, "height": 1920 },
+      "expected": {
+        "contain": {
+          "content": [0, 420, 1080, 1080],
+          "background": null
+        },
+        "cover": {
+          "content": [-420, 0, 1920, 1920],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 420, 1080, 1080],
+          "background": [-420, 0, 1920, 1920]
+        }
+      }
+    },
+    {
+      "name": "src 1:1 on canvas 1:1",
+      "source": { "width": 1080, "height": 1080 },
+      "canvas": { "width": 1080, "height": 1080 },
+      "expected": {
+        "contain": {
+          "content": [0, 0, 1080, 1080],
+          "background": null
+        },
+        "cover": {
+          "content": [0, 0, 1080, 1080],
+          "background": null
+        },
+        "blur": {
+          "content": [0, 0, 1080, 1080],
+          "background": null
+        }
+      }
+    }
+  ]
+}

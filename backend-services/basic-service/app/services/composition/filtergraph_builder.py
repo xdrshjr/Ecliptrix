@@ -31,7 +31,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import List, Optional, Protocol, Sequence, Tuple
+from typing import Callable, List, Optional, Protocol, Sequence, Tuple
+
+from app.services.composition.canvas_fit import (
+    FIT_BLUR,
+    FIT_CONTAIN,
+    FIT_COVER,
+    blur_graph,
+    cover_steps,
+    require_fit_mode,
+)
 
 # Matches TransitionLayer's TIME_EPSILON (spec 01) so boundary arithmetic agrees
 # with the preview compositor.
@@ -206,13 +215,85 @@ def _is_plain_contiguous_single_track(
     return end - _clip_end(clips[-1]) <= tolerance
 
 
+@dataclass(frozen=True)
+class FitFragment:
+    """How one clip is fitted to the canvas (spec r2 §3.9.3, RV2-08).
+
+    Exactly one field is used: ``steps`` extend the clip's comma chain
+    (``contain`` / ``cover``); ``graph(in_label, out_label)`` returns a
+    labelled sub-graph the chain is broken around (``blur``: its ``split`` and
+    ``overlay`` cannot be steps of a single chain).
+    """
+
+    steps: Tuple[str, ...] = ()
+    graph: Optional[Callable[[str, str], str]] = None
+
+
+@dataclass(frozen=True)
+class ChainContext:
+    """Per-composition settings every clip chain shares."""
+
+    width: int
+    height: int
+    #: Inputs were already trimmed, scaled and fitted by normalization.
+    pre_trimmed: bool
+    fit_mode: str = FIT_CONTAIN
+
+
+def build_fit_fragment(
+    width: int, height: int, fit_mode: str = FIT_CONTAIN, camera_chain: str = ""
+) -> FitFragment:
+    """The canvas-fit part of a clip chain for ``fit_mode``.
+
+    ``contain`` returns the two pre-feature steps verbatim (T-FIT-4). The
+    camera chain acts on the content rect: after ``scale`` for ``contain``,
+    after ``crop`` for ``cover`` and on the foreground for ``blur``.
+    """
+    require_fit_mode(fit_mode)
+    camera = [camera_chain] if camera_chain else []
+    if fit_mode == FIT_COVER:
+        return FitFragment(steps=tuple(cover_steps(width, height) + camera))
+    if fit_mode == FIT_BLUR:
+        foreground = f"scale={width}:{height}:force_original_aspect_ratio=decrease"
+
+        def graph(in_label: str, out_label: str) -> str:
+            return blur_graph(
+                width, height, foreground, camera_chain,
+                (in_label, out_label, f"{out_label}_"),
+            )
+
+        return FitFragment(graph=graph)
+    return FitFragment(steps=(
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+        *camera,
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+    ))
+
+
+def _alpha_steps(clip: ClipLike) -> List[str]:
+    """Opacity and fade ramps of one clip of an alpha run."""
+    # One format for the whole run: concat needs identical pixel formats.
+    steps = ["format=rgba"]
+    fade_in = _effective_transition_duration(clip.transition_in, clip.duration)
+    if fade_in > TIME_EPSILON:
+        steps.append(f"fade=t=in:st=0:d={_num(fade_in)}:alpha=1")
+    fade_out = _effective_transition_duration(clip.transition_out, clip.duration)
+    if fade_out > TIME_EPSILON:
+        steps.append(
+            f"fade=t=out:st={_num(max(0.0, clip.duration - fade_out))}"
+            f":d={_num(fade_out)}:alpha=1"
+        )
+    opacity = _clamp01(clip.opacity)
+    if opacity < 1.0 - TIME_EPSILON:
+        steps.append(f"colorchannelmixer=aa={_num(opacity)}")
+    return steps
+
+
 def _append_clip_chain(
     parts: List[str],
     input_index: int,
     clip: ClipLike,
-    width: int,
-    height: int,
-    pre_trimmed: bool,
+    context: ChainContext,
     needs_alpha: bool,
 ) -> str:
     """Filter chain for ONE clip, ending at label ``c{input_index}``.
@@ -221,36 +302,35 @@ def _append_clip_chain(
     to the canvas by the normalization pass, so only the PTS reset, the exact
     timeline duration and the alpha steps remain.
     """
-    steps: List[str] = []
-    if not pre_trimmed:
+    head: List[str] = []
+    if not context.pre_trimmed:
         clip_start = clip.clip_start if clip.clip_start is not None else 0.0
         clip_end = clip.clip_end if clip.clip_end is not None else clip_start + clip.duration
-        steps.append(f"trim=start={_num(clip_start)}:end={_num(clip_end)}")
-    steps.append("setpts=PTS-STARTPTS")
-    if not pre_trimmed:
-        steps.append(f"scale={width}:{height}:force_original_aspect_ratio=decrease")
-        steps.append(f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black")
-        steps.append("setsar=1:1")
-    steps.append(f"trim=duration={clip.duration:.6f}")
-
+        head.append(f"trim=start={_num(clip_start)}:end={_num(clip_end)}")
+    head.append("setpts=PTS-STARTPTS")
+    tail: List[str] = []
+    if not context.pre_trimmed:
+        tail.append("setsar=1:1")
+    tail.append(f"trim=duration={clip.duration:.6f}")
     if needs_alpha:
-        # One format for the whole run: concat needs identical pixel formats.
-        steps.append("format=rgba")
-        fade_in = _effective_transition_duration(clip.transition_in, clip.duration)
-        if fade_in > TIME_EPSILON:
-            steps.append(f"fade=t=in:st=0:d={_num(fade_in)}:alpha=1")
-        fade_out = _effective_transition_duration(clip.transition_out, clip.duration)
-        if fade_out > TIME_EPSILON:
-            steps.append(
-                f"fade=t=out:st={_num(max(0.0, clip.duration - fade_out))}"
-                f":d={_num(fade_out)}:alpha=1"
-            )
-        opacity = _clamp01(clip.opacity)
-        if opacity < 1.0 - TIME_EPSILON:
-            steps.append(f"colorchannelmixer=aa={_num(opacity)}")
+        tail.extend(_alpha_steps(clip))
 
+    fit = FitFragment()
+    if not context.pre_trimmed:
+        fit = build_fit_fragment(context.width, context.height, context.fit_mode)
     label = f"c{input_index}"
-    parts.append(f"[{input_index}:v]" + ",".join(steps) + f"[{label}]")
+    source = f"[{input_index}:v]"
+    if fit.graph is None:
+        steps = [*head, *fit.steps, *tail]
+        parts.append(source + ",".join(steps) + f"[{label}]")
+        return label
+
+    # blur: break the chain at the fit point and splice the sub-graph in. The
+    # per-input prefix keeps its labels unique inside the whole graph.
+    fit_in, fit_out = f"f{input_index}_pre", f"f{input_index}_fit"
+    parts.append(source + ",".join(head) + f"[{fit_in}]")
+    parts.append(fit.graph(fit_in, fit_out))
+    parts.append(f"[{fit_out}]" + ",".join(tail) + f"[{label}]")
     return label
 
 
@@ -346,6 +426,7 @@ def build_filtergraph(
     pre_trimmed: bool = False,
     fps: int = 30,
     timeline_end: Optional[float] = None,
+    fit_mode: str = FIT_CONTAIN,
 ) -> FiltergraphResult:
     """Plan the canvas composite for the video clips.
 
@@ -356,7 +437,10 @@ def build_filtergraph(
         fps: canvas frame rate; also sets the half-frame gap tolerance.
         timeline_end: where the timeline ends (images, audio and subtitles can
             outlast the last video clip). The canvas is at least that long.
+        fit_mode: canvas fit of the video clips (spec r2 §3.9); only used
+            when the inputs are not ``pre_trimmed`` (normalization fits them).
     """
+    context = ChainContext(width, height, pre_trimmed, require_fit_mode(fit_mode))
     visible = _visible_clips(clips)
     last_end = max((_clip_end(clip) for clip in visible), default=0.0)
     end = max(last_end, timeline_end or 0.0)
@@ -377,7 +461,7 @@ def build_filtergraph(
             clip_labels = []
             for clip in run:
                 clip_labels.append(_append_clip_chain(
-                    parts, len(inputs), clip, width, height, pre_trimmed, needs_alpha,
+                    parts, len(inputs), clip, context, needs_alpha,
                 ))
                 inputs.append(clip.id)
             run_labels.append(_append_run_placement(

@@ -16,7 +16,12 @@ import {
   Mic,
 } from './icons';
 import { useLocale } from '@/contexts/LocaleContext';
-import { useSegmentLinksValue } from '../../lib/segments/SegmentLinksContext';
+import {
+  useSegmentCommandsValue,
+  useSegmentLinksValue,
+} from '../../lib/segments/SegmentLinksContext';
+import { useEditorFocusStore } from '@/stores/editorFocusStore';
+import SegmentVoiceOverride from '../../components/SegmentCard/SegmentVoiceOverride';
 import type { SegmentStatus } from '../../lib/segments/segmentLinks';
 import { formatTimelineTime } from '../../timeline/timeFormat';
 import {
@@ -91,6 +96,9 @@ export function SegmentInspector({ segmentId, onLocateSegment }: SegmentInspecto
   const { t } = useLocale();
   const copy = t.workbench.inspector;
   const { segmentIndex, segmentRanges, statusById, itemSegmentMap } = useSegmentLinksValue();
+  const commands = useSegmentCommandsValue();
+  const requestSegmentVoice = useEditorFocusStore((state) => state.requestSegmentVoice);
+  const segment = commands?.getSegment(segmentId);
   const entry = segmentIndex.get(segmentId);
   const range = segmentRanges.get(segmentId);
   const status = statusById.get(segmentId);
@@ -127,6 +135,16 @@ export function SegmentInspector({ segmentId, onLocateSegment }: SegmentInspecto
             </li>
           ))}
         </ul>
+      ) : null}
+      {commands && segment ? (
+        <SegmentVoiceOverride
+          segment={segment}
+          defaultVoiceId={commands.getDefaultVoiceId()}
+          variant="inspector"
+          disabled={status?.voice === 'generating'}
+          onPatch={(patch) => commands.patchSegment(segmentId, patch)}
+          onRegenerate={() => requestSegmentVoice([segmentId])}
+        />
       ) : null}
       <InspectorActions>
         <button

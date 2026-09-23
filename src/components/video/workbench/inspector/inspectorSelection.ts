@@ -80,7 +80,9 @@ function useLatestCandidate(): SelectionCandidate | null {
       }
     });
     const stopFocus = useEditorFocusStore.subscribe((state, prev) => {
-      if (state.selectedMaterialId !== prev.selectedMaterialId && state.selectedMaterialId) {
+      const materialTouched = state.selectedMaterialId !== prev.selectedMaterialId
+        || state.materialSelectSeq !== prev.materialSelectSeq;
+      if (materialTouched && state.selectedMaterialId) {
         setLatest('material');
         return;
       }

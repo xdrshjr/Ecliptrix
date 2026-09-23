@@ -31,6 +31,9 @@ vi.mock('../../hooks/useVideoExport', () => ({
 vi.mock('../../components/VideoPlayerPanel/VideoExportProgressModal', () => ({
   default: () => null,
 }));
+vi.mock('../ExportPreflightSheet', () => ({
+  default: () => null,
+}));
 vi.mock('@/contexts/LocaleContext', () => ({
   useLocale: () => ({ locale: 'zh-CN', t: getTranslations('zh-CN') }),
 }));

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { ArrowLeftRight, Clock, ImageIcon, Play, RefreshCw, Square } from './icons';
+import { ArrowLeftRight, Clock, GripVertical, ImageIcon, Play, RefreshCw, Square } from './icons';
 import type { ScriptSegment } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import MaterialThumbnail from '../MaterialsPanel/MaterialThumbnail';
@@ -55,6 +55,14 @@ export interface SegmentCardProps {
   menuItems: SegmentMenuItem[];
   /** Expanded body: ScriptPanel's narration editor / sentences / carousel. */
   renderExpanded(): React.ReactNode;
+  /** R2 rows under the chips: failure reason, voice candidate, picked visual. */
+  notice?: React.ReactNode;
+  /** Reorder handle (R2 §3.8); omitted for the placeholder script. */
+  dragHandle?: { label: string; props: React.HTMLAttributes<HTMLElement> & { draggable: boolean } };
+  /** Drag-and-drop target handlers of the whole card (reorder + material). */
+  dropProps?: React.HTMLAttributes<HTMLElement>;
+  /** Material drop hint over the card (R2 §3.6 C). */
+  dropHint?: { text: string; accepts: boolean } | null;
 }
 
 function narrationPreview(segment: ScriptSegment): string {
@@ -118,6 +126,17 @@ const SegmentCardHeader: React.FC<SegmentCardProps & { bodyId: string; onEnter()
   };
   return (
     <div className="segment-card__head">
+      {props.dragHandle && (
+        <button
+          type="button"
+          className="segment-card__handle"
+          aria-label={props.dragHandle.label}
+          title={props.dragHandle.label}
+          {...props.dragHandle.props}
+        >
+          <GripVertical size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      )}
       <button
         ref={actions.registerHeader}
         type="button"
@@ -243,8 +262,13 @@ const SegmentCard: React.FC<SegmentCardProps> = (props) => {
       className="ws-card segment-card"
       data-selected={state.isSelected ? 'true' : undefined}
       data-segment-id={segment.id}
+      data-drop={props.dropHint ? (props.dropHint.accepts ? 'accept' : 'reject') : undefined}
       onClick={handleRootClick}
+      {...props.dropProps}
     >
+      {props.dropHint && (
+        <div className="segment-card__drop-hint" aria-hidden="true">{props.dropHint.text}</div>
+      )}
       <SegmentCardHeader {...props} bodyId={bodyId} onEnter={handleEnter} />
       {showPreview && (
         <div className="segment-card__preview">
@@ -261,6 +285,7 @@ const SegmentCard: React.FC<SegmentCardProps> = (props) => {
           <SegmentStatusChips status={status} />
         </div>
       )}
+      {props.notice}
       <SegmentCardActionsRow {...props} />
       {state.isExpanded && (
         <div

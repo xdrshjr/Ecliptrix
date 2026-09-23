@@ -81,6 +81,23 @@ export interface UseAgentExecutionParams {
   /** Owning project id forwarded to the agent route so project-scoped tools
    *  (storyboard pack creation, etc.) can include it on backend calls. */
   projectId?: string;
+  /** What the user is editing right now (R2 §3.12); sent as `editorContext`. */
+  getEditorContext?: () => AgentEditorContext | null;
+}
+
+/** The segment the user is working on, so "this segment" means that segment. */
+export interface AgentEditorContext {
+  selectedSegmentId: string | null;
+  segmentLabel: string | null;
+  segmentRange: { start: number; end: number } | null;
+}
+
+/** `{ editorContext }` only when a segment is selected — otherwise nothing (T-AG-1). */
+export function buildEditorContextField(
+  getEditorContext: (() => AgentEditorContext | null) | undefined,
+): { editorContext?: AgentEditorContext } {
+  const context = getEditorContext?.() ?? null;
+  return context && context.selectedSegmentId ? { editorContext: context } : {};
 }
 
 export interface UseAgentExecutionReturn {
@@ -220,6 +237,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     setAgentMode,
     projectId,
   } = params;
+  const getEditorContextRef = useRef(params.getEditorContext);
+  getEditorContextRef.current = params.getEditorContext;
 
   const { t } = useLocale();
 
@@ -613,6 +632,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           timelineState: baseline,
           materials: stripInlineMediaForAgent(materialsRef.current),
           projectId,
+          ...buildEditorContextField(getEditorContextRef.current),
         },
         ...callbacks,
       });

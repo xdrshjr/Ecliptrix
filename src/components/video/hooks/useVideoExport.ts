@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
-import type { MaterialItem, TimelineState } from '@/types';
+import type { CanvasFit, MaterialItem, TimelineState } from '@/types';
+import type { ExportAdvisory } from './exportAdvisories';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useLocale } from '@/contexts/LocaleContext';
 import type {
@@ -49,8 +50,20 @@ interface UseVideoExportReturn {
   exportStage?: CompositionStage;
   /** Whether cancelling can still stop the export (it cannot once the file downloads). */
   canCancelExport: boolean;
-  handleExport: () => Promise<void>;
+  /** `skipAdvisories`: the user already saw the pre-export notes ("仍然导出"). */
+  handleExport: (options?: ExportRequestOptions) => Promise<void>;
   cancelExport: () => Promise<void>;
+}
+
+export interface ExportRequestOptions {
+  skipAdvisories?: boolean;
+}
+
+/** Non-blocking pre-export notes (R2 §3.11), consulted after the plan is ready. */
+export interface ExportPreflight {
+  collect(blackTailSeconds: number): ExportAdvisory[];
+  /** Shows the notes; the export does not start until the user confirms. */
+  onAdvisories(advisories: ExportAdvisory[]): void;
 }
 
 interface UseVideoExportProps {
@@ -60,6 +73,9 @@ interface UseVideoExportProps {
   /** Scopes the export session to one project of the task (RV3-07). */
   projectId?: string;
   aspectRatio?: string; // Add aspect ratio support (e.g., "16:9", "9:16", "4:3", "1:1", "21:9")
+  /** Picture fit of video layers (R2 §3.9); 'contain' sends nothing (I-1). */
+  fitMode?: CanvasFit;
+  preflight?: ExportPreflight;
 }
 
 interface PollOutcome {
@@ -118,11 +134,15 @@ function buildCompositionRequest(
   renderEnd: number,
   taskId: string,
   aspectRatio?: string,
+  fitMode?: CanvasFit,
 ): VideoCompositionRequest {
   const items = buildExportCompositionItems(tracks, materialsById);
   return {
     task_id: `export_${taskId}_${Date.now()}`,
     aspect_ratio: aspectRatio,
+    // Omitted for 'contain': the backend default, and the request of an old
+    // project stays byte-identical.
+    ...(fitMode && fitMode !== 'contain' ? { fit_mode: fitMode } : {}),
     video_items: items.videoItems,
     audio_items: items.audioItems,
     subtitle_items: items.subtitleItems,
@@ -249,6 +269,8 @@ export const useVideoExport = ({
   taskId = 'video_export',
   projectId,
   aspectRatio,
+  fitMode,
+  preflight,
 }: UseVideoExportProps): UseVideoExportReturn => {
   const { showError, showWarning, showInfo } = useNotification();
   const { t, locale } = useLocale();
@@ -279,7 +301,7 @@ export const useVideoExport = ({
     }
   }, [logger, showWarning, t, locale]);
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(async (options: ExportRequestOptions = {}) => {
     const controller = new AbortController();
     // Synchronous guard: a second click, or a remounted editor, never starts
     // a second composition while this one runs.
@@ -293,9 +315,19 @@ export const useVideoExport = ({
       endExportSession(sessionKey, controller);
       return;
     }
+    // Notes that never block (R2 §3.11): ask once, export on "仍然导出".
+    if (preflight && !options.skipAdvisories) {
+      const advisories = preflight.collect(plan.blackTailSeconds);
+      if (advisories.length > 0) {
+        endExportSession(sessionKey, controller);
+        preflight.onAdvisories(advisories);
+        return;
+      }
+    }
     // A picture shorter than the audio exports a black tail, exactly as the
-    // preview plays it; tell the user instead of refusing (D-12).
-    if (plan.blackTailSeconds > BLACK_TAIL_NOTICE_SECONDS) {
+    // preview plays it; tell the user instead of refusing (D-12). With the
+    // pre-export sheet the note was already shown there.
+    if (!preflight && plan.blackTailSeconds > BLACK_TAIL_NOTICE_SECONDS) {
       showWarning(
         t.videoExport.blackTailNotice.replace('{seconds}', plan.blackTailSeconds.toFixed(1)),
         8000,
@@ -304,7 +336,7 @@ export const useVideoExport = ({
 
     const outcome = await runComposition({
       buildRequest: () => buildCompositionRequest(
-        timelineState.tracks, materialsById, plan.renderEnd, taskId, aspectRatio,
+        timelineState.tracks, materialsById, plan.renderEnd, taskId, aspectRatio, fitMode,
       ),
       controller,
       update: (patch) => updateExportSession(sessionKey, patch, controller),
@@ -317,8 +349,8 @@ export const useVideoExport = ({
     }
     updateExportSession(sessionKey, { status: 'finished', progress: 100 }, controller);
     setTimeout(() => endExportSession(sessionKey, controller), SUCCESS_TICK_MS);
-  }, [timelineState, materials, taskId, aspectRatio, sessionKey, showError, showWarning, showInfo,
-    t, locale, logger, reportCompositionNotices]);
+  }, [timelineState, materials, taskId, aspectRatio, fitMode, preflight, sessionKey, showError,
+    showWarning, showInfo, t, locale, logger, reportCompositionNotices]);
 
   const cancelExport = useCallback(async () => {
     const current = getExportSession(sessionKey);

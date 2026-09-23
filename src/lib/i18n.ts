@@ -2829,6 +2829,158 @@ export interface Translations {
       contextProject: string;
       close: string;
     };
+    segmentCommands: {
+      voiceDiscardedDeleted: string;
+      voiceResultStale: string;
+      candidateDelta: string;
+      candidateNew: string;
+      candidateStale: string;
+      audition: string;
+      stopAudition: string;
+      auditionAnyway: string;
+      applyToTimeline: string;
+      placeOnTimeline: string;
+      notNow: string;
+      regenerate: string;
+      voiceApplied: string;
+      durationLonger: string;
+      durationShorter: string;
+      durationDialogLabel: string;
+      optionAdjust: string;
+      optionAdjustHint: string;
+      optionKeep: string;
+      optionEdit: string;
+      optionEditHint: string;
+      optionSkip: string;
+      optionSkipHint: string;
+      staleVersionNote: string;
+      confirm: string;
+      cancel: string;
+      impactSegmentRef: string;
+      impactShiftLater: string;
+      impactShiftEarlier: string;
+      impactLoose: string;
+      impactMusic: string;
+      impactLocked: string;
+      impactTotal: string;
+      impactGap: string;
+      impactKeptLocked: string;
+      stalePlan: string;
+      invalidPlan: string;
+      visualReplaced: string;
+      visualCandidateOnly: string;
+      replaceVisualMenu: string;
+      dropReplace: string;
+      dropAudioRejected: string;
+      pickedVisualTitle: string;
+      pickedVisualReplace: string;
+      later: string;
+      deleteTitle: string;
+      deleteBody: string;
+      deleteRemoveItems: string;
+      deleteItemCount: string;
+      deleteKeepNote: string;
+      deleteLockedAgent: string;
+      deleteConfirm: string;
+      segmentDeleted: string;
+      segmentDeletedScriptOnly: string;
+      dragHandle: string;
+      moveUp: string;
+      moveDown: string;
+      moved: string;
+      movedScriptOnly: string;
+      movedScriptOnlyLocked: string;
+      reorderBlockedTitle: string;
+      reorderInterleaved: string;
+      reorderLocked: string;
+      reorderPartial: string;
+      reorderEditLocked: string;
+      scriptOnly: string;
+      applyNewVoice: string;
+      voiceVersionItem: string;
+      voiceVersionCurrent: string;
+      voiceVersionStale: string;
+      polish: string;
+      polishTitle: string;
+      voiceFailed: string;
+      retrySegment: string;
+      segmentVoice: string;
+      useDefault: string;
+      useDefaultNamed: string;
+      overridden: string;
+      restoreDefault: string;
+      speed: string;
+      regenerateWithSettings: string;
+      defaultChangeTitle: string;
+      defaultChangeBody: string;
+      defaultChangeOverridden: string;
+      defaultChangeFutureOnly: string;
+      defaultChangeRegenerate: string;
+      defaultChangeRegenerateHint: string;
+      pendingVoices: string;
+      applyAll: string;
+      applyAllTitle: string;
+      applyAllSkipped: string;
+      allApplied: string;
+      batchFill: string;
+      batchFillTitle: string;
+      batchFillVoices: string;
+      batchFillSkip: string;
+      batchFillNote: string;
+      batchFillMissingVisual: string;
+      batchFillNothing: string;
+      batchFillStart: string;
+      batchFillDone: string;
+      retryTask: string;
+      noCancelNote: string;
+      /** Joins segment ordinals / clip counts in a sentence. */
+      listSeparator: string;
+      batchFillDesc: string;
+    };
+    segmentRefusals: {
+      segmentNotFound: string;
+      notOnTimeline: string;
+      targetTrackLocked: string;
+      noTargetTrack: string;
+      spanOccupied: string;
+      interleaved: string;
+      candidateStale: string;
+      nothingToDo: string;
+    };
+    canvasFit: {
+      group: string;
+      contain: string;
+      containHint: string;
+      cover: string;
+      coverHint: string;
+      blur: string;
+      blurHint: string;
+      sameRatio: string;
+      menuLabel: string;
+    };
+    preflight: {
+      title: string;
+      exportAnyway: string;
+      back: string;
+      voicePending: string;
+      voiceStale: string;
+      subtitleNone: string;
+      letterbox: string;
+      goHandle: string;
+      openCanvas: string;
+      dontRemind: string;
+      severityNote: string;
+    };
+    timelineTools: {
+      renameHint: string;
+      renameLabel: string;
+      addImage: string;
+      addSubtitle: string;
+      expandEmpty: string;
+      dropAppend: string;
+      dropLocked: string;
+      dropIncompatible: string;
+    };
   };
   videoUnderstandingPlaceholder: {
     title: string;
@@ -5721,6 +5873,157 @@ export const translations: Record<string, Translations> = {
         contextProject: 'Assisting: the whole project',
         close: 'Close',
       },
+      segmentCommands: {
+        voiceDiscardedDeleted: 'The segment was deleted; its voice-over was discarded',
+        voiceResultStale: 'This voice-over was made for the previous text and was not applied',
+        batchFillDesc: 'Shows the scope first, then generates candidate voice-overs',
+        candidateDelta: 'New voice-over ready · {from}s → {to}s ({delta}s)',
+        candidateNew: 'New voice-over ready · {to}s',
+        candidateStale: 'This voice-over was made for the previous text',
+        audition: 'Listen',
+        stopAudition: 'Stop',
+        auditionAnyway: 'Listen anyway',
+        applyToTimeline: 'Apply to timeline',
+        placeOnTimeline: 'Place on timeline',
+        notNow: 'Not now',
+        regenerate: 'Regenerate',
+        voiceApplied: 'New voice-over applied · Ctrl+Z to undo',
+        durationLonger: 'The new voice-over is {value} s longer',
+        durationShorter: 'The new voice-over is {value} s shorter',
+        durationDialogLabel: 'Voice-over length changed',
+        optionAdjust: 'Adjust this segment',
+        optionAdjustHint: 'The picture follows the voice-over and later content moves with it',
+        optionKeep: 'Keep the original length (silent tail)',
+        optionEdit: 'Edit the text or speed',
+        optionEditHint: 'Do not apply; edit the segment and regenerate',
+        optionSkip: 'Not now',
+        optionSkipHint: 'Keep the candidate and decide later',
+        staleVersionNote: 'This version was made for older text; after applying, the voice-over shows as "needs update"',
+        confirm: 'Confirm',
+        cancel: 'Cancel',
+        impactSegmentRef: 'Segment {index} "{title}"',
+        impactShiftLater: '{segment} and later content move {value} s later',
+        impactShiftEarlier: '{segment} and later content move {value} s earlier',
+        impactLoose: '{count} clips that belong to no segment move too',
+        impactMusic: 'Background music "{name}" stays in place',
+        impactLocked: 'Track "{name}" is locked and will not move',
+        impactTotal: 'Project length {before}s → {after}s',
+        impactGap: 'This leaves a {value} s gap on the timeline; use "Tidy up" to close it',
+        impactKeptLocked: 'Track "{name}" is locked; its {count} clips are kept',
+        stalePlan: 'The timeline changed; please try again',
+        invalidPlan: 'The change could not be applied; the timeline is unchanged',
+        visualReplaced: 'Replaced the picture of segment {index} · Ctrl+Z to undo',
+        visualCandidateOnly: 'This segment is not on the timeline yet; the material is now its picture candidate',
+        replaceVisualMenu: 'Replace the picture of segment {index}',
+        dropReplace: 'Drop to replace the picture of segment {index}',
+        dropAudioRejected: 'Audio cannot be used as a picture',
+        pickedVisualTitle: 'A new picture was picked for this segment',
+        pickedVisualReplace: 'Replace it on the timeline',
+        later: 'Later',
+        deleteTitle: 'Delete segment',
+        deleteBody: 'The narration and shot descriptions of segment {index} "{title}" will be deleted.',
+        deleteRemoveItems: 'Also remove its clips from the timeline: {items}',
+        deleteItemCount: '{name} × {count}',
+        deleteKeepNote: 'Files in the material library are kept. Ctrl+Z restores everything in one step.',
+        deleteLockedAgent: 'The AI assistant is editing the timeline; only the narration can be deleted now',
+        deleteConfirm: 'Delete',
+        segmentDeleted: 'Deleted segment {index} · Ctrl+Z to undo',
+        segmentDeletedScriptOnly: 'Deleted the narration of segment {index}',
+        dragHandle: 'Drag to reorder segment {index} (Alt+↑/↓)',
+        moveUp: 'Move up',
+        moveDown: 'Move down',
+        moved: 'Moved segment {from} to position {to} with its picture, voice-over and subtitles · Ctrl+Z to undo',
+        movedScriptOnly: 'Moved segment {from} to position {to} · Ctrl+Z to undo',
+        movedScriptOnlyLocked: 'Moved segment {from} to position {to} (script only)',
+        reorderBlockedTitle: 'The timeline content cannot move with it',
+        reorderInterleaved: 'Segment {index} overlaps other content on the timeline, so its clips cannot move with it.',
+        reorderLocked: 'A track is locked, so the clips cannot move with it.',
+        reorderPartial: 'Some segments are not on the timeline yet, so the clips cannot move with them.',
+        reorderEditLocked: 'The AI assistant is editing the timeline, so the clips cannot move right now.',
+        scriptOnly: 'Reorder the script only',
+        applyNewVoice: 'Apply new voice-over',
+        voiceVersionItem: 'Use the {time} · {duration}s voice-over',
+        voiceVersionCurrent: 'Current voice-over · {time} · {duration}s',
+        voiceVersionStale: '(older text)',
+        polish: 'Polish this segment',
+        polishTitle: 'Polish segment {index}',
+        voiceFailed: 'Voice-over failed: {reason}',
+        retrySegment: 'Retry this segment',
+        segmentVoice: 'Segment voice',
+        useDefault: 'Use the project default',
+        useDefaultNamed: 'Project default ({name})',
+        overridden: 'Set for this segment · {name}',
+        restoreDefault: 'Use default',
+        speed: 'Speed',
+        regenerateWithSettings: 'Regenerate with these settings',
+        defaultChangeTitle: 'Change the project voice',
+        defaultChangeBody: 'The project voice becomes "{name}". {count} segments already have a voice-over in the old default voice.',
+        defaultChangeOverridden: '{count} more segments have their own voice and are not affected.',
+        defaultChangeFutureOnly: 'Only for new voice-overs',
+        defaultChangeRegenerate: 'Regenerate these {count} voice-overs',
+        defaultChangeRegenerateHint: 'You review and apply them afterwards; the timeline does not change on its own',
+        pendingVoices: '{count} new voice-overs to apply',
+        applyAll: 'Apply all',
+        applyAllTitle: 'Apply {count} new voice-overs',
+        applyAllSkipped: 'Segment {index} skipped: {reason}',
+        allApplied: 'Applied {count} voice-overs · Ctrl+Z to undo',
+        batchFill: 'Fill in missing content…',
+        batchFillTitle: 'Fill in missing content',
+        batchFillVoices: '{count} voice-overs will be generated (segments {list}: none yet or text changed).',
+        batchFillSkip: 'Segments {list} already have a current voice-over and are skipped.',
+        batchFillNote: 'You review and apply the results; the timeline does not change on its own.',
+        batchFillMissingVisual: 'Segments {list} have no picture yet; use "Find a picture" on the segment.',
+        batchFillNothing: 'Every segment already has a current voice-over.',
+        batchFillStart: 'Start',
+        batchFillDone: 'Fill-in finished: {ok} succeeded, {failed} failed',
+        retryTask: 'Retry',
+        noCancelNote: 'Generation cannot be cancelled; you can choose not to apply the result',
+        listSeparator: ', ',
+      },
+      segmentRefusals: {
+        segmentNotFound: 'The segment no longer exists',
+        notOnTimeline: 'This segment is not on the timeline yet',
+        targetTrackLocked: 'The target track is locked',
+        noTargetTrack: 'There is no track to place it on',
+        spanOccupied: 'Other pictures overlap this segment, so it cannot be replaced',
+        interleaved: 'This segment overlaps other content on the timeline and cannot be adjusted automatically',
+        candidateStale: 'This voice-over was made for the previous text and cannot be applied',
+        nothingToDo: 'Nothing to change',
+      },
+      canvasFit: {
+        group: 'Picture fit',
+        contain: 'Fit',
+        containHint: 'Shows the whole picture; a different ratio leaves bars',
+        cover: 'Fill',
+        coverHint: 'Fills the canvas; parts of the picture may be cropped',
+        blur: 'Blurred background',
+        blurHint: 'Keeps the whole picture and fills the rest with a blurred copy (slower export)',
+        sameRatio: 'The picture matches the canvas ratio; all three look the same',
+        menuLabel: 'Canvas {ratio} · {fit}',
+      },
+      preflight: {
+        title: 'Before export',
+        exportAnyway: 'Export anyway',
+        back: 'Back to editing',
+        voicePending: '{count} segments have a new voice-over not on the timeline (segments {list})',
+        voiceStale: '{count} segments changed their text but keep the old voice-over (segments {list})',
+        subtitleNone: 'The video has no subtitles',
+        letterbox: 'Some pictures have a different ratio and will show bars (see Canvas › Picture fit)',
+        goHandle: 'Review',
+        openCanvas: 'Canvas settings',
+        dontRemind: 'Do not remind me for this project',
+        severityNote: 'These notes do not block the export; they may be what you intended.',
+      },
+      timelineTools: {
+        renameHint: 'Double-click to rename',
+        renameLabel: 'Track name',
+        addImage: '+ Add images',
+        addSubtitle: '+ Add subtitles',
+        expandEmpty: 'Expand the empty track',
+        dropAppend: 'Append at the end · {time}',
+        dropLocked: 'Track is locked',
+        dropIncompatible: 'This track does not accept {type}',
+      },
     },
     videoUnderstandingPlaceholder: {
       title: 'Narration — from video',
@@ -8607,6 +8910,157 @@ export const translations: Record<string, Translations> = {
         contextSegment: '正在协助：第 {index} 段 · {title}',
         contextProject: '正在协助：整个项目',
         close: '关闭',
+      },
+      segmentCommands: {
+        voiceDiscardedDeleted: '段落已删除，配音结果已丢弃',
+        voiceResultStale: '此结果基于上一版文案，未应用',
+        batchFillDesc: '先列出作用范围，再逐段生成候选配音',
+        candidateDelta: '新配音已生成 · {from}s → {to}s（{delta}s）',
+        candidateNew: '新配音已生成 · {to}s',
+        candidateStale: '此配音基于上一版文案',
+        audition: '试听',
+        stopAudition: '停止',
+        auditionAnyway: '仍然试听',
+        applyToTimeline: '应用到时间轴',
+        placeOnTimeline: '放到时间轴',
+        notNow: '暂不应用',
+        regenerate: '重新生成',
+        voiceApplied: '已应用本段新配音 · Ctrl+Z 撤销',
+        durationLonger: '新配音比原来长 {value} 秒',
+        durationShorter: '新配音比原来短 {value} 秒',
+        durationDialogLabel: '新配音时长变化',
+        optionAdjust: '调整本段时长',
+        optionAdjustHint: '本段画面随配音伸缩，之后的内容一起移动',
+        optionKeep: '保留原时长（尾部留空）',
+        optionEdit: '修改文案或语速',
+        optionEditHint: '不应用，回到本段修改后重新生成',
+        optionSkip: '暂不应用',
+        optionSkipHint: '保留候选配音，稍后再决定',
+        staleVersionNote: '此版本基于旧文案，应用后本段配音将显示为「待更新」',
+        confirm: '确定',
+        cancel: '取消',
+        impactSegmentRef: '第 {index} 段「{title}」',
+        impactShiftLater: '{segment}及之后内容将后移 {value} 秒',
+        impactShiftEarlier: '{segment}及之后内容将前移 {value} 秒',
+        impactLoose: '另有 {count} 个不属于任何段落的片段一起移动',
+        impactMusic: '背景音乐「{name}」保持原位',
+        impactLocked: '轨道「{name}」已锁定，不会移动',
+        impactTotal: '工程总时长 {before}s → {after}s',
+        impactGap: '时间轴上会留下 {value} 秒空隙，可用「整理素材」收紧',
+        impactKeptLocked: '轨道「{name}」已锁定，其中的 {count} 个片段会保留',
+        stalePlan: '时间轴已变化，请重新操作',
+        invalidPlan: '操作失败，时间轴未改动',
+        visualReplaced: '已替换第 {index} 段画面 · Ctrl+Z 撤销',
+        visualCandidateOnly: '本段尚未放到时间轴，已设为本段画面候选',
+        replaceVisualMenu: '替换第 {index} 段画面',
+        dropReplace: '松开以替换第 {index} 段画面',
+        dropAudioRejected: '音频不能作为画面',
+        pickedVisualTitle: '已为本段选好新画面',
+        pickedVisualReplace: '替换时间轴上的本段画面',
+        later: '稍后',
+        deleteTitle: '删除段落',
+        deleteBody: '将删除第 {index} 段「{title}」的解说和画面描述。',
+        deleteRemoveItems: '同时移除时间轴上的关联片段：{items}',
+        deleteItemCount: '{name} {count} 个',
+        deleteKeepNote: '素材库中的原文件会保留。删除后可用 Ctrl+Z 一次恢复。',
+        deleteLockedAgent: 'AI 助手正在编辑时间轴，暂时只能删除解说',
+        deleteConfirm: '删除',
+        segmentDeleted: '已删除第 {index} 段 · Ctrl+Z 撤销',
+        segmentDeletedScriptOnly: '已删除第 {index} 段的解说',
+        dragHandle: '拖动调整第 {index} 段顺序（Alt+↑/↓）',
+        moveUp: '上移',
+        moveDown: '下移',
+        moved: '已将第 {from} 段移到第 {to} 位，画面、配音、字幕已一起移动 · Ctrl+Z 撤销',
+        movedScriptOnly: '已将第 {from} 段移到第 {to} 位 · Ctrl+Z 撤销',
+        movedScriptOnlyLocked: '已将第 {from} 段移到第 {to} 位（仅脚本）',
+        reorderBlockedTitle: '无法一起移动时间轴内容',
+        reorderInterleaved: '第 {index} 段在时间轴上与其它内容交错，无法一起移动时间轴内容。',
+        reorderLocked: '有轨道已锁定，无法一起移动时间轴内容。',
+        reorderPartial: '部分段落还不在时间轴上，无法一起移动时间轴内容。',
+        reorderEditLocked: 'AI 助手正在编辑时间轴，时间轴内容暂时不能一起移动。',
+        scriptOnly: '仅调整脚本顺序',
+        applyNewVoice: '应用新配音',
+        voiceVersionItem: '使用 {time} · {duration}s 的配音',
+        voiceVersionCurrent: '当前配音 · {time} · {duration}s',
+        voiceVersionStale: '（基于旧文案）',
+        polish: '润色本段文案',
+        polishTitle: '润色第 {index} 段文案',
+        voiceFailed: '配音生成失败：{reason}',
+        retrySegment: '只重试本段',
+        segmentVoice: '本段音色',
+        useDefault: '使用全片默认',
+        useDefaultNamed: '使用全片默认（{name}）',
+        overridden: '已单独设置 · {name}',
+        restoreDefault: '恢复默认',
+        speed: '语速',
+        regenerateWithSettings: '按新设置重新生成',
+        defaultChangeTitle: '修改全片默认音色',
+        defaultChangeBody: '全片默认音色将改为「{name}」。已有 {count} 段配音使用旧的默认音色。',
+        defaultChangeOverridden: '另有 {count} 段已单独设置音色，不受影响。',
+        defaultChangeFutureOnly: '仅用于后续生成',
+        defaultChangeRegenerate: '重新生成这 {count} 段配音',
+        defaultChangeRegenerateHint: '生成后需要你试听并应用，不会自动改动时间轴',
+        pendingVoices: '{count} 段新配音待应用',
+        applyAll: '全部应用',
+        applyAllTitle: '应用 {count} 段新配音',
+        applyAllSkipped: '第 {index} 段跳过：{reason}',
+        allApplied: '已应用 {count} 段新配音 · Ctrl+Z 撤销',
+        batchFill: '批量补齐缺失内容…',
+        batchFillTitle: '批量补齐缺失内容',
+        batchFillVoices: '将生成 {count} 段配音（第 {list} 段：没有配音或文案已修改）。',
+        batchFillSkip: '第 {list} 段已有最新配音，跳过。',
+        batchFillNote: '生成完成后需要你试听并应用，不会自动改动时间轴。',
+        batchFillMissingVisual: '第 {list} 段还没有画面，可用「为本段找画面」。',
+        batchFillNothing: '所有段落都已有最新配音，无需生成。',
+        batchFillStart: '开始生成',
+        batchFillDone: '批量补齐完成：成功 {ok} 段，失败 {failed} 段',
+        retryTask: '重试',
+        noCancelNote: '生成中无法取消，完成后可选择不应用',
+        listSeparator: '、',
+      },
+      segmentRefusals: {
+        segmentNotFound: '找不到该段落',
+        notOnTimeline: '本段尚未放到时间轴',
+        targetTrackLocked: '目标轨道已锁定，无法修改',
+        noTargetTrack: '时间轴上没有可用的轨道',
+        spanOccupied: '本段区间内还有其它画面，无法替换',
+        interleaved: '本段在时间轴上与其它内容交错，无法自动调整',
+        candidateStale: '此配音基于上一版文案，不能直接应用',
+        nothingToDo: '没有需要修改的内容',
+      },
+      canvasFit: {
+        group: '画面适配',
+        contain: '保持完整',
+        containHint: '画面完整显示，比例不同时会留边',
+        cover: '填满画布',
+        coverHint: '铺满画布，可能裁掉部分画面',
+        blur: '背景填充',
+        blurHint: '保留完整主体，周围用模糊画面填充（导出稍慢）',
+        sameRatio: '当前画面与画布比例一致，三种方式效果相同',
+        menuLabel: '画布 {ratio} · {fit}',
+      },
+      preflight: {
+        title: '导出前检查',
+        exportAnyway: '仍然导出',
+        back: '返回编辑',
+        voicePending: '{count} 段有新配音尚未应用到时间轴（第 {list} 段）',
+        voiceStale: '{count} 段文案已修改，配音仍是旧版本（第 {list} 段）',
+        subtitleNone: '成片没有字幕',
+        letterbox: '部分画面比例与画布不同，会留出黑边（可在「画布 › 画面适配」中调整）',
+        goHandle: '去处理',
+        openCanvas: '打开画布设置',
+        dontRemind: '本工程不再提示',
+        severityNote: '以下提示不会阻止导出，可能正是你想要的效果。',
+      },
+      timelineTools: {
+        renameHint: '双击重命名',
+        renameLabel: '轨道名称',
+        addImage: '＋ 添加图片',
+        addSubtitle: '＋ 添加字幕',
+        expandEmpty: '展开空轨道',
+        dropAppend: '追加到末尾 · {time}',
+        dropLocked: '轨道已锁定',
+        dropIncompatible: '此轨道不接受{type}',
       },
     },
     videoUnderstandingPlaceholder: {

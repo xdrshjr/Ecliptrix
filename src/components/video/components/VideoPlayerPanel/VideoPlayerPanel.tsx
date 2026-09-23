@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { UseVideoPlaybackReturn, VideoPreview, CompositionPlayback, VideoSequenceItem } from '../../types';
 import { TimelineState, MaterialItem, ImagePosition } from '@/types';
+import type { CanvasFit } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
 import type { RemoteMaterialPatch } from '../../hooks/useRemoteMaterialPrefetch';
 import ImageOverlay from './ImageOverlay';
@@ -62,6 +63,13 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
    */
   aspectRatioId: string;
   onAspectRatioChange: (id: string) => void;
+  /**
+   * Project canvas fit for video layers (`canvasSettings.fit`, spec
+   * segment-centric-editor-workbench-r2 §3.9.2). Absent = 'contain'.
+   */
+  canvasFit?: CanvasFit;
+  /** Picks the fit in the canvas menu; without it the menu shows ratios only. */
+  onCanvasFitChange?: (fit: CanvasFit) => void;
   /** Empty-state 「打开素材」: switch the right panel to the materials tab. */
   onOpenMaterials?: () => void;
 }
@@ -111,6 +119,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   projectName,
   aspectRatioId,
   onAspectRatioChange,
+  canvasFit,
+  onCanvasFitChange,
   onOpenMaterials,
 }, ref) => {
   const { t } = useLocale();
@@ -196,6 +206,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     aspectRatio: previewAspectRatio,
     outputSize: outputSizeForAspect(selectedAspectRatio.id),
     masterVolume: volume,
+    videoFit: canvasFit,
     enabled: true,
   });
 
@@ -466,6 +477,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           videoCount={compositionPlayback?.videoSequences.length || 0}
           audioCount={compositionPlayback?.audioSequences?.length || 0}
           coverSlot={projectId ? <CoverButton onClick={() => setIsCoverModalOpen(true)} /> : undefined}
+          fit={canvasFit ?? 'contain'} onFitChange={onCanvasFitChange}
         />
         <button
           type="button"

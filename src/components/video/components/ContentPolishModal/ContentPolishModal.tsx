@@ -12,6 +12,10 @@ interface ContentPolishModalProps {
   originalContent: string;
   chatContent?: string;
   taskId: string;
+  /** 'segment': polish one script segment (R2 §3.12); the API is unchanged. */
+  mode?: 'document' | 'segment';
+  /** Title override, e.g. 「润色第 2 段文案」 in segment mode. */
+  title?: string;
 }
 
 interface PolishResult {
@@ -45,7 +49,9 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
   onContentSelect,
   originalContent,
   chatContent,
-  taskId
+  taskId,
+  mode = 'document',
+  title,
 }) => {
   const { t } = useLocale();
   const [selectedStyle, setSelectedStyle] = useState<string>('');
@@ -393,7 +399,9 @@ const ContentPolishModal: React.FC<ContentPolishModalProps> = ({
         <div className="bg-muted px-6 py-4 border-b border-border flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-foreground">{t.contentPolishModal.title}</h2>
+              <h2 className="text-xl font-semibold text-foreground" data-mode={mode}>
+                {title ?? t.contentPolishModal.title}
+              </h2>
               <p className="text-sm text-muted-foreground mt-1">{t.contentPolishModal.subtitle}</p>
             </div>
             <button

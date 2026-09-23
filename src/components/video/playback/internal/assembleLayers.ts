@@ -24,6 +24,7 @@ import { SubtitleLayer } from '../SubtitleLayer';
 import { buildImageLayersAt, type ImageOverlayInput, type FitRect } from '../ImageOverlayLayer';
 import { resolveCameraDraw } from '../camera/resolveCameraDraw';
 import type { CompositorLayer, VideoTrackGroup } from '../types';
+import type { CanvasFit } from '@/types';
 import type { VideoSequenceItem, SubtitleSequenceItem } from '../../types';
 import type { OutputSize } from '../../lib/subtitleLayout';
 
@@ -66,6 +67,19 @@ export interface AssembleLayersInput {
   imageFit?: FitRect;
   /** Base z applied to subtitle/image layers so they sit ABOVE all video. */
   overlayBaseZ?: number;
+  /**
+   * Project canvas fit for every video layer (spec
+   * segment-centric-editor-workbench-r2 §3.9.2). Absent = `'contain'`.
+   */
+  videoFit?: CanvasFit;
+}
+
+/** Project-wide options for {@link buildVideoLayers}. */
+export interface VideoLayerOptions {
+  /** Canvas fit; absent or `'contain'` builds exactly the pre-feature layer. */
+  fit?: CanvasFit;
+  /** Exported frame size; `cover` runs camera motion on this frame's aspect. */
+  output?: OutputSize;
 }
 
 /** Default z floor for overlays — well above any realistic track z. */
@@ -98,7 +112,9 @@ function itemOpacity(clip: VideoSequenceItem): number {
 export function buildVideoLayers(
   entries: readonly ActiveVideoEntry[],
   t: number,
+  options: VideoLayerOptions = {},
 ): Extract<CompositorLayer, { kind: 'video' }>[] {
+  const fit = options.fit && options.fit !== 'contain' ? options.fit : undefined;
   const layers: Extract<CompositorLayer, { kind: 'video' }>[] = [];
   for (const entry of entries) {
     if (!entry.source || !entry.clip) continue;
@@ -116,7 +132,9 @@ export function buildVideoLayers(
     // aspect — a wrong guess is a one-frame framing jump.
     const width = entry.source.videoWidth;
     const height = entry.source.videoHeight;
-    const frameAspect = width && height ? width / height : undefined;
+    const frameAspect = width && height
+      ? cameraFrameAspect(width / height, fit, options.output)
+      : undefined;
     const camera = frameAspect
       ? resolveCameraDraw(
           entry.clip.cameraMotion,
@@ -132,9 +150,27 @@ export function buildVideoLayers(
       opacity,
       z: entry.z,
       camera,
+      // Only a non-default fit adds the key, so contain layers stay identical.
+      ...(fit ? { fit } : {}),
     });
   }
   return layers;
+}
+
+/**
+ * The aspect of the picture camera motion acts on. `cover` crops the source
+ * to the exported frame before the motion (export: camera after `crop`), so
+ * the motion sees the frame's aspect; otherwise the source's own aspect.
+ */
+function cameraFrameAspect(
+  sourceAspect: number,
+  fit: CanvasFit | undefined,
+  output: OutputSize | undefined,
+): number {
+  if (fit !== 'cover' || !output || output.width <= 0 || output.height <= 0) {
+    return sourceAspect;
+  }
+  return output.width / output.height;
 }
 
 /** Shared layout cache: a stable subtitle is laid out once, not every frame. */
@@ -183,7 +219,10 @@ export function buildSubtitleLayers(
  */
 export function assembleLayers(input: AssembleLayersInput): CompositorLayer[] {
   const baseZ = input.overlayBaseZ ?? DEFAULT_OVERLAY_BASE_Z;
-  const video = buildVideoLayers(input.videoEntries, input.t);
+  const video = buildVideoLayers(input.videoEntries, input.t, {
+    fit: input.videoFit,
+    output: input.output,
+  });
 
   // The SPREAD is load-bearing: it is what carries `cameraInput` (and anything
   // added later) through to the compositor. Rebuilding the object field by field

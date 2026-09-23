@@ -8,6 +8,7 @@ import {
   deriveSegmentStatus,
   findPlayingSegmentId,
   resolveItemSegmentId,
+  resolveSegmentDuration,
   type LinkableItem,
   type LinkableTrack,
 } from '../segmentLinks';
@@ -99,13 +100,16 @@ describe('segmentLinks', () => {
     expect(status.voice).toBe('generating');
   });
 
+  // R2 §3.4.1: staleness is judged on the voice the timeline plays; the newer
+  // library voice becomes the candidate instead.
   it('voice_on_timeline_outdated_when_newer_voice_only_in_library', () => {
     const hash = segmentTextHash(segment);
     const tracks = [track('audio-track-1', 'audio', [item('a', { type: 'audio', materialId: 'old' })])];
     const status = deriveSegmentStatus({
       segment, materials: [voice('old', 1, 'stale'), voice('new', 2, hash)], tracks, isConverting: false,
     });
-    expect([status.voice, status.voiceOnTimeline]).toEqual(['ready', 'outdated']);
+    expect([status.voice, status.voiceOnTimeline, status.candidate?.materialId])
+      .toEqual(['stale', 'outdated', 'new']);
   });
 
   it('voice_on_timeline_current_when_latest_voice_is_on_track', () => {
@@ -144,5 +148,50 @@ describe('segmentLinks', () => {
     const ranges = new Map([['a', { start: 0, end: 5 }], ['b', { start: 8, end: 12 }]]);
     expect([findPlayingSegmentId(ranges, 3), findPlayingSegmentId(ranges, 6), findPlayingSegmentId(ranges, 8)])
       .toEqual(['a', null, 'b']);
+  });
+
+  it('T-LINKS-DURATION-RANGE-FIRST: the card shows the timeline range when there is one', () => {
+    const withField = { ...segment, duration: 10 };
+    expect([
+      resolveSegmentDuration(withField, { start: 2, end: 10 }, null),
+      resolveSegmentDuration(withField, null, null),
+      resolveSegmentDuration(segment, null, material('v', { duration: 4 })),
+    ]).toEqual([8, 10, 4]);
+  });
+
+  it('T-LINKS-APPLIED: an applied older voice on the timeline counts as current', () => {
+    const hash = segmentTextHash(segment);
+    const applied = { ...segment, appliedVoiceMaterialId: 'old', appliedVoiceAt: new Date(5).toISOString() };
+    const tracks = [track('audio-track-1', 'audio', [item('a', { type: 'audio', materialId: 'old' })])];
+    const status = deriveSegmentStatus({
+      segment: applied, materials: [voice('old', 1, hash), voice('new', 2, hash)], tracks, isConverting: false,
+    });
+    expect([status.voiceOnTimeline, status.candidate]).toEqual(['current', null]);
+  });
+
+  it('T-LINKS-APPLIED: a voice generated after the applied one becomes the candidate again', () => {
+    const hash = segmentTextHash(segment);
+    const applied = { ...segment, appliedVoiceMaterialId: 'old', appliedVoiceAt: new Date(5).toISOString() };
+    const tracks = [track('audio-track-1', 'audio', [item('a', { type: 'audio', materialId: 'old', duration: 3 })])];
+    const newer = { ...voice('newer', 9, hash), duration: 4 };
+    const status = deriveSegmentStatus({
+      segment: applied, materials: [voice('old', 1, hash), newer], tracks, isConverting: false,
+    });
+    expect(status.candidate).toEqual({ materialId: 'newer', duration: 4, deltaFromTimeline: 1, isStale: false });
+  });
+
+  it('T-LINKS-APPLIED: a different voice or speed marks the voice stale; old materials without speed do not', () => {
+    const hash = segmentTextHash(segment);
+    const spoken = (id: string, extra: Record<string, unknown>) =>
+      material(id, { metadata: { segment_id: 'seg-2', segment_assigned_at: 1, segment_text_hash: hash, ...extra } });
+    const statusOf = (seg: ScriptSegment, m: MaterialItem, defaultVoiceId?: string) =>
+      deriveSegmentStatus({ segment: seg, materials: [m], tracks: [], isConverting: false, defaultVoiceId }).voice;
+    expect([
+      statusOf({ ...segment, voiceId: 'b' }, spoken('v', { voice_type: 'a' })),
+      statusOf(segment, spoken('v', { voice_type: 'a' }), 'b'),
+      statusOf(segment, spoken('v', { voice_type: 'a' })),
+      statusOf({ ...segment, voiceSpeed: 1.2 }, spoken('v', {})),
+      statusOf(segment, spoken('v', {})),
+    ]).toEqual(['stale', 'stale', 'ready', 'stale', 'ready']);
   });
 });

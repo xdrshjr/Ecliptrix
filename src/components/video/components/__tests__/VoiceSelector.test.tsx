@@ -49,4 +49,12 @@ describe('VoiceSelector (iter5 Bug#4)', () => {
     expect(SRC).toMatch(/v\.name\.toLowerCase\(\)\.includes\(kw\)/);
     expect(SRC).toMatch(/genderFilter === 'all'[\s\S]+?gender/);
   });
+
+  it('T-L2: an open dropdown consumes Escape in the capture phase so the popover stays open', () => {
+    expect(SRC).toContain("document.addEventListener('keydown', onKey, true)");
+    expect(SRC).toMatch(/e\.key === 'Escape'\) \{\s+e\.preventDefault\(\);\s+e\.stopPropagation\(\);/);
+    const bar = readFileSync(resolve(__dirname, '..', 'SegmentCard', 'DefaultVoiceBar.tsx'), 'utf-8');
+    expect(bar).toContain("event.key === 'Escape' && !event.defaultPrevented");
+    expect(bar).toContain("window.addEventListener('resize', onResize)");
+  });
 });

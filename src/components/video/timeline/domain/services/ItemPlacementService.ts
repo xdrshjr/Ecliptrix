@@ -126,6 +126,26 @@ function generateItemId(): string {
   return `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
+/** Plain item timing, as both the domain entity and store data can supply. */
+export interface AppendTrackLike {
+  items: readonly { startTime: number; duration: number }[];
+}
+
+/**
+ * Where a drop on this track lands: the latest item end, 0 when empty.
+ *
+ * The one formula behind both the real placement and the drop hint
+ * (spec R2 §3.10), so the hint can never promise a different time.
+ */
+export function computeAppendStart(track: AppendTrackLike): number {
+  let maxEnd = 0;
+  for (const item of track.items) {
+    const end = item.startTime + item.duration;
+    if (end > maxEnd) maxEnd = end;
+  }
+  return maxEnd;
+}
+
 // ---------------------------------------------------------------------------
 // ItemPlacementService
 // ---------------------------------------------------------------------------
@@ -149,17 +169,12 @@ export class ItemPlacementService {
     if (items.length === 0) {
       return TimePosition.zero();
     }
-
-    // Find the maximum end time across all items on the track.
-    // The original code uses Math.max(...items.map(i => i.startTime + i.duration)).
-    let maxEnd = 0;
-    for (const item of items) {
-      const end = item.startTime.value + item.duration.value;
-      if (end > maxEnd) {
-        maxEnd = end;
-      }
-    }
-    return TimePosition.create(maxEnd);
+    return TimePosition.create(computeAppendStart({
+      items: items.map(item => ({
+        startTime: item.startTime.value,
+        duration: item.duration.value,
+      })),
+    }));
   }
 
   /**

@@ -13,6 +13,7 @@
 
 import { createContext, useContext } from 'react';
 import type { MaterialItem } from '@/types';
+import type { SegmentCommands } from '../../hooks/useSegmentCommands';
 import type {
   SegmentIndexEntry,
   SegmentStatus,
@@ -32,6 +33,8 @@ export interface SegmentLinksValue {
   statusById: ReadonlyMap<string, SegmentStatus>;
   /** segmentId → newest voice-over material in the library. */
   latestVoiceById: ReadonlyMap<string, MaterialItem>;
+  /** segmentId → up to 5 voice-over versions, newest first (R2 §3.4.2). */
+  voiceVersionsById?: ReadonlyMap<string, readonly MaterialItem[]>;
   /** Items linked to the currently selected segment (outline highlight). */
   highlightedItemIds: ReadonlySet<string>;
   /** True while the panel shows the placeholder script (RV-21). */
@@ -45,6 +48,7 @@ const EMPTY_VALUE: SegmentLinksValue = {
   segmentRanges: new Map(),
   statusById: new Map(),
   latestVoiceById: new Map(),
+  voiceVersionsById: new Map(),
   highlightedItemIds: new Set(),
   isPlaceholderScript: true,
 };
@@ -58,4 +62,15 @@ export function useSegmentLinksValue(): SegmentLinksValue {
 
 export function usePlayingSegmentId(): string | null {
   return useContext(PlayingSegmentContext);
+}
+
+/**
+ * The single segment command surface (spec R2 §3.1): VideoEditingInterface
+ * calls `useSegmentCommands` once and provides the result here. Null outside
+ * the editor (tests, stand-alone panels): consumers hide their command UI.
+ */
+export const SegmentCommandsContext = createContext<SegmentCommands | null>(null);
+
+export function useSegmentCommandsValue(): SegmentCommands | null {
+  return useContext(SegmentCommandsContext);
 }

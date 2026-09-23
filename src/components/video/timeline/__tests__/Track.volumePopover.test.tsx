@@ -20,6 +20,8 @@ import * as timelineGrid from '../lib/timelineGrid';
 import * as materialDragTypes from '../lib/materialDragTypes';
 import * as trackForMaterial from '../lib/trackForMaterial';
 import * as theme from '../theme/timelineTheme';
+import * as dropHint from '../lib/dropHint';
+import * as emptyTrackExpansion from '../hooks/useEmptyTrackExpansion';
 import { compileComponent, reactModules } from './test-utils/compileComponent';
 
 type TrackProps = { trackId: string; pixelsPerSecond: number; onMaterialDrop: () => void };
@@ -56,6 +58,11 @@ beforeAll(() => {
     './lib/materialDragTypes': materialDragTypes,
     './lib/trackForMaterial': trackForMaterial,
     './theme/timelineTheme': theme,
+    './TrackNameEditor': () => null,
+    './EmptyTrackStrip': () => null,
+    './DropHintBadge': () => null,
+    './lib/dropHint': dropHint,
+    './hooks/useEmptyTrackExpansion': emptyTrackExpansion,
   });
 });
 

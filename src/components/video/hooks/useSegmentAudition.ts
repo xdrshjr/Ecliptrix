@@ -42,14 +42,22 @@ function getSharedAudio(): HTMLAudioElement {
   return sharedAudio;
 }
 
-/** Stops whatever is playing and notifies its owner. */
-function endActiveSession(): void {
+/**
+ * Stops whatever is playing and notifies its owner. A final stop also
+ * releases the source (R1 L-1): a paused element otherwise keeps the decoded
+ * file and its network handle alive until the next audition.
+ */
+function endActiveSession(releaseSource = false): void {
   const session = activeSession;
   activeSession = null;
   if (sharedAudio) {
     sharedAudio.pause();
     sharedAudio.onended = null;
     sharedAudio.onerror = null;
+    if (releaseSource && sharedAudio.getAttribute?.('src')) {
+      sharedAudio.removeAttribute('src');
+      sharedAudio.load();
+    }
   }
   session?.onEnded();
 }
@@ -78,7 +86,7 @@ export function useSegmentAudition(options: UseSegmentAuditionOptions = {}): Seg
   );
 
   const stop = useCallback(() => {
-    if (activeSession) endActiveSession();
+    if (activeSession) endActiveSession(true);
     setAuditioningSegmentId(null);
   }, []);
 
@@ -107,7 +115,7 @@ export function useSegmentAudition(options: UseSegmentAuditionOptions = {}): Seg
     activeSession = session;
     ownedSessionRef.current = session;
     audio.onended = () => {
-      if (activeSession === session) endActiveSession();
+      if (activeSession === session) endActiveSession(true);
     };
     audio.onerror = () => fail(segmentId, new Error('audio element error'));
     audio.src = url;

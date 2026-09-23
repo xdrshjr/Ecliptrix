@@ -90,9 +90,11 @@ from app.services.composition.ffmpeg_args import (
     progress_file_path,
     with_progress,
 )
+from app.services.composition.canvas_fit import CanvasFitError
 from app.services.composition.video_scaling import (
     build_video_filter,
     calculate_video_scaling,
+    camera_frame_size,
     ensure_even_dimensions,
     get_aspect_ratio_info,
 )
@@ -331,6 +333,7 @@ class VideoCompositionService:
         plan = build_filtergraph(
             list(request.video_items), width, height,
             pre_trimmed=True, fps=fps, timeline_end=timeline_end,
+            fit_mode=request.fit_mode,
         )
         if plan.can_use_concat:
             logger.info("Single contiguous track: composing with the concat demuxer")
@@ -344,7 +347,8 @@ class VideoCompositionService:
             plan_runs(request.video_items, fps), clip_paths, temp_dir, ffmpeg_path,
         )
         plan = build_filtergraph(
-            canvas_clips, width, height, pre_trimmed=True, fps=fps, timeline_end=timeline_end,
+            canvas_clips, width, height, pre_trimmed=True, fps=fps,
+            timeline_end=timeline_end, fit_mode=request.fit_mode,
         )
         planned_paths = self._planned_input_paths(clip_paths, plan.video_inputs)
         self._run_canvas_composite(plan, planned_paths, output_path, temp_dir, ffmpeg_path)
@@ -742,8 +746,15 @@ class VideoCompositionService:
         target_width = target_aspect_ratio["width"]
         target_height = target_aspect_ratio["height"]
         
-        # 计算缩放和填充参数
-        scaling_params = self._calculate_video_scaling(width, height, target_width, target_height)
+        # 计算缩放和填充参数（画布适配 spec r2 §3.9.3；缺省 contain = 今天的行为）
+        fit_mode = video_info.get('fit_mode') or 'contain'
+        try:
+            scaling_params = self._calculate_video_scaling(
+                width, height, target_width, target_height, fit_mode
+            )
+        except CanvasFitError as exc:
+            return self._canvas_fit_failure(thread_id, index, fit_mode, exc)
+        camera_frame_w, camera_frame_h = camera_frame_size(scaling_params)
 
         # ── 运镜（camera-motion-2d-3d §4.4）────────────────────────────────
         # 滤镜链注入在 scale 之后、pad 之前（D4）：此刻画面正是「内容矩形」，
@@ -755,8 +766,8 @@ class VideoCompositionService:
             clip_label = video_info.get('camera_label') or f"clip {index + 1}"
             camera_chain, camera_warnings = build_camera_filter_chain(
                 motion=camera_motion,
-                frame_w=scaling_params['scale_width'],
-                frame_h=scaling_params['scale_height'],
+                frame_w=camera_frame_w,
+                frame_h=camera_frame_h,
                 fps=video_info['target_fps'],
                 clip_duration=clip_duration,
                 caps=self._get_camera_caps(ffmpeg_path),
@@ -779,7 +790,10 @@ class VideoCompositionService:
                     )
                     camera_chain = ""
 
-        vf_params = self._build_video_filter(scaling_params, camera_chain)
+        try:
+            vf_params = self._build_video_filter(scaling_params, camera_chain, fit_mode)
+        except CanvasFitError as exc:
+            return self._canvas_fit_failure(thread_id, index, fit_mode, exc)
         
         # 构建FFmpeg命令，包含剪辑参数
         normalize_cmd = [
@@ -836,7 +850,8 @@ class VideoCompositionService:
                     f"rendered without motion"
                 )
                 retry_cmd = [
-                    arg if arg != vf_params else self._build_video_filter(scaling_params, "")
+                    arg if arg != vf_params
+                    else self._build_video_filter(scaling_params, "", fit_mode)
                     for arg in normalize_cmd
                 ]
                 result = self._run_tracked_ffmpeg(retry_cmd, progress_path, "normalization")
@@ -863,7 +878,8 @@ class VideoCompositionService:
                         f"rendered without motion"
                     )
                     retry_cmd = [
-                        arg if arg != vf_params else self._build_video_filter(scaling_params, "")
+                        arg if arg != vf_params
+                        else self._build_video_filter(scaling_params, "", fit_mode)
                         for arg in normalize_cmd
                     ]
                     result = self._run_tracked_ffmpeg(retry_cmd, progress_path, "normalization")
@@ -885,6 +901,19 @@ class VideoCompositionService:
             error_msg = f"Normalization error: {str(e)}"
             logger.error(f"[Thread {thread_id}] {error_msg}")
             return {"success": False, "error": error_msg, "index": index, "warnings": warnings}
+
+    @staticmethod
+    def _canvas_fit_failure(
+        thread_id: Any, index: int, fit_mode: str, error: CanvasFitError
+    ) -> Dict[str, Any]:
+        """Normalization result for a fit filter that cannot be built.
+
+        Deterministic, so it is not retried; rendering ``contain`` instead
+        would silently differ from the preview (spec r2 §3.9.3).
+        """
+        error_msg = f"Canvas fit '{fit_mode}' failed: {error}"
+        logger.error(f"[Thread {thread_id}] {error_msg}")
+        return {"success": False, "error": error_msg, "index": index, "retryable": False}
 
     def _get_camera_config(self):
         """Process-level camera-motion config (config/camera-motion.yaml, D10)."""
@@ -1381,6 +1410,8 @@ class VideoCompositionService:
                     # 新增：运镜配置 + 用于 warning 文案的片段名（camera-motion-2d-3d §4.4.2）
                     'camera_motion': getattr(video_item, 'camera_motion', None) if video_item else None,
                     'camera_label': getattr(video_item, 'name', None) if video_item else None,
+                    # 画布适配（spec r2 §3.9.3）：整个工程统一一个值
+                    'fit_mode': request.fit_mode,
                 }
                 video_tasks.append(video_info)
                 
@@ -2384,20 +2415,26 @@ class VideoCompositionService:
                                 source_width: int,
                                 source_height: int,
                                 target_width: int,
-                                target_height: int) -> Dict[str, Any]:
+                                target_height: int,
+                                fit_mode: str = "contain") -> Dict[str, Any]:
         """Calculate scale/pad parameters maintaining aspect ratio (letter/pillarbox)."""
         return calculate_video_scaling(
-            source_width, source_height, target_width, target_height
+            source_width, source_height, target_width, target_height, fit_mode
         )
 
-    def _build_video_filter(self, scaling_params: Dict[str, Any], camera_chain: str = "") -> str:
+    def _build_video_filter(
+        self,
+        scaling_params: Dict[str, Any],
+        camera_chain: str = "",
+        fit_mode: str = "contain",
+    ) -> str:
         """Build FFmpeg video filter string for aspect ratio conversion.
 
         ``camera_chain`` (camera-motion-2d-3d D4) is injected after ``scale`` and
         before ``pad``; an empty chain leaves the output byte-identical to the
         pre-feature behaviour.
         """
-        return build_video_filter(scaling_params, camera_chain)
+        return build_video_filter(scaling_params, camera_chain, fit_mode)
 
     def _process_subtitle_tracks(self, subtitle_items: List[SubtitleCompositionItem],
                                video_path: str, temp_dir: str) -> Optional[str]:

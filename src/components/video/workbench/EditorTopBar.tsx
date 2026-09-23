@@ -13,6 +13,7 @@ import { useTimelineStore } from '../timeline/store';
 import ProjectNameEditor from './ProjectNameEditor';
 import SaveStatusIndicator, { type SaveStatus } from './SaveStatusIndicator';
 import TaskCenterButton from './TaskCenterButton';
+import { useEditorFocusStore } from '@/stores/editorFocusStore';
 
 /** Project chrome handed down by VideoEditorContainer (spec §5.1). */
 export interface EditorProjectChrome {
@@ -169,7 +170,10 @@ const EditorTopBar: React.FC<EditorTopBarProps> = ({
       <div style={{ flex: 1, minWidth: 8 }} />
       <HistoryButtons />
       <div className="ws-topbar-divider" aria-hidden="true" />
-      <TaskCenterButton exportTask={{ isExporting: exportState.isExporting, progress: exportState.progress }} />
+      <TaskCenterButton
+        exportTask={{ isExporting: exportState.isExporting, progress: exportState.progress }}
+        onRetrySegmentVoice={(segmentId) => useEditorFocusStore.getState().requestSegmentVoice([segmentId])}
+      />
       <button type="button" className="ws-btn ws-btn--ghost" style={{ position: 'relative' }}
         aria-pressed={isAssistantOpen} title={assistantTitle} aria-label={assistantTitle}
         onClick={onToggleAssistant}>

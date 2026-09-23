@@ -12,3 +12,4 @@ export type { UseWorkbenchLayoutReturn } from './useWorkbenchLayout';
 export { useWorkbenchShortcuts } from './useWorkbenchShortcuts';
 export { useWorkbenchWiring } from './useWorkbenchWiring';
 export { useEditorExportWiring } from './useEditorExportWiring';
+export { default as SegmentDialogsHost } from './SegmentDialogsHost';

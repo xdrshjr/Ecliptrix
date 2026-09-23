@@ -22,6 +22,7 @@ import {
   deriveSegmentStatus,
   findLatestVoiceMaterial,
   findPlayingSegmentId,
+  listVoiceVersions,
   resolveItemSegmentId,
   type LinkableTrack,
   type SegmentStatus,
@@ -36,6 +37,8 @@ export interface UseSegmentLinksInput {
   isPlaceholderScript: boolean;
   /** Live playhead (seconds); only feeds the playing-segment lookup. */
   currentTime: number;
+  /** Persisted project default voice (R2 §3.5); omitted → not compared. */
+  defaultVoiceId?: string;
 }
 
 export interface UseSegmentLinksReturn {
@@ -49,6 +52,7 @@ interface StaticLinks {
   materialSegmentMap: Map<string, string>;
   segmentRanges: Map<string, SegmentTimeRange>;
   latestVoiceById: Map<string, MaterialItem>;
+  voiceVersionsById: Map<string, MaterialItem[]>;
 }
 
 function deriveStaticLinks(
@@ -70,15 +74,28 @@ function deriveStaticLinks(
       materialSegmentMap.set(material.id, segmentId);
     }
   });
+  // An unstamped material placed for a segment is linked through its clip
+  // (R2 RV2-04): the "used in segment N" chip follows the clip.
+  tracks.forEach((track) => track.items.forEach((item) => {
+    const segmentId = itemSegmentMap.get(item.id);
+    if (segmentId && item.materialId && !materialSegmentMap.has(item.materialId)) {
+      materialSegmentMap.set(item.materialId, segmentId);
+    }
+  }));
   const segmentRanges = new Map<string, SegmentTimeRange>();
   const latestVoiceById = new Map<string, MaterialItem>();
+  const voiceVersionsById = new Map<string, MaterialItem[]>();
   segmentIndex.forEach((_entry, segmentId) => {
     const range = computeSegmentTimeRange(tracks, materialsById, segmentId);
     if (range) segmentRanges.set(segmentId, range);
     const voice = findLatestVoiceMaterial(materials, segmentId);
     if (voice) latestVoiceById.set(segmentId, voice);
+    const versions = listVoiceVersions(materials, segmentId);
+    if (versions.length > 1) voiceVersionsById.set(segmentId, versions);
   });
-  return { segmentIndex, itemSegmentMap, materialSegmentMap, segmentRanges, latestVoiceById };
+  return {
+    segmentIndex, itemSegmentMap, materialSegmentMap, segmentRanges, latestVoiceById, voiceVersionsById,
+  };
 }
 
 function deriveStatuses(
@@ -86,19 +103,21 @@ function deriveStatuses(
   materials: readonly MaterialItem[],
   tracks: readonly LinkableTrack[],
   converting: ReadonlySet<string>,
+  defaultVoiceId: string | undefined,
 ): Map<string, SegmentStatus> {
   const materialsById = buildMaterialsById(materials);
   const statuses = new Map<string, SegmentStatus>();
   segments.forEach((segment) => {
     statuses.set(segment.id, deriveSegmentStatus({
       segment, materials, tracks, materialsById, isConverting: converting.has(segment.id),
+      defaultVoiceId,
     }));
   });
   return statuses;
 }
 
 export function useSegmentLinks(input: UseSegmentLinksInput): UseSegmentLinksReturn {
-  const { segments, materials, isPlaceholderScript, currentTime } = input;
+  const { segments, materials, isPlaceholderScript, currentTime, defaultVoiceId } = input;
   const tracks = useTimelineStore((state) => state.tracks) as readonly LinkableTrack[];
   const converting = useEditorFocusStore((state) => state.convertingSegmentIds);
   const selectedSegmentId = useEditorFocusStore((state) => state.selectedSegmentId);
@@ -110,8 +129,8 @@ export function useSegmentLinks(input: UseSegmentLinksInput): UseSegmentLinksRet
   const statusById = useMemo(
     () => (isPlaceholderScript
       ? new Map<string, SegmentStatus>()
-      : deriveStatuses(segments, materials, tracks, converting)),
-    [isPlaceholderScript, segments, materials, tracks, converting],
+      : deriveStatuses(segments, materials, tracks, converting, defaultVoiceId)),
+    [isPlaceholderScript, segments, materials, tracks, converting, defaultVoiceId],
   );
   const highlightedItemIds = useMemo(() => {
     const ids = new Set<string>();

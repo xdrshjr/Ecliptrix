@@ -32,7 +32,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MaterialItem, TimelineState } from '@/types';
+import type { CanvasFit, MaterialItem, TimelineState } from '@/types';
 import { isStillImageItem } from '../timeline/infrastructure/renderableTimeline';
 import type {
   CompositionPlayback,
@@ -253,6 +253,12 @@ export interface UseCompositionPlaybackOptions {
    * so a change never re-attaches the engine; monitoring only, never exported.
    */
   masterVolume: number;
+  /**
+   * Project canvas fit for video layers (`canvasSettings.fit`, spec
+   * segment-centric-editor-workbench-r2 §3.9.2). Read through a ref every
+   * frame, so a change repaints without re-attaching. Absent = `'contain'`.
+   */
+  videoFit?: CanvasFit;
   /** Whether the new compositor path is active (flag on). Off → fully inert. */
   enabled: boolean;
 }
@@ -299,6 +305,7 @@ export function useCompositionPlayback(
     aspectRatio,
     outputSize,
     masterVolume,
+    videoFit,
     enabled,
   } = options;
 
@@ -341,6 +348,7 @@ export function useCompositionPlayback(
   const onTimeUpdateRef = useRef(onTimeUpdate);
   const masterVolumeRef = useRef(masterVolume);
   const outputSizeRef = useRef(outputSize);
+  const videoFitRef = useRef<CanvasFit>(videoFit ?? 'contain');
   compositionRef.current = compositionPlayback;
   materialsRef.current = materials;
   timelineStateRef.current = timelineState;
@@ -348,6 +356,7 @@ export function useCompositionPlayback(
   onTimeUpdateRef.current = onTimeUpdate;
   masterVolumeRef.current = masterVolume;
   outputSizeRef.current = outputSize;
+  videoFitRef.current = videoFit ?? 'contain';
 
   // timeline-preview-playback-stutter fix (A): throttle the engine→React clock
   // push. The engine reports composition time at ~60Hz; pushing every tick into
@@ -448,6 +457,7 @@ export function useCompositionPlayback(
       timeline: buildTimelineFacade(),
       viewport: aspectRatio ? { aspectRatio, letterboxColor: '#000' } : null,
       outputSize: outputSizeRef.current,
+      getVideoFit: () => videoFitRef.current,
       // Without the flag the pools keep writing element volume clamped to [0,1].
       ...(volumeBoostEnabledRef.current
         ? {
@@ -479,6 +489,13 @@ export function useCompositionPlayback(
     };
     // The output size changes together with the aspect ratio; both re-attach.
   }, [enabled, aspectRatio, outputSize.width, outputSize.height, buildTimelineFacade, hostVersion]);
+
+  // A paused preview must show a new canvas fit at once; a playing one picks
+  // it up from the ref on its next frame.
+  useEffect(() => {
+    if (!enabled) return;
+    engineRef.current?.repaint?.();
+  }, [videoFit, enabled]);
 
   const play = useCallback(() => {
     engineRef.current?.play();

@@ -4,6 +4,11 @@ import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/stre
 import { createVideoEditingAgent, formatErrorDetail, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
 import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
 import { AGENT_IDLE_TIMEOUT_MS } from '@/lib/video-editing-agent/timeouts';
+import {
+  appendEditorContext,
+  readEditorContext,
+  type EditorContextPayload,
+} from '@/lib/video-editing-agent/editorContextPrompt';
 import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types';
 import type { ChatMessage, TimelineState, MaterialItem } from '@/types';
 
@@ -29,6 +34,7 @@ function buildThinkingPrompt(
   userMessage: string,
   timelineState: TimelineState | null,
   materials: MaterialItem[],
+  editorContext: EditorContextPayload | null = null,
 ): string {
   const trackSummary = timelineState?.tracks?.map(t => {
     const itemCount = t.items?.length ?? 0;
@@ -41,7 +47,7 @@ function buildThinkingPrompt(
 
   const totalDuration = timelineState?.totalDuration ?? 0;
 
-  return `You are a professional video editing assistant. Before executing the user's editing task, analyze the request and plan the execution approach.
+  const prompt = `You are a professional video editing assistant. Before executing the user's editing task, analyze the request and plan the execution approach.
 
 ## Current Project State
 - Timeline tracks:
@@ -59,6 +65,8 @@ ${userMessage}
 3. Are there any constraints to be aware of?
 
 Output your analysis concisely in bullet points, no more than 300 characters.`;
+  // R2 §3.12: the selected segment follows the timeline state; absent → unchanged.
+  return appendEditorContext(prompt, editorContext, `- Total duration: ${totalDuration.toFixed(1)}s`);
 }
 
 async function performThinkingPhase(
@@ -71,6 +79,7 @@ async function performThinkingPhase(
   materials: MaterialItem[],
   config: { apiUrl: string; apiKey: string; model: string; providerType?: string; apiType: LlmApiType },
   signal: AbortSignal,
+  editorContext: EditorContextPayload | null = null,
 ): Promise<void> {
   let thinkingHeartbeatId: ReturnType<typeof setInterval> | null = null;
 
@@ -89,7 +98,7 @@ async function performThinkingPhase(
     }, THINKING_HEARTBEAT_INTERVAL);
 
     const recentHistory = conversationHistory.slice(-6, -1);
-    const thinkingPrompt = buildThinkingPrompt(userMessage, timelineState, materials);
+    const thinkingPrompt = buildThinkingPrompt(userMessage, timelineState, materials, editorContext);
 
     const thinkingController = new AbortController();
     const timeoutId = setTimeout(() => thinkingController.abort(), THINKING_TIMEOUT);
@@ -242,6 +251,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
     const { messages, timelineState, materials, projectId } = body as AgentChatRequest & { projectId?: string };
+    const editorContext = readEditorContext((body as { editorContext?: unknown }).editorContext);
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
@@ -419,6 +429,7 @@ export async function POST(request: NextRequest) {
             effectiveMaterials,
             config,
             thinkingCombinedSignal,
+            editorContext,
           );
 
           // If abort happened during thinking, bail out before constructing

@@ -19,6 +19,8 @@ interface AiGenerateMenuProps {
   convertAllSpeechDisabled?: boolean;
   /** 批量转换进行中：该项显示 spinner 并禁用。 */
   isConvertingAllSpeech?: boolean;
+  /** 「批量补齐缺失内容…」：先显示作用范围再生成（spec R2 §3.12）；传入才显示。 */
+  onBatchFill?: () => void;
 }
 
 interface MenuPosition {
@@ -52,6 +54,7 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
   onConvertAllSpeech,
   convertAllSpeechDisabled = false,
   isConvertingAllSpeech = false,
+  onBatchFill,
 }) => {
   const { t } = useLocale();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -83,6 +86,18 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
             title: t.scriptPanel.actions.convertAllSpeech,
             desc: t.scriptPanel.actions.convertAllSpeechDesc,
             onSelect: onConvertAllSpeech,
+            disabled: convertAllSpeechDisabled,
+            busy: isConvertingAllSpeech,
+          },
+        ]
+      : []),
+    ...(onBatchFill
+      ? [
+          {
+            key: 'batch-fill',
+            title: t.workbench.segmentCommands.batchFill,
+            desc: t.workbench.segmentCommands.batchFillDesc,
+            onSelect: onBatchFill,
             disabled: convertAllSpeechDisabled,
             busy: isConvertingAllSpeech,
           },
@@ -131,6 +146,7 @@ export const AiGenerateMenu: React.FC<AiGenerateMenuProps> = ({
       onConvertAllSpeech,
       convertAllSpeechDisabled,
       isConvertingAllSpeech,
+      onBatchFill,
     ],
   );
 

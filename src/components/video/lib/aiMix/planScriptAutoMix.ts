@@ -23,6 +23,11 @@
  */
 
 import type { MaterialItem } from '@/types';
+import {
+  coverSpanWithSources,
+  MIN_CLIP_SECONDS,
+  roundTime,
+} from '@/components/video/lib/segments/fillSpanWithMaterial';
 
 export interface AutoMixPlacement {
   material: MaterialItem;
@@ -64,10 +69,6 @@ export interface ScriptAutoMixPlan {
   totalDuration: number;
 }
 
-const MIN_CLIP_SECONDS = 0.1;
-/** Slack for comparisons between times rounded to microseconds. */
-const TIME_EPSILON = 1e-9;
-
 interface SegmentVersions {
   segmentId: string;
   segmentNumber: number;
@@ -90,7 +91,6 @@ interface Coverage {
   covered: boolean;
 }
 
-const roundTime = (seconds: number) => Math.round(seconds * 1e6) / 1e6;
 /** When ScriptPanel last assigned the material to its segment, if known. */
 const assignedAt = (material: MaterialItem): number => {
   const stamp: unknown = material.metadata?.segment_assigned_at;
@@ -288,10 +288,8 @@ function pickVideoSource(segments: readonly Segment[], index: number) {
 
 /**
  * Fill [start, start + span) with the videos, trimming and looping, without a
- * hole (AS2-03). Clips never end with a sub-0.1 s residue: the previous clip is
- * shortened to leave a full 0.1 s, and a residue that still remains is taken
- * from the last clip's unused source. The loop bound is finite because every
- * playable video lasts at least 0.1 s.
+ * hole (AS2-03). The coverage rules are shared with the segment commands
+ * (`coverSpanWithSources`), so both paths fill a segment identically.
  */
 function coverWithVideos(
   videos: readonly MaterialItem[],
@@ -299,35 +297,11 @@ function coverWithVideos(
   span: number,
   segmentNumber: number,
 ): Coverage {
-  const placements: AutoMixPlacement[] = [];
-  if (videos.length === 0) {
-    return { placements, looped: false, covered: span < MIN_CLIP_SECONDS };
-  }
-  const shortest = Math.min(...videos.map((video) => video.duration ?? 0));
-  const maxClips = videos.length + Math.ceil(span / shortest) + 1;
-  let remaining = span;
-  let looped = false;
-  for (let index = 0; index < maxClips && remaining >= MIN_CLIP_SECONDS - TIME_EPSILON; index += 1) {
-    looped = looped || index >= videos.length;
-    const video = videos[index % videos.length];
-    let take = Math.min(video.duration ?? 0, remaining);
-    const leftover = remaining - take;
-    if (leftover > TIME_EPSILON && leftover < MIN_CLIP_SECONDS - TIME_EPSILON
-      && remaining - MIN_CLIP_SECONDS >= MIN_CLIP_SECONDS - TIME_EPSILON) {
-      take = remaining - MIN_CLIP_SECONDS; // leave the next clip a whole 0.1 s
-    }
-    take = roundTime(take);
-    placements.push(place(video, 'video', start + span - remaining, take, segmentNumber));
-    remaining = roundTime(remaining - take);
-  }
-  const last = placements[placements.length - 1];
-  if (remaining > TIME_EPSILON && last
-    && (last.material.duration ?? 0) - last.duration >= remaining - TIME_EPSILON) {
-    last.duration = roundTime(last.duration + remaining);
-    last.clipEnd = roundTime(last.clipEnd + remaining);
-    remaining = 0;
-  }
-  return { placements, looped, covered: remaining <= TIME_EPSILON };
+  const coverage = coverSpanWithSources(videos, start, span);
+  const placements = coverage.clips.map((clip): AutoMixPlacement => ({
+    ...clip, lane: 'video', segmentNumber,
+  }));
+  return { placements, looped: coverage.looped, covered: coverage.covered };
 }
 
 function coverageReport(

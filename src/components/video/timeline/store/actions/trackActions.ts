@@ -130,6 +130,46 @@ export function revertTrackVolumePreviewAction(
 }
 
 // ---------------------------------------------------------------------------
+// Rename track
+// ---------------------------------------------------------------------------
+
+/** Longest track name the header accepts (spec R2 §3.10). */
+export const TRACK_NAME_MAX_LENGTH = 24;
+
+/** Trimmed and capped; '' means "use the derived default name". */
+export function normalizeTrackName(name: string): string {
+  return name.trim().slice(0, TRACK_NAME_MAX_LENGTH);
+}
+
+/**
+ * Rename a track as one undoable edit. An empty name restores the
+ * locale-derived default (deriveTrackDisplayName prefers a non-empty name).
+ *
+ * Locked tracks may be renamed: the name is not content. The entity's name
+ * setter refuses locked tracks, so the rename goes through a data round-trip
+ * like addTrackAction instead of mutating the aggregate in place.
+ */
+export function renameTrackAction(
+  get: () => TimelineStore,
+  trackId: string,
+  name: string,
+): void {
+  if (isEditLocked(get())) return;
+  const state = get();
+  const nextName = normalizeTrackName(name);
+  const current = state.tracks.find(tr => tr.id === trackId);
+  if (!current || current.name === nextName) return;
+
+  const data = state.exportToData();
+  const tracks = data.tracks.map(tr => (
+    tr.id === trackId ? { ...tr, name: nextName } : tr
+  ));
+  state.recordAction('TRACK_RENAME', { trackId, name: nextName });
+  state.importFromData({ ...data, tracks });
+  scheduleNextStateCapture(get);
+}
+
+// ---------------------------------------------------------------------------
 // Add track
 // ---------------------------------------------------------------------------
 

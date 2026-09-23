@@ -56,6 +56,7 @@ function segment(id: string, title = '丝滑亮相'): ScriptSegment {
 
 const readyStatus: SegmentStatus = {
   visual: 'configured', voice: 'ready', voiceOnTimeline: 'current', subtitle: 'none',
+  candidate: null,
 };
 
 function cardState(overrides: Partial<SegmentCardState> = {}): SegmentCardState {
@@ -285,6 +286,10 @@ const listModule = compileComponentModule(listSource, {
   '../../hooks/useSegmentAudition': {},
   './SegmentCard': { default: () => null },
   './useSegmentListFocus': {},
+  '@/stores/editorFocusStore': { useEditorFocusStore },
+  './useSegmentReorderDrag': {},
+  './SegmentNotice': {},
+  './segmentMenuExtras': {},
 });
 const buildSegmentMenuItems = listModule.buildSegmentMenuItems as BuildMenu;
 
@@ -328,5 +333,29 @@ describe('segment ⋯ menu', () => {
     const { items, onRevealMaterial } = menuFor({ ...readyStatus, voiceOnTimeline: 'outdated' });
     items.find((item) => item.key === 'reveal')?.onSelect();
     expect(onRevealMaterial).toHaveBeenCalledWith('voice-2');
+  });
+});
+
+describe('SegmentCard R2 drop target and reorder handle (T-UI-DROP-SEG)', () => {
+  const commands = zh.workbench.segmentCommands;
+
+  it('a picture dragged over the card says which segment it replaces', () => {
+    renderCard({ dropHint: { text: commands.dropReplace.replace('{index}', '2'), accepts: true } });
+    const card = screen.getByRole('listitem');
+    expect({ drop: card.getAttribute('data-drop'), hint: card.textContent?.includes('松开以替换第 2 段画面') })
+      .toEqual({ drop: 'accept', hint: true });
+  });
+
+  it('audio dragged over the card is refused with a reason', () => {
+    renderCard({ dropHint: { text: commands.dropAudioRejected, accepts: false } });
+    const card = screen.getByRole('listitem');
+    expect({ drop: card.getAttribute('data-drop'), hint: card.textContent?.includes(commands.dropAudioRejected) })
+      .toEqual({ drop: 'reject', hint: true });
+  });
+
+  it('the drag handle is a labelled button that does not select the card', () => {
+    const props = renderCard({ dragHandle: { label: '拖动调整第 1 段顺序', props: { draggable: true } } });
+    fireEvent.click(screen.getByRole('button', { name: '拖动调整第 1 段顺序' }));
+    expect(props.actions.onSelect).not.toHaveBeenCalled();
   });
 });

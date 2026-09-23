@@ -25,6 +25,8 @@ import {
 
 export interface TaskCenterButtonProps {
   exportTask: ExportTaskState;
+  /** Retry a failed segment voice-over; without it the rows stay read-only. */
+  onRetrySegmentVoice?(segmentId: string): void;
 }
 
 type TaskCenterCopy =
@@ -63,9 +65,17 @@ function rowName(row: TaskRow, copy: TaskCenterCopy): string {
   return copy.types[row.kind];
 }
 
-function TaskRowView({ row, copy }: { row: TaskRow; copy: TaskCenterCopy }) {
+interface TaskRowViewProps {
+  row: TaskRow;
+  copy: TaskCenterCopy;
+  retryLabel: string;
+  onRetry?(segmentId: string): void;
+}
+
+function TaskRowView({ row, copy, retryLabel, onRetry }: TaskRowViewProps) {
   const name = rowName(row, copy);
   const isFailed = row.status === 'failed';
+  const retryTarget = isFailed && row.kind === 'segment_voice' ? row.segmentId : undefined;
   return (
     <li className="ws-task-row" data-status={row.status}>
       <div className="ws-task-row-head">
@@ -91,6 +101,12 @@ function TaskRowView({ row, copy }: { row: TaskRow; copy: TaskCenterCopy }) {
       {isFailed && (
         <p className="ws-task-error">{row.error ?? copy.statusFailed}</p>
       )}
+      {retryTarget && onRetry && (
+        <button type="button" className="ws-btn ws-btn--sm ws-btn--outline-primary ws-task-retry"
+          onClick={() => onRetry(retryTarget)}>
+          {retryLabel}
+        </button>
+      )}
     </li>
   );
 }
@@ -112,13 +128,16 @@ function usePopoverDismiss(
   }, [isOpen, close, rootRef]);
 }
 
-const TaskCenterButton: React.FC<TaskCenterButtonProps> = ({ exportTask }) => {
+const TaskCenterButton: React.FC<TaskCenterButtonProps> = ({ exportTask, onRetrySegmentVoice }) => {
   const { t } = useLocale();
   const copy = t.workbench.taskCenter;
+  const commandCopy = t.workbench.segmentCommands;
   const tasks = useVideoEditingStore((state) => state.tasks);
   const convertingSegmentIds = useEditorFocusStore(
     (state) => state.convertingSegmentIds,
   );
+  const segmentVoiceProgress = useEditorFocusStore((state) => state.segmentVoiceProgress);
+  const segmentVoiceErrors = useEditorFocusStore((state) => state.segmentVoiceErrors);
   const { segmentIndex } = useSegmentLinksValue();
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -126,9 +145,11 @@ const TaskCenterButton: React.FC<TaskCenterButtonProps> = ({ exportTask }) => {
   const popoverId = useId();
   const { isExporting, progress } = exportTask;
   const summary = useMemo(() => collectActiveTasks({
-    tasks, convertingSegmentIds, segmentIndex,
+    tasks, convertingSegmentIds, segmentIndex, segmentVoiceProgress, segmentVoiceErrors,
     exportTask: { isExporting, progress },
-  }), [tasks, convertingSegmentIds, segmentIndex, isExporting, progress]);
+  }), [tasks, convertingSegmentIds, segmentIndex, segmentVoiceProgress, segmentVoiceErrors,
+    isExporting, progress]);
+  const hasSegmentVoice = summary.active.some((row) => row.kind === 'segment_voice');
   const close = useCallback(() => setIsOpen(false), []);
   usePopoverDismiss(isOpen, close, rootRef);
 
@@ -170,7 +191,8 @@ const TaskCenterButton: React.FC<TaskCenterButtonProps> = ({ exportTask }) => {
           {summary.active.length > 0 && (
             <ul className="ws-task-list">
               {summary.active.map((row) => (
-                <TaskRowView key={row.id} row={row} copy={copy} />
+                <TaskRowView key={row.id} row={row} copy={copy}
+                  retryLabel={commandCopy.retryTask} onRetry={onRetrySegmentVoice} />
               ))}
             </ul>
           )}
@@ -180,12 +202,14 @@ const TaskCenterButton: React.FC<TaskCenterButtonProps> = ({ exportTask }) => {
               <div className="ws-task-title">{copy.recent}</div>
               <ul className="ws-task-list">
                 {summary.recent.map((row) => (
-                  <TaskRowView key={row.id} row={row} copy={copy} />
+                  <TaskRowView key={row.id} row={row} copy={copy}
+                    retryLabel={commandCopy.retryTask} onRetry={onRetrySegmentVoice} />
                 ))}
               </ul>
             </>
           )}
           <div className="ws-menu-sep" />
+          {hasSegmentVoice && <p className="ws-menu-note">{commandCopy.noCancelNote}</p>}
           <p className="ws-menu-note">{copy.displayOnlyNote}</p>
         </div>
       )}

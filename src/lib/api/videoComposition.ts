@@ -13,6 +13,7 @@
  */
 
 import { ApiError, http } from '@/lib/api/http-client';
+import type { CanvasFit } from '@/types';
 
 /**
  * Transition applied to a clip edge — wire shape (snake_case-agnostic; the
@@ -166,6 +167,11 @@ export interface VideoCompositionRequest {
   };
   output_fps?: number;
   output_format?: string;
+  /**
+   * How video layers fit the canvas (spec segment-centric-editor-workbench-r2
+   * §3.9.3). Omitted = 'contain', the pre-feature export.
+   */
+  fit_mode?: CanvasFit;
 }
 
 /**

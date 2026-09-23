@@ -11,6 +11,7 @@
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import type { CanvasFit } from '@/types';
 import type { AspectRatio } from './aspectRatios';
 
 export interface CanvasMenuProps {
@@ -21,7 +22,49 @@ export interface CanvasMenuProps {
   audioCount: number;
   /** The cover entry (CoverButton); omitted when no project is bound. */
   coverSlot?: React.ReactNode;
+  /** Picture fit of video layers (R2 §3.9); the group shows with `onFitChange`. */
+  fit?: CanvasFit;
+  onFitChange?(fit: CanvasFit): void;
 }
+
+const FIT_ORDER: readonly CanvasFit[] = ['contain', 'cover', 'blur'];
+
+type FitCopy = ReturnType<typeof useLocale>['t']['workbench']['canvasFit'];
+
+function fitLabel(fit: CanvasFit, copy: FitCopy): string {
+  if (fit === 'cover') return copy.cover;
+  return fit === 'blur' ? copy.blur : copy.contain;
+}
+
+function fitHint(fit: CanvasFit, copy: FitCopy): string {
+  if (fit === 'cover') return copy.coverHint;
+  return fit === 'blur' ? copy.blurHint : copy.containHint;
+}
+
+/** 「画面适配」: the title says what happens, the hint what it costs (§3.9.1). */
+const FitGroup: React.FC<{ fit: CanvasFit; onFitChange(fit: CanvasFit): void }> = ({ fit, onFitChange }) => {
+  const { t } = useLocale();
+  const copy = t.workbench.canvasFit;
+  return (
+    <div role="radiogroup" aria-label={copy.group} data-testid="canvas-fit-group">
+      <p className="ws-menu-note">{copy.group}</p>
+      {FIT_ORDER.map((value) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={fit === value}
+          className="ws-menu-item ws-canvas-ratio"
+          onClick={() => onFitChange(value)}
+        >
+          <span className="ws-canvas-ratio-mark" aria-hidden="true" />
+          <span className="ws-canvas-ratio-label">{fitLabel(value, copy)}</span>
+          <span className="ws-canvas-ratio-desc">{fitHint(value, copy)}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
 
 const ARROW_STEP: Record<string, number> = {
   ArrowDown: 1,
@@ -55,6 +98,8 @@ const CanvasMenu: React.FC<CanvasMenuProps> = ({
   videoCount,
   audioCount,
   coverSlot,
+  fit = 'contain',
+  onFitChange,
 }) => {
   const { t } = useLocale();
   const copy = t.workbench.canvas;
@@ -111,7 +156,10 @@ const CanvasMenu: React.FC<CanvasMenuProps> = ({
         onClick={() => setIsOpen((open) => !open)}
       >
         <span className="ws-tabular">
-          {copy.menu.replace('{ratio}', selectedLabel)}
+          {onFitChange
+            ? t.workbench.canvasFit.menuLabel
+              .replace('{ratio}', selectedLabel).replace('{fit}', fitLabel(fit, t.workbench.canvasFit))
+            : copy.menu.replace('{ratio}', selectedLabel)}
         </span>
         <svg
           width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -146,6 +194,12 @@ const CanvasMenu: React.FC<CanvasMenuProps> = ({
             })}
           </div>
           <p className="ws-menu-note">{copy.ratioNote}</p>
+          {onFitChange && (
+            <>
+              <div className="ws-menu-sep" role="separator" />
+              <FitGroup fit={fit} onFitChange={onFitChange} />
+            </>
+          )}
           {coverSlot && (
             <>
               <div className="ws-menu-sep" role="separator" />

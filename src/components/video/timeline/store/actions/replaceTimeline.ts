@@ -17,6 +17,7 @@ import type { TimelineData } from '../../domain';
 import { isEditLocked } from '../editLock';
 import { tracksEqual } from '../../domain/services/snapshotEquality';
 import { carryViewFlags } from '../../domain/services/trackViewFlags';
+import type { HistoryCompanion } from '../historyCompanion';
 
 /** Where an external whole-timeline write came from (history payload only). */
 export type ReplaceTimelineReason =
@@ -25,7 +26,13 @@ export type ReplaceTimelineReason =
   | 'agent'
   | 'agent-undo'
   | 'import'
-  | 'subtitles';
+  | 'subtitles'
+  | 'segment';
+
+export interface ReplaceTimelineOptions {
+  /** Script patch undone/redone together with this entry (R2 §3.3). */
+  companion?: HistoryCompanion;
+}
 
 /**
  * Writers that pass the external edit lock: the lock exists so the agent can
@@ -60,6 +67,7 @@ export function replaceTimelineAction(
   get: () => TimelineStore,
   data: TimelineData,
   reason: ReplaceTimelineReason,
+  options: ReplaceTimelineOptions = {},
 ): boolean {
   if (isEditLocked(get()) && !LOCK_EXEMPT_REASONS.has(reason)) {
     console.warn('[replaceTimelineAction] refused while edit-locked', { reason });
@@ -76,11 +84,14 @@ export function replaceTimelineAction(
   if (get().isInteracting) get().cancelDrag();
 
   const state = get();
-  if (tracksEqual(incomingTracks, state.exportToData().tracks)) {
+  const { companion } = options;
+  // Unchanged tracks record nothing — unless a script patch rides along
+  // (e.g. deleting a segment that has nothing on the timeline).
+  if (!companion && tracksEqual(incomingTracks, state.exportToData().tracks)) {
     return false;
   }
 
-  state.recordAction('REPLACE_TIMELINE', { reason });
+  state.recordAction('REPLACE_TIMELINE', companion ? { reason, companion } : { reason });
   const view = state.exportToData();
   const totalDuration = incoming.calculateTotalDuration().value;
   state.importFromData({

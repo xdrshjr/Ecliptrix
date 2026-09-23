@@ -10,6 +10,7 @@
  * in their owning module.
  */
 
+import type { CanvasFit } from '@/types';
 import type { VideoSequenceItem } from '../types';
 import type { SubtitleLineLayout } from '../lib/subtitleLayout';
 import type { ResolvedCameraDraw, StillCameraInput } from './camera/types';
@@ -107,6 +108,11 @@ export type CompositorLayer =
        * compositor takes its existing 5-arg `drawImage` path unchanged.
        */
       camera?: ResolvedCameraDraw;
+      /**
+       * Project canvas fit (spec segment-centric-editor-workbench-r2 §3.9.2).
+       * Absent or `'contain'` takes the compositor's pre-feature path.
+       */
+      fit?: CanvasFit;
     }
   | {
       kind: 'subtitle';

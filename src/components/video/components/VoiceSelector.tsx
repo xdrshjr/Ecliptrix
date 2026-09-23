@@ -7,7 +7,8 @@ import { VideoEditingLogger } from '../utils/logger';
 
 interface VoiceSelectorProps {
   selectedVoiceId: string;
-  onVoiceChange: (voiceId: string) => void;
+  /** The display name is passed when the list already knows it (R2 §3.5 dialog). */
+  onVoiceChange: (voiceId: string, voiceName?: string) => void;
   className?: string;
   /** Reports the selected voice's display name once the list resolves it
    *  (the workbench default-voice bar shows it without opening the list). */
@@ -42,16 +43,20 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale]);
 
-  // iter5: Escape closes the dropdown for keyboard users.
+  // iter5: Escape closes the dropdown for keyboard users. The open dropdown is
+  // the innermost Esc owner (R1 L-2): it listens in the capture phase and
+  // consumes the key, so a surrounding popover does not close as well.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
         setIsOpen(false);
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
   }, [isOpen]);
 
   const loadVoiceTypes = async () => {
@@ -88,7 +93,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
       timestamp: new Date().toISOString(),
     });
 
-    onVoiceChange(voiceId);
+    onVoiceChange(voiceId, voiceTypes[voiceId]?.name);
     setIsOpen(false);
   };
 

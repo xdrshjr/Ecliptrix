@@ -11,6 +11,7 @@ import {
   compileComponent, compileComponentModule, localeContextModule, reactModules,
 } from '@/components/video/timeline/__tests__/test-utils/compileComponent';
 import { useTimelineStore } from '@/components/video/timeline/store';
+import { useEditorFocusStore } from '@/stores/editorFocusStore';
 import type { EditorProjectChrome, EditorTopBarProps } from '../EditorTopBar';
 
 let EditorTopBar: React.FC<EditorTopBarProps>;
@@ -29,6 +30,7 @@ beforeAll(() => {
   EditorTopBar = compileComponent<EditorTopBarProps>(topBarSource, {
     ...base,
     '../timeline/store': { useTimelineStore },
+    '@/stores/editorFocusStore': { useEditorFocusStore },
     './ProjectNameEditor': compileComponentModule(nameSource, base),
     './SaveStatusIndicator': compileComponentModule(saveSource, base),
     './TaskCenterButton': { __esModule: true, default: () => React.createElement('span', null, 'tasks') },

@@ -48,6 +48,9 @@ export {
   commitTrackVolumeAction,
   removeTrackAction,
   addTrackAction,
+  renameTrackAction,
+  normalizeTrackName,
+  TRACK_NAME_MAX_LENGTH,
 } from './actions/trackActions';
 export type {
   RemoveTrackGroupKey,
@@ -56,6 +59,16 @@ export type {
   AddTrackParams,
   AddTrackResult,
 } from './actions/trackActions';
+export {
+  applySegmentCommandAction,
+  isScriptOnlyPlan,
+} from './actions/applySegmentCommand';
+export type { ApplySegmentCommandResult } from './actions/applySegmentCommand';
+export {
+  registerCompanionRestorer,
+  applyScriptOps,
+} from './historyCompanion';
+export type { ScriptOp, HistoryCompanion, CompanionDirection } from './historyCompanion';
 export {
   undoAction,
   redoAction,

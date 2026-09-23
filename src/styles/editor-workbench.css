@@ -1306,3 +1306,289 @@ body.ws-resizing[data-ws-axis='y'] * { cursor: row-resize !important; }
   box-shadow: var(--shadow-lg);
 }
 .script-voice-popover[hidden] { display: none; }
+
+/* ------------------------------------------------------------------ */
+/* R2 段落命令（spec segment-centric-editor-workbench-r2）             */
+/* Only existing --ws-* tokens: contrast was measured for them in R1. */
+/* ------------------------------------------------------------------ */
+
+.ws-btn--text {
+  background: transparent;
+  color: var(--ws-text-secondary);
+  padding: 0 6px;
+}
+.ws-btn--text:hover:not(:disabled) { color: var(--ws-text); text-decoration: underline; }
+.ws-btn--danger {
+  background: var(--ws-danger);
+  color: var(--ws-on-primary);
+  font-weight: 600;
+}
+.ws-btn--danger:hover:not(:disabled) { filter: brightness(0.92); }
+
+/* Card notice rows: candidate voice, failure, picked visual, pending bar. */
+.segment-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 12px 0;
+  padding: 4px 6px 4px 10px;
+  min-height: 32px;
+  border-radius: var(--ws-radius-control);
+  background: var(--ws-selected-bg);
+  color: var(--ws-text);
+  font-size: 12px;
+}
+.segment-banner[data-tone='warn'] { background: var(--ws-warn-bg); }
+.segment-banner[data-tone='danger'] { background: var(--ws-danger-bg); color: var(--ws-text); }
+.segment-banner[data-tone='danger'] > svg { color: var(--ws-danger); }
+.segment-banner[data-tone='warn'] .segment-banner__text { color: var(--ws-warn); font-weight: 600; }
+.segment-banner__text {
+  flex: 1 1 140px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.segment-banner--list { margin: 0 0 8px; }
+
+/* Reorder handle (24×32 hit area: WCAG 2.2 minimum is 24px). */
+.segment-card__handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 32px;
+  border: none;
+  border-radius: var(--ws-radius-control);
+  background: transparent;
+  color: var(--ws-text-tertiary);
+  cursor: grab;
+}
+.segment-card__handle:hover { background: var(--ws-hover); color: var(--ws-text); }
+.segment-card__handle:active { cursor: grabbing; }
+.segment-reorder-line {
+  height: 2px;
+  margin: -5px 4px;
+  border-radius: 1px;
+  background: var(--primary);
+}
+
+/* Material dropped on a card replaces the segment's picture. */
+.segment-card { position: relative; }
+.segment-card[data-drop='accept'] { outline: 2px dashed var(--primary); outline-offset: -2px; }
+.segment-card[data-drop='reject'] { outline: 2px dashed var(--ws-danger); outline-offset: -2px; }
+.segment-card__drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--ws-panel) 78%, transparent);
+  color: var(--ws-text);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.segment-card[data-drop='reject'] .segment-card__drop-hint { color: var(--ws-danger); }
+
+/* Segment voice / speed (card body and properties page). */
+.segment-voice-override {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--ws-radius-control);
+  background: var(--ws-raised);
+  font-size: 12px;
+}
+.segment-voice-override[data-variant='inspector'] { margin: 10px 0 0; }
+.segment-voice-override__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.segment-voice-override__label { color: var(--ws-text-secondary); min-width: 56px; }
+.segment-voice-override__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ws-text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.segment-voice-override__speeds > button { min-width: 44px; font-size: 12px; }
+.segment-voice-override__picker[hidden] { display: none; }
+.segment-voice-override__regen { align-self: flex-start; }
+
+/* Segment command dialogs. */
+.ws-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.55);
+}
+.ws-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+  border-radius: var(--ws-radius-card);
+  border: 1px solid var(--ws-border-subtle);
+  background: var(--ws-panel);
+  color: var(--ws-text);
+  box-shadow: var(--shadow-lg);
+}
+.ws-dialog[data-tone='danger'] { border-top: 3px solid var(--ws-danger); }
+.ws-dialog__title { padding: 16px 20px 8px; font-size: 15px; font-weight: 600; }
+.ws-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 20px 12px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ws-dialog__message { color: var(--ws-text); }
+.ws-dialog__note { color: var(--ws-text-secondary); font-size: 12px; }
+.ws-dialog__note[data-tone='warn'] { color: var(--ws-warn); }
+.ws-dialog__impact {
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  border-radius: var(--ws-radius-control);
+  background: var(--ws-raised);
+  color: var(--ws-text-secondary);
+  list-style: disc;
+}
+.ws-dialog__options { display: flex; flex-direction: column; gap: 6px; }
+.ws-dialog__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--ws-radius-control);
+  border: 1px solid var(--ws-border-subtle);
+  cursor: pointer;
+}
+.ws-dialog__option[data-checked='true'] { border-color: var(--primary); background: var(--ws-selected-bg); }
+.ws-dialog__option input { margin-top: 3px; }
+.ws-dialog__option-text { display: flex; flex-direction: column; gap: 2px; }
+.ws-dialog__option-label { font-weight: 600; color: var(--ws-text); }
+.ws-dialog__option-hint { font-size: 12px; color: var(--ws-text-secondary); }
+.ws-dialog__check { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.ws-dialog__check input { margin-top: 4px; }
+.ws-dialog__check[data-disabled='true'] { opacity: 0.6; cursor: not-allowed; }
+.ws-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--ws-border-subtle);
+}
+
+/* Pre-export check under the top-right export button. */
+.ws-preflight {
+  position: fixed;
+  top: 48px;
+  right: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: var(--ws-radius-card);
+  border: 1px solid var(--ws-border-subtle);
+  background: var(--ws-raised);
+  color: var(--ws-text);
+  box-shadow: var(--shadow-lg);
+}
+.ws-preflight__title { font-size: 14px; font-weight: 600; }
+.ws-preflight__note { font-size: 12px; color: var(--ws-text-secondary); }
+.ws-preflight__list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ws-preflight__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--ws-radius-control);
+  background: var(--ws-warn-bg);
+  font-size: 12px;
+}
+.ws-preflight__text { flex: 1 1 100%; color: var(--ws-text); }
+.ws-preflight__dismiss { display: inline-flex; align-items: center; gap: 4px; color: var(--ws-text-secondary); }
+.ws-preflight__footer { display: flex; justify-content: flex-end; gap: 8px; }
+
+.ws-task-retry { margin-top: 4px; }
+
+/* R2 时间轴工具（spec §3.10）：轨道改名、空轨折叠、落点提示 */
+
+/* In-place track rename field (TrackNameEditor.tsx) */
+.ws-track-name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--ws-primary-text, var(--primary));
+  border-radius: var(--ws-radius-control, 4px);
+  background: var(--ws-raised, var(--background));
+  color: var(--ws-text, var(--foreground));
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  outline: none;
+}
+
+/* Folded empty image / subtitle lane (EmptyTrackStrip.tsx) */
+.ws-empty-track-strip {
+  position: relative; /* above the lane's absolute grid background */
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  border-top: 1px dashed var(--ws-border-subtle, var(--border));
+  background: transparent;
+  color: var(--ws-text-secondary, var(--muted-foreground));
+  font-size: 11px;
+  line-height: 18px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ws-empty-track-strip:hover {
+  background: var(--ws-hover, var(--accent));
+  color: var(--ws-primary-text, var(--primary));
+}
+.ws-empty-track-strip:focus-visible {
+  outline: 2px solid var(--ws-primary-text, var(--primary));
+  outline-offset: -2px;
+}
+
+/* Pointer-following drop hint (DropHintBadge.tsx) — same look as
+   .ws-drag-time-badge, but fixed to the viewport (portalled to <body>). */
+.ws-drop-hint-badge {
+  position: fixed;
+  z-index: 60;
+  transform: translate(-50%, -100%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ws-raised, var(--popover));
+  color: var(--ws-text, var(--foreground));
+  border: 1px solid var(--ws-border-subtle, var(--border));
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.3));
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ws-drop-hint-badge--refused {
+  color: var(--ws-text-secondary, var(--muted-foreground));
+}

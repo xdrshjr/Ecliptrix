@@ -1,12 +1,8 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { ScriptSegment, ScriptSentence, MaterialItem, SentenceTimingInfo, AudioSentenceSegment, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
-import { 
-  convertSentencesToSpeech,
-  convertScriptSegmentToSentenceRequest,
-  SentenceTTSResult 
-} from '@/lib/api/tts';
+import { ScriptSegment, ScriptSentence, MaterialItem, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
+import { SentenceTTSResult } from '@/lib/api/tts';
 import {
   transcribeAudioFromPath,
   transcribeAudioFromFile,
@@ -36,12 +32,15 @@ import { useVideoSearch } from './hooks/useVideoSearch';
 import { useVideoAIMatch } from './hooks/useVideoAIMatch';
 import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
 import { VideoEditingLogger } from './utils';
-import { segmentTextHash } from './lib/aiMix/segmentTextHash';
+import { stampMaterialForSegment } from './lib/segments/stampMaterialForSegment';
 import localAudioManager from '@/lib/utils/localAudioManager';
+import { useSegmentCommandsValue, useSegmentLinksValue } from './lib/segments/SegmentLinksContext';
+import { useSegmentVoiceGeneration } from './hooks/useSegmentVoiceGeneration';
+import { useScriptVoiceFlows } from './components/SegmentDialogs/useScriptVoiceFlows';
+import SegmentVoiceOverride from './components/SegmentCard/SegmentVoiceOverride';
 import { useNotification } from '@/contexts/NotificationContext';
 import { VideoAnalysisResponse } from './services/videoAnalysisService';
 import { useLocale } from '@/contexts/LocaleContext';
-import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { AIVideoScriptTab, createAIVideoSegment } from './components/AIVideoScriptTab';
 import { StoryboardScriptTab } from './components/StoryboardScriptTab';
 import AiVideoModal from './components/AiVideoModal/AiVideoModal';
@@ -53,6 +52,9 @@ import {
   shouldAutoGeneratePrompt,
   runWithConcurrency,
 } from '@/lib/api/sentenceAiVideoPrompt';
+
+/** 全片默认音色的内置缺省值（旧工程没有 content.defaultVoiceId 时沿用，I-1）。 */
+export const DEFAULT_VOICE_ID = 'zh_male_shaonianzixin_uranus_bigtts';
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];
@@ -89,6 +91,9 @@ interface ScriptPanelProps {
   onLocateSegment?: (segmentId: string) => void;
   /** 段落卡 ⋯「在素材页中显示新配音」：切到素材页并选中该素材。 */
   onRevealMaterial?: (materialId: string) => void;
+  /** 全片默认音色（持久化在 content.defaultVoiceId，spec R2 §3.5）。 */
+  defaultVoiceId?: string;
+  onDefaultVoiceChange?: (voiceId: string) => void;
 }
 
 const ScriptPanel: React.FC<ScriptPanelProps> = ({ 
@@ -114,6 +119,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   onPauseComposition,
   onLocateSegment,
   onRevealMaterial,
+  defaultVoiceId = DEFAULT_VOICE_ID,
+  onDefaultVoiceChange,
 }) => {
   const logger = useMemo(() => new VideoEditingLogger({
     taskId: taskId || 'unknown',
@@ -148,6 +155,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   
   // 获取国际化翻译
   const { t } = useLocale();
+  const segmentCommands = useSegmentCommandsValue();
+  const segmentLinks = useSegmentLinksValue();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'narration' | 'aiVideo' | 'storyboard'>('narration');
@@ -172,9 +181,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [expandedScriptSegments, setExpandedScriptSegments] = useState<Set<string>>(new Set());
 
   // TTS相关状态
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('zh_male_shaonianzixin_uranus_bigtts');
-  const [convertingSegments, setConvertingSegments] = useState<Set<string>>(new Set());
-  const [ttsProgress, setTtsProgress] = useState<Record<string, number>>({});
   const [completedSegments, setCompletedSegments] = useState<Set<string>>(new Set());
   const [keywordGeneratingSegments, setKeywordGeneratingSegments] = useState<Set<string>>(new Set());
   const keywordGenerationPromisesRef = useRef<Map<string, Promise<string[] | undefined>>>(new Map());
@@ -194,30 +200,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
   // 句子级TTS相关状态
   const [sentenceTimingInfo, setSentenceTimingInfo] = useState<Record<string, SentenceTTSResult[]>>({});
-  const [segmentConcatenatedAudio, setSegmentConcatenatedAudio] = useState<Record<string, string>>({});
-
-  // 确认对话框状态
-  const [confirmationDialog, setConfirmationDialog] = useState({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => {},
-    type: 'danger' as const
-  });
-  
-  // 批量转换相关状态
-  const [isBatchConverting, setIsBatchConverting] = useState<boolean>(false);
-  const [batchProgress, setBatchProgress] = useState<{
-    total: number;
-    completed: number;
-    failed: number;
-    currentSegment?: string;
-  }>({
-    total: 0,
-    completed: 0,
-    failed: 0
-  });
-
   // 视频搜索hook
   const videoSearch = useVideoSearch(
     taskId || 'unknown', 
@@ -756,6 +738,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     onUpdateSegments(updatedSegments);
     setCurrentSegmentId(null);
+    if (segmentLinks.segmentRanges.has(segmentId)) useEditorFocusStore.getState().setPickedVisualSegmentId(segmentId);
     
     // 清除验证错误（如果有的话）
     videoSearch.setValidationError(null);
@@ -770,20 +753,14 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       const assignedAt = Date.now();
       videos.forEach((video, index) => {
         // 创建带有段落信息的视频副本
-        const videoWithSegmentInfo: MaterialItem = {
-          ...video,
-          name: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segmentNumber))} - ${video.name}`,
-          description: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segmentNumber))} "${segment?.title || ''}" - ${video.description || video.name}`,
-          metadata: {
-            ...video.metadata,
-            segment_id: segmentId,
-            segment_number: segmentNumber,
-            segment_title: segment?.title,
-            video_index_in_segment: index + 1,
-            segment_assigned_at: assignedAt
-          }
-        };
-        
+        const videoWithSegmentInfo = stampMaterialForSegment(video, {
+          segmentId,
+          segmentNumber,
+          segmentTitle: segment?.title,
+          videoIndexInSegment: index + 1,
+          assignedAt,
+          segmentPrefix: t.scriptPanel.segments.segmentPrefix,
+        });
         onAddMaterial(videoWithSegmentInfo);
         logger.info('视频已添加/替换到素材管理', {
           segmentId,
@@ -811,7 +788,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     });
 
     return true; // 返回成功状态
-  }, [segments, onUpdateSegments, logger, videoSearch, onAddMaterial, getSegmentNumber]);
+  }, [segments, onUpdateSegments, logger, videoSearch, onAddMaterial, getSegmentNumber, segmentLinks.segmentRanges]);
 
   // 关联AI匹配的视频到段落（不添加到素材管理）
   const handleAssociateVideosToSegment = useCallback((segmentId: string, matchedMaterials: MaterialItem[]): boolean => {
@@ -1370,303 +1347,22 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     [generatePromptForSentence, logger],
   );
 
-  // 句子级TTS转换处理
-  const handleConvertToSpeech = async (segment: ScriptSegment) => {
-    if (convertingSegments.has(segment.id)) {
-      logger.warn('该片段正在转换中，忽略重复请求', {
-        segmentId: segment.id
-      });
-      return;
-    }
-
-    try {
-      logger.info('开始句子级语音转换', {
-        segmentId: segment.id,
-        segmentTitle: segment.title,
-        sentencesCount: segment.sentences.length,
-        voiceId: selectedVoiceId,
-        taskId
-      });
-
-      // 标记为转换中
-      setConvertingSegments(prev => new Set([...Array.from(prev), segment.id]));
-      setTtsProgress(prev => ({ ...prev, [segment.id]: 0 }));
-
-      // 检查是否有可用于TTS的文本（优先使用解说文案，降级使用视频脚本句子）
-      const hasNarration = segment.narrationText && segment.narrationText.trim().length > 0;
-      const hasValidSentences = segment.sentences && segment.sentences.length > 0 &&
-        segment.sentences.some(sentence => sentence.text.trim());
-      if (!hasNarration && !hasValidSentences) {
-        throw new Error(t.scriptPanel.errors.segmentTextEmpty);
-      }
-
-      // 模拟进度更新
-      const progressInterval = setInterval(() => {
-        setTtsProgress(prev => ({
-          ...prev,
-          [segment.id]: Math.min((prev[segment.id] || 0) + 8, 85)
-        }));
-      }, 300);
-
-      // 准备句子级TTS请求
-      const request = convertScriptSegmentToSentenceRequest(
-        segment,
-        selectedVoiceId,
-        1.0,
-        taskId,
-        3 // 并发线程数
-      );
-
-      logger.info('发送句子级TTS请求', {
-        segmentId: request.segment_id,
-        sentencesCount: request.sentences.length,
-        concurrentThreads: request.concurrent_threads
-      });
-
-      const response = await convertSentencesToSpeech(request);
-
-      clearInterval(progressInterval);
-      setTtsProgress(prev => ({ ...prev, [segment.id]: 100 }));
-
-      if (response.success && response.concatenated_audio_url && onAddMaterial) {
-        // 存储句子级时间信息
-        setSentenceTimingInfo(prev => ({
-          ...prev,
-          [segment.id]: response.sentence_results
-        }));
-
-        // 存储拼接音频URL
-        setSegmentConcatenatedAudio(prev => ({
-          ...prev,
-          [segment.id]: response.concatenated_audio_url!
-        }));
-
-        // 获取和验证拼接音频URL
-        const audioUrl = response.concatenated_audio_url;
-        const cleanAudioUrl = audioUrl.includes('/object/sign/') ? audioUrl : audioUrl.split('?')[0];
-        const fileName = audioUrl.split('/').pop()?.split('?')[0] || `audio_${segment.id}_${Date.now()}.mp3`;
-        
-        logger.info('句子级语音转换成功，开始下载拼接音频到本地', {
-          segmentId: segment.id,
-          originalAudioUrl: audioUrl,
-          cleanAudioUrl: cleanAudioUrl,
-          fileName: fileName,
-          totalDuration: response.total_duration,
-          successfulSentences: response.successful_sentences,
-          failedSentences: response.failed_sentences
-        });
-
-        // 标记段落转换完成
-        setCompletedSegments(prev => new Set([...Array.from(prev), segment.id]));
-
-        try {
-          // 直接从存储服务URL下载拼接音频文件到本地
-          logger.info('开始从存储服务下载拼接音频', {
-            url: cleanAudioUrl,
-            segmentId: segment.id
-          });
-          
-          const fetchResponse = await fetch(cleanAudioUrl);
-          if (!fetchResponse.ok) {
-            logger.error('存储服务拼接音频下载失败', {
-              url: cleanAudioUrl,
-              status: fetchResponse.status,
-              statusText: fetchResponse.statusText,
-              segmentId: segment.id
-            });
-            throw new Error(`Failed to fetch concatenated audio from storage: ${fetchResponse.status} ${fetchResponse.statusText}`);
-          }
-          const audioBlob = await fetchResponse.blob();
-          const localUrl = await localAudioManager.storeAudioFile(fileName, audioBlob);
-
-          logger.info('拼接音频文件下载并存储成功', {
-            segmentId: segment.id,
-            fileName: fileName,
-            localUrl: localUrl,
-            blobSize: audioBlob.size
-          });
-
-          // 创建句子时间信息，用于时间轴可视化
-          const sentenceTimingInfo: SentenceTimingInfo[] = response.sentence_results
-            .filter(result => result.success && result.start_time !== undefined && result.end_time !== undefined)
-            .map(result => ({
-              sentence_id: result.sentence_id,
-              text: segment.sentences.find(s => s.id === result.sentence_id)?.text || '',
-              order: result.order,
-              start_time: result.start_time!,
-              end_time: result.end_time!,
-              duration: result.duration || (result.end_time! - result.start_time!)
-            }));
-
-          const sentenceSegments: AudioSentenceSegment = {
-            sentences: sentenceTimingInfo,
-            total_duration: response.total_duration || 0,
-            segment_id: segment.id
-          };
-
-          logger.info('创建句子时间信息用于时间轴可视化', {
-            segmentId: segment.id,
-            sentencesCount: sentenceTimingInfo.length,
-            totalDuration: sentenceSegments.total_duration,
-            sentences: sentenceTimingInfo.map(s => ({
-              id: s.sentence_id,
-              text: s.text.substring(0, 20) + '...',
-              startTime: s.start_time,
-              endTime: s.end_time,
-              duration: s.duration
-            }))
-          });
-
-          // 创建音频材料项（使用本地URL）
-          const segmentNumber = getSegmentNumber(segment.id);
-          const audioMaterial: MaterialItem = {
-            id: `audio_${segment.id}_${Date.now()}`,
-            name: `${t.scriptPanel.segments.segmentPrefix.replace('{index}', String(segmentNumber))} - ${segment.title}${t.scriptPanel.segments.speechSuffix}`,
-            type: 'audio',
-            format: 'mp3',
-            size: response.concatenated_file_size || audioBlob.size,
-            duration: response.total_duration || Math.ceil(segment.sentences.reduce((sum, s) => sum + s.text.length, 0) * 0.15),
-            // iter5: persist server URL so reloads don't yield a dead blob:.
-            // The same-session local cache is now resolved at read-time via
-            // selectAudioPlaybackUrl + localAudioManager (keyed on metadata.fileName).
-            url: response.concatenated_audio_url,
-            serverUrl: response.concatenated_audio_url,
-            createdAt: new Date(),
-            description: t.scriptPanel.messages.speechConvertDescription
-              .replace('{index}', String(segmentNumber))
-              .replace('{title}', segment.title)
-              .replace('{count}', String(response.successful_sentences)),
-            sentenceSegments: sentenceSegments, // 新增：句子段落信息，用于时间轴可视化
-            metadata: {
-              voice_type: selectedVoiceId,
-              text_length: segment.sentences.reduce((sum, s) => sum + s.text.length, 0),
-              segment_id: segment.id,
-              segment_number: segmentNumber,
-              segment_assigned_at: Date.now(), // 自动混剪据此选取该段最新配音
-              // 与本次 TTS 请求朗读的文本同源；文案改动后自动混剪据此识别过期配音
-              segment_text_hash: segmentTextHash(segment),
-              task_id: taskId,
-              fileName,                  // iter5: align with LocalAudioManager / MaterialsPanel
-              server_file_name: fileName, // kept for backward-compat with historical workflow_data
-              actual_duration: response.total_duration,
-              duration_method: 'concatenated_sentences',
-              originalUrl: response.concatenated_audio_url,
-              sentence_count: response.total_sentences,
-              successful_sentences: response.successful_sentences,
-              failed_sentences: response.failed_sentences,
-              processing_time: response.total_processing_time,
-              sentence_timing: response.sentence_results // 保存句子时间信息
-            }
-          };
-
-          onAddMaterial(audioMaterial);
-
-          // 更新脚本段落的音频时长
-          // 从 segmentsRef.current 读取最新段落（而非闭包里点击时刻的 segments 快照），
-          // 只增量 patch 目标段 duration，并在 onUpdateSegments 之前同步前移 ref，
-          // 复刻 patchSentence 的范式：否则会用 TTS 开始前的过期快照整批覆盖，
-          // 抹掉这期间异步富化写入的 keywords / 画面脚本 sentence.text。
-          if (response.total_duration && onUpdateSegments) {
-            const updatedSegments = segmentsRef.current.map(seg => {
-              if (seg.id === segment.id) {
-                logger.info('更新脚本段落音频时长', {
-                  segmentId: seg.id,
-                  segmentTitle: seg.title,
-                  oldDuration: seg.duration,
-                  newDuration: response.total_duration,
-                  durationMethod: 'concatenated_sentences',
-                  timestamp: new Date().toISOString()
-                });
-                return {
-                  ...seg,
-                  duration: response.total_duration // 使用拼接音频的实际时长
-                };
-              }
-              return seg;
-            });
-            segmentsRef.current = updatedSegments;
-            onUpdateSegments(updatedSegments);
-            
-            logger.info('脚本段落时长更新完成', {
-              segmentId: segment.id,
-              updatedDuration: response.total_duration,
-              totalSegments: updatedSegments.length,
-              timestamp: new Date().toISOString()
-            });
-          }
-
-          logger.info('句子级音频材料添加成功', {
-            materialId: audioMaterial.id,
-            materialName: audioMaterial.name,
-            materialSize: audioMaterial.size,
-            actualDuration: response.total_duration,
-            durationMethod: 'concatenated_sentences',
-            segmentId: segment.id,
-            segmentDurationUpdated: !!response.total_duration,
-            successfulSentences: response.successful_sentences,
-            totalSentences: response.total_sentences
-          });
-
-          // 显示成功消息，包含时间信息
-          showSuccess(t.scriptPanel.messages.speechConvertComplete
-            .replace('{success}', String(response.successful_sentences))
-            .replace('{total}', String(response.total_sentences))
-            .replace('{duration}', response.total_duration?.toFixed(1) || '0')
-          );
-
-          // TTS 成功后，后台自动为该段所有句子生成 AI 视频提示词（不阻塞 UI）
-          void autoGeneratePromptsForSegment(segment.id);
-
-        } catch (downloadError) {
-          logger.error('拼接音频下载或存储失败', {
-            segmentId: segment.id,
-            fileName: fileName,
-            error: downloadError instanceof Error ? downloadError.message : String(downloadError)
-          });
-          throw new Error(`${t.scriptPanel.errors.audioDownloadFailed}: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
-        }
-
-      } else {
-        const errorMsg = response.message || t.scriptPanel.errors.speechConversionFailed;
-        logger.error('句子级语音转换失败', {
-          segmentId: segment.id,
-          success: response.success,
-          message: response.message,
-          successfulSentences: response.successful_sentences,
-          failedSentences: response.failed_sentences
-        });
-        throw new Error(errorMsg);
-      }
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('句子级语音转换失败', {
-        segmentId: segment.id,
-        error: errorMessage,
-        taskId
-      });
-
-      // 显示错误提示
-      showError(t.scriptPanel.errors.speechConvertFailed.replace('{error}', errorMessage));
-
-    } finally {
-      // 清理状态
-      setConvertingSegments(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(segment.id);
-        return newSet;
-      });
-      
-      setTimeout(() => {
-        setTtsProgress(prev => {
-          const newProgress = { ...prev };
-          delete newProgress[segment.id];
-          return newProgress;
-        });
-      }, 2000);
-    }
-  };
-
+  // 逐段 TTS 已迁到 useSegmentVoiceGeneration（spec R2 §3.4.3）：只生成候选配音，
+  // 不改时间轴；音色 / 语速取本段覆盖或全片默认，请求时刻的文案 hash 防过期。
+  const voice = useSegmentVoiceGeneration({
+    taskId, segmentsRef, defaultVoiceId, logger, onAddMaterial, onUpdateSegments, getSegmentNumber,
+    onVoiceGenerated: (segmentId, results) => {
+      setSentenceTimingInfo(prev => ({ ...prev, [segmentId]: results }));
+      setCompletedSegments(prev => new Set([...Array.from(prev), segmentId]));
+    },
+    onVoiceReady: (segmentId) => { void autoGeneratePromptsForSegment(segmentId); },
+  });
+  const handleConvertToSpeech = voice.convert;
+  const convertingSegments = voice.convertingIds;
+  const isBatchConverting = voice.isBatchConverting;
+  const voiceFlows = useScriptVoiceFlows({
+    taskId, segmentsRef, voice, defaultVoiceId, onDefaultVoiceChange, onUpdateSegments,
+  });
   // 删除句子
   const handleDeleteSentence = useCallback(async (segmentId: string, sentenceId: string) => {
     if (!onUpdateSegments) {
@@ -1750,172 +1446,25 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     }
   }, [segments, onUpdateSegments, logger, showSuccess, showError]);
 
-  // 批量转换全部语音 - 修改为依次点击每个片段的转换语音按钮
+  // 批量转换全部语音：逐段生成候选并统计真实成败（spec R2 §3.4.3-5）
   const handleBatchConvertToSpeech = async () => {
-    if (isBatchConverting || segments.length === 0) {
-      logger.warn('无法开始批量转换', {
-        isBatchConverting,
-        segmentsCount: segments.length
-      });
-      return;
-    }
-
-    try {
-      logger.info('开始批量语音转换（依次点击各片段转换按钮）', {
-        segmentsCount: segments.length,
-        voiceId: selectedVoiceId,
-        taskId
-      });
-
-      setIsBatchConverting(true);
-      setBatchProgress({
-        total: segments.length,
-        completed: 0,
-        failed: 0
-      });
-
-      let successCount = 0;
-      let failCount = 0;
-
-      // 依次处理每个片段，调用各自的转换语音按钮处理函数
-      for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-        
-        // 跳过已经在转换中的片段
-        if (convertingSegments.has(segment.id)) {
-          logger.warn('跳过正在转换中的片段', { segmentId: segment.id });
-          continue;
-        }
-
-        try {
-          logger.info('开始转换片段语音', {
-            segmentIndex: i + 1,
-            totalSegments: segments.length,
-            segmentId: segment.id,
-            segmentTitle: segment.title
-          });
-
-          setBatchProgress(prev => ({
-            ...prev,
-            currentSegment: segment.id
-          }));
-
-          // 调用单个片段的转换语音函数
-          await handleConvertToSpeech(segment);
-          
-          successCount++;
-          setBatchProgress(prev => ({
-            ...prev,
-            completed: successCount
-          }));
-
-          logger.info('片段语音转换成功', {
-            segmentIndex: i + 1,
-            segmentId: segment.id,
-            segmentTitle: segment.title,
-            successCount
-          });
-
-          // 添加延时避免请求过于频繁
-          if (i < segments.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-
-        } catch (error) {
-          failCount++;
-          setBatchProgress(prev => ({
-            ...prev,
-            failed: failCount
-          }));
-
-          logger.error('片段语音转换失败', error as Error, {
-            segmentIndex: i + 1,
-            segmentId: segment.id,
-            segmentTitle: segment.title,
-            failCount
-          });
-        }
-      }
-
-      // 显示完成提示
-      if (failCount === 0) {
-        showSuccess(t.scriptPanel.errors.batchConversionComplete.replace('{success}', String(successCount)));
-      } else if (successCount > 0) {
-        showSuccess(t.scriptPanel.errors.batchConversionPartial.replace('{success}', String(successCount)).replace('{total}', String(segments.length)).replace('{failed}', String(failCount)));
-      } else {
-        showError(t.scriptPanel.errors.batchConversionFailed.replace('{total}', String(segments.length)));
-      }
-
-      logger.info('批量语音转换处理完成', {
-        totalSegments: segments.length,
-        successCount,
-        failCount,
-        taskId
-      });
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('批量语音转换失败', error as Error, {
-        errorMessage,
-        taskId
-      });
-
-      showError(t.scriptPanel.errors.speechConvertFailed.replace('{error}', errorMessage));
-
-    } finally {
-      setIsBatchConverting(false);
-      setBatchProgress({
-        total: 0,
-        completed: 0,
-        failed: 0
-      });
+    const { ok, failed } = await voice.convertMany(segments.map(segment => segment.id));
+    logger.info('批量语音转换处理完成', { totalSegments: segments.length, successCount: ok, failCount: failed, taskId });
+    if (failed === 0) {
+      showSuccess(t.scriptPanel.errors.batchConversionComplete.replace('{success}', String(ok)));
+    } else if (ok > 0) {
+      showSuccess(t.scriptPanel.errors.batchConversionPartial.replace('{success}', String(ok))
+        .replace('{total}', String(segments.length)).replace('{failed}', String(failed)));
+    } else {
+      showError(t.scriptPanel.errors.batchConversionFailed.replace('{total}', String(segments.length)));
     }
   };
 
-  // 关闭确认对话框
-  const handleCloseConfirmationDialog = useCallback(() => {
-    setConfirmationDialog(prev => ({
-      ...prev,
-      isOpen: false
-    }));
-  }, []);
-
-  // 处理删除段落
-  const handleDeleteSegment = useCallback((segmentId: string, segmentTitle: string) => {
-    // 显示确认对话框
-    setConfirmationDialog({
-      isOpen: true,
-      title: t.scriptPanel.actions.deleteSegment,
-      message: t.scriptPanel.messages.confirmDeleteSegment.replace('{title}', segmentTitle),
-      type: 'danger',
-      onConfirm: () => {
-        logger.userAction('删除脚本段落', 'segmentEditor', {
-          segmentId,
-          segmentTitle,
-          changeType: 'delete_segment'
-        });
-
-        // 过滤掉要删除的段落
-        const updatedSegments = segments.filter(segment => segment.id !== segmentId);
-        
-        // 调用更新回调
-        if (onUpdateSegments) {
-          onUpdateSegments(updatedSegments);
-        }
-        
-        logger.info('脚本段落删除完成', {
-          deletedSegmentId: segmentId,
-          deletedSegmentTitle: segmentTitle,
-          remainingSegments: updatedSegments.length
-        });
-
-        showSuccess(t.scriptPanel.messages.segmentDeleted.replace('{title}', segmentTitle));
-        
-        // 关闭对话框
-        handleCloseConfirmationDialog();
-      }
-    });
-  }, [segments, onUpdateSegments, logger, showSuccess, handleCloseConfirmationDialog]);
+  // 删除段落：统一走段落命令（确认框列出关联片段，Ctrl+Z 一次恢复，spec R2 §3.7）
+  const handleDeleteSegment = useCallback((segmentId: string) => {
+    logger.userAction('删除脚本段落', 'segmentEditor', { segmentId, changeType: 'delete_segment' });
+    segmentCommands?.requestRemove(segmentId);
+  }, [logger, segmentCommands]);
 
   // 句子级 AI 视频弹窗：优先画面脚本 videoScript（narration-direct 句），其次 aiVideoPrompt，
   // 最后回退旁白兜底，避免 ARK 句级初始提示词取到旁白原文（spec §7 / R6）。
@@ -1990,12 +1539,13 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   };
 
   const segmentListHandlers: SegmentListHandlers = {
-    onGenerateVoice: (segment) => handleConvertToSpeech(segment),
+    onGenerateVoice: (segment) => { void handleConvertToSpeech(segment); },
     onReplaceVisual: (segmentId) => handleOpenVideoSearch(segmentId),
     onAiMatchVisual: (segmentId) => handleAIMatchVideos(segmentId),
     onDeleteSegment: handleDeleteSegment,
     onLocateSegment,
     onRevealMaterial,
+    onPolishSegment: voiceFlows.openPolish,
   };
 
   const narrationEdit: NarrationEditState = {
@@ -2047,16 +1597,21 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
           edit={narrationEdit}
         />
       )}
-      {ttsProgress[segment.id] !== undefined && (
+      <SegmentVoiceOverride
+        segment={segment} defaultVoiceId={defaultVoiceId} disabled={convertingSegments.has(segment.id)}
+        onPatch={(patch) => voiceFlows.patchSegment(segment.id, patch)}
+        onRegenerate={() => { void handleConvertToSpeech(segment); }}
+      />
+      {voice.progress[segment.id] !== undefined && (
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-muted-foreground">{t.scriptPanel.progress.conversionProgress}</span>
-            <span className="text-xs text-muted-foreground ws-tabular">{ttsProgress[segment.id]}%</span>
+            <span className="text-xs text-muted-foreground ws-tabular">{voice.progress[segment.id]}%</span>
           </div>
           <div className="w-full bg-accent rounded-full h-1.5">
             <div
               className="bg-primary h-1.5 rounded-full transition-all duration-300"
-              style={{ width: `${ttsProgress[segment.id]}%` }}
+              style={{ width: `${voice.progress[segment.id]}%` }}
             ></div>
           </div>
         </div>
@@ -2104,6 +1659,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
                 onConvertAllSpeech={handleBatchConvertToSpeech}
                 convertAllSpeechDisabled={segments.length === 0}
                 isConvertingAllSpeech={isBatchConverting}
+                onBatchFill={segmentCommands ? voiceFlows.openBatchFill : undefined}
               />
             )}
           </>
@@ -2260,8 +1816,8 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
       {/* 全片默认音色底栏：TTS 转换中置灰（保持原行为） */}
       <DefaultVoiceBar
-        selectedVoiceId={selectedVoiceId}
-        onVoiceChange={setSelectedVoiceId}
+        selectedVoiceId={defaultVoiceId}
+        onVoiceChange={voiceFlows.requestDefaultVoiceChange}
         disabled={isBatchConverting || convertingSegments.size > 0}
       />
 
@@ -2271,17 +1827,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         taskId={taskId || 'unknown'}
       />
 
-      {/* 确认删除对话框 */}
-      <ConfirmationDialog
-        isOpen={confirmationDialog.isOpen}
-        title={confirmationDialog.title}
-        message={confirmationDialog.message}
-        type={confirmationDialog.type}
-        confirmText={t.scriptPanel.messages.confirmDelete}
-        cancelText={t.scriptPanel.messages.cancelDelete}
-        onConfirm={confirmationDialog.onConfirm}
-        onCancel={handleCloseConfirmationDialog}
-      />
+      {voiceFlows.dialogs}
 
       {/* 句子级 AI 视频生成弹窗 */}
       <AiVideoModal

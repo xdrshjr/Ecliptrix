@@ -18,6 +18,7 @@ import type { MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useEditorFocusStore } from '@/stores/editorFocusStore';
 import {
+  useSegmentCommandsValue,
   useSegmentLinksValue,
   type SegmentLinksValue,
 } from '../../lib/segments/SegmentLinksContext';
@@ -159,6 +160,26 @@ const TYPE_ICONS: Partial<Record<MaterialItem['type'], MaterialIconName>> = {
   video: 'video', image: 'image', audio: 'music', subtitle: 'fileText',
 };
 
+/**
+ * 「替换第 N 段画面」(R2 §3.6 B): first item while a segment is selected and
+ * the material can be a picture. Choosing a material never changes the
+ * project; only this explicit command does.
+ */
+function useReplaceSegmentVisualItem(material: MaterialItem): MaterialMenuItem | null {
+  const { t } = useLocale();
+  const commands = useSegmentCommandsValue();
+  const { segmentIndex } = useSegmentLinksValue();
+  const selectedSegmentId = useEditorFocusStore((state) => state.selectedSegmentId);
+  const entry = selectedSegmentId ? segmentIndex.get(selectedSegmentId) : undefined;
+  if (!commands || !entry || (material.type !== 'video' && material.type !== 'image')) return null;
+  return {
+    key: 'replace-segment-visual',
+    label: t.workbench.segmentCommands.replaceVisualMenu.replace('{index}', String(entry.ordinal)),
+    icon: 'film',
+    onSelect: () => commands.replaceVisual(entry.segmentId, material.id),
+  };
+}
+
 function useCardMenuItems(props: MaterialCardProps): MaterialMenuItem[] {
   const { t } = useLocale();
   const { material, actions, analysisStatus } = props;
@@ -172,8 +193,13 @@ function useCardMenuItems(props: MaterialCardProps): MaterialMenuItem[] {
     error: t.materialsPanel.aiVideoAnalysis,
   };
   const analysisBusy = analysisStatus === 'waiting' || analysisStatus === 'analyzing';
+  const replaceItem = useReplaceSegmentVisualItem(material);
   const items: Array<MaterialMenuItem | false> = [
-    { key: 'preview', label: m.preview, icon: 'eye', onSelect: () => actions.onPreview(material) },
+    replaceItem ?? false,
+    {
+      key: 'preview', label: m.preview, icon: 'eye', onSelect: () => actions.onPreview(material),
+      separatorBefore: replaceItem !== null,
+    },
     isVisual && {
       key: 'analyze', label: analysisLabel[analysisStatus],
       icon: analysisBusy ? 'spinner' : 'sparkles', disabled: analysisBusy,

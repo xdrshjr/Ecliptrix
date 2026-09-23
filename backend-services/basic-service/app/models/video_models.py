@@ -547,6 +547,13 @@ class VideoCompositionRequest(BaseModel):
     )
     output_fps: int = Field(30, ge=15, le=60, description="Output video frame rate")
     output_format: str = Field("mp4", description="Output video format")
+    fit_mode: Literal["contain", "cover", "blur"] = Field(
+        "contain",
+        description=(
+            "How video layers fit the canvas: contain (letterbox, default), "
+            "cover (fill + crop) or blur (blurred fill behind the picture)"
+        ),
+    )
     
     @validator('output_resolution', always=True)
     def validate_and_set_resolution(cls, v, values):

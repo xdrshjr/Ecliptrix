@@ -73,6 +73,7 @@ beforeAll(() => {
     '../../components/VideoPlayerPanel/imageOverlayGeometry': imageGeometry,
     '../../components/MaterialsPanel/MaterialThumbnail': { __esModule: true, default: Nothing },
     '../../components/MaterialCacheBadge': { __esModule: true, default: Nothing },
+    '../../components/SegmentCard/SegmentVoiceOverride': { __esModule: true, default: Nothing },
     './inspector/inspectorSelection': inspectorSelection,
     '../components/MediaPreviewModal/MediaPreviewModal': {
       __esModule: true,

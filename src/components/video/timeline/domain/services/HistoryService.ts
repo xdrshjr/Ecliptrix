@@ -46,6 +46,7 @@ export interface TimelineAction {
     | 'TRACK_VISIBILITY'
     | 'TRACK_ADD'
     | 'TRACK_REMOVE'
+    | 'TRACK_RENAME'
     | 'REPLACE_TIMELINE';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload?: any;
@@ -285,6 +286,18 @@ export class HistoryService {
       this._historyIndex < this._history.length - 1 &&
       !!this._history[this._historyIndex + 1]?.nextState
     );
+  }
+
+  /** The action the next undo() would reverse, without moving the index. */
+  peekUndo(): TimelineAction | null {
+    if (!this.canUndo()) return null;
+    return this._history[this._historyIndex] ?? null;
+  }
+
+  /** The action the next redo() would re-apply, without moving the index. */
+  peekRedo(): TimelineAction | null {
+    if (!this.canRedo()) return null;
+    return this._history[this._historyIndex + 1] ?? null;
   }
 
   /** Total number of recorded actions. */

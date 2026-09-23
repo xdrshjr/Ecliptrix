@@ -46,6 +46,7 @@ import type {
   VideoTrackGroup,
 } from './types';
 import type { SubtitleSequenceItem, VideoSequenceItem } from '../types';
+import type { CanvasFit } from '@/types';
 
 /** Multi-track playback phase — coarser than the legacy single-seq machine. */
 export type MultiTrackPhase = 'idle' | 'playing' | 'paused' | 'ended' | 'disposed';
@@ -90,6 +91,12 @@ export interface MultiTrackAttachDeps {
    * are laid out against it and scaled onto the canvas (EXO-09).
    */
   outputSize: OutputSize;
+  /**
+   * Project canvas fit for every video layer, read on every frame so a change
+   * needs no re-attach (spec segment-centric-editor-workbench-r2 §3.9.2).
+   * Absent → `'contain'`, the pre-feature drawing.
+   */
+  getVideoFit?: () => CanvasFit;
   /**
    * Writes an effective [0,2] preview volume to a decode / audio element (ME-06
    * gain routing). Absent → the pools clamp the element volume to [0,1].
@@ -297,6 +304,15 @@ export class MultiTrackPlaybackEngine {
   }
 
   /**
+   * Repaint the current frame while not playing — e.g. after the canvas fit
+   * changed; a playing engine picks the change up on its next tick.
+   */
+  repaint(): void {
+    if (this._disposed || !this._deps || this._phase === 'playing') return;
+    this._renderAt(this._lastRenderComp, false);
+  }
+
+  /**
    * Seek to `t` and paint a single frame; resumes playing if it was playing.
    * The target is clamped to the render end (N-06): past it there is nothing to
    * draw, so the playhead would show black and a progress beyond 100%.
@@ -455,6 +471,7 @@ export class MultiTrackPlaybackEngine {
       imageItems: tl.getImageItems(),
       t: comp,
       output: this._deps.outputSize,
+      videoFit: this._deps.getVideoFit?.(),
     });
   }
 

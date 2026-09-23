@@ -19,6 +19,7 @@ import type { TimelineAction } from '../../domain';
 import { tracksEqual } from '../../domain/services/snapshotEquality';
 import type { TimelineStore } from '../useTimelineStore';
 import { isEditLocked } from '../editLock';
+import { readCompanion, runCompanion } from '../historyCompanion';
 
 // ---------------------------------------------------------------------------
 // Slice state + actions interface
@@ -125,8 +126,12 @@ export const createHistorySlice: StateCreator<
     // and returns the redo branch it cut off.
     const history = state._historyService.getHistory();
     const last = history[history.length - 1];
+    // A segment command that only patched the script (R2 §3.3.2) keeps its
+    // entry even though the tracks did not move.
     const unchanged =
-      !!last?.previousState && tracksEqual(last.previousState.tracks, afterSnapshot.tracks);
+      !!last?.previousState
+      && readCompanion(last.payload) === null
+      && tracksEqual(last.previousState.tracks, afterSnapshot.tracks);
     if (!unchanged || !state._historyService.discardLastAction()) {
       state._historyService.captureAfterState(afterSnapshot);
     }
@@ -139,10 +144,12 @@ export const createHistorySlice: StateCreator<
   undo: () => {
     const state = get();
     if (!canTravelHistory(state)) return;
+    const action = state._historyService.peekUndo();
     const snapshot = state._historyService.undo();
     if (snapshot) {
       state.restoreFromSnapshot(snapshot);
       dropReferencesToVanishedItems(get);
+      runCompanion(action?.payload, 'inverse');
     }
     set({
       canUndo: state._historyService.canUndo(),
@@ -153,10 +160,12 @@ export const createHistorySlice: StateCreator<
   redo: () => {
     const state = get();
     if (!canTravelHistory(state)) return;
+    const action = state._historyService.peekRedo();
     const snapshot = state._historyService.redo();
     if (snapshot) {
       state.restoreFromSnapshot(snapshot);
       dropReferencesToVanishedItems(get);
+      runCompanion(action?.payload, 'forward');
     }
     set({
       canUndo: state._historyService.canUndo(),

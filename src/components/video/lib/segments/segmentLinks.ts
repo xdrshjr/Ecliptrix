@@ -54,11 +54,22 @@ export type SubtitleStatus = 'none' | 'ready';
 /** Whether the narration on the timeline is the latest voice-over (RV-02). */
 export type VoiceOnTimeline = 'current' | 'outdated' | 'absent';
 
+/** A generated voice-over waiting to be applied to the timeline (R2 §3.4.1). */
+export interface VoiceCandidate {
+  materialId: string;
+  duration: number;
+  /** Candidate length minus this segment's narration span; null when absent. */
+  deltaFromTimeline: number | null;
+  /** Written for an older text: can be auditioned, never applied from the banner. */
+  isStale: boolean;
+}
+
 export interface SegmentStatus {
   visual: VisualStatus;
   voice: VoiceStatus;
   voiceOnTimeline: VoiceOnTimeline;
   subtitle: SubtitleStatus;
+  candidate: VoiceCandidate | null;
 }
 
 export function formatSegmentBadge(ordinal: number): string {
@@ -176,28 +187,113 @@ export function findLatestVoiceMaterial(
   return latest;
 }
 
-/** Mirrors `planScriptAutoMix.isStaleVoiceOver`: an unstamped voice counts. */
-function isVoiceStale(material: MaterialItem, segment: ScriptSegment): boolean {
-  const stamped: unknown = material.metadata?.segment_text_hash;
-  return typeof stamped === 'string' && stamped !== segmentTextHash(segment);
+const MAX_VOICE_VERSIONS = 5;
+
+/** The segment's voice-over materials, newest first (the "voice versions" menu). */
+export function listVoiceVersions(
+  materials: readonly MaterialItem[],
+  segmentId: string,
+): MaterialItem[] {
+  return materials
+    .filter((material) => material.type === 'audio' && material.metadata?.segment_id === segmentId)
+    .sort((a, b) => assignedAt(b) - assignedAt(a))
+    .slice(0, MAX_VOICE_VERSIONS);
 }
 
-function deriveVoiceOnTimeline(
+/** Voice settings the segment currently asks for (R2 §3.5). */
+export interface EffectiveVoice {
+  /** Null when neither the segment nor the project chose a voice explicitly. */
+  voiceId: string | null;
+  speed: number;
+}
+
+export function resolveEffectiveVoice(
+  segment: ScriptSegment,
+  defaultVoiceId?: string,
+): EffectiveVoice {
+  return { voiceId: segment.voiceId ?? defaultVoiceId ?? null, speed: segment.voiceSpeed ?? 1 };
+}
+
+/**
+ * Mirrors `planScriptAutoMix.isStaleVoiceOver` (an unstamped voice counts),
+ * plus a voice or speed that no longer matches the segment's settings. A
+ * material without `voice_speed` was generated at 1.0; one without
+ * `voice_type`, or a project that never chose a voice explicitly, skips the
+ * voice comparison, so old projects keep their status (I-1).
+ */
+function isVoiceStale(material: MaterialItem, segment: ScriptSegment, voice: EffectiveVoice): boolean {
+  const stamped: unknown = material.metadata?.segment_text_hash;
+  if (typeof stamped === 'string' && stamped !== segmentTextHash(segment)) return true;
+  const usedVoice: unknown = material.metadata?.voice_type;
+  if (voice.voiceId && typeof usedVoice === 'string' && usedVoice !== voice.voiceId) return true;
+  const usedSpeed: unknown = material.metadata?.voice_speed;
+  const speed = typeof usedSpeed === 'number' && Number.isFinite(usedSpeed) ? usedSpeed : 1;
+  return Math.abs(speed - voice.speed) > 1e-6;
+}
+
+interface TimelineVoice {
+  state: VoiceOnTimeline;
+  /** Material of the narration clip on the timeline (first found). */
+  materialId: string | null;
+  span: SegmentTimeRange | null;
+}
+
+/**
+ * The narration clip counts as current when it plays the latest voice-over
+ * or the one the user explicitly applied (restoring an older version).
+ */
+function deriveTimelineVoice(
   tracks: readonly LinkableTrack[],
   materialsById: ReadonlyMap<string, MaterialItem>,
-  segmentId: string,
+  segment: ScriptSegment,
   latest: MaterialItem | null,
-): VoiceOnTimeline {
-  let found = false;
+): TimelineVoice {
+  let span: SegmentTimeRange | null = null;
+  let materialId: string | null = null;
   let current = false;
   forEachItem(tracks, (item) => {
     if (item.type !== 'audio') return;
-    if (resolveItemSegmentId(item, materialsById) !== segmentId) return;
-    found = true;
-    if (latest && item.materialId === latest.id) current = true;
+    if (resolveItemSegmentId(item, materialsById) !== segment.id) return;
+    span = extend(span, item);
+    materialId = materialId ?? item.materialId ?? null;
+    if (item.materialId && (item.materialId === latest?.id
+      || item.materialId === segment.appliedVoiceMaterialId)) current = true;
   });
-  if (!found) return 'absent';
-  return current ? 'current' : 'outdated';
+  if (!span) return { state: 'absent', materialId: null, span: null };
+  return { state: current ? 'current' : 'outdated', materialId, span };
+}
+
+function readIsoTime(value: string | undefined): number {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : -Infinity;
+}
+
+function voiceMaterialLength(material: MaterialItem): number {
+  return material.duration ?? material.sentenceSegments?.total_duration ?? 0;
+}
+
+/**
+ * Latest voice-over not on the timeline and not the applied one; after the
+ * user applies an older version, only a voice generated LATER is offered
+ * again (RV2-03).
+ */
+function deriveCandidate(
+  latest: MaterialItem | null,
+  segment: ScriptSegment,
+  timelineVoice: TimelineVoice,
+  voice: EffectiveVoice,
+): VoiceCandidate | null {
+  if (!latest) return null;
+  if (latest.id === timelineVoice.materialId || latest.id === segment.appliedVoiceMaterialId) return null;
+  if (segment.appliedVoiceAt && assignedAt(latest) <= readIsoTime(segment.appliedVoiceAt)) return null;
+  const duration = voiceMaterialLength(latest);
+  const span: SegmentTimeRange | null = timelineVoice.span;
+  return {
+    materialId: latest.id,
+    duration,
+    deltaFromTimeline: span ? duration - (span.end - span.start) : null,
+    isStale: isVoiceStale(latest, segment, voice),
+  };
 }
 
 function hasOverlappingSubtitle(
@@ -215,6 +311,8 @@ export interface DeriveSegmentStatusInput {
   materials: readonly MaterialItem[];
   tracks: readonly LinkableTrack[];
   isConverting: boolean;
+  /** Persisted project default voice; omitted → voice ids are not compared. */
+  defaultVoiceId?: string;
   /** Optional pre-built lookup; built from `materials` when omitted. */
   materialsById?: ReadonlyMap<string, MaterialItem>;
 }
@@ -229,15 +327,21 @@ export function deriveSegmentStatus(input: DeriveSegmentStatusInput): SegmentSta
     if (linked.has(item.id) && isVisualItem(item)) hasVisualItem = true;
   });
   const latest = findLatestVoiceMaterial(materials, segment.id);
+  const effectiveVoice = resolveEffectiveVoice(segment, input.defaultVoiceId);
+  const timelineVoice = deriveTimelineVoice(tracks, byId, segment, latest);
+  // Stale is judged on the voice the timeline plays, else the latest one.
+  const onTimeline = timelineVoice.materialId ? byId.get(timelineVoice.materialId) : undefined;
+  const judged = onTimeline ?? latest;
   let voice: VoiceStatus = 'none';
   if (isConverting) voice = 'generating';
-  else if (latest) voice = isVoiceStale(latest, segment) ? 'stale' : 'ready';
+  else if (judged) voice = isVoiceStale(judged, segment, effectiveVoice) ? 'stale' : 'ready';
   const range = computeSegmentTimeRange(tracks, byId, segment.id);
   return {
     visual: (segment.videos?.length ?? 0) > 0 || hasVisualItem ? 'configured' : 'missing',
     voice,
-    voiceOnTimeline: deriveVoiceOnTimeline(tracks, byId, segment.id, latest),
+    voiceOnTimeline: timelineVoice.state,
     subtitle: hasOverlappingSubtitle(tracks, range) ? 'ready' : 'none',
+    candidate: deriveCandidate(latest, segment, timelineVoice, effectiveVoice),
   };
 }
 
@@ -255,14 +359,19 @@ export function findPlayingSegmentId(
   return playing;
 }
 
-/** Card duration fallback chain (RV-11): field → range → voice length. */
+/**
+ * Card duration fallback chain (R2 RV2-01): timeline range → field → voice
+ * length. The range wins so a generated but unapplied voice-over (which still
+ * writes `segment.duration` for the AI video generators) does not make the
+ * card claim a length the timeline does not have.
+ */
 export function resolveSegmentDuration(
   segment: ScriptSegment,
   range: SegmentTimeRange | null,
   latestVoice: MaterialItem | null,
 ): number | null {
-  if (typeof segment.duration === 'number' && segment.duration > 0) return segment.duration;
   if (range && range.end > range.start) return range.end - range.start;
+  if (typeof segment.duration === 'number' && segment.duration > 0) return segment.duration;
   const voiceLength = latestVoice?.sentenceSegments?.total_duration ?? latestVoice?.duration;
   return typeof voiceLength === 'number' && voiceLength > 0 ? voiceLength : null;
 }

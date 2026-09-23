@@ -64,6 +64,20 @@ function isServerError(err: unknown): boolean {
   return typeof status === 'number' && status >= 500 && status < 600;
 }
 
+/** True when `content` serialises to the last saved snapshot. */
+export function isContentAlreadySaved(
+  content: VideoEditingTaskContent | null,
+  lastSavedJson: string,
+): boolean {
+  if (!content || !lastSavedJson) return false;
+  try {
+    return JSON.stringify(normaliseProjectDataForSave(content)) === lastSavedJson;
+  } catch (error) {
+    console.warn('[autosave] project content is not serialisable', { error });
+    return false;
+  }
+}
+
 /** Back-off before the retry; `retryWaitRef.current()` ends it early. */
 function waitForRetryWindow(retryWaitRef: MutableRefObject<(() => void) | null>): Promise<void> {
   return new Promise((resolve) => {
@@ -317,6 +331,12 @@ export function useProjectAutosave(
     }
     if (inFlightPromiseRef.current) {
       dirtyRef.current = true;
+      return;
+    }
+    // R1 L-3: the content went back to what is already saved (e.g. the user
+    // undid the unsaved edit) — nothing to send, but the failure is over.
+    if (isContentAlreadySaved(contentRef.current, lastSavedJsonRef.current)) {
+      optsRef.current.onSaveSuccess?.();
       return;
     }
     void flush.current();

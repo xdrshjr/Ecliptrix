@@ -42,6 +42,8 @@ interface TrackContainerProps {
   onMaterialDrop: (materialId: string, trackId: string) => void;
   /** Whether a clip's material is gone; omitted until the library has loaded (N-01). */
   isMaterialMissing?: MissingMaterialPredicate;
+  /** Project / task id; scopes which empty lanes the user opened. */
+  projectId?: string;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -57,6 +59,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onOpenCameraMotion,
   onMaterialDrop,
   isMaterialMissing,
+  projectId,
 }) => {
   const { t, locale: contextLocale } = useLocale();
 
@@ -314,6 +317,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   onOpenCameraMotion={onOpenCameraMotion}
                   onMaterialDrop={onMaterialDrop}
                   isMaterialMissing={isMaterialMissing}
+                  projectId={projectId}
                 />
               ))
             ) : (

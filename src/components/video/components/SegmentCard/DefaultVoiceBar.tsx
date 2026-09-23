@@ -7,7 +7,7 @@ import VoiceSelector from '../VoiceSelector';
 
 interface DefaultVoiceBarProps {
   selectedVoiceId: string;
-  onVoiceChange(voiceId: string): void;
+  onVoiceChange(voiceId: string, voiceName?: string): void;
   /** TTS in progress: the voice cannot change (same rule as before the move). */
   disabled: boolean;
 }
@@ -47,16 +47,31 @@ const DefaultVoiceBar: React.FC<DefaultVoiceBarProps> = ({ selectedVoiceId, onVo
     if (disabled) setIsOpen(false);
   }, [disabled]);
 
+  // The popover follows the bar when the window is resized (R1 L-2), at most
+  // once per frame.
   useLayoutEffect(() => {
-    if (!isOpen) return;
-    const rect = barRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const left = rect.left + VIEWPORT_MARGIN;
-    setPosition({
-      left,
-      bottom: window.innerHeight - rect.top + 4,
-      width: Math.min(POPOVER_WIDTH, window.innerWidth - left - VIEWPORT_MARGIN),
-    });
+    if (!isOpen) return undefined;
+    const place = () => {
+      const rect = barRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const left = rect.left + VIEWPORT_MARGIN;
+      setPosition({
+        left,
+        bottom: window.innerHeight - rect.top + 4,
+        width: Math.min(POPOVER_WIDTH, window.innerWidth - left - VIEWPORT_MARGIN),
+      });
+    };
+    place();
+    let frame = 0;
+    const onResize = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => { frame = 0; place(); });
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -67,7 +82,8 @@ const DefaultVoiceBar: React.FC<DefaultVoiceBarProps> = ({ selectedVoiceId, onVo
       close(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close(true);
+      // An open inner dropdown consumed this Esc already (R1 L-2).
+      if (event.key === 'Escape' && !event.defaultPrevented) close(true);
     };
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('keydown', onKeyDown);
@@ -80,8 +96,8 @@ const DefaultVoiceBar: React.FC<DefaultVoiceBarProps> = ({ selectedVoiceId, onVo
   // A name reported for an earlier voice must not label an unresolved new id.
   const voiceName = voiceMeta?.id === selectedVoiceId ? voiceMeta.name : null;
 
-  const handleVoiceChange = (voiceId: string) => {
-    onVoiceChange(voiceId);
+  const handleVoiceChange = (voiceId: string, voiceName?: string) => {
+    onVoiceChange(voiceId, voiceName);
     close(true);
   };
 

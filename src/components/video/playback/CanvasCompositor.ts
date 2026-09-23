@@ -21,6 +21,8 @@ import {
   outputFrameRect,
   type FitRect,
 } from './internal/fitContain';
+import { BlurBackgroundPainter } from './internal/blurBackground';
+import { drawFilledVideoLayer } from './internal/drawFilledVideo';
 import { Camera3DRenderer } from './camera/Camera3DRenderer';
 import { fallbackCropForDraw, resolveCameraDraw } from './camera/resolveCameraDraw';
 import type { ResolvedCameraDraw } from './camera/types';
@@ -139,6 +141,8 @@ export class CanvasCompositor implements ICanvasCompositor {
   // PV3-02 — the canvas is the only visible image raster, so a paused preview
   // must repaint when an image finishes loading. Cleared on detach.
   private readonly _assetReadyListeners = new Set<() => void>();
+  /** Background of the `blur` canvas fit, with its own perf fallback. */
+  private readonly _blurPainter: BlurBackgroundPainter;
 
   constructor(now?: () => number) {
     this._now =
@@ -146,6 +150,7 @@ export class CanvasCompositor implements ICanvasCompositor {
       (typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now.bind(performance)
         : Date.now);
+    this._blurPainter = new BlurBackgroundPainter(this._now);
   }
 
   /**
@@ -357,6 +362,14 @@ export class CanvasCompositor implements ICanvasCompositor {
     frame: FitRect,
     layer: Extract<CompositorLayer, { kind: 'video' }>,
   ): boolean {
+    // `contain` (and a layer without `fit`) keeps the pre-feature path below,
+    // statement for statement (spec r2 §3.9.2).
+    if (layer.fit && layer.fit !== 'contain') {
+      return drawFilledVideoLayer(ctx, frame, layer, layer.fit, {
+        blurPainter: this._blurPainter,
+        drawCamera: (...args) => this._drawCameraSource(ctx, ...args),
+      });
+    }
     const source = layer.source;
     if (!source || source.readyState < 2) return false;
     if (layer.opacity <= 0) return false;
