@@ -14,6 +14,7 @@ import ProjectNameEditor from './ProjectNameEditor';
 import SaveStatusIndicator, { type SaveStatus } from './SaveStatusIndicator';
 import TaskCenterButton from './TaskCenterButton';
 import { useEditorFocusStore } from '@/stores/editorFocusStore';
+import { AGENT_PANEL_ID } from '../components/AgentChatDock/AgentChatDock';
 
 /** Project chrome handed down by VideoEditorContainer (spec §5.1). */
 export interface EditorProjectChrome {
@@ -176,7 +177,7 @@ const EditorTopBar: React.FC<EditorTopBarProps> = ({
       />
       <button type="button" className="ws-btn ws-btn--ghost" style={{ position: 'relative' }}
         aria-pressed={isAssistantOpen} title={assistantTitle} aria-label={assistantTitle}
-        onClick={onToggleAssistant}>
+        aria-controls={AGENT_PANEL_ID} onClick={onToggleAssistant}>
         <Sparkles {...ICON} /><span className="ws-hide-narrow">{copy.assistant}</span>
         {isAgentBusy && <span className="ws-busy-dot" aria-hidden="true" />}
       </button>

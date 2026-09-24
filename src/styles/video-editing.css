@@ -1287,7 +1287,140 @@
   cursor: not-allowed;
 }
 
-/* Agent chat body (hosted by the workbench assistant drawer). */
+/* ============================================
+   Floating Agent Chat Dock (FAB + panel), restored from b4f6a4a
+   (editor-shell-ui-consolidation W5)
+   ============================================ */
+
+/* 右下角圆形浮动按钮（FAB），定位父元素为 .ws-main。
+ * z-index 直接写在这里：高于时间轴锁遮罩(50)，低于 overlay(900)/modal(1000)。
+ * tailwind 的 dock token 已删除且有测试守护，不恢复。
+ * 默认 bottom:48px 避开 32px 高的时间轴底部栏及其「添加轨道」按钮。 */
+.agent-chat-fab {
+  position: absolute;
+  right: 24px;
+  bottom: 48px;
+  z-index: 850;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  cursor: grab;
+  /* Pointer 拖动在触屏不被滚动手势抢断 */
+  touch-action: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.agent-chat-fab:hover {
+  transform: translateY(-1px) scale(1.04);
+}
+
+/* 拖动中：抓取光标、去掉 hover 缩放，避免位移与缩放叠加抖动 */
+.agent-chat-fab.is-dragging {
+  cursor: grabbing;
+  transform: none;
+}
+
+.agent-chat-fab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+/* 执行中脉冲环：浮窗关闭时仍能感知 Agent 正在工作 */
+.agent-chat-fab.is-busy::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 2px solid var(--primary);
+  animation: agent-fab-pulse 1.2s ease-out infinite;
+}
+
+@keyframes agent-fab-pulse {
+  0% { opacity: 0.7; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
+/* 工作区内的非模态助手浮窗。z-index 高于锁遮罩(50)，低于 overlay(900)/modal(1000)：
+ * 浮窗下半部与时间轴锁定遮罩重叠，必须高于它，否则执行期输入框/取消按钮不可点。 */
+.agent-chat-floating-panel {
+  position: absolute;
+  right: 24px;
+  bottom: 48px;
+  z-index: 860;
+  width: min(calc(100% - 16px), clamp(360px, 32%, 520px));
+  height: min(calc(100% - 16px), clamp(320px, 80%, 760px));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  transform-origin: center;
+}
+
+.dark .agent-chat-floating-panel {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+.agent-chat-panel-header {
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.agent-chat-panel-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-chat-panel-context {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--ws-text-secondary, var(--secondary-foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-chat-minimize {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  transition: background-color 150ms, color 150ms;
+}
+
+.agent-chat-minimize:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+.agent-chat-floating-panel :is(button, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .agent-chat-messages {
   font-size: 14px;
   line-height: 1.6;
@@ -1297,6 +1430,36 @@
 .agent-chat-toolbar { padding: 12px 16px 0; }
 .agent-chat-input-area { padding: 12px 16px 16px; }
 .agent-chat-input { min-height: 40px; max-height: 120px; }
+
+.agent-chat-floating-panel[data-compact] .agent-chat-panel-header {
+  height: 44px;
+  padding-inline: 8px;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-messages {
+  padding: 8px;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-toolbar {
+  padding: 8px 8px 0;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-input-area {
+  padding: 8px;
+}
+.agent-chat-floating-panel[data-compact] .agent-chat-input {
+  max-height: 80px;
+  overflow-y: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-fab,
+  .agent-chat-fab::after,
+  .agent-chat-floating-panel,
+  .agent-chat-floating-panel *,
+  .agent-chat-floating-panel *::before,
+  .agent-chat-floating-panel *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
 
 /* ===== Player Console（单行播放条，spec segment-centric-editor-workbench §3.6） ===== */
 .player-console{flex:0 0 44px;height:44px;display:flex;align-items:center;gap:10px;

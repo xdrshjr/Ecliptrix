@@ -17,11 +17,10 @@ const SETUP_GUIDE_DISMISSED_KEY = 'ecliptrix-setup-guide-dismissed';
 
 export default function HomePage() {
   const {
-    tasks,
     tabs,
     activeTabId,
     activeTask,
-    createTask,
+    openTask,
     selectTab,
     closeTab,
     updateTask,
@@ -45,8 +44,8 @@ export default function HomePage() {
   useEffect(() => {
     if (!hydrated || didAutoOpenRef.current || tabs.length > 0) return;
     didAutoOpenRef.current = true;
-    createTask('video');
-  }, [hydrated, tabs.length, createTask]);
+    openTask('video');
+  }, [hydrated, tabs.length, openTask]);
 
   const [setupGuideDismissed, setSetupGuideDismissed] = useState<boolean>(() => {
     // sessionStorage may throw in restricted webviews — degrade to "always
@@ -101,7 +100,7 @@ export default function HomePage() {
               activeTabId={activeTabId}
               onSelectTab={handleSelectTab}
               onCloseTab={closeTab}
-              onCreateTask={createTask}
+              onOpenTask={openTask}
               isBlurred={isChatModalOpen}
             />
 
@@ -115,10 +114,7 @@ export default function HomePage() {
                   onChatModalStateChange={setIsChatModalOpen}
                   /* The empty state is the only "new task" entry point once the
                      last tab is closed. Dropping this prop bricks the app. */
-                  onCreateTask={createTask}
-                  tasks={tasks}
-                  tabs={tabs}
-                  onSelectTab={selectTab}
+                  onOpenTask={openTask}
                 />
               )}
             </div>

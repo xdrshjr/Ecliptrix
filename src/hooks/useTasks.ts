@@ -3,6 +3,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Task, Tab, TaskType, AppState } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import {
+  collapseToSingletonTasks,
+  resolveSingletonTaskId,
+  sortTabsBySingletonOrder,
+} from './taskSingleton';
 
 const STORAGE_KEY = 'ecliptrix-tasks-state-v1';
 const FALLBACK_TITLE = 'Ecliptrix - Where light and shadow collide';
@@ -56,10 +61,12 @@ const serializeState = (state: AppState): PersistedState => ({
   activeTabId: state.activeTabId,
 });
 
-const LEGACY_TITLE_TO_TYPE: Record<string, TaskType> = {
-  'Video Editing': 'video',
-  'AI Chat': 'chat',
-};
+export interface OpenTaskOptions {
+  /** 在同一次状态更新中改写目标任务的 content（原子，避免 id 竞态）。 */
+  updateContent?: (previous: unknown) => unknown;
+}
+
+const randomIdPart = (): string => Math.random().toString(36).slice(2, 11);
 
 // Task types still supported after the workflow/brainstorm feature removal.
 // Used to scrub any historical persisted tasks/tabs during hydration.
@@ -116,32 +123,21 @@ export const useTasks = () => {
         activeTabId: scrubbedActiveTabId,
       };
 
-      // Legacy LS migration: rewrite canonical English task titles to current locale.
-      // Idempotent: after rewrite, titles no longer match the legacy clinic, so the
-      // mapping is a one-shot. User-customized names are left untouched.
-      nextState = {
-        ...nextState,
-        tasks: nextState.tasks.map(task => {
-          const matchedType = LEGACY_TITLE_TO_TYPE[task.title];
-          if (matchedType && matchedType === task.type) {
-            return { ...task, title: buildTaskTypeLabel(task.type) };
-          }
-          return task;
-        }),
-        tabs: nextState.tabs.map(tab => {
-          const matchedType = LEGACY_TITLE_TO_TYPE[tab.title];
-          if (matchedType && matchedType === tab.type) {
-            return { ...tab, title: buildTaskTypeLabel(tab.type) };
-          }
-          return tab;
-        }),
-      };
+      // Collapse historical multi-instance state to one task per type
+      // (editor-shell-ui-consolidation W3). It also rewrites every title to
+      // the current-locale type label, which superseded the old English-title
+      // migration.
+      const beforeCollapse = nextState;
+      nextState = collapseToSingletonTasks(nextState, buildTaskTypeLabel);
 
       try {
         const search = new URLSearchParams(window.location.search);
         const taskParam = search.get('task');
-        if (taskParam) {
-          const tab = nextState.tabs.find(t => t.taskId === taskParam);
+        const taskId = taskParam
+          ? resolveSingletonTaskId(beforeCollapse, nextState, taskParam)
+          : null;
+        if (taskId) {
+          const tab = nextState.tabs.find(t => t.taskId === taskId);
           if (tab) {
             nextState = {
               ...nextState,
@@ -157,7 +153,7 @@ export const useTasks = () => {
     }
     setHydrated(true);
     // We deliberately want this to run only once on mount; buildTaskTypeLabel
-    // depends on locale but legacy migration should reflect the locale at mount time.
+    // depends on locale but the title rewrite should reflect the mount locale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -201,90 +197,59 @@ export const useTasks = () => {
     }
   }, [appState, hydrated, t.tasks.defaultPageTitle]);
 
-  const createTask = useCallback((type: TaskType) => {
-    const now = new Date();
-    const timestamp = now.getTime();
-
-    const isFirstTaskFromLanding = appState.tasks.length === 0;
-
-    if (isFirstTaskFromLanding) {
-      const allTaskTypes: TaskType[] = ['chat', 'video'];
-      const newTasks: Task[] = [];
-      const newTabs: Tab[] = [];
-      let activeTabId = '';
-
-      allTaskTypes.forEach((taskType) => {
-        const taskId = `task-${timestamp}-${taskType}-${Math.random().toString(36).substr(2, 9)}`;
-        const tabId = `tab-${timestamp}-${taskType}-${Math.random().toString(36).substr(2, 9)}`;
-
-        const task: Task = {
-          id: taskId,
-          title: buildTaskTypeLabel(taskType),
-          type: taskType,
+  /** 打开某类型任务：已存在则切换（Tab 已关则重开），否则新建。每类型至多
+   *  一个。查找与创建都在同一个函数式更新里，只读 `prev`：同一 tick 内调用
+   *  两次（StrictMode 双 effect、快速连点）也只会得到一个任务。 */
+  const openTask = useCallback((type: TaskType, options?: OpenTaskOptions) => {
+    setAppState(prev => {
+      const now = new Date();
+      let tasks = prev.tasks;
+      let task = prev.tasks.find(candidate => candidate.type === type);
+      if (!task) {
+        const suffix = `${now.getTime()}-${type}-${randomIdPart()}`;
+        task = {
+          id: `task-${suffix}`,
+          title: buildTaskTypeLabel(type),
+          type,
           status: 'draft',
           createdAt: now,
           updatedAt: now,
           content: null,
         };
+        tasks = [...tasks, task];
+      }
+      if (options?.updateContent) {
+        const targetId = task.id;
+        const content = options.updateContent(task.content ?? null);
+        tasks = tasks.map(candidate => candidate.id === targetId
+          ? { ...candidate, content: content as Task['content'], updatedAt: now }
+          : candidate);
+      }
 
-        const tab: Tab = {
-          id: tabId,
-          taskId,
-          title: task.title,
-          isActive: taskType === type,
-          type: taskType,
+      const targetTaskId = task.id;
+      let tabs = prev.tabs;
+      let tab = prev.tabs.find(candidate => candidate.taskId === targetTaskId);
+      if (!tab) {
+        tab = {
+          id: `tab-${now.getTime()}-${type}-${randomIdPart()}`,
+          taskId: targetTaskId,
+          title: buildTaskTypeLabel(type),
+          isActive: true,
+          type,
         };
-
-        newTasks.push(task);
-        newTabs.push(tab);
-
-        if (taskType === type) {
-          activeTabId = tabId;
-        }
-      });
-
-      setAppState({
-        tasks: newTasks,
-        tabs: newTabs,
+        tabs = sortTabsBySingletonOrder([...tabs, tab]);
+      }
+      const activeTabId = tab.id;
+      return {
+        tasks,
+        tabs: tabs.map(candidate => ({
+          ...candidate,
+          isActive: candidate.id === activeTabId,
+        })),
         activeTabId,
-      });
-    } else {
-      const taskId = `task-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
-      const tabId = `tab-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
-
-      const sameTypeTasksCount = appState.tasks.filter(t => t.type === type).length;
-      const taskNumber = sameTypeTasksCount + 1;
-
-      const baseLabel = buildTaskTypeLabel(type);
-      const taskTitle = taskNumber === 1
-        ? baseLabel
-        : `${baseLabel} ${taskNumber}`;
-
-      const newTask: Task = {
-        id: taskId,
-        title: taskTitle,
-        type,
-        status: 'draft',
-        createdAt: now,
-        updatedAt: now,
-        content: null,
       };
-
-      const newTab: Tab = {
-        id: tabId,
-        taskId,
-        title: newTask.title,
-        isActive: true,
-        type,
-      };
-
-      setAppState(prev => ({
-        tasks: [...prev.tasks, newTask],
-        tabs: prev.tabs.map(tab => ({ ...tab, isActive: false })).concat(newTab),
-        activeTabId: tabId,
-      }));
-    }
-  }, [appState.tasks, appState.tabs.length, buildTaskTypeLabel]);
+    });
+  }, [buildTaskTypeLabel]);
 
   const selectTab = useCallback((tabId: string) => {
     setAppState(prev => ({
@@ -355,7 +320,7 @@ export const useTasks = () => {
     tabs: appState.tabs,
     activeTabId: appState.activeTabId,
     activeTask: getActiveTask(),
-    createTask,
+    openTask,
     selectTab,
     closeTab,
     closeAllTabs,

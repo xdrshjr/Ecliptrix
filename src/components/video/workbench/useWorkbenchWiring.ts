@@ -23,7 +23,7 @@ import type { VideoPlayerPanelRef } from '../components/VideoPlayerPanel/VideoPl
 import type { SegmentLinksValue } from '../lib/segments/SegmentLinksContext';
 import { useSegmentSelectionSync } from '../hooks/useSegmentSelectionSync';
 import type { AgentEditorContext } from '../hooks/useAgentExecution';
-import type { ToolWindowRailProps } from './ToolWindowRail';
+import type { FooterToolbarProps } from './FooterToolbar';
 import { useWorkbenchLayout, type UseWorkbenchLayoutReturn } from './useWorkbenchLayout';
 import { useWorkbenchShortcuts } from './useWorkbenchShortcuts';
 
@@ -52,7 +52,7 @@ export interface UseWorkbenchWiringReturn {
   setDefaultVoiceId(voiceId: string): void;
   dismissedAdvisories: readonly DismissibleExportAdvisory[];
   dismissAdvisory(code: DismissibleExportAdvisory): void;
-  railProps: ToolWindowRailProps;
+  footerToolbarProps: FooterToolbarProps;
   toggleAssistant(): void;
   /** Pause the final preview before any material-level listening (§3.4.3). */
   pauseComposition(): void;
@@ -123,7 +123,7 @@ export function useWorkbenchWiring(input: UseWorkbenchWiringInput): UseWorkbench
       .replace('{index}', String(selected.ordinal)).replace('{title}', selected.title)
     : null;
 
-  const railProps: ToolWindowRailProps = {
+  const footerToolbarProps: FooterToolbarProps = {
     isScriptOpen: layout.visible.left,
     isMaterialsOpen: layout.visible.right && rightPanelTab === 'materials',
     isPropertiesOpen: layout.visible.right && rightPanelTab === 'properties',
@@ -137,7 +137,7 @@ export function useWorkbenchWiring(input: UseWorkbenchWiringInput): UseWorkbench
   };
 
   return {
-    layout, timelinePanelRef, ...settings, railProps, toggleAssistant,
+    layout, timelinePanelRef, ...settings, footerToolbarProps, toggleAssistant,
     pauseComposition, openSideTab, locateSegment, revealMaterial, assistantContextLabel,
     getEditorContext,
   };

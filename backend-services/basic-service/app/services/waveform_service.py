@@ -40,6 +40,10 @@ import aiofiles
 
 from app.config import settings
 from app.logger import get_logger
+from app.services.local_media_resolver import (
+    LocalMediaResolveError,
+    resolve_media_reference,
+)
 
 logger = get_logger(__name__)
 
@@ -443,6 +447,33 @@ class WaveformService:
             await fp.write(body)
 
     def _resolve_source_path(self, audio_url: str) -> Optional[Path]:
+        """Resolve a same-origin media reference or path to a local file.
+
+        Storage references are tried first (see ``_resolve_storage_path``).
+        Anything else — notably TTS audio served at
+        ``/api/audio/generated/<file>`` — falls back to the media resolver the
+        export compositor uses, so "write == serve == resolve" also holds for
+        waveforms. That resolver keeps ``allow_remote=False`` and its own path
+        guard, so remote URLs are still rejected.
+
+        Returns:
+            An existing local ``Path``, else ``None``.
+        """
+        if not audio_url:
+            return None
+        resolved = self._resolve_storage_path(audio_url)
+        if resolved is not None:
+            return resolved
+        try:
+            return resolve_media_reference(str(audio_url).strip()).path
+        except LocalMediaResolveError as exc:
+            logger.warning("Waveform source not resolvable via media resolver", {
+                "audio_url": audio_url,
+                "error": str(exc),
+            })
+            return None
+
+    def _resolve_storage_path(self, audio_url: str) -> Optional[Path]:
         """Resolve a same-origin storage reference or path to a local file.
 
         Accepts:
@@ -454,8 +485,6 @@ class WaveformService:
             An existing ``Path`` inside the storage root (or an existing
             absolute path), else ``None``.
         """
-        if not audio_url:
-            return None
         ref = str(audio_url).strip()
 
         prefix = "/api/storage/files/"

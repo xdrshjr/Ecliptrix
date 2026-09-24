@@ -9,6 +9,48 @@ import { cameraMotionIneligibleReason } from '../playback/camera/eligibility';
 import type { CameraIneligibleReason } from '../playback/camera/eligibility';
 import { useShallow } from 'zustand/react/shallow';
 import PortalTooltip from './PortalTooltip';
+import { useAudioClipDisplay } from './audioClipDisplayPref';
+
+/** lucide "audio-waveform" / "rows-3" geometry (lucide-react is not a dependency). */
+const AudioWaveformIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2" />
+  </svg>
+);
+const SentenceRowsIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect width="18" height="18" x="3" y="3" rx="2" /><path d="M21 9H3" /><path d="M21 15H3" />
+  </svg>
+);
+
+/**
+ * Audio clips show a clean waveform by default; this toggles the TTS
+ * sentence colour blocks instead (editor-shell-ui-consolidation W6). Neutral
+ * pressed state — no primary blue.
+ */
+const AudioDisplayToggle: React.FC = () => {
+  const { t } = useLocale();
+  const [display, setDisplay] = useAudioClipDisplay();
+  const showsSentences = display === 'sentences';
+  const title = t.timeline.audioDisplay.toggleTitle;
+  return (
+    <PortalTooltip className="relative" label={title}>
+      <button
+        type="button"
+        aria-pressed={showsSentences}
+        aria-label={title}
+        onClick={() => setDisplay(showsSentences ? 'waveform' : 'sentences')}
+        className={`p-1.5 rounded-md w-7 h-7 flex items-center justify-center transition-colors
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+          ${showsSentences ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+      >
+        {showsSentences ? <SentenceRowsIcon /> : <AudioWaveformIcon />}
+      </button>
+    </PortalTooltip>
+  );
+};
 
 /** One toolbar icon button. */
 interface ToolbarButtonConfig {
@@ -390,6 +432,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
 
       {/* 状态显示 */}
       <div className="flex items-center space-x-3 text-xs text-muted-foreground">
+        <AudioDisplayToggle />
         {selectedItemsCount > 0 && (
           <div className="flex items-center space-x-1 bg-primary-a/10 px-2 py-1 rounded-full">
             <svg className="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 24 24">

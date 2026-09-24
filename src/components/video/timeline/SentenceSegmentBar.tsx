@@ -28,6 +28,22 @@ const SENTENCE_COLORS = [
   { normal: '#06B6D4', hover: '#0891B2' }, // cyan-500, cyan-600
 ];
 
+type SentenceSegmentCopy = ReturnType<typeof useLocale>['t']['timeline']['sentenceSegment'];
+
+/**
+ * 句子悬停说明（原生 title）：全文 + 起止时间 + 时长。句段色块与波形模式下的
+ * 句子命中层（SentenceHitLayer）共用，保证两种视图提示一致。
+ */
+export function buildSentenceTooltip(
+  sentence: SentenceTimingInfo,
+  copy: SentenceSegmentCopy,
+): string {
+  const startLabel = formatTimelineTime(sentence.start_time, { showMs: true });
+  const endLabel = formatTimelineTime(sentence.end_time, { showMs: true });
+  const durLabel = `${sentence.duration.toFixed(1)}${copy.durationUnit}`;
+  return `${sentence.text}\n\n${copy.timeLabel}${startLabel} - ${endLabel} (${durLabel})`;
+}
+
 /** 可见宽度不足时不画序号，避免数字挤出色块。 */
 const MIN_LABEL_WIDTH_PX = 30;
 
@@ -51,12 +67,8 @@ const SentenceSegmentBar: React.FC<SentenceSegmentBarProps> = ({
   }
 
   // 悬停说明只走原生 title：自绘卡片会被时间轴滚动容器裁掉，且与 title 重复。
-  const getSentenceTooltip = (sentence: SentenceTimingInfo): string => {
-    const startLabel = formatTimelineTime(sentence.start_time, { showMs: true });
-    const endLabel = formatTimelineTime(sentence.end_time, { showMs: true });
-    const durLabel = `${sentence.duration.toFixed(1)}${t.timeline.sentenceSegment.durationUnit}`;
-    return `${sentence.text}\n\n${t.timeline.sentenceSegment.timeLabel}${startLabel} - ${endLabel} (${durLabel})`;
-  };
+  const getSentenceTooltip = (sentence: SentenceTimingInfo): string =>
+    buildSentenceTooltip(sentence, t.timeline.sentenceSegment);
 
   return (
     <div className="absolute inset-0 flex">

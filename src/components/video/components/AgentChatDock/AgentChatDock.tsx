@@ -1,120 +1,142 @@
 'use client';
 
-import React, { useCallback, useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { useLocale } from '@/contexts/LocaleContext';
 import { VideoChatWindow, type VideoChatWindowProps } from '../VideoChatWindow';
-import AgentChatDrawer from './AgentChatDrawer';
+import AgentChatFloatingButton from './AgentChatFloatingButton';
+import AgentChatFloatingPanel from './AgentChatFloatingPanel';
+import { useDraggableFab } from './useDraggableFab';
 import { useDockPresence } from './useDockPresence';
 
-/** Stable id so the top-bar / rail toggles can point `aria-controls` at it. */
-export const AGENT_DRAWER_ID = 'ws-assistant-drawer';
+/** Stable id so the top-bar / footer toggles can point `aria-controls` at it. */
+export const AGENT_PANEL_ID = 'ws-assistant-panel';
 
-interface AgentChatDockProps {
+export interface AgentChatDockProps {
   isOpen: boolean;
+  onOpen: () => void;
   onMinimize: () => void;
+  agentIsExecuting: boolean;
   chatProps: VideoChatWindowProps;
   /** "正在协助：第 2 段 · 活泼天性"; null → whole-project wording. */
   contextLabel: string | null;
 }
 
-function canReceiveFocus(element: HTMLElement | null): element is HTMLElement {
-  return element != null && element.isConnected &&
+function canRestoreFocus(element: HTMLElement | null, panel: HTMLElement) {
+  return element != null && panel.contains(element) &&
     !element.matches(':disabled, [hidden], [aria-disabled="true"]') &&
-    !element.closest('[hidden], [aria-hidden="true"], [inert]');
+    !element.closest('[hidden], [aria-hidden="true"]');
 }
 
-function isInside(container: HTMLElement | null, node: unknown): boolean {
-  return container != null && node instanceof Node && container.contains(node);
-}
-
-/** Opener at open time; focus goes back to it when the drawer closes. */
-function useDrawerFocus(
-  isOpen: boolean,
-  presence: ReturnType<typeof useDockPresence>,
-  drawerRef: React.RefObject<HTMLElement | null>,
-) {
-  const openerRef = useRef<HTMLElement | null>(null);
-
-  const returnFocus = useCallback(() => {
-    const opener = openerRef.current;
-    if (canReceiveFocus(opener)) opener.focus({ preventScroll: true });
-    else if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-  }, []);
-
-  useLayoutEffect(() => {
-    const active = document.activeElement;
-    if (isOpen) {
-      if (!isInside(drawerRef.current, active)) {
-        openerRef.current = active instanceof HTMLElement ? active : null;
-      }
-      return;
-    }
-    // Closed from outside (shortcut) while typing in the drawer.
-    if (isInside(drawerRef.current, active)) returnFocus();
-  }, [isOpen, drawerRef, returnFocus]);
-
-  useLayoutEffect(() => {
-    const drawer = drawerRef.current;
-    if (!presence.isInteractive || !drawer) return;
-    const active = document.activeElement;
-    // 打开动画期间用户已把焦点移去别处：不抢回。
-    const untouched = active == null || active === document.body ||
-      active === openerRef.current;
-    if (!untouched) return;
-    const target = drawer.querySelector<HTMLElement>('textarea:not(:disabled)')
-      ?? drawer.querySelector<HTMLElement>('[data-drawer-close]');
-    target?.focus({ preventScroll: true });
-  }, [presence.isInteractive, presence.generation, drawerRef]);
-
-  return returnFocus;
-}
-
+/**
+ * Draggable AI assistant FAB in the bottom-right of the workspace plus its
+ * floating chat panel (restored from b4f6a4a, editor-shell-ui-consolidation
+ * W5). Both live in `.ws-main`, outside the timeline's `inert` lock, so the
+ * agent stays reachable (and cancellable) while it edits the timeline.
+ */
+// 超过 60 行以保留受控浮窗与焦点接线在同一组件，不拆分会话所有权。
 const AgentChatDock: React.FC<AgentChatDockProps> = ({
-  isOpen, onMinimize, chatProps, contextLabel,
+  isOpen, onOpen, onMinimize, agentIsExecuting, chatProps, contextLabel,
 }) => {
   const { t } = useLocale();
-  const drawerRef = useRef<HTMLElement>(null);
+  const fabRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const lastFocusRef = useRef<HTMLElement | null>(null);
+  const previousOpenRef = useRef(isOpen);
+  const [isOccluded, setIsOccluded] = useState(false);
+  const { position, isDragging, movedRef, dragHandlers } = useDraggableFab(fabRef);
   const presence = useDockPresence(isOpen);
-  const returnFocus = useDrawerFocus(isOpen, presence, drawerRef);
   const conversationKey = chatProps.conversation?.id ?? 'empty';
 
-  const close = () => {
-    if (isInside(drawerRef.current, document.activeElement)) returnFocus();
+  useLayoutEffect(() => { lastFocusRef.current = null; }, [conversationKey]);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (previousOpenRef.current && !isOpen && panel &&
+        panel.contains(document.activeElement)) {
+      lastFocusRef.current = document.activeElement as HTMLElement;
+      fabRef.current?.focus();
+    }
+    previousOpenRef.current = isOpen;
+    if (!presence.isInteractive || !panel ||
+        document.activeElement !== fabRef.current) return;
+    const fallback = panel.querySelector<HTMLElement>('[data-dock-minimize]');
+    const input = panel.querySelector<HTMLTextAreaElement>(
+      'textarea:not(:disabled)',
+    );
+    const target = canRestoreFocus(lastFocusRef.current, panel)
+      ? lastFocusRef.current : input ?? fallback;
+    target?.focus({ preventScroll: true });
+  }, [isOpen, presence.isInteractive, presence.generation]);
+
+  const minimize = () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && panelRef.current?.contains(active) &&
+        !active.hasAttribute('data-dock-minimize')) {
+      lastFocusRef.current = active;
+    }
+    fabRef.current?.focus();
     onMinimize();
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+  const toggle = () => {
+    if (isOpen) minimize();
+    else { fabRef.current?.focus(); onOpen(); }
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape' || !isOpen || event.defaultPrevented ||
         event.nativeEvent.isComposing ||
-        !isInside(drawerRef.current, event.target)) return;
+        !(event.target instanceof Node) ||
+        !panelRef.current?.contains(event.target)) return;
     event.preventDefault();
     event.stopPropagation();
-    close();
+    minimize();
   };
 
   return (
     <MotionConfig reducedMotion="user">
+      <AgentChatFloatingButton
+        ref={fabRef}
+        position={position}
+        isDragging={isDragging}
+        isExecuting={agentIsExecuting}
+        isOpen={isOpen}
+        panelId={AGENT_PANEL_ID}
+        isOccluded={isOccluded}
+        label={agentIsExecuting
+          ? t.videoEditing.agentDock.busy
+          : t.videoEditing.agentDock.fabLabel}
+        onActivate={toggle}
+        movedRef={movedRef}
+        dragHandlers={dragHandlers}
+      />
       {presence.mounted && (
-        <AgentChatDrawer
-          drawerRef={drawerRef}
-          drawerId={AGENT_DRAWER_ID}
+        <AgentChatFloatingPanel
+          panelRef={panelRef}
+          panelId={AGENT_PANEL_ID}
           isOpen={isOpen}
           presence={presence}
-          title={t.workbench.assistant.title}
-          contextLabel={contextLabel ?? t.workbench.assistant.contextProject}
-          closeLabel={t.workbench.assistant.close}
-          onClose={close}
+          onMinimize={minimize}
           onKeyDown={handleKeyDown}
+          onFocusCapture={(event) => {
+            if (!event.target.hasAttribute('data-dock-minimize') &&
+                panelRef.current?.contains(event.target)) {
+              lastFocusRef.current = event.target;
+            }
+          }}
+          title={t.videoEditing.agentDock.panelTitle}
+          contextLabel={contextLabel ?? t.workbench.assistant.contextProject}
+          minimizeLabel={t.videoEditing.agentDock.minimize}
+          anchor={position}
+          onFabOcclusionChange={setIsOccluded}
         >
           {/* 父级退出 display:none 后再恢复滚动，避免零尺寸覆盖阅读快照。 */}
           <VideoChatWindow
             key={conversationKey} {...chatProps}
             isVisible={isOpen && !presence.isHidden}
           />
-        </AgentChatDrawer>
+        </AgentChatFloatingPanel>
       )}
     </MotionConfig>
   );

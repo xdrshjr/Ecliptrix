@@ -22,6 +22,7 @@ import * as eligibility from '../../playback/camera/eligibility';
 import { createMissingMaterialPredicate } from '../lib/missingMaterial';
 import type { TimelineData, TimelineItemData } from '../domain/types';
 import { compileComponent, localeContextModule, reactModules } from './test-utils/compileComponent';
+import * as audioClipDisplayPref from '../audioClipDisplayPref';
 
 type ItemProps = {
   item: TimelineItemData;
@@ -63,6 +64,8 @@ beforeAll(() => {
     './SentenceSegmentBar': Nothing,
     './lib/sentenceWindow': sentenceWindow,
     './AudioWaveformCanvas': Nothing,
+    './SentenceHitLayer': Nothing,
+    './audioClipDisplayPref': audioClipDisplayPref,
     './timeFormat': timeFormat,
     './domain/value-objects/ZoomLevel': zoomLevelModule,
     './domain/machines/dragMachine': dragMachine,

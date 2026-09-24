@@ -1,1 +1,1 @@
-export { default as AgentChatDock, AGENT_DRAWER_ID } from './AgentChatDock';
+export { default as AgentChatDock, AGENT_PANEL_ID } from './AgentChatDock';

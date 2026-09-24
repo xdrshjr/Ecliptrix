@@ -239,3 +239,62 @@ async def test_material_id_with_traversal_is_rejected(waveform_svc, sample_audio
     """A materialId containing path separators / traversal is refused."""
     with pytest.raises(ValueError):
         await waveform_svc.generate("../escape", str(sample_audio))
+
+
+# ---------------------------------------------------------------------------
+# TTS audio served at /api/audio/generated/ (editor-shell-ui-consolidation
+# §3.6.4): the waveform must resolve it the same way the export does, or a TTS
+# clip's default waveform view can only draw a flat baseline.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def generated_audio_dir(storage_root):
+    """Point the media resolver's generated-audio dir at the temp storage."""
+    generated = storage_root / "static" / "audio" / "generated"
+    generated.mkdir(parents=True)
+    with patch(
+        "app.services.local_media_resolver._storage_root",
+        return_value=storage_root,
+    ):
+        yield generated
+
+
+def test_resolves_generated_tts_audio_url(waveform_svc, generated_audio_dir):
+    """A /api/audio/generated/<file> URL resolves to the TTS file on disk."""
+    tts_file = generated_audio_dir / "x.mp3"
+    tts_file.write_bytes(b"fake mp3")
+
+    resolved = waveform_svc._resolve_source_path("/api/audio/generated/x.mp3")
+
+    assert resolved is not None
+    assert resolved.resolve() == tts_file.resolve()
+
+
+def test_rejects_remote_url_without_storage_marker(waveform_svc):
+    """A remote URL is still refused (the resolver keeps allow_remote=False)."""
+    assert waveform_svc._resolve_source_path("https://example.com/a.mp3") is None
+
+
+def test_missing_generated_tts_audio_returns_none(
+    waveform_svc, generated_audio_dir
+):
+    """A generated-audio URL whose file is gone resolves to None, not a crash."""
+    assert waveform_svc._resolve_source_path(
+        "/api/audio/generated/absent.mp3"
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_generate_ready_for_generated_tts_audio(
+    waveform_svc, generated_audio_dir, sample_audio
+):
+    """generate() yields real peaks for a TTS clip addressed by its route URL."""
+    shutil.copy(sample_audio, generated_audio_dir / "tts.wav")
+
+    result = await waveform_svc.generate(
+        "audio_seg-1_1700000000000", "/api/audio/generated/tts.wav"
+    )
+
+    assert result["status"] == "ready"
+    assert max(result["peaks"]) > 0

@@ -7,6 +7,8 @@ import { useTimelineStore, splitAction } from './store';
 import { updateSubtitleTextAction } from './store/actions/updateItemFields';
 import type { TimelineItemData } from './domain/types';
 import SentenceSegmentBar from './SentenceSegmentBar';
+import SentenceHitLayer from './SentenceHitLayer';
+import { useAudioClipDisplay } from './audioClipDisplayPref';
 import { projectSentencesOntoClip } from './lib/sentenceWindow';
 import AudioWaveformCanvas from './AudioWaveformCanvas';
 import { formatTimelineTime } from './timeFormat';
@@ -110,6 +112,106 @@ const ClipName: React.FC<ClipNameProps> = ({ name, segment, fontSize }) => {
       </span>
       {segment.title}
     </>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Audio clip body (editor-shell-ui-consolidation W6): the label strip and the
+// waveform / sentence area are stacked vertically and never overlap, so no
+// text is ever drawn over the waveform.
+// ---------------------------------------------------------------------------
+
+/** Height of the label strip above an audio clip's waveform. */
+export const AUDIO_LABEL_STRIP_PX = 14;
+/** Lanes shorter than this get no label strip; the name lives in the tooltip. */
+const AUDIO_LABEL_STRIP_MIN_TRACK_PX = 36;
+const AUDIO_LABEL_FONT_PX = 11;
+const TIMELINE_WAVEFORM_COLOR = 'rgba(255,255,255,0.78)';
+
+interface AudioClipBodyProps {
+  item: TimelineItemData;
+  width: number;
+  /** Lane height: decides whether the label strip fits. */
+  trackHeight: number;
+  /** Rendered clip box height (lane minus its vertical padding); the
+   *  waveform area is sized from this so it is not clipped at the bottom. */
+  clipHeight: number;
+  iconSize: number;
+  waveformAudioUrl: string | null;
+  visibleSentenceCount: number;
+  segmentEntry: SegmentIndexEntry | null;
+}
+
+/** Static bars for audio without a local waveform source (legacy remote). */
+const PlaceholderBars: React.FC<{ iconSize: number }> = ({ iconSize }) => (
+  <div className="absolute inset-0 flex items-center justify-center space-x-0.5">
+    {[...Array(Math.max(3, Math.min(8, Math.floor(iconSize / 2))))].map((_, i) => (
+      <div
+        key={i}
+        className="w-0.5 bg-white opacity-60"
+        style={{
+          height: `${Math.max(2, (((i * 7 + 3) % 11) / 11) * (iconSize * 0.6) + 2)}px`,
+        }}
+      />
+    ))}
+  </div>
+);
+
+const AudioClipBody: React.FC<AudioClipBodyProps> = ({
+  item, width, trackHeight, clipHeight, iconSize, waveformAudioUrl, visibleSentenceCount,
+  segmentEntry,
+}) => {
+  const { t } = useLocale();
+  const [audioDisplay] = useAudioClipDisplay();
+  const showLabelStrip = trackHeight >= AUDIO_LABEL_STRIP_MIN_TRACK_PX;
+  const bodyTop = showLabelStrip ? AUDIO_LABEL_STRIP_PX : 0;
+  const bodyHeight = Math.max(1, clipHeight - bodyTop);
+  const hasSentences = !!item.sentenceSegments && visibleSentenceCount > 0;
+  const useSentenceView = audioDisplay === 'sentences' && hasSentences;
+  const durationText = `${item.duration.toFixed(1)}s`;
+  const tooltipParts = [segmentEntry ? segmentEntry.title : item.name];
+  if (hasSentences) {
+    tooltipParts.push(t.timeline.sentenceSegment.sentenceCount
+      .replace('{count}', String(visibleSentenceCount)));
+  }
+  tooltipParts.push(durationText);
+
+  const renderBody = () => {
+    if (useSentenceView && item.sentenceSegments) {
+      return (
+        <SentenceSegmentBar sentenceSegments={item.sentenceSegments} width={width}
+          height={bodyHeight} duration={item.duration} clipStart={item.clipStart ?? 0} />
+      );
+    }
+    if (waveformAudioUrl && item.materialId) {
+      return (
+        <AudioWaveformCanvas materialId={item.materialId} audioUrl={waveformAudioUrl}
+          width={width} height={bodyHeight} clipStart={item.clipStart}
+          clipEnd={item.clipEnd} color={TIMELINE_WAVEFORM_COLOR} />
+      );
+    }
+    return <PlaceholderBars iconSize={iconSize} />;
+  };
+
+  return (
+    <div className="relative h-full overflow-hidden" title={tooltipParts.join(' · ')}>
+      {showLabelStrip && (
+        <div className="ws-audio-label-strip" style={{ height: AUDIO_LABEL_STRIP_PX }}>
+          <span className="ws-audio-label-name">
+            <ClipName name={item.name} segment={segmentEntry} fontSize={AUDIO_LABEL_FONT_PX} />
+          </span>
+          <span className="ws-audio-label-meta">{durationText}</span>
+        </div>
+      )}
+      <div className="absolute left-0 right-0" data-audio-body
+        style={{ top: bodyTop, height: bodyHeight }}>
+        {renderBody()}
+        {!useSentenceView && hasSentences && item.sentenceSegments && (
+          <SentenceHitLayer sentenceSegments={item.sentenceSegments}
+            duration={item.duration} clipStart={item.clipStart ?? 0} />
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -608,98 +710,16 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
         );
       case 'audio':
         return (
-          <div style={contentStyle}>
-            {item.sentenceSegments && visibleSentenceCount > 0 ? (
-              <>
-                <SentenceSegmentBar
-                  sentenceSegments={item.sentenceSegments}
-                  width={width}
-                  height={trackHeight}
-                  duration={item.duration}
-                  clipStart={item.clipStart ?? 0}
-                />
-                <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
-                  <div className="flex items-center space-x-1 min-w-0">
-                    <div
-                      className="flex-shrink-0 "
-                      style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
-                    >
-                      <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                      </svg>
-                    </div>
-                    <span
-                      className="text-white font-medium truncate "
-                      style={{ fontSize: `${fontSize}px` }}
-                    >
-                      <ClipName name={item.name} segment={segmentEntry} fontSize={fontSize} />
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-1 flex-shrink-0">
-                    <span
-                      className="text-white opacity-90 bg-black bg-opacity-30 px-1.5 py-0.5 rounded text-xs font-medium "
-                      style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
-                    >
-                      {t.timeline.sentenceSegment.sentenceCount.replace('{count}', String(visibleSentenceCount))}
-                    </span>
-                    <span
-                      className="text-white opacity-75 "
-                      style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}
-                    >
-                      {item.duration.toFixed(1)}s
-                    </span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* spec 04: persisted local waveform behind the label. Falls
-                    back to the static placeholder bars when no local audio
-                    reference is available (e.g. legacy remote-only audio). */}
-                {waveformAudioUrl && item.materialId && (
-                  <AudioWaveformCanvas
-                    materialId={item.materialId}
-                    audioUrl={waveformAudioUrl}
-                    width={width}
-                    height={trackHeight}
-                    clipStart={item.clipStart}
-                    clipEnd={item.clipEnd}
-                  />
-                )}
-                <div className="flex items-center space-x-1 min-w-0 relative z-[1]">
-                  <div
-                    className="flex-shrink-0"
-                    style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
-                  >
-                    <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                    </svg>
-                  </div>
-                  <span
-                    className="text-white font-medium truncate"
-                    style={{ fontSize: `${fontSize}px` }}
-                  >
-                    <ClipName name={item.name} segment={segmentEntry} fontSize={fontSize} />
-                  </span>
-                </div>
-                {/* Static placeholder bars only when there is no real waveform
-                    source — the persisted canvas replaces them otherwise. */}
-                {!waveformAudioUrl && (
-                  <div className="flex items-center space-x-0.5 flex-shrink-0">
-                    {[...Array(Math.max(3, Math.min(8, Math.floor(iconSize / 2))))].map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-0.5 bg-white opacity-60"
-                        style={{
-                          height: `${Math.max(2, (((i * 7 + 3) % 11) / 11) * (iconSize * 0.6) + 2)}px`,
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <AudioClipBody
+            item={item}
+            width={width}
+            trackHeight={trackHeight}
+            clipHeight={Math.max(itemHeight, 16)}
+            iconSize={iconSize}
+            waveformAudioUrl={waveformAudioUrl}
+            visibleSentenceCount={visibleSentenceCount}
+            segmentEntry={segmentEntry}
+          />
         );
       case 'subtitle':
         return (

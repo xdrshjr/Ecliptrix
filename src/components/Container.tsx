@@ -6,21 +6,19 @@ import ChatInterface from './chat/ChatInterface';
 import { VideoProjectListView, VideoEditorContainer } from './video/projects';
 import { useLocale } from '@/contexts/LocaleContext';
 import { formatDate } from '@/lib/utils/dateFormat';
+import type { OpenTaskOptions } from '@/hooks/useTasks';
 
 interface ContainerProps {
   activeTask: Task | null;
   onUpdateTask?: (taskId: string, updates: Partial<Task>) => void;
   onChatModalStateChange?: (isOpen: boolean) => void;
-  /** Creates a task from the empty state. Once the last tab is closed this
-   *  empty state is the only way back into the app, so callers that own the
-   *  tab store must pass it. */
-  onCreateTask?: (type: TaskType) => void;
-  tasks?: Task[];
-  tabs?: any[];
-  onSelectTab?: (tabId: string) => void;
+  /** Opens (or creates) the single task of a type from the empty state. Once
+   *  the last tab is closed this empty state is the only way back into the
+   *  app, so callers that own the tab store must pass it. */
+  onOpenTask?: (type: TaskType, options?: OpenTaskOptions) => void;
 }
 
-const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange, onCreateTask, tasks, tabs, onSelectTab }) => {
+const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatModalStateChange, onOpenTask }) => {
   const { t } = useLocale();
 
   const handleUpdateChatContent = (content: ChatTaskContent) => {
@@ -33,46 +31,25 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
     }
   };
 
-  // 处理从Chat导航到Video Editing (materials)
-  const handleNavigateToVideoEditingWithMaterials = (materials: any[]) => {
-    if (!tasks || !tabs || !onSelectTab || !onUpdateTask) {
-      console.warn('[Container] Missing required props for navigation:', {
-        hasTasks: !!tasks,
-        hasTabs: !!tabs,
-        hasOnSelectTab: !!onSelectTab,
-        hasOnUpdateTask: !!onUpdateTask
-      });
+  // 处理从Chat导航到Video Editing (materials)：打开（或新建）唯一的视频任务，
+  // 并在同一次状态更新里写入待导入素材（任务加载完成后会自动导入）。
+  const handleNavigateToVideoEditingWithMaterials = (materials: MaterialItem[]) => {
+    if (!onOpenTask) {
+      console.warn('[Container] Missing onOpenTask; cannot import materials');
       return;
     }
-
-    // 1. 查找Video Editing任务
-    const videoTask = tasks.find(t => t.type === 'video');
-    
-    if (!videoTask) {
-      console.error('[Container] No Video Editing task found');
-      return;
-    }
-
-    // 2. 设置待导入的素材（不直接合并，等任务加载完成后再导入）
-    const currentContent = videoTask.content as VideoEditingTaskContent | null;
-    const updatedContent: VideoEditingTaskContent = {
-      ...currentContent,
-      markdownContent: currentContent?.markdownContent || '',
-      lastModified: new Date(),
-      pendingMaterials: materials  // 设置待导入的素材
-    };
-
-    onUpdateTask(videoTask.id, {
-      content: updatedContent
+    onOpenTask('video', {
+      updateContent: (previous) => {
+        const current = previous as VideoEditingTaskContent | null;
+        const updated: VideoEditingTaskContent = {
+          ...current,
+          markdownContent: current?.markdownContent || '',
+          lastModified: new Date(),
+          pendingMaterials: materials,
+        };
+        return updated;
+      },
     });
-
-    // 3. 切换到Video Editing标签页（任务加载完成后会自动导入素材）
-    const videoTab = tabs.find(t => t.taskId === videoTask.id);
-    if (videoTab) {
-      onSelectTab(videoTab.id);
-    } else {
-      console.error('[Container] No tab found for Video Editing task');
-    }
   };
 
   if (!activeTask) {    
@@ -96,8 +73,8 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
           <div className="grid grid-cols-2 gap-4 text-sm">
             <button
               type="button"
-              onClick={() => onCreateTask?.('chat')}
-              disabled={!onCreateTask}
+              onClick={() => onOpenTask?.('chat')}
+              disabled={!onOpenTask}
               aria-label={t.tasks.aiChat}
               className="text-left bg-muted rounded-md p-4 transition-colors hover:bg-accent disabled:cursor-default disabled:hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
@@ -111,8 +88,8 @@ const Container: React.FC<ContainerProps> = ({ activeTask, onUpdateTask, onChatM
             </button>
             <button
               type="button"
-              onClick={() => onCreateTask?.('video')}
-              disabled={!onCreateTask}
+              onClick={() => onOpenTask?.('video')}
+              disabled={!onOpenTask}
               aria-label={t.tasks.videoEditing}
               className="text-left bg-muted rounded-md p-4 transition-colors hover:bg-accent disabled:cursor-default disabled:hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >

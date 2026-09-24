@@ -3,32 +3,41 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Tab, TaskType } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import type { OpenTaskOptions } from '@/hooks/useTasks';
+import NewTaskMenu from '@/components/shell/NewTaskMenu';
 
 interface VerticalTaskbarProps {
   tabs: Tab[];
   activeTabId: string | null;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  /** Creates a task of the given type. Optional so the taskbar stays usable
-   *  in isolation (tests, storybook); when absent the "new task" control is
-   *  simply not rendered. */
-  onCreateTask?: (type: TaskType) => void;
+  /** Opens (or creates) the single task of the given type. Optional so the
+   *  taskbar stays usable in isolation (tests, storybook); when absent the
+   *  "new task" control is simply not rendered. */
+  onOpenTask?: (type: TaskType, options?: OpenTaskOptions) => void;
   isBlurred?: boolean;
 }
 
-const NEW_TASK_TYPES: TaskType[] = ['video', 'chat'];
+const AUTO_COLLAPSE_DELAY_MS = 300;
 
 const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   tabs,
   onSelectTab,
   onCloseTab,
-  onCreateTask,
+  onOpenTask,
   isBlurred = false,
 }) => {
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const taskbarRef = useRef<HTMLDivElement>(null);
+  const newTaskButtonRef = useRef<HTMLButtonElement>(null);
   const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Read by the auto-collapse paths: the menu is portaled to <body>, so moving
+  // the pointer onto it fires the taskbar's mouseleave.
+  const isMenuOpenRef = useRef(false);
+  const isHoveredRef = useRef(false);
+  isMenuOpenRef.current = isMenuOpen;
 
   const getTaskIcon = (type: TaskType) => {
     switch (type) {
@@ -69,6 +78,7 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
   };
 
   const handleMouseEnter = () => {
+    isHoveredRef.current = true;
     // 鼠标进入时清除折叠定时器
     if (collapseTimeoutRef.current) {
       clearTimeout(collapseTimeoutRef.current);
@@ -76,19 +86,27 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     }
   };
 
+  const scheduleCollapse = () => {
+    collapseTimeoutRef.current = setTimeout(() => {
+      setIsExpanded(false);
+      collapseTimeoutRef.current = null;
+    }, AUTO_COLLAPSE_DELAY_MS); // 延迟，给用户足够时间操作
+  };
+
   const handleMouseLeave = () => {
+    isHoveredRef.current = false;
+    // 新建菜单打开期间暂停自动折叠（菜单在 Portal 里，移上去会触发 mouseleave）
+    if (isMenuOpenRef.current) return;
     // 只有在展开状态下才设置自动折叠
     if (isExpanded) {
-      collapseTimeoutRef.current = setTimeout(() => {
-        setIsExpanded(false);
-        collapseTimeoutRef.current = null;
-      }, 300); // 300ms 延迟，给用户足够时间操作
+      scheduleCollapse();
     }
   };
 
   // 点击外部区域时收缩任务栏，并清理定时器
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (isMenuOpenRef.current) return;
       if (taskbarRef.current && !taskbarRef.current.contains(event.target as Node)) {
         // 清除自动折叠定时器
         if (collapseTimeoutRef.current) {
@@ -122,17 +140,29 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
     onSelectTab(tab.id);
   };
 
-  // No new i18n key: compose the existing 'New Task' label with the existing
-  // task-type label ("New Task · Video Editing" / "新建任务 · 视频剪辑").
-  const getNewTaskLabel = (type: TaskType) =>
-    `${t.common.newTask} · ${getTaskLabel(type)}`;
-
-  const createTask = (type: TaskType) => {
-    if (!isExpanded) {
-      setIsExpanded(true);
+  const closeMenu = () => {
+    setIsMenuOpen(false);
+    if (isExpanded && !isHoveredRef.current) {
+      scheduleCollapse();
     }
-    onCreateTask?.(type);
   };
+
+  const toggleMenu = () => {
+    if (isBlurred) return;
+    if (isMenuOpen) {
+      closeMenu();
+      return;
+    }
+    setIsMenuOpen(true);
+  };
+
+  const chooseTaskType = (type: TaskType) => {
+    setIsMenuOpen(false);
+    setIsExpanded(false);
+    onOpenTask?.(type);
+  };
+
+  const existingTypes = new Set<TaskType>(tabs.map(tab => tab.type));
 
   return (
     <>
@@ -190,39 +220,50 @@ const VerticalTaskbar: React.FC<VerticalTaskbarProps> = ({
           </div>
         </div>
 
-        {/* New-task controls. Without these the taskbar can only ever show
-            tabs that already exist, so a second task type is unreachable once
-            the first tab is open. */}
-        {onCreateTask && (
+        {/* The single new-task control. Without it the taskbar can only ever
+            show tabs that already exist, so a second task type is
+            unreachable once the first tab is open. It opens a menu that
+            either switches to the existing task of a type or creates it. */}
+        {onOpenTask && (
           <div className="taskbar-section new-task-section">
-            {NEW_TASK_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                className="taskbar-tab new-task-button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  createTask(type);
-                }}
-                aria-label={getNewTaskLabel(type)}
-                title={getNewTaskLabel(type)}
-              >
-                <div className="tab-icon" aria-hidden="true">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14M5 12h14" />
-                  </svg>
-                </div>
-                <div className={`tab-content ${isExpanded ? 'visible' : 'hidden'}`}>
-                  <span className="tab-title">
-                    {getNewTaskLabel(type)}
-                  </span>
-                </div>
-              </button>
-            ))}
+            <button
+              ref={newTaskButtonRef}
+              type="button"
+              className="taskbar-tab new-task-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleMenu();
+              }}
+              disabled={isBlurred}
+              aria-haspopup="menu"
+              aria-expanded={isMenuOpen}
+              aria-label={t.common.newTask}
+              title={t.common.newTask}
+            >
+              <div className="tab-icon" aria-hidden="true">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14M5 12h14" />
+                </svg>
+              </div>
+              <div className={`tab-content ${isExpanded ? 'visible' : 'hidden'}`}>
+                <span className="tab-title">{t.common.newTask}</span>
+              </div>
+            </button>
           </div>
         )}
 
       </div>
+
+      {isMenuOpen && onOpenTask && (
+        <NewTaskMenu
+          existingTypes={existingTypes}
+          onChoose={chooseTaskType}
+          onClose={closeMenu}
+          returnFocusRef={newTaskButtonRef}
+          renderIcon={getTaskIcon}
+          labelFor={getTaskLabel}
+        />
+      )}
     </>
   );
 };

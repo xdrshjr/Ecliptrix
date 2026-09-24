@@ -65,7 +65,7 @@ function LanguageOption({ flag, label, active, onClick }: { flag: string; label:
       role="menuitem"
       onClick={onClick}
       className={`w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors flex items-center space-x-2 ${
-        active ? 'text-primary bg-primary/10' : 'text-popover-foreground'
+        active ? 'text-foreground bg-accent' : 'text-popover-foreground'
       }`}
     >
       <span className="text-base">{flag}</span>

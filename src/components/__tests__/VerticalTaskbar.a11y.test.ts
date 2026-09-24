@@ -34,25 +34,33 @@ describe('VerticalTaskbar — no login gate', () => {
 });
 
 describe('VerticalTaskbar — new-task entry point', () => {
-  // Without these controls a second task type is unreachable once the first
+  // Without this control a second task type is unreachable once the first
   // tab exists, and the taskbar can only ever show tabs that already exist.
-  it('renders a new-task button per task type when onCreateTask is supplied', () => {
-    expect(SRC).toMatch(/onCreateTask\?: \(type: TaskType\) => void;/);
-    expect(SRC).toMatch(/NEW_TASK_TYPES\.map/);
-    expect(SRC).toMatch(/className="taskbar-tab new-task-button"/);
+  // editor-shell-ui-consolidation W2: ONE "+" that opens a type menu.
+  it('renders a single new-task button when onOpenTask is supplied', () => {
+    expect(SRC).toMatch(/onOpenTask\?: \(type: TaskType, options\?: OpenTaskOptions\) => void;/);
+    expect(SRC).not.toMatch(/NEW_TASK_TYPES/);
+    expect(SRC).not.toMatch(/onCreateTask/);
+    expect(SRC.match(/className="taskbar-tab new-task-button"/g)).toHaveLength(1);
   });
 
-  it('the new-task button is a real button with an accessible name', () => {
+  it('the new-task button is a real menu button with an accessible name', () => {
     const block = SRC.match(/<button[\s\S]*?className="taskbar-tab new-task-button"[\s\S]*?<\/button>/);
     expect(block).not.toBeNull();
     expect(block![0]).toMatch(/type="button"/);
-    expect(block![0]).toMatch(/aria-label=\{getNewTaskLabel\(type\)\}/);
+    expect(block![0]).toMatch(/aria-haspopup="menu"/);
+    expect(block![0]).toMatch(/aria-expanded=\{isMenuOpen\}/);
+    expect(block![0]).toMatch(/aria-label=\{t\.common\.newTask\}/);
     expect(block![0]).toMatch(/aria-hidden="true"/);
   });
 
-  it('composes its label from existing i18n keys (no new key introduced)', () => {
-    expect(SRC).toMatch(/t\.common\.newTask/);
-    expect(I18N_SRC).toMatch(/newTask: string;/);
+  it('pauses auto-collapse while the portaled menu is open', () => {
+    expect(SRC.match(/if \(isMenuOpenRef\.current\) return;/g)).toHaveLength(2);
+  });
+
+  it('menu hints live in the existing tasks namespace', () => {
+    expect(I18N_SRC).toMatch(/newTaskMenu: \{ create: string; switchTo: string \};/);
+    expect(I18N_SRC).toMatch(/switchTo: '已打开，点击切换'/);
   });
 });
 

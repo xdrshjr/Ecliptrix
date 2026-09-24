@@ -44,11 +44,11 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
     document.title = DEFAULT_EN_TITLE;
   });
 
-  it('createTask persists state to LS, syncs URL, updates title', async () => {
+  it('openTask persists state to LS, syncs URL, updates title', async () => {
     const { result } = renderHook(() => useTasks());
 
     act(() => {
-      result.current.createTask('chat');
+      result.current.openTask('chat');
     });
 
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -129,7 +129,7 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
     const { result } = renderHook(() => useTasks());
 
     act(() => {
-      result.current.createTask('video');
+      result.current.openTask('video');
     });
 
     expect(localStorage.getItem(STORAGE_KEY)).toBeTruthy();
@@ -248,7 +248,7 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
       const { result } = renderHook(() => useTasks());
       expect(() => {
         act(() => {
-          result.current.createTask('video');
+          result.current.openTask('video');
         });
       }).not.toThrow();
       expect(result.current.tasks.length).toBeGreaterThan(0);
@@ -256,5 +256,103 @@ describe('useTasks persistence (iter3 Bug #1)', () => {
       window.localStorage.setItem = original;
       warn.mockRestore();
     }
+  });
+});
+
+const iso = (ms: number) => new Date(ms).toISOString();
+const persistedTask = (id: string, type: 'chat' | 'video', updatedMs = 0, content: unknown = null) => ({
+  id, title: id, type, status: 'draft', createdAt: iso(0), updatedAt: iso(updatedMs), content,
+});
+
+describe('useTasks single instance per type (editor-shell-ui-consolidation W3)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('open_task_twice_does_not_duplicate', () => {
+    const { result } = renderHook(() => useTasks());
+    act(() => { result.current.openTask('video'); });
+    act(() => { result.current.openTask('video'); });
+    expect(result.current.tasks.filter(t => t.type === 'video')).toHaveLength(1);
+    expect(result.current.tabs).toHaveLength(1);
+  });
+
+  it('open_task_called_twice_in_same_tick_creates_one', () => {
+    const { result } = renderHook(() => useTasks());
+    act(() => {
+      result.current.openTask('video');
+      result.current.openTask('video');
+    });
+    expect(result.current.tasks).toHaveLength(1);
+    expect(result.current.tabs).toHaveLength(1);
+  });
+
+  it('first_open_creates_only_requested_type', () => {
+    const { result } = renderHook(() => useTasks());
+    act(() => { result.current.openTask('chat'); });
+    expect(result.current.tasks.map(t => t.type)).toEqual(['chat']);
+    expect(result.current.tasks[0].title).toBe('AI Chat');
+  });
+
+  it('open_task_reopens_closed_tab_with_same_content', () => {
+    const { result } = renderHook(() => useTasks());
+    act(() => { result.current.openTask('chat'); });
+    const taskId = result.current.tasks[0].id;
+    act(() => { result.current.updateTask(taskId, { content: { marker: 1 } }); });
+    act(() => { result.current.closeTab(result.current.tabs[0].id); });
+    expect(result.current.tabs).toHaveLength(0);
+    act(() => { result.current.openTask('chat'); });
+    expect(result.current.tasks).toHaveLength(1);
+    expect(result.current.tabs[0].taskId).toBe(taskId);
+    expect(result.current.activeTask?.content).toEqual({ marker: 1 });
+  });
+
+  it('open_task_update_content_applies_to_new_task', () => {
+    const { result } = renderHook(() => useTasks());
+    act(() => {
+      result.current.openTask('video', {
+        updateContent: previous => ({ previous, pendingMaterials: ['m1'] }),
+      });
+    });
+    expect(result.current.activeTask?.type).toBe('video');
+    expect(result.current.activeTask?.content).toEqual({ previous: null, pendingMaterials: ['m1'] });
+  });
+
+  it('tab_is_active_matches_active_tab_id', () => {
+    const { result } = renderHook(() => useTasks());
+    act(() => { result.current.openTask('video'); });
+    act(() => { result.current.openTask('chat'); });
+    for (const tab of result.current.tabs) {
+      expect(tab.isActive).toBe(tab.id === result.current.activeTabId);
+    }
+    expect(result.current.tabs.map(tab => tab.type)).toEqual(['chat', 'video']);
+  });
+
+  it('legacy_multi_task_state_is_collapsed_on_load', () => {
+    const persisted = {
+      tasks: [
+        persistedTask('v1', 'video', 1),
+        persistedTask('v2', 'video', 3),
+        persistedTask('v3', 'video', 2),
+        persistedTask('c1', 'chat', 1, { conversations: [{ id: 'a', createdAt: iso(0), updatedAt: iso(0), messages: [] }], activeConversationId: 'a' }),
+        persistedTask('c2', 'chat', 2, { conversations: [{ id: 'b', createdAt: iso(0), updatedAt: iso(0), messages: [] }], activeConversationId: 'b' }),
+      ],
+      tabs: [
+        { id: 'tv1', taskId: 'v1', title: 'Video Editing 1', isActive: true, type: 'video' },
+        { id: 'tv2', taskId: 'v2', title: 'Video Editing 2', isActive: false, type: 'video' },
+        { id: 'tc2', taskId: 'c2', title: 'AI Chat 2', isActive: false, type: 'chat' },
+      ],
+      activeTabId: 'tv1',
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+
+    const { result } = renderHook(() => useTasks());
+
+    expect(result.current.tasks.map(t => t.id).sort()).toEqual(['c2', 'v1']);
+    const chat = result.current.tasks.find(t => t.type === 'chat') as any;
+    expect(chat.content.conversations.map((c: any) => c.id)).toEqual(['b', 'a']);
+    expect(result.current.tabs.map(t => t.id)).toEqual(['tc2', 'tv1']);
+    expect(result.current.activeTabId).toBe('tv1');
   });
 });

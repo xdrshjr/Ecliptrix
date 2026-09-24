@@ -87,7 +87,7 @@ import { AsyncTaskPoller } from './components/AsyncTaskPoller';
 import { Conversation, ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
-import { EditorTopBar, EditorWorkbench, InspectorPanel, RightPanel, SegmentDialogsHost, ToolWindowRail,
+import { EditorTopBar, EditorWorkbench, InspectorPanel, RightPanel, SegmentDialogsHost, FooterToolbar,
   useEditorExportWiring, useWorkbenchWiring, type EditorProjectChrome } from './workbench';
 import { useSegmentLinks } from './hooks/useSegmentLinks';
 import { useSegmentCommands } from './hooks/useSegmentCommands';
@@ -2116,14 +2116,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     <SegmentLinksContext.Provider value={segmentLinks}><SegmentCommandsContext.Provider value={segmentCommands}>
     <PlayingSegmentContext.Provider value={playingSegmentId}>
     <div className="flex-1 flex min-h-0 overflow-hidden relative">
-      {/* 以「视频段落」为核心的工作台：顶栏｜工具窗口条｜脚本·成片预览·素材/属性｜可拖高时间轴 */}
+      {/* 以「视频段落」为核心的工作台：顶栏｜脚本·成片预览·素材/属性｜可拖高时间轴（底部栏左端为面板开关） */}
       <EditorWorkbench
         layout={workbench.layout}
         isTimelineLocked={agent.agentIsExecuting}
         topBar={<EditorTopBar project={projectChrome} isAssistantOpen={isAgentDockOpen}
           isAgentBusy={agent.agentIsExecuting} onToggleAssistant={workbench.toggleAssistant}
           exportState={editorExport.exportState} onExport={() => void editorExport.handleExport()} />}
-        rail={<ToolWindowRail {...workbench.railProps} />}
         left={
           <ScriptPanel
             segments={editorSegments} className="h-full" taskId={taskId} projectId={projectId}
@@ -2212,12 +2211,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onRetryLocalDownload={materialManagement.retryLocalDownload}
             // content 非空即素材库已从项目数据载入；此前不标记「素材缺失」(N-01)
             materialsLoaded={content !== null}
+            footerLeading={<FooterToolbar {...workbench.footerToolbarProps} />}
           />
         }
-        // 顶栏「AI 助手」打开的右侧抽屉；只覆盖上半区，不遮挡时间轴（§3.9）
-        drawer={
+        // 右下角可拖拽的 AI 悬浮球 + 浮窗；在时间轴锁遮罩之外，Agent 执行中仍可操作
+        assistant={
           <AgentChatDock
-            isOpen={isAgentDockOpen} onMinimize={() => setIsAgentDockOpen(false)}
+            isOpen={isAgentDockOpen} onOpen={() => setIsAgentDockOpen(true)}
+            onMinimize={() => setIsAgentDockOpen(false)}
+            agentIsExecuting={agent.agentIsExecuting}
             contextLabel={workbench.assistantContextLabel}
             chatProps={{
               conversation: activeConversation, onSendMessage: handleSendChatMessage,

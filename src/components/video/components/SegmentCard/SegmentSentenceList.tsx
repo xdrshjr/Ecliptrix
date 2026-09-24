@@ -123,7 +123,7 @@ const SentenceTimingLine: React.FC<{
   if (timing) {
     return (
       <div className="flex items-center space-x-2 mt-1">
-        <span className="text-xs text-[color:var(--ws-primary-text)] font-mono bg-primary-a/10 px-1 py-0.5 rounded">
+        <span className="text-xs text-foreground font-mono bg-secondary px-1 py-0.5 rounded">
           {formatTime(timing.startTime)}-{formatTime(timing.endTime)}
         </span>
         <span className="text-xs text-muted-foreground">

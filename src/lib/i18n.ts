@@ -343,6 +343,7 @@ export interface Translations {
     aiChat: string;
     types: { video: string; chat: string };
     defaultPageTitle: string;
+    newTaskMenu: { create: string; switchTo: string };
   };
   videoProjects: {
     closeUnsavedTitle: string;
@@ -713,6 +714,9 @@ export interface Translations {
       timeLabel: string;
       durationUnit: string;
       sentenceCount: string;
+    };
+    audioDisplay: {
+      toggleTitle: string;
     };
     panelAriaLabel: string;
   };
@@ -1518,6 +1522,13 @@ export interface Translations {
       partialFailed: string;
       failed: string;
       clipDescription: string;
+    };
+    agentDock: {
+      fabLabel: string;
+      panelTitle: string;
+      close: string;
+      minimize: string;
+      busy: string;
     };
   };
   videoScript: {
@@ -3371,6 +3382,7 @@ export const translations: Record<string, Translations> = {
       aiChat: 'AI Chat',
       types: { video: 'Video Editing', chat: 'AI Chat' },
       defaultPageTitle: 'Ecliptrix — Where light and shadow collide',
+      newTaskMenu: { create: 'Create', switchTo: 'Open — switch to it' },
     },
     videoProjects: {
       closeUnsavedTitle: "Some changes aren't saved yet",
@@ -4096,6 +4108,9 @@ export const translations: Record<string, Translations> = {
         durationUnit: 's',
         sentenceCount: '{count} sentences',
       },
+      audioDisplay: {
+        toggleTitle: 'Audio clips: show sentences (waveform by default)',
+      },
       panelAriaLabel: 'Timeline',
     },
     videoSearchModal: {
@@ -4552,6 +4567,13 @@ export const translations: Record<string, Translations> = {
        partialFailed: "{failed} of {total} clips couldn't be cut and were removed",
        failed: "Couldn't cut the video: {message}",
        clipDescription: 'Clip cut from "{name}", {start} - {end}',
+     },
+     agentDock: {
+       fabLabel: 'AI editing assistant',
+       panelTitle: 'AI Editing Assistant',
+       close: 'Close',
+       minimize: 'Minimize assistant',
+       busy: 'Agent running…',
      },
    },
    videoScript: {
@@ -5665,7 +5687,7 @@ export const translations: Record<string, Translations> = {
     workbench: {
       regions: {
         topBar: 'Editor toolbar',
-        rail: 'Tool windows',
+        rail: 'Panel tools',
         script: 'Script and segments',
         preview: 'Final preview',
         side: 'Materials and properties',
@@ -6412,6 +6434,7 @@ export const translations: Record<string, Translations> = {
       aiChat: 'AI对话',
       types: { video: '视频编辑', chat: 'AI 对话' },
       defaultPageTitle: 'Ecliptrix — 光影交汇之处',
+      newTaskMenu: { create: '新建', switchTo: '已打开，点击切换' },
     },
     videoProjects: {
       closeUnsavedTitle: '部分修改尚未保存',
@@ -7135,6 +7158,9 @@ export const translations: Record<string, Translations> = {
         durationUnit: '秒',
         sentenceCount: '{count} 句',
       },
+      audioDisplay: {
+        toggleTitle: '音频片段：显示句段（默认显示波形）',
+      },
       panelAriaLabel: '时间轴',
     },
     videoSearchModal: {
@@ -7591,6 +7617,13 @@ export const translations: Record<string, Translations> = {
        partialFailed: '{total} 个切片中有 {failed} 个切分失败，已移除',
        failed: '视频切分失败：{message}',
        clipDescription: '从"{name}"剪切的片段，时间范围：{start} - {end}',
+     },
+     agentDock: {
+       fabLabel: 'AI 剪辑助手',
+       panelTitle: 'AI 剪辑助手',
+       close: '收起',
+       minimize: '最小化助手',
+       busy: 'Agent 执行中…',
      },
    },
    videoScript: {
@@ -8703,7 +8736,7 @@ export const translations: Record<string, Translations> = {
     workbench: {
       regions: {
         topBar: '编辑器顶栏',
-        rail: '工具窗口',
+        rail: '面板工具',
         script: '文案与段落',
         preview: '成片预览',
         side: '素材与属性',

@@ -222,7 +222,7 @@ const SegmentVideoCarousel: React.FC<SegmentVideoCarouselProps> = ({
         <h5 className="text-xs font-medium text-muted-foreground flex items-center">
           {t.scriptPanel.video.associatedVideos}
           {videos.length > 1 && (
-            <span className="ml-1 text-xs text-[color:var(--ws-primary-text)] bg-primary-a/10 px-1 py-0.5 rounded">
+            <span className="ml-1 text-xs text-foreground bg-secondary px-1 py-0.5 rounded">
               {t.scriptPanel.video.multipleVideos}
             </span>
           )}

@@ -33,6 +33,7 @@ beforeAll(() => {
     '@/stores/editorFocusStore': { useEditorFocusStore },
     './ProjectNameEditor': compileComponentModule(nameSource, base),
     './SaveStatusIndicator': compileComponentModule(saveSource, base),
+    '../components/AgentChatDock/AgentChatDock': { AGENT_PANEL_ID: 'ws-assistant-panel' },
     './TaskCenterButton': { __esModule: true, default: () => React.createElement('span', null, 'tasks') },
   });
 });

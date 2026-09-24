@@ -70,7 +70,7 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 - **API clients**: `src/lib/api/` — typed service clients (storage, tts, videoComposition, material, llm, etc.), all going through the `http-client` wrapper
 - **Components by feature**: `src/components/video/` (30+ components + `timeline/`, `hooks/`, `components/` subdirs), `src/components/chat/`, `src/components/settings/` (the settings centre), `src/components/shell/` (title bar + its action cluster), `src/components/ui/` (shadcn-style)
 - **i18n**: Single large translation file at `src/lib/i18n.ts`
-- **Shell**: `app/page.tsx` renders title bar + task bar + workspace and opens a video-editing task straight away. `Container`'s empty state and the task bar's "new task" buttons are the ONLY ways to create a task — do not remove them.
+- **Shell**: `app/page.tsx` renders title bar + task bar + workspace and opens a video-editing task straight away. Tasks are single-instance per type (at most one AI chat and one video-editing task; `useTasks.openTask` switches to / reopens the existing one, and legacy multi-task state is collapsed on load by `hooks/taskSingleton.ts`). `Container`'s empty state and the task bar's single "+" menu (`shell/NewTaskMenu`) are the ONLY ways to open a task — do not remove them.
 - **Types**: Centralized in `src/types/index.ts`
 - **Dark mode**: Class-based (`darkMode: ["class"]` in Tailwind config), colors use CSS variables
 - **UI components**: shadcn/ui (style: "new-york", RSC enabled) — see `components.json`

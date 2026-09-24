@@ -123,6 +123,8 @@ interface TimelinePanelProps {
   onRetryLocalDownload?: (materialId: string) => void;
   /** The material library has loaded, so a clip without its material is really missing (N-01). */
   materialsLoaded?: boolean;
+  /** Forwarded to the bottom bar's left end (workbench panel toggles). */
+  footerLeading?: React.ReactNode;
 }
 
 /**
@@ -165,6 +167,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
   externalTimelineUpdateId,
   onRetryLocalDownload,
   materialsLoaded = false,
+  footerLeading,
 }, ref) => {
   const { t, locale } = useLocale();
   const { showSuccess, showError, showInfo, showWarning } = useNotification();
@@ -1466,6 +1469,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
         onOpenCameraMotion={handleOpenCameraMotion}
         onMaterialDrop={handleMaterialDropById}
         isMaterialMissing={isMaterialMissing} projectId={taskId}
+        footerLeading={footerLeading}
       />
 
       <DragTimeBadge containerRef={panelRef} />

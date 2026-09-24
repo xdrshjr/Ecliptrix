@@ -44,6 +44,9 @@ interface TrackContainerProps {
   isMaterialMissing?: MissingMaterialPredicate;
   /** Project / task id; scopes which empty lanes the user opened. */
   projectId?: string;
+  /** Rendered at the far left of the bottom bar, before the track stats
+   *  (the workbench panel toggles, editor-shell-ui-consolidation W4). */
+  footerLeading?: React.ReactNode;
 }
 
 const TrackContainer: React.FC<TrackContainerProps> = ({
@@ -60,6 +63,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   onMaterialDrop,
   isMaterialMissing,
   projectId,
+  footerLeading,
 }) => {
   const { t, locale: contextLocale } = useLocale();
 
@@ -400,11 +404,19 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
 
       {/* 底部轨道管理栏 */}
       <div className="flex-shrink-0 h-8 bg-muted border-t border-border flex items-center justify-between px-4">
-        {/* 左侧轨道信息 */}
-        <div className="flex items-center space-x-3 text-xs text-muted-foreground">
-          <span>{t.timeline.trackBar.tracks}: {tracks.length}</span>
-          <span>{t.timeline.trackBar.materials}: {tracks.reduce((total, track) => total + track.items.length, 0)}</span>
-          <span className="tabular-nums">{t.timeline.trackBar.duration}: {formatTimelineTime(totalDuration, { showMs: true })}</span>
+        {/* 左端：工作台面板开关（footerLeading）+ 轨道信息 */}
+        <div className="flex items-center min-w-0">
+          {footerLeading && (
+            <>
+              {footerLeading}
+              <span className="h-4 w-px bg-border mx-2 flex-shrink-0" aria-hidden="true" />
+            </>
+          )}
+          <div className="flex items-center space-x-3 text-xs text-muted-foreground whitespace-nowrap">
+            <span>{t.timeline.trackBar.tracks}: {tracks.length}</span>
+            <span>{t.timeline.trackBar.materials}: {tracks.reduce((total, track) => total + track.items.length, 0)}</span>
+            <span className="tabular-nums">{t.timeline.trackBar.duration}: {formatTimelineTime(totalDuration, { showMs: true })}</span>
+          </div>
         </div>
 
         {/* 右侧添加轨道按钮 */}

@@ -2,8 +2,9 @@
 
 /**
  * EditorWorkbench — pure layout shell of the segment-centric editor (spec
- * §3.1): top bar, tool-window rail, script | preview | materials·properties,
- * a resizable timeline and the assistant drawer slot. It owns no business
+ * §3.1): top bar, script | preview | materials·properties, a resizable
+ * timeline (whose bottom bar carries the panel toggles) and the floating
+ * assistant slot. It owns no business
  * state; `layout` (useWorkbenchLayout) decides sizes and visibility.
  */
 
@@ -18,12 +19,12 @@ import type { UseWorkbenchLayoutReturn } from './useWorkbenchLayout';
 
 export interface EditorWorkbenchProps {
   topBar: React.ReactNode;
-  rail: React.ReactNode;
   left: React.ReactNode;
   center: React.ReactNode;
   right: React.ReactNode;
   timeline: React.ReactNode;
-  drawer: React.ReactNode;
+  /** Floating assistant (FAB + panel), positioned inside `.ws-main`. */
+  assistant: React.ReactNode;
   layout: UseWorkbenchLayoutReturn;
   /** `inert` + lock overlay while the agent owns the timeline (S9). */
   isTimelineLocked: boolean;
@@ -44,7 +45,7 @@ function useOverlayDismiss(layout: UseWorkbenchLayoutReturn): void {
     if (!anyOpen) return undefined;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (!target || target.closest('[data-overlay="true"], .ws-rail')) return;
+      if (!target || target.closest('[data-overlay="true"], .ws-footer-tools')) return;
       if (mainRef.current?.contains(target)) closeOverlays();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -71,7 +72,7 @@ function sideAttrs(layout: UseWorkbenchLayoutReturn, side: 'left' | 'right') {
 }
 
 const EditorWorkbench: React.FC<EditorWorkbenchProps> = ({
-  topBar, rail, left, center, right, timeline, drawer, layout, isTimelineLocked,
+  topBar, left, center, right, timeline, assistant, layout, isTimelineLocked,
 }) => {
   const { t } = useLocale();
   const regions = t.workbench.regions;
@@ -87,7 +88,6 @@ const EditorWorkbench: React.FC<EditorWorkbenchProps> = ({
     <div ref={layout.rootRef} className="editor-workbench">
       {topBar}
       <div className="ws-body">
-        {rail}
         <div ref={layout.mainRef} className="ws-main">
           <div className="ws-upper">
             <section id={WORKBENCH_REGION_IDS.left} className="ws-region ws-left"
@@ -132,7 +132,7 @@ const EditorWorkbench: React.FC<EditorWorkbenchProps> = ({
             {isTimelineLocked && <div className="agent-timeline-lock-overlay" />}
             {timeline}
           </section>
-          {drawer}
+          {assistant}
           <div className="ws-too-narrow" role="status">{t.workbench.layout.tooNarrow}</div>
         </div>
       </div>

@@ -23,6 +23,7 @@ import * as segmentLinksContext from '../../lib/segments/SegmentLinksContext';
 import type { SegmentLinksValue } from '../../lib/segments/SegmentLinksContext';
 import type { TimelineData, TimelineItemData } from '../domain/types';
 import { compileComponent, localeContextModule, reactModules } from './test-utils/compileComponent';
+import * as audioClipDisplayPref from '../audioClipDisplayPref';
 
 type ItemProps = { item: TimelineItemData; pixelsPerSecond: number; trackHeight: number };
 
@@ -77,6 +78,8 @@ beforeAll(() => {
     './SentenceSegmentBar': Nothing,
     './lib/sentenceWindow': sentenceWindow,
     './AudioWaveformCanvas': Nothing,
+    './SentenceHitLayer': Nothing,
+    './audioClipDisplayPref': audioClipDisplayPref,
     './timeFormat': timeFormat,
     './domain/value-objects/ZoomLevel': zoomLevelModule,
     './domain/machines/dragMachine': dragMachine,

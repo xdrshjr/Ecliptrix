@@ -14,6 +14,7 @@ import {
   localeContextModule,
   reactModules,
 } from './test-utils/compileComponent';
+import * as audioClipDisplayPref from '../audioClipDisplayPref';
 
 const { useTimelineStore } = storeModule;
 const t = getTranslations('en');
@@ -29,6 +30,7 @@ beforeAll(() => {
     'zustand/react/shallow': shallowModule,
     './store': storeModule,
     './PortalTooltip': PortalTooltip,
+    './audioClipDisplayPref': audioClipDisplayPref,
     '../playback/camera/eligibility': eligibility,
   });
 });
