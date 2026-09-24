@@ -1,5 +1,6 @@
 'use strict'
 
+const fs = require('fs')
 const path = require('path')
 const { app, dialog } = require('electron')
 
@@ -10,6 +11,7 @@ const { ManagedService } = require('./processManager')
 const { createBackendDescriptor } = require('./backendService')
 const { createFrontendDescriptor } = require('./frontendService')
 const { Logger, LogLevel } = require('./logger')
+const { APP_ICON_PATH, resolveAppUserModelId } = require('./appIcon')
 const { registerWindowControlIpc } = require('./windowControls')
 const windows = require('./window')
 
@@ -17,6 +19,13 @@ const windows = require('./window')
 // packaged children (spec §4.1).
 const isDev = process.argv.includes('--dev')
 const DEV_FRONTEND_URL = 'http://localhost:3000'
+
+// Must precede any BrowserWindow: ties running windows to the NSIS shortcut's
+// AUMID so taskbar pinning/grouping uses our icon (spec brand-logo-refresh
+// §3.2.3).
+if (process.platform === 'win32') {
+  app.setAppUserModelId(resolveAppUserModelId(isDev))
+}
 
 // Minimum structured-log level, overridable via ECLIPTRIX_LOG_LEVEL (spec §4).
 const LEVEL_BY_NAME = {
@@ -101,6 +110,11 @@ async function main() {
   const minLevel = LEVEL_BY_NAME[(process.env.ECLIPTRIX_LOG_LEVEL || '').toLowerCase()] || LogLevel.INFO
   state.logger = new Logger(state.logsPath, { minLevel })
   state.logger.info('main', `Ecliptrix ${app.getVersion()} starting (userData=${state.userDataPath})`)
+  // A missing icon never blocks startup, but the window would silently fall
+  // back to the default icon — leave a trace (spec brand-logo-refresh RV-2).
+  if (!fs.existsSync(APP_ICON_PATH)) {
+    state.logger.warn('main', `App icon missing at ${APP_ICON_PATH}`)
+  }
 
   // Register renderer-facing IPC BEFORE the `--dev` early-return (spec §2.3b /
   // R2). main() runs once via app.whenReady(), so these never double-register.

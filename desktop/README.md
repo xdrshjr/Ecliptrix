@@ -91,6 +91,21 @@ node scripts/build.js [--dir] [--skip-frontend] [--skip-backend] [--cn-mirror]
 release-essentials 构建(GPL,许可证文本随包发布);国内网络不通时请用
 `ECLIPTRIX_FFMPEG_URL` 指向可达的 zip 包。
 
+### exe 图标(rcedit)
+
+- `electron-builder.yml` 的 `win.signAndEditExecutable` 必须为 `true`:
+  electron-builder 的「签名 + 编辑可执行文件」是同一步,关掉后 rcedit 不运行,
+  `Ecliptrix.exe`(以及任务栏、固定到任务栏、快捷方式)显示的是 Electron 默认原子图标。
+  未配置证书时构建日志会打印 `signing is skipped`,属正常,只做 rcedit。
+- 首次打包需解压 electron-builder 缓存 `winCodeSign-2.6.0`,其中含 darwin 符号链接。
+  若报 `Cannot create symbolic link`:开启 Windows「开发者模式」,或以管理员身份运行一次
+  `npm run build` 填充缓存(`%LOCALAPPDATA%\electron-builder\Cache\winCodeSign`)后再正常打包。
+- **禁止**把 `signAndEditExecutable` 改回 `false` 来绕过上述报错——修打包环境;
+  `node main/appIcon.test.js` 会拦截该回归。
+- 覆盖安装后图标仍是旧的:先卸载旧版再安装;仍不变则执行 `ie4uinit.exe -show` 刷新图标缓存。
+- 安装包未签名,SmartScreen 提示见下方「常见问题」。
+- 图标资产由 `python docs/brand/generate_brand_assets.py` 从品牌源图生成(见 `docs/brand/README.md`)。
+
 ## 首次启动与配置
 
 打包产物双击即开——**不需要预先配置任何 API key**:
@@ -218,8 +233,8 @@ desktop/
 ├─ electron-builder.yml    # NSIS + extraResources 映射
 ├─ main/                   # Electron 主进程(进程托管 / 端口 / 配置 / 窗口 / 日志)
 ├─ preload/                # contextBridge 只读元信息(零业务 IPC)
-├─ assets/                 # splash.html / error.html
-├─ resources/icons/        # 应用图标(v1 为脚本生成的占位图标)
+├─ assets/                 # splash.html / error.html / brand-mark.png / icon.ico(运行时窗口图标)
+├─ resources/icons/        # 应用图标(由 docs/brand/generate_brand_assets.py 从品牌源图生成)
 ├─ scripts/                # build.js 及 prepare-* 打包脚本、smoke-test.js、test-logger.js
 ├─ logs/                   # (生成,开发态)npm run dev 的分类日志,已 gitignore
 ├─ build/                  # (生成)打包前的工件组装区

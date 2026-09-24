@@ -22,16 +22,27 @@
       font-size: 30px;
       font-weight: 700;
       letter-spacing: 2px;
-      background: linear-gradient(90deg, #8ab4ff, #c084fc);
+      background: linear-gradient(90deg, #ff8a5c, #7b6cff 50%, #38bdf8);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
     }
+    .brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .mark {
+      width: 72px;
+      height: 72px;
+      -webkit-user-drag: none;
+    }
     .spinner {
       width: 34px;
       height: 34px;
-      border: 3px solid rgba(138, 180, 255, 0.25);
-      border-top-color: #8ab4ff;
+      border: 3px solid rgba(56, 189, 248, 0.25);
+      border-top-color: #38bdf8;
       border-radius: 50%;
       animation: spin 0.9s linear infinite;
     }
@@ -45,7 +56,10 @@
   </style>
 </head>
 <body>
-  <div class="logo">Ecliptrix</div>
+  <div class="brand">
+    <img class="mark" src="brand-mark.png" alt="" width="72" height="72" />
+    <div class="logo">Ecliptrix</div>
+  </div>
   <div class="spinner"></div>
   <p id="status">正在启动…</p>
   <p class="hint">首次启动需要初始化本地数据,可能稍慢</p>

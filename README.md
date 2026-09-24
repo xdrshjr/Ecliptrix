@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/logo-ai.png" alt="Ecliptrix Logo" width="200" />
+  <img src="public/brand/ecliptrix-logo.png" alt="Ecliptrix Logo" width="240" />
 </div>
 
 # Ecliptrix

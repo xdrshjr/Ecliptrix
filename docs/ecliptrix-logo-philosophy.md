@@ -1,3 +1,5 @@
+> 已被 docs/brand/（2026-09 新 LOGO）取代，仅作历史参考。
+
 # Liminal Flux
 
 **A Design Philosophy**

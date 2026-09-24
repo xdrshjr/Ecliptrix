@@ -3,6 +3,7 @@
 const path = require('path')
 const { BrowserWindow, dialog, ipcMain, screen, shell } = require('electron')
 const { installCloseGuard } = require('./closeGuard')
+const { APP_ICON_PATH } = require('./appIcon')
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets')
 const DEFAULT_WINDOW_WIDTH = 1366
@@ -14,6 +15,7 @@ function createSplashWindow() {
   const splash = new BrowserWindow({
     width: 420,
     height: 280,
+    icon: APP_ICON_PATH,
     frame: false,
     resizable: false,
     alwaysOnTop: true,
@@ -96,6 +98,7 @@ function createMainWindow({ url, bounds, onBoundsChange, version, logsPath, logg
   const win = new BrowserWindow({
     width: initialWindowState.width,
     height: initialWindowState.height,
+    icon: APP_ICON_PATH,
     x: initialWindowState.x,
     y: initialWindowState.y,
     fullscreen: initialWindowState.fullscreen,
@@ -168,6 +171,7 @@ function showErrorWindow({ serviceName, logsPath, detail }) {
   const win = new BrowserWindow({
     width: 600,
     height: 420,
+    icon: APP_ICON_PATH,
     resizable: false,
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false },

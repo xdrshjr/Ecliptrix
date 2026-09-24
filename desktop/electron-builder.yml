@@ -56,8 +56,18 @@ win:
       arch:
         - x64
   icon: resources/icons/icon.ico
-  # v1 ships unsigned (spec §7 risk 7) — SmartScreen warning documented in README.
-  signAndEditExecutable: false
+  # rcedit stamps icon + version info into Ecliptrix.exe; without it the exe
+  # (and so the taskbar/pinned icon) keeps Electron's default atom. No
+  # certificate is configured, so electron-builder still skips the signing
+  # half — v1 ships unsigned (spec §7 risk 7), SmartScreen note in README.
+  # Never flip back to false to dodge a winCodeSign error (desktop/README).
+  signAndEditExecutable: true
+
+# Win32 LoadImage reads .ico straight from disk and cannot see inside asar,
+# so the runtime window icon must live in app.asar.unpacked
+# (docs/plans/brand-logo-refresh/spec.md RV-1).
+asarUnpack:
+  - assets/icon.ico
 
 nsis:
   oneClick: false
@@ -66,3 +76,6 @@ nsis:
   deleteAppDataOnUninstall: false
   artifactName: ${productName}-Setup-${version}.${ext}
   shortcutName: Ecliptrix
+  installerIcon: resources/icons/icon.ico
+  uninstallerIcon: resources/icons/icon.ico
+  installerHeaderIcon: resources/icons/icon.ico

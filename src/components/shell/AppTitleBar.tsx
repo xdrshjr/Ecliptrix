@@ -89,7 +89,7 @@ export default function AppTitleBar(props: AppTitleBarProps) {
         }}
       >
         <Image
-          src="/logo-ai.png"
+          src="/brand/ecliptrix-mark.png"
           alt="Ecliptrix"
           width={18}
           height={18}
