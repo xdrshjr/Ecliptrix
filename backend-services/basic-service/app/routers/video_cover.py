@@ -7,6 +7,7 @@ it from the request.
 """
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,20 @@ logger = get_logger(__name__)
 PNG_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
+async def legacy_write_guard(project_id: str,
+                             db: AsyncSession = Depends(get_db_session)):
+    from app.services.video_cover_asset_service import project_locks
+    from app.services.video_cover_v2_service import assert_legacy_writable
+    try:
+        UUID(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+    async with project_locks(project_id):
+        await assert_legacy_writable(db, project_id)
+        yield
+        await db.commit()
+
+
 @router.get("/{project_id}", response_model=CoverStateResponse)
 async def get_video_cover(
     project_id: str,
@@ -48,7 +63,8 @@ async def get_video_cover(
     )
 
 
-@router.put("/{project_id}", response_model=CoverStateResponse)
+@router.put("/{project_id}", response_model=CoverStateResponse,
+            dependencies=[Depends(legacy_write_guard)])
 async def put_video_cover(
     project_id: str,
     payload: CoverStateIn,
@@ -74,7 +90,8 @@ async def put_video_cover(
     )
 
 
-@router.post("/{project_id}/png-cache", response_model=PngCacheResponse)
+@router.post("/{project_id}/png-cache", response_model=PngCacheResponse,
+             dependencies=[Depends(legacy_write_guard)])
 async def post_video_cover_png_cache(
     project_id: str,
     file: UploadFile = File(...),
@@ -131,7 +148,8 @@ async def post_video_cover_png_cache(
     )
 
 
-@router.delete("/{project_id}", response_model=BaseResponse)
+@router.delete("/{project_id}", response_model=BaseResponse,
+               dependencies=[Depends(legacy_write_guard)])
 async def delete_video_cover(
     project_id: str,
     db: AsyncSession = Depends(get_db_session),
@@ -149,6 +167,8 @@ async def delete_video_cover(
             detail="Cover not found",
         )
     await video_cover_service.delete_for_project(db, project_id)
+    await db.commit()
+    video_cover_service.cleanup_files(project_id)
     return BaseResponse(
         success=True,
         message="Cover deleted",

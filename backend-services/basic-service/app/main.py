@@ -176,12 +176,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             f"Failed to schedule derived-file reclaim: {str(e)}", exc_info=True
         )
 
+    from app.services.video_cover_job_service import cover_job_service
+    await cover_job_service.start()
     logger.info("Application startup completed")
 
     yield
 
     # Shutdown
     logger.info("Shutting down application")
+    await cover_job_service.close()
     await close_db()
     logger.info("Application shutdown completed")
 
@@ -550,6 +553,19 @@ app.include_router(config_router.router, prefix="/api")
 from app.routers import video_cover as video_cover_router
 
 app.include_router(video_cover_router.router, prefix="/api")
+
+from app.routers import video_cover_v2 as video_cover_v2_router
+from app.models.video_cover_v2_models import CoverError
+
+app.include_router(video_cover_v2_router.router, prefix="/api")
+
+
+@app.exception_handler(CoverError)
+async def cover_error_handler(request: Request, exc: CoverError):
+    return JSONResponse(status_code=exc.status, content=ErrorResponse(
+        success=False, message=str(exc), error_code=exc.code,
+        error_details=exc.details,
+    ).model_dump(mode="json"))
 
 # Generated audio + subtitles live under the persistent, writable STORAGE_ROOT
 # (Bug B / B1). The write side (tts_service / sentence_tts_service) and the

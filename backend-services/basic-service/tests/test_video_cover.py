@@ -305,3 +305,39 @@ async def test_project_delete_cascades_cover_row_and_png(
 async def test_delete_for_project_returns_false_when_absent(db_session, project_a):
     deleted = await video_cover_service.delete_for_project(db_session, project_a)
     assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_old_write_routes_reject_v2_but_old_get_still_works(db_session, monkeypatch, tmp_path):
+    import httpx
+    from tests.test_video_cover_v2 import api_app, project, draft, png
+    identifier = await project(db_session, monkeypatch, tmp_path)
+    await draft(db_session, identifier)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api_app(db_session)),
+                                base_url="http://test") as client:
+        path = f"/api/video-cover/{identifier}"
+        assert (await client.get(path)).status_code == 200
+        put = await client.put(path, json=_make_payload().model_dump(mode="json"))
+        cache = await client.post(path + "/png-cache", files={"file": ("cover.png", png(), "image/png")})
+        delete = await client.delete(path)
+        assert [put.status_code, cache.status_code, delete.status_code] == [409, 409, 409]
+        assert all(item.json()["error_code"] == "COVER_V2_ACTIVE" for item in (put, cache, delete))
+        assert (await client.delete("/api/video-cover/invalid-project")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_project_delete_rollback_preserves_legacy_png(db_session, project_a, monkeypatch, tmp_path):
+    from app.services.storage_service import storage_service
+    monkeypatch.setattr(storage_service, "root", tmp_path)
+    await video_cover_service.upsert(db_session, USER_A, project_a, _make_payload())
+    await video_cover_service.store_png_and_update_project(
+        db_session, USER_A, project_a, _png_bytes())
+    await db_session.commit()
+    async def fail_commit():
+        raise RuntimeError("commit failed")
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    with pytest.raises(RuntimeError):
+        await video_project_service.delete_project(db_session, USER_A, project_a)
+    await db_session.rollback()
+    assert (tmp_path / "projects" / project_a / "cover.png").exists()
+    assert await video_cover_service.get_by_project(db_session, USER_A, project_a)

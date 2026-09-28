@@ -15,6 +15,7 @@ import {
   hydrateTimelineFromProjectData,
   restoreTimelineBackup,
   withCurrentRecoveryBackup,
+  withCoverSchemaVersion,
   withoutTimelineRecoveryBackup,
   withTimelineRecoveryBackup,
   type HydrationResult,
@@ -195,7 +196,8 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
     (next: VideoEditingTaskContent) => {
       // The backup field is the container's: a discard must survive an update
       // the editor built from an earlier render.
-      setContent((current) => withCurrentRecoveryBackup(current, next));
+      setContent((current) => withCoverSchemaVersion(current,
+        withCurrentRecoveryBackup(current, next)));
     },
     [],
   );

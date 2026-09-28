@@ -21,7 +21,7 @@ const PANEL = readFileSync(
   'utf-8',
 );
 const COVER_BTN = readFileSync(
-  resolve(__dirname, '..', '..', 'VideoCoverModal', 'CoverButton.tsx'),
+  resolve(__dirname, '..', '..', '..', 'cover', 'CoverEntryButton.tsx'),
   'utf-8',
 );
 const CSS = readFileSync(
@@ -30,7 +30,7 @@ const CSS = readFileSync(
 );
 
 describe('Player Console — single-row play bar (workbench §3.6, RV-13)', () => {
-  const consoleBlock = PANEL.match(/className="player-console"[\s\S]*?Video Cover authoring modal/);
+  const consoleBlock = PANEL.match(/className="player-console"[\s\S]*?VideoPlayerPanel.displayName/);
 
   it('renders play, time, scrubber and volume as direct children of one row', () => {
     expect(consoleBlock).not.toBeNull();
@@ -121,8 +121,8 @@ describe('Player Console — old control classes fully retired', () => {
     }
   });
 
-  it('styles the cover button with console-cover-btn, not the deleted aspect-ratio-btn', () => {
-    expect(COVER_BTN).toMatch(/console-cover-btn/);
+  it('provides the accessible studio entry', () => {
+    expect(COVER_BTN).toMatch(/data-cover-entry/);
     expect(COVER_BTN).not.toContain('aspect-ratio-btn');
   });
 });

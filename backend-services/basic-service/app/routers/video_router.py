@@ -40,6 +40,10 @@ from app.services.video_analysis_storage_service import video_analysis_storage
 from app.services.video_cut_service import VideoCutService
 from app.services.watermark_removal_service import WatermarkRemovalService
 from app.services.queue_manager import queue_manager
+from app.database import async_session_factory
+from app.services.composition.cover_contract import (
+    CoverCompositionError, prepare_required_cover,
+)
 from app.services.simple_queue_decorator import with_simple_queue
 from app.logger import get_logger
 from app.utils import client_disconnect
@@ -192,7 +196,21 @@ async def compose_video(request: VideoCompositionRequest) -> VideoCompositionRes
         
         # Start composition (async)
         logger.debug(f"Starting async video composition with parameters: {request.model_dump()}")
-        result = video_composition_service.start_video_composition(request)
+        if request.required_cover:
+            prepared = None
+            try:
+                async with async_session_factory() as db:
+                    prepared = await prepare_required_cover(db, request)
+                result = video_composition_service.start_video_composition(
+                    request, prepared_cover=prepared)
+                if not result.success:
+                    prepared.release()
+            except BaseException:
+                if prepared:
+                    prepared.release()
+                raise
+        else:
+            result = video_composition_service.start_video_composition(request)
         
         logger.info(f"Video composition request processed - Success: {result.success}, Status: {result.status}")
         
@@ -201,10 +219,10 @@ async def compose_video(request: VideoCompositionRequest) -> VideoCompositionRes
         
         return result
         
+    except CoverCompositionError as exc:
+        return _composition_error(422, exc.code, exc.summary)
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
-        
     except Exception as e:
         logger.error(f"Unexpected error during video composition: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -258,6 +276,7 @@ async def get_composition_status(composition_id: str):
                 "warnings": composition_info.get("warnings", []),
                 # Round 2 S7: content missing from a completed export.
                 "degradations": composition_info.get("degradations", []),
+                "error_code": composition_info.get("error_code"),
             }
             for live_key in ("stage", "activity_at"):  # the client's stall timer (EXO-07 / RV3-02)
                 if live_key in composition_info:

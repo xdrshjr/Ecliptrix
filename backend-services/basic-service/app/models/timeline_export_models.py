@@ -30,6 +30,9 @@ class TimelineItemModel(BaseModel):
     original_material_type: Optional[str] = Field(None, alias="originalMaterialType", description="原始素材类型")
     subtitle_style: Optional[Dict[str, Any]] = Field(None, alias="subtitleStyle", description="字幕样式")
     image_position: Optional[Dict[str, Any]] = Field(None, alias="imagePosition", description="图片位置信息")
+    metadata: Optional[Dict[str, Any]] = None
+    url: Optional[str] = None
+    server_url: Optional[str] = Field(None, alias="serverUrl")
 
 
 class TrackModel(BaseModel):
@@ -95,6 +98,7 @@ class ExportMetadataModel(BaseModel):
     total_duration: float = Field(..., alias="totalDuration", description="总时长")
     track_count: int = Field(..., alias="trackCount", description="轨道数量")
     item_count: int = Field(..., alias="itemCount", description="项目数量")
+    cover_schema_version: Optional[int] = Field(None, alias="coverSchemaVersion")
 
 
 class TimelineExportDataModel(BaseModel):
@@ -110,6 +114,7 @@ class TimelineExportRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     task_id: str = Field(..., alias="taskId", description="任务ID", min_length=1)
+    cover_schema_version: Optional[int] = Field(None, alias="coverSchemaVersion")
     timeline_state: TimelineStateModel = Field(..., alias="timelineState", description="时间轴状态")
     materials: List[MaterialModel] = Field(default_factory=list, description="素材列表")
     export_data: Optional[TimelineExportDataModel] = Field(None, alias="exportData", description="预处理的导出数据")

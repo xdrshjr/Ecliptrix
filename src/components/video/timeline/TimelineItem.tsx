@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useTimelineStore, splitAction } from './store';
@@ -493,6 +494,10 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     e.preventDefault();
     e.stopPropagation();
 
+    if (item.metadata?.role === 'video-cover') {
+      useTimelineStore.getState().onEditCover?.(item.id);
+      return;
+    }
     if (item.type === 'subtitle') {
       // The commit is refused on a locked track, which would silently throw
       // away what the user typed; don't open the editor at all.
@@ -517,7 +522,13 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     item.audioDetached !== true &&
     !isTrackLocked;
 
+  const [coverMenu, setCoverMenu] = useState<{ x: number; y: number } | null>(null);
   const handleContextMenu = (e: React.MouseEvent) => {
+    if (item.metadata?.role === 'video-cover') {
+      e.preventDefault(); e.stopPropagation();
+      setCoverMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
     if (!canDetachAudio) return;
     e.preventDefault();
     e.stopPropagation();
@@ -809,6 +820,20 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       data-clip-id={item.id}
       title={clipSummary ?? `${item.name} ${startLabel} - ${endLabel}`}
     >
+      {coverMenu && createPortal(
+        <div role="menu" className="ws-preflight" style={{ position: 'fixed', left: coverMenu.x, top: coverMenu.y, zIndex: 1000 }}
+          onMouseDown={event => event.stopPropagation()} onMouseLeave={() => setCoverMenu(null)}
+          onKeyDown={event => { if (event.key === 'Escape') setCoverMenu(null); }}>
+          {[{ label: t.coverStudio.editCover, run: () => useTimelineStore.getState().onEditCover?.(item.id) },
+            { label: t.coverStudio.setDuration, run: () => useTimelineStore.getState().onEditCover?.(item.id) },
+            { label: t.coverStudio.removeCollapse, run: () => useTimelineStore.getState().onRemoveCover?.(true) },
+            { label: t.coverStudio.removeOnly, run: () => useTimelineStore.getState().onRemoveCover?.(false) }].map((action, index) => (
+              <button autoFocus={index === 0} key={action.label} role="menuitem" type="button" className="ws-btn ws-btn--ghost"
+                onClick={event => { event.stopPropagation(); setCoverMenu(null); action.run(); }}>{action.label}</button>
+            ))}
+        </div>, document.querySelector('.editor-workbench') ?? document.body,
+      )}
+
       {renderItemContent()}
 
       {isMaterialMissing && (

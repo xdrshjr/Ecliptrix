@@ -21,6 +21,8 @@ import { defineConfig } from 'vitest/config'
 import path from 'node:path'
 
 export default defineConfig({
+  // Vite 8 otherwise inherits Next's jsx:preserve, leaving JSX unparsed.
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

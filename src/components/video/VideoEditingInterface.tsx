@@ -58,6 +58,12 @@ import { useVideoUnderstandingScript } from './hooks/useVideoUnderstandingScript
 import VideoUnderstandingScriptModal from './components/VideoUnderstandingScriptModal';
 import { getMockScriptSegments, mockVideoPreview } from './data';
 import { useLocale } from '@/contexts/LocaleContext';
+import type { CoverAspectRatio } from '@/types/videoCover';
+import { CoverStudio } from './cover/CoverStudio';
+import { CoverRenderHost, type CoverRenderHostRef } from './cover/CoverRenderHost';
+import { useCoverController } from './cover/useCoverController';
+import { coverDeadline } from './cover/renderCover';
+import { COVER_CARD_ACTION_EVENT, type CoverCardActionDetail } from '@/lib/video-editing-agent/types';
 import { useNotification } from '@/contexts/NotificationContext';
 import { http, ApiError } from '@/lib/api/http-client';
 import type { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
@@ -274,6 +280,11 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
   // 新增：VideoPlayerPanel的ref，用于调用其内部的组合跳转方法
   const videoPlayerRef = useRef<VideoPlayerPanelRef>(null);
+  const coverRenderRef = useRef<CoverRenderHostRef>(null);
+  const [coverOpen, setCoverOpen] = useState(false);
+  const [coverFrame, setCoverFrame] = useState<Blob>();
+  const coverOpenRef = useRef(false); coverOpenRef.current = coverOpen;
+  const coverTrigger = useRef<HTMLElement | null>(null);
 
   // Persist UI state to content whenever it changes
   useEffect(() => {
@@ -399,6 +410,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     // is swallowed so playback does not flicker (UI3-11).
     const disposeModalityTracking = installInputModalityTracking(document);
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (coverOpenRef.current) return;
       const action = resolveGlobalSpaceAction(event, getInputModality());
       if (action === 'yield') return;
       if (action === 'swallow') {
@@ -1927,7 +1939,51 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [content, onUpdateContent]);
 
   // --- Agent Execution Hook (replaces inline agent logic) ---
+  const activateCoverSchema = useCallback(() => {
+    const current = contentRef.current;
+    if (current) onUpdateContent({ ...current, coverSchemaVersion: 2 });
+  }, [onUpdateContent]);
+  const cover = useCoverController({ projectId,
+    projectName: projectChrome.projectName,
+    aspectRatio: (content?.canvasSettings?.aspectRatioId ?? '16:9') as CoverAspectRatio,
+    renderer: coverRenderRef, registerMaterial: materialManagement.addOrReplaceMaterial,
+    onApplied: activateCoverSchema });
+  const openCover = useCallback(async () => {
+    coverTrigger.current = document.activeElement as HTMLElement | null;
+    let frame: Blob | undefined;
+    try {
+      if (videoPlayerRef.current) {
+        frame = await coverDeadline(videoPlayerRef.current.captureCoverFrame(), 1500);
+      }
+    } catch (error) { logger.debug('Cover entry frame unavailable', { error: String(error) }); }
+    setCoverFrame(frame); setCoverOpen(true);
+  }, [logger]);
+  const closeCover = useCallback(() => {
+    setCoverOpen(false);
+    setTimeout(() => (coverTrigger.current?.isConnected ? coverTrigger.current
+      : document.querySelector<HTMLElement>('[data-cover-entry]'))?.focus(), 0);
+  }, []);
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<CoverCardActionDetail>).detail;
+      if (!detail || !projectId || detail.projectId !== projectId) return;
+      if (detail.action === 'edit') void openCover();
+      else if (detail.action === 'apply' && detail.revisionId) {
+        void cover.applyExisting(detail.revisionId).catch(() => void openCover());
+      } else if (detail.action === 'locate') {
+        const store = useTimelineStore.getState();
+        const item = store.tracks.flatMap(track => track.items).find(candidate =>
+          candidate.metadata?.role === 'video-cover' &&
+          (!detail.revisionId || candidate.metadata.cover?.revisionId === detail.revisionId));
+        if (item) { setCoverOpen(false); store.selectItem(item.id); store.setCurrentTime(0); }
+      }
+    };
+    window.addEventListener(COVER_CARD_ACTION_EVENT, handle);
+    return () => window.removeEventListener(COVER_CARD_ACTION_EVENT, handle);
+  }, [projectId, openCover, cover.applyExisting]);
   const agent = useAgentExecution({
+    coverAgentBridge: cover.bridge,
+    coverAspectRatio: (content?.canvasSettings?.aspectRatioId ?? '16:9') as CoverAspectRatio,
     conversations: content?.conversations || [],
     updateConversationMessages,
     activeConversationId: content?.activeConversationId,
@@ -2105,7 +2161,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const workbench = useWorkbenchWiring({ segmentLinks, videoPlayerRef, onSeek: handleTimelineTimeChange,
     isAssistantOpen: isAgentDockOpen, setAssistantOpen: setIsAgentDockOpen, content, onUpdateContent });
   const editorExport = useEditorExportWiring({ taskId, projectId, timelineState: currentTimelineState,
-    materials: materialManagement.allMaterials, aspectRatioId: workbench.aspectRatioId, workbench, segmentLinks });
+    materials: materialManagement.allMaterials, aspectRatioId: workbench.aspectRatioId, workbench, segmentLinks,
+    coverDraftChanged: cover.draftChanged, onApplyCoverDraft: () => cover.act('apply') });
   // 段落命令唯一入口（spec R2 §3.1）：卡片 / 素材 / 时间轴拖放 / 检查器经 context 调用
   const segmentCommands = useSegmentCommands({ getSegments: () => scriptSegmentsRef.current,
     commitSegments: commitNarrationSegments, getMaterials: () => materialManagement.allMaterials,
@@ -2115,7 +2172,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   return (
     <SegmentLinksContext.Provider value={segmentLinks}><SegmentCommandsContext.Provider value={segmentCommands}>
     <PlayingSegmentContext.Provider value={playingSegmentId}>
-    <div className="flex-1 flex min-h-0 overflow-hidden relative">
+    <div className={`flex-1 flex min-h-0 overflow-hidden relative${coverOpen ? ' cover-workspace-open' : ''}`}>
+      {projectId && <CoverRenderHost key={projectId} ref={coverRenderRef} projectId={projectId} />}
       {/* 以「视频段落」为核心的工作台：顶栏｜脚本·成片预览·素材/属性｜可拖高时间轴（底部栏左端为面板开关） */}
       <EditorWorkbench
         layout={workbench.layout}
@@ -2149,6 +2207,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
           />
         }
         center={
+          coverOpen ? <CoverStudio controller={cover} onClose={closeCover}
+            frame={coverFrame} materials={materialManagement.allMaterials} /> :
           <VideoPlayerPanel
             ref={videoPlayerRef} {...videoPlayback} videoPreview={mockVideoPreview} taskId={taskId}
             compositionPlayback={timelineComposition.compositionPlayback}
@@ -2165,6 +2225,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onPatchMaterialCache={materialManagement.patchMaterialCache}
             onImagePositionChange={handleImagePositionChange} onImagePositionConfirm={handleImagePositionConfirm}
             projectId={projectId} projectName={projectChrome.projectName}
+            onEditCover={() => void openCover()}
+            coverThumbnailUrl={currentTimelineState?.tracks.flatMap(track => track.items)
+              .find(item => item.metadata?.role === 'video-cover')?.thumbnailUrl}
             aspectRatioId={workbench.aspectRatioId} onAspectRatioChange={workbench.setAspectRatioId}
             canvasFit={workbench.canvasFit} onCanvasFitChange={workbench.setCanvasFit}
             onOpenMaterials={() => workbench.openSideTab('materials')}
@@ -2198,6 +2261,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         />}
         timeline={
           <TimelinePanel
+            projectId={projectId} onEditCover={() => void openCover()}
+            onCoverSchemaActivated={activateCoverSchema}
+            coverSchemaVersion={content?.coverSchemaVersion}
             ref={workbench.timelinePanelRef} className="h-full" taskId={taskId}
             onTimelineStateChange={handleTimelineStateChange}
             externalCurrentTime={timelineCurrentTime} onCurrentTimeChange={handleTimelineTimeChange}

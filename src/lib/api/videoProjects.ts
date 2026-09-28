@@ -272,6 +272,10 @@ export function normaliseProjectDataForSave(
   const timelineState = (out.uiState as { currentTimelineState?: unknown } | undefined)
     ?.currentTimelineState;
   if (timelineState && typeof timelineState === 'object') {
+    const tracks = (timelineState as { tracks?: Array<{ items?: Array<{ metadata?: { role?: string } }> }> }).tracks;
+    if (tracks?.some(track => track.items?.some(item => item.metadata?.role === 'video-cover'))) {
+      out.coverSchemaVersion = 2;
+    }
     (out.uiState as { currentTimelineState?: unknown }).currentTimelineState =
       stripTimelineThumbnails(timelineState as Record<string, unknown>);
   }

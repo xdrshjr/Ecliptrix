@@ -3,6 +3,114 @@ import type { TtsErrorCode } from './ttsErrors';
 // 沿用项目集中式中英文翻译表；文件超过 1000 行，本次只补助手相关键。
 
 export interface Translations {
+  /** Import labels shared with the cover timeline. */
+  coverStudio: {
+    title: string;
+    back: string;
+    create: string;
+    editCover: string;
+    setDuration: string;
+    removeCollapse: string;
+    removeOnly: string;
+    exportHidden: string;
+    exportVisible: string;
+    exportInvalid: string;
+    exportCurrent: string;
+    noCover: string;
+    appliedVersion: string;
+    html: string;
+    ai: string;
+    mixed: string;
+    templates: string;
+    editorial: string;
+    cinematic: string;
+    knowledge: string;
+    product: string;
+    bold: string;
+    content: string;
+    titleField: string;
+    subtitle: string;
+    label: string;
+    font: string;
+    fontSize: string;
+    align: string;
+    textColor: string;
+    accentColor: string;
+    background: string;
+    solid: string;
+    gradient: string;
+    asset: string;
+    upload: string;
+    frame: string;
+    frameUnavailable: string;
+    material: string;
+    focusX: string;
+    focusY: string;
+    prompt: string;
+    count: string;
+    generate: string;
+    cancel: string;
+    generationNotice: string;
+    missingKey: string;
+    settings: string;
+    duration: string;
+    apply: string;
+    download: string;
+    safeArea: string;
+    loading: string;
+    saved: string;
+    saving: string;
+    unsaved: string;
+    updated: string;
+    applied: string;
+    applying: string;
+    retry: string;
+    reload: string;
+    overwrite: string;
+    overflow: string;
+    notReady: string;
+    candidate: string;
+    selected: string;
+    ready: string;
+    queued: string;
+    running: string;
+    downloading: string;
+    elapsed: string;
+    succeeded: string;
+    failed: string;
+    cancelled: string;
+    interrupted: string;
+    properties: string;
+    close: string;
+    emptyTitle: string;
+    legacy: string;
+    original: string;
+    rebuild: string;
+    rebuildHint: string;
+    rebuildConfirm: string;
+    savedProjectPending: string;
+    generationResolution: string;
+    undoTemplate: string;
+    preview: string;
+    fit: string;
+    newImageReady: string;
+    noCredentials: string;
+    error: string;
+    secondsAdded: string;
+    submitted: string;
+    image_ready: string;
+    not_applied: string;
+    cancel_unconfirmed: string;
+    locate: string;
+    cover: string;
+    importTitle: string;
+    importMode: string;
+    importReplace: string;
+    importAppend: string;
+    importAppendNotice: string;
+    importConfirm: string;
+    errors: Record<string, string>;
+  };
   ttsErrors: {
     summary: Record<TtsErrorCode, string>;
     action: Record<TtsErrorCode, string>;
@@ -3003,6 +3111,129 @@ export interface Translations {
 
 export const translations: Record<string, Translations> = {
   en: {
+    coverStudio: {
+      "title": "Cover studio",
+      "back": "Back to editing",
+      "create": "Create cover",
+      "editCover": "Edit cover",
+      "setDuration": "Set duration",
+      "removeCollapse": "Remove and close gap",
+      "removeOnly": "Remove, keep timing",
+      "exportHidden": "Cover track is hidden",
+      "exportVisible": "Export visible content",
+      "exportInvalid": "Cover needs attention before export",
+      "exportCurrent": "Export applied version",
+      "noCover": "No cover",
+      "appliedVersion": "Applied version",
+      "html": "HTML layout",
+      "ai": "AI image",
+      "mixed": "Mixed",
+      "templates": "Templates",
+      "editorial": "Editorial",
+      "cinematic": "Cinematic",
+      "knowledge": "Knowledge",
+      "product": "Product",
+      "bold": "Bold",
+      "content": "Content",
+      "titleField": "Title",
+      "subtitle": "Subtitle",
+      "label": "Label",
+      "font": "Font",
+      "fontSize": "Title size",
+      "align": "Alignment",
+      "textColor": "Text",
+      "accentColor": "Accent",
+      "background": "Background",
+      "solid": "Solid",
+      "gradient": "Gradient",
+      "asset": "Image",
+      "upload": "Upload image",
+      "frame": "Use entry frame",
+      "frameUnavailable": "No preview frame is available. Templates still work.",
+      "material": "Use project image",
+      "focusX": "Horizontal focus",
+      "focusY": "Vertical focus",
+      "prompt": "Describe the image",
+      "count": "Images",
+      "generate": "Generate",
+      "cancel": "Cancel generation",
+      "generationNotice": "Cancelling stops local use; the provider may still charge.",
+      "missingKey": "Image generation is not configured. HTML layout works offline.",
+      "settings": "Model settings",
+      "duration": "Cover duration (seconds)",
+      "apply": "Apply to video",
+      "download": "Download PNG",
+      "safeArea": "Safe area",
+      "loading": "Loading cover…",
+      "saved": "Draft saved",
+      "saving": "Saving draft…",
+      "unsaved": "Unsaved changes",
+      "updated": "Draft updated · video keeps the applied version",
+      "applied": "Applied to timeline",
+      "applying": "Preparing cover…",
+      "retry": "Retry",
+      "reload": "Load saved version",
+      "overwrite": "Save local edits over latest version",
+      "overflow": "Shorten the text or reduce the title size.",
+      "notReady": "Choose an image and add text before applying.",
+      "candidate": "Candidate",
+      "selected": "Selected",
+      "ready": "Images ready",
+      "queued": "Queued",
+      "running": "Generating",
+      "downloading": "Saving images",
+      "elapsed": "Waiting for {seconds} seconds",
+      "succeeded": "Images ready",
+      "failed": "Generation failed",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted · generate again to retry",
+      "properties": "Properties",
+      "close": "Close",
+      "emptyTitle": "Enter a title",
+      "legacy": "Import existing cover",
+      "original": "Current image",
+      "rebuild": "Rebuild opening",
+      "rebuildHint": "Keep body timing, remove the adjusted cover, then shift the body by the new cover duration.",
+      "rebuildConfirm": "Rebuild opening now",
+      "savedProjectPending": "Applied in this editor · project save pending",
+      "generationResolution": "Generated backgrounds may be upscaled to the output size.",
+      "undoTemplate": "Undo template change",
+      "preview": "Enlarge preview",
+      "fit": "Fit preview",
+      "newImageReady": "New images are ready. Select a candidate to use it.",
+      "noCredentials": "Use HTML layout or configure image generation.",
+      "error": "Cover operation failed",
+      "secondsAdded": "seconds at the start",
+      "submitted": "Submitted",
+      "image_ready": "Image ready",
+      "not_applied": "Ready to apply",
+      "cancel_unconfirmed": "Cancellation not yet confirmed",
+      "locate": "Locate on timeline",
+      "errors": {
+            "COVER_VERSION_CONFLICT": "Draft changed elsewhere. Your local edits are preserved.",
+            "COVER_REQUEST_CONFLICT": "Cover operation failed. Your draft has been preserved.",
+            "COVER_DRAFT_NOT_READY": "Cover operation failed. Your draft has been preserved.",
+            "COVER_ASSET_MISSING": "The cover image is missing. Choose an image again.",
+            "COVER_INVALID_ASSET": "Cover operation failed. Your draft has been preserved.",
+            "COVER_RENDER_FAILED": "Cover operation failed. Your draft has been preserved.",
+            "COVER_GENERATION_FAILED": "Cover operation failed. Your draft has been preserved.",
+            "COVER_GENERATION_TIMEOUT": "Cover operation failed. Your draft has been preserved.",
+            "COVER_GENERATION_INTERRUPTED": "Cover operation failed. Your draft has been preserved.",
+            "COVER_QUEUE_FULL": "Cover operation failed. Your draft has been preserved.",
+            "COVER_TIMELINE_CONFLICT": "Finish dragging, unlock affected tracks, and check the opening.",
+            "COVER_PROJECT_CHANGED": "Cover operation failed. Your draft has been preserved.",
+            "COVER_ASPECT_MISMATCH": "Cover and project aspect ratios differ. Apply the draft again.",
+            "COVER_EXPORT_FAILED": "Cover operation failed. Your draft has been preserved.",
+            "COVER_V2_ACTIVE": "Cover operation failed. Your draft has been preserved."
+      },
+      "cover": "Cover",
+      "importTitle": "Import timeline",
+      "importMode": "Import mode",
+      "importReplace": "Replace current timeline",
+      "importAppend": "Append to the body",
+      "importAppendNotice": "The imported cover was added as an ordinary image.",
+      "importConfirm": "Import"
+},
     ttsErrors: {
       summary: {
         TTS_INSUFFICIENT_BALANCE: 'The speech service balance is insufficient or overdue.',
@@ -6055,6 +6286,129 @@ export const translations: Record<string, Translations> = {
     },
   },
   'zh-CN': {
+    coverStudio: {
+      "title": "封面工作室",
+      "back": "返回剪辑",
+      "create": "制作封面",
+      "editCover": "编辑封面",
+      "setDuration": "设置时长",
+      "removeCollapse": "移除并收拢正文",
+      "removeOnly": "仅移除，保留正文时间",
+      "exportHidden": "封面轨道已隐藏",
+      "exportVisible": "导出当前可见内容",
+      "exportInvalid": "请先修复封面再导出",
+      "exportCurrent": "导出已应用版本",
+      "noCover": "未设置封面",
+      "appliedVersion": "已应用版本",
+      "html": "HTML 排版",
+      "ai": "AI 生图",
+      "mixed": "混合",
+      "templates": "模板",
+      "editorial": "编辑精选",
+      "cinematic": "电影叙事",
+      "knowledge": "知识课堂",
+      "product": "产品聚焦",
+      "bold": "大字观点",
+      "content": "内容",
+      "titleField": "标题",
+      "subtitle": "副标题",
+      "label": "标签",
+      "font": "字体",
+      "fontSize": "标题字号",
+      "align": "对齐",
+      "textColor": "文字颜色",
+      "accentColor": "强调色",
+      "background": "背景",
+      "solid": "纯色",
+      "gradient": "渐变",
+      "asset": "图片",
+      "upload": "上传图片",
+      "frame": "使用进入时画面",
+      "frameUnavailable": "暂无可用预览帧，仍可使用模板制作。",
+      "material": "使用项目图片",
+      "focusX": "水平焦点",
+      "focusY": "垂直焦点",
+      "prompt": "描述想要的画面",
+      "count": "图片数量",
+      "generate": "生成图片",
+      "cancel": "取消生成",
+      "generationNotice": "取消会停止本地使用；供应商可能仍会计费。",
+      "missingKey": "尚未配置生图凭据，HTML 排版可离线使用。",
+      "settings": "模型设置",
+      "duration": "封面时长（秒）",
+      "apply": "应用到视频",
+      "download": "下载 PNG",
+      "safeArea": "安全区",
+      "loading": "正在加载封面…",
+      "saved": "已保存草稿",
+      "saving": "正在保存草稿…",
+      "unsaved": "草稿尚未保存",
+      "updated": "草稿有更新 · 视频仍使用已应用版本",
+      "applied": "已应用到时间轴",
+      "applying": "正在准备封面…",
+      "retry": "重试",
+      "reload": "加载服务端版本",
+      "overwrite": "用本地内容覆盖最新版本",
+      "overflow": "请缩短文字或减小标题字号。",
+      "notReady": "请先选择图片并填写文字。",
+      "candidate": "候选",
+      "selected": "已选中",
+      "ready": "图片已就绪",
+      "queued": "排队中",
+      "running": "生图中",
+      "downloading": "正在保存图片",
+      "elapsed": "已等待 {seconds} 秒",
+      "succeeded": "图片已就绪",
+      "failed": "生成失败",
+      "cancelled": "已取消",
+      "interrupted": "任务已中断，请手动重新生成",
+      "properties": "属性",
+      "close": "关闭",
+      "emptyTitle": "输入标题",
+      "legacy": "导入已有封面",
+      "original": "当前图片",
+      "rebuild": "重建片头",
+      "rebuildHint": "保留正文当前时间，移除调整过的封面，再将正文整体后移新封面时长。",
+      "rebuildConfirm": "确认重建片头",
+      "savedProjectPending": "已应用到当前编辑器 · 工程保存待确认",
+      "generationResolution": "生成背景可能放大至输出尺寸，不代表原生高分辨率。",
+      "undoTemplate": "撤销模板更换",
+      "preview": "放大预览",
+      "fit": "适应预览",
+      "newImageReady": "新图片已就绪，请选择候选使用。",
+      "noCredentials": "可使用 HTML 排版，或先配置生图服务。",
+      "error": "封面操作失败",
+      "secondsAdded": "秒片头",
+      "submitted": "已提交",
+      "image_ready": "图片就绪",
+      "not_applied": "就绪，待应用",
+      "cancel_unconfirmed": "取消尚未确认",
+      "locate": "定位到轨道",
+      "errors": {
+            "COVER_VERSION_CONFLICT": "草稿已在别处修改，本地输入已保留。",
+            "COVER_REQUEST_CONFLICT": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_DRAFT_NOT_READY": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_ASSET_MISSING": "封面图片缺失，请重新选择图片。",
+            "COVER_INVALID_ASSET": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_RENDER_FAILED": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_GENERATION_FAILED": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_GENERATION_TIMEOUT": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_GENERATION_INTERRUPTED": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_QUEUE_FULL": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_TIMELINE_CONFLICT": "请完成拖动、解锁相关轨道，并检查片头区间。",
+            "COVER_PROJECT_CHANGED": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_ASPECT_MISMATCH": "封面与项目比例不同，请重新应用草稿。",
+            "COVER_EXPORT_FAILED": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_V2_ACTIVE": "封面操作失败，草稿已保留，请检查后重试。"
+      },
+      "cover": "封面",
+      "importTitle": "导入时间轴",
+      "importMode": "导入方式",
+      "importReplace": "替换当前时间轴",
+      "importAppend": "追加到正文末尾",
+      "importAppendNotice": "导入封面已作为普通图片加入正文",
+      "importConfirm": "导入"
+},
     ttsErrors: {
       summary: {
         TTS_INSUFFICIENT_BALANCE: '语音服务余额不足或已欠费。',

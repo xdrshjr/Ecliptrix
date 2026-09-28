@@ -419,7 +419,16 @@ class VideoProjectService:
             await db.refresh(row)
         return _project_to_record(row)
 
-    async def update_project(
+    async def update_project(self, db, user_id, project_id, payload):
+        from app.services.video_cover_asset_service import project_locks
+        if _as_uuid(project_id) is None:
+            return None
+        async with project_locks(project_id):
+            result = await self._update_project(db, user_id, project_id, payload)
+            await db.commit()
+            return result
+
+    async def _update_project(
         self,
         db: AsyncSession,
         user_id: str,
@@ -436,7 +445,8 @@ class VideoProjectService:
                 VideoProject.user_id == user_id,
             )
         )
-        row = (await db.execute(stmt)).scalar_one_or_none()
+        row = (await db.execute(stmt.execution_options(
+            populate_existing=True))).scalar_one_or_none()
         if row is None:
             return None
 
@@ -447,16 +457,31 @@ class VideoProjectService:
         if payload.category_id is not None:
             # Empty string = unassign category
             row.category_id = _as_uuid(payload.category_id) if payload.category_id else None
-        if payload.cover_url is not None:
+        previous_v2 = (row.project_data or {}).get("coverSchemaVersion") == 2
+        if payload.cover_url is not None and not previous_v2:
             row.cover_url = payload.cover_url
         if payload.project_data is not None:
-            row.project_data = payload.project_data
+            incoming = dict(payload.project_data)
+            if previous_v2:
+                incoming["coverSchemaVersion"] = 2
+            row.project_data = incoming
+        if (row.project_data or {}).get("coverSchemaVersion") == 2:
+            from app.services.video_cover_v2_service import applied_revision
+            revision = await applied_revision(db, project_id, row.project_data)
+            row.cover_url = revision["url"] if revision else None
 
         await db.flush()
         await db.refresh(row)
         return _project_to_record(row)
 
-    async def delete_project(
+    async def delete_project(self, db, user_id, project_id):
+        from app.services.video_cover_asset_service import project_locks
+        if _as_uuid(project_id) is None:
+            return False
+        async with project_locks(project_id):
+            return await self._delete_project(db, user_id, project_id)
+
+    async def _delete_project(
         self,
         db: AsyncSession,
         user_id: str,
@@ -497,9 +522,21 @@ class VideoProjectService:
         # transaction as the project delete so DB rollback always undoes both.
         await video_cover_service.delete_for_project(db, project_id)
 
+        from sqlalchemy import delete
+        from app.models.db_models import (
+            ProjectCoverJob, ProjectCoverRevision,
+            ProjectCoverDocument, ProjectCoverAsset,
+        )
+        for model in (ProjectCoverJob, ProjectCoverRevision,
+                      ProjectCoverDocument, ProjectCoverAsset):
+            await db.execute(delete(model).where(model.project_id == proj_uuid))
+
         await db.delete(row)
         await db.flush()
         await db.commit()
+
+        from app.services.video_cover_asset_service import cleanup_project_files
+        cleanup_project_files(project_id)
 
         if pack_ids:
             try:

@@ -27,7 +27,8 @@ export type ReplaceTimelineReason =
   | 'agent-undo'
   | 'import'
   | 'subtitles'
-  | 'segment';
+  | 'segment'
+  | 'cover';
 
 export interface ReplaceTimelineOptions {
   /** Script patch undone/redone together with this entry (R2 §3.3). */
@@ -69,6 +70,7 @@ export function replaceTimelineAction(
   reason: ReplaceTimelineReason,
   options: ReplaceTimelineOptions = {},
 ): boolean {
+  if (reason === 'cover' && get().isInteracting) return false;
   if (isEditLocked(get()) && !LOCK_EXEMPT_REASONS.has(reason)) {
     console.warn('[replaceTimelineAction] refused while edit-locked', { reason });
     return false;

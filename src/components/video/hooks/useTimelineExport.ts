@@ -26,7 +26,7 @@ export interface UseTimelineExportReturn {
  * @param taskId - 任务ID，用于日志记录
  * @returns 时间轴导出相关的状态和方法
  */
-export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
+export const useTimelineExport = (taskId: string, coverSchemaVersion?: 2): UseTimelineExportReturn => {
   // 初始化日志器
   const logger = useMemo(() => new VideoEditingLogger({
     taskId,
@@ -115,6 +115,9 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
                 trackId: item.trackId,
                 color: item.color,
                 materialId: item.materialId,
+                metadata: item.metadata,
+                url: item.url,
+                serverUrl: item.serverUrl,
                 clipStart: item.clipStart,
                 clipEnd: item.clipEnd,
                 originalDuration: item.originalDuration,
@@ -145,8 +148,12 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
         name: m.name,
         type: m.type,
         duration: m.duration,
+        width: m.width,
+        height: m.height,
         thumbnailUrl: m.thumbnailUrl,
         url: m.url,
+        serverUrl: m.serverUrl,
+        metadata: m.metadata,
       }));
 
       // Use TimelineRepository to export
@@ -157,6 +164,7 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
           exportedAt: new Date().toISOString(),
           version: '1.0.0',
           taskId,
+          coverSchemaVersion,
         }
       );
 
@@ -203,7 +211,7 @@ export const useTimelineExport = (taskId: string): UseTimelineExportReturn => {
       useTimelineStore.getState().setExporting(false);
       exportingRef.current = false;
     }
-  }, [taskId, repository, logger, showSuccess, showError, t]);
+  }, [taskId, coverSchemaVersion, repository, logger, showSuccess, showError, t]);
 
   return {
     isExporting,

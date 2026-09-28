@@ -2,6 +2,62 @@
 
 import React, { useState } from 'react';
 import type { AgentToolCallRecord } from '@/types';
+import { COVER_CARD_ACTION_EVENT, type CoverCardActionDetail,
+  type CoverOperationStatus } from '@/lib/video-editing-agent/types';
+import { useLocale } from '@/contexts/LocaleContext';
+
+/** Business status stays visible even after the tool invocation finished. */
+export function CoverToolStatus({ toolCall }: { toolCall: AgentToolCallRecord }) {
+  const { t } = useLocale();
+  const result = toolCall.result && typeof toolCall.result === 'object'
+    ? toolCall.result as Record<string, unknown> : {};
+  const status = result.coverStatus as CoverOperationStatus | undefined;
+  const state = status?.state ?? (result.status === 'queued'
+    ? 'submitted' : result.status === 'draft_ready' ? 'not_applied'
+      : result.status === 'succeeded' ? 'image_ready' : null);
+  if (!state) return null;
+  const label = t.coverStudio[state];
+  // Only controller-issued context enables actions; model parameters and old
+  // history without project identity must never choose the destination project.
+  const projectId = typeof status?.projectId === 'string' && status.projectId.trim()
+    ? status.projectId : undefined;
+  const revisionId = typeof status?.revisionId === 'string' && status.revisionId.trim()
+    ? status.revisionId : undefined;
+  const thumbnailUrl = typeof status?.thumbnailUrl === 'string' &&
+    status.thumbnailUrl.startsWith('/api/storage/files/') ? status.thumbnailUrl : undefined;
+  const ready = state === 'image_ready' || state === 'not_applied' || state === 'applied';
+  const dispatch = (action: CoverCardActionDetail['action']) => {
+    if (!projectId || !toolCall.id || (action !== 'edit' && !revisionId)) return;
+    const detail: CoverCardActionDetail = { projectId, operationId: toolCall.id, action,
+      ...(revisionId ? { revisionId } : {}) };
+    // The project-mounted listener rechecks project identity and timeline locks.
+    window.dispatchEvent(new CustomEvent<CoverCardActionDetail>(COVER_CARD_ACTION_EVENT, { detail }));
+  };
+  return <div className="px-3 py-2 text-xs border-t border-border"
+    role="status" aria-live="polite">
+    {thumbnailUrl && <img src={thumbnailUrl} alt={t.coverStudio.preview}
+      loading="lazy" className="mb-2 max-h-28 max-w-full rounded border border-border object-contain" />}
+    <span className={state === 'applied' ? 'text-green-600' : 'text-muted-foreground'}>
+      {t.coverStudio.title} · {label}
+    </span>
+    {!!(status?.jobId ?? result.jobId) && <code className="ml-2 text-muted-foreground">
+      {String(status?.jobId ?? result.jobId)}
+    </code>}
+    {status?.error && <p className="mt-1 text-destructive">
+      {t.coverStudio.errors[status.error] ?? status.error}
+    </p>}
+    {ready && <div className="mt-2 flex flex-wrap gap-2">
+      {(['edit', ...(revisionId ? ['apply'] : []),
+        ...(state === 'applied' && revisionId ? ['locate'] : [])] as CoverCardActionDetail['action'][])
+        .map(action => <button key={action} type="button" disabled={!projectId || !toolCall.id}
+          className="rounded border border-border px-2 py-1 hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => dispatch(action)}>
+          {action === 'edit' ? t.coverStudio.editCover
+            : action === 'apply' ? t.coverStudio.apply : t.coverStudio.locate}
+        </button>)}
+    </div>}
+  </div>;
+}
 
 interface AgentToolCallCardProps {
   toolCall: AgentToolCallRecord;
@@ -96,6 +152,8 @@ const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({ toolCall }) => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
+
+      {toolCall.name.endsWith('_video_cover') && <CoverToolStatus toolCall={toolCall} />}
 
       {/* Expanded details */}
       {isExpanded && (

@@ -273,6 +273,7 @@ export interface UseCompositionPlaybackReturn {
   hostRef: (handle: PreviewCanvasHandle | null) => void;
   play: () => void;
   pause: () => void;
+  captureCoverFrame: () => Promise<Blob>;
   seek: (t: number) => void;
   /** Current engine phase (idle/playing/paused/ended/disposed). */
   getPhase: () => MultiTrackPhase;
@@ -695,5 +696,14 @@ export function useCompositionPlayback(
     return engine.onCamera3DDegrade(() => setCamera3DDegraded(true));
   }, [enabled, hostVersion, aspectRatio, buildTimelineFacade]);
 
-  return { hostRef, play, pause, seek, getPhase, isReady, camera3DDegraded };
+  const captureCoverFrame = useCallback(async (): Promise<Blob> => {
+    const engine = engineRef.current;
+    if (!engine) throw new Error('COVER_RENDER_FAILED: preview unavailable');
+    engine.pause();
+    const dataUrl = engine.compositor.captureFrame();
+    if (!dataUrl) throw new Error('COVER_RENDER_FAILED: empty preview');
+    const response = await fetch(dataUrl);
+    return response.blob();
+  }, []);
+  return { hostRef, play, pause, seek, getPhase, isReady, camera3DDegraded, captureCoverFrame };
 }

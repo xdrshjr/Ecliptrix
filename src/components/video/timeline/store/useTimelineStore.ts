@@ -39,7 +39,9 @@ export type TimelineStore =
   & SelectionSlice
   & HistorySlice
   & DragSlice
-  & UISlice;
+  & UISlice
+  & { onEditCover?: (itemId: string) => void;
+      onRemoveCover?: (collapse: boolean) => void };
 
 // ---------------------------------------------------------------------------
 // Store creation

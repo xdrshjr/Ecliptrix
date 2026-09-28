@@ -41,7 +41,10 @@ import {
   streamErrorMessageKey,
   type StreamError,
 } from '@/lib/video-editing-agent/errorRecovery';
-import type { AgentStreamErrorCode, SSEEvent } from '@/lib/video-editing-agent/types';
+import type {
+  AgentStreamErrorCode, SSEEvent, CoverAgentBridge,
+} from '@/lib/video-editing-agent/types';
+import type { CoverAspectRatio } from '@/types/videoCover';
 import type {
   AgentExecutionState,
   StartExecutionParams,
@@ -58,6 +61,8 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface UseAgentExecutionParams {
+  coverAgentBridge?: CoverAgentBridge;
+  coverAspectRatio?: CoverAspectRatio;
   /** All conversations (array format matching content.conversations). */
   conversations: Conversation[];
   /** Update conversations — receives the conversationId and updated messages array. */
@@ -238,6 +243,12 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     projectId,
   } = params;
   const getEditorContextRef = useRef(params.getEditorContext);
+  const coverBridgeRef = useRef(params.coverAgentBridge);
+  coverBridgeRef.current = params.coverAgentBridge;
+  const coverAspectRatioRef = useRef(params.coverAspectRatio);
+  coverAspectRatioRef.current = params.coverAspectRatio;
+  const coverRoutersRef = useRef(new Set<AgentEventRouter>());
+  const currentRouterRef = useRef<AgentEventRouter | null>(null);
   getEditorContextRef.current = params.getEditorContext;
 
   const { t } = useLocale();
@@ -427,8 +438,11 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   );
 
   const createEventRouter = useCallback(
-    (stateManager: AgentStateManager, operationApplier: OperationApplier) =>
+    (stateManager: AgentStateManager, operationApplier: OperationApplier,
+      onCoverStatus: () => void) =>
       new AgentEventRouter({
+        coverAgentBridge: coverBridgeRef.current,
+        onCoverStatus,
         stateManager,
         operationApplier,
         onOperationApplied: (event) => {
@@ -461,6 +475,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
       return {
         onEvent: (event: SSEEvent) => {
+          if (event.type === 'tool_call') router.beginCoverOperation(event);
           runAfterQueuedEvents(() => router.handleEvent(event), 'handling event');
         },
         // A restart only happens before any tool call (the stream manager
@@ -486,6 +501,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
             });
           }, 'finalizing agent message'),
         onError: (error) => {
+          router.cancelCoverOperations(true);
           const text = describeStreamError(error);
           notifyAgentError(text);
           return runAfterQueuedEvents(() => {
@@ -504,6 +520,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         // settles, but then updates only this message. Later turns must not
         // queue behind it (sending awaits the chain and would wait forever).
         onFinishingTimeout: () => {
+          router.cancelCoverOperations(true);
           unsubscribe();
           writeAgentMessage({
             ...stateManager.toMessageUpdate(),
@@ -559,9 +576,21 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       };
       turnWriterRef.current = writeAgentMessage;
       retireTurnRef.current = retire;
+      const router = createEventRouter(stateManager, operationApplier, () => {
+        // The job may outlive SSE. Patch only its card in the current message,
+        // retaining newer turns and the final timeline undo snapshot.
+        const conversation = conversationsRef.current.find(c => c.id === turn.convId);
+        if (!conversation) return;
+        updateConvMessagesRef.current(turn.convId, conversation.messages.map(message =>
+          message.id === turn.agentMessageId
+            ? { ...message, agentToolCalls: stateManager.toMessageUpdate().agentToolCalls }
+            : message));
+      });
+      coverRoutersRef.current.add(router);
+      currentRouterRef.current = router;
       return createTurnCallbacks({
         stateManager,
-        router: createEventRouter(stateManager, operationApplier),
+        router,
         turnStart: turn.turnStart,
         writeAgentMessage,
         retire,
@@ -629,7 +658,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         url: '/api/video-editing-agent/chat',
         body: {
           messages: stripHistoryForRequest(messagesWithUser),
-          timelineState: baseline,
+          timelineState: { ...baseline,
+            aspectRatioId: coverAspectRatioRef.current ?? '16:9' },
           materials: stripInlineMediaForAgent(materialsRef.current),
           projectId,
           ...buildEditorContextField(getEditorContextRef.current),
@@ -693,12 +723,15 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // Seal first: the cancel's `finishing` phase waits for the chain tail, and
   // that tail must already contain the sealing write.
   const cancelByUser = useCallback(() => {
+    currentRouterRef.current?.cancelCoverOperations(true);
     sealMessage({ byUser: true });
     cancelExecState();
     console.log('[useAgentExecution] Execution cancelled by user');
   }, [cancelExecState, sealMessage]);
 
   const cancelByNavigation = useCallback(() => {
+    coverRoutersRef.current.forEach(router => router.cancelCoverOperations(false));
+    coverRoutersRef.current.clear();
     sealMessage({ byUser: false });
     cancelExecState();
     console.log('[useAgentExecution] Execution cancelled by navigation/unmount');
@@ -850,6 +883,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   useEffect(() => {
     return () => {
+      coverRoutersRef.current.forEach(router => router.cancelCoverOperations(false));
+      coverRoutersRef.current.clear();
       if (streamLiveRef.current) {
         cancelByNavigationRef.current();
         return;

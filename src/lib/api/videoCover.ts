@@ -7,10 +7,28 @@
  */
 
 import { http } from '@/lib/api/http-client';
-import type {
-  CoverState,
-  CoverStateOut,
-} from '@/components/video/components/VideoCoverModal/types';
+import type { CoverAspectRatio } from '@/types/videoCover';
+
+/** Legacy wire contract stays readable after the old editor is retired. */
+export interface CoverState {
+  templateId: 'title' | 'tutorial' | 'click' | 'minimal';
+  coverConfig: {
+    version: 1;
+    textLayers: Array<Record<string, unknown>>;
+    decorations: Array<Record<string, unknown>>;
+    cover_render_metadata?: Record<string, unknown>;
+  };
+  imageSource: 'frame' | 'upload';
+  frameVirtualTimeMs: number | null;
+  uploadedImageUrl: string | null;
+  aspectRatio: CoverAspectRatio;
+}
+export interface CoverStateOut {
+  project_id: string; template_id: CoverState['templateId'];
+  cover_config: CoverState['coverConfig']; image_source: CoverState['imageSource'];
+  frame_virtual_time_ms: number | null; uploaded_image_url: string | null;
+  aspect_ratio: CoverAspectRatio; created_at: string; updated_at: string;
+}
 
 interface BaseEnvelope<T> {
   success: boolean;

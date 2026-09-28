@@ -48,7 +48,7 @@ beforeAll(() => {
     '@/contexts/NotificationContext': { useNotification: () => ({ showWarning: vi.fn() }) },
     '../../utils/logger': logger,
     './ImageOverlay': { __esModule: true, default: nothing },
-    '../VideoCoverModal': { CoverButton: nothing, VideoCoverModal: nothing },
+    '../../cover/CoverEntryButton': { CoverEntryButton: nothing },
     '@/lib/playbackFlags': {
       isPreviewProxyEnabled: () => false, isLocalPreviewEnabled: () => false,
     },

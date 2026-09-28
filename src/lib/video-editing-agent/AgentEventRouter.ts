@@ -20,6 +20,8 @@ import type {
   ScriptOperation,
   StoryboardOperation,
   AsyncTaskOperation,
+  CoverAgentBridge,
+  CoverOperationStatus,
 } from './types';
 import type { AgentStateManager } from './AgentStateManager';
 import type { ApplyOutcome, OperationApplier } from './OperationApplier';
@@ -30,6 +32,8 @@ import { useVideoEditingStore } from '@/stores';
 // ---------------------------------------------------------------------------
 
 export interface AgentEventRouterConfig {
+  coverAgentBridge?: CoverAgentBridge;
+  onCoverStatus?: (toolCallId: string, status: CoverOperationStatus) => void;
   stateManager: AgentStateManager;
   operationApplier: OperationApplier;
   /**
@@ -59,6 +63,12 @@ export interface AgentEventRouterConfig {
 // ---------------------------------------------------------------------------
 
 export class AgentEventRouter {
+  private readonly coverAgentBridge?: CoverAgentBridge;
+  private readonly onCoverStatus?: AgentEventRouterConfig['onCoverStatus'];
+  private readonly startedCoverCalls = new Set<string>();
+  private readonly deliveredCoverCalls = new Set<string>();
+  private readonly coverStatuses = new Map<string, CoverOperationStatus>();
+  private coversCancelled = false;
   private readonly stateManager: AgentStateManager;
   private readonly operationApplier: OperationApplier;
   private readonly onOperationApplied?: AgentEventRouterConfig['onOperationApplied'];
@@ -66,6 +76,8 @@ export class AgentEventRouter {
   private readonly describeError?: AgentEventRouterConfig['describeError'];
 
   constructor(config: AgentEventRouterConfig) {
+    this.coverAgentBridge = config.coverAgentBridge;
+    this.onCoverStatus = config.onCoverStatus;
     this.stateManager = config.stateManager;
     this.operationApplier = config.operationApplier;
     this.onOperationApplied = config.onOperationApplied;
@@ -106,12 +118,16 @@ export class AgentEventRouter {
         break;
 
       case 'tool_call':
+        this.beginCoverOperation(event);
         this.stateManager.addToolCall({
           id: event.toolCallId,
           name: event.toolName,
           params: event.params,
           status: 'executing',
         });
+        if (this.coverStatuses.has(event.toolCallId)) {
+          this.updateCoverStatus(event.toolCallId, this.coverStatuses.get(event.toolCallId)!);
+        }
         break;
 
       case 'tool_result':
@@ -134,6 +150,7 @@ export class AgentEventRouter {
         break;
 
       case 'cancelled':
+        this.cancelCoverOperations(true);
         // Server-side abort propagated through SSE — seal the in-flight
         // tool calls as `cancelled`. A server timeout was not the user's
         // choice: its `error` event (sent first) explains it, and the turn
@@ -167,6 +184,10 @@ export class AgentEventRouter {
   private async handleToolResult(
     event: SSEEvent & { type: 'tool_result' },
   ): Promise<void> {
+    if (event.operation?.type === 'cover_action') {
+      this.handleCoverResult(event);
+      return;
+    }
     const isError =
       event.result != null &&
       typeof event.result === 'object' &&
@@ -226,6 +247,64 @@ export class AgentEventRouter {
       }
 
       this.onOperationApplied?.(event);
+    }
+  }
+
+  /** Called before queueing other operations so the baseline is never late. */
+  beginCoverOperation(event: SSEEvent & { type: 'tool_call' }): void {
+    if (this.coversCancelled || this.startedCoverCalls.has(event.toolCallId)
+      || !['create_video_cover', 'apply_video_cover'].includes(event.toolName)) return;
+    this.startedCoverCalls.add(event.toolCallId);
+    this.coverAgentBridge?.beginOperation(event.toolCallId, event.toolName,
+      status => this.updateCoverStatus(event.toolCallId, status));
+  }
+
+  cancelCoverOperations(cancelJobs: boolean): void {
+    this.coversCancelled = true;
+    this.coverAgentBridge?.cancelOperations({ cancelJobs,
+      operationIds: Array.from(this.startedCoverCalls) });
+  }
+
+  private updateCoverStatus(id: string, status: CoverOperationStatus): void {
+    if (this.coversCancelled && !['not_applied', 'cancel_unconfirmed'].includes(status.state)) return;
+    const previous = this.coverStatuses.get(id);
+    const next = { ...previous, ...status };
+    this.coverStatuses.set(id, next);
+    const call = this.stateManager.getToolCalls().find(item => item.id === id);
+    if (!call) return;
+    const result = call.result && typeof call.result === 'object' ? call.result : {};
+    this.stateManager.updateToolStatus(id, status.state === 'error' ? 'error' : 'completed',
+      { ...result, coverStatus: next,
+        ...(status.state === 'error' ? { success: false, error: status.error } : {}) });
+    this.onCoverStatus?.(id, next);
+  }
+
+  private handleCoverResult(event: SSEEvent & { type: 'tool_result' }): void {
+    if (event.operation?.type !== 'cover_action'
+      || this.deliveredCoverCalls.has(event.toolCallId)) return;
+    this.deliveredCoverCalls.add(event.toolCallId);
+    const operation = event.operation;
+    const hasBaseline = this.startedCoverCalls.has(event.toolCallId);
+    if (!this.stateManager.getToolCalls().some(call => call.id === event.toolCallId)) {
+      this.stateManager.addToolCall({ id: event.toolCallId,
+        name: event.toolName, params: {}, status: 'executing' });
+    }
+    this.stateManager.updateToolStatus(event.toolCallId, 'completed', event.result);
+    const update = (status: CoverOperationStatus): void =>
+      this.updateCoverStatus(event.toolCallId, status);
+    update({ state: hasBaseline && !this.coversCancelled ? 'submitted' : 'not_applied',
+      ...(operation.action === 'watch_job' ? { jobId: operation.jobId } : {}) });
+    if (!hasBaseline || this.coversCancelled) return;
+    if (!this.coverAgentBridge) {
+      update({ state: 'error', error: 'COVER_PROJECT_CHANGED' });
+      return;
+    }
+    try {
+      // Generation and rendering must not occupy the SSE dispatch queue.
+      void Promise.resolve(this.coverAgentBridge.handleCoverOperation(operation, update))
+        .catch(error => update({ state: 'error', error: String(error) }));
+    } catch (error) {
+      update({ state: 'error', error: String(error) });
     }
   }
 

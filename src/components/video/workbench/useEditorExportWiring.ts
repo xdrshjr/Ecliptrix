@@ -15,9 +15,10 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { MaterialItem, TimelineState } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useEditorFocusStore } from '@/stores/editorFocusStore';
+import { useTimelineStore } from '../timeline/store';
 import { useVideoExport, type ExportPreflight } from '../hooks/useVideoExport';
 import { collectExportAdvisories, type ExportAdvisory } from '../hooks/exportAdvisories';
-import { BLACK_TAIL_NOTICE_SECONDS } from '../hooks/videoExportItems';
+import { BLACK_TAIL_NOTICE_SECONDS, type CoverExportCheck } from '../hooks/videoExportItems';
 import type { SegmentLinksValue } from '../lib/segments/SegmentLinksContext';
 import type { UseWorkbenchWiringReturn } from './useWorkbenchWiring';
 import ExportPreflightSheet from './ExportPreflightSheet';
@@ -36,6 +37,8 @@ export interface UseEditorExportWiringOptions {
   workbench?: Pick<UseWorkbenchWiringReturn, 'canvasFit' | 'dismissedAdvisories' | 'dismissAdvisory'>;
   /** Segment statuses for the pre-export notes; without it there is no sheet. */
   segmentLinks?: SegmentLinksValue;
+  coverDraftChanged?: boolean;
+  onApplyCoverDraft?: () => Promise<void>;
 }
 
 export interface EditorExportState {
@@ -84,9 +87,11 @@ export function useEditorExportWiring(
   );
   const logger = options.logger ?? fallbackLogger;
   const [advisories, setAdvisories] = useState<ExportAdvisory[] | null>(null);
+  const [coverCheck, setCoverCheck] = useState<CoverExportCheck | null>(null);
+  const reviewedSnapshot = useRef<string | undefined>(undefined);
   const latestRef = useRef(options);
   latestRef.current = options;
-  const preflight = useMemo<ExportPreflight | undefined>(() => (options.segmentLinks ? {
+  const preflight = useMemo<ExportPreflight>(() => ({
     collect: (blackTailSeconds) => {
       const { segmentLinks, workbench, timelineState: tl, materials: list, aspectRatioId: ratio } = latestRef.current;
       // A placeholder script has no voice notes, but the black-tail note must
@@ -105,7 +110,18 @@ export function useEditorExportWiring(
       });
     },
     onAdvisories: setAdvisories,
-  } : undefined), [options.segmentLinks !== undefined]); // eslint-disable-line react-hooks/exhaustive-deps
+    onCoverCheck: (check, snapshotDigest) => {
+      if (check.status === 'error' && check.itemId) {
+        const store = useTimelineStore.getState();
+        store.selectItem(check.itemId);
+        const item = store.tracks.flatMap(track => track.items)
+          .find(clip => clip.id === check.itemId);
+        if (item) store.setCurrentTime(item.startTime);
+      }
+      reviewedSnapshot.current = snapshotDigest;
+      setCoverCheck(check);
+    },
+  }), [options.segmentLinks !== undefined]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const videoExport = useVideoExport({
     timelineState: timelineState || EMPTY_TIMELINE,
@@ -147,12 +163,19 @@ export function useEditorExportWiring(
       allowCancel: videoExport.canCancelExport,
       onCancel: videoExport.cancelExport,
     }),
-    advisories && React.createElement(ExportPreflightSheet, {
-      advisories,
-      onClose: () => setAdvisories(null),
+    (advisories || coverCheck) && React.createElement(ExportPreflightSheet, {
+      advisories: advisories ?? [],
+      coverCheck,
+      coverDraftChanged: options.coverDraftChanged,
+      onApplyCoverDraft: options.onApplyCoverDraft,
+      onClose: () => { setAdvisories(null); setCoverCheck(null); },
       onExportAnyway: () => {
         setAdvisories(null);
-        void runExport({ skipAdvisories: true });
+        setCoverCheck(null);
+        void runExport({ skipAdvisories: true,
+          reviewedCoverDigest: reviewedSnapshot.current,
+          confirmedHiddenCoverDigest: coverCheck?.status === 'hidden' ? coverCheck.digest : undefined,
+        });
       },
       onReviewSegment: (segmentId: string) => {
         setAdvisories(null);

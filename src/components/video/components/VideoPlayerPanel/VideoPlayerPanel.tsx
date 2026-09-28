@@ -9,8 +9,7 @@ import type { RemoteMaterialPatch } from '../../hooks/useRemoteMaterialPrefetch'
 import ImageOverlay from './ImageOverlay';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
-import { CoverButton, VideoCoverModal } from '../VideoCoverModal';
-import type { CoverAspectRatio } from '../VideoCoverModal/types';
+import { CoverEntryButton } from '../../cover/CoverEntryButton';
 import { isPreviewProxyEnabled, isLocalPreviewEnabled } from '@/lib/playbackFlags';
 import PreviewCanvas from './PreviewCanvas';
 import CameraDegradeBadge from './CameraDegradeBadge';
@@ -57,6 +56,8 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
   // 新增：项目元信息，供 Cover 模态使用（无 projectId 时按钮隐藏）
   projectId?: string;
   projectName?: string;
+  onEditCover?: () => void;
+  coverThumbnailUrl?: string;
   /**
    * Controlled aspect ratio id (spec §3.2 「状态上移」): the parent owns it so
    * the top-bar export and this preview read the same value (R2).
@@ -76,6 +77,7 @@ interface VideoPlayerPanelProps extends UseVideoPlaybackReturn {
 
 // 新增：VideoPlayerPanel ref接口，用于外部调用内部方法
 export interface VideoPlayerPanelRef {
+  captureCoverFrame: () => Promise<Blob>;
   handleCompositionSeek: (compositionTime: number, targetSequence: VideoSequenceItem, videoTime: number, source: 'timeline' | 'player') => Promise<void>;
   /** Seek to timeline time and start playback. Idempotent: safe to call when already playing. */
   seekAndPlayFromTimeline: (timelineTime: number) => Promise<void>;
@@ -117,6 +119,8 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
   onImagePositionConfirm,
   projectId,
   projectName,
+  onEditCover,
+  coverThumbnailUrl,
   aspectRatioId,
   onAspectRatioChange,
   canvasFit,
@@ -156,8 +160,6 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
     setCompositionCurrentTime(time);
   }, []);
 
-  // Cover modal open state — opened from the CoverButton in the canvas menu.
-  const [isCoverModalOpen, setIsCoverModalOpen] = useState<boolean>(false);
   const selectedAspectRatio = ASPECT_RATIOS.find(ar => ar.id === aspectRatioId) || ASPECT_RATIOS[0];
 
   // 新增：图片叠加相关状态
@@ -476,7 +478,7 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
           onSelect={handleAspectRatioChange}
           videoCount={compositionPlayback?.videoSequences.length || 0}
           audioCount={compositionPlayback?.audioSequences?.length || 0}
-          coverSlot={projectId ? <CoverButton onClick={() => setIsCoverModalOpen(true)} /> : undefined}
+          coverSlot={projectId && onEditCover ? <CoverEntryButton onClick={onEditCover} thumbnailUrl={coverThumbnailUrl} /> : undefined}
           fit={canvasFit ?? 'contain'} onFitChange={onCanvasFitChange}
         />
         <button
@@ -689,18 +691,6 @@ const VideoPlayerPanel = React.forwardRef<VideoPlayerPanelRef, VideoPlayerPanelP
         </div>
       </div>
 
-      {/* Video Cover authoring modal — only mounted when a projectId is bound. */}
-      {projectId && (
-        <VideoCoverModal
-          isOpen={isCoverModalOpen}
-          onClose={() => setIsCoverModalOpen(false)}
-          projectId={projectId}
-          projectName={projectName ?? ''}
-          aspectRatio={selectedAspectRatio.id as CoverAspectRatio}
-          materials={materials ?? []}
-          timelineItems={timelineState?.tracks?.flatMap((tr) => tr.items) ?? []}
-        />
-      )}
     </div>
   );
 });

@@ -40,6 +40,14 @@ export type HydrationResult =
   | { status: 'repaired'; report: TimelineRepairReport }
   | { status: 'failed' };
 
+/** The v2 marker is monotonic even when the final cover is undone or deleted. */
+export function withCoverSchemaVersion<T extends { coverSchemaVersion?: 2 }>(
+  current: T | null, next: T,
+): T {
+  return current?.coverSchemaVersion === 2
+    ? { ...next, coverSchemaVersion: 2 } : next;
+}
+
 export interface TimelineRecoveryBackup {
   savedAt: string;
   data: unknown;

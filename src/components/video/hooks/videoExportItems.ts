@@ -10,6 +10,10 @@
  */
 
 import type { MaterialItem, SubtitleStyle, TimelineItem, Track } from '@/types';
+import type { RequiredCover } from '@/lib/api/videoComposition';
+import type { CoverAspectRatio, CoverMode } from '@/types/videoCover';
+import { isCanonicalCover, isCoverClip } from '../cover/coverTimeline';
+import { coverSize } from '../cover/layout';
 import type {
   AudioCompositionItem,
   ImageCompositionItem,
@@ -34,6 +38,58 @@ import {
 
 /** A black tail shorter than this is frame noise, not worth a notice. */
 export const BLACK_TAIL_NOTICE_SECONDS = 0.5;
+
+export type CoverExportCheck =
+  | { status: 'none' }
+  | { status: 'error'; code: string; itemId?: string }
+  | { status: 'hidden'; digest: string; item: TimelineItem }
+  | { status: 'ready'; requiredCover: RequiredCover; item: TimelineItem; mode?: CoverMode };
+
+/** Mandatory gate, independent of advisory dismissal and of render-span filtering. */
+export function validateCoverExport(options: {
+  tracks: readonly Track[];
+  materialsById: ReadonlyMap<string, MaterialItem>;
+  projectId?: string;
+  aspectRatio?: string;
+}): CoverExportCheck {
+  const { tracks, materialsById, projectId, aspectRatio = '16:9' } = options;
+  const covers = tracks.flatMap(track => track.items.filter(isCoverClip)
+    .map(item => ({ track, item })));
+  if (!covers.length) return { status: 'none' };
+  const fail = (code: string): CoverExportCheck => ({ status: 'error', code, itemId: covers[0].item.id });
+  if (covers.length !== 1) return fail('COVER_TIMELINE_CONFLICT');
+  const { track, item } = covers[0];
+  const reference = item.metadata?.cover;
+  const material = item.materialId ? materialsById.get(item.materialId) : undefined;
+  if (!reference || reference.schemaVersion !== 2 || reference.projectId !== projectId
+    || !reference.revisionId || !reference.assetId || !reference.sha256 || !material
+    || material.type !== 'image' || material.metadata?.cover?.revisionId !== reference.revisionId
+    || material.metadata?.cover?.projectId !== projectId
+    || material.metadata?.cover?.sha256 !== reference.sha256
+    || material.metadata?.cover?.assetId !== reference.assetId
+    || typeof material.url !== 'string'
+    || !material.url.startsWith('/api/storage/files/')) return fail('COVER_ASSET_MISSING');
+  if (!isCanonicalCover(item) || !track.id.startsWith('image-track')) return fail('COVER_TIMELINE_CONFLICT');
+  // Product aspect labels map to fixed output sizes: 21:9 is 2560×1080,
+  // rather than the mathematical 2520×1080 ratio.
+  const outputSize = coverSize(aspectRatio as CoverAspectRatio);
+  if (!outputSize || material.width !== outputSize.width
+    || material.height !== outputSize.height) {
+    return fail('COVER_ASPECT_MISMATCH');
+  }
+  if (track.isVisible === false) return { status: 'hidden', item,
+    digest: JSON.stringify([projectId, tracks, aspectRatio, Array.from(materialsById)]) };
+  const intrusion = collectRenderSpans(tracks, materialsById).some(span =>
+    span.itemId !== item.id && span.start < item.duration - 1e-6);
+  if (intrusion) return fail('COVER_TIMELINE_CONFLICT');
+  const mode = material.metadata?.coverMode;
+  return { status: 'ready', item,
+    mode: mode === 'html' || mode === 'ai' || mode === 'mixed' ? mode : undefined,
+    requiredCover: {
+    project_id: projectId!, revision_id: reference.revisionId,
+    image_item_id: item.id, sha256: reference.sha256,
+  } };
+}
 
 /**
  * Subtitle style when an item has none. No background: the preview draws no

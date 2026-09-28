@@ -23,6 +23,7 @@ export type CacheState = 'loading' | 'loaded' | 'error' | 'not-found';
 // ---------------------------------------------------------------------------
 
 export interface ExportMetadata {
+  coverSchemaVersion?: 2;
   /** ISO date string of when the export was created. */
   exportedAt: string;
   /** Export format version (for migration support). */
@@ -52,7 +53,7 @@ export interface ITimelineRepository {
    */
   importFromJSON(
     file: File
-  ): Promise<{ timelineData: TimelineData; materials: MaterialData[] }>;
+  ): Promise<{ timelineData: TimelineData; materials: MaterialData[]; coverSchemaVersion?: 2 }>;
 
   /**
    * Type-guard that validates a parsed JSON object matches the expected

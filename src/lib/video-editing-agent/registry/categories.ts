@@ -24,6 +24,7 @@ export const CATEGORY_IDS = {
   SCRIPT_TOOLS: 'script_tools',
   STORYBOARD_TOOLS: 'storyboard_tools',
   MATERIAL_TOOLS: 'material_tools',
+  COVER_TOOLS: 'cover_tools',
 } as const;
 
 export type CategoryId = (typeof CATEGORY_IDS)[keyof typeof CATEGORY_IDS];
@@ -39,6 +40,7 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
   CATEGORY_IDS.SCRIPT_TOOLS,
   CATEGORY_IDS.STORYBOARD_TOOLS,
   CATEGORY_IDS.MATERIAL_TOOLS,
+  CATEGORY_IDS.COVER_TOOLS,
 ];
 
 // --- Category definitions (metadata only; tools[] populated later) ---
@@ -50,6 +52,13 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
  */
 export function createDefaultCategories(): ToolCategory[] {
   return [
+    {
+      id: CATEGORY_IDS.COVER_TOOLS,
+      name: '封面工具',
+      description: 'Create HTML, AI and mixed video covers: get_video_cover, create_video_cover, update_video_cover, apply_video_cover',
+      alwaysAvailable: false,
+      tools: [],
+    },
     {
       id: CATEGORY_IDS.QUERY_TOOLS,
       name: '查询工具',

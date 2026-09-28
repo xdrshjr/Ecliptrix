@@ -4,6 +4,7 @@ Timeline Import Service for handling timeline data import functionality.
 
 import json
 import uuid
+import copy
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -21,6 +22,7 @@ from app.models.timeline_export_models import (
     MaterialModel
 )
 from app.logger import get_logger
+from app.models.video_cover_v2_models import CoverError, ImportCoverRequest
 
 logger = get_logger(__name__)
 
@@ -167,7 +169,8 @@ class TimelineImportService:
             })
 
             # 1. 验证导入数据
-            import_data = request.import_data
+            import_data = request.import_data.model_copy(deep=True)
+            await self._rebind_cover_references(import_data, request)
             validation_result = await self._validate_import_data(import_data, request.task_id)
             
             if not validation_result.is_valid:
@@ -203,6 +206,8 @@ class TimelineImportService:
                 statistics=statistics
             )
 
+        except CoverError:
+            raise
         except Exception as e:
             logger.error("处理时间轴导入时发生异常", {
                 "task_id": request.task_id,
@@ -262,6 +267,7 @@ class TimelineImportService:
             # 3. 创建导入请求
             import_request = TimelineImportRequest(
                 task_id=request.task_id,
+                project_id=request.project_id,
                 import_data=import_data,
                 merge_mode=request.merge_mode,
                 preserve_ids=request.preserve_ids
@@ -270,6 +276,8 @@ class TimelineImportService:
             # 4. 执行导入
             return await self.import_timeline_from_json(import_request)
 
+        except CoverError:
+            raise
         except Exception as e:
             logger.error("处理文件上传导入时发生异常", {
                 "task_id": request.task_id,
@@ -288,6 +296,12 @@ class TimelineImportService:
         errors = []
         warnings = []
         
+        metadata = dict(metadata)
+        for snake, camel in {"exported_at": "exportedAt", "task_id": "taskId",
+            "total_duration": "totalDuration", "track_count": "trackCount",
+            "item_count": "itemCount"}.items():
+            if camel in metadata:
+                metadata[snake] = metadata[camel]
         required_fields = ['exported_at', 'version', 'task_id', 'total_duration', 'track_count', 'item_count']
         for field in required_fields:
             if field not in metadata:
@@ -305,6 +319,11 @@ class TimelineImportService:
         errors = []
         warnings = []
         
+        timeline = dict(timeline)
+        for snake, camel in {"current_time": "currentTime",
+            "total_duration": "totalDuration", "zoom_level": "zoomLevel"}.items():
+            if snake in timeline:
+                timeline[camel] = timeline[snake]
         required_fields = ['currentTime', 'totalDuration', 'zoomLevel']
         for field in required_fields:
             if field not in timeline:
@@ -445,6 +464,86 @@ class TimelineImportService:
                 warnings=warnings
             )
 
+    async def _rebind_cover_references(self, data, request) -> None:
+        from app.database import async_session_factory
+        from app.services import video_cover_v2_service as covers
+        from app.services import video_cover_asset_service as assets
+        marked = [(track, item) for track in data.tracks
+                  for item in track.get("items", [])
+                  if (item.get("metadata") or {}).get("role") == "video-cover"]
+        if not marked:
+            return
+        if not request.project_id:
+            raise CoverError("COVER_PROJECT_CHANGED", "导入封面需要目标项目", 422)
+        if len(marked) > 1:
+            raise CoverError("COVER_TIMELINE_CONFLICT", "导入数据包含多个封面", 409)
+        async with async_session_factory() as db:
+            await assets.require_project(db, request.project_id)
+            for track, item in marked:
+                material_id = item.get("materialId", item.get("material_id"))
+                if len(track.get("items", [])) != 1 or not any(
+                    material.get("id") == material_id for material in data.materials
+                ):
+                    raise CoverError("COVER_TIMELINE_CONFLICT", "封面轨道或素材引用不完整", 409)
+                ref = (item.get("metadata") or {}).get("cover", {})
+                try:
+                    source = str(uuid.UUID(ref["projectId"]))
+                    source_revision = str(uuid.UUID(ref["revisionId"]))
+                except (KeyError, ValueError, TypeError) as exc:
+                    raise CoverError("COVER_ASSET_MISSING", "封面引用不完整", 422) from exc
+                if source != request.project_id:
+                    resolved = await covers.import_revision(db, request.project_id,
+                        ImportCoverRequest(request_id=f"import:{source}:{source_revision}",
+                            source_project_id=source, source_revision_id=source_revision))
+                else:
+                    async with assets.project_locks(source):
+                        await assets.require_project(db, source)
+                        row = await covers.get_revision(db, source, source_revision)
+                        asset = await assets.get_asset(db, source, row.asset_id)
+                        await assets.verify_asset(asset)
+                        resolved = await covers.revision_data(db, row)
+                self._apply_imported_cover(data, track, item, resolved, request)
+        if request.merge_mode == "replace":
+            data.metadata.cover_schema_version = 2
+
+    def _apply_imported_cover(self, data, track, item, revision, request) -> None:
+        old_material = item.get("materialId", item.get("material_id"))
+        append = request.merge_mode == "append"
+        material_id = f"cover-material:{revision['id']}"
+        metadata = copy.deepcopy(item.get("metadata") or {})
+        reference = {"schemaVersion": 2, "projectId": request.project_id,
+            "revisionId": revision["id"], "assetId": revision["asset_id"],
+            "sha256": revision["sha256"]}
+        metadata["cover"] = reference
+        if append:
+            metadata.pop("role", None)
+            metadata["coverProvenance"] = metadata.pop("cover")
+        track_id = (f"image-track-import:{uuid.uuid4()}" if append else
+                    f"image-track-cover:{request.project_id}")
+        track["id"] = track_id
+        item.update(id=(f"image-clip:{uuid.uuid4()}" if append else
+                        f"cover-clip:{request.project_id}"),
+                    trackId=track_id, materialId=material_id,
+                    metadata=metadata, url=revision["url"],
+                    serverUrl=revision["url"], thumbnailUrl=revision["url"])
+        for material in data.materials:
+            if material["id"] == old_material:
+                material.update(id=material_id, url=revision["url"],
+                    serverUrl=revision["url"], thumbnailUrl=revision["url"],
+                    metadata=copy.deepcopy(metadata))
+        self._rebind_shared_cover_material(data, old_material, material_id,
+                                          revision["url"])
+
+    def _rebind_shared_cover_material(self, data, old_id, new_id, url) -> None:
+        # 同一成品也可能被正文普通图片复用，素材改名必须更新所有使用者。
+        for track in data.tracks:
+            for item in track.get("items", []):
+                if item.get("materialId", item.get("material_id")) != old_id:
+                    continue
+                item.pop("material_id", None)
+                item.update(materialId=new_id, url=url,
+                            serverUrl=url, thumbnailUrl=url)
+
     async def _process_import_data(self, import_data: TimelineExportDataModel, request: TimelineImportRequest) -> ProcessedImportData:
         """处理导入数据"""
         id_mappings = {}
@@ -459,7 +558,8 @@ class TimelineImportService:
             track_dict = dict(track_data)
             
             # 处理ID映射
-            if not request.preserve_ids:
+            is_cover_track = track_dict['id'].startswith('image-track-cover:')
+            if not request.preserve_ids and not is_cover_track:
                 old_id = track_dict['id']
                 new_id = f"track_{uuid.uuid4().hex[:8]}"
                 track_dict['id'] = new_id
@@ -471,7 +571,7 @@ class TimelineImportService:
             for item_data in track_dict.get('items', []):
                 item_dict = dict(item_data)
                 
-                if not request.preserve_ids:
+                if not request.preserve_ids and not is_cover_track:
                     old_item_id = item_dict['id']
                     new_item_id = f"item_{uuid.uuid4().hex[:8]}"
                     item_dict['id'] = new_item_id
@@ -493,7 +593,7 @@ class TimelineImportService:
         for material_data in import_data.materials:
             material_dict = dict(material_data)
             
-            if not request.preserve_ids:
+            if not request.preserve_ids and not material_dict['id'].startswith('cover-material:'):
                 old_material_id = material_dict['id']
                 new_material_id = f"material_{uuid.uuid4().hex[:8]}"
                 material_dict['id'] = new_material_id
@@ -517,6 +617,8 @@ class TimelineImportService:
             timelineState=timeline_state,
             materials=materials,
             idMappings=id_mappings,
+            coverSchemaVersion=(import_data.metadata.cover_schema_version
+                                if request.merge_mode == "replace" else None),
             processingNotes=processing_notes
         )
 

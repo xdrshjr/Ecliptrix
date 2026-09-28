@@ -189,7 +189,11 @@ class TimelineExportService:
                 "task_id": request.task_id,
                 "total_duration": request.timeline_state.total_duration,
                 "track_count": len(request.timeline_state.tracks),
-                "item_count": total_items
+                "item_count": total_items,
+                "coverSchemaVersion": request.cover_schema_version or (
+                    2 if any((item.metadata or {}).get("role") == "video-cover"
+                             for track in request.timeline_state.tracks
+                             for item in track.items) else None),
             },
             timeline={
                 "current_time": request.timeline_state.current_time,
@@ -234,7 +238,10 @@ class TimelineExportService:
                             "original_duration": item.original_duration,
                             "original_material_type": item.original_material_type,
                             "subtitle_style": item.subtitle_style,
-                            "image_position": item.image_position
+                            "image_position": item.image_position,
+                            "metadata": item.metadata,
+                            "url": item.url,
+                            "server_url": item.server_url,
                         }
                         for item in track.items
                     ]
@@ -282,7 +289,7 @@ class TimelineExportService:
         """
         try:
             # 转换为字典以便序列化
-            data_dict = export_data.dict() if hasattr(export_data, 'dict') else export_data.__dict__
+            data_dict = export_data.model_dump(by_alias=True)
             
             # 写入文件
             with open(file_path, 'w', encoding='utf-8') as f:

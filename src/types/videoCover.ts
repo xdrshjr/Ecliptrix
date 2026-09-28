@@ -1,0 +1,68 @@
+export type CoverMode = 'html' | 'ai' | 'mixed';
+export type CoverTemplateId = 'editorial' | 'cinematic' | 'knowledge' | 'product' | 'bold';
+export type CoverAspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '21:9';
+
+export interface CoverDocument {
+  schemaVersion: 2;
+  mode: CoverMode;
+  templateId: CoverTemplateId;
+  templateVersion: 1;
+  aspectRatio: CoverAspectRatio;
+  fields: { title: string; subtitle: string; label: string };
+  typography: {
+    family: 'sans' | 'serif' | 'mono'; titleScale: number;
+    align: 'left' | 'center' | 'right'; textColor: string;
+    accentColor: string;
+  };
+  background: {
+    kind: 'solid' | 'gradient' | 'asset'; color: string;
+    assetId: string | null; focusX: number; focusY: number;
+  };
+  generation: { prompt: string; count: 1 | 2 | 4 };
+  durationFrames: number;
+}
+export interface CoverAsset {
+  assetId: string; url: string; width: number; height: number;
+  sha256: string;
+}
+export interface CoverRevision {
+  id: string; projectId: string; document: CoverDocument;
+  documentHash: string; assetId: string; url: string; sha256: string;
+  width: number; height: number; createdAt: string;
+}
+export interface CoverClipMetadata {
+  role: 'video-cover';
+  cover: {
+    schemaVersion: 2; projectId: string; revisionId: string;
+    assetId: string; sha256: string;
+  };
+}
+export type CoverJobStatus = 'queued' | 'running' | 'succeeded' |
+  'failed' | 'cancelled' | 'interrupted';
+export interface CoverJob {
+  jobId: string; status: CoverJobStatus; phase?: string;
+  baseVersion: number; assets: CoverAsset[]; warnings?: string[];
+  errorCode?: string; createdAt?: string;
+}
+export interface CoverSnapshot {
+  document: CoverDocument | null; version: number;
+  documentHash: string | null; appliedRevision: CoverRevision | null;
+  legacyAvailable: boolean; jobs: CoverJob[]; revisions: CoverRevision[];
+  assets?: CoverAsset[];
+  generationConfigured?: boolean;
+}
+export interface CoverSavedDraft {
+  version: number; document: CoverDocument; documentHash: string;
+}
+export type CoverErrorCode = 'COVER_VERSION_CONFLICT' |
+  'COVER_REQUEST_CONFLICT' | 'COVER_DRAFT_NOT_READY' |
+  'COVER_ASSET_MISSING' | 'COVER_INVALID_ASSET' | 'COVER_RENDER_FAILED' |
+  'COVER_GENERATION_FAILED' | 'COVER_GENERATION_TIMEOUT' |
+  'COVER_GENERATION_INTERRUPTED' | 'COVER_QUEUE_FULL' |
+  'COVER_TIMELINE_CONFLICT' | 'COVER_PROJECT_CHANGED' |
+  'COVER_ASPECT_MISMATCH' | 'COVER_EXPORT_FAILED' | 'COVER_V2_ACTIVE';
+export class CoverError extends Error {
+  constructor(public code: CoverErrorCode, message: string) {
+    super(message); this.name = 'CoverError';
+  }
+}

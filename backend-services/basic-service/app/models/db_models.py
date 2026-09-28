@@ -263,6 +263,64 @@ class ProjectCover(Base):
     )
 
 
+class ProjectCoverDocument(Base):
+    __tablename__ = "project_cover_documents"
+    project_id = Column(UUID(as_uuid=True), ForeignKey("video_projects.id"), primary_key=True)
+    user_id = Column(String(36), nullable=False, default=LOCAL_OWNER_ID)
+    version = Column(Integer, nullable=False)
+    document = Column(JSON, nullable=False)
+    legacy_import = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ProjectCoverAsset(Base):
+    __tablename__ = "project_cover_assets"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("video_projects.id"), nullable=False, index=True)
+    user_id = Column(String(36), nullable=False, default=LOCAL_OWNER_ID)
+    kind = Column(String(16), nullable=False)
+    relative_path = Column(String(1000), nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    width = Column(Integer, nullable=False)
+    height = Column(Integer, nullable=False)
+    byte_size = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectCoverRevision(Base):
+    __tablename__ = "project_cover_revisions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("video_projects.id"), nullable=False, index=True)
+    user_id = Column(String(36), nullable=False, default=LOCAL_OWNER_ID)
+    request_id = Column(String(160), nullable=False)
+    document = Column(JSON, nullable=False)
+    document_hash = Column(String(64), nullable=False)
+    import_source = Column(JSON, nullable=True)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("project_cover_assets.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("project_id", "request_id"),)
+
+
+class ProjectCoverJob(Base):
+    __tablename__ = "project_cover_jobs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("video_projects.id"), nullable=False, index=True)
+    user_id = Column(String(36), nullable=False, default=LOCAL_OWNER_ID)
+    request_id = Column(String(160), nullable=False)
+    input_hash = Column(String(64), nullable=True)
+    base_version = Column(Integer, nullable=True)
+    request_json = Column(JSON, nullable=True)
+    status = Column(String(20), nullable=False)
+    phase = Column(String(30), nullable=False, default="queued")
+    result_asset_ids = Column(JSON, nullable=False, default=list)
+    warnings = Column(JSON, nullable=False, default=list)
+    error_code = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    __table_args__ = (UniqueConstraint("project_id", "request_id"),)
+
+
 class SettingsAuditLog(Base):
     """Audit trail for settings changes."""
     __tablename__ = "settings_audit_log"

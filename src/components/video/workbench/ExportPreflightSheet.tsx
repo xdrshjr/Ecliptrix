@@ -5,10 +5,14 @@ import { createPortal } from 'react-dom';
 import type { DismissibleExportAdvisory } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { trapTabKey } from '@/components/ui/focusTrap';
+import type { CoverExportCheck } from '../hooks/videoExportItems';
 import type { ExportAdvisory } from '../hooks/exportAdvisories';
 
 export interface ExportPreflightSheetProps {
   advisories: readonly ExportAdvisory[];
+  coverCheck?: CoverExportCheck | null;
+  coverDraftChanged?: boolean;
+  onApplyCoverDraft?: () => Promise<void>;
   onExportAnyway(): void;
   onClose(): void;
   /** "Review": select the segment the advisory is about. */
@@ -43,6 +47,16 @@ const ExportPreflightSheet: React.FC<ExportPreflightSheetProps> = (props) => {
   const titleId = useId();
   const sheetRef = useRef<HTMLDivElement>(null);
   const [dismissed, setDismissed] = useState<ReadonlySet<DismissibleExportAdvisory>>(new Set());
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState(false);
+
+  const applyDraft = async () => {
+    if (applying || !props.onApplyCoverDraft) return;
+    setApplying(true); setApplyError(false);
+    try { await props.onApplyCoverDraft(); onClose(); }
+    catch { setApplyError(true); }
+    finally { setApplying(false); }
+  };
 
   // Focus goes back to the export button (or whatever opened the sheet).
   useEffect(() => {
@@ -83,6 +97,25 @@ const ExportPreflightSheet: React.FC<ExportPreflightSheetProps> = (props) => {
     >
       <h2 id={titleId} className="ws-preflight__title">{copy.title}</h2>
       <p className="ws-preflight__note">{copy.severityNote}</p>
+      <div className="ws-preflight__note">
+        {props.coverCheck?.status === 'error' ? t.coverStudio.exportInvalid
+          : props.coverCheck?.status === 'hidden' ? t.coverStudio.exportHidden
+          : props.coverCheck?.status === 'ready' ? (
+            <div>
+              <img src={props.coverCheck.item.thumbnailUrl} alt="" width={96} />
+              {props.coverCheck.mode && <span>{t.coverStudio[props.coverCheck.mode]} · </span>}
+              <span>{t.coverStudio.appliedVersion} {props.coverCheck.requiredCover.revision_id.slice(0, 8)} · {props.coverCheck.item.duration.toFixed(2)}s</span>
+            </div>
+          ) : t.coverStudio.noCover}
+      </div>
+      {props.coverDraftChanged && (
+        <div className="ws-preflight__note">
+          <p>{t.coverStudio.updated}</p>
+          {props.onApplyCoverDraft && <button type="button" className="ws-btn ws-btn--ghost"
+            disabled={applying} onClick={() => void applyDraft()}>{applying ? t.coverStudio.applying : t.coverStudio.apply}</button>}
+          {applyError && <p role="alert">{t.coverStudio.exportInvalid}</p>}
+        </div>
+      )}
       <ul className="ws-preflight__list">
         {advisories.map((advisory) => (
           <li key={advisory.code} className="ws-preflight__item" data-code={advisory.code}>
@@ -111,8 +144,8 @@ const ExportPreflightSheet: React.FC<ExportPreflightSheetProps> = (props) => {
       </ul>
       <div className="ws-preflight__footer">
         <button type="button" className="ws-btn ws-btn--ghost" onClick={onClose}>{copy.back}</button>
-        <button type="button" className="ws-btn ws-btn--primary" onClick={exportAnyway} data-autofocus>
-          {copy.exportAnyway}
+        <button type="button" className="ws-btn ws-btn--primary" onClick={exportAnyway} disabled={applying || props.coverCheck?.status === 'error'} data-autofocus>
+          {props.coverCheck?.status === 'hidden' ? t.coverStudio.exportVisible : props.coverCheck?.status === 'ready' ? t.coverStudio.exportCurrent : copy.exportAnyway}
         </button>
       </div>
     </div>,

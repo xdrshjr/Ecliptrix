@@ -85,6 +85,9 @@ from app.services.composition.composition_outcome import (
     last_stderr_line,
     timeline_end_of,
 )
+from app.services.composition.cover_contract import (
+    CoverCompositionError, PreparedCover, require_strict_images,
+)
 from app.services.composition.ffmpeg_args import (
     filter_complex_args,
     progress_file_path,
@@ -450,6 +453,8 @@ class VideoCompositionService:
             error=error_details.get("error_summary"),
             failed_at=datetime.utcnow(),
         )
+        if info.get('strict_image_ids') and error_details.get('composition_stage') != 'cancelled':
+            info['error_code'] = 'COVER_EXPORT_FAILED'
 
     def _composition_failure_response(
         self, composition_id: str, request: VideoCompositionRequest, stage: str, summary: str,
@@ -479,7 +484,8 @@ class VideoCompositionService:
             composition_id=composition_id,
             status="failed",
             progress=progress,
-            error_details=error_details
+            error_details=error_details,
+            error_code=self.compositions.get(composition_id, {}).get('error_code'),
         )
 
     def _record_degradation(
@@ -487,6 +493,7 @@ class VideoCompositionService:
     ) -> None:
         """Record content that did not reach the export (S7). Logged, never silent."""
         info = self.compositions.get(composition_id) if composition_id else None
+        require_strict_images(info, items, reason)
         if info is None:
             logger.warning(f"Untracked composition lost {kind} content: {clip_reason(reason)}")
             return
@@ -975,10 +982,15 @@ class VideoCompositionService:
         return None
     
     # Over 60 lines: every fail-fast request check runs before the status entry exists.
-    def start_video_composition(self, request: VideoCompositionRequest) -> VideoCompositionResponse:
+    def start_video_composition(self, request: VideoCompositionRequest,
+                                prepared_cover: Optional[PreparedCover] = None) -> VideoCompositionResponse:
         """
         Start video composition asynchronously and return immediately with composition_id.
         """
+        if request.required_cover is not None and prepared_cover is None:
+            return VideoCompositionResponse(success=False, status='failed',
+                message='封面尚未通过导出校验', error_code='COVER_EXPORT_FAILED')
+        request = prepared_cover.request if prepared_cover else request.model_copy(deep=True)
         # Spec 03 §3.3 / §3.4 (V03-E) — fail fast on SSRF or local-path
         # attacks embedded in timeline JSON. We only validate the URL
         # shape here; per-call defense (FFmpeg protocol whitelist + path
@@ -986,6 +998,8 @@ class VideoCompositionService:
         try:
             self._guard_request_urls(request)
         except URLGuardError as guard_exc:
+            if prepared_cover:
+                prepared_cover.release()
             logger.warning(f"Composition request rejected by url_guard: {guard_exc}")
             return VideoCompositionResponse(
                 success=False,
@@ -1019,15 +1033,21 @@ class VideoCompositionService:
             "warnings": [],
             # Round 2 S7: content that did not reach a completed export.
             "degradations": [],
+            "strict_image_ids": {request.required_cover.image_item_id} if request.required_cover else set(),
+            "prepared_cover": prepared_cover,
         }
         
         self._cancel_events.track(composition_id)
         # Start background processing
-        threading.Thread(
-            target=self._process_video_composition_async,
-            args=(composition_id, request),
-            daemon=True
-        ).start()
+        try:
+            threading.Thread(
+                target=self._process_video_composition_async,
+                args=(composition_id, request), daemon=True,
+            ).start()
+        except Exception:
+            self._release_cover(composition_id)
+            self._cancel_events.forget(composition_id)
+            raise
         
         # Return immediately with processing status
         return VideoCompositionResponse(
@@ -1044,6 +1064,7 @@ class VideoCompositionService:
         """
         logger.info(f"Composition {composition_id} waiting for semaphore (max concurrent: 2)")
         if not self._acquire_composition_slot(composition_id):
+            self._release_cover(composition_id)
             return
         try:
             logger.info(f"Background processing started for composition {composition_id}")
@@ -1065,9 +1086,26 @@ class VideoCompositionService:
                 progress=float(self.compositions.get(composition_id, {}).get("progress", 0.0)),
             )
         finally:
+            self._release_cover(composition_id)
             self._composition_semaphore.release()
             self._cancel_events.forget(composition_id)
             logger.info(f"Composition {composition_id} released semaphore")
+
+    def _release_cover(self, composition_id: str) -> None:
+        prepared = self.compositions.get(composition_id, {}).pop('prepared_cover', None)
+        if prepared:
+            prepared.release()
+
+    def _publish_cover_output(self, source: Path, destination: Path,
+                              composition_id: str) -> None:
+        """临时目录可跨磁盘；完整复制后原子发布，不暴露已知URL的半成品。"""
+        pending = destination.with_suffix(f'.{uuid.uuid4().hex}.part')
+        try:
+            shutil.copyfile(source, pending)
+            self._raise_if_cancelled(composition_id)
+            os.replace(pending, destination)
+        finally:
+            remove_file(str(pending))
 
     def _acquire_composition_slot(self, composition_id: str) -> bool:
         """Wait for a slot, re-checking cancellation: False when cancelled while queued (RV3-13)."""
@@ -1199,7 +1237,9 @@ class VideoCompositionService:
         
         temp_dir = temp_dir_for(composition_id)
         output_filename = f"composed_{composition_id}.{request.output_format}"
-        output_path = self.output_dir / output_filename
+        published_path = self.output_dir / output_filename
+        strict_cover = bool(self.compositions.get(composition_id, {}).get('strict_image_ids'))
+        output_path = Path(temp_dir) / output_filename if strict_cover else published_path
         # Every file a stage may leave next to the output; removed in `finally`
         # together with the temp dir, on success and on failure (EXO-13).
         intermediate_paths = _intermediate_paths_for(output_path)
@@ -1580,7 +1620,12 @@ class VideoCompositionService:
                         if os.path.exists(merged_output_path):
                             os.replace(merged_output_path, str(output_path))
                             logger.info("Image overlays and subtitles added in single pass")
+                        else:
+                            require_strict_images(self.compositions.get(composition_id),
+                                all_image_items, '封面叠加没有生成输出文件')
                     else:
+                        require_strict_images(self.compositions.get(composition_id),
+                            all_image_items, '封面合并叠加失败')
                         logger.warning("Merged processing failed, falling back to sequential processing")
                         # Fallback to sequential processing — its warnings must
                         # come back too (P1-1), and each pass that still fails is
@@ -1592,7 +1637,11 @@ class VideoCompositionService:
                                 composition_id=composition_id,
                             ),
                         )
+                except CoverCompositionError:
+                    raise
                 except Exception as e:
+                    require_strict_images(self.compositions.get(composition_id),
+                        all_image_items, f'封面合并处理失败：{e}')
                     logger.error(f"Merged overlay+subtitle processing error: {str(e)}", exc_info=True)
                     logger.warning("Falling back to sequential processing")
                     self._record_composition_warnings(
@@ -1619,6 +1668,9 @@ class VideoCompositionService:
                     if success and os.path.exists(video_with_images_path):
                         os.replace(video_with_images_path, str(output_path))
                         logger.info("Image overlays successfully added to video")
+                    else:
+                        require_strict_images(self.compositions.get(composition_id),
+                            all_image_items, '封面叠加失败或缺少输出文件')
                 except OSError as e:
                     logger.error(f"Image overlay output could not replace the video: {e}", exc_info=True)
                     self._record_degradation(composition_id, "image_overlay", all_image_items, str(e))
@@ -1631,9 +1683,13 @@ class VideoCompositionService:
                 logger.info("No image overlays or subtitle tracks to process")
 
             self._set_stage(composition_id, "finalizing")
+            self._raise_if_cancelled(composition_id)
             # Final processing
             processing_time = time.time() - start_time
             file_size = output_path.stat().st_size
+            if strict_cover:
+                self._publish_cover_output(output_path, published_path, composition_id)
+                output_path = published_path
             self.compositions[composition_id].update({
                 "status": "completed",
                 "progress": 1.0,
@@ -1661,6 +1717,9 @@ class VideoCompositionService:
         except CompositionCancelled:
             logger.info(f"Composition {composition_id} cancelled by the user")
             return self._cancelled_response(composition_id, output_path)
+        except CoverCompositionError as e:
+            self.compositions[composition_id]['error_code'] = e.code
+            return self._composition_failure_response(composition_id, request, e.stage, e.summary)
         except CompositionStageError as e:
             logger.error(f"Video composition failed in stage '{e.stage}': {e.summary}")
             return self._composition_failure_response(composition_id, request, e.stage, e.summary)
@@ -1675,6 +1734,9 @@ class VideoCompositionService:
             # failure alike (EXO-13).
             shutil.rmtree(temp_dir, ignore_errors=True)
             self._remove_intermediates(intermediate_paths, output_path)
+            if self.compositions.get(composition_id, {}).get('status') != 'completed':
+                remove_file(str(output_path))
+            self._release_cover(composition_id)
             # The request payload is only needed while composing (EX3-06)
             self.compositions.get(composition_id, {}).pop("request", None)
 
@@ -2506,6 +2568,9 @@ class VideoCompositionService:
             if success and os.path.exists(video_with_images_path):
                 os.replace(video_with_images_path, str(output_path))
                 logger.info("Image overlays added (sequential fallback)")
+            else:
+                require_strict_images(self.compositions.get(composition_id),
+                    all_image_items, '封面顺序叠加失败或缺少输出文件')
         except OSError as e:
             logger.error(f"Image overlay error in fallback: {e}", exc_info=True)
             self._record_degradation(composition_id, "image_overlay", all_image_items, str(e))
@@ -2772,10 +2837,11 @@ class VideoCompositionService:
                     "Merged overlay pass with camera motion failed; retrying "
                     f"without motion: {last_stderr_line(result.stderr)}"
                 )
-                retry_cmd, retry_entries, _, _ = self._build_still_overlay_inputs(
+                retry_cmd, retry_entries, _, retry_skipped = self._build_still_overlay_inputs(
                     image_items, video_path, temp_dir, output_resolution,
                     output_fps, ffmpeg_path, disable_camera=True,
                 )
+                self._record_skipped_images(composition_id, retry_skipped)
                 retry_parts, retry_last = self._build_still_overlay_filters(retry_entries)
                 retry_result = self._run_tracked_ffmpeg(
                     assemble(retry_cmd, retry_parts, retry_last),
@@ -2789,12 +2855,17 @@ class VideoCompositionService:
                 logger.info("Merged overlay+subtitle processing completed successfully")
                 return True, warnings
             logger.error(f"Merged processing failed: {last_stderr_line(result.stderr)}")
+            require_strict_images(self.compositions.get(composition_id),
+                image_items, last_stderr_line(result.stderr))
             return False, warnings
 
+        except CoverCompositionError:
+            raise
         except Exception as e:
             # The caller falls back to the sequential passes, which record any
             # loss that persists as a degradation.
             logger.error(f"Error in merged overlay+subtitle processing: {str(e)}", exc_info=True)
+            require_strict_images(self.compositions.get(composition_id), image_items, str(e))
             return False, warnings
 
     # Over 60 lines: image inputs and the motion-free retry build one command.
@@ -2870,10 +2941,11 @@ class VideoCompositionService:
                     "Image overlay pass with camera motion failed; retrying "
                     f"without motion: {last_stderr_line(result.stderr)}"
                 )
-                retry_cmd, retry_entries, _, _ = self._build_still_overlay_inputs(
+                retry_cmd, retry_entries, _, retry_skipped = self._build_still_overlay_inputs(
                     image_items, video_path, temp_dir, output_resolution,
                     output_fps, ffmpeg_path, disable_camera=True,
                 )
+                self._record_skipped_images(composition_id, retry_skipped)
                 retry_parts, retry_last = self._build_still_overlay_filters(retry_entries)
                 retry_result = self._run_tracked_ffmpeg(
                     assemble(retry_cmd, retry_parts, retry_last),
@@ -2893,6 +2965,8 @@ class VideoCompositionService:
             )
             return False, warnings
 
+        except CoverCompositionError:
+            raise
         except Exception as e:
             logger.error(f"Error processing image overlays: {str(e)}", exc_info=True)
             self._record_degradation(composition_id, "image_overlay", image_items, str(e))

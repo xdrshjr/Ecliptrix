@@ -112,6 +112,51 @@ export type StoryboardOperation =
 export type AsyncTaskOperation =
   | { type: 'start_async_task'; task: AsyncTask };
 
+type CoverOperationBase = {
+  type: 'cover_action';
+  projectId: string;
+  operationId: string;
+  durationFrames: number;
+  applyWhenReady: boolean;
+}
+
+export type CoverOperation = CoverOperationBase & (
+  | { action: 'watch_job'; jobId: string; draftVersion: number }
+  | { action: 'prepare_draft'; draftVersion: number }
+  | { action: 'apply_revision'; revisionId: string }
+);
+
+export interface CoverOperationStatus {
+  state: 'submitted' | 'image_ready' | 'applying' | 'applied'
+    | 'not_applied' | 'error' | 'cancel_unconfirmed';
+  jobId?: string;
+  projectId?: string;
+  revisionId?: string;
+  thumbnailUrl?: string;
+  error?: string;
+}
+
+export const COVER_CARD_ACTION_EVENT = 'ecliptrix:cover-action';
+export interface CoverCardActionDetail {
+  projectId: string;
+  operationId: string;
+  action: 'edit' | 'apply' | 'locate';
+  revisionId?: string;
+}
+
+/** Project-mounted controller owns baselines, cancellation and rendering. */
+export interface CoverAgentBridge {
+  beginOperation: (toolCallId: string, toolName: string,
+    onStatus?: (status: CoverOperationStatus) => void) => void;
+  handleCoverOperation: (
+    operation: CoverOperation,
+    onStatus: (status: CoverOperationStatus) => void,
+  ) => void | Promise<void>;
+  cancelOperations: (options: {
+    cancelJobs: boolean; operationIds?: string[];
+  }) => void;
+}
+
 // --- Unified Agent Operation ---
 
 export type AgentOperation =
@@ -119,7 +164,8 @@ export type AgentOperation =
   | MaterialOperation
   | ScriptOperation
   | StoryboardOperation
-  | AsyncTaskOperation;
+  | AsyncTaskOperation
+  | CoverOperation;
 
 // --- SSE Events (sent from API route to frontend) ---
 

@@ -8,6 +8,7 @@ import type {
   CompositionStage,
   VideoCompositionRequest,
 } from '@/lib/api/videoComposition';
+import { videoCoverV2 } from '@/lib/api/videoCoverV2';
 import type { SupportedLocale, Translations } from '@/lib/i18n';
 import { VideoEditingLogger } from '../utils/logger';
 import { indexMaterialsById } from '../timeline/infrastructure/renderableTimeline';
@@ -32,6 +33,8 @@ import {
   buildExportCompositionItems,
   planVideoExport,
   type VideoExportPlan,
+  validateCoverExport,
+  type CoverExportCheck,
 } from './videoExportItems';
 
 type CompositionApi = (typeof import('@/lib/api/videoComposition'))['videoCompositionAPI'];
@@ -57,6 +60,8 @@ interface UseVideoExportReturn {
 
 export interface ExportRequestOptions {
   skipAdvisories?: boolean;
+  confirmedHiddenCoverDigest?: string;
+  reviewedCoverDigest?: string;
 }
 
 /** Non-blocking pre-export notes (R2 §3.11), consulted after the plan is ready. */
@@ -64,6 +69,7 @@ export interface ExportPreflight {
   collect(blackTailSeconds: number): ExportAdvisory[];
   /** Shows the notes; the export does not start until the user confirms. */
   onAdvisories(advisories: ExportAdvisory[]): void;
+  onCoverCheck?(check: CoverExportCheck, snapshotDigest?: string): void;
 }
 
 interface UseVideoExportProps {
@@ -232,6 +238,7 @@ function reportExportFailure(error: unknown, run: ExportRun): ExportOutcome {
 async function runComposition(run: ExportRun): Promise<ExportOutcome> {
   try {
     const api = await loadCompositionApi();
+    if (run.controller.signal.aborted) return reportCancelled(run.report);
     const request = run.buildRequest();
     run.update({ progress: 20 });
     const response = await api.composeVideo(request);
@@ -307,11 +314,63 @@ export const useVideoExport = ({
     // a second composition while this one runs.
     if (!beginExportSession(sessionKey, controller)) return;
 
-    const materialsById = indexMaterialsById(materials ?? []);
-    const plan = planVideoExport(timelineState.tracks, materialsById);
+    // Freeze before the first await: the whole run uses one immutable project snapshot.
+    const snapshot = structuredClone({ tracks: timelineState.tracks, materials: materials ?? [], aspectRatio });
+    const materialsById = indexMaterialsById(snapshot.materials);
+    const coverCheck = validateCoverExport({ tracks: snapshot.tracks, materialsById, projectId, aspectRatio });
+    const plan = planVideoExport(snapshot.tracks, materialsById);
+    if (coverCheck.status === 'error') {
+      showError(t.coverStudio.errors[coverCheck.code] || t.coverStudio.exportInvalid);
+      preflight?.onCoverCheck?.(coverCheck);
+      endExportSession(sessionKey, controller);
+      return;
+    }
+    if (coverCheck.status === 'hidden' && options.confirmedHiddenCoverDigest !== coverCheck.digest) {
+      preflight?.onCoverCheck?.(coverCheck, JSON.stringify(snapshot));
+      if (preflight && plan.status === 'ready') preflight.onAdvisories(preflight.collect(plan.blackTailSeconds));
+      if (!preflight?.onCoverCheck) showError(t.coverStudio.exportHidden);
+      endExportSession(sessionKey, controller);
+      return;
+    }
+    if (coverCheck.status === 'ready') {
+      try {
+        const reference = coverCheck.requiredCover;
+        const revision = await videoCoverV2.getRevision(reference.project_id, reference.revision_id);
+        // A cancelled preflight cannot reopen its sheet or start a new job.
+        if (controller.signal.aborted) {
+          reportCancelled({ logger, showError, showInfo, t, locale });
+          return;
+        }
+        const material = materialsById.get(coverCheck.item.materialId!);
+        if (revision.sha256 !== reference.sha256 || revision.url !== material?.url
+          || revision.projectId !== projectId || revision.assetId !== coverCheck.item.metadata?.cover?.assetId
+          || revision.document.aspectRatio !== (aspectRatio ?? '16:9')) {
+          throw new Error('Cover revision does not match the export snapshot');
+        }
+        coverCheck.mode = revision.document.mode;
+      } catch (error) {
+        if (controller.signal.aborted) {
+          reportCancelled({ logger, showError, showInfo, t, locale });
+          return;
+        }
+        logger.error('Cover export validation failed', { error: String(error) });
+        showError(t.coverStudio.exportInvalid);
+        preflight?.onCoverCheck?.({ status: 'error', code: 'COVER_ASSET_MISSING',
+          itemId: coverCheck.item.id });
+        endExportSession(sessionKey, controller);
+        return;
+      }
+    }
     logger.info('导出前检查', { status: plan.status, trackCount: timelineState.tracks.length });
     if (plan.status !== 'ready') {
       showError(refusalMessage(plan, t, locale), 8000);
+      endExportSession(sessionKey, controller);
+      return;
+    }
+    if ((coverCheck.status === 'ready' || coverCheck.status === 'none')
+      && preflight?.onCoverCheck && options.reviewedCoverDigest !== JSON.stringify(snapshot)) {
+      preflight.onCoverCheck(coverCheck, JSON.stringify(snapshot));
+      preflight.onAdvisories(preflight.collect(plan.blackTailSeconds));
       endExportSession(sessionKey, controller);
       return;
     }
@@ -334,10 +393,12 @@ export const useVideoExport = ({
       );
     }
 
+    const request = buildCompositionRequest(
+      snapshot.tracks, materialsById, plan.renderEnd, taskId, snapshot.aspectRatio, fitMode,
+    );
+    if (coverCheck.status === 'ready') request.required_cover = coverCheck.requiredCover;
     const outcome = await runComposition({
-      buildRequest: () => buildCompositionRequest(
-        timelineState.tracks, materialsById, plan.renderEnd, taskId, aspectRatio, fitMode,
-      ),
+      buildRequest: () => request,
       controller,
       update: (patch) => updateExportSession(sessionKey, patch, controller),
       report: { logger, showError, showInfo, t, locale },
@@ -349,7 +410,7 @@ export const useVideoExport = ({
     }
     updateExportSession(sessionKey, { status: 'finished', progress: 100 }, controller);
     setTimeout(() => endExportSession(sessionKey, controller), SUCCESS_TICK_MS);
-  }, [timelineState, materials, taskId, aspectRatio, fitMode, preflight, sessionKey, showError,
+  }, [timelineState, materials, taskId, projectId, aspectRatio, fitMode, preflight, sessionKey, showError,
     showWarning, showInfo, t, locale, logger, reportCompositionNotices]);
 
   const cancelExport = useCallback(async () => {

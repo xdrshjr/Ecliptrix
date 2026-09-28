@@ -20,6 +20,8 @@ import TimelineToolbar from './TimelineToolbar';
 import TimelineRuler from './TimelineRuler';
 import TrackContainer from './TrackContainer';
 import DragTimeBadge from './DragTimeBadge';
+import { importCoverReferences } from '../cover/importCoverReferences';
+import { applyCoverTimelineAction } from './store/actions/applyCover';
 import type { LocalProxyMaskState } from './TimelineItem';
 import { isLocalPreviewEnabled } from '@/lib/playbackFlags';
 import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
@@ -57,6 +59,7 @@ import { useFollowPlayhead } from './hooks/useFollowPlayhead';
 import { useRevealSelectedSegment } from './hooks/useRevealSelectedSegment';
 import { TRACK_HEADER_WIDTH } from './theme/timelineTheme';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { trapTabKey } from '@/components/ui/focusTrap';
 import { canApplyCameraMotion } from '../playback/camera/eligibility';
 import type { CameraMotion } from '../playback/camera';
 
@@ -116,6 +119,10 @@ interface TimelinePanelProps {
   onTimelineCompositionChange?: (timelineState: TimelineState) => void;
   materialsToAdd?: { materials: MaterialItem[], targetTrackId?: string, timestamp: number };
   taskId?: string;
+  projectId?: string;
+  coverSchemaVersion?: 2;
+  onEditCover?: (itemId: string) => void;
+  onCoverSchemaActivated?: () => void;
   onImportComplete?: (importedMaterials: MaterialItem[], importedTimelineState: TimelineState) => void;
   externalTimelineState?: TimelineState;
   externalTimelineUpdateId?: string;
@@ -162,6 +169,10 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
   onTimelineCompositionChange,
   materialsToAdd,
   taskId = 'timeline',
+  projectId,
+  coverSchemaVersion,
+  onEditCover,
+  onCoverSchemaActivated,
   onImportComplete,
   externalTimelineState,
   externalTimelineUpdateId,
@@ -171,6 +182,22 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
 }, ref) => {
   const { t, locale } = useLocale();
   const { showSuccess, showError, showInfo, showWarning } = useNotification();
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const materialsRef = useRef(materials);
+  materialsRef.current = materials;
+  useEffect(() => {
+    useTimelineStore.setState({ onEditCover, onRemoveCover: (collapse) => {
+      if (!projectId) return;
+      try {
+        applyCoverTimelineAction({ projectId, getProjectId: () => projectIdRef.current,
+          getStore: () => useTimelineStore.getState(), registerMaterial: () => {},
+          mode: collapse ? 'remove-collapse' : 'remove-only' });
+      } catch { showError(t.coverStudio.errors.COVER_TIMELINE_CONFLICT); }
+    } });
+    return () => { useTimelineStore.setState({ onEditCover: undefined, onRemoveCover: undefined }); };
+  }, [onEditCover, projectId, showError, t]);
+
 
   // Round-2 client-preview: lock the flag at mount and derive a compact
   // localProxy status map (keyed by materialId) from the SAME authoritative
@@ -203,7 +230,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
 
   // Hooks for side-effect features
   const videoCache = useVideoCache(taskId);
-  const timelineExport = useTimelineExport(taskId);
+  const timelineExport = useTimelineExport(taskId, coverSchemaVersion);
 
   // Positioned root: the drag time badge is placed relative to it.
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -230,6 +257,15 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
   // Dialogs render into <body>: the agent run marks the timeline section
   // `inert`, which froze dialogs inside it and let clicks through (N-12).
   const [portalHost, setPortalHost] = React.useState<HTMLElement | null>(null);
+  const [importFile, setImportFile] = React.useState<File | null>(null);
+  const [importMode, setImportMode] = React.useState<'replace' | 'append'>('replace');
+  const importDialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!importFile) return;
+    const previous = document.activeElement as HTMLElement | null;
+    importDialogRef.current?.querySelector<HTMLElement>('select')?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, [importFile]);
   useEffect(() => { setPortalHost(document.body); }, []);
 
   // Track last external update to avoid infinite loops
@@ -1206,7 +1242,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
   // ---------------------------------------------------------------------------
   // JSON import handler
   // ---------------------------------------------------------------------------
-  const handleImportJSON = useCallback(async (file: File) => {
+  const handleImportJSON = useCallback(async (file: File, mode: 'replace' | 'append' = 'replace') => {
     if (isEditLocked(useTimelineStore.getState())) {
       showWarning(t.timeline.messages.editLockedByAgent);
       return;
@@ -1229,29 +1265,33 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
         throw new Error(t.timeline.messages.importProjectInvalidData);
       }
 
-      let result: any;
-      try {
-        result = await http.post<any>('/api/timeline-import', {
-          taskId,
-          fileContent,
-          fileName: file.name,
-          mergeMode: 'replace',
-          preserveIds: false,
-        }, { timeoutMs: 300_000 });
-      } catch (httpError) {
-        if (httpError instanceof ApiError) {
-          throw new Error(
-            httpError.message ||
-              `${t.timeline.messages.importProjectInvalidData} (${httpError.status})`,
-          );
-        }
-        throw httpError;
+      const imported = await validator.importFromJSON(file);
+      const hasCover = imported.timelineData.tracks.some(track =>
+        track.items.some(item => item.metadata?.role === 'video-cover'));
+      if (hasCover && !projectId) throw new Error(t.coverStudio.exportInvalid);
+      const rebound = await importCoverReferences({ projectId: projectId ?? '',
+        timelineData: imported.timelineData, materials: imported.materials, mode });
+      if (projectIdRef.current !== projectId || !isMountedRef.current
+        || useTimelineStore.getState().isInteracting) throw new Error(t.coverStudio.exportInvalid);
+      const importedData = {
+        timelineState: { ...rebound.timelineData, selectedItems: [] },
+        materials: rebound.materials.map(material => ({ format: '', size: 0,
+          createdAt: new Date(), url: '', ...material })) as MaterialItem[],
+      };
+      if (mode === 'append') {
+        const current = useTimelineStore.getState().exportToData();
+        const offset = Math.max(0, ...current.tracks.flatMap(track =>
+          track.items.map(item => item.startTime + item.duration)));
+        const order = Math.max(0, ...current.tracks.map(track => track.order));
+        const additions = importedData.timelineState.tracks.map((track, index) => ({
+          ...track, order: order + index + 1,
+          items: track.items.map(item => ({ ...item, startTime: item.startTime + offset })),
+        }));
+        importedData.timelineState = { ...current, selectedItems: [],
+          tracks: [...current.tracks, ...additions], totalDuration: Math.max(current.totalDuration,
+            ...additions.flatMap(track => track.items.map(item => item.startTime + item.duration))) };
+        importedData.materials = [...materialsRef.current, ...importedData.materials];
       }
-
-      if (!result.success)
-        throw new Error(result.error || t.timeline.messages.importProjectInvalidData);
-
-      const importedData = result.importedData;
       // The import request can take minutes; the agent may have started meanwhile.
       if (isEditLocked(useTimelineStore.getState())) {
         showWarning(t.timeline.messages.editLockedByAgent);
@@ -1265,13 +1305,15 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
           'import',
         );
 
+        if (imported.coverSchemaVersion === 2 || hasCover) onCoverSchemaActivated?.();
         onImportComplete?.(importedData.materials, importedData.timelineState);
         onTimelineStateChange?.(importedData.timelineState);
+        if (hasCover && mode === 'append') showInfo(t.coverStudio.importAppendNotice);
 
         showSuccess(
           t.timeline.messages.importProjectSuccess
-            .replace('{trackCount}', String(result.statistics?.imported_track_count || 0))
-            .replace('{materialCount}', String(result.statistics?.imported_material_count || 0)),
+            .replace('{trackCount}', String(importedData.timelineState.tracks.length))
+            .replace('{materialCount}', String(importedData.materials.length)),
         );
       } else {
         throw new Error(t.timeline.messages.importProjectInvalidData);
@@ -1295,7 +1337,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
     } finally {
       useTimelineStore.getState().setImporting(false);
     }
-  }, [taskId, onImportComplete, onTimelineStateChange, showSuccess, showError, showWarning, t]);
+  }, [projectId, onCoverSchemaActivated, onImportComplete, onTimelineStateChange, showSuccess, showInfo, showError, showWarning, t]);
 
   // ---------------------------------------------------------------------------
   // Subtitle editing (modal state)
@@ -1439,7 +1481,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
       {/* 工具栏 */}
       <TimelineToolbar
         onExportJSON={handleExportJSON}
-        onImportJSON={handleImportJSON}
+        onImportJSON={file => { setImportMode('replace'); setImportFile(file); }}
         onOrganizeMaterials={handleOrganizeMaterials}
         onCopy={handleCopy}
         onOpenCameraMotion={handleOpenCameraMotion}
@@ -1477,6 +1519,33 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
 
       {portalHost && createPortal(
         <>
+          {importFile && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+              onMouseDown={event => { if (event.target === event.currentTarget) setImportFile(null); }}>
+              <div ref={importDialogRef} role="dialog" aria-modal="true" aria-label={t.coverStudio.importTitle}
+                className="ws-preflight" style={{ position: 'relative', width: 360 }}
+                onKeyDown={event => {
+                  event.stopPropagation();
+                  if (event.key === 'Tab') trapTabKey(event, importDialogRef.current);
+                  if (event.key === 'Escape') setImportFile(null);
+                }}>
+                <h2 className="ws-preflight__title">{t.coverStudio.importTitle}</h2>
+                <p>{importFile.name}</p>
+                <label>{t.coverStudio.importMode}
+                  <select value={importMode} onChange={event => setImportMode(event.target.value as 'replace' | 'append')}>
+                    <option value="replace">{t.coverStudio.importReplace}</option>
+                    <option value="append">{t.coverStudio.importAppend}</option>
+                  </select>
+                </label>
+                <div className="ws-preflight__footer">
+                  <button type="button" className="ws-btn ws-btn--ghost" onClick={() => setImportFile(null)}>{t.common.cancel}</button>
+                  <button type="button" className="ws-btn ws-btn--primary" onClick={() => {
+                    const file = importFile; setImportFile(null); void handleImportJSON(file, importMode);
+                  }}>{t.coverStudio.importConfirm}</button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* 运镜面板 */}
           {cameraMotionTarget && (
             <CameraMotionModal

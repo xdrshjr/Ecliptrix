@@ -153,7 +153,15 @@ export interface ImageCompositionItem {
   camera_motion?: CameraMotionWire;
 }
 
+export interface RequiredCover {
+  project_id: string;
+  revision_id: string;
+  image_item_id: string;
+  sha256: string;
+}
+
 export interface VideoCompositionRequest {
+  required_cover?: RequiredCover;
   task_id: string;
   aspect_ratio?: string; // Add aspect ratio support (e.g., "16:9", "9:16", "4:3", "1:1", "21:9")
   video_items: VideoCompositionItem[];

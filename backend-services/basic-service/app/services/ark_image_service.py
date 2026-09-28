@@ -309,6 +309,7 @@ async def _generate_grid_pack(
 
 async def _generate_legacy_images(
     request: ArkImageGenerateRequest,
+    *, defer_download: bool = False,
 ) -> List[ArkImageResult]:
     """Legacy (non-grid) single-image generation path."""
     width, height = _parse_size(request.size)
@@ -353,6 +354,11 @@ async def _generate_legacy_images(
     if not items:
         logger.warning(f"Ark image API returned empty data: {data}")
         return []
+
+    if defer_download:
+        return [ArkImageResult(image_url=item["url"], width=width,
+                               height=height)
+                for item in items if item.get("url")]
 
     today_str = date.today().strftime("%Y%m%d")
     storage_root = settings.storage.root
@@ -422,6 +428,7 @@ async def generate_images(
 
 async def generate_images_with_pack(
     request: ArkImageGenerateRequest,
+    *, defer_download: bool = False,
 ) -> Tuple[List[ArkImageResult], Optional[ArkImagePack]]:
     """Generate images; if grid_mode + character/scene, also persist a pack.
 
@@ -437,5 +444,5 @@ async def generate_images_with_pack(
         pack, composite = await _generate_grid_pack(request)
         return [composite], pack
 
-    results = await _generate_legacy_images(request)
+    results = await _generate_legacy_images(request, defer_download=defer_download)
     return results, None

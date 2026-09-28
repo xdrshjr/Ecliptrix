@@ -18,6 +18,7 @@ class TimelineImportRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     task_id: str = Field(..., alias="taskId", description="任务ID", min_length=1)
+    project_id: Optional[str] = None
     import_data: TimelineExportDataModel = Field(..., alias="importData", description="要导入的时间轴数据")
     merge_mode: Optional[str] = Field("replace", alias="mergeMode", description="合并模式：replace（替换）, append（追加）")
     preserve_ids: Optional[bool] = Field(True, alias="preserveIds", description="是否保留原始ID")
@@ -50,6 +51,7 @@ class ProcessedImportData(BaseModel):
     materials: List[MaterialModel] = Field(..., description="处理后的素材列表")
     id_mappings: Dict[str, str] = Field(default_factory=dict, alias="idMappings", description="ID映射关系（原始ID -> 新ID）")
     processing_notes: List[str] = Field(default_factory=list, alias="processingNotes", description="处理过程中的注意事项")
+    cover_schema_version: Optional[int] = Field(None, alias="coverSchemaVersion")
 
 
 class TimelineImportResponse(BaseModel):
@@ -78,6 +80,7 @@ class ImportFileUploadRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     task_id: str = Field(..., alias="taskId", description="任务ID", min_length=1)
+    project_id: Optional[str] = None
     file_content: str = Field(..., alias="fileContent", description="JSON文件内容")
     file_name: Optional[str] = Field(None, alias="fileName", description="原始文件名")
     merge_mode: Optional[str] = Field("replace", alias="mergeMode", description="合并模式")

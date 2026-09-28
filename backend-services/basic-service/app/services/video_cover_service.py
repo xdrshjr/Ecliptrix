@@ -255,13 +255,7 @@ class VideoCoverService:
         db: AsyncSession,
         project_id: str,
     ) -> bool:
-        """Delete the cover row + on-disk artifacts for a project.
-
-        Called from ``VideoProjectService.delete_project`` *before* the project
-        row is removed so both deletes share a single transaction. Filesystem
-        cleanup is best-effort: ``FileNotFoundError`` and similar transient
-        errors are swallowed and logged at WARN level.
-        """
+        """只删除数据库行；调用者提交事务后调用 cleanup_files。"""
         proj_uuid = _as_uuid(project_id)
         if proj_uuid is None:
             return False
@@ -273,6 +267,10 @@ class VideoCoverService:
             await db.delete(row)
             await db.flush()
 
+        return row is not None
+
+    def cleanup_files(self, project_id: str) -> None:
+        """只在删除事务提交后清理旧 PNG，回滚不能丢失原文件。"""
         # Filesystem cleanup (best-effort)
         try:
             project_dir = _project_dir_abs(project_id)
@@ -302,8 +300,6 @@ class VideoCoverService:
                 "Cover artifact cleanup failed",
                 {"project_id": project_id, "error": str(exc)},
             )
-
-        return row is not None
 
     # ------------------------------------------------------------------
     # Uploaded background helper

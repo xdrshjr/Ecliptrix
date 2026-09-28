@@ -336,6 +336,10 @@ export function useCompositionTransport(
 
   // 通过ref暴露方法给父组件
   useImperativeHandle(ref, () => ({
+    captureCoverFrame: async () => {
+      if (isPlayingForRefRef.current) await pauseFromTimeline();
+      return compositionPreviewRef.current.captureCoverFrame();
+    },
     handleCompositionSeek,
     seekAndPlayFromTimeline,
     pauseFromTimeline,

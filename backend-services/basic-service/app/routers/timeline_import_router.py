@@ -8,6 +8,7 @@ from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 
 from app.models.base_models import ErrorResponse
+from app.models.video_cover_v2_models import CoverError
 from app.models.timeline_import_models import (
     TimelineImportRequest,
     TimelineImportResponse,
@@ -121,6 +122,8 @@ async def import_timeline(
 
         return result
 
+    except CoverError as exc:
+        return _error_response(exc.status, str(exc), exc.code, exc.details)
     except Exception as e:
         logger.error("时间轴导入处理异常", {
             "task_id": request.task_id if request else "unknown",
@@ -179,6 +182,8 @@ async def import_timeline_from_file(
 
         return result
 
+    except CoverError as exc:
+        return _error_response(exc.status, str(exc), exc.code, exc.details)
     except Exception as e:
         logger.error("文件上传导入处理异常", {
             "task_id": request.task_id if request else "unknown",

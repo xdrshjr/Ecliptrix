@@ -303,6 +303,8 @@ export interface AIVideoScriptSegment {
 }
 
 export interface VideoEditingTaskContent {
+  /** Monotonic marker: undoing the last cover never reactivates legacy writes. */
+  coverSchemaVersion?: 2;
   markdownContent: string;
   lastModified: Date;
   scriptSegments?: ScriptSegment[]; // 文本脚本片段数据
@@ -644,7 +646,9 @@ export interface MaterialItem {
   // 新增：上传状态相关字段
   uploadStatus?: MaterialUploadStatus; // 上传状态
   uploadProgress?: number; // 上传进度 (0-100)
-  metadata?: { // 额外元数据
+    metadata?: { // 额外元数据
+      cover?: import('./videoCover').CoverClipMetadata['cover'];
+      role?: 'video-cover';
     storageKind?: 'local' | 'cached_remote' | 'legacy_remote';
     storageKey?: string;
     localResolvedUrl?: string;

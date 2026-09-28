@@ -162,6 +162,8 @@ export type TimelineSnapshot = TimelineData;
  * TimelineItem from external material.
  */
 export interface MaterialData {
+  width?: number;
+  height?: number;
   id: string;
   name: string;
   type: MaterialType;

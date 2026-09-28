@@ -530,11 +530,20 @@ class CompositionDegradation(BaseModel):
     reason: str
 
 
+class RequiredCover(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    project_id: str = Field(min_length=1)
+    revision_id: str = Field(min_length=1)
+    image_item_id: str = Field(min_length=1)
+    sha256: str = Field(pattern=r'^[0-9a-f]{64}$')
+
+
 class VideoCompositionRequest(BaseModel):
     """
     Request model for video composition.
     """
     task_id: str = Field(..., description="Task ID for tracking and logging")
+    required_cover: Optional[RequiredCover] = None
     video_items: List[VideoCompositionItem] = Field(..., description="List of video items to compose")
     audio_items: List[AudioCompositionItem] = Field(default_factory=list, description="List of audio items to compose")
     subtitle_items: List[SubtitleCompositionItem] = Field(default_factory=list, description="List of subtitle items to compose")
@@ -585,6 +594,7 @@ class VideoCompositionResponse(BaseResponse):
     Response model for video composition.
     """
     composition_id: Optional[str] = Field(None, description="Unique identifier for the composition job")
+    error_code: Optional[str] = None
     status: str = Field(..., description="Composition status (processing, completed, failed)")
     progress: float = Field(0.0, ge=0, le=1, description="Composition progress (0.0 to 1.0)")
     output_file_path: Optional[str] = Field(None, description="Path to the composed video file")

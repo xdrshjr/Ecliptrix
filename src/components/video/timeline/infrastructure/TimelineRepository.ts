@@ -157,6 +157,9 @@ export interface TimelineExportData {
       waveformData?: number[];
       text?: string;
       materialId?: string;
+      metadata?: MaterialData['metadata'];
+      url?: string;
+      serverUrl?: string;
       volume?: number;
       opacity?: number;
       isSelected?: boolean;
@@ -232,6 +235,7 @@ export class TimelineRepository implements ITimelineRepository {
           exportedAt: metadata.exportedAt,
           version: metadata.version || EXPORT_VERSION,
           taskId: metadata.taskId,
+          ...(metadata.coverSchemaVersion === 2 || data.tracks.some(track => track.items.some(item => item.metadata?.role === 'video-cover')) ? { coverSchemaVersion: 2 as const } : {}),
           totalDuration: effectiveTotalDuration,
           trackCount: data.tracks.length,
           itemCount: totalItems,
@@ -274,6 +278,9 @@ export class TimelineRepository implements ITimelineRepository {
               // values are still TOLERATED on import as a first-paint fallback.)
               text: item.text,
               materialId: item.materialId,
+              metadata: item.metadata,
+              url: item.url,
+              serverUrl: item.serverUrl,
               volume: item.volume,
               opacity: item.opacity,
               isSelected: item.isSelected,
@@ -301,9 +308,13 @@ export class TimelineRepository implements ITimelineRepository {
           name: material.name,
           type: material.type,
           duration: material.duration,
+          width: material.width,
+          height: material.height,
           // §3.2(E2): strip inline `data:` posters from the exported JSON.
           thumbnailUrl: isDataUrl(material.thumbnailUrl) ? undefined : material.thumbnailUrl,
           url: material.url,
+          serverUrl: material.serverUrl,
+          metadata: material.metadata,
         })),
       };
 
@@ -328,7 +339,7 @@ export class TimelineRepository implements ITimelineRepository {
    */
   async importFromJSON(
     file: File
-  ): Promise<{ timelineData: TimelineData; materials: MaterialData[] }> {
+  ): Promise<{ timelineData: TimelineData; materials: MaterialData[]; coverSchemaVersion?: 2 }> {
     // Read file content
     let fileContent: string;
     try {
@@ -399,6 +410,9 @@ export class TimelineRepository implements ITimelineRepository {
           waveformData: item.waveformData,
           text: item.text,
           materialId: item.materialId,
+          metadata: item.metadata,
+          url: item.url,
+          serverUrl: item.serverUrl,
           volume: item.volume,
           opacity: item.opacity,
           isSelected: false, // Clear selection on import
@@ -424,11 +438,15 @@ export class TimelineRepository implements ITimelineRepository {
       name: m.name,
       type: m.type as MaterialData['type'],
       duration: m.duration,
+      width: m.width,
+      height: m.height,
       thumbnailUrl: m.thumbnailUrl,
       url: m.url,
+      serverUrl: m.serverUrl,
+      metadata: m.metadata as MaterialData['metadata'],
     }));
 
-    return { timelineData, materials };
+    return { timelineData, materials, coverSchemaVersion: exportData.metadata.coverSchemaVersion };
   }
 
   /**

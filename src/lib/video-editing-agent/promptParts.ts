@@ -102,6 +102,12 @@ export const WORKFLOW_RECIPES_MD = `### 配方 1：脚本与解说视频
  * Keeping the strings here means the two surfaces never drift.
  */
 export const CATEGORY_USAGE_HINTS: Record<string, string> = {
+  [CATEGORY_IDS.COVER_TOOLS]:
+    '封面使用 get_video_cover / create_video_cover / update_video_cover / apply_video_cover。' +
+    '支持 html、ai、mixed；默认 applyWhenReady=true，用户只要方案/候选/不要应用时 false。' +
+    'queued 只能回答“已开始制作，完成后会显示结果”，draft_ready 也不代表已经应用。' +
+    'get_video_cover 的时间轴是本轮请求快照，不是实时编辑器。' +
+    'update 不重新生图，apply 不重复生成；不要改用 generate_ai_image 制作封面。',
   [CATEGORY_IDS.SEARCH_TOOLS]:
     'Search tools query external APIs (Pexels, Unsplash, Freesound). ' +
     'Results are automatically added to the material library. ' +

@@ -37,7 +37,7 @@ export function createExploreToolsTool(
     label: 'Explore Tools',
     description:
       'View detailed tool descriptions for an advanced tool category. ' +
-      'Call this before using tools from: search_tools, ai_gen_tools, tts_tools, script_tools, storyboard_tools, material_tools. ' +
+      'Call this before using tools from: ' + ON_DEMAND_CATEGORY_IDS.join(', ') + '. ' +
       'Returns each tool\'s name, description, and parameter schema.',
     parameters,
 

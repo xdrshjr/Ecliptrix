@@ -23,6 +23,10 @@ import { createGenerateVideoScriptTool } from './generateVideoScript';
 import { createExpandVideoScriptTool } from './expandVideoScript';
 import { createUnderstandVideoScriptTool } from './understandVideoScript';
 import { createGenerateAiImageTool } from './generateAiImage';
+import {
+  createGetVideoCoverTool, createCreateVideoCoverTool,
+  createUpdateVideoCoverTool, createApplyVideoCoverTool,
+} from './coverTools';
 import { createGenerateAiVideoTool } from './generateAiVideo';
 import { createImageToVideoTool } from './imageToVideo';
 import { createGenerateStoryboardTool } from './generateStoryboard';
@@ -404,6 +408,11 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
   ]);
 
   // Populate material_tools category
+  registry.registerToolsForCategory(CATEGORY_IDS.COVER_TOOLS, [
+    createGetVideoCoverTool(context), createCreateVideoCoverTool(context),
+    createUpdateVideoCoverTool(context), createApplyVideoCoverTool(context),
+  ]);
+
   registry.registerToolsForCategory(CATEGORY_IDS.MATERIAL_TOOLS, [
     createAddMaterialToLibraryTool(context),
     createRemoveMaterialTool(context),
