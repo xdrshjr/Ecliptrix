@@ -5,6 +5,13 @@ import type { TtsErrorCode } from './ttsErrors';
 export interface Translations {
   /** Import labels shared with the cover timeline. */
   coverStudio: {
+    previewCheck: string;
+    checkingPreview: string;
+    previewReady: string;
+    previewBlocked: string;
+    editField: string;
+    retryCheck: string;
+    readinessReasons: Record<string, string>;
     images: string;
     recentRevisions: string;
     emptyImages: string;
@@ -3159,6 +3166,20 @@ export interface Translations {
 export const translations: Record<string, Translations> = {
   en: {
     coverStudio: {
+      previewCheck: 'Preview check',
+      checkingPreview: 'Checking the preview…',
+      previewReady: 'Preview check passed',
+      previewBlocked: 'Complete the following before publishing',
+      editField: 'Edit {field}',
+      retryCheck: 'Retry check',
+      readinessReasons: {
+        'content-empty': 'Add a title or subtitle',
+        'background-required': 'Choose a background image',
+        'background-missing': 'This background is unavailable. Choose another image',
+        'background-unreadable': 'The background could not be read. Retry or choose another image',
+        'font-unavailable': 'Fonts are not ready. Retry the preview check',
+        'text-overflow': '{field} exceeds its text area. Shorten it or adjust the layout',
+      },
       "images": "Images",
       "recentRevisions": "Recent covers",
       "emptyImages": "Upload a background or generate your first image",
@@ -3310,6 +3331,9 @@ export const translations: Record<string, Translations> = {
             "COVER_SERVER_DRAFT_MISSING": "There is no saved draft to load. Your local edits are preserved.",
             "COVER_ASSET_MISSING": "The cover image is missing. Choose an image again.",
             "COVER_INVALID_ASSET": "Cover operation failed. Your draft has been preserved.",
+            "COVER_TEXT_OVERFLOW": "Text exceeds its area. Shorten it or adjust the layout.",
+            "COVER_FONT_UNAVAILABLE": "Fonts are not ready. Retry the preview check.",
+            "COVER_BACKGROUND_UNREADABLE": "The background could not be read. Retry or choose another image.",
             "COVER_RENDER_FAILED": "Cover operation failed. Your draft has been preserved.",
             "COVER_GENERATION_FAILED": "Cover operation failed. Your draft has been preserved.",
             "COVER_GENERATION_TIMEOUT": "Cover operation failed. Your draft has been preserved.",
@@ -6382,6 +6406,20 @@ export const translations: Record<string, Translations> = {
   },
   'zh-CN': {
     coverStudio: {
+      previewCheck: '画面检查',
+      checkingPreview: '正在检查画面…',
+      previewReady: '画面检查通过',
+      previewBlocked: '还需要完成以下内容',
+      editField: '编辑{field}',
+      retryCheck: '重试检查',
+      readinessReasons: {
+        'content-empty': '请填写标题或副标题',
+        'background-required': '请选择一张背景图片',
+        'background-missing': '当前背景资源不可用，请重新选择图片',
+        'background-unreadable': '背景暂时无法读取，请重试或更换图片',
+        'font-unavailable': '字体尚未就绪，请重试画面检查',
+        'text-overflow': '{field}超出排版范围，请缩短文字或调整排版',
+      },
       "images": "图片",
       "recentRevisions": "最近成品",
       "emptyImages": "上传背景，或生成第一张图片",
@@ -6534,6 +6572,9 @@ export const translations: Record<string, Translations> = {
             "COVER_ASSET_MISSING": "封面图片缺失，请重新选择图片。",
             "COVER_INVALID_ASSET": "封面操作失败，草稿已保留，请检查后重试。",
             "COVER_RENDER_FAILED": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_TEXT_OVERFLOW": "文字超出排版范围，请缩短文字或调整排版。",
+            "COVER_FONT_UNAVAILABLE": "字体尚未就绪，请重试画面检查。",
+            "COVER_BACKGROUND_UNREADABLE": "背景暂时无法读取，请重试或更换图片。",
             "COVER_GENERATION_FAILED": "封面操作失败，草稿已保留，请检查后重试。",
             "COVER_GENERATION_TIMEOUT": "封面操作失败，草稿已保留，请检查后重试。",
             "COVER_GENERATION_INTERRUPTED": "封面操作失败，草稿已保留，请检查后重试。",

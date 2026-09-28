@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { videoCoverV2 } from '@/lib/api/videoCoverV2';
-import type { CoverJob } from '@/types/videoCover';
+import type { CoverAsset, CoverJob } from '@/types/videoCover';
 import { mergeCoverJobs, useCoverJobs } from '../useCoverJobs';
 
 vi.mock('@/lib/api/videoCoverV2', () => ({ videoCoverV2: {
@@ -9,6 +9,8 @@ vi.mock('@/lib/api/videoCoverV2', () => ({ videoCoverV2: {
 } }));
 const job = (jobId: string, status: CoverJob['status'] = 'queued'):
 CoverJob => ({ jobId, status, baseVersion: 1, assets: [] });
+const asset = (assetId: string): CoverAsset => ({ assetId,
+  url: `/assets/${assetId}.png`, width: 1920, height: 1080, sha256: assetId });
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;
@@ -31,6 +33,66 @@ afterEach(() => {
 });
 
 describe('任务状态单调合并', () => {
+  it('排队快照的异常下载阶段不能污染后续生成阶段', () => {
+    const previous = { ...job('a'), phase: 'downloading' };
+    const incoming = { ...job('a', 'running'), phase: 'generating' };
+    expect(mergeCoverJobs([previous], [incoming])[0]).toMatchObject({
+      status: 'running', phase: 'generating',
+    });
+  });
+  it('迟到排队响应不能推进运行阶段但仍合并新候选', () => {
+    const previous = { ...job('a', 'running'), phase: 'generating' };
+    const incoming = { ...job('a'), phase: 'downloading',
+      assets: [asset('new')] };
+    expect(mergeCoverJobs([previous], [incoming])[0]).toMatchObject({
+      status: 'running', phase: 'generating', assets: [asset('new')],
+    });
+  });
+  it.each([undefined, 'unknown', 'queued', 'generating'])
+  ('downloading之后收到%s阶段仍保留下载阶段和已有集合', phase => {
+    const previous = { ...job('a', 'running'), phase: 'downloading',
+      assets: [asset('first')], warnings: ['已有警告'] };
+    const incoming = { ...job('a', 'running'), phase,
+      assets: [asset('second')], warnings: ['新警告', '新警告'] };
+    const merged = mergeCoverJobs([previous], [incoming]);
+    expect(merged[0]).toMatchObject({ status: 'running', phase: 'downloading',
+      assets: [asset('first'), asset('second')], warnings: ['已有警告', '新警告'] });
+    expect(mergeCoverJobs(merged, [incoming])).toEqual(merged);
+  });
+  it.each(['queued', 'running'] as const)
+  ('running收到%s仍合并候选与警告，重复ID使用传入元数据', status => {
+    const previous = { ...job('a', 'running'), phase: 'downloading',
+      assets: [asset('first'), asset('shared')], warnings: ['已有警告'] };
+    const updated = { ...asset('shared'), url: '/assets/refreshed.png' };
+    const incoming = { ...job('a', status), phase: 'queued',
+      assets: [updated, asset('second')], warnings: ['已有警告', '新警告'] };
+    const merged = mergeCoverJobs([previous], [incoming]);
+    expect(merged[0]).toMatchObject({ status: 'running', phase: 'downloading',
+      assets: [asset('first'), updated, asset('second')],
+      warnings: ['已有警告', '新警告'] });
+    expect(mergeCoverJobs(merged, [incoming])).toEqual(merged);
+  });
+  it.each([
+    ['queued', 'generating', 'generating'],
+    ['generating', 'downloading', 'downloading'],
+    ['unknown', 'generating', 'generating'],
+    ['generating', undefined, 'generating'],
+  ])('活跃阶段从%s合并%s得到%s', (previous, incoming, expected) => {
+    expect(mergeCoverJobs([{ ...job('a'), phase: previous }],
+      [{ ...job('a', 'running'), phase: incoming }])[0].phase).toBe(expected);
+  });
+  it.each(['succeeded', 'failed', 'cancelled', 'interrupted'] as const)
+  ('活跃进入%s采用服务端终态集合，同终态后续集合仍以服务端为准', status => {
+    const previous = { ...job('a', 'running'), phase: 'downloading',
+      assets: [asset('stale')], warnings: ['过期警告'] };
+    const incoming = { ...job('a', status), phase: status,
+      assets: [asset('final')], warnings: ['最终警告'] };
+    const merged = mergeCoverJobs([previous], [incoming]);
+    expect(merged[0]).toEqual(incoming);
+    expect(mergeCoverJobs(merged, [{ ...incoming, assets: [], warnings: [] }])[0])
+      .toEqual({ ...incoming, assets: [], warnings: [] });
+    expect(mergeCoverJobs(merged, [previous])[0]).toBe(merged[0]);
+  });
   it('取消终态和运行阶段都不能被旧快照回退', () => {
     const result = mergeCoverJobs([job('a', 'cancelled'), job('b', 'running')],
       [job('a', 'running'), job('b')]);
@@ -38,8 +100,9 @@ describe('任务状态单调合并', () => {
   });
   it('冲突终态保留已知值并记录诊断', () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(mergeCoverJobs([job('a', 'cancelled')],
-      [job('a', 'succeeded')])[0].status).toBe('cancelled');
+    const previous = job('a', 'cancelled');
+    expect(mergeCoverJobs([previous],
+      [job('a', 'succeeded')])[0]).toBe(previous);
     expect(warning).toHaveBeenCalledOnce();
   });
   it('保留所有活动任务且仅将终态限制为20条', () => {

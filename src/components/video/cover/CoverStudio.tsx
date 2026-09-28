@@ -2,13 +2,15 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import type { MaterialItem } from '@/types';
 import type { CoverDocument, CoverRecoveryAction, CoverResourceTab,
-  CoverRevision } from '@/types/videoCover';
+  CoverRevision, CoverTextField } from '@/types/videoCover';
 import { useLocale } from '@/contexts/LocaleContext';
 import { CoverCanvas } from './CoverCanvas';
 import { CoverTemplatePicker } from './CoverTemplatePicker';
 import { CoverInspector } from './CoverInspector';
 import { CoverResources } from './CoverResources';
 import { CoverErrorPanel } from './CoverErrorPanel';
+import { CoverReadinessPanel } from './CoverReadinessPanel';
+import { useCoverReadiness } from './useCoverReadiness';
 import { CoverPreviewDialog } from './CoverPreviewDialog';
 import { coverSize, fitCoverPreview } from './layout';
 import { applyCoverTemplate } from './templates';
@@ -18,14 +20,17 @@ import SettingsPage from '@/components/settings/SettingsPage';
 import './coverStudio.css';
 
 function usePreviewBounds(ratio?: CoverDocument['aspectRatio'], hidden = false) {
-  const viewport = useRef<HTMLDivElement>(null);
+  const [viewportNode, viewport] = useState<HTMLDivElement | null>(null);
   const [bounds, setBounds] = useState({ width: 0, height: 0 });
   useEffect(() => {
-    const node = viewport.current; if (!node || hidden) return;
-    const measure = () => setBounds({ width: node.clientWidth, height: node.clientHeight });
+    const node = viewportNode;
+    if (!node || hidden) { setBounds({ width: 0, height: 0 }); return; }
+    const measure = () => setBounds(previous =>
+      previous.width === node.clientWidth && previous.height === node.clientHeight
+        ? previous : { width: node.clientWidth, height: node.clientHeight });
     measure(); const observer = new ResizeObserver(measure); observer.observe(node);
     return () => observer.disconnect();
-  }, [ratio, hidden]);
+  }, [ratio, hidden, viewportNode]);
   return { viewport, fit: fitCoverPreview(coverSize(ratio ?? '16:9'), bounds) };
 }
 
@@ -48,7 +53,8 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
 }) {
   const { t } = useLocale(); const c = t.coverStudio; const id = useId();
   const [safeArea, setSafeArea] = useState(false);
-  const [overflow, setOverflow] = useState(false);
+  const [canvasNode, setCanvasNode] = useState<HTMLDivElement | null>(null);
+  const [focusField, setFocusField] = useState<CoverTextField>();
   const [properties, setProperties] = useState(false);
   const [preview, setPreview] = useState<'draft' | CoverRevision>();
   const [settings, setSettings] = useState(false);
@@ -66,6 +72,10 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
   const narrow = useNarrowLayout();
   const doc = state.document;
   const hasDocument = !!doc;
+  const backgroundUrl = state.assets.find(a => a.assetId === doc?.background.assetId)?.url;
+  const readiness = useCoverReadiness({ document: doc, backgroundUrl,
+    readinessKey: state.readinessKey, canvasNode,
+    enabled: !!doc && !state.loading && !settings });
   useEffect(() => {
     const node = studio.current; if (!node) return;
     const measure = () => {
@@ -121,6 +131,13 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
     propertyContent.current?.querySelector<HTMLInputElement>('input[type=file]')?.focus();
     setChooseImage(false);
   }, [chooseImage, properties, narrow]);
+  useEffect(() => {
+    if (!focusField || (narrow && !properties)) return;
+    const input = propertyContent.current?.ownerDocument.getElementById(
+      `${id}-field-${focusField}`);
+    input?.focus(); input?.scrollIntoView?.({ block: 'nearest' });
+    setFocusField(undefined);
+  }, [focusField, properties, narrow, id]);
   const openSettings = () => {
     propertyDialog.current?.close(); setProperties(false);
     setPreview(undefined); setSettings(true);
@@ -161,11 +178,7 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
     <CoverErrorPanel issue={state.issue} onAction={recover} />
   </section>;
   const dimensions = coverSize(doc.aspectRatio);
-  const backgroundUrl = state.assets.find(a => a.assetId === doc.background.assetId)?.url;
-  const ready = !overflow && (doc.mode === 'ai' ||
-    !!`${doc.fields.title}${doc.fields.subtitle}`.trim()) &&
-    (doc.background.kind !== 'asset' || !!backgroundUrl) &&
-    (doc.mode === 'html' || (doc.background.kind === 'asset' && !!backgroundUrl));
+  const ready = readiness.result.status === 'ready';
   const generationDisabled = state.busy || state.canGenerate !== true ||
     !doc.generation.prompt.trim() || state.submittingGeneration ||
     state.hasUnknownSubmission || state.jobs.some(job =>
@@ -178,6 +191,8 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
     revision.id === applied?.metadata?.cover?.revisionId);
   const inspector = <div ref={propertyContent}>
     <CoverInspector document={doc} onChange={state.update} materials={materials}
+      idPrefix={id} invalidFields={readiness.result.issues.flatMap(issue =>
+        issue.code === 'text-overflow' && issue.field ? [issue.field] : [])}
       hasFrame={!!frame} onFrame={() => frame && run(() => state.upload(frame))}
       onUpload={blob => run(() => state.upload(blob))}
       onMaterial={url => run(() => state.copyAsset(url))}
@@ -212,6 +227,10 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
         await state.act('rebuild'); setRebuild(false);
       })}>{c.rebuildConfirm}</button>
       <button onClick={() => setRebuild(false)}>{c.close}</button></div>}
+    <CoverReadinessPanel idPrefix={id} result={readiness.result}
+      onRetry={readiness.retry}
+      onEditField={field => { setProperties(narrow); setFocusField(field); }}
+      onChooseImage={() => { setProperties(narrow); setChooseImage(true); }} />
   </>;
   return <section ref={studio} className="cover-studio" data-compact={compact}
     aria-label={c.title}
@@ -258,14 +277,13 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
           setProperties(false); setPreview('draft');
         }}>{c.preview}</button>
       </div><div className="cover-viewport" ref={viewport}>
-        {fit.scale > 0 ? <div className="cover-preview-frame"
+        {fit.scale > 0 ? <div ref={setCanvasNode} className="cover-preview-frame"
           style={{ width: fit.width, height: fit.height }}>
           <div style={{ transform: `scale(${fit.scale})`, transformOrigin: 'top left' }}>
-            <CoverCanvas document={doc} backgroundUrl={backgroundUrl}
-              safeArea={safeArea} onOverflow={setOverflow} />
+            <CoverCanvas document={doc} backgroundUrl={readiness.previewBackgroundUrl}
+              imageLoadKey={readiness.imageLoadKey} safeArea={safeArea} />
           </div></div> : <span className="cover-muted">{c.loading}</span>}
       </div>
-      {overflow && <p role="alert" className="cover-error">{c.overflow}</p>}
       </main>
       {!narrow && <aside className="cover-property-panel">{inspector}</aside>}
     </div>
@@ -297,8 +315,10 @@ export function CoverStudio({ controller: state, onClose, frame, materials }: {
         {c.undoRestore}</button>}
       {state.legacyAvailable && <button onClick={() => run(state.importLegacy)}>{c.legacy}</button>}
       <button disabled={state.busy || !ready}
+        aria-describedby={`${id}-readiness`}
         onClick={() => run(() => state.act('download'))}>{c.download}</button>
       <button className="cover-apply" disabled={state.busy || !ready}
+        aria-describedby={`${id}-readiness`}
         onClick={() => run(() => state.act('apply'))}>{c.apply}</button>
     </footer>
     {narrow && <dialog ref={propertyDialog} className="cover-properties-dialog"

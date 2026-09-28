@@ -8,6 +8,12 @@ export type { CoverJobConnection } from '@/types/videoCover';
 export const isCoverJobActive = (job: CoverJob) =>
   job.status === 'queued' || job.status === 'running';
 
+// 状态先限定合法阶段，排队响应不能凭异常phase推进正在运行的任务。
+function activePhase(job: CoverJob) {
+  if (job.status === 'queued') return 'queued';
+  return job.phase === 'downloading' ? 'downloading' : 'generating';
+}
+
 function mergeJob(previous: CoverJob | undefined, incoming: CoverJob) {
   if (!previous) return incoming;
   if (!isCoverJobActive(previous)) {
@@ -18,10 +24,22 @@ function mergeJob(previous: CoverJob | undefined, incoming: CoverJob) {
       return previous;
     }
   }
-  if (previous.status === 'running' && incoming.status === 'queued') {
-    return previous;
-  }
-  return { ...previous, ...incoming };
+  // 终态由服务端负责收敛集合，活跃期间才保留已观察到的候选与警告。
+  if (!isCoverJobActive(incoming)) return incoming;
+  const phases = ['queued', 'generating', 'downloading'];
+  const previousPhase = phases.indexOf(activePhase(previous));
+  const incomingPhase = phases.indexOf(activePhase(incoming));
+  const phase = previousPhase > incomingPhase
+    ? activePhase(previous) : activePhase(incoming);
+  const assets = new Map(previous.assets.map(asset => [asset.assetId, asset]));
+  for (const asset of incoming.assets) assets.set(asset.assetId, asset);
+  return { ...previous, ...incoming,
+    status: previous.status === 'running' ? 'running' : incoming.status,
+    phase, assets: Array.from(assets.values()),
+    warnings: Array.from(new Set([
+      ...(previous.warnings ?? []), ...(incoming.warnings ?? []),
+    ])),
+  };
 }
 
 /** 20条限制仅影响终态展示，不能丢掉仍需要订阅的任务。 */

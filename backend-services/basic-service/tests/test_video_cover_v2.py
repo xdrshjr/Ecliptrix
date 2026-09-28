@@ -1,12 +1,13 @@
 """封面工作室：规范文档、CAS 和不可变成品回归。"""
 import asyncio
 import io
-from uuid import uuid4
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 import pytest
 from PIL import Image
 from pydantic import ValidationError
-from app.models.db_models import VideoProject
+from app.models.db_models import ProjectCoverJob, VideoProject
 from app.models.video_cover_v2_models import (
     CoverDocument,
     SaveCoverRequest,
@@ -148,6 +149,64 @@ async def test_missing_project_is_not_empty_draft(db_session):
     with pytest.raises(CoverError) as error:
         await service.load_state(db_session, str(uuid4()))
     assert error.value.status == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ["old-running", "all-active", "tied-time"])
+async def test_load_state_keeps_all_active_and_latest_20_terminal_jobs(
+    db_session, monkeypatch, tmp_path, scenario
+):
+    from sqlalchemy import event
+
+    identifier = await project(db_session, monkeypatch, tmp_path)
+    foreign_id = await project(db_session, monkeypatch, tmp_path)
+    created = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    active_count = 28 if scenario == "all-active" else 1
+    terminal_statuses = ["succeeded", "failed", "cancelled", "interrupted"]
+    active_ids = []
+    terminal_ids = []
+    for index in range(active_count + 25):
+        is_active = index < active_count
+        status = ("running" if index % 2 == 0 else "queued") if is_active else (
+            terminal_statuses[(index - active_count) % 4]
+        )
+        row_id = UUID(int=index + 1)
+        (active_ids if is_active else terminal_ids).append(str(row_id))
+        db_session.add(ProjectCoverJob(
+            id=row_id, project_id=UUID(identifier), request_id=str(row_id),
+            status=status, created_at=created if scenario == "tied-time" else (
+                created + timedelta(seconds=index)
+            ),
+        ))
+    # 更晚的跨项目任务不能挤占本项目的终态配额，也不能进入结果。
+    for index in range(26):
+        db_session.add(ProjectCoverJob(
+            project_id=UUID(foreign_id), request_id=f"foreign-{index}",
+            status="queued" if index == 0 else "succeeded",
+            created_at=created + timedelta(days=1),
+        ))
+    await db_session.commit()
+    job_queries = []
+
+    def record_query(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT") and (
+            "project_cover_jobs" in statement
+        ):
+            job_queries.append(statement)
+
+    engine = db_session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", record_query)
+    try:
+        state = await service.load_state(db_session, identifier)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_query)
+    jobs = state["jobs"]
+    assert len(job_queries) == 1
+    assert [row["job_id"] for row in jobs] == (
+        list(reversed(terminal_ids[-20:])) + list(reversed(active_ids))
+    )
+    assert sum(row["status"] in {"queued", "running"} for row in jobs) == active_count
+    assert len(jobs) == active_count + 20
 
 
 @pytest.mark.asyncio

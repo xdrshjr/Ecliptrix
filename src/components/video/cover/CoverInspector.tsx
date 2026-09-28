@@ -1,11 +1,12 @@
 'use client';
 import React from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
-import type { CoverDocument } from '@/types/videoCover';
+import type { CoverDocument, CoverTextField } from '@/types/videoCover';
 import type { MaterialItem } from '@/types';
 
 export function CoverInspector({ document: doc, onChange, onUpload,
-  onFrame, onMaterial, materials, hasFrame, onBlur }: {
+  onFrame, onMaterial, materials, hasFrame, onBlur, idPrefix, invalidFields = [] }: {
+  idPrefix?: string; invalidFields?: CoverTextField[];
   document: CoverDocument; onChange: (d: CoverDocument) => void;
   onUpload: (blob: Blob) => void; onFrame: () => void;
   onMaterial: (url: string) => void; materials: MaterialItem[];
@@ -19,6 +20,10 @@ export function CoverInspector({ document: doc, onChange, onUpload,
       {(['title', 'subtitle', 'label'] as const).map((key, index) =>
         <label key={key}>{key === 'title' ? c.titleField : c[key]}
           <textarea aria-label={key === 'title' ? c.titleField : c[key]}
+            id={idPrefix ? `${idPrefix}-field-${key}` : undefined}
+            aria-invalid={invalidFields.includes(key) || undefined}
+            aria-describedby={idPrefix && invalidFields.includes(key)
+              ? `${idPrefix}-readiness-text-overflow-${key}` : undefined}
             rows={key === 'title' ? 3 : 2} value={doc.fields[key]}
             onChange={event => {
               const value = Array.from(event.target.value).slice(0, [80, 160, 24][index]).join('');
@@ -53,6 +58,7 @@ export function CoverInspector({ document: doc, onChange, onUpload,
           onChange={e => changeBackground({ color: e.target.value })} />
       </div>}
       <label className="cover-upload">{c.upload}<input type="file" accept="image/png,image/jpeg,image/webp"
+        id={idPrefix ? `${idPrefix}-field-background` : undefined}
         onChange={e => { const file = e.target.files?.[0]; if (file) onUpload(file); e.target.value = ''; }} /></label>
       <button type="button" disabled={!hasFrame} onClick={onFrame}>{c.frame}</button>
       {!hasFrame && <p className="cover-muted">{c.frameUnavailable}</p>}

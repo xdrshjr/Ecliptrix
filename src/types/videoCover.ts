@@ -55,6 +55,8 @@ export interface CoverSavedDraft {
   version: number; document: CoverDocument; documentHash: string;
 }
 export type CoverErrorCode = 'COVER_VERSION_CONFLICT' |
+  'COVER_TEXT_OVERFLOW' | 'COVER_FONT_UNAVAILABLE' |
+  'COVER_BACKGROUND_UNREADABLE' |
   'COVER_REQUEST_CONFLICT' | 'COVER_DRAFT_NOT_READY' |
   'COVER_ASSET_MISSING' | 'COVER_INVALID_ASSET' | 'COVER_RENDER_FAILED' |
   'COVER_GENERATION_FAILED' | 'COVER_GENERATION_TIMEOUT' |
@@ -119,4 +121,28 @@ export interface CoverJobConnection {
   status: 'idle' | 'connected' | 'retrying';
   failedJobIds: string[];
   unavailableJobIds: string[];
+}
+
+export type CoverTextField = 'title' | 'subtitle' | 'label';
+export type CoverReadinessCode = 'content-empty' | 'background-required' |
+  'background-missing' | 'background-unreadable' |
+  'font-unavailable' | 'text-overflow';
+export interface CoverReadinessIssue {
+  code: CoverReadinessCode;
+  field?: CoverTextField;
+}
+export interface CoverTextMeasurement {
+  measurable: boolean;
+  overflowFields: CoverTextField[];
+}
+export interface CoverReadinessResult {
+  status: 'checking' | 'blocked' | 'ready';
+  issues: CoverReadinessIssue[];
+  document: CoverDocument | null;
+  backgroundUrl?: string;
+  readinessKey?: string;
+  enabled: boolean;
+  canvasNode: HTMLElement | null;
+  imageLoadKey: number;
+  sequence: number;
 }

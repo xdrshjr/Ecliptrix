@@ -4,7 +4,7 @@ import hashlib
 import json
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -202,12 +202,29 @@ async def load_state(db: AsyncSession, project_id: str) -> dict:
             readable.append(await revision_data(db, row))
         except CoverError:
             continue  # 草稿仍可加载，损坏成品不可再声明为可用。
+    # 活跃任务不限数量；终态配额在同一SQL内按项目独立计算。
+    recent_terminal_ids = (
+        select(ProjectCoverJob.id)
+        .where(
+            ProjectCoverJob.project_id == project.id,
+            ProjectCoverJob.status.in_(
+                ["succeeded", "failed", "cancelled", "interrupted"]
+            ),
+        )
+        .order_by(ProjectCoverJob.created_at.desc(), ProjectCoverJob.id.desc())
+        .limit(20)
+    )
     jobs = (
         await db.execute(
             select(ProjectCoverJob)
-            .where(ProjectCoverJob.project_id == project.id)
-            .order_by(ProjectCoverJob.created_at.desc())
-            .limit(20)
+            .where(
+                ProjectCoverJob.project_id == project.id,
+                or_(
+                    ProjectCoverJob.status.in_(["queued", "running"]),
+                    ProjectCoverJob.id.in_(recent_terminal_ids),
+                ),
+            )
+            .order_by(ProjectCoverJob.created_at.desc(), ProjectCoverJob.id.desc())
         )
     ).scalars()
     from app.services.video_cover_job_service import job_data

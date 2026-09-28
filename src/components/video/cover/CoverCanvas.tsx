@@ -1,7 +1,8 @@
 'use client';
 import React, { useLayoutEffect, useRef } from 'react';
 import type { CoverDocument } from '@/types/videoCover';
-import { coverSize, fitCoverText, templateLayout } from './layout';
+import { coverSize, templateLayout } from './layout';
+import { measureCoverText } from './coverValidation';
 import { COVER_TEMPLATES } from './templates';
 
 const FONTS = {
@@ -10,16 +11,13 @@ const FONTS = {
   mono: 'Consolas, Microsoft YaHei, monospace',
 };
 export function measureCoverCanvas(root: HTMLElement): boolean {
-  let fits = true;
-  root.querySelectorAll<HTMLElement>('[data-cover-text]').forEach(node => {
-    if (!fitCoverText(node, { initial: Number(node.dataset.initial),
-      minimum: Number(node.dataset.minimum), maxLines: Number(node.dataset.lines) })) fits = false;
-  });
-  return fits;
+  const result = measureCoverText(root);
+  return result.measurable && result.overflowFields.length === 0;
 }
 
 export function CoverCanvas({ document: doc, backgroundUrl, safeArea = false,
-  onOverflow }: { document: CoverDocument; backgroundUrl?: string;
+  onOverflow, imageLoadKey = 0 }: { document: CoverDocument; backgroundUrl?: string;
+  imageLoadKey?: number;
   safeArea?: boolean; onOverflow?: (overflow: boolean) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const { width, height } = coverSize(doc.aspectRatio);
@@ -32,10 +30,12 @@ export function CoverCanvas({ document: doc, backgroundUrl, safeArea = false,
   const background = doc.background.kind === 'gradient'
     ? `linear-gradient(125deg, ${doc.background.color}, ${template.accentColor})`
     : doc.background.color;
-  return <div ref={ref} data-cover-canvas style={{ width, height, position: 'relative',
+  return <div ref={ref} data-cover-canvas data-cover-mode={doc.mode}
+    style={{ width, height, position: 'relative',
     overflow: 'hidden', background, color: doc.typography.textColor,
     fontFamily: FONTS[doc.typography.family] }}>
-    {backgroundUrl && doc.background.kind === 'asset' && <img alt="" src={backgroundUrl}
+    {backgroundUrl && doc.background.kind === 'asset' && <img key={imageLoadKey}
+      alt="" src={backgroundUrl}
       style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover',
         objectPosition: `${doc.background.focusX * 100}% ${doc.background.focusY * 100}%` }} />}
     {doc.mode !== 'ai' && <>

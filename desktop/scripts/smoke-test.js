@@ -29,6 +29,24 @@ function argValue(name) {
   return index >= 0 ? process.argv[index + 1] : null
 }
 
+function verifyBuildProvenance(unpackedDir) {
+  const file = argValue('--build-provenance')
+  if (!file) return null
+  const record = JSON.parse(fs.readFileSync(file, 'utf8'))
+  const root = path.resolve(DESKTOP_ROOT, '..')
+  for (const input of record.inputs) {
+    const actual = createHash('sha256').update(fs.readFileSync(path.join(root, input.file))).digest('hex')
+    if (actual !== input.sha256) fail(`production input changed: ${input.file}`)
+  }
+  const ids = ['.next/BUILD_ID', 'desktop/build/frontend/.next/BUILD_ID']
+    .map(relative => fs.readFileSync(path.join(root, relative), 'utf8').trim())
+  ids.push(fs.readFileSync(path.join(unpackedDir, 'resources/frontend/.next/BUILD_ID'), 'utf8').trim())
+  if (ids.some(id => id !== record.buildIds[0]) ||
+    path.resolve(unpackedDir) !== path.resolve(record.output, 'win-unpacked')) fail('package provenance mismatch')
+  console.log(`[smoke-test] verified production SHA ${record.inputSha}, BUILD_ID ${ids[0]}`)
+  return { inputSha: record.inputSha, buildIds: ids, unpackedDir }
+}
+
 function httpRequest(method, url, { headers = {}, body = null } = {}) {
   return new Promise((resolve) => {
     const payload = body ? JSON.stringify(body) : null
@@ -180,14 +198,14 @@ function coverBodyFixture(userDataDir, unpackedDir) {
   const root = path.join(userDataDir, 'storage')
   for (const kind of ['video', 'audio']) fs.mkdirSync(path.join(root, kind), { recursive: true })
   runBundled(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i',
-    'color=c=blue:s=320x180:r=30:d=2', '-c:v', 'libx264', '-pix_fmt',
+    'color=c=blue:s=320x180:r=30:d=3', '-c:v', 'libx264', '-pix_fmt',
     'yuv420p', path.join(root, 'video', 'cover-body.mp4')])
   runBundled(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i',
-    'aevalsrc=if(between(t\\,0.5\\,0.65)\\,0.5*sin(2*PI*440*t)\\,0):s=48000:d=2',
+    'aevalsrc=if(between(t\\,0.5\\,0.65)\\,0.5*sin(2*PI*440*t)\\,0):s=48000:d=3',
     path.join(root, 'audio', 'cover-marker.wav')])
   const materials = ['video', 'audio'].map(type => ({
     id: `smoke-${type}`, name: type === 'video' ? '正文视频' : '音频标记',
-    type, source: 'upload', duration: 2, width: 320, height: 180,
+    type, source: 'upload', duration: 3, width: 320, height: 180,
     url: `/api/storage/files/${type}/cover-${type === 'video' ? 'body.mp4' : 'marker.wav'}`,
     serverUrl: `/api/storage/files/${type}/cover-${type === 'video' ? 'body.mp4' : 'marker.wav'}`,
   }))
@@ -197,7 +215,7 @@ function coverBodyFixture(userDataDir, unpackedDir) {
     volume: 100, items: [{ id: `${material.id}-clip`, materialId: material.id,
       trackId: `smoke-${material.type}-track`, name: material.name,
       type: material.type, startTime: 0, duration: 2, clipStart: 0,
-      clipEnd: 2, originalDuration: 2, color: '#4285f4', volume: 100 }],
+      clipEnd: 2, originalDuration: 3, color: '#4285f4', volume: 100 }],
   }))
   return { markdownContent: '', materials, canvasSettings: {
     aspectRatioId: '16:9', fit: 'contain',
@@ -320,6 +338,155 @@ async function coverEntryRaceSmoke({ cdp, click, backend }) {
   return { destinationProjectId: other.id, lateCaptureDiscarded: true }
 }
 
+// Keep CDP scenarios together: they share the real editor and isolated fixture.
+async function coverReadinessSmoke({ cdp, click, reopen, openStudio,
+  artifacts, pngPath, blockImages, writes }) {
+  await reopen()
+  const matrix = []
+  const sizes = { '16:9': [1920, 1080], '9:16': [1080, 1920],
+    '1:1': [1080, 1080], '4:3': [1440, 1080], '21:9': [2560, 1080] }
+  const edit = fields => cdp.evaluate(`(() => {
+    for (const [field, value] of Object.entries(${JSON.stringify(fields)})) {
+      const input = document.querySelector('[id$="-field-' + field + '"]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  })()`)
+  const ready = () => until('current preview passes real measurement', () =>
+    cdp.evaluate("document.querySelector('.cover-readiness')?.dataset.status === 'ready'"))
+  for (const [ratio, size] of Object.entries(sizes)) {
+    await click('.ws-canvas-trigger')
+    await until(`canvas ratio ${ratio}`, () => cdp.evaluate(`(() => {
+      const button = [...document.querySelectorAll('.ws-canvas-ratio')].find(e =>
+        e.querySelector('.ws-canvas-ratio-label')?.textContent === ${JSON.stringify(ratio)});
+      if (!button) return false; button.click(); return true;
+    })()`))
+    await click('.ws-canvas-trigger'); await openStudio()
+    for (let template = 1; template <= 5; template++) {
+      await click(`.cover-templates [role=radio]:nth-child(${template})`)
+      await until(`template ${template} selected`, () => cdp.evaluate(`document.querySelector('.cover-templates [role=radio]:nth-child(${template})')?.getAttribute('aria-checked') === 'true'`))
+      for (const text of ['封面', 'Cover']) {
+        // Separate React events prevent the next field from using stale props.
+        for (const field of ['title', 'subtitle', 'label']) await edit({ [field]: text })
+        await ready()
+        const measured = await cdp.evaluate(`(() => {
+          const canvas = document.querySelector('.cover-preview-frame [data-cover-canvas]');
+          return { width: canvas.clientWidth, height: canvas.clientHeight,
+            mode: canvas.dataset.coverMode,
+            selectedTemplate: [...document.querySelectorAll('.cover-templates [role=radio]')].findIndex(e => e.getAttribute('aria-checked') === 'true') + 1,
+            templateLabel: document.querySelector('.cover-templates [aria-checked=true]').getAttribute('aria-label'),
+            fonts: document.fonts.status, fields: [...canvas.querySelectorAll('[data-cover-text]')].map(node => {
+              const range = document.createRange(); range.selectNodeContents(node);
+              return { field: node.dataset.coverText, text: node.textContent, overflow: node.dataset.overflow,
+                font: getComputedStyle(node).fontFamily, fontSize: getComputedStyle(node).fontSize,
+                rects: [...range.getClientRects()].map(r => ({ width: r.width, height: r.height })) };
+            }) };
+        })()`)
+        if (measured.selectedTemplate !== template || measured.mode !== 'html' ||
+          measured.width !== size[0] || measured.height !== size[1] || measured.fields.length !== 3 ||
+          measured.fields.some(field => field.text !== text || field.overflow !== 'false' || !field.rects.some(r => r.width > 0 && r.height > 0))) fail(`real measurement failed: ${JSON.stringify(measured)}`)
+        matrix.push({ ratio, template, text, ...measured })
+      }
+    }
+    console.log(`[smoke-test] real fonts: five templates passed ${ratio}`)
+    fs.writeFileSync(path.join(artifacts, 'cover-matrix-progress.json'), JSON.stringify(matrix, null, 2))
+    console.log('[smoke-test] screenshot surface', await cdp.evaluate(`JSON.stringify({
+      visibility: document.visibilityState, focus: document.hasFocus(),
+      status: document.querySelector('.cover-readiness')?.dataset.status,
+      width: innerWidth, height: innerHeight })`))
+    fs.writeFileSync(path.join(artifacts, `cover-matrix-${ratio.replace(':', '-')}.png`),
+      Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+    await click('.cover-header > button')
+    await until('matrix studio closes after draft flush', () => cdp.evaluate("!document.querySelector('.cover-studio')"))
+  }
+  await openStudio()
+  await edit({ title: '' }); await edit({ subtitle: '' })
+  await until('empty text blocks publishing', () => cdp.evaluate("!!document.querySelector('[id$=\"-readiness-content-empty-global\"]') && document.querySelector('.cover-apply').disabled"))
+  const blurWrites = []
+  for (const [index, target] of ['.cover-preview-controls button', '.cover-readiness li button'].entries()) {
+    await until('clean baseline before dirty blur', () => cdp.evaluate("document.querySelector('.cover-save')?.textContent === 'Draft saved'"))
+    const before = writes()
+    await cdp.evaluate("document.querySelector('[id$=\"-field-title\"]').focus()")
+    await edit({ title: ' '.repeat(index + 1) })
+    await click(target)
+    // The baseline button opens a preview. Close it before continuing.
+    if (index === 0) await click('.cover-preview-dialog header button')
+    await until('dirty blur saved', () => cdp.evaluate("document.querySelector('.cover-save')?.textContent === 'Draft saved'"))
+    blurWrites.push(writes() - before)
+  }
+  if (blurWrites[0] !== 1 || blurWrites[1] !== blurWrites[0]) fail(`correction added dirty writes: ${blurWrites}`)
+  await click('.cover-readiness li button')
+  if (!await cdp.evaluate("document.activeElement?.id.endsWith('-field-title')")) fail('title correction did not focus input')
+  for (const field of ['title', 'subtitle', 'label']) await edit({ [field]: '溢出\n'.repeat(field === 'title' ? 8 : field === 'subtitle' ? 5 : 3).trim() })
+  await until('three overflow fields', () => cdp.evaluate("document.querySelectorAll('[id*=" + JSON.stringify('-readiness-text-overflow-') + "]').length === 3"))
+  const layouts = []
+  for (const [width, height] of [[1440, 900], [900, 640], [960, 600]]) {
+    console.log(`[smoke-test] sampling blocked layout ${width}x${height}`)
+    await cdp.send('Page.bringToFront')
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    await until('overflow feedback remains blocked', () => cdp.evaluate("document.querySelector('.cover-readiness')?.dataset.status === 'blocked'"))
+    const stable = await cdp.evaluate(`new Promise(resolve => {
+      let frames = 0; const states = [];
+      const timer = setTimeout(() => resolve({ states, incomplete: true,
+        visibility: document.visibilityState, focus: document.hasFocus() }), 10000);
+      const tick = () => { states.push(document.querySelector('.cover-readiness').dataset.status);
+        if (++frames < 60) requestAnimationFrame(tick); else {
+          clearTimeout(timer);
+          const footer = document.querySelector('.cover-footer').getBoundingClientRect();
+          const panel = document.querySelector('.cover-readiness').getBoundingClientRect();
+          const canvas = document.querySelector('.cover-preview-frame')?.getBoundingClientRect();
+          resolve({ states, panelHeight: panel.height, footerBottom: footer.bottom,
+            footerTop: footer.top, canvasBottom: canvas?.bottom,
+            canvasWidth: canvas?.width, canvasHeight: canvas?.height, viewportHeight: innerHeight });
+        }
+      }; requestAnimationFrame(tick);
+    })`)
+    if (stable.incomplete || stable.states.some(state => state !== 'blocked') || stable.panelHeight > 113 ||
+      !(stable.canvasWidth > 0 && stable.canvasHeight > 0) ||
+      stable.footerBottom > height + 1 || stable.canvasBottom > stable.footerTop + 1) fail(`readiness layout did not converge: ${JSON.stringify(stable)}`)
+    layouts.push({ width, height, ...stable })
+    fs.writeFileSync(path.join(artifacts, `cover-blocked-${width}x${height}.png`),
+      Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+    await click('.cover-readiness li button')
+    if (!await cdp.evaluate("document.activeElement?.id.endsWith('-field-title') && document.activeElement.getAttribute('aria-invalid') === 'true'")) fail('overflow correction lost focus/aria')
+    if (width < 1024) {
+      if (!await cdp.evaluate("document.querySelectorAll('.cover-readiness').length === 1 && !!document.querySelector('.cover-properties-dialog[open] .cover-readiness')")) fail('readiness duplicated outside modal')
+      await click('.cover-properties-dialog header button')
+    }
+  }
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+  for (const field of ['title', 'subtitle', 'label']) await edit({ [field]: 'Cover' })
+  await ready()
+  blockImages(true)
+  const dom = await cdp.send('DOM.getDocument')
+  const input = await cdp.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector: '.cover-inspector input[type=file]' })
+  await cdp.send('DOM.setFileInputFiles', { nodeId: input.nodeId, files: [pngPath] })
+  await until('background decoding failure explained', () => cdp.evaluate("!!document.querySelector('[id$=\"-readiness-background-unreadable-global\"]')"))
+  await until('background draft saved', () => cdp.evaluate("document.querySelector('.cover-save')?.textContent === 'Draft saved'"))
+  const before = writes()
+  await cdp.evaluate("void (window.__failedCoverImage = document.querySelector('.cover-preview-frame img'))")
+  blockImages(false)
+  await click('.cover-readiness li button')
+  await ready()
+  const retry = await cdp.evaluate(`(() => {
+    const image = document.querySelector('.cover-preview-frame img');
+    return { replaced: image !== window.__failedCoverImage, url: image.getAttribute('src'), width: image.naturalWidth };
+  })()`)
+  await cdp.evaluate(`new Promise(resolve => { let frames = 0;
+    const tick = () => ++frames >= 60 ? resolve(true) : requestAnimationFrame(tick);
+    requestAnimationFrame(tick); })`)
+  const retryWriteDelta = writes() - before
+  if (!retry.replaced || !retry.url.includes('cover_preview_retry=') || !retry.width || retryWriteDelta !== 0) fail(`retry did not recover read-only: ${JSON.stringify(retry)}`)
+  // Return to a simple draft for the existing portrait scenario.
+  await cdp.evaluate(`(() => { const select = document.querySelector('.cover-color-row select');
+    select.value = 'solid'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`)
+  await ready()
+  const environment = await cdp.send('Browser.getVersion')
+  const report = { matrix, layouts, retry, retryWriteDelta, blurWrites, environment }
+  fs.writeFileSync(path.join(artifacts, 'cover-readiness-report.json'), JSON.stringify(report, null, 2))
+  return report
+}
+
 async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
   const timings = {}
   const artifacts = path.join(userDataDir, 'artifacts')
@@ -333,6 +500,7 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
   const cdp = await connectCdp(target.webSocketDebuggerUrl)
   const errors = []
   const blocked = []
+  const expiredInterceptions = []
   const composeRequests = new Map()
   let composition
   let generationPosts = 0
@@ -340,6 +508,7 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
   let revisionPosts = 0
   let nativeDownloads = 0
   let pageLoads = 0
+  let blockAssetImages = false
   try {
     await cdp.send('Page.enable')
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
@@ -352,10 +521,17 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     cdp.on('Fetch.requestPaused', event => {
       const url = new URL(event.request.url)
       const local = [frontend, backend].includes(url.origin) || ['data:', 'blob:', 'about:'].includes(url.protocol)
+      const blockedImage = blockAssetImages && url.pathname.includes('/covers/assets/')
       if (!local) blocked.push(event.request.url)
-      void cdp.send(local ? 'Fetch.continueRequest' : 'Fetch.failRequest', {
-        requestId: event.requestId, ...(local ? {} : { errorReason: 'BlockedByClient' }),
-      }).catch(error => errors.push(String(error)))
+      void cdp.send(local && !blockedImage ? 'Fetch.continueRequest' : 'Fetch.failRequest', {
+        requestId: event.requestId, ...(local && !blockedImage ? {} : { errorReason: 'BlockedByClient' }),
+      }).catch(error => {
+        // Navigation may cancel a paused request before CDP resumes it. The
+        // expired ID cannot be continued; it is not a renderer exception.
+        if (String(error).includes('Invalid InterceptionId')) {
+          expiredInterceptions.push({ url: event.request.url, error: String(error) })
+        } else errors.push(String(error))
+      })
     })
     await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] })
     cdp.on('Network.requestWillBeSent', event => {
@@ -593,6 +769,11 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     const probe = JSON.parse(runBundled(path.join(binaries, 'ffprobe.exe'), ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,avg_frame_rate,nb_read_frames:format=duration', '-of', 'json', videoPath]).toString())
     const stream = probe.streams[0]
     if (!stream || Number(stream.nb_read_frames) !== 90 || stream.avg_frame_rate !== '30/1' || Math.abs(Number(probe.format.duration) - 3) > 1 / 30 || stream.width !== revision.width || stream.height !== revision.height) fail(`unexpected MP4 frames/dimensions: ${JSON.stringify(probe)}`)
+    const sourceProbe = JSON.parse(runBundled(path.join(binaries, 'ffprobe.exe'), ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames,avg_frame_rate:format=duration', '-of', 'json', path.join(userDataDir, 'storage/video/cover-body.mp4')]).toString())
+    const trim = request.video_items[0]
+    if (Number(sourceProbe.streams[0].nb_read_frames) !== 90 ||
+      trim.clip_start !== 0 || trim.clip_end !== 2 || trim.clipped_duration !== 2) fail(`source or body trim incorrect: ${JSON.stringify({ sourceProbe, trim })}`)
+    fs.writeFileSync(path.join(artifacts, 'cover-source-trim.json'), JSON.stringify({ sourceProbe, trim, bodyFrames: 60, coverFrames: 30, outputFrames: 90 }, null, 2))
     const ffmpeg = path.join(binaries, 'ffmpeg.exe')
     const pixels = (file, frame) => runBundled(ffmpeg, ['-v', 'error', '-i', file, '-vf', `select=eq(n\\,${frame}),scale=192:108`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'])
     const reference = pixels(pngPath, 0)
@@ -620,13 +801,19 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
       if (Math.abs(audio.readFloatLE(i)) > 0.02) { onset = i / 4 / 48000; break }
     }
     if (Math.abs(onset - 1.5) > 1 / 30) fail(`audio marker did not shift: ${onset}`)
+    for (const frame of [0, 29, 30]) runBundled(ffmpeg, ['-y', '-v', 'error', '-i', videoPath,
+      '-vf', `select=eq(n\\,${frame})`, '-frames:v', '1', path.join(artifacts, `cover-frame-${frame}.png`)])
+    const readiness = await coverReadinessSmoke({ cdp, click, reopen, openStudio,
+      artifacts, pngPath, blockImages: value => { blockAssetImages = value },
+      writes: () => coverWrites })
     const portrait = await portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject, frontend, projectId, artifacts })
     const entryRace = await coverEntryRaceSmoke({ cdp, click, backend })
     if (generationPosts !== 0 || errors.length) fail(`HTML path generated AI requests (${generationPosts}) or renderer errors: ${errors.join('\n')}`)
-    fs.writeFileSync(path.join(artifacts, 'cover-report.json'), JSON.stringify({ projectId, revisionId: metadata.revisionId, sha256: metadata.sha256, offlineRenderer: true, generationPosts, coverWrites, nativeDownloads, blockedRequests: blocked, probe, differences, bodyFrame: 30, bodyMeanRgbError, audioOnset: onset, history, draftDownload, portrait, entryRace, layouts, themes, keyboard, timings }, null, 2))
+    fs.writeFileSync(path.join(artifacts, 'cover-report.json'), JSON.stringify({ projectId, revisionId: metadata.revisionId, sha256: metadata.sha256, offlineRenderer: true, generationPosts, coverWrites, nativeDownloads, blockedRequests: blocked, expiredInterceptions, probe, differences, bodyFrame: 30, bodyMeanRgbError, audioOnset: onset, history, draftDownload, portrait, entryRace, layouts, themes, keyboard, timings, readiness }, null, 2))
     console.log(`[smoke-test] cover history, portrait and 90-frame body/audio MP4 verified: ${artifacts}`)
   } catch (error) {
     try {
+      fs.writeFileSync(path.join(artifacts, 'failure.json'), JSON.stringify({ error: String(error), errors, blocked, generationPosts, body: await cdp.evaluate('document.body.innerText') }, null, 2))
       const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
       fs.writeFileSync(path.join(artifacts, 'failure.png'), Buffer.from(screenshot.data, 'base64'))
       fs.writeFileSync(path.join(artifacts, 'failure.json'), JSON.stringify({ error: String(error), errors, blocked, generationPosts, body: await cdp.evaluate('document.body.innerText') }, null, 2))
@@ -643,6 +830,7 @@ async function main() {
   }
   const unpackedDir = path.resolve(argValue('--unpacked') || DEFAULT_UNPACKED)
   const exePath = path.join(unpackedDir, 'Ecliptrix.exe')
+  const provenance = verifyBuildProvenance(unpackedDir)
   if (typeof WebSocket !== 'function') fail('Node.js 22+ is required for native CDP WebSocket support')
   // Never terminate an existing user instance to make the smoke test pass.
   const existing = processesUnder(unpackedDir)
@@ -655,7 +843,7 @@ async function main() {
   // The core regression this guards: the app must fully start and read the DB
   // with zero configuration and no credentials (the in-app setup guide handles
   // LLM keys later).
-  const runtimeRoot = path.resolve(DESKTOP_ROOT, '..', '.agentmesh')
+  const runtimeRoot = path.resolve(DESKTOP_ROOT, '..', '.agentmesh/cover-finalization-runtime')
   fs.mkdirSync(runtimeRoot, { recursive: true })
   const userDataDir = fs.mkdtempSync(path.join(runtimeRoot, 'ecliptrix-smoke-'))
   const tempDir = path.join(userDataDir, 'temp')
@@ -666,6 +854,7 @@ async function main() {
   fs.writeFileSync(path.join(userDataDir, 'desktop-config.json'), JSON.stringify({ schemaVersion: 1, frontendPort, backendPort }))
   fs.writeFileSync(path.join(userDataDir, '.env'), '')
   console.log(`[smoke-test] userData: ${userDataDir}`)
+  if (provenance) fs.writeFileSync(path.join(userDataDir, 'build-provenance.json'), JSON.stringify(provenance, null, 2))
 
   console.log(`[smoke-test] launching ${exePath}`)
   // Strip ELECTRON_RUN_AS_NODE: agent harnesses / Electron-spawned terminals

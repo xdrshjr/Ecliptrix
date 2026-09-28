@@ -9,6 +9,7 @@ import { createCoverDocument } from '@/components/video/cover/templates';
 import { videoCoverV2 } from '@/lib/api/videoCoverV2';
 import { translations } from '@/lib/i18n';
 import type { CoverAsset, CoverSnapshot } from '@/types/videoCover';
+import { CoverError } from '@/types/videoCover';
 import { applyCoverTimelineAction } from
   '@/components/video/timeline/store/actions/applyCover';
 
@@ -149,6 +150,18 @@ describe('SSE 与真实控制器的人工意图权限', () => {
     result: { success: true }, operation: { type: 'cover_action',
       projectId: 'p', operationId: 'call', action: 'prepare_draft',
       draftVersion: 1, durationFrames: 30, applyWhenReady: true } };
+
+  it.each(['COVER_TEXT_OVERFLOW', 'COVER_FONT_UNAVAILABLE',
+    'COVER_BACKGROUND_UNREADABLE'] as const)('无工作室时%s仍禁止Agent发布和应用', async code => {
+    const { router, renderer, stateManager } = await realController();
+    renderer.current.render.mockRejectedValueOnce(new CoverError(code, code));
+    await act(async () => router.handleEvent(prepared));
+    expect(videoCoverV2.publish).not.toHaveBeenCalled();
+    expect(applyCoverTimelineAction).not.toHaveBeenCalled();
+    expect(stateManager.getToolCalls()[0].result).toMatchObject({
+      success: false, coverStatus: { state: 'error', error: code },
+    });
+  });
 
   it('开始上传尚未返回就撤销旧 Agent 的自动应用权限', async () => {
     let finish!: (value: CoverAsset) => void;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { translations } from '@/lib/i18n';
 import { CoverStudio } from '../CoverStudio';
 import { CoverResources } from '../CoverResources';
@@ -18,9 +18,20 @@ vi.mock('@/components/settings/SettingsPage', () => ({
   default: ({ onClose }: { onClose: () => void }) =>
     <button onClick={onClose}>返回设置</button>,
 }));
-afterEach(() => { cleanup(); window.innerWidth = 1024; });
+beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(500);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+  const rect = { width: 500, height: 400, top: 0, left: 0,
+    right: 500, bottom: 400, x: 0, y: 0, toJSON() {} };
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect);
+  Object.defineProperty(Range.prototype, 'getClientRects', {
+    configurable: true, value: () => [rect],
+  });
+});
+afterEach(() => { cleanup(); vi.restoreAllMocks(); window.innerWidth = 1024; });
 function fixture(): CoverController {
   return { document: createCoverDocument({ mode: 'html', title: '离线封面' }),
+    readinessKey: 'project:1',
     update: vi.fn(), loading: false, saveState: 'saved', error: undefined,
     setError: vi.fn(), busy: false, assets: [], revisions: [], legacyAvailable: false,
     canGenerate: false, jobs: [], flush: vi.fn(async () => undefined),
@@ -38,6 +49,16 @@ function fixture(): CoverController {
   } as unknown as CoverController;
 }
 describe('封面工作室交互', () => {
+  it('空内容解释阻塞原因，修正动作聚焦标题且不编辑草稿', () => {
+    const state = fixture();
+    state.document!.fields = { title: ' ', subtitle: '', label: '标签' };
+    render(<CoverStudio controller={state} onClose={vi.fn()} materials={[]} />);
+    expect(screen.getByText('请填写标题或副标题')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '编辑标题' }));
+    expect(screen.getByRole('textbox', { name: '标题' })).toHaveFocus();
+    expect(state.update).not.toHaveBeenCalled();
+    expect(state.act).not.toHaveBeenCalled();
+  });
   it('高度受限时资源只保留入口，主动打开后在原生dialog完整显示', () => {
     function Fixture() {
       const [tab, setTab] = React.useState<'images' | 'revisions'>('images');
@@ -57,12 +78,40 @@ describe('封面工作室交互', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(trigger).toHaveFocus();
   });
-  it('无凭据仍支持纯HTML并提供五模板及三模式', () => {
+  it('无凭据仍支持纯HTML并提供五模板及三模式', async () => {
     render(<CoverStudio controller={fixture()} onClose={vi.fn()} materials={[]} />);
     expect(screen.getAllByRole('tab')).toHaveLength(5);
     expect(screen.getAllByRole('radio')).toHaveLength(5);
-    expect(screen.getByRole('button', { name: '应用到视频' })).not.toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: '应用到视频' })).not.toBeDisabled());
     expect(screen.queryByRole('button', { name: '生成图片' })).toBeNull();
+  });
+  it('首次加载后同16:9画布真实挂载并完成检查，换会话立即禁用', async () => {
+    const state = fixture(); const doc = state.document;
+    state.document = null; state.loading = true;
+    const view = render(<CoverStudio controller={state} onClose={vi.fn()} materials={[]} />);
+    state.document = doc; state.loading = false;
+    view.rerender(<CoverStudio controller={state} onClose={vi.fn()} materials={[]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: '应用到视频' })).not.toBeDisabled());
+    expect(view.container.querySelector('.cover-preview-frame [data-cover-canvas]')).not.toBeNull();
+    state.readinessKey = 'project:2';
+    view.rerender(<CoverStudio controller={state} onClose={vi.fn()} materials={[]} />);
+    expect(screen.getByRole('button', { name: '应用到视频' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: '应用到视频' })).not.toBeDisabled());
+  });
+  it('窄屏修正入口打开唯一抽屉且不增加写入，保留正常失焦保存', async () => {
+    window.innerWidth = 900;
+    const state = fixture(); state.document!.fields = { title: '', subtitle: '', label: '' };
+    render(<CoverStudio controller={state} onClose={vi.fn()} materials={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: '编辑标题' }));
+    const field = screen.getByRole('textbox', { name: '标题' });
+    expect(field).toHaveFocus();
+    expect(screen.getAllByRole('region', { name: '画面检查' })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '画面检查' }).closest('dialog')).not.toBeNull();
+    expect(state.flush).not.toHaveBeenCalled();
+    fireEvent.blur(field);
+    await waitFor(() => expect(state.flush).toHaveBeenCalledOnce());
+    expect(state.update).not.toHaveBeenCalled();
+    expect(state.act).not.toHaveBeenCalled();
   });
   it('键盘切模式保留文字，模板按钮调用同一文档更新', () => {
     const state = fixture(); render(<CoverStudio controller={state} onClose={vi.fn()} materials={[]} />);

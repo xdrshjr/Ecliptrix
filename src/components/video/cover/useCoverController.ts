@@ -21,6 +21,7 @@ import { mergeCoverAssets, mergeCoverRevisions,
   selectCoverRevisions } from './coverResourceUtils';
 import type { CoverRenderHostRef } from './CoverRenderHost';
 import { useCoverJobs } from './useCoverJobs';
+import { assertCoverStructure } from './coverValidation';
 
 interface DraftSession {
   projectId: string; document: CoverDocument | null; version: number;
@@ -105,6 +106,7 @@ export function useCoverController(options: {
   const [canGenerate, setCanGenerate] = useState<boolean>();
   const capability = useRef<boolean | undefined>(undefined);
   const session = useRef<DraftSession | undefined>(undefined);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const intents = useRef(new Map<string, Intent>());
   const completed = useRef(new Set<string>());
   const manualJobs = useRef(new Map<string, {
@@ -265,6 +267,7 @@ export function useCoverController(options: {
       title: latest.current.projectName || t.coverStudio.emptyTitle,
       mode: snapshot.generationConfigured === true ? 'mixed' : 'html' });
   useEffect(() => {
+    setSessionGeneration(generation => generation + 1);
     session.current = undefined; operations.current = undefined;
     generationRequest.current = undefined; pendingSubmission.current = undefined;
     publishRequest.current = undefined; capability.current = undefined;
@@ -435,12 +438,10 @@ export function useCoverController(options: {
   const prepare = async (owner: OperationOwner) => {
     const target = owner.session; const draft = await flushSession(target);
     assertOwner(owner); const d = draft.document;
-    if ((d.mode !== 'html' && d.background.kind !== 'asset') ||
-      (d.mode !== 'ai' && !`${d.fields.title}${d.fields.subtitle}`.trim())) {
-      throw new CoverError('COVER_DRAFT_NOT_READY', 'COVER_DRAFT_NOT_READY');
-    }
-    const blob = await latest.current.renderer.current?.render(d,
-      assetsRef.current.find(asset => asset.assetId === d.background.assetId)?.url);
+    const backgroundUrl = assetsRef.current.find(
+      asset => asset.assetId === d.background.assetId)?.url;
+    assertCoverStructure(d, backgroundUrl);
+    const blob = await latest.current.renderer.current?.render(d, backgroundUrl);
     assertOwner(owner);
     if (!blob) throw new CoverError('COVER_RENDER_FAILED', 'COVER_RENDER_FAILED');
     const key = `${target.projectId}:${draft.version}:${draft.documentHash}`;
@@ -915,6 +916,7 @@ export function useCoverController(options: {
     id: appliedRevisionId, metadataStatus: 'unknown', pngStatus: 'unknown',
     backgroundStatus: 'unknown', ...availability[appliedRevisionId] });
   return { document, update, loading, saveState, error, setError, issue, notice,
+    readinessKey: options.projectId ? `${options.projectId}:${sessionGeneration}` : undefined,
     activity, busy: activity !== 'idle', assets, revisions, revisionEntries,
     legacyAvailable, canGenerate, draftChanged, appliedRevisionId, appliedRevision,
     jobs: jobs.jobs, jobConnection: jobs.connection, bridge, flush, reload,

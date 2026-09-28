@@ -55,7 +55,30 @@ afterEach(() => {
 });
 
 describe('封面控制器异步会话隔离', () => {
-  const candidate = { assetId: 'candidate', url: '/candidate.png',
+  it('检查身份在跨工程当次渲染改变，同会话编辑保持不变', async () => {
+    const hook = setup(); await act(async () => {});
+    const key = hook.result.current.readinessKey;
+    act(() => hook.result.current.update({ ...hook.result.current.document!,
+      fields: { title: '更改', subtitle: '', label: '' } }));
+    expect(hook.result.current.readinessKey).toBe(key);
+    hook.rerender({ projectId: 'second' });
+    expect(hook.result.current.readinessKey).not.toBe(key);
+    await act(async () => {});
+    expect(hook.result.current.readinessKey).toMatch(/^second:/);
+  });
+  it.each(['apply', 'download'] as const)('缺失背景在%s渲染前拒绝且零发布', async action => {
+    const hook = setup(); await act(async () => {});
+    const doc = hook.result.current.document!;
+    act(() => hook.result.current.update({ ...doc, mode: 'mixed',
+      background: { ...doc.background, kind: 'asset', assetId: 'missing' } }));
+    await act(async () => {
+      await expect(hook.result.current.act(action)).rejects.toMatchObject({ code: 'COVER_ASSET_MISSING' });
+    });
+    expect(hook.renderer.current.render).not.toHaveBeenCalled();
+    expect(videoCoverV2.publish).not.toHaveBeenCalled();
+    expect(applyCoverTimelineAction).not.toHaveBeenCalled();
+  });
+  const candidate = { assetId: 'candidate', url: '/api/storage/files/candidate.png',
     width: 1920, height: 1080, sha256: 'a'.repeat(64) };
   const completed: CoverJob = { jobId: 'j', baseVersion: 1,
     status: 'succeeded', assets: [candidate] };
