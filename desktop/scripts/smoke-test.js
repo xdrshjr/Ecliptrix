@@ -174,6 +174,152 @@ function runBundled(executable, args) {
   return result.stdout
 }
 
+// Seed deterministic local media; all cover actions still use real controls.
+function coverBodyFixture(userDataDir, unpackedDir) {
+  const ffmpeg = path.join(unpackedDir, 'resources', 'ffmpeg', 'ffmpeg.exe')
+  const root = path.join(userDataDir, 'storage')
+  for (const kind of ['video', 'audio']) fs.mkdirSync(path.join(root, kind), { recursive: true })
+  runBundled(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i',
+    'color=c=blue:s=320x180:r=30:d=2', '-c:v', 'libx264', '-pix_fmt',
+    'yuv420p', path.join(root, 'video', 'cover-body.mp4')])
+  runBundled(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i',
+    'aevalsrc=if(between(t\\,0.5\\,0.65)\\,0.5*sin(2*PI*440*t)\\,0):s=48000:d=2',
+    path.join(root, 'audio', 'cover-marker.wav')])
+  const materials = ['video', 'audio'].map(type => ({
+    id: `smoke-${type}`, name: type === 'video' ? '正文视频' : '音频标记',
+    type, source: 'upload', duration: 2, width: 320, height: 180,
+    url: `/api/storage/files/${type}/cover-${type === 'video' ? 'body.mp4' : 'marker.wav'}`,
+    serverUrl: `/api/storage/files/${type}/cover-${type === 'video' ? 'body.mp4' : 'marker.wav'}`,
+  }))
+  const tracks = materials.map((material, order) => ({
+    id: `smoke-${material.type}-track`, name: material.name, type: material.type,
+    height: 64, order, isLocked: false, isVisible: true, isMuted: false,
+    volume: 100, items: [{ id: `${material.id}-clip`, materialId: material.id,
+      trackId: `smoke-${material.type}-track`, name: material.name,
+      type: material.type, startTime: 0, duration: 2, clipStart: 0,
+      clipEnd: 2, originalDuration: 2, color: '#4285f4', volume: 100 }],
+  }))
+  return { markdownContent: '', materials, canvasSettings: {
+    aspectRatioId: '16:9', fit: 'contain',
+  }, uiState: { currentTimelineState: { tracks, currentTime: 0,
+    totalDuration: 2, zoomLevel: 1, playbackRate: 1, isPlaying: false,
+    snapToGrid: false, gridSize: 1, scrollLeft: 0 } } }
+}
+
+async function portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject,
+  frontend, projectId, artifacts }) {
+  // The export modal is left mounted after completion; reload through the
+  // editor's normal persistence path before changing the canvas.
+  await reopen()
+  await click('.ws-canvas-trigger')
+  await until('select portrait canvas', () => cdp.evaluate(`(() => {
+    const e = [...document.querySelectorAll('.ws-canvas-ratio')]
+      .find(e => e.querySelector('.ws-canvas-ratio-label')?.textContent === '9:16');
+    if (!e) return false; e.click(); return true;
+  })()`))
+  await click('.ws-canvas-trigger')
+  await openStudio()
+  const layouts = []
+  for (const [width, height] of [[900, 640], [960, 600]]) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width, height, deviceScaleFactor: 1, mobile: false,
+    })
+    await click('[data-cover-preview]')
+    for (const modifiers of [0, 8]) {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers })
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers })
+      if (!await cdp.evaluate("document.querySelector('.cover-preview-dialog[open]')?.contains(document.activeElement)")) {
+        fail('native preview dialog Tab focus escaped')
+      }
+    }
+    const bounds = await until('portrait dialog fits viewport', () => cdp.evaluate(`(() => {
+      const dialog = document.querySelector('.cover-preview-dialog[open]');
+      const frame = dialog?.querySelector('.cover-dialog-frame');
+      const close = dialog?.querySelector('button');
+      if (!frame || !close) return false;
+      const r = frame.getBoundingClientRect(), b = close.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      return { left:r.left, top:r.top, right:r.right, bottom:r.bottom,
+        width:r.width, height:r.height, closeBottom:b.bottom,
+        viewportWidth:innerWidth, viewportHeight:innerHeight,
+        pageWidth:document.documentElement.scrollWidth };
+    })()`))
+    if (bounds.left < 0 || bounds.top < 0 || bounds.right > width + 1 ||
+      bounds.bottom > height + 1 || bounds.closeBottom > height ||
+      bounds.pageWidth > width || Math.abs(bounds.width / bounds.height - 9 / 16) > 0.01) {
+      fail(`portrait preview overflow: ${JSON.stringify(bounds)}`)
+    }
+    layouts.push(bounds)
+    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
+    fs.writeFileSync(path.join(artifacts, `cover-portrait-${width}x${height}.png`),
+      Buffer.from(screenshot.data, 'base64'))
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await until('preview closes and restores focus', () => cdp.evaluate("!document.querySelector('.cover-preview-dialog[open]') && document.activeElement?.hasAttribute('data-cover-preview')"))
+  }
+  await click('.cover-header [role="tablist"] > button:nth-child(2)')
+  await click('.cover-properties-toggle')
+  await until('narrow properties dialog opens', () => cdp.evaluate("!!document.querySelector('.cover-properties-dialog[open]')"))
+  for (const modifiers of [8, 0]) {
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers })
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers })
+    if (!await cdp.evaluate("document.querySelector('.cover-properties-dialog[open]')?.contains(document.activeElement)")) fail('native properties focus escaped')
+  }
+  await click('[data-cover-settings]')
+  await until('properties closes before settings', () => cdp.evaluate("!!document.querySelector('.cover-studio') && !document.querySelector('.cover-header') && !document.querySelector('dialog[open]')"))
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+  await until('settings returns focus to narrow properties', () => cdp.evaluate("!!document.querySelector('.cover-studio') && document.activeElement === document.querySelector('.cover-properties-toggle')"))
+  await click('.cover-header [role="tablist"] > button:nth-child(1)')
+  await click('.cover-apply')
+  const portrait = await until('portrait revision applied', async () => {
+    const record = await readProject()
+    const clip = record.project_data?.uiState?.currentTimelineState?.tracks
+      .flatMap(track => track.items).find(item => item.metadata?.role === 'video-cover')
+    if (!clip) return false
+    const revision = await jsonRequest('GET', `${frontend}/api/video-cover-v2/${projectId}/revisions/${clip.metadata.cover.revisionId}`)
+    return revision.width === 1080 && revision.height === 1920 && revision
+  }, 90000)
+  await saveDownload(new URL(portrait.url, frontend), path.join(artifacts, 'cover-portrait.png'))
+  return { revisionId: portrait.id, width: portrait.width, height: portrait.height,
+    nativeTabFocusTrapped: true, escapeFocusRestored: true,
+    propertiesFocusTrapped: true, narrowSettingsReturnsFocus: true, layouts }
+}
+
+async function coverEntryRaceSmoke({ cdp, click, backend }) {
+  await click('.cover-header > button')
+  const name = `截帧切工程 ${Date.now()}`
+  const other = await jsonRequest('POST', `${backend}/api/video-projects`, { name })
+  await cdp.evaluate(`(() => {
+    const original = window.fetch.bind(window);
+    window.__coverCapturePending = false;
+    window.fetch = (...args) => {
+      if (!String(args[0]).startsWith('data:image/')) return original(...args);
+      window.fetch = original;
+      window.__coverCapturePending = true;
+      const response = original(...args);
+      return new Promise(resolve => { window.__releaseCoverCapture = () => {
+        response.then(resolve); window.__coverCapturePending = false;
+      }; });
+    };
+  })()`)
+  await click('.ws-canvas-trigger')
+  await click('[data-cover-entry]')
+  await until('frame capture held', () => cdp.evaluate('window.__coverCapturePending === true'))
+  await click('.ws-topbar > button')
+  await until('switch project during frame capture', () => cdp.evaluate(`(() => {
+    const e = [...document.querySelectorAll('button')]
+      .find(e => e.textContent.trim() === ${JSON.stringify(name)});
+    if (!e) return false; e.click(); return true;
+  })()`))
+  await until('new project editor mounted', () => cdp.evaluate("!!document.querySelector('.ws-canvas-trigger') && !document.querySelector('.cover-studio')"))
+  await cdp.evaluate('window.__releaseCoverCapture()')
+  // Past the original 1500ms deadline, neither timeout nor late Blob may open it.
+  await sleep(1600)
+  if (await cdp.evaluate("!!document.querySelector('.cover-studio')")) fail('old frame capture opened new project cover studio')
+  return { destinationProjectId: other.id, lateCaptureDiscarded: true }
+}
+
 async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
   const timings = {}
   const artifacts = path.join(userDataDir, 'artifacts')
@@ -190,13 +336,17 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
   const composeRequests = new Map()
   let composition
   let generationPosts = 0
+  let coverWrites = 0
+  let revisionPosts = 0
+  let nativeDownloads = 0
   let pageLoads = 0
   try {
     await cdp.send('Page.enable')
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
     await cdp.send('Runtime.enable')
     await cdp.send('Network.enable')
-    await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: artifacts })
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: artifacts, eventsEnabled: true })
+    cdp.on('Browser.downloadWillBegin', () => { nativeDownloads++ })
     cdp.on('Page.loadEventFired', () => { pageLoads++ })
     cdp.on('Runtime.exceptionThrown', event => errors.push(event.exceptionDetails.text + ': ' + (event.exceptionDetails.exception?.description || '')))
     cdp.on('Fetch.requestPaused', event => {
@@ -210,7 +360,10 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] })
     cdp.on('Network.requestWillBeSent', event => {
       const request = event.request
+      if (['PUT', 'POST'].includes(request.method) &&
+        new URL(request.url).pathname.startsWith('/api/video-cover-v2/')) coverWrites++
       if (request.method === 'POST' && /\/video-cover-v2\/[^/]+\/jobs$/.test(new URL(request.url).pathname)) generationPosts++
+      if (request.method === 'POST' && /\/video-cover-v2\/[^/]+\/revisions$/.test(new URL(request.url).pathname)) revisionPosts++
       if (request.method === 'POST' && new URL(request.url).pathname === '/api/video-compose') {
         composeRequests.set(event.requestId, JSON.parse(request.postData || '{}'))
       }
@@ -226,11 +379,13 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     })
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: "localStorage.setItem('ecliptrix-locale', 'en')" })
     const name = `Cover smoke ${Date.now()}`
-    const project = await jsonRequest('POST', `${backend}/api/video-projects`, { name })
+    const project = await jsonRequest('POST', `${backend}/api/video-projects`, {
+      name, project_data: coverBodyFixture(userDataDir, unpackedDir),
+    })
     const projectId = project.id
     if (!projectId) fail('created project has no id')
     const click = async (selector) => {
-      await until(`click ${selector}`, () => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e || e.disabled) return false; e.click(); return true; })()`))
+      await until(`click ${selector}`, () => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e || e.disabled) return false; e.focus(); e.click(); return true; })()`))
     }
     const reopen = async () => {
       const expectedLoads = pageLoads + 1
@@ -253,7 +408,7 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     await reopen()
     await openStudio()
     await click('.cover-header [role="tab"]')
-    const title = '封面验收 Cover'
+    let title = '封面验收 Cover'
     await cdp.evaluate(`(() => { const e = document.querySelector('.cover-inspector textarea');
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(e, ${JSON.stringify(title)});
       e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); })()`)
@@ -268,22 +423,83 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
       const covers = tracks.flatMap(track => track.items).filter(item => item.metadata?.role === 'video-cover')
       return data?.coverSchemaVersion === 2 && covers.length === 1 && { record, clip: covers[0] }
     }, 90000)
-    const metadata = saved.clip.metadata.cover
+    let metadata = saved.clip.metadata.cover
     timings.renderAndSaveMs = Date.now() - renderStarted
-    const revision = await jsonRequest('GET', `${frontend}/api/video-cover-v2/${projectId}/revisions/${metadata.revisionId}`)
+    let revision = await jsonRequest('GET', `${frontend}/api/video-cover-v2/${projectId}/revisions/${metadata.revisionId}`)
     if (revision.document.mode !== 'html' || revision.document.fields.title !== title || revision.document.duration_frames !== 30) fail('HTML document or duration did not persist')
     if (saved.clip.startTime !== 0 || saved.clip.duration !== 1 || metadata.sha256 !== revision.sha256) fail('cover clip timing/hash mismatch')
+    const bodyClips = saved.record.project_data.uiState.currentTimelineState.tracks
+      .flatMap(track => track.items).filter(item => item.id.startsWith('smoke-'))
+    if (bodyClips.length !== 2 || bodyClips.some(item => item.startTime !== 1 || item.clipStart !== 0)) fail('cover did not shift body video/audio once')
+    const firstRevisionId = metadata.revisionId
+    const editTitle = async value => {
+      await cdp.evaluate(`(() => { const e = document.querySelector('.cover-inspector textarea');
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(e, ${JSON.stringify(value)});
+        e.dispatchEvent(new Event('input', { bubbles: true })); })()`)
+      await until('title input', () => cdp.evaluate(`document.querySelector('.cover-inspector textarea')?.value === ${JSON.stringify(value)}`))
+    }
+    const waitApplied = previous => until('new cover revision applied', async () => {
+      const record = await readProject()
+      const covers = record.project_data?.uiState?.currentTimelineState?.tracks
+        .flatMap(track => track.items).filter(item => item.metadata?.role === 'video-cover') || []
+      return covers.length === 1 && covers[0].metadata.cover.revisionId !== previous && covers[0].metadata.cover
+    }, 90000)
+    await editTitle('第二份成品 Cover')
+    await click('.cover-apply')
+    const second = await waitApplied(firstRevisionId)
+    const beforeBrowseWrites = coverWrites
+    await click('[data-cover-resource-tab="revisions"]')
+    await click(`[data-cover-revision-id="${firstRevisionId}"] [data-cover-action="preview"]`)
+    await until('historical PNG preview decoded', () => cdp.evaluate("document.querySelector('.cover-preview-dialog[open] .cover-history-image')?.naturalWidth > 0"))
+    await click('.cover-preview-dialog[open] button')
+    const previousDownloads = nativeDownloads
+    await click(`[data-cover-revision-id="${firstRevisionId}"] [data-cover-action="download"]`)
+    await until('native historical PNG download starts', () => nativeDownloads > previousDownloads)
+    if (coverWrites !== beforeBrowseWrites) fail('history browsing/download wrote a draft or published PNG')
+    await click(`[data-cover-revision-id="${firstRevisionId}"] [data-cover-action="restore"]`)
+    await until('first revision restored as draft', () => cdp.evaluate(`document.querySelector('.cover-inspector textarea')?.value === ${JSON.stringify(title)}`))
+    const beforeReapply = await readProject()
+    const beforeClip = beforeReapply.project_data.uiState.currentTimelineState.tracks.flatMap(track => track.items).find(item => item.metadata?.role === 'video-cover')
+    if (beforeClip.metadata.cover.revisionId !== second.revisionId) fail('restore changed timeline before apply')
+    title += ' · 取回'
+    await editTitle(title)
+    await click('.cover-apply')
+    metadata = await waitApplied(second.revisionId)
+    revision = await jsonRequest('GET', `${frontend}/api/video-cover-v2/${projectId}/revisions/${metadata.revisionId}`)
+    const history = { firstRevisionId, secondRevisionId: second.revisionId,
+      restoredAndAppliedRevisionId: metadata.revisionId, restoredTitle: title,
+      browsingWriteRequests: 0, nativeDownloadStarted: true }
+    const beforeDraftDownload = { downloads: nativeDownloads, publishes: revisionPosts }
+    await cdp.evaluate(`(() => {
+      const button = [...document.querySelectorAll('.cover-footer button')]
+        .find(element => element.textContent.trim() === 'Download PNG');
+      if (!button || button.disabled) throw new Error('draft download unavailable');
+      button.click(); button.click();
+    })()`)
+    await until('current draft native download starts', () => nativeDownloads > beforeDraftDownload.downloads)
+    const afterDraftDownload = await readProject()
+    const downloadCover = afterDraftDownload.project_data.uiState.currentTimelineState.tracks
+      .flatMap(track => track.items).find(item => item.metadata?.role === 'video-cover')
+    if (downloadCover.metadata.cover.revisionId !== metadata.revisionId ||
+      revisionPosts - beforeDraftDownload.publishes > 1 ||
+      nativeDownloads - beforeDraftDownload.downloads !== 1) fail('draft download duplicated or changed timeline')
+    const draftDownload = { timelineUnchanged: true, doubleClickDownloads: 1,
+      publishRequests: revisionPosts - beforeDraftDownload.publishes }
     const layouts = []
     // The final two viewports model 125%/150% scaling of 1440x900; they do
     // not change Windows system DPI or claim to exercise OS font scaling.
     for (const [width, height, equivalentScalePercent] of [[1440, 900, 100], [900, 640, null], [1152, 720, 125], [960, 600, 150]]) {
       await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
       await sleep(500)
-      const bounds = await cdp.evaluate(`(() => {
-        const preview = document.querySelector('.cover-preview-frame').getBoundingClientRect();
+      const bounds = await until('visible cover preview after resize', () => cdp.evaluate(`(() => {
+        const frame = document.querySelector('.cover-preview-frame');
+        if (!frame) return false;
+        const preview = frame.getBoundingClientRect();
         const footer = document.querySelector('.cover-footer').getBoundingClientRect();
-        return { previewBottom: preview.bottom, footerTop: footer.top, footerBottom: footer.bottom, viewportHeight: innerHeight };
-      })()`)
+        if (preview.width <= 0 || preview.height <= 0) return false;
+        return { previewWidth: preview.width, previewHeight: preview.height,
+          previewBottom: preview.bottom, footerTop: footer.top, footerBottom: footer.bottom, viewportHeight: innerHeight };
+      })()`))
       if (bounds.previewBottom > bounds.footerTop + 1 || bounds.footerBottom > bounds.viewportHeight + 1) fail(`cover layout overflow at ${width}x${height}: ${JSON.stringify(bounds)}`)
       layouts.push({ width, height, equivalentScalePercent, systemDpiChanged: false, ...bounds })
       const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
@@ -299,6 +515,10 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     const lightScreenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
     fs.writeFileSync(path.join(artifacts, 'cover-studio-light-1440x900.png'), Buffer.from(lightScreenshot.data, 'base64'))
     await cdp.evaluate("document.documentElement.classList.remove('light'); document.documentElement.classList.add('dark'); document.documentElement.style.colorScheme = 'dark'")
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+    const reducedMotion = await cdp.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches && getComputedStyle(document.querySelector('.cover-apply')).transitionDuration === '0s'")
+    if (!reducedMotion) fail('reduced motion preference left cover transitions active')
+    await cdp.send('Emulation.setEmulatedMedia', { features: [] })
 
     const key = async (name) => {
       const windowsVirtualKeyCode = name === 'ArrowRight' ? 39 : 37
@@ -318,7 +538,7 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     await cdp.evaluate(`(() => { const e = document.querySelector('.cover-inspector textarea');
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(e, 'Smoke must not generate');
       e.dispatchEvent(new Event('input', { bubbles: true })); })()`)
-    const noCredentialsDisabled = await cdp.evaluate("document.querySelector('.cover-generation > button')?.disabled === true && document.querySelector('.cover-generation p button') !== null")
+    const noCredentialsDisabled = await cdp.evaluate("document.querySelector('[data-cover-generate]')?.disabled === true && document.querySelector('[data-cover-settings]') !== null")
     if (!noCredentialsDisabled) fail('generation is enabled without credentials and with a nonempty prompt')
     await cdp.evaluate(`(() => { const e = document.querySelector('.cover-inspector textarea');
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(e, '');
@@ -332,7 +552,7 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     // Closing flushes the restored draft before the persistence reload.
     await click('.cover-header > button')
     const keyboard = { templateArrows: true, modeArrows: true, titlePreserved: true, noCredentialsDisabled }
-    const themes = { darkBackground, lightBackground }
+    const themes = { darkBackground, lightBackground, reducedMotion }
     console.log('[smoke-test] offline HTML cover rendered and saved')
 
     const reopenStarted = Date.now()
@@ -354,7 +574,8 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     }, 90000)
     const { request, response } = composition
     const required = request.required_cover
-    if (!required || required.project_id !== projectId || required.revision_id !== metadata.revisionId || required.sha256 !== metadata.sha256 || request.total_duration !== 1 || request.image_items?.length !== 1 || request.image_items[0].id !== required.image_item_id) fail('export request lost required_cover or duration')
+    if (!required || required.project_id !== projectId || required.revision_id !== metadata.revisionId || required.sha256 !== metadata.sha256 || request.total_duration !== 3 || request.image_items?.length !== 1 || request.image_items[0].id !== required.image_item_id) fail('export request lost required_cover or duration')
+    if (request.video_items?.[0]?.start_time !== 1 || request.audio_items?.[0]?.start_time !== 1) fail('export body timing differs from timeline')
     const statusUrl = `${frontend}/api/video-compose/${response.composition_id}/status?task_id=${encodeURIComponent(request.task_id)}`
     const status = await until('covered MP4 composition', async () => {
       const current = await jsonRequest('GET', statusUrl)
@@ -371,7 +592,7 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     const binaries = path.join(unpackedDir, 'resources', 'ffmpeg')
     const probe = JSON.parse(runBundled(path.join(binaries, 'ffprobe.exe'), ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,avg_frame_rate,nb_read_frames:format=duration', '-of', 'json', videoPath]).toString())
     const stream = probe.streams[0]
-    if (!stream || Number(stream.nb_read_frames) !== 30 || stream.avg_frame_rate !== '30/1' || Math.abs(Number(probe.format.duration) - 1) > 1 / 30 || stream.width !== revision.width || stream.height !== revision.height) fail(`unexpected MP4 frames/dimensions: ${JSON.stringify(probe)}`)
+    if (!stream || Number(stream.nb_read_frames) !== 90 || stream.avg_frame_rate !== '30/1' || Math.abs(Number(probe.format.duration) - 3) > 1 / 30 || stream.width !== revision.width || stream.height !== revision.height) fail(`unexpected MP4 frames/dimensions: ${JSON.stringify(probe)}`)
     const ffmpeg = path.join(binaries, 'ffmpeg.exe')
     const pixels = (file, frame) => runBundled(ffmpeg, ['-v', 'error', '-i', file, '-vf', `select=eq(n\\,${frame}),scale=192:108`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'])
     const reference = pixels(pngPath, 0)
@@ -384,9 +605,26 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
       if (mean > 12) fail(`cover frame ${frame} differs from published PNG (mean RGB error ${mean})`)
       return { frame, meanRgbError: mean }
     })
+    const bodyFrame = pixels(videoPath, 30)
+    const bodyReference = pixels(path.join(userDataDir, 'storage',
+      'video', 'cover-body.mp4'), 0)
+    if (!bodyFrame.length || bodyFrame.length !== bodyReference.length) fail('body frame byte count mismatch')
+    let bodyError = 0
+    for (let i = 0; i < bodyFrame.length; i++) bodyError += Math.abs(bodyFrame[i] - bodyReference[i])
+    const bodyMeanRgbError = bodyError / bodyFrame.length
+    if (bodyMeanRgbError > 12) fail(`frame 30 differs from body video: ${bodyMeanRgbError}`)
+    const audio = runBundled(ffmpeg, ['-v', 'error', '-i', videoPath,
+      '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'])
+    let onset = -1
+    for (let i = 0; i < audio.length; i += 4) {
+      if (Math.abs(audio.readFloatLE(i)) > 0.02) { onset = i / 4 / 48000; break }
+    }
+    if (Math.abs(onset - 1.5) > 1 / 30) fail(`audio marker did not shift: ${onset}`)
+    const portrait = await portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject, frontend, projectId, artifacts })
+    const entryRace = await coverEntryRaceSmoke({ cdp, click, backend })
     if (generationPosts !== 0 || errors.length) fail(`HTML path generated AI requests (${generationPosts}) or renderer errors: ${errors.join('\n')}`)
-    fs.writeFileSync(path.join(artifacts, 'cover-report.json'), JSON.stringify({ projectId, revisionId: metadata.revisionId, sha256: metadata.sha256, offlineRenderer: true, generationPosts, blockedRequests: blocked, probe, differences, layouts, themes, keyboard, timings }, null, 2))
-    console.log(`[smoke-test] cover save/reopen and 30-frame MP4 verified: ${artifacts}`)
+    fs.writeFileSync(path.join(artifacts, 'cover-report.json'), JSON.stringify({ projectId, revisionId: metadata.revisionId, sha256: metadata.sha256, offlineRenderer: true, generationPosts, coverWrites, nativeDownloads, blockedRequests: blocked, probe, differences, bodyFrame: 30, bodyMeanRgbError, audioOnset: onset, history, draftDownload, portrait, entryRace, layouts, themes, keyboard, timings }, null, 2))
+    console.log(`[smoke-test] cover history, portrait and 90-frame body/audio MP4 verified: ${artifacts}`)
   } catch (error) {
     try {
       const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
@@ -498,20 +736,16 @@ async function main() {
     //      core files exist and are non-empty, and process.log captured both
     //      health transitions.
     const logsDir = path.join(userDataDir, 'logs')
-    for (const file of ['main.log', 'process.log', 'backend.log', 'frontend.log']) {
-      const filePath = path.join(logsDir, file)
-      let size = 0
+    // HTTP readiness can precede the desktop supervisor's next health poll
+    // and log flush. Wait for both observations instead of racing the logger.
+    await until('categorised service health logs', () => {
       try {
-        size = fs.statSync(filePath).size
-      } catch {
-        size = -1
-      }
-      if (size <= 0) fail(`expected non-empty ${file} under ${logsDir} (size=${size})`)
-    }
-    const processLog = fs.readFileSync(path.join(logsDir, 'process.log'), 'utf-8')
-    if (!/backend healthy/.test(processLog) || !/frontend healthy/.test(processLog)) {
-      fail('process.log missing backend/frontend health lines')
-    }
+        if (['main.log', 'process.log', 'backend.log', 'frontend.log'].some(file =>
+          fs.statSync(path.join(logsDir, file)).size <= 0)) return false
+        const processLog = fs.readFileSync(path.join(logsDir, 'process.log'), 'utf-8')
+        return /backend healthy/.test(processLog) && /frontend healthy/.test(processLog)
+      } catch { return false }
+    }, 15000)
     console.log('[smoke-test] categorised logs ok')
 
     const mainLogPath = path.join(logsDir, 'main.log')

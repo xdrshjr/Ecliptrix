@@ -66,3 +66,57 @@ export class CoverError extends Error {
     super(message); this.name = 'CoverError';
   }
 }
+
+// These shapes belong to the editor session, never the saved project schema.
+export type CoverOperationSource = 'load' | 'save' | 'generate' | 'poll' |
+  'upload' | 'copy' | 'render' | 'apply' | 'restore' | 'resources';
+export type CoverRecoveryAction = 'retry-save' | 'use-local' | 'use-server' |
+  'refresh-status' | 'regenerate' | 'choose-image' | 'retry-operation' |
+  'refresh-resources' | 'retry-revision' | 'resume-submission' |
+  'cancel-submission' | 'rebuild' | 'reload-initial' | 'dismiss';
+export interface CoverIssue {
+  id: string;
+  kind: 'draft-conflict' | 'operation-stale' | 'other';
+  code: string;
+  operation: CoverOperationSource;
+  projectId: string;
+  revisionId?: string;
+  retryAction?: 'apply' | 'download' | 'rebuild';
+  actions: CoverRecoveryAction[];
+}
+export interface BackgroundIntentToken {
+  session: object;
+  sequence: number;
+}
+export interface CoverRestoreUndo {
+  document: CoverDocument;
+  resultEdit: number;
+  backgroundSequence: number;
+  session: object;
+}
+export interface CoverPendingSubmission {
+  session: object;
+  requestId: string;
+  draft: CoverSavedDraft;
+  referenceAssetIds: string[];
+  edit: number;
+  backgroundSequence: number;
+  state: 'submitting' | 'unknown';
+}
+export type CoverRevisionAvailability = 'unknown' | 'checking' | 'readable' |
+  'unavailable';
+export interface CoverRevisionEntry {
+  id: string;
+  revision?: CoverRevision;
+  metadataStatus: CoverRevisionAvailability;
+  pngStatus: CoverRevisionAvailability;
+  backgroundStatus: CoverRevisionAvailability;
+}
+export type CoverResourceTab = 'images' | 'revisions';
+export type CoverActivity = 'idle' | 'preparing' | 'applying' |
+  'downloading' | 'restoring';
+export interface CoverJobConnection {
+  status: 'idle' | 'connected' | 'retrying';
+  failedJobIds: string[];
+  unavailableJobIds: string[];
+}

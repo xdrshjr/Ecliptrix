@@ -285,6 +285,17 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [coverFrame, setCoverFrame] = useState<Blob>();
   const coverOpenRef = useRef(false); coverOpenRef.current = coverOpen;
   const coverTrigger = useRef<HTMLElement | null>(null);
+  const coverEntry = useRef({ projectId, sequence: 0, active: true });
+  if (coverEntry.current.projectId !== projectId) {
+    coverEntry.current.active = false;
+    coverEntry.current = { projectId, sequence: 0, active: true };
+  }
+  useEffect(() => {
+    const entry = coverEntry.current;
+    entry.active = true;
+    setCoverFrame(undefined); setCoverOpen(false);
+    return () => { entry.active = false; entry.sequence++; };
+  }, [projectId]);
 
   // Persist UI state to content whenever it changes
   useEffect(() => {
@@ -1949,16 +1960,24 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     renderer: coverRenderRef, registerMaterial: materialManagement.addOrReplaceMaterial,
     onApplied: activateCoverSchema });
   const openCover = useCallback(async () => {
+    const entry = coverEntry.current;
+    const sequence = ++entry.sequence;
     coverTrigger.current = document.activeElement as HTMLElement | null;
+    void videoPlayerRef.current?.pauseFromTimeline().catch(() => {
+      logger.debug('Cover entry pause unavailable');
+    });
     let frame: Blob | undefined;
     try {
       if (videoPlayerRef.current) {
         frame = await coverDeadline(videoPlayerRef.current.captureCoverFrame(), 1500);
       }
     } catch (error) { logger.debug('Cover entry frame unavailable', { error: String(error) }); }
+    if (!entry.active || entry !== coverEntry.current ||
+      sequence !== entry.sequence) return;
     setCoverFrame(frame); setCoverOpen(true);
   }, [logger]);
   const closeCover = useCallback(() => {
+    coverEntry.current.sequence++;
     setCoverOpen(false);
     setTimeout(() => (coverTrigger.current?.isConnected ? coverTrigger.current
       : document.querySelector<HTMLElement>('[data-cover-entry]'))?.focus(), 0);
@@ -1969,13 +1988,21 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       if (!detail || !projectId || detail.projectId !== projectId) return;
       if (detail.action === 'edit') void openCover();
       else if (detail.action === 'apply' && detail.revisionId) {
-        void cover.applyExisting(detail.revisionId).catch(() => void openCover());
+        const entry = coverEntry.current;
+        const sequence = entry.sequence;
+        void cover.applyExisting(detail.revisionId).catch(() => {
+          if (entry.active && entry === coverEntry.current &&
+            sequence === entry.sequence) void openCover();
+        });
       } else if (detail.action === 'locate') {
         const store = useTimelineStore.getState();
         const item = store.tracks.flatMap(track => track.items).find(candidate =>
           candidate.metadata?.role === 'video-cover' &&
           (!detail.revisionId || candidate.metadata.cover?.revisionId === detail.revisionId));
-        if (item) { setCoverOpen(false); store.selectItem(item.id); store.setCurrentTime(0); }
+        if (item) {
+          coverEntry.current.sequence++;
+          setCoverOpen(false); store.selectItem(item.id); store.setCurrentTime(0);
+        }
       }
     };
     window.addEventListener(COVER_CARD_ACTION_EVENT, handle);

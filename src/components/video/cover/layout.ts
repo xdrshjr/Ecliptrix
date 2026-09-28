@@ -6,6 +6,21 @@ const SIZES: Record<CoverAspectRatio, { width: number; height: number }> = {
   '21:9': { width: 2560, height: 1080 },
 };
 export const coverSize = (ratio: CoverAspectRatio) => SIZES[ratio];
+/** Fit the entire output inside both axes without upscaling or a minimum zoom. */
+export function fitCoverPreview(
+  output: { width: number; height: number },
+  viewport: { width: number; height: number }, padding = 16,
+): { scale: number; width: number; height: number } {
+  const empty = { scale: 0, width: 0, height: 0 };
+  if (![output.width, output.height, viewport.width, viewport.height,
+    padding].every(Number.isFinite) || output.width <= 0 ||
+    output.height <= 0 || padding < 0) return empty;
+  const width = viewport.width - padding * 2;
+  const height = viewport.height - padding * 2;
+  if (width <= 0 || height <= 0) return empty;
+  const scale = Math.min(1, width / output.width, height / output.height);
+  return { scale, width: output.width * scale, height: output.height * scale };
+}
 export function templateLayout(document: CoverDocument) {
   const portrait = document.aspectRatio === '9:16';
   const square = document.aspectRatio === '1:1';

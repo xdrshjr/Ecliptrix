@@ -5,6 +5,52 @@ import type { TtsErrorCode } from './ttsErrors';
 export interface Translations {
   /** Import labels shared with the cover timeline. */
   coverStudio: {
+    images: string;
+    recentRevisions: string;
+    emptyImages: string;
+    emptyRevisions: string;
+    usedInVideo: string;
+    videoUsing: string;
+    restoreDraft: string;
+    undoRestore: string;
+    restoreReflow: string;
+    backgroundMissing: string;
+    pngUnavailable: string;
+    referencedUnavailable: string;
+    retryRevision: string;
+    comparisonUnavailable: string;
+    capabilityUnknown: string;
+    refreshResources: string;
+    refreshStatus: string;
+    connectionRetrying: string;
+    jobUnavailable: string;
+    preparing: string;
+    preparingDownload: string;
+    restoring: string;
+    submittingGeneration: string;
+    submissionUnknown: string;
+    resumeSubmission: string;
+    cancelSubmission: string;
+    retrySave: string;
+    useLocal: string;
+    useServer: string;
+    replaceLocalWarning: string;
+    draftConflict: string;
+    operationStale: string;
+    saveFailed: string;
+    resourceFailed: string;
+    importFailed: string;
+    chooseImage: string;
+    regenerate: string;
+    regenerateNotice: string;
+    unknownFailure: string;
+    dismiss: string;
+    collapseResources: string;
+    expandResources: string;
+    revisionDetails: string;
+    unknownDate: string;
+    imageImported: string;
+    imageImportFailed: string;
     title: string;
     back: string;
     create: string;
@@ -51,6 +97,7 @@ export interface Translations {
     generate: string;
     cancel: string;
     generationNotice: string;
+    partialGeneration: string;
     missingKey: string;
     settings: string;
     duration: string;
@@ -3112,6 +3159,52 @@ export interface Translations {
 export const translations: Record<string, Translations> = {
   en: {
     coverStudio: {
+      "images": "Images",
+      "recentRevisions": "Recent covers",
+      "emptyImages": "Upload a background or generate your first image",
+      "emptyRevisions": "Applied or downloaded covers appear here",
+      "usedInVideo": "Used in video",
+      "videoUsing": "Video uses",
+      "restoreDraft": "Load as draft",
+      "undoRestore": "Undo load",
+      "restoreReflow": "Reflowed for the current canvas. Applying creates a new cover.",
+      "backgroundMissing": "Original background is missing. Download the cover and upload it again.",
+      "pngUnavailable": "Cover file cannot be read",
+      "referencedUnavailable": "The cover referenced by the video cannot be read",
+      "retryRevision": "Retry reading",
+      "comparisonUnavailable": "Unable to compare for now",
+      "capabilityUnknown": "Unable to confirm model configuration",
+      "refreshResources": "Refresh resources",
+      "refreshStatus": "Refresh now",
+      "connectionRetrying": "Unable to get generation progress. Retrying?",
+      "jobUnavailable": "Some generation tasks cannot be read",
+      "preparing": "Preparing cover?",
+      "preparingDownload": "Preparing download?",
+      "restoring": "Loading draft?",
+      "submittingGeneration": "Submitting generation?",
+      "submissionUnknown": "Generation submission has not been confirmed",
+      "resumeSubmission": "Resume this submission",
+      "cancelSubmission": "Cancel this submission",
+      "retrySave": "Retry saving",
+      "useLocal": "Keep my draft",
+      "useServer": "Use saved draft",
+      "replaceLocalWarning": "Using the saved draft replaces your current local input.",
+      "draftConflict": "The draft was updated by another operation",
+      "operationStale": "The cover changed. Retry with the current content.",
+      "saveFailed": "Draft not saved. Your input is preserved.",
+      "resourceFailed": "Unable to refresh right now",
+      "importFailed": "Background was not imported. Your current cover is unchanged.",
+      "chooseImage": "Choose an image again",
+      "regenerate": "Generate again with current settings",
+      "regenerateNotice": "Generating again may use additional credits.",
+      "unknownFailure": "The operation did not finish. Your draft is preserved.",
+      "dismiss": "Dismiss message",
+      "collapseResources": "Collapse resources",
+      "expandResources": "Expand resources",
+      "revisionDetails": "Cover details",
+      "unknownDate": "Unknown creation date",
+      "imageImported": "Image imported. Select it in Images.",
+      "imageImportFailed": "An earlier image import failed. Your current background is preserved; choose an image again.",
       "title": "Cover studio",
       "back": "Back to editing",
       "create": "Create cover",
@@ -3158,6 +3251,7 @@ export const translations: Record<string, Translations> = {
       "generate": "Generate",
       "cancel": "Cancel generation",
       "generationNotice": "Cancelling stops local use; the provider may still charge.",
+      "partialGeneration": "Some images could not be generated or saved. Available images can still be used.",
       "missingKey": "Image generation is not configured. HTML layout works offline.",
       "settings": "Model settings",
       "duration": "Cover duration (seconds)",
@@ -3213,6 +3307,7 @@ export const translations: Record<string, Translations> = {
             "COVER_VERSION_CONFLICT": "Draft changed elsewhere. Your local edits are preserved.",
             "COVER_REQUEST_CONFLICT": "Cover operation failed. Your draft has been preserved.",
             "COVER_DRAFT_NOT_READY": "Cover operation failed. Your draft has been preserved.",
+            "COVER_SERVER_DRAFT_MISSING": "There is no saved draft to load. Your local edits are preserved.",
             "COVER_ASSET_MISSING": "The cover image is missing. Choose an image again.",
             "COVER_INVALID_ASSET": "Cover operation failed. Your draft has been preserved.",
             "COVER_RENDER_FAILED": "Cover operation failed. Your draft has been preserved.",
@@ -6287,6 +6382,52 @@ export const translations: Record<string, Translations> = {
   },
   'zh-CN': {
     coverStudio: {
+      "images": "图片",
+      "recentRevisions": "最近成品",
+      "emptyImages": "上传背景，或生成第一张图片",
+      "emptyRevisions": "应用或下载封面后，成品会保存在这里",
+      "usedInVideo": "视频正在使用",
+      "videoUsing": "视频使用",
+      "restoreDraft": "载入为草稿",
+      "undoRestore": "撤销载入",
+      "restoreReflow": "已按当前画布重新排版，应用时将生成新成品",
+      "backgroundMissing": "原背景已丢失，可下载成品后重新上传",
+      "pngUnavailable": "成品文件不可读取",
+      "referencedUnavailable": "视频引用的成品不可读取",
+      "retryRevision": "重试读取",
+      "comparisonUnavailable": "暂时无法比较",
+      "capabilityUnknown": "暂时无法确认模型配置",
+      "refreshResources": "刷新资源",
+      "refreshStatus": "立即刷新",
+      "connectionRetrying": "暂时无法获取生成进度，正在重试",
+      "jobUnavailable": "部分生成任务暂时无法读取",
+      "preparing": "正在准备成品…",
+      "preparingDownload": "准备下载…",
+      "restoring": "正在载入草稿…",
+      "submittingGeneration": "正在提交生成…",
+      "submissionUnknown": "尚未确认是否已提交",
+      "resumeSubmission": "恢复此次提交",
+      "cancelSubmission": "取消此次提交",
+      "retrySave": "重试保存",
+      "useLocal": "保留我的草稿",
+      "useServer": "使用已保存草稿",
+      "replaceLocalWarning": "使用已保存草稿将替换当前本地输入。",
+      "draftConflict": "草稿已被另一项操作更新",
+      "operationStale": "封面已更新，请按当前内容重试",
+      "saveFailed": "草稿尚未保存，输入仍保留",
+      "resourceFailed": "暂时无法刷新",
+      "importFailed": "背景未导入，当前封面未改变",
+      "chooseImage": "重新选择图片",
+      "regenerate": "按当前设置重新生成",
+      "regenerateNotice": "重新生成可能再次消耗额度。",
+      "unknownFailure": "操作未完成，草稿仍保留",
+      "dismiss": "关闭提示",
+      "collapseResources": "收起资源",
+      "expandResources": "展开资源",
+      "revisionDetails": "成品详情",
+      "unknownDate": "创建时间未知",
+      "imageImported": "图片已导入，可在图片区选择",
+      "imageImportFailed": "较早的图片导入失败，当前背景仍保留，可重新选择图片",
       "title": "封面工作室",
       "back": "返回剪辑",
       "create": "制作封面",
@@ -6333,6 +6474,7 @@ export const translations: Record<string, Translations> = {
       "generate": "生成图片",
       "cancel": "取消生成",
       "generationNotice": "取消会停止本地使用；供应商可能仍会计费。",
+      "partialGeneration": "部分图片未能生成或保存，已成功的图片仍可使用。",
       "missingKey": "尚未配置生图凭据，HTML 排版可离线使用。",
       "settings": "模型设置",
       "duration": "封面时长（秒）",
@@ -6388,6 +6530,7 @@ export const translations: Record<string, Translations> = {
             "COVER_VERSION_CONFLICT": "草稿已在别处修改，本地输入已保留。",
             "COVER_REQUEST_CONFLICT": "封面操作失败，草稿已保留，请检查后重试。",
             "COVER_DRAFT_NOT_READY": "封面操作失败，草稿已保留，请检查后重试。",
+            "COVER_SERVER_DRAFT_MISSING": "服务端没有可载入的草稿，本地输入已保留",
             "COVER_ASSET_MISSING": "封面图片缺失，请重新选择图片。",
             "COVER_INVALID_ASSET": "封面操作失败，草稿已保留，请检查后重试。",
             "COVER_RENDER_FAILED": "封面操作失败，草稿已保留，请检查后重试。",
