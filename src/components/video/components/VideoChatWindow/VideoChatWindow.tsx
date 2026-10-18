@@ -442,6 +442,9 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           <div className="flex-1 relative flex items-center">
             <textarea
               ref={textareaRef}
+              // 卡片（自检 / 视觉观察）预填修复指令的唯一落点：
+              // `sendPrefilledMessage` 只认这个属性，不依赖任何 store（§7.1）。
+              data-agent-input=""
               value={inputMessage}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}

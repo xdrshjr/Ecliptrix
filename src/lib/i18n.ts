@@ -236,6 +236,95 @@ export interface Translations {
     internalError: string;
     tools: Record<string, string>;
   };
+  /**
+   * 视觉审阅与成品自检（docs/plans/agent-visual-review/spec.md §7.2）。
+   *
+   * `errors` 的键是 §5.4 的错误码闭集，`lint` 的键是 §4.10 的 15 条规则
+   * code —— 两者都由后端/工具层给值，所以是 `Record`；缺键时卡片回落到
+   * `errors.internal` / 原始 code，永不渲染空白。
+   */
+  agentVision: {
+    title: string;
+    description: string;
+    sectionStatus: string;
+    sectionCapabilities: string;
+    sectionModel: string;
+    sectionLimits: string;
+    sectionUsage: string;
+    sectionRules: string;
+    statusAvailable: string;
+    statusDisabled: string;
+    notConfigured: string;
+    statusUnavailable: string;
+    refresh: string;
+    openModelSettings: string;
+    loading: string;
+    saving: string;
+    saved: string;
+    saveFailed: string;
+    loadFailed: string;
+    retry: string;
+    invalidSetting: string;
+    rangeHint: string;
+    enabled: string;
+    enabledHint: string;
+    probeEnabled: string;
+    probeEnabledHint: string;
+    visualSpotCheck: string;
+    visualSpotCheckHint: string;
+    lintAlwaysOn: string;
+    egressNote: string;
+    modelResolved: string;
+    sourceDatabase: string;
+    sourceEnvironment: string;
+    maxImageSidePx: string;
+    maxImagesPerCall: string;
+    maxImageBytes: string;
+    frameSampleCount: string;
+    dailyCallCap: string;
+    dailyImageCap: string;
+    requestTimeoutSeconds: string;
+    cacheTtlDays: string;
+    usageCalls: string;
+    usageImages: string;
+    usageFailures: string;
+    cacheClear: string;
+    cacheClearConfirm: string;
+    cacheClearConfirmBody: string;
+    cacheCleared: string;
+    rulesWhy: string;
+    lintTitle: string;
+    lintSummary: string;
+    lintAllPassed: string;
+    lintTruncated: string;
+    lintFix: string;
+    lintFixMessage: string;
+    severityBlocker: string;
+    severityWarning: string;
+    severityNote: string;
+    exportTitle: string;
+    exportDuration: string;
+    exportResolution: string;
+    exportAudio: string;
+    exportAudioYes: string;
+    exportAudioNo: string;
+    exportBlackFrames: string;
+    exportSilenceSegments: string;
+    exportLoudness: string;
+    exportTruePeak: string;
+    exportSkipped: string;
+    visionTitle: string;
+    visionVerdictPass: string;
+    visionVerdictConcern: string;
+    visionVerdictFail: string;
+    visionExpand: string;
+    visionTextLines: string;
+    visionEgress: string;
+    visionCached: string;
+    visionOpenSettings: string;
+    errors: Record<string, string>;
+    lint: Record<string, string>;
+  };
   /** Import labels shared with the cover timeline. */
   coverStudio: {
     previewCheck: string;
@@ -1395,6 +1484,7 @@ export interface Translations {
       auto_fix_overlaps: string;
       batch_generate_tts: string;
       batch_storyboard_video: string;
+      check_timeline: string;
       check_timeline_overlaps: string;
       compose_storyboard: string;
       delete_clip: string;
@@ -1408,9 +1498,11 @@ export interface Translations {
       generate_video_script: string;
       get_timeline: string;
       image_to_video: string;
+      inspect_export: string;
       list_materials: string;
       move_clip: string;
       remove_material: string;
+      review_frames: string;
       resize_clip: string;
       search_audio: string;
       search_image: string;
@@ -1418,6 +1510,7 @@ export interface Translations {
       search_video: string;
       trim_clip: string;
       understand_video_script: string;
+      view_image: string;
     };
   };
   agentStream: {
@@ -3519,7 +3612,125 @@ export const translations: Record<string, Translations> = {
         memory_search: 'Search memory',
         memory_forget: 'Forget',
       },
-    },    webResearch: {
+    },
+    agentVision: {
+      title: 'Visual review',
+      description: 'Frame review, timeline self-check, export inspection',
+      sectionStatus: 'Status',
+      sectionCapabilities: 'Capabilities',
+      sectionModel: 'Model and egress',
+      sectionLimits: 'Budgets and limits',
+      sectionUsage: 'Today’s usage',
+      sectionRules: 'Self-check rules',
+      statusAvailable: 'Available',
+      statusDisabled: 'Off',
+      notConfigured: 'No vision model is configured. Frame review, and the visual part of the export self-check, stay unavailable until you assign one.',
+      statusUnavailable: 'Unavailable',
+      refresh: 'Refresh status',
+      openModelSettings: 'Go to Model settings › Task assignment › Vision',
+      loading: 'Loading…',
+      saving: 'Saving…',
+      saved: 'Saved.',
+      saveFailed: 'Could not save. Check the highlighted fields.',
+      loadFailed: 'Could not load visual review settings.',
+      retry: 'Retry',
+      invalidSetting: 'That value is out of range.',
+      rangeHint: 'Allowed range: {min}-{max}.',
+      enabled: 'Enable visual review',
+      enabledHint: 'Compressed frames are sent to your vision model provider. Turn it off and the agent stops looking at pictures; editing and the timeline self-check keep working.',
+      probeEnabled: 'Export probe (FFmpeg)',
+      probeEnabledHint: 'Measures the finished file on disk: duration, resolution, black frames, silence, loudness. Turning it off skips every technical check.',
+      visualSpotCheck: 'Visual spot check',
+      visualSpotCheckHint: 'Samples a few frames of the export and sends them to the vision model. Turning it off leaves only the technical probe.',
+      lintAlwaysOn: 'check_timeline is a local static check: no network, no cost, and it runs whether or not the switches above are on. It has no switch of its own — turning it off would only let a timeline look approved when it was never checked.',
+      egressNote: 'Visual review compresses the selected frames and sends them to the vision model provider you configured. Cached results are stored on this machine only.',
+      modelResolved: 'Resolved model',
+      sourceDatabase: 'from model settings',
+      sourceEnvironment: 'from the environment',
+      maxImageSidePx: 'Longest image side (px)',
+      maxImagesPerCall: 'Images per call',
+      maxImageBytes: 'Image size cap (bytes)',
+      frameSampleCount: 'Sampled frames per review',
+      dailyCallCap: 'Daily call cap',
+      dailyImageCap: 'Daily image cap',
+      requestTimeoutSeconds: 'Request timeout (s)',
+      cacheTtlDays: 'Cache retention (days, 0 = off)',
+      usageCalls: 'Calls',
+      usageImages: 'Images',
+      usageFailures: 'Failures',
+      cacheClear: 'Clear cached observations',
+      cacheClearConfirm: 'Clear cached visual observations?',
+      cacheClearConfirmBody: 'Cached results belong to this project. The next review calls the model again and counts against today’s quota.',
+      cacheCleared: 'Cache cleared.',
+      rulesWhy: 'All 15 self-check rules run on every call. There is no per-rule switch: disabling one would let a report read “all passed” while that rule never ran.',
+      lintTitle: 'Self-check',
+      lintSummary: '{blockers} blockers · {warnings} warnings',
+      lintAllPassed: 'All {count} checks passed',
+      lintTruncated: '{count} more issues were not listed.',
+      lintFix: 'Fix with {tool}',
+      lintFixMessage: 'Fix from the self-check: {ref}',
+      severityBlocker: 'Blocker',
+      severityWarning: 'Warning',
+      severityNote: 'Note',
+      exportTitle: 'Export self-check',
+      exportDuration: 'Duration',
+      exportResolution: 'Resolution',
+      exportAudio: 'Audio track',
+      exportAudioYes: 'yes',
+      exportAudioNo: 'no',
+      exportBlackFrames: 'Black frames',
+      exportSilenceSegments: 'Silent segments',
+      exportLoudness: 'Loudness (I)',
+      exportTruePeak: 'True peak',
+      exportSkipped: 'Not measured: {item}',
+      visionTitle: 'Visual review',
+      visionVerdictPass: 'Pass',
+      visionVerdictConcern: 'Concerns',
+      visionVerdictFail: 'Fail',
+      visionExpand: 'Show more',
+      visionTextLines: 'Text in the image ({count} lines)',
+      visionEgress: 'Frames sent to the vision model',
+      visionCached: 'cache hit',
+      visionOpenSettings: 'Open visual review settings',
+      errors: {
+        vision_disabled: 'Visual review is turned off in Settings › Visual review.',
+        vision_unavailable: 'No vision model is configured. Assign one in Settings › Model settings.',
+        vision_quota_exceeded: 'Today’s visual review quota is used up. Raise the daily cap, or try again tomorrow.',
+        model_not_multimodal: 'The configured model does not accept images. Pick a vision model in Settings › Model settings.',
+        model_failed: 'The vision model refused the request. Try again, or switch models.',
+        model_timeout: 'The vision model took too long and the request was stopped.',
+        source_not_found: 'That image no longer exists. Re-import it, or pick another one.',
+        source_unsupported: 'That kind of image source is not supported.',
+        image_too_large: 'That image is too large to review.',
+        image_invalid: 'That image could not be decoded.',
+        image_encode_failed: 'The image could not be resized for the vision model.',
+        ffmpeg_unavailable: 'FFmpeg is missing, so the technical checks were skipped. Reinstalling the desktop app restores it.',
+        composition_not_found: 'The finished file is no longer inspectable (the app restarted, or more than an hour has passed). Export again and ask for the self-check right away.',
+        observation_not_found: 'That observation has expired.',
+        request_too_large: 'The request was too large.',
+        storage_unavailable: 'Results could not be written to disk. The summary above is still valid.',
+        invalid_argument: 'The request was rejected. Check the parameters.',
+        internal: 'Something went wrong. Try again.',
+      },
+      lint: {
+        missing_material: 'Missing material',
+        clip_bounds: 'Clip has no playable range',
+        item_overlap: 'Overlapping clips on one track',
+        subtitle_overflow: 'Subtitle overflows the frame',
+        subtitle_overlap: 'Subtitles overlap in time',
+        subtitle_style_drift: 'Subtitle uses the default style',
+        track_hidden: 'Track is hidden',
+        audio_gap: 'No audio under this part of the video',
+        volume_out_of_range: 'Volume is too high',
+        upscale_blur: 'Upscaled material looks soft',
+        static_image_too_long: 'Still image held for too long',
+        timeline_gap: 'Gap between clips',
+        cover_not_applied: 'Cover is not on the timeline',
+        duration_mismatch: 'Total duration does not match the clips',
+        timeline_empty: 'Timeline is empty',
+      },
+    },
+    webResearch: {
       proxyMode: 'Proxy mode',
       proxy_auto: 'Auto',
       proxy_direct: 'Direct',
@@ -4594,6 +4805,7 @@ export const translations: Record<string, Translations> = {
         auto_fix_overlaps: 'Fix overlaps',
         batch_generate_tts: 'Generate voice-overs',
         batch_storyboard_video: 'Generate storyboard videos',
+        check_timeline: 'Check timeline',
         check_timeline_overlaps: 'Check overlaps',
         compose_storyboard: 'Compose storyboard',
         delete_clip: 'Delete clip',
@@ -4607,9 +4819,11 @@ export const translations: Record<string, Translations> = {
         generate_video_script: 'Write video script',
         get_timeline: 'Read timeline',
         image_to_video: 'Image to video',
+        inspect_export: 'Inspect export',
         list_materials: 'List materials',
         move_clip: 'Move clip',
         remove_material: 'Remove material',
+        review_frames: 'Review frames',
         resize_clip: 'Change duration',
         search_audio: 'Search audio',
         search_image: 'Search images',
@@ -4617,6 +4831,7 @@ export const translations: Record<string, Translations> = {
         search_video: 'Search videos',
         trim_clip: 'Trim clip',
         understand_video_script: 'Understand video',
+        view_image: 'View image',
       },
     },
     agentStream: {
@@ -7023,7 +7238,125 @@ export const translations: Record<string, Translations> = {
         memory_search: '检索记忆',
         memory_forget: '遗忘',
       },
-    },    webResearch: {
+    },
+    agentVision: {
+      title: '视觉审阅',
+      description: '画面审阅、时间线自检、成品探测',
+      sectionStatus: '状态',
+      sectionCapabilities: '能力开关',
+      sectionModel: '模型与出口',
+      sectionLimits: '预算与限制',
+      sectionUsage: '今日用量',
+      sectionRules: '自检规则',
+      statusAvailable: '可用',
+      statusDisabled: '已关闭',
+      notConfigured: '还没有视觉模型。分配一个之前，画面审阅与成品自检的视觉部分都不可用。',
+      statusUnavailable: '不可用',
+      refresh: '刷新状态',
+      openModelSettings: '前往 模型设置 › 功能分配 › 视觉',
+      loading: '正在加载…',
+      saving: '正在保存…',
+      saved: '已保存。',
+      saveFailed: '保存失败，请检查标红的字段。',
+      loadFailed: '无法加载视觉审阅配置。',
+      retry: '重试',
+      invalidSetting: '该值超出允许范围。',
+      rangeHint: '允许范围：{min}-{max}。',
+      enabled: '启用视觉审阅',
+      enabledHint: '压缩后的画面会发送到你配置的视觉模型服务商。关掉之后 Agent 不再看图，剪辑与时间线自检照常。',
+      probeEnabled: '成品探测（FFmpeg）',
+      probeEnabledHint: '对已导出的成片做技术测量：时长、分辨率、黑帧、静音、响度。关掉等于跳过全部技术项。',
+      visualSpotCheck: '视觉抽检',
+      visualSpotCheckHint: '抽取成片的几帧送去视觉模型。关掉之后只保留技术探测。',
+      lintAlwaysOn: 'check_timeline 是本地静态检查：不联网、不产生费用，上面的开关关掉也照常运行。它本身没有开关——关掉只会让没查过的时间线看起来“通过”。',
+      egressNote: '视觉审阅会把所选画面压缩后发送到你配置的视觉模型服务商；缓存只保存在本机。',
+      modelResolved: '当前解析到的模型',
+      sourceDatabase: '来自模型设置',
+      sourceEnvironment: '来自环境变量',
+      maxImageSidePx: '图像最长边（像素）',
+      maxImagesPerCall: '单次图片数',
+      maxImageBytes: '单张图片字节上限',
+      frameSampleCount: '单次抽帧数',
+      dailyCallCap: '每日调用上限',
+      dailyImageCap: '每日图片上限',
+      requestTimeoutSeconds: '请求超时（秒）',
+      cacheTtlDays: '缓存保留天数（0 = 不留缓存）',
+      usageCalls: '调用',
+      usageImages: '图片',
+      usageFailures: '失败',
+      cacheClear: '清空观察缓存',
+      cacheClearConfirm: '确定清空视觉观察缓存？',
+      cacheClearConfirmBody: '缓存结果属于本项目。下次审阅会重新调用模型，并计入当日配额。',
+      cacheCleared: '缓存已清空。',
+      rulesWhy: '15 条自检规则每次都会全部运行。不提供逐条开关：关掉某条会造成“自检通过”的假象——报告写着全部通过，而那条规则从未运行。',
+      lintTitle: '自检',
+      lintSummary: '{blockers} 阻塞 · {warnings} 警告',
+      lintAllPassed: '全部 {count} 项通过',
+      lintTruncated: '还有 {count} 条问题未列出。',
+      lintFix: '用 {tool} 修复',
+      lintFixMessage: '按自检结果修复：{ref}',
+      severityBlocker: '阻塞',
+      severityWarning: '警告',
+      severityNote: '提示',
+      exportTitle: '成品自检',
+      exportDuration: '时长',
+      exportResolution: '分辨率',
+      exportAudio: '音轨',
+      exportAudioYes: '有',
+      exportAudioNo: '无',
+      exportBlackFrames: '黑帧',
+      exportSilenceSegments: '静音段',
+      exportLoudness: '响度 I',
+      exportTruePeak: '真峰值',
+      exportSkipped: '未检测：{item}',
+      visionTitle: '画面审阅',
+      visionVerdictPass: '通过',
+      visionVerdictConcern: '有疑虑',
+      visionVerdictFail: '不通过',
+      visionExpand: '展开',
+      visionTextLines: '图内文字（{count} 行）',
+      visionEgress: '画面已发送至视觉模型',
+      visionCached: '缓存命中',
+      visionOpenSettings: '打开视觉审阅设置',
+      errors: {
+        vision_disabled: '视觉审阅已在“设置 › 视觉审阅”中关闭。',
+        vision_unavailable: '还没有配置视觉模型，请在“设置 › 模型设置”中分配。',
+        vision_quota_exceeded: '今日视觉审阅额度已用尽，请在设置中提高每日上限或明日再试。',
+        model_not_multimodal: '当前模型不接受图片，请在“设置 › 模型设置”中换成视觉模型。',
+        model_failed: '视觉模型拒绝了这次请求，请重试或换一个模型。',
+        model_timeout: '视觉模型响应过慢，请求已被终止。',
+        source_not_found: '该图片已不存在，请重新导入或换一张。',
+        source_unsupported: '不支持该图片来源。',
+        image_too_large: '图片过大，无法审阅。',
+        image_invalid: '图片无法解码。',
+        image_encode_failed: '图片无法压缩到适合视觉模型的大小。',
+        ffmpeg_unavailable: '缺少 FFmpeg，技术探测已跳过。安装/重新安装桌面应用（内置 FFmpeg）后恢复。',
+        composition_not_found: '成片已不可探测（应用重启或超过 1 小时）。请重新导出，然后立刻让我自检。',
+        observation_not_found: '该观察记录已过期。',
+        request_too_large: '请求体过大。',
+        storage_unavailable: '结果无法写入磁盘；上面的摘要仍然有效。',
+        invalid_argument: '请求被拒绝，请检查参数。',
+        internal: '出现内部错误，请重试。',
+      },
+      lint: {
+        missing_material: '素材缺失',
+        clip_bounds: '片段没有可播放区间',
+        item_overlap: '同轨片段重叠',
+        subtitle_overflow: '字幕超出画面',
+        subtitle_overlap: '字幕时间重叠',
+        subtitle_style_drift: '字幕使用默认样式',
+        track_hidden: '轨道被隐藏',
+        audio_gap: '这段画面下没有音频',
+        volume_out_of_range: '音量过高',
+        upscale_blur: '素材被放大而模糊',
+        static_image_too_long: '静态图片停留过长',
+        timeline_gap: '片段之间有空档',
+        cover_not_applied: '封面未应用到时间线',
+        duration_mismatch: '总时长与片段不一致',
+        timeline_empty: '时间线为空',
+      },
+    },
+    webResearch: {
       proxyMode: '代理模式',
       proxy_auto: '自动',
       proxy_direct: '直连',
@@ -8097,6 +8430,7 @@ export const translations: Record<string, Translations> = {
         auto_fix_overlaps: '修复重叠',
         batch_generate_tts: '批量生成配音',
         batch_storyboard_video: '批量生成分镜视频',
+        check_timeline: '时间线自检',
         check_timeline_overlaps: '检查重叠',
         compose_storyboard: '合成分镜',
         delete_clip: '删除片段',
@@ -8110,9 +8444,11 @@ export const translations: Record<string, Translations> = {
         generate_video_script: '生成视频脚本',
         get_timeline: '读取时间轴',
         image_to_video: '图片生成视频',
+        inspect_export: '自检成片',
         list_materials: '列出素材',
         move_clip: '移动片段',
         remove_material: '删除素材',
+        review_frames: '审阅抽帧',
         resize_clip: '调整时长',
         search_audio: '搜索音频',
         search_image: '搜索图片',
@@ -8120,6 +8456,7 @@ export const translations: Record<string, Translations> = {
         search_video: '搜索视频',
         trim_clip: '裁剪片段',
         understand_video_script: '理解视频内容',
+        view_image: '查看图片',
       },
     },
     agentStream: {

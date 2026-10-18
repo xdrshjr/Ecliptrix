@@ -56,6 +56,56 @@ describe('compactToolResult', () => {
     });
   });
 
+  it('keeps a bounded set of vision thumbnails for the card only', () => {
+    const ui = {
+      thumbs: [DATA_URL, DATA_URL, DATA_URL, DATA_URL, DATA_URL, 'x'.repeat(20_000)],
+      source_labels: ['a', 'b', 'c', 'd', 'e', 'f'],
+    };
+    type Kept = { details: { ui: { thumbs: string[] } } };
+    const kept = compactToolResult(
+      { details: { ui } }, 0, { keepThumbnails: true }) as Kept;
+    // 最多 4 张；超预算的那张被替换成空串（截断 base64 只会得到一张坏图）。
+    expect(kept.details.ui.thumbs).toHaveLength(4);
+    expect(kept.details.ui.thumbs.every(thumb => thumb === DATA_URL)).toBe(true);
+
+    // 默认（存储侧不给选项 / 回放侧）一个 base64 都不留。
+    const stripped = compactToolResult({ details: { ui } }) as Kept;
+    expect(stripped.details.ui.thumbs.filter(
+      thumb => thumb.startsWith('data:image/'))).toEqual([]);
+  });
+
+  it('stored vision thumbs never reach the model, only the card', () => {
+    const manager = new AgentStateManager('msg-1');
+    manager.addToolCall({ id: 'tc-2', name: 'view_image', params: {}, status: 'executing' });
+    manager.updateToolStatus('tc-2', 'completed', {
+      success: true,
+      ok: true,
+      summary: 'a red car',
+      details: { ui: { thumbs: [DATA_URL], source_labels: ['material m1'] } },
+    });
+    type Kept = { details: { ui: { thumbs: string[] } } };
+    const stored = manager.getSnapshot().toolCalls[0].result as Kept;
+    expect(stored.details.ui.thumbs).toEqual([DATA_URL]);
+
+    const history: ChatMessage[] = [
+      { id: 'u2', role: 'user', content: 'look', timestamp: new Date(0) },
+      {
+        id: 'a2', role: 'assistant', content: '', timestamp: new Date(0), isAgentMessage: true,
+        agentToolCalls: [{
+          id: 'tc-2', name: 'view_image', params: {}, status: 'completed',
+          result: stored,
+        }],
+      },
+    ];
+    const toolResult = convertToAgentMessages(history)
+      .find(message => message.role === 'toolResult');
+    const text = (toolResult?.content[0] as { text: string }).text;
+    expect({ hasDataUrl: text.includes('data:image'), hasPlaceholder:
+      text.includes(INLINE_MEDIA_PLACEHOLDER) }).toEqual({
+      hasDataUrl: false, hasPlaceholder: true,
+    });
+  });
+
   it('replayed tool results drop inline data urls', () => {
     const history: ChatMessage[] = [
       { id: 'u1', role: 'user', content: 'list', timestamp: new Date(0) },

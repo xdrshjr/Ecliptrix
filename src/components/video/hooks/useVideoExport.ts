@@ -18,6 +18,7 @@ import {
   mergeDegradations,
 } from './exportDegradations';
 import { describeExportFailure, isExportTimeout } from './exportFailureMessage';
+import { rememberLastCompositionId } from '@/lib/api/agentVision';
 import {
   beginExportSession,
   endExportSession,
@@ -107,6 +108,12 @@ interface ExportRun {
   update: (patch: ExportSessionPatch) => void;
   report: ExportReporter;
   reportNotices: (outcome: PollOutcome) => void;
+  /**
+   * Owning project, so a finished export can be handed to the agent
+   * (`rememberLastCompositionId`). The agent has no export tool of its own:
+   * this is the only place a composition id becomes known (spec §4.4 P1-1).
+   */
+  projectId?: string;
 }
 
 const exportFileName = () =>
@@ -258,6 +265,12 @@ async function runComposition(run: ExportRun): Promise<ExportOutcome> {
       run.reportNotices(await pollUntilComposed(api, compositionId, run));
       run.update({ progress: DOWNLOAD_PROGRESS });
     }
+    // The agent cannot learn a composition id any other way, so hand it over
+    // here — but only once the composition really reached `completed`.
+    // Recording it when the request merely started would let a failed or
+    // cancelled export overwrite the last good id, and `inspect_export` would
+    // then probe a composition that never existed (spec §4.4 rule 1).
+    rememberLastCompositionId(run.projectId, compositionId);
     const downloaded = await downloadComposedVideo(api, compositionId, request.task_id, run.report);
     return downloaded ? 'downloaded' : 'download-failed';
   } catch (error) {
@@ -403,6 +416,7 @@ export const useVideoExport = ({
       update: (patch) => updateExportSession(sessionKey, patch, controller),
       report: { logger, showError, showInfo, t, locale },
       reportNotices: reportCompositionNotices,
+      projectId,
     });
     if (outcome !== 'downloaded') {
       endExportSession(sessionKey, controller);

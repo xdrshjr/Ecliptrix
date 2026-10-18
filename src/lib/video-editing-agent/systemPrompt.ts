@@ -348,10 +348,15 @@ export function formatWorkflowRecipes(): string {
  * 拼了 `WEB_RESEARCH_GUIDANCE`（≈880 字符）与「已加载类别」回顾行（≤200），
  * 于是"上限"从未覆盖真正发给模型的那一段。实测最坏值（12 步满长计划 +
  * 800 字符记忆 + 两个已探索类别）≈ **17 400**，取 18 000 留出余量。
+ *
+ * agent-visual-review（§4.2）把常驻工具 `check_timeline` 的 `### check_timeline`
+ * 段（≈330 字符）、`AGENT_TOOLKIT_GUIDANCE` 追加 5 行（≈400）、
+ * `review_tools` 目录行（≈120）一起加进来，实测最坏值 ≈ **18 100**（AC-19 要求
+ * ≤18 500），故上调到 18 900 保留约 650 字符余量。
  * 断言见 `__tests__/systemPrompt.test.ts`、`agent.systemPrompt.test.ts`、
- * `systemPrompt.toolkit.test.ts`（AC-28）。
+ * `systemPrompt.toolkit.test.ts`（AC-19 / AC-28）。
  */
-export const L0_PROMPT_CHAR_CEILING = 18_000;
+export const L0_PROMPT_CHAR_CEILING = 18_900;
 
 /**
  * Per-category char ceiling for blocks rendered into the Layer B appendix.
@@ -546,7 +551,7 @@ export function formatMemoryDigest(
  *   8. Hard constraints (video-track-longest, no overlap)
  *   9. **Previously explored advanced categories** (Layer B — NEW)
  *
- * Token budget: ≤ 4500 tokens (≈ 18000 chars worst-case for mixed CN/EN,
+ * Token budget: ≤ 4700 tokens (≈ 18 900 chars worst-case for mixed CN/EN,
  * `L0_PROMPT_CHAR_CEILING`). The previous "< 600 tokens" budget no longer
  * applies — Layer A intentionally inlines the per-tool schemas that used to
  * live behind `explore_tools`.

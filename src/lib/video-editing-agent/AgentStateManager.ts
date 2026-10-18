@@ -117,6 +117,12 @@ export class AgentStateManager {
    * Update a tool call's status and result. The result is stored without
    * inline media: it is persisted with the conversation and replayed to the
    * model on every later turn.
+   *
+   * One narrow exception: the vision card's `details.ui.thumbs` are kept
+   * (bounded, see `STORED_THUMBNAIL_CHARS`) so the user can still see what
+   * the agent looked at. Replay (`messageConverter`) and history compaction
+   * re-run the same function without that option, so the model never
+   * receives base64.
    */
   updateToolStatus(
     toolCallId: string,
@@ -128,7 +134,7 @@ export class AgentStateManager {
       this.toolCalls[idx] = {
         ...this.toolCalls[idx],
         status,
-        result: compactToolResult(result),
+        result: compactToolResult(result, 0, { keepThumbnails: true }),
       };
     } else {
       // Tool result arrived before tool_call event (unlikely but defensive)

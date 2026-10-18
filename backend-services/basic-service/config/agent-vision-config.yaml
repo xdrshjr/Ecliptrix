@@ -1,0 +1,25 @@
+# 视觉审阅与成品自检的默认配置。
+# 设计基线：docs/plans/agent-visual-review/spec.md §6.4。
+#
+# 只放**后端**设置：`check_timeline` 的 5 个阈值是前端常量
+# （`qualityLint.ts` 的 LINT_DEFAULTS），不在此文件、不到达后端（P1-6）。
+agent_vision:
+  enabled: true
+  # 技术探测与视觉抽检各由自己的开关管：没有视觉模型时仍要能探测成片（P1-5）。
+  probe_enabled: true
+  visual_spot_check: true
+  max_images_per_call: 4
+  max_image_side_px: 1280
+  max_image_bytes: 409600
+  max_input_bytes: 8388608
+  frame_sample_count: 4
+  daily_call_cap: 120
+  daily_image_cap: 400
+  request_timeout_seconds: 45
+  cache_ttl_days: 7
+  probe:
+    black_min_seconds: 0.3
+    silence_min_seconds: 2.0
+    loudness_target_lufs: -16
+    loudness_tolerance: 4
+    true_peak_max_dbtp: -1.0

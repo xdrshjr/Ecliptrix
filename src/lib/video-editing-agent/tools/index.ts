@@ -40,6 +40,9 @@ import { createComposeStoryboardTool } from './composeStoryboard';
 import { createCheckOverlapsTool, summarizeOverlapReport } from './checkOverlaps';
 import { createPlanTool } from './planTool';
 import { createAskUserTool } from './askUserTool';
+import { createCheckTimelineTool } from './qualityTool';
+import { createViewImageTool, createReviewFramesTool } from './visionTools';
+import { createInspectExportTool } from './exportInspectTool';
 import { createWorkspaceTools } from './workspaceTools';
 import { createDocumentTools } from './documentTool';
 import { createAnalysisTools } from './analysisTool';
@@ -434,12 +437,13 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
 
   // Agent general toolkit (docs/plans/agent-general-toolkit/spec.md §3.2):
   // 1 always-available category + 4 on-demand categories, 12 tools total.
-  // workflow_tools is alwaysAvailable, so its two tools reach the model without
+  // workflow_tools is alwaysAvailable, so its three tools reach the model without
   // explore_tools; they are also listed in CORE_TOOLKIT_TOOL_NAMES so
   // formatCoreToolkit renders their parameters in the L0 prompt.
   registry.registerToolsForCategory(CATEGORY_IDS.WORKFLOW_TOOLS, [
     createPlanTool(context),
     createAskUserTool(context),
+    createCheckTimelineTool(context),
   ]);
   registry.registerToolsForCategory(
     CATEGORY_IDS.WORKSPACE_TOOLS, createWorkspaceTools(context));
@@ -449,6 +453,15 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     CATEGORY_IDS.ANALYSIS_TOOLS, createAnalysisTools(context));
   registry.registerToolsForCategory(
     CATEGORY_IDS.MEMORY_TOOLS, createMemoryTools(context));
+
+  // Visual review (agent-visual-review §4.2): one on-demand category with the
+  // three tools that need explore_tools first — view_image, review_frames and
+  // inspect_export.
+  registry.registerToolsForCategory(CATEGORY_IDS.REVIEW_TOOLS, [
+    createViewImageTool(context),
+    createReviewFramesTool(context),
+    createInspectExportTool(context),
+  ]);
 
   return registry;
 }

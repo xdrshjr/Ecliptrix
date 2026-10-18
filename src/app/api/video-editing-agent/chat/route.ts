@@ -288,6 +288,18 @@ async function loadMemoryDigest(
   }
 }
 
+/**
+ * `lastCompositionId` 是 Agent 唯一能拿到成品 id 的通路（视觉审阅 spec §4.4 /
+ * P1-1），因此它必须过白名单：只接受后端生成的 slug 字符集，其余一律丢弃，
+ * 免得一个脏值被当成探测目标下发。
+ */
+function readCompositionId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 128) return undefined;
+  return /^[A-Za-z0-9_.:-]+$/.test(trimmed) ? trimmed : undefined;
+}
+
 function resolveAgentLoopbackUrl(): string {
   const port =
     process.env.AGENT_LOOPBACK_PORT ??
@@ -307,6 +319,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
     const { messages, timelineState, materials, projectId } = body as AgentChatRequest & { projectId?: string };
+    const lastCompositionId = readCompositionId(body.lastCompositionId);
     const editorContext = readEditorContext((body as { editorContext?: unknown }).editorContext);
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -528,6 +541,7 @@ export async function POST(request: NextRequest) {
             conversationHistory: messages,
             apiBaseUrl,
             projectId,
+            lastCompositionId,
           });
 
           // Wire the route-wide tool-abort signal into the ToolContext so

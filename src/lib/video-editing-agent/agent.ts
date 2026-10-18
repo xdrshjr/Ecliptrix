@@ -112,6 +112,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     materials: config.materials,
     apiBaseUrl: config.apiBaseUrl,
     projectId: config.projectId,
+    lastCompositionId: config.lastCompositionId,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
       if (toolContext.abortSignal?.aborted) return;

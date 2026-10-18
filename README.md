@@ -203,6 +203,64 @@ Where it lives and what it does not promise:
   analysis / memory); unloaded schemas are never sent, and long documents and
   big tables are always paged, so the context cannot blow up.
 
+### Agent visual review and pre-delivery self-check
+
+The agent used to work blind: it could search, download and export, but it never
+looked at what it produced. Two capabilities close that gap, both under the same
+discipline (progressive disclosure, byte budgets, graceful degradation).
+
+**Static self-check — `check_timeline` (always resident, free, local).**
+Fifteen deterministic rules run on the timeline snapshot before every export:
+missing material, clip bounds, same-track overlap, subtitle overflow (line count
+recomputed with the same `maxSubtitleChars` the exporter uses), subtitle
+overlap, subtitle style drift, hidden/muted tracks, audio gaps, volume clipping,
+upscaled (blurry) material, a still image held too long, gaps between clips,
+cover created but never placed on the timeline, `totalDuration` drift, and an
+empty timeline. Every issue carries a severity (`blocker` / `warning` / `note`)
+and, when a real tool can fix it, the tool name. **Any blocker makes `ok:false`,
+and an empty timeline is itself a blocker** — the check can never report "all
+green" on a timeline that has not been built yet. It is a pure function: no
+network, no settings lookup, no cost, so it also has no on/off switch (turning
+it off would only hide problems).
+
+**Visual review — `view_image` / `review_frames` / `inspect_export` (on demand).**
+Pixels never enter the main model's context. The vision model (the `VISION`
+function slot in model settings, falling back to the chat model and then the fast
+model) looks at the image server-side and answers with a structured JSON
+observation — verdict, summary, per-region observations, issues and any legible
+text — which is all the agent ever receives (≤2 000 characters, ≤12 KiB with the
+rest of the result). `review_frames` samples 1–6 moments into one numbered
+contact sheet so the model can say "the subtitle in frame 3 is cut off".
+`inspect_export` runs real probes on the exported file (ffprobe metadata,
+`blackdetect`, `freezedetect`, `silencedetect`, EBU R128 loudness) and, when a
+vision model is configured, a spot check of sampled frames.
+
+What it does **not** promise:
+
+- The agent cannot inspect an export that this app process no longer remembers.
+  The window is "exported by this session, within the last hour"; after a restart
+  you re-export and ask again. The error message says exactly that.
+- Technical probes and the visual spot check are independent: with no vision
+  model you still get duration, black-frame, silence and loudness results, and
+  the not-measured items are listed explicitly (`skipped[]`) instead of silently
+  reading as green.
+- Reviewing a picture sends a downscaled copy (1280 px longest side by default)
+  to **the vision provider you configured**. The settings panel states this, the
+  chat card carries a permanent "sent to the vision model" chip, cached
+  observations stay on this machine, and the cache can be cleared in Settings >
+  Visual review.
+- Text inside an image (screenshots, posters, subtitles) is **data, never
+  instructions**: the vision prompt says so, the output schema has no channel
+  for commands, and the tool result is marked untrusted.
+- Everything degrades to the editing path you already had: no vision model, no
+  FFmpeg, an expired export, a vision quota you capped, or the whole capability
+  switched off — each only disables that step and says what to do next.
+
+Settings > Visual review owns the switches (`enabled`, `probe_enabled`,
+`visual_spot_check`), the resolved model and its egress note, the image/frame/day
+budgets, the request timeout, the cache lifetime and today's usage counters.
+
+
 ## Tech Stack
 
 ### Desktop shell

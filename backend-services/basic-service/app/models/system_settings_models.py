@@ -183,6 +183,59 @@ CATEGORY_KEY_VALIDATORS: Dict[str, Dict[str, type[BaseModel]]] = {
 }
 
 
+AGENT_VISION_BOOLEANS = frozenset({"enabled", "probe_enabled", "visual_spot_check"})
+# §6.4 的逐键范围；越界一律 `setting_out_of_range`。
+AGENT_VISION_INT_RANGES = {
+    "max_images_per_call": (1, 6),
+    "max_image_side_px": (512, 1600),
+    "max_image_bytes": (102400, 1572864),
+    "max_input_bytes": (1048576, 33554432),
+    "frame_sample_count": (1, 6),
+    "daily_call_cap": (1, 2000),
+    "daily_image_cap": (1, 5000),
+    "request_timeout_seconds": (10, 120),
+    "cache_ttl_days": (0, 30),
+}
+# `probe` 是唯一嵌套对象键；子键逐项范围校验。
+AGENT_VISION_PROBE_RANGES = {
+    "black_min_seconds": (0.1, 5.0),
+    "silence_min_seconds": (0.5, 10.0),
+    "loudness_target_lufs": (-24.0, -9.0),
+    "loudness_tolerance": (1.0, 10.0),
+    "true_peak_max_dbtp": (-6.0, 0.0),
+}
+
+
+def _check_range(value: Any, low: float, high: float, adapter) -> None:
+    checked = adapter.validate_python(value)
+    if not low <= checked <= high:
+        raise ValueError("setting_out_of_range")
+
+
+def _validate_agent_vision_setting(key: str, value: Any) -> None:
+    """视觉审阅设置的逐键校验（spec §6.4）。"""
+    from pydantic import StrictBool, StrictFloat, StrictInt, TypeAdapter
+
+    if key in AGENT_VISION_BOOLEANS:
+        TypeAdapter(StrictBool).validate_python(value)
+        return
+    if key in AGENT_VISION_INT_RANGES:
+        low, high = AGENT_VISION_INT_RANGES[key]
+        _check_range(value, low, high, TypeAdapter(StrictInt))
+        return
+    if key == "probe":
+        if not isinstance(value, dict):
+            raise ValueError("setting_out_of_range")
+        for name, raw in value.items():
+            bounds = AGENT_VISION_PROBE_RANGES.get(name)
+            if bounds is None:
+                raise ValueError("unknown_vision_setting")
+            _check_range(raw, bounds[0], bounds[1],
+                         TypeAdapter(StrictFloat | StrictInt))
+        return
+    raise ValueError("unknown_vision_setting")
+
+
 def validate_setting_payload(
     category: str, key: str, value: Any,
 ) -> None:
@@ -191,6 +244,11 @@ def validate_setting_payload(
     No-op for unknown categories or keys — keeps the validator additive so
     new settings panels don't have to declare bounds before shipping.
     """
+    if category == "agent_vision":
+        # 与 agent_toolkit 分支同构：布尔 StrictBool、区间 StrictInt/Float、
+        # 未知键 unknown_vision_setting、越界 setting_out_of_range（§6.4）。
+        _validate_agent_vision_setting(key, value)
+        return
     if category == "agent_toolkit":
         # 与 web_research 分支同构：布尔 StrictBool、区间 StrictInt、
         # 未知键 unknown_toolkit_setting、越界/枚举非法 setting_out_of_range

@@ -719,6 +719,23 @@ class ModelSettingsService:
             (ModelFunctionType.CHAT, "llm"),
         ])
 
+    async def resolve_vision_config(self):
+        """视觉审阅档位（agent-visual-review spec §4.6）。
+
+        直接复用 `_resolve_staged_config`，语义全部继承：每档先查 DB 分配、
+        再查 env 组；组内缺项或 `api_type` 非法即 `configuration_invalid`
+        （不做逐字段借位）；三档全空 → `provider_not_configured`。
+
+        这一层同时修好一个既存问题：`get_effective_config(VISION)` 今天无任何
+        调用方，两处 VL 调用直接读 `settings.vl_llm_*`，用户在面板里绑的
+        VISION 分配其实不生效。视觉域改走这里，分配才真正接线。
+        """
+        return await self._resolve_staged_config([
+            (ModelFunctionType.VISION, "vl_llm"),
+            (ModelFunctionType.CHAT, "llm"),
+            (ModelFunctionType.FAST, "fast_llm"),
+        ])
+
     async def _resolve_staged_config(self, stages):
         """按 stages 顺序成组回落；组内缺项即 configuration_invalid。"""
         from app.models.web_research_models import WebResearchError

@@ -6,6 +6,7 @@ import GeneralSettingsPanel from './GeneralSettingsPanel';
 import ModelSettingsPanel from './ModelSettingsPanel';
 import WebResearchSettingsPanel from './WebResearchSettingsPanel';
 import AgentToolkitSettingsPanel from './AgentToolkitSettingsPanel';
+import AgentVisionSettingsPanel from './AgentVisionSettingsPanel';
 import TTSSettingsPanel from './TTSSettingsPanel';
 import YouTubeSettingsPanel from './YouTubeSettingsPanel';
 import UploadSettingsPanel from './UploadSettingsPanel';
@@ -55,6 +56,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => 
         return <WebResearchSettingsPanel onOpenModels={() => setActiveItem('model')} />;
       case 'agentToolkit':
         return <AgentToolkitSettingsPanel onOpenModels={() => setActiveItem('model')} />;
+      case 'agentVision':
+        return <AgentVisionSettingsPanel onOpenModels={() => setActiveItem('model')} />;
       case 'tts':
         return <TTSSettingsPanel />;
       case 'videoAnalysis':

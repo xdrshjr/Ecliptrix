@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Type } from '@mariozechner/pi-ai';
 import { ToolRegistry } from '../registry/ToolRegistry';
 import { ToolActivationState } from '../registry/ToolActivationState';
+import { CATEGORY_IDS, ON_DEMAND_CATEGORY_IDS, createDefaultCategories } from '../registry/categories';
 import { createVideoEditingAgent } from '../agent';
 import { createDefaultAgentTimelineState } from '../defaultTimeline';
 import { streamSimple, createAssistantMessageEventStream } from '@mariozechner/pi-ai';
@@ -126,4 +127,28 @@ it('filters actual provider schemas and refuses a guessed tool in the explore re
   expect(payloads[1].tools?.some(tool => tool.name === 'browser_open')).toBe(false);
   const rejected = agent.state.messages.find(message => message.role === 'toolResult' && message.toolCallId === 'guess');
   expect(JSON.stringify(rejected)).toContain('tool_not_loaded');
+});
+
+describe('category catalog (AC-01)', () => {
+  it('declares 18 categories / 15 on-demand / 3 always-available', () => {
+    const categories = createDefaultCategories();
+    const ids = categories.map(category => category.id);
+    expect(categories).toHaveLength(18);
+    expect(ON_DEMAND_CATEGORY_IDS).toHaveLength(15);
+    expect(categories.filter(category => category.alwaysAvailable)).toHaveLength(3);
+    expect(ids.sort()).toEqual([...ON_DEMAND_CATEGORY_IDS,
+      CATEGORY_IDS.WORKFLOW_TOOLS, CATEGORY_IDS.QUERY_TOOLS,
+      CATEGORY_IDS.EDITING_TOOLS].sort());
+  });
+
+  it('keeps review_tools on-demand, one line and at most 4 tools', () => {
+    const review = createDefaultCategories()
+      .find(category => category.id === CATEGORY_IDS.REVIEW_TOOLS);
+    expect(review).toBeTruthy();
+    expect(review!.alwaysAvailable).toBe(false);
+    expect(new TextEncoder().encode(review!.description).length)
+      .toBeLessThanOrEqual(160);
+    expect(ON_DEMAND_CATEGORY_IDS).toContain(CATEGORY_IDS.REVIEW_TOOLS);
+    expect(review!.tools.length).toBeLessThanOrEqual(4);
+  });
 });

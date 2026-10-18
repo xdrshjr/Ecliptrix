@@ -183,6 +183,9 @@ async def init_db() -> None:
     from app.models.agent_toolkit_db_models import (  # noqa: F401
         AgentDocument, AgentMemory,
     )
+    from app.models.agent_vision_db_models import (  # noqa: F401
+        AgentVisionObservation, AgentVisionUsage,
+    )
     from app.models.db_models import Base
 
     async with engine.begin() as conn:

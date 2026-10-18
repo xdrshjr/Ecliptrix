@@ -27,6 +27,15 @@ export interface ToolContext {
    */
   projectId?: string;
   /**
+   * 最近一次成功导出的 composition id（agent-visual-review spec §4.4 / P1-1）。
+   *
+   * Agent 没有导出工具，所以 `inspect_export` 与 `source:'export'` 的唯一 id
+   * 来源就是这里：导出 hook 在 `status === 'completed'` 时记录，随请求透传到
+   * chat 路由，再注入本上下文。**它只是定位线索，不是权限凭证**——后端仍要
+   * 过 `get_download_info()` 的状态与存在性校验。
+   */
+  lastCompositionId?: string;
+  /**
    * AbortSignal that fires when the route-wide abort is triggered (client
    * disconnect, server timeout, or user-clicked Stop). Tools that issue
    * `fetch()` MUST forward this signal so in-flight requests tear down
@@ -248,6 +257,8 @@ export interface AgentChatRequest {
    *  Forwarded into the agent's ToolContext so project-scoped tools (e.g.
    *  storyboard pack creation) include it on backend calls. */
   projectId?: string;
+  /** Exported composition the next inspect_export call should probe. */
+  lastCompositionId?: string;
 }
 
 /**
@@ -319,6 +330,13 @@ export interface VideoEditingAgentConfig {
    * should refuse with an actionable error.
    */
   projectId?: string;
+  /**
+   * Id of the most recent successful export, forwarded from the editor so
+   * `inspect_export` does not need the user to copy an id by hand
+   * (agent-visual-review spec §4.4 / P1-1). Purely a locator — the backend
+   * still validates it against the settled-composition window.
+   */
+  lastCompositionId?: string;
   /**
    * Auto-injected long-term memory digest (<=800 chars, <=5 entries). Pulled by
    * `route.ts` with a 1.5s timeout before the agent is created; a failure just

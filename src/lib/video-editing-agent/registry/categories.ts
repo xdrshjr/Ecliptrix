@@ -1,14 +1,15 @@
 import type { ToolCategory } from './ToolRegistry';
 
 /**
- * Every tool category definition for the video editing agent (17 today:
- * 2 resident + 15 on-demand).
+ * Every tool category definition for the video editing agent (18 today:
+ * 3 always-available + 15 on-demand).
  *
  * Categories are split into two groups:
- * - Always available: query_tools and editing_tools — their tools are populated
- *   by createToolRegistry() in tools/index.ts at agent creation time.
- * - On-demand: every other category starts with an empty tools array.
- *   Other agents (Phase 2+) populate them via registry.registerToolsForCategory().
+ * - Always available: workflow_tools, query_tools and editing_tools — their
+ *   tools are populated by createToolRegistry() in tools/index.ts at agent
+ *   creation time.
+ * - On-demand: the other 15 categories start with an empty tools array and are
+ *   populated via registry.registerToolsForCategory().
  *
  * The category IDs here are the canonical identifiers used by explore_tools
  * and the system prompt.
@@ -17,7 +18,7 @@ import type { ToolCategory } from './ToolRegistry';
 // --- Category IDs (exported as constants for type safety) ---
 
 export const CATEGORY_IDS = {
-  /** Always-available workflow category: update_plan + ask_user. */
+  /** Always-available workflow category: update_plan + ask_user + check_timeline. */
   WORKFLOW_TOOLS: 'workflow_tools',
   WORKSPACE_TOOLS: 'workspace_tools',
   DOCUMENT_TOOLS: 'document_tools',
@@ -26,6 +27,8 @@ export const CATEGORY_IDS = {
   WEB_TOOLS: 'web_tools',
   BROWSER_TOOLS: 'browser_tools',
   RESEARCH_TOOLS: 'research_tools',
+  /** 按需：视觉审阅（view_image / review_frames / inspect_export）。 */
+  REVIEW_TOOLS: 'review_tools',
   QUERY_TOOLS: 'query_tools',
   EDITING_TOOLS: 'editing_tools',
   SEARCH_TOOLS: 'search_tools',
@@ -51,6 +54,7 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
   CATEGORY_IDS.WEB_TOOLS,
   CATEGORY_IDS.BROWSER_TOOLS,
   CATEGORY_IDS.RESEARCH_TOOLS,
+  CATEGORY_IDS.REVIEW_TOOLS,
   CATEGORY_IDS.SEARCH_TOOLS,
   CATEGORY_IDS.AI_GEN_TOOLS,
   CATEGORY_IDS.TTS_TOOLS,
@@ -67,11 +71,12 @@ export const WORKSPACE_TOOLS = CATEGORY_IDS.WORKSPACE_TOOLS;
 export const DOCUMENT_TOOLS = CATEGORY_IDS.DOCUMENT_TOOLS;
 export const ANALYSIS_TOOLS = CATEGORY_IDS.ANALYSIS_TOOLS;
 export const MEMORY_TOOLS = CATEGORY_IDS.MEMORY_TOOLS;
+export const REVIEW_TOOLS = CATEGORY_IDS.REVIEW_TOOLS;
 
 // --- Category definitions (metadata only; tools[] populated later) ---
 
 /**
- * Returns all 8 category definitions with empty tools arrays.
+ * Returns all 18 category definitions with empty tools arrays.
  * Call this to seed the ToolRegistry, then populate tools via
  * registry.registerToolsForCategory() or by passing tools directly.
  */
@@ -81,7 +86,7 @@ export function createDefaultCategories(): ToolCategory[] {
       id: CATEGORY_IDS.WORKFLOW_TOOLS,
       name: '执行计划',
       // 描述 ≤160 字节（风格约束，§3.2）：一行即可读，便于 L0 目录扫描。
-      description: 'Publish a visible plan and ask the user one clarifying question.',
+      description: 'Publish a plan, ask one clarifying question, run the free timeline self-check.',
       alwaysAvailable: true,
       tools: [], // Populated by tools/index.ts
     },
@@ -122,6 +127,14 @@ export function createDefaultCategories(): ToolCategory[] {
     { id: CATEGORY_IDS.RESEARCH_TOOLS, name: '研究资料',
       description: 'Read stored research artifacts by ID and byte offset. No editor changes.',
       alwaysAvailable: false, tools: [] },
+    {
+      id: CATEGORY_IDS.REVIEW_TOOLS,
+      name: '视觉审阅',
+      // 描述 ≤160 字节（§4.2）：一行即可读，便于 L0 目录扫描。
+      description: 'Look at images, sampled frames and exported results; report visual or quality issues.',
+      alwaysAvailable: false,
+      tools: [], // tools/index.ts: view_image, review_frames, inspect_export
+    },
     {
       id: CATEGORY_IDS.COVER_TOOLS,
       name: '封面工具',

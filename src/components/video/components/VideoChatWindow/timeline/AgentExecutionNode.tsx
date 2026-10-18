@@ -20,6 +20,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocale } from '@/contexts/LocaleContext';
+import type { AgentToolCallRecord } from '@/types';
 import type { AgentExecutionNodeData } from './types';
 import { formatTimestamp, toolCallToStepData } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
@@ -28,6 +29,11 @@ import ToolStep from './ToolStep';
 import { CoverToolStatus } from '../AgentToolCallCard';
 import WebResearchToolCard, { isWebResearchTool } from '../WebResearchToolCard';
 import ToolkitToolCard, { askQuestionId, isToolkitTool } from '../ToolkitToolCard';
+import QualityReportCard, { ExportInspectCard } from '../QualityReportCard';
+import VisionObservationCard from '../VisionObservationCard';
+import {
+  isExportInspectTool, isQualityTool, isVisionTool,
+} from '@/types/agentVision';
 import { nodeVariants, expandVariants, TIMING } from './animations';
 
 interface AgentExecutionNodeProps {
@@ -38,6 +44,20 @@ interface AgentExecutionNodeProps {
   answeredQuestionIds?: ReadonlySet<string>;
   /** Questions whose turn ended without an answer. */
   unresolvedQuestionIds?: ReadonlySet<string>;
+}
+
+/**
+ * A tool call is only ready for its dedicated card once the result exists.
+ *
+ * `tool_call` events are recorded with `status: 'executing'` and **no** result,
+ * and a cancelled / timed-out call never gets one. Rendering e.g. the lint card
+ * from an empty result makes it say "all 15 checks passed" while the check is
+ * still running — the exact fake-green the self-check exists to prevent. Until
+ * the result lands, the plain `ToolStep` row (spinner / cancelled state) is the
+ * honest rendering.
+ */
+function hasResult(toolCall: AgentToolCallRecord | undefined): boolean {
+  return toolCall !== undefined && toolCall.result !== undefined;
 }
 
 const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({
@@ -148,24 +168,34 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({
               className="overflow-hidden"
             >
               <div className="border border-border dark:border-zinc-700 rounded-md overflow-hidden bg-muted/50 dark:bg-zinc-800/50 text-sm">
-                {steps.map((step, idx) => (
+                {steps.map((step, idx) => {
+                  const toolCall = node.toolCalls[idx];
+                  const settled = hasResult(toolCall);
+                  return (
                   <React.Fragment key={step.id}>
-                  {isToolkitTool(node.toolCalls[idx].name) ? (
-                    <ToolkitToolCard toolCall={node.toolCalls[idx]}
+                  {settled && isQualityTool(toolCall.name) ? (
+                    <QualityReportCard toolCall={toolCall} />
+                  ) : settled && isExportInspectTool(toolCall.name) ? (
+                    <ExportInspectCard toolCall={toolCall} />
+                  ) : settled && isVisionTool(toolCall.name) ? (
+                    <VisionObservationCard toolCall={toolCall} />
+                  ) : isToolkitTool(toolCall.name) ? (
+                    <ToolkitToolCard toolCall={toolCall}
                       answeredQuestionIds={answeredQuestionIds as Set<string> | undefined}
                       unresolvedQuestionIds={unresolvedQuestionIds as Set<string> | undefined} />
-                  ) : isWebResearchTool(node.toolCalls[idx].name) ? (
-                    <WebResearchToolCard toolCall={node.toolCalls[idx]} />
+                  ) : isWebResearchTool(toolCall.name) ? (
+                    <WebResearchToolCard toolCall={toolCall} />
                   ) : <ToolStep
                     key={step.id}
                     step={step}
                     isLast={idx === steps.length - 1}
                   />}
-                  {node.toolCalls[idx].name.endsWith('_video_cover') && (
-                    <CoverToolStatus toolCall={node.toolCalls[idx]} />
+                  {toolCall.name.endsWith('_video_cover') && (
+                    <CoverToolStatus toolCall={toolCall} />
                   )}
                   </React.Fragment>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Cancel button — shown during active execution */}

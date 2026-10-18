@@ -41,6 +41,11 @@ logger = get_logger(__name__)
 
 CATEGORY_METADATA: list[SettingsCategoryInfo] = [
     SettingsCategoryInfo(
+        name="agent_vision",
+        label="视觉审阅",
+        description="图像来源、视觉模型出口、成品探测、缓存与限额",
+    ),
+    SettingsCategoryInfo(
         name="agent_toolkit",
         label="Agent 能力",
         description="工作区、文档、计算分析、长期记忆",

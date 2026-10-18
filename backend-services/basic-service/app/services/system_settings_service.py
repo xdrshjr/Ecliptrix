@@ -100,7 +100,57 @@ def toolkit_settings():
     return values
 
 
+# 视觉审阅与成品自检（docs/plans/agent-visual-review/spec.md §6.4）。
+# 只放**后端**设置：`check_timeline` 的 5 个阈值是前端常量（LINT_DEFAULTS），
+# 不进这里、也到不了后端（P1-6）。
+AGENT_VISION_DEFAULTS = {
+    "enabled": True,
+    "probe_enabled": True,
+    "visual_spot_check": True,
+    "max_images_per_call": 4,
+    "max_image_side_px": 1280,
+    "max_image_bytes": 409600,
+    "max_input_bytes": 8388608,
+    "frame_sample_count": 4,
+    "daily_call_cap": 120,
+    "daily_image_cap": 400,
+    "request_timeout_seconds": 45,
+    "cache_ttl_days": 7,
+    "probe": {
+        "black_min_seconds": 0.3,
+        "silence_min_seconds": 2.0,
+        "loudness_target_lufs": -16,
+        "loudness_tolerance": 4,
+        "true_peak_max_dbtp": -1.0,
+    },
+}
+
+
+def agent_vision_settings():
+    """未保存键使用出厂值；`probe` 块逐键合并，缺项不会整块丢失。"""
+    values = {key: value for key, value in AGENT_VISION_DEFAULTS.items()
+              if key != "probe"}
+    saved = system_settings_service.get_category("agent_vision") or {}
+    values.update({key: value for key, value in saved.items()
+                   if key != "probe"})
+    probe = dict(AGENT_VISION_DEFAULTS["probe"])
+    probe.update(saved.get("probe") or {})
+    values["probe"] = probe
+    return values
+
+
 YAML_TO_DB_MAPPING: List[Dict[str, Any]] = [
+    # 视觉审阅：除 `probe` 块外都是标量；`probe` 是唯一嵌套对象（§6.4）。
+    {"file": "agent-vision-config.yaml", "root_key": "agent_vision",
+     "mappings": [
+         *[{"yaml_keys": [key], "category": "agent_vision",
+            "db_key": key, "is_nested": True, "scalar": True,
+            "value_type": "scalar", "description": key}
+           for key in AGENT_VISION_DEFAULTS if key != "probe"],
+         {"yaml_keys": ["probe"], "category": "agent_vision",
+          "db_key": "probe", "is_nested": True, "value_type": "object",
+          "description": "probe thresholds (black/silence/loudness)"},
+     ]},
     {"file": "agent-toolkit-config.yaml", "root_key": "agent_toolkit",
      "mappings": [{"yaml_keys": [key], "category": "agent_toolkit",
                    "db_key": key, "is_nested": True, "scalar": True,

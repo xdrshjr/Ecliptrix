@@ -717,6 +717,17 @@ async def agent_toolkit_error_handler(request: Request, exc: AgentToolkitError):
     return agent_toolkit_router.error_response(exc)
 
 
+# Agent 视觉审阅与成品自检 — docs/plans/agent-visual-review/spec.md §5.1.
+from app.routers import agent_vision_router
+from app.models.agent_vision_models import AgentVisionError
+
+app.include_router(agent_vision_router.router, prefix="/api")
+
+
+@app.exception_handler(AgentVisionError)
+async def agent_vision_error_handler(request: Request, exc: AgentVisionError):
+    return agent_vision_router.error_response(exc)
+
 
 @app.exception_handler(CoverError)
 async def cover_error_handler(request: Request, exc: CoverError):
