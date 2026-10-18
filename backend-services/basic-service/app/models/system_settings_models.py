@@ -191,6 +191,34 @@ def validate_setting_payload(
     No-op for unknown categories or keys — keeps the validator additive so
     new settings panels don't have to declare bounds before shipping.
     """
+    if category == "agent_toolkit":
+        # 与 web_research 分支同构：布尔 StrictBool、区间 StrictInt、
+        # 未知键 unknown_toolkit_setting、越界/枚举非法 setting_out_of_range
+        # （复用既有码，spec §5.4）。
+        from pydantic import TypeAdapter, StrictBool, StrictInt
+        booleans = {"enabled", "workspace_enabled", "documents_enabled",
+                    "analysis_enabled", "memory_enabled"}
+        ranges = {"workspace_quota_mb": (16, 2048), "max_file_mb": (1, 128),
+                  "document_max_pages": (1, 5000),
+                  "document_max_chars": (10000, 10000000),
+                  "analysis_timeout_seconds": (5, 60),
+                  "analysis_max_output_kb": (8, 512),
+                  "memory_max_entries": (20, 1000),
+                  "memory_retention_days": (0, 3650),
+                  "plan_max_steps": (4, 20)}
+        if key in booleans:
+            TypeAdapter(StrictBool).validate_python(value)
+        elif key in ranges:
+            checked = TypeAdapter(StrictInt).validate_python(value)
+            low, high = ranges[key]
+            if not low <= checked <= high:
+                raise ValueError("setting_out_of_range")
+        elif key == "document_digest_model":
+            if value not in {"fast", "research"}:
+                raise ValueError("setting_out_of_range")
+        else:
+            raise ValueError("unknown_toolkit_setting")
+        return
     if category == "web_research":
         from pydantic import TypeAdapter, StrictBool, StrictInt
         booleans = {"enabled", "browser_enabled", "downloads_enabled",

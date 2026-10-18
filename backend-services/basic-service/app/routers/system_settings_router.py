@@ -40,6 +40,11 @@ logger = get_logger(__name__)
 # It must stay in sync with the YAML_TO_DB_MAPPING in system_settings_service.py.
 
 CATEGORY_METADATA: list[SettingsCategoryInfo] = [
+    SettingsCategoryInfo(
+        name="agent_toolkit",
+        label="Agent 能力",
+        description="工作区、文档、计算分析、长期记忆",
+    ),
     SettingsCategoryInfo(name="web_research", label="网络与研究", description="搜索、浏览、下载与资料整理"),
     SettingsCategoryInfo(
         name="tts",

@@ -157,6 +157,10 @@ type TimelineChatPanelComponentProps = TimelineChatPanelProps & {
    * session. When omitted every turn offers single-step undo.
    */
   singleUndoMessageIds?: ReadonlySet<string>;
+  /** `[[ask:<id>]]` answers already present in the conversation. */
+  answeredQuestionIds?: ReadonlySet<string>;
+  /** Questions whose turn ended without an answer. */
+  unresolvedQuestionIds?: ReadonlySet<string>;
 };
 
 /** 持续保存可见状态的快照，不能在 display:none 后读取零尺寸。 */
@@ -208,6 +212,8 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   undoDisabled: undoDisabledProp = false,
   onDismiss,
   singleUndoMessageIds,
+  answeredQuestionIds,
+  unresolvedQuestionIds,
   isVisible = true,
 }) => {
   const { t } = useLocale();
@@ -298,7 +304,10 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
               {node.kind === 'user' && <UserMessageNode node={node} />}
               {node.kind === 'thinking' && <AgentThinkingNode node={node} />}
               {node.kind === 'execution' && (
-                <AgentExecutionNode node={node} onCancel={isFinishing ? undefined : onCancel} />
+                <AgentExecutionNode node={node}
+                  onCancel={isFinishing ? undefined : onCancel}
+                  answeredQuestionIds={answeredQuestionIds}
+                  unresolvedQuestionIds={unresolvedQuestionIds} />
               )}
               {node.kind === 'response' && (
                 <AgentResponseNode

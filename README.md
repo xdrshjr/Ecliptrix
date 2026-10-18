@@ -170,6 +170,39 @@ node desktop/scripts/verify-research-release.js --unpacked desktop/release/win-u
 Service Worker。当前浏览器不能安全重新拦截的重定向会返回
 `redirect_unsupported`；可改为直接打开已核实的最终公开地址。
 
+### Agent general toolkit (workspace / documents / analysis / plan / ask / memory)
+
+Besides the editing tools, the editing agent ships a set of video-agnostic
+capabilities. Every one of them is switchable and quota-limited in
+**Settings > Agent capabilities**:
+
+| Capability | What it does | Default |
+|---|---|---|
+| Workspace | The agent writes outlines, script drafts, CSV and SVG as **local files**, reads them back page by page, and can import media into the material library for the timeline | On |
+| Documents | Upload PDF / DOCX / TXT / MD / CSV / TSV / JSON / SRT / VTT / HTML and read them page by page; long documents get a layered digest (a digest is **not** evidence) | On |
+| Analysis | Offline Python for arithmetic, tables, CSV/SVG artifacts | **Off** (opt-in) |
+| Plan | `update_plan` publishes the multi-step plan in the chat | On |
+| Ask | `ask_user` stops to ask one question at a decision fork, with no interrupt/resume protocol | On |
+| Memory | Remembers confirmed preferences and decisions; per-entry delete, optional expiry | On |
+
+Where it lives and what it does not promise:
+
+- The workspace is `<parent of STORAGE_ROOT>/agent_workspace` (on desktop:
+  `<userData>/agent_workspace`). It is **not** under `static/`, has no static
+  mount, and is reachable only through `/api/agent-toolkit/*`. It is
+  project-scoped with a 256 MB default quota.
+- The analysis sandbox uses an **AST allow-list plus a separate process**. It is
+  **not kernel-level isolation**: it stops the model from writing code that
+  damages your files, it does not stop a malicious local user. Only a
+  wall-clock timeout is enforced — there is **no memory limit**. That is why it
+  ships off by default, and the settings panel says exactly this.
+- Document digests use the fast model by default and can be switched to the
+  research model in the same panel; the fast model falls back to the chat model.
+- Tools are **progressively disclosed**: only `update_plan` and `ask_user` are
+  always resident. The other ten load by category (workspace / documents /
+  analysis / memory); unloaded schemas are never sent, and long documents and
+  big tables are always paged, so the context cannot blow up.
+
 ## Tech Stack
 
 ### Desktop shell

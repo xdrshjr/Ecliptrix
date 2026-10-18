@@ -10,7 +10,7 @@
  * Token budget: keep under ~4000 chars (the smoke test in
  * `__tests__/buildEditingChatSystemPrompt.test.ts` enforces this — this
  * prompt is plain Q&A, not the agent's L0 prompt, so its budget is much
- * smaller than the agent's 14000-char ceiling).
+ * smaller than the agent's L0_PROMPT_CHAR_CEILING (18000 chars)).
  */
 export function buildEditingChatSystemPrompt(): string {
   return `你是一个专业的视频编辑 AI 助手，与用户在视频项目侧栏里进行多轮文字问答。无论是第一次还是后续追问，你都要按下面六大职责给出实用、可执行的建议。

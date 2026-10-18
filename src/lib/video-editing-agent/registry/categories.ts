@@ -1,12 +1,13 @@
 import type { ToolCategory } from './ToolRegistry';
 
 /**
- * All 8 tool category definitions for the video editing agent.
+ * Every tool category definition for the video editing agent (17 today:
+ * 2 resident + 15 on-demand).
  *
  * Categories are split into two groups:
  * - Always available: query_tools and editing_tools — their tools are populated
  *   by createToolRegistry() in tools/index.ts at agent creation time.
- * - On-demand: the remaining 6 categories start with empty tools arrays.
+ * - On-demand: every other category starts with an empty tools array.
  *   Other agents (Phase 2+) populate them via registry.registerToolsForCategory().
  *
  * The category IDs here are the canonical identifiers used by explore_tools
@@ -16,6 +17,12 @@ import type { ToolCategory } from './ToolRegistry';
 // --- Category IDs (exported as constants for type safety) ---
 
 export const CATEGORY_IDS = {
+  /** Always-available workflow category: update_plan + ask_user. */
+  WORKFLOW_TOOLS: 'workflow_tools',
+  WORKSPACE_TOOLS: 'workspace_tools',
+  DOCUMENT_TOOLS: 'document_tools',
+  ANALYSIS_TOOLS: 'analysis_tools',
+  MEMORY_TOOLS: 'memory_tools',
   WEB_TOOLS: 'web_tools',
   BROWSER_TOOLS: 'browser_tools',
   RESEARCH_TOOLS: 'research_tools',
@@ -37,6 +44,10 @@ export type CategoryId = (typeof CATEGORY_IDS)[keyof typeof CATEGORY_IDS];
  * These are the valid enum values for explore_tools' `category` parameter.
  */
 export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
+  CATEGORY_IDS.WORKSPACE_TOOLS,
+  CATEGORY_IDS.DOCUMENT_TOOLS,
+  CATEGORY_IDS.ANALYSIS_TOOLS,
+  CATEGORY_IDS.MEMORY_TOOLS,
   CATEGORY_IDS.WEB_TOOLS,
   CATEGORY_IDS.BROWSER_TOOLS,
   CATEGORY_IDS.RESEARCH_TOOLS,
@@ -49,6 +60,14 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
   CATEGORY_IDS.COVER_TOOLS,
 ];
 
+// --- Named category constants (one concept, one name across the repo) ---
+
+export const WORKFLOW_TOOLS = CATEGORY_IDS.WORKFLOW_TOOLS;
+export const WORKSPACE_TOOLS = CATEGORY_IDS.WORKSPACE_TOOLS;
+export const DOCUMENT_TOOLS = CATEGORY_IDS.DOCUMENT_TOOLS;
+export const ANALYSIS_TOOLS = CATEGORY_IDS.ANALYSIS_TOOLS;
+export const MEMORY_TOOLS = CATEGORY_IDS.MEMORY_TOOLS;
+
 // --- Category definitions (metadata only; tools[] populated later) ---
 
 /**
@@ -58,6 +77,42 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
  */
 export function createDefaultCategories(): ToolCategory[] {
   return [
+    {
+      id: CATEGORY_IDS.WORKFLOW_TOOLS,
+      name: '执行计划',
+      // 描述 ≤160 字节（风格约束，§3.2）：一行即可读，便于 L0 目录扫描。
+      description: 'Publish a visible plan and ask the user one clarifying question.',
+      alwaysAvailable: true,
+      tools: [], // Populated by tools/index.ts
+    },
+    {
+      id: CATEGORY_IDS.WORKSPACE_TOOLS,
+      name: '工作区',
+      description: 'Save/read project files; import local media into the material library.',
+      alwaysAvailable: false,
+      tools: [],
+    },
+    {
+      id: CATEGORY_IDS.DOCUMENT_TOOLS,
+      name: '文档',
+      description: 'Read uploaded PDF/DOCX/text/CSV/subtitle documents page by page.',
+      alwaysAvailable: false,
+      tools: [],
+    },
+    {
+      id: CATEGORY_IDS.ANALYSIS_TOOLS,
+      name: '计算分析',
+      description: 'Run offline Python for arithmetic, tables and generated files. Requires opt-in.',
+      alwaysAvailable: false,
+      tools: [],
+    },
+    {
+      id: CATEGORY_IDS.MEMORY_TOOLS,
+      name: '长期记忆',
+      description: 'Store and retrieve durable notes for this project.',
+      alwaysAvailable: false,
+      tools: [],
+    },
     { id: CATEGORY_IDS.WEB_TOOLS, name: '网络检索',
       description: 'Search, read, research public sources; download local media. Requires Network & Research settings.',
       alwaysAvailable: false, tools: [] },

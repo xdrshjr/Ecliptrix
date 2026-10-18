@@ -49,6 +49,14 @@ def _parse_reuse_wait_timeout() -> float:
     return 120.0
 
 
+# 工作区导入允许的媒体扩展名（spec §3.3.3，14 项）。
+# 与 web 下载的 7 项白名单分开：来源不同、审计口径不同。
+WORKSPACE_MEDIA_EXTENSIONS = frozenset({
+    "mp4", "mov", "webm", "mkv", "mp3", "wav", "m4a", "aac",
+    "png", "jpg", "jpeg", "webp", "gif", "svg",
+})
+
+
 class MaterialDownloadService:
     """
     Singleton-style background downloader. enqueue() returns immediately with a
@@ -467,6 +475,15 @@ class MaterialDownloadService:
         return await self._dispatch(self._store_research(
             Path(path), digest, extension, url))
 
+    async def store_workspace_file_async(self, path, digest, extension):
+        """Agent 工作区文件 → 素材库（source='workspace'，无来源 url）。
+
+        spec §3.3.3 R-13：不得复用 `store_research_download_async`——它的扩展名
+        白名单只有 7 项且 `_commit_research` 硬编码 `source="web"`。
+        """
+        return await self._dispatch(self._store_workspace_file(
+            Path(path), digest, extension))
+
     async def recover_research_cache_async(self):
         """仅启动时回收本服务私有 web 缓存的未提交文件。"""
         if (self.cache_dir / "web").is_dir():
@@ -511,6 +528,26 @@ class MaterialDownloadService:
             if entry[1] == 0:
                 self._research_locks.pop(digest, None)
 
+    async def _store_workspace_file(self, path, digest, extension):
+        import hashlib
+        from app.models.web_research_models import WebResearchError
+        if extension not in WORKSPACE_MEDIA_EXTENSIONS:
+            raise WebResearchError("unsupported_media_type")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise WebResearchError("cache_integrity_error")
+        entry = self._research_locks.setdefault(digest, [asyncio.Lock(), 0])
+        entry[1] += 1
+        try:
+            async with entry[0]:
+                return await self._commit_research(
+                    path, digest, extension, None, source="workspace",
+                    source_id="workspace-" + digest[:24],
+                    allowed_extensions=WORKSPACE_MEDIA_EXTENSIONS)
+        finally:
+            entry[1] -= 1
+            if entry[1] == 0:
+                self._research_locks.pop(digest, None)
+
     @staticmethod
     async def _settle_research_commit(session):
         """取消不能中断提交结果判定，否则补偿会误删已入库文件。"""
@@ -524,12 +561,19 @@ class MaterialDownloadService:
         task.result()
         return cancelled
 
-    async def _commit_research(self, path, digest, extension, url):
+    async def _commit_research(self, path, digest, extension, url, source="web",
+                               source_id=None, allowed_extensions=None):
+        """提交缓存记录。默认参数复刻既有 web 行为（既有用例必须原样通过）。
+
+        `allowed_extensions`/`source_id` 供工作区导入路径参数化使用（R-13）。
+        """
         import hashlib
         import uuid
         from app.models.web_research_models import WebResearchError
-        identifier = "web-" + digest[:24]
-        directory = self.cache_dir / "web"
+        if allowed_extensions is not None and extension not in allowed_extensions:
+            raise WebResearchError("unsupported_media_type")
+        identifier = source_id or ("web-" + digest[:24])
+        directory = self.cache_dir / source
         directory.mkdir(parents=True, exist_ok=True)
         final = directory / (identifier + "." + extension)
         temporary = directory / (str(uuid.uuid4()) + ".part")
@@ -537,7 +581,7 @@ class MaterialDownloadService:
         try:
             async with self._session_factory() as session:
                 row = (await session.execute(select(CachedMaterial).where(
-                    CachedMaterial.source == "web",
+                    CachedMaterial.source == source,
                     CachedMaterial.source_id == identifier))).scalar_one_or_none()
                 reused = bool(row and row.status == "ready" and final.is_file()
                               and hashlib.sha256(final.read_bytes()).hexdigest() == digest)
@@ -546,7 +590,7 @@ class MaterialDownloadService:
                     temporary.replace(final)
                     created = True
                     if row is None:
-                        row = CachedMaterial(source="web", source_id=identifier,
+                        row = CachedMaterial(source=source, source_id=identifier,
                                              source_url=url, ref_count=1)
                         session.add(row)
                     row.local_path, row.file_size = str(final), final.stat().st_size
@@ -557,7 +601,8 @@ class MaterialDownloadService:
                         raise asyncio.CancelledError
                     await session.refresh(row)
                 return {"record_id": str(row.id), "size": row.file_size,
-                        "local_url": "/api/storage/files/cached_materials/web/" + final.name,
+                        "local_url": ("/api/storage/files/cached_materials/"
+                                      + source + "/" + final.name),
                         "created_at": row.created_at.isoformat(), "reused": reused}
         except asyncio.CancelledError:
             raise

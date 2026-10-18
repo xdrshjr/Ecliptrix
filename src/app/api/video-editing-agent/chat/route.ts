@@ -238,6 +238,56 @@ const getConfig = async (): Promise<AgentResolvedConfig> => {
  *   3. `3000` — dev/Next.js default fallback; matches the `npm run dev`
  *      behaviour for local work.
  */
+/**
+ * 进程内 60 秒缓存的记忆摘要。每轮零额外等待；`memory_write` 的当轮结果是
+ * 权威，最多 60 秒后摘要与库一致（换来的是不阻塞主循环）。
+ */
+const MEMORY_DIGEST_TTL_MS = 60_000;
+const MEMORY_DIGEST_TIMEOUT_MS = 1_500;
+const memoryDigestCache = new Map<string, {
+  at: number; value: { text: string; count: number };
+}>();
+
+/** 后端拒绝含路径分隔符 / 控制字符的 call id，摘要键要先净化再当 header 用。 */
+function callIdFor(key: string): string {
+  return `digest-${(key || 'global').replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 96)}`;
+}
+
+async function loadMemoryDigest(
+  apiBaseUrl: string, projectId: string | undefined,
+): Promise<{ text: string; count: number }> {
+  const key = projectId ?? '';
+  const cached = memoryDigestCache.get(key);
+  if (cached && Date.now() - cached.at < MEMORY_DIGEST_TTL_MS) {
+    return cached.value;
+  }
+  const query = projectId
+    ? `?project_id=${encodeURIComponent(projectId)}` : '';
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/agent-toolkit/memory/digest${query}`,
+      {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(MEMORY_DIGEST_TIMEOUT_MS),
+        headers: { Origin: apiBaseUrl, 'x-tool-call-id': callIdFor(key) },
+      },
+    );
+    if (!response.ok) return { text: '', count: 0 };
+    const envelope = await response.json() as {
+      success?: boolean; data?: { text?: string; count?: number };
+    };
+    const value = {
+      text: typeof envelope.data?.text === 'string' ? envelope.data.text : '',
+      count: typeof envelope.data?.count === 'number' ? envelope.data.count : 0,
+    };
+    memoryDigestCache.set(key, { at: Date.now(), value });
+    return value;
+  } catch {
+    // 记忆不可用只是「没有记忆」，绝不阻塞本轮。
+    return { text: '', count: 0 };
+  }
+}
+
 function resolveAgentLoopbackUrl(): string {
   const port =
     process.env.AGENT_LOOPBACK_PORT ??
@@ -459,10 +509,15 @@ export async function POST(request: NextRequest) {
           // cannot reliably reach back through nginx (see diagnosis report
           // 2026-04-07).
           const apiBaseUrl = resolveAgentLoopbackUrl();
+          // Long-term memory digest: <=5 entries, <=800 chars, 1.5s timeout,
+          // 60s in-process cache per project. A failure yields an empty digest
+          // and must never block or fail the turn (§3.6).
+          const memoryDigest = await loadMemoryDigest(apiBaseUrl, projectId);
           const { agent, toolContext } = createVideoEditingAgent({
             researchRun,
             contextWindowTokens,
             webCapabilities: snapshot.capabilities,
+            memoryDigest,
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
             llmModel: config.model,

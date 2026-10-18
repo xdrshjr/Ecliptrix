@@ -697,13 +697,32 @@ class ModelSettingsService:
                 _resolve_api_format(None, provider.api_format,
                                     provider.provider_type or ""))
 
+    async def resolve_toolkit_digest_config(self):
+        """文档分层摘要档位（spec §3.3.5 / §3.9）。
+
+        `research` 档直接委托 `resolve_research_config`，因此也不新增
+        `ModelFunctionType` 枚举；`fast` 档的回落链是 fast → chat。
+        """
+        from app.services.system_settings_service import toolkit_settings
+        if toolkit_settings()["document_digest_model"] == "research":
+            return await self.resolve_research_config()
+        return await self._resolve_staged_config([
+            (ModelFunctionType.FAST, "fast_llm"),
+            (ModelFunctionType.CHAT, "llm"),
+        ])
+
     async def resolve_research_config(self):
         """独立成组回落，绝不借用其他用途 resolver 的逐字段回落。"""
+        return await self._resolve_staged_config([
+            (ModelFunctionType.RESEARCH, "research_llm"),
+            (ModelFunctionType.FAST, "fast_llm"),
+            (ModelFunctionType.CHAT, "llm"),
+        ])
+
+    async def _resolve_staged_config(self, stages):
+        """按 stages 顺序成组回落；组内缺项即 configuration_invalid。"""
         from app.models.web_research_models import WebResearchError
         settings = get_settings()
-        stages = [(ModelFunctionType.RESEARCH, "research_llm"),
-                  (ModelFunctionType.FAST, "fast_llm"),
-                  (ModelFunctionType.CHAT, "llm")]
         for function_type, prefix in stages:
             assigned = await self._research_assignment(function_type)
             environment = tuple(getattr(settings, prefix + suffix)

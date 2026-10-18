@@ -28,6 +28,7 @@ function makeContext(overrides?: Partial<TimelineState>): ToolContext {
     operations: new Map<string, AgentOperation>(),
     updateTimeline: () => undefined,
     recordOperation: () => undefined,
+    turnState: {},
   };
 }
 

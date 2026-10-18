@@ -27,25 +27,44 @@ import type { NodeIconVariant } from './TimelineNodeIcon';
 import ToolStep from './ToolStep';
 import { CoverToolStatus } from '../AgentToolCallCard';
 import WebResearchToolCard, { isWebResearchTool } from '../WebResearchToolCard';
+import ToolkitToolCard, { askQuestionId, isToolkitTool } from '../ToolkitToolCard';
 import { nodeVariants, expandVariants, TIMING } from './animations';
 
 interface AgentExecutionNodeProps {
   node: AgentExecutionNodeData;
   /** Cancel callback — shown as a button when node is active. */
   onCancel?: () => void;
+  /** `[[ask:<id>]]` answers already present in the conversation. */
+  answeredQuestionIds?: ReadonlySet<string>;
+  /** Questions whose turn ended without an answer. */
+  unresolvedQuestionIds?: ReadonlySet<string>;
 }
 
-const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel }) => {
+const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({
+  node, onCancel, answeredQuestionIds, unresolvedQuestionIds,
+}) => {
   const { t } = useLocale();
+  /**
+   * 还有没回答的提问时强制展开。
+   *
+   * `isActive` 只说明「本轮在跑」；重新打开一个历史会话时它已经是 false，
+   * 于是提问卡片（以及选项按钮）被折叠在 `executed (N/N)` 里面 —— 用户看不到
+   * 任何待答线索。提问必须有可见出口，所以这一条是**状态初始化**的一部分。
+   */
+  const hasOpenQuestion = node.toolCalls.some((tc) => {
+    if (tc.name !== 'ask_user') return false;
+    const questionId = askQuestionId(tc.result);
+    return questionId === null || answeredQuestionIds?.has(questionId) !== true;
+  });
   // Auto-expand while active, collapse when done (user can toggle)
-  const [isExpanded, setIsExpanded] = useState(node.isActive);
+  const [isExpanded, setIsExpanded] = useState(node.isActive || hasOpenQuestion);
 
-  // Re-expand when execution starts, collapse when it finishes
+  // Re-expand when execution starts, or when a question is still unanswered
   useEffect(() => {
-    if (node.isActive) {
+    if (node.isActive || hasOpenQuestion) {
       setIsExpanded(true);
     }
-  }, [node.isActive]);
+  }, [node.isActive, hasOpenQuestion]);
 
   const toggleExpand = useCallback(() => {
     setIsExpanded((prev) => !prev);
@@ -131,7 +150,11 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel 
               <div className="border border-border dark:border-zinc-700 rounded-md overflow-hidden bg-muted/50 dark:bg-zinc-800/50 text-sm">
                 {steps.map((step, idx) => (
                   <React.Fragment key={step.id}>
-                  {isWebResearchTool(node.toolCalls[idx].name) ? (
+                  {isToolkitTool(node.toolCalls[idx].name) ? (
+                    <ToolkitToolCard toolCall={node.toolCalls[idx]}
+                      answeredQuestionIds={answeredQuestionIds as Set<string> | undefined}
+                      unresolvedQuestionIds={unresolvedQuestionIds as Set<string> | undefined} />
+                  ) : isWebResearchTool(node.toolCalls[idx].name) ? (
                     <WebResearchToolCard toolCall={node.toolCalls[idx]} />
                   ) : <ToolStep
                     key={step.id}

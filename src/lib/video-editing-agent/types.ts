@@ -3,6 +3,7 @@ import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import type { TtsFailure } from '@/lib/ttsErrors';
 import type { ResearchRunClient } from '@/lib/server/researchRunClient';
+import type { ToolkitTurnState } from '@/types/agentToolkit';
 
 // --- Tool Context ---
 
@@ -40,6 +41,12 @@ export interface ToolContext {
   updateTimeline: (toolCallId: string, operation: TimelineOperation) => void;
   /** Called by tools to record any agent operation (material, script, storyboard, async task) */
   recordOperation: (toolCallId: string, operation: AgentOperation) => void;
+  /**
+   * Per-request agent-toolkit state. A fresh object is created on every
+   * `createVideoEditingAgent` call, so an SSE retry (a new request) naturally
+   * resets the "one ask per turn" rule — nothing here is persisted.
+   */
+  turnState: ToolkitTurnState;
 }
 
 // --- Timeline Operations (produced by tools, applied by frontend) ---
@@ -312,6 +319,12 @@ export interface VideoEditingAgentConfig {
    * should refuse with an actionable error.
    */
   projectId?: string;
+  /**
+   * Auto-injected long-term memory digest (<=800 chars, <=5 entries). Pulled by
+   * `route.ts` with a 1.5s timeout before the agent is created; a failure just
+   * means an empty digest, never a blocked turn.
+   */
+  memoryDigest?: { text: string; count: number } | null;
 }
 
 // Re-export from central types for convenience

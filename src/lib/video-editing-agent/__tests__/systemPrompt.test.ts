@@ -151,7 +151,7 @@ describe('buildSystemPrompt — Snapshot 1: fresh project, no explored categorie
     expect(prompt).not.toContain('## 已加载的高级工具');
   });
 
-  it('keeps the prompt under the 14000-char ceiling (≈ 3500 tokens worst case)', () => {
+  it('keeps the prompt under the 18000-char ceiling (≈ 4250 tokens worst case)', () => {
     const registry = buildFullStubRegistry();
     const prompt = buildSystemPrompt({
       timelineState: emptyTimeline(),
@@ -159,7 +159,7 @@ describe('buildSystemPrompt — Snapshot 1: fresh project, no explored categorie
       registry,
       exploredCategories: [],
     });
-    expect(prompt.length).toBeLessThan(14000);
+    expect(prompt.length).toBeLessThan(18000);
   });
 });
 
@@ -183,7 +183,7 @@ describe('buildSystemPrompt — Snapshot 2: explored categories appendix', () =>
     expect(prompt).toContain('tts_tools');
   });
 
-  it('still respects the 14000-char ceiling with two categories appended', () => {
+  it('still respects the 18000-char ceiling with two categories appended', () => {
     const registry = buildFullStubRegistry();
     const prompt = buildSystemPrompt({
       timelineState: emptyTimeline(),
@@ -194,7 +194,7 @@ describe('buildSystemPrompt — Snapshot 2: explored categories appendix', () =>
         CATEGORY_IDS.TTS_TOOLS,
       ] as CategoryId[],
     });
-    expect(prompt.length).toBeLessThan(14000);
+    expect(prompt.length).toBeLessThan(18000);
   });
 });
 

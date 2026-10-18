@@ -5,6 +5,12 @@ import { sanitizeResearchValue } from '../researchEventSanitizer';
 import { compactResearchReference, utf8Slice } from '../modelContextBudget';
 import { toolFetch } from './apiHelper';
 
+/**
+ * 单条工具结果的字节上限。`toolkitAdapter` 与本模块**共用同一个**常量，
+ * 避免出现第二份 12 KiB 魔数（agent-general-toolkit spec R-26）。
+ */
+export const RESULT_BYTE_CAP = 12 * 1024;
+
 interface WebCall {
   path: string; body?: unknown; method?: 'GET' | 'POST' | 'DELETE';
   timeout?: number; importMaterial?: boolean;
@@ -25,10 +31,10 @@ function rememberFailure(context: ToolContext, key: string, result: Record<strin
 function toolResult(details: Record<string, unknown>) {
   const safe = sanitizeResearchValue(details);
   let visible = safe;
-  if (new TextEncoder().encode(JSON.stringify(visible)).length > 12 * 1024) {
+  if (new TextEncoder().encode(JSON.stringify(visible)).length > RESULT_BYTE_CAP) {
     visible = { ...compactResearchReference(safe, 4000),
       truncated: true, next_step: 'Read the artifact by ID for the complete result.' };
-    while (new TextEncoder().encode(JSON.stringify(visible)).length > 12 * 1024 &&
+    while (new TextEncoder().encode(JSON.stringify(visible)).length > RESULT_BYTE_CAP &&
       typeof visible.summary === 'string' && visible.summary.length) {
       visible.summary = utf8Slice(visible.summary, Math.floor(
         new TextEncoder().encode(visible.summary).length / 2));

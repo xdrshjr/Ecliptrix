@@ -67,7 +67,45 @@ def research_settings():
     return values
 
 
+
+# Agent 通用工具集（docs/plans/agent-general-toolkit/spec.md §5.4）。
+# `analysis_enabled` 默认关闭：沙箱只有墙钟超时、无内存上限，必须显式开启。
+AGENT_TOOLKIT_DEFAULTS = {
+    "enabled": True,
+    "workspace_enabled": True,
+    "documents_enabled": True,
+    "analysis_enabled": False,
+    "memory_enabled": True,
+    "workspace_quota_mb": 256,
+    "max_file_mb": 32,
+    "document_max_pages": 800,
+    "document_max_chars": 2000000,
+    "document_digest_model": "fast",
+    "analysis_timeout_seconds": 20,
+    "analysis_max_output_kb": 64,
+    "memory_max_entries": 200,
+    "memory_retention_days": 180,
+    "plan_max_steps": 12,
+}
+
+
+def toolkit_settings():
+    """未保存键使用出厂值（总开关语义由各能力闸门自行组合）。
+
+    `update_plan` / `ask_user` 是纯前端工具（不触达
+    `/api/agent-toolkit/*`），**不受**总开关影响（spec §5.4 R-29）。
+    """
+    values = AGENT_TOOLKIT_DEFAULTS.copy()
+    values.update(system_settings_service.get_category("agent_toolkit"))
+    return values
+
+
 YAML_TO_DB_MAPPING: List[Dict[str, Any]] = [
+    {"file": "agent-toolkit-config.yaml", "root_key": "agent_toolkit",
+     "mappings": [{"yaml_keys": [key], "category": "agent_toolkit",
+                   "db_key": key, "is_nested": True, "scalar": True,
+                   "value_type": "scalar", "description": key}
+                  for key in AGENT_TOOLKIT_DEFAULTS]},
     {"file": "web-research-config.yaml", "root_key": "web_research",
      "mappings": [{"yaml_keys": [key], "category": "web_research",
                    "db_key": key, "is_nested": True, "scalar": True,

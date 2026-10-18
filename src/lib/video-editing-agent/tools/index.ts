@@ -38,6 +38,12 @@ import { createDescribeStoryboardTool } from './describeStoryboard';
 import { createBatchStoryboardVideoTool } from './batchStoryboardVideo';
 import { createComposeStoryboardTool } from './composeStoryboard';
 import { createCheckOverlapsTool, summarizeOverlapReport } from './checkOverlaps';
+import { createPlanTool } from './planTool';
+import { createAskUserTool } from './askUserTool';
+import { createWorkspaceTools } from './workspaceTools';
+import { createDocumentTools } from './documentTool';
+import { createAnalysisTools } from './analysisTool';
+import { createMemoryTools } from './memoryTools';
 import { createAutoFixOverlapsTool } from './autoFixOverlaps';
 import { ItemPlacementService, type OverlapReport } from '@/components/video/timeline/domain/services/ItemPlacementService';
 import { TrackTypeUtils } from '@/components/video/timeline/domain/value-objects/TrackType';
@@ -353,7 +359,7 @@ export function serializeMaterial(m: MaterialItem) {
 export function createToolRegistry(context: ToolContext): ToolRegistry {
   const registry = new ToolRegistry();
 
-  // Register all 8 categories (metadata only, tools arrays empty)
+  // Register every category first (metadata only, tools arrays empty)
   for (const category of createDefaultCategories()) {
     registry.registerCategory(category);
   }
@@ -425,6 +431,24 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     createAddMaterialToLibraryTool(context),
     createRemoveMaterialTool(context),
   ]);
+
+  // Agent general toolkit (docs/plans/agent-general-toolkit/spec.md §3.2):
+  // 1 always-available category + 4 on-demand categories, 12 tools total.
+  // workflow_tools is alwaysAvailable, so its two tools reach the model without
+  // explore_tools; they are also listed in CORE_TOOLKIT_TOOL_NAMES so
+  // formatCoreToolkit renders their parameters in the L0 prompt.
+  registry.registerToolsForCategory(CATEGORY_IDS.WORKFLOW_TOOLS, [
+    createPlanTool(context),
+    createAskUserTool(context),
+  ]);
+  registry.registerToolsForCategory(
+    CATEGORY_IDS.WORKSPACE_TOOLS, createWorkspaceTools(context));
+  registry.registerToolsForCategory(
+    CATEGORY_IDS.DOCUMENT_TOOLS, createDocumentTools(context));
+  registry.registerToolsForCategory(
+    CATEGORY_IDS.ANALYSIS_TOOLS, createAnalysisTools(context));
+  registry.registerToolsForCategory(
+    CATEGORY_IDS.MEMORY_TOOLS, createMemoryTools(context));
 
   return registry;
 }

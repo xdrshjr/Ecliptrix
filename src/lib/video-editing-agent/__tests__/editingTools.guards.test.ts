@@ -50,6 +50,7 @@ function makeContext(tracks: Track[], materials: MaterialItem[] = []) {
     operations: new Map(),
     updateTimeline,
     recordOperation,
+    turnState: {},
   };
   return { context, updateTimeline, recordOperation };
 }

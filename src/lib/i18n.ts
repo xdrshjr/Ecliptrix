@@ -131,6 +131,111 @@ export interface Translations {
     localPreview: string;
     tools: Record<string, string>;
   };
+  agentToolkit: {
+    title: string;
+    description: string;
+    sectionCapabilities: string;
+    sectionLimits: string;
+    sectionModel: string;
+    sectionWorkspace: string;
+    sectionMemory: string;
+    sectionStatus: string;
+    enabled: string;
+    workspaceEnabled: string;
+    documentsEnabled: string;
+    analysisEnabled: string;
+    memoryEnabled: string;
+    analysisRiskTitle: string;
+    analysisRisk: string;
+    analysisRiskNoMemory: string;
+    quota: string;
+    workspaceQuotaMb: string;
+    maxFileMb: string;
+    maxFileMbHint: string;
+    documentMaxPages: string;
+    documentMaxChars: string;
+    analysisTimeoutSeconds: string;
+    analysisMaxOutputKb: string;
+    memoryMaxEntries: string;
+    memoryRetentionDays: string;
+    planMaxSteps: string;
+    digestModelFast: string;
+    digestModelResearch: string;
+    digestModelHint: string;
+    openModelSettings: string;
+    workspaceRoot: string;
+    used: string;
+    refresh: string;
+    emptyFiles: string;
+    emptyDocuments: string;
+    emptyMemories: string;
+    download: string;
+    delete: string;
+    deleteConfirm: string;
+    deleteConfirmBody: string;
+    memoryClear: string;
+    memoryClearConfirm: string;
+    memoryClearConfirmBody: string;
+    scopeProject: string;
+    scopeGlobal: string;
+    kindFact: string;
+    kindPreference: string;
+    kindDecision: string;
+    loading: string;
+    saving: string;
+    saved: string;
+    saveFailed: string;
+    loadFailed: string;
+    retry: string;
+    statusAvailable: string;
+    statusEnabled: string;
+    statusDisabled: string;
+    statusUnavailable: string;
+    planTitle: string;
+    planEmpty: string;
+    planStepPending: string;
+    planStepInProgress: string;
+    planStepCompleted: string;
+    planStepBlocked: string;
+    askFreeText: string;
+    askAnswered: string;
+    askUnanswered: string;
+    askPlaceholder: string;
+    attachDocument: string;
+    attaching: string;
+    attachFailed: string;
+    attachTooLarge: string;
+    attachDisabled: string;
+    analysisOutput: string;
+    analysisFiles: string;
+    importHint: string;
+    stopped: string;
+    configuration: string;
+    disabled: string;
+    capabilityDisabled: string;
+    analysisDisabled: string;
+    quotaExceeded: string;
+    memoryFull: string;
+    invalidArgument: string;
+    invalidName: string;
+    invalidOffset: string;
+    pageOutOfRange: string;
+    codeRejected: string;
+    invalidSetting: string;
+    originBlocked: string;
+    fileNotFound: string;
+    fileTooLarge: string;
+    documentTooLarge: string;
+    binaryFile: string;
+    unsupportedFormat: string;
+    parseFailed: string;
+    storageUnavailable: string;
+    documentsUnavailable: string;
+    timeout: string;
+    policyBlocked: string;
+    internalError: string;
+    tools: Record<string, string>;
+  };
   /** Import labels shared with the cover timeline. */
   coverStudio: {
     previewCheck: string;
@@ -3297,7 +3402,124 @@ export interface Translations {
 
 export const translations: Record<string, Translations> = {
   en: {
-    webResearch: {
+    agentToolkit: {
+      title: 'Agent capabilities',
+      description: 'Workspace, documents, analysis, long-term memory',
+      sectionCapabilities: 'Capabilities',
+      sectionLimits: 'Quotas and limits',
+      sectionModel: 'Document digest model',
+      sectionWorkspace: 'Workspace',
+      sectionMemory: 'Long-term memory',
+      sectionStatus: 'Availability',
+      enabled: 'Enable agent capabilities',
+      workspaceEnabled: 'Workspace',
+      documentsEnabled: 'Documents',
+      analysisEnabled: 'Analysis sandbox',
+      memoryEnabled: 'Long-term memory',
+      analysisRiskTitle: 'About the analysis sandbox',
+      analysisRisk: 'Analysis runs Python in a separate process with an AST allow-list. It is not kernel-level isolation: it stops the model from writing code that damages your files, it does not stop a malicious local user.',
+      analysisRiskNoMemory: 'Only a wall-clock timeout is enforced. There is no memory limit.',
+      quota: 'Quota',
+      workspaceQuotaMb: 'Workspace quota (MB)',
+      maxFileMb: 'Max file size (MB)',
+      maxFileMbHint: 'Applies to uploads. Text written by the agent is capped at 2 MB per file.',
+      documentMaxPages: 'Max document pages',
+      documentMaxChars: 'Max extracted characters',
+      analysisTimeoutSeconds: 'Analysis timeout (s)',
+      analysisMaxOutputKb: 'Analysis output limit (KB)',
+      memoryMaxEntries: 'Memory entries per bucket',
+      memoryRetentionDays: 'Memory retention (days, 0 = never)',
+      planMaxSteps: 'Max plan steps',
+      digestModelFast: 'Fast model',
+      digestModelResearch: 'Research model',
+      digestModelHint: 'Falls back to the chat model when the fast model is unavailable.',
+      openModelSettings: 'Open model settings',
+      workspaceRoot: 'Workspace folder',
+      used: 'Used',
+      refresh: 'Refresh',
+      emptyFiles: 'No agent files yet.',
+      emptyDocuments: 'No documents uploaded yet.',
+      emptyMemories: 'Nothing remembered yet.',
+      download: 'Download',
+      delete: 'Delete',
+      deleteConfirm: 'Delete {name}?',
+      deleteConfirmBody: 'This cannot be undone.',
+      memoryClear: 'Clear this project’s memory',
+      memoryClearConfirm: 'Clear all memories of this project?',
+      memoryClearConfirmBody: 'Global memories are kept.',
+      scopeProject: 'Project',
+      scopeGlobal: 'Global',
+      kindFact: 'Fact',
+      kindPreference: 'Preference',
+      kindDecision: 'Decision',
+      loading: 'Loading…',
+      saving: 'Saving…',
+      saved: 'Saved.',
+      saveFailed: 'Could not save. Check the highlighted fields.',
+      loadFailed: 'Could not load agent capabilities.',
+      retry: 'Retry',
+      statusAvailable: 'Available',
+      statusEnabled: 'On',
+      statusDisabled: 'Off',
+      statusUnavailable: 'Unavailable',
+      planTitle: 'Execution plan',
+      planEmpty: 'No plan yet.',
+      planStepPending: 'pending',
+      planStepInProgress: 'in progress',
+      planStepCompleted: 'done',
+      planStepBlocked: 'blocked',
+      askFreeText: 'Or type your own answer',
+      askAnswered: 'Answered',
+      askUnanswered: 'Not answered — just type your answer, or keep chatting.',
+      askPlaceholder: 'Answer the question above…',
+      attachDocument: 'Add document',
+      attaching: 'Reading document…',
+      attachFailed: 'Could not read that document.',
+      attachTooLarge: 'That file is larger than {mb} MB.',
+      attachDisabled: 'Enable Documents in Settings › Agent capabilities first.',
+      analysisOutput: 'Output',
+      analysisFiles: 'Files',
+      importHint: 'Use workspace_import_material to put it in the material library.',
+      stopped: 'Stopped.',
+      configuration: 'Not configured yet.',
+      disabled: 'This capability is turned off.',
+      capabilityDisabled: 'This capability is turned off in Settings.',
+      analysisDisabled: 'Analysis is turned off. Enable it in Settings › Agent capabilities.',
+      quotaExceeded: 'The workspace quota is full. Delete a file first.',
+      memoryFull: 'Memory is full. Forget an old entry first.',
+      invalidArgument: 'The request was rejected. Check the parameters.',
+      invalidName: 'Use a short relative name such as script/outline.md.',
+      invalidOffset: 'The offset is no longer valid. Re-read from the start.',
+      pageOutOfRange: 'That page does not exist.',
+      codeRejected: 'The code was rejected by the sandbox rules.',
+      invalidSetting: 'That value is out of range.',
+      originBlocked: 'This request came from an unexpected origin.',
+      fileNotFound: 'That file no longer exists.',
+      fileTooLarge: 'That file is too large.',
+      documentTooLarge: 'That document is too long.',
+      binaryFile: 'That file is not text. Use read_document or import it as material.',
+      unsupportedFormat: 'That format is not supported.',
+      parseFailed: 'The document could not be parsed.',
+      storageUnavailable: 'The workspace is unavailable right now.',
+      documentsUnavailable: 'Document parsing is unavailable in this build.',
+      timeout: 'That took too long and was stopped.',
+      policyBlocked: 'Blocked: that text looks like a credential.',
+      internalError: 'Something went wrong. Try again.',
+      tools: {
+        update_plan: 'Update plan',
+        ask_user: 'Ask user',
+        workspace_list: 'List workspace',
+        workspace_read: 'Read file',
+        workspace_write: 'Write file',
+        workspace_delete: 'Delete file',
+        workspace_import_material: 'Import material',
+        read_document: 'Read document',
+        run_analysis: 'Run analysis',
+        memory_write: 'Remember',
+        memory_search: 'Search memory',
+        memory_forget: 'Forget',
+      },
+    },    webResearch: {
       proxyMode: 'Proxy mode',
       proxy_auto: 'Auto',
       proxy_direct: 'Direct',
@@ -6684,7 +6906,124 @@ export const translations: Record<string, Translations> = {
     },
   },
   'zh-CN': {
-    webResearch: {
+    agentToolkit: {
+      title: 'Agent 能力',
+      description: '工作区、文档、计算分析、长期记忆',
+      sectionCapabilities: '能力开关',
+      sectionLimits: '配额与上限',
+      sectionModel: '文档整理模型',
+      sectionWorkspace: '工作区',
+      sectionMemory: '长期记忆',
+      sectionStatus: '可用性',
+      enabled: '启用 Agent 能力',
+      workspaceEnabled: '工作区',
+      documentsEnabled: '文档',
+      analysisEnabled: '计算分析',
+      memoryEnabled: '长期记忆',
+      analysisRiskTitle: '关于计算分析沙箱',
+      analysisRisk: '分析沙箱用 AST 白名单 + 独立进程限制，它不是内核级隔离：能防模型写错代码误伤文件，不能防本机恶意行为。',
+      analysisRiskNoMemory: '只有运行时长上限，没有内存上限。',
+      quota: '配额',
+      workspaceQuotaMb: '工作区配额（MB）',
+      maxFileMb: '单文件上限（MB）',
+      maxFileMbHint: '约束上传类文件；Agent 写入的文本另有 2 MB 硬上限。',
+      documentMaxPages: '文档页数上限',
+      documentMaxChars: '抽取文本上限',
+      analysisTimeoutSeconds: '分析超时（秒）',
+      analysisMaxOutputKb: '分析输出上限（KB）',
+      memoryMaxEntries: '单个记忆桶条数',
+      memoryRetentionDays: '记忆保留天数（0 = 永久）',
+      planMaxSteps: '计划步数上限',
+      digestModelFast: '快速模型',
+      digestModelResearch: '研究模型',
+      digestModelHint: '快速模型不可用时自动回落到聊天模型。',
+      openModelSettings: '打开模型设置',
+      workspaceRoot: '工作区目录',
+      used: '已用',
+      refresh: '刷新',
+      emptyFiles: '还没有 Agent 生成的文件。',
+      emptyDocuments: '还没有上传文档。',
+      emptyMemories: '还没有任何记忆。',
+      download: '下载',
+      delete: '删除',
+      deleteConfirm: '确定删除 {name}？',
+      deleteConfirmBody: '此操作不可撤销。',
+      memoryClear: '清空本项目记忆',
+      memoryClearConfirm: '确定清空本项目的全部记忆？',
+      memoryClearConfirmBody: '全局记忆会保留。',
+      scopeProject: '项目',
+      scopeGlobal: '全局',
+      kindFact: '事实',
+      kindPreference: '偏好',
+      kindDecision: '决定',
+      loading: '正在加载…',
+      saving: '正在保存…',
+      saved: '已保存。',
+      saveFailed: '保存失败，请检查标红的字段。',
+      loadFailed: '无法加载 Agent 能力配置。',
+      retry: '重试',
+      statusAvailable: '可用',
+      statusEnabled: '已开启',
+      statusDisabled: '已关闭',
+      statusUnavailable: '不可用',
+      planTitle: '执行计划',
+      planEmpty: '还没有计划。',
+      planStepPending: '待办',
+      planStepInProgress: '进行中',
+      planStepCompleted: '已完成',
+      planStepBlocked: '受阻',
+      askFreeText: '或直接输入你的答案',
+      askAnswered: '已回答',
+      askUnanswered: '未回答 —— 直接输入你的答案即可，或继续追问。',
+      askPlaceholder: '回答上面的问题…',
+      attachDocument: '添加文档',
+      attaching: '正在读取文档…',
+      attachFailed: '无法读取该文档。',
+      attachTooLarge: '该文件超过 {mb} MB。',
+      attachDisabled: '请先在“设置 › Agent 能力”中开启文档。',
+      analysisOutput: '输出',
+      analysisFiles: '产物文件',
+      importHint: '需要 workspace_import_material 才能进入素材库。',
+      stopped: '已停止。',
+      configuration: '尚未配置。',
+      disabled: '该能力已关闭。',
+      capabilityDisabled: '该能力已在设置中关闭。',
+      analysisDisabled: '计算分析已关闭，请在“设置 › Agent 能力”中开启。',
+      quotaExceeded: '工作区配额已满，请先删除文件。',
+      memoryFull: '记忆已满，请先遗忘旧条目。',
+      invalidArgument: '请求被拒绝，请检查参数。',
+      invalidName: '请使用简短相对路径，例如 script/outline.md。',
+      invalidOffset: '偏移已失效，请从头读取。',
+      pageOutOfRange: '该页不存在。',
+      codeRejected: '代码被沙箱规则拒绝。',
+      invalidSetting: '该值超出允许范围。',
+      originBlocked: '请求来源不被允许。',
+      fileNotFound: '该文件已不存在。',
+      fileTooLarge: '文件过大。',
+      documentTooLarge: '文档过长。',
+      binaryFile: '该文件不是文本，请用 read_document 或作为素材导入。',
+      unsupportedFormat: '不支持该格式。',
+      parseFailed: '文档解析失败。',
+      storageUnavailable: '工作区暂时不可用。',
+      documentsUnavailable: '当前版本缺少文档解析依赖。',
+      timeout: '执行超时已被终止。',
+      policyBlocked: '已阻止：该文本疑似凭据。',
+      internalError: '出现内部错误，请重试。',
+      tools: {
+        update_plan: '更新计划',
+        ask_user: '询问用户',
+        workspace_list: '列出工作区',
+        workspace_read: '读取文件',
+        workspace_write: '写入文件',
+        workspace_delete: '删除文件',
+        workspace_import_material: '导入素材',
+        read_document: '读取文档',
+        run_analysis: '运行分析',
+        memory_write: '记住',
+        memory_search: '检索记忆',
+        memory_forget: '遗忘',
+      },
+    },    webResearch: {
       proxyMode: '代理模式',
       proxy_auto: '自动',
       proxy_direct: '直连',

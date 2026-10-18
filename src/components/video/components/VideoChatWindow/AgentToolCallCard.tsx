@@ -6,6 +6,7 @@ import { COVER_CARD_ACTION_EVENT, type CoverCardActionDetail,
   type CoverOperationStatus } from '@/lib/video-editing-agent/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import WebResearchToolCard, { isWebResearchTool } from './WebResearchToolCard';
+import ToolkitToolCard, { isToolkitTool } from './ToolkitToolCard';
 
 /** Business status stays visible even after the tool invocation finished. */
 export function CoverToolStatus({ toolCall }: { toolCall: AgentToolCallRecord }) {
@@ -62,6 +63,10 @@ export function CoverToolStatus({ toolCall }: { toolCall: AgentToolCallRecord })
 
 interface AgentToolCallCardProps {
   toolCall: AgentToolCallRecord;
+  /** `[[ask:<id>]]` answers already present after this tool call. */
+  answeredQuestionIds?: ReadonlySet<string>;
+  /** Questions whose turn ended without an answer (greyed "not answered"). */
+  unresolvedQuestionIds?: ReadonlySet<string>;
 }
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -99,8 +104,15 @@ function formatResult(result: unknown): string {
 }
 
 /** @deprecated Use timeline/AgentExecutionNode instead. */
-const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({ toolCall }) => {
+const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({
+  toolCall, answeredQuestionIds, unresolvedQuestionIds,
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  if (isToolkitTool(toolCall.name)) {
+    return <ToolkitToolCard toolCall={toolCall}
+      answeredQuestionIds={answeredQuestionIds as Set<string> | undefined}
+      unresolvedQuestionIds={unresolvedQuestionIds as Set<string> | undefined} />;
+  }
   if (isWebResearchTool(toolCall.name)) {
     return <WebResearchToolCard toolCall={toolCall} />;
   }

@@ -216,6 +216,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             f"unavailable: {research_error}",
             exc_info=True,
         )
+    toolkit_purge: asyncio.Task | None = None
+    try:
+        from app.services.agent_toolkit import purge_expired
+
+        toolkit_purge = asyncio.create_task(purge_expired())
+        logger.info("Agent toolkit startup purge scheduled")
+    except Exception as toolkit_error:  # optional capability: never block boot
+        logger.error(
+            "Agent toolkit initialization failed; toolkit tools will report "
+            f"unavailable: {toolkit_error}",
+            exc_info=True,
+        )
     logger.info("Application startup completed")
 
     yield
@@ -225,6 +237,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if research_reaper is not None:
         research_reaper.cancel()
         await asyncio.gather(research_reaper, return_exceptions=True)
+    if toolkit_purge is not None:
+        toolkit_purge.cancel()
+        await asyncio.gather(toolkit_purge, return_exceptions=True)
     try:
         from app.services.web_research.run_registry import run_registry
         from app.services.web_research.browser_service import get_browser_service
@@ -687,6 +702,19 @@ app.include_router(research_browser_router.router, prefix="/api")
 @app.exception_handler(WebResearchError)
 async def research_error_handler(request: Request, exc: WebResearchError):
     return research_run_router.error_response(exc)
+
+
+# Agent general toolkit (workspace / documents / analysis / memory) —
+# docs/plans/agent-general-toolkit/spec.md §4.1.
+from app.routers import agent_toolkit_router
+from app.models.agent_toolkit_models import AgentToolkitError
+
+app.include_router(agent_toolkit_router.router, prefix="/api")
+
+
+@app.exception_handler(AgentToolkitError)
+async def agent_toolkit_error_handler(request: Request, exc: AgentToolkitError):
+    return agent_toolkit_router.error_response(exc)
 
 
 

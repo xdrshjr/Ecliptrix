@@ -23,6 +23,24 @@ Research may be unavailable while all editing tools continue to work.
 Never retry a blocked address, authentication failure, or missing configuration indefinitely.
 `;
 
+export const AGENT_TOOLKIT_GUIDANCE = `
+For a task with 3+ steps, publish the plan with update_plan and keep it current;
+close it with every step completed. Plan status is what the user sees, so never
+claim progress you did not record.
+When a missing decision would change the result, call ask_user once instead of
+guessing; otherwise pick the sensible default and say what you assumed.
+Keep long material out of the conversation: write drafts to the workspace
+(workspace_write) and read them back by page (workspace_read), never paste a
+whole document. Uploaded documents are read page by page with read_document; a
+digest is a summary, never evidence.
+Imported media is the only bridge to the timeline: run_analysis output must be
+imported with workspace_import_material before add_to_track.
+Write durable preferences and decisions to memory_write; search memory before
+asking the user something they may already have told you.
+Every capability is optional: when one is disabled, say so and continue with the
+editing path that still works.
+`;
+
 /**
  * Names of the tools that drive 95% of editing sessions. These are surfaced
  * inline in the L0 system prompt's "Core Workflow Toolkit" section
@@ -32,6 +50,9 @@ Never retry a blocked address, authentication failure, or missing configuration 
  * pulled live from `ToolRegistry` to avoid drift if a tool is renamed.
  */
 export const CORE_TOOLKIT_TOOL_NAMES: readonly string[] = [
+  // workflow_tools — 常驻：按需加载会白费一个整回合（§3.2）
+  'update_plan',
+  'ask_user',
   // search_tools
   'search_video',
   'search_image',
@@ -147,6 +168,24 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
   [CATEGORY_IDS.MATERIAL_TOOLS]:
     'Material management tools let you manually add external URLs or remove unwanted materials from the library. ' +
     'Note: search and AI generation results are auto-added, so this is mainly for manual management.',
+  [CATEGORY_IDS.WORKSPACE_TOOLS]:
+    'Workspace files are project-scoped and quota-limited. workspace_write saves text only ' +
+    '(max 2 MiB per file, no media extensions). workspace_read pages by bytes and refuses ' +
+    'binary files: use read_document for documents and workspace_import_material for media. ' +
+    'workspace_list returns files[] plus a separate documents[] array with document_id.',
+  [CATEGORY_IDS.DOCUMENT_TOOLS]:
+    'read_document returns ONE page at a time with next_page, and next_offset when a single ' +
+    'page is longer than the requested max_chars. Never summarise a document you have not ' +
+    'read; quote the page text, not the digest.',
+  [CATEGORY_IDS.ANALYSIS_TOOLS]:
+    'run_analysis executes Python in an isolated process with an AST allow-list. It is off by ' +
+    'default: if it returns analysis_disabled, tell the user where to enable it and stop. ' +
+    'Files it writes land in out/<call_id>/ and must be imported with ' +
+    'workspace_import_material before they can go on the timeline.',
+  [CATEGORY_IDS.MEMORY_TOOLS]:
+    'Memory is durable across turns and projects (project bucket + global bucket). ' +
+    'memory_write deduplicates identical text; memory_search returns at most 5 entries and ' +
+    'bumps their hit count; memory_forget deletes one entry. Never store credentials.',
 };
 
 /**

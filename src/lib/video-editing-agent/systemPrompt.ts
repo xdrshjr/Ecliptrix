@@ -3,8 +3,11 @@ import type { CategorySummary, ToolInfo } from './registry/ToolRegistry';
 import { ToolRegistry, type CategoryId } from './registry';
 import { utf8Slice } from './modelContextBudget';
 import type { WebCapabilitySnapshot } from './types';
+import type { AgentPlan } from '@/types/agentToolkit';
+import { AGENT_TOOLKIT_GUIDANCE } from './promptParts';
 import {
   CORE_TOOLKIT_TOOL_NAMES,
+  WEB_RESEARCH_GUIDANCE,
   WORKFLOW_RECIPES_MD,
   getCategoryUsageHints,
 } from './promptParts';
@@ -339,11 +342,23 @@ export function formatWorkflowRecipes(): string {
 // ---------------------------------------------------------------------------
 
 /**
+ * L0 system prompt 的**总**字符上限（含 web 研究引导与工具集引导）。
+ *
+ * 之前这个数只覆盖 `buildSystemPrompt` 的返回值，而 `agent.ts` 在它之后又
+ * 拼了 `WEB_RESEARCH_GUIDANCE`（≈880 字符）与「已加载类别」回顾行（≤200），
+ * 于是"上限"从未覆盖真正发给模型的那一段。实测最坏值（12 步满长计划 +
+ * 800 字符记忆 + 两个已探索类别）≈ **17 400**，取 18 000 留出余量。
+ * 断言见 `__tests__/systemPrompt.test.ts`、`agent.systemPrompt.test.ts`、
+ * `systemPrompt.toolkit.test.ts`（AC-28）。
+ */
+export const L0_PROMPT_CHAR_CEILING = 18_000;
+
+/**
  * Per-category char ceiling for blocks rendered into the Layer B appendix.
  * ≈ 600 tokens worst-case for mixed CN/EN. Anything past this gets truncated
  * with a "see explore_tools" tail so the system prompt stays under its hard
- * 14000-char ceiling even when many categories have been explored
- * (spec v2 §7 R1).
+ * `L0_PROMPT_CHAR_CEILING` even when many categories have been explored
+ * (agent-general-toolkit spec §3.7 R-12).
  */
 const APPENDIX_BLOCK_CHAR_CEILING = 2400;
 
@@ -457,6 +472,64 @@ export interface BuildSystemPromptInput {
   exploredCategories: CategoryId[];
   /** Network capability snapshot; omitted means "do not claim anything". */
   capabilities?: WebCapabilitySnapshot | null;
+  /** Latest effective plan (this turn or scanned from history). */
+  plan?: AgentPlan | null;
+  /** Long-term memory digest (<=5 entries, <=800 chars). */
+  memoryDigest?: { text: string; count: number } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Plan / memory digests (Layer D — agent toolkit injections)
+// ---------------------------------------------------------------------------
+
+/** `## 当前计划` 的字符上限（超出按步截断，active step 保留全文）。 */
+export const PLAN_DIGEST_CHAR_CEILING = 600;
+/** `## 长期记忆` 的字符上限。 */
+export const MEMORY_DIGEST_CHAR_CEILING = 800;
+
+/**
+ * Render `## 当前计划`. Read-only: the plan card and this block are both
+ * derived from the same tool record, so there is no second source of truth.
+ * `in_progress` keeps its full title; other steps are trimmed first.
+ */
+export function formatPlanDigest(plan?: AgentPlan | null): string {
+  if (!plan || plan.steps.length === 0) return '';
+  const header = `## 当前计划 (${plan.doneCount}/${plan.total})`
+    + (plan.note ? `\n${plan.note}` : '');
+  const lines: string[] = [];
+  for (const step of plan.steps) {
+    const marker = step.status === 'completed' ? 'x'
+      : step.status === 'in_progress' ? '>' : ' ';
+    lines.push(`- [${marker}] ${step.title}`);
+  }
+  let body = lines.join('\n');
+  if (header.length + body.length > PLAN_DIGEST_CHAR_CEILING) {
+    // 先截断非 active 的步标题，再整体硬截断，保证 active step 仍可读。
+    const trimmed = plan.steps.map(step => {
+      if (step.index === plan.activeStep) return step;
+      return { ...step, title: step.title.slice(0, 40) };
+    });
+    body = trimmed.map(step => {
+      const marker = step.status === 'completed' ? 'x'
+        : step.status === 'in_progress' ? '>' : ' ';
+      return `- [${marker}] ${step.title}`;
+    }).join('\n');
+  }
+  const rendered = `${header}\n${body}`;
+  return rendered.length <= PLAN_DIGEST_CHAR_CEILING
+    ? rendered : rendered.slice(0, PLAN_DIGEST_CHAR_CEILING);
+}
+
+/** Render `## 长期记忆`; empty digest renders nothing at all. */
+export function formatMemoryDigest(
+  digest?: { text: string; count: number } | null,
+): string {
+  if (!digest || !digest.text.trim()) return '';
+  const header = '## 长期记忆（此前确认过的偏好与决定）';
+  const budget = MEMORY_DIGEST_CHAR_CEILING - header.length - 1;
+  const body = digest.text.length <= budget
+    ? digest.text : digest.text.slice(0, budget);
+  return `${header}\n${body}`;
 }
 
 /**
@@ -473,9 +546,10 @@ export interface BuildSystemPromptInput {
  *   8. Hard constraints (video-track-longest, no overlap)
  *   9. **Previously explored advanced categories** (Layer B — NEW)
  *
- * Token budget: ≤ 3500 tokens (≈ 14000 chars worst-case for mixed CN/EN).
- * The previous "< 600 tokens" budget no longer applies — Layer A intentionally
- * inlines the per-tool schemas that used to live behind `explore_tools`.
+ * Token budget: ≤ 4500 tokens (≈ 18000 chars worst-case for mixed CN/EN,
+ * `L0_PROMPT_CHAR_CEILING`). The previous "< 600 tokens" budget no longer
+ * applies — Layer A intentionally inlines the per-tool schemas that used to
+ * live behind `explore_tools`.
  */
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const { timelineState, materials, registry, exploredCategories } = input;
@@ -520,6 +594,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - **死循环防护**：当 auto_fix_overlaps 连续 2 次返回 fixedCount=0（或 noop=true），立即停止修复循环。check_timeline_overlaps 中 autoFixable=false 的重叠（subtitle/locked 轨道）无法自动修复：除非用户要求，否则忽略它们，不要继续无意义的工具调用。
 - check_timeline_overlaps / auto_fix_overlaps 仅用于编辑路径的自检；纯搜索 / 生成任务无需调用。`;
 
+  const planDigest = formatPlanDigest(input.plan);
+  const memoryDigest = formatMemoryDigest(input.memoryDigest);
   const exploredAppendix = formatExploredCategoriesAppendix(registry, exploredCategories);
 
   // Order matches §2.4. Section 9 (appendix) is appended LAST so the
@@ -533,7 +609,15 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     workflowRecipes,
     smartHandling,
     hardConstraints,
+    AGENT_TOOLKIT_GUIDANCE.trim(),
+    // Web 研究引导与工具集引导同属**确定性**前缀：放在这里而不是由调用方
+    // 事后拼接，才能被 `L0_PROMPT_CHAR_CEILING` 真正约束（D-04 的同一条理由）。
+    WEB_RESEARCH_GUIDANCE.trim(),
   ];
+  // Plan and memory sit after the deterministic blocks so the cache-stable
+  // prefix of the prompt (role → rules → tools → status) never moves.
+  if (planDigest) sections.push(planDigest);
+  if (memoryDigest) sections.push(memoryDigest);
   if (exploredAppendix) sections.push(exploredAppendix);
 
   return sections.join('\n\n').trim();

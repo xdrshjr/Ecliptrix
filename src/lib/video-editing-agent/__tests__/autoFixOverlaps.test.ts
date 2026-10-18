@@ -30,6 +30,7 @@ function makeContext(tracks: TimelineState['tracks']): ToolContext {
     operations: new Map<string, AgentOperation>(),
     updateTimeline: () => undefined,
     recordOperation: () => undefined,
+    turnState: {},
   };
 }
 

@@ -3,7 +3,7 @@ import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model, KnownApi } from '@mariozechner/pi-ai';
 import { streamSimple } from '@mariozechner/pi-ai';
 import { ToolActivationState } from './registry/ToolActivationState';
-import { CORE_TOOLKIT_TOOL_NAMES, WEB_RESEARCH_GUIDANCE } from './promptParts';
+import { CORE_TOOLKIT_TOOL_NAMES } from './promptParts';
 import {
   budgetModelContext, compactResult, localErrorStream, retryOnContextOverflow,
   tokensToBytes,
@@ -18,12 +18,13 @@ import type {
   SSEEvent,
   VideoEditingAgentConfig,
 } from './types';
-import { buildSystemPrompt } from './systemPrompt';
+import { buildSystemPrompt, L0_PROMPT_CHAR_CEILING } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
 import { HISTORY_CHAR_BUDGET, compactHistoryForModel } from './historyBudget';
 import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
 import { scanExploredCategories } from './historyScan';
+import { scanLatestPlan } from './planScan';
 import { reconcileOverlapsAfterAgentOp } from './reconcile';
 import { validateOperationTargets } from './operationGuards';
 import { getTtsFailure } from '@/lib/ttsErrors';
@@ -123,6 +124,9 @@ contextWindow: config.contextWindowTokens ?? 128000,
       if (toolContext.abortSignal?.aborted) return;
       toolContext.operations.set(toolCallId, operation);
     },
+    // Fresh per request: `ask_user`'s one-per-turn rule and the live plan must
+    // never leak across an SSE retry (spec §3.5.2 / R-15).
+    turnState: {},
   };
 
   // 4. Create ToolRegistry and build tools
@@ -153,7 +157,9 @@ contextWindow: config.contextWindowTokens ?? 128000,
     registry,
     exploredCategories: [],
     capabilities: config.webCapabilities,
-  }) + '\n' + WEB_RESEARCH_GUIDANCE + (exploredCategories.length
+    plan: scanLatestPlan(config.conversationHistory),
+    memoryDigest: config.memoryDigest ?? null,
+  }) + (exploredCategories.length
     ? '\n## 已加载的高级工具（历史提示）\n' +
       exploredCategories.slice(-2).join(', ') +
       '：仅供回顾。历史不恢复工具授权；非核心工具须先 explore_tools 再在下一响应调用。'
@@ -170,6 +176,13 @@ contextWindow: config.contextWindowTokens ?? 128000,
   );
   if (PROMPT_DEBUG) {
     console.log('[VideoEditingAgent] PROMPT_DEBUG dump:\n' + systemPrompt);
+  }
+  // 上限是**总**提示词（含 web 研究引导与历史类别回顾行），所以在这里量而不是
+  // 在 `buildSystemPrompt` 里量。超出只是告警：prompt 不可裁剪，静默超限才是 bug。
+  if (systemPrompt.length > L0_PROMPT_CHAR_CEILING) {
+    console.warn(
+      `[VideoEditingAgent] systemPrompt ${systemPrompt.length} chars exceeds L0 ceiling ${L0_PROMPT_CHAR_CEILING}`
+    );
   }
 
   // 7. Create Agent

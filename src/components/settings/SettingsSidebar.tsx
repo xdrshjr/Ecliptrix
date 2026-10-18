@@ -7,6 +7,7 @@ export type SettingsMenuItem =
   | 'general'
   | 'model'
   | 'webResearch'
+  | 'agentToolkit'
   | 'tts'
   | 'videoAnalysis'
   | 'upload'
@@ -63,6 +64,12 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeItem, onSelectI
           label: t.webResearch.title,
           description: t.webResearch.description,
           icon: <span aria-hidden="true">◎</span>,
+        },
+        {
+          id: 'agentToolkit',
+          label: t.agentToolkit.title,
+          description: t.agentToolkit.description,
+          icon: <span aria-hidden="true">◧</span>,
         },
         {
           id: 'model',

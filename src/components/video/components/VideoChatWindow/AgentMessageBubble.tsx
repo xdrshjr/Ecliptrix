@@ -10,10 +10,16 @@ import { formatTime } from '@/lib/utils/dateFormat';
 interface AgentMessageBubbleProps {
   message: ChatMessage;
   onUndo?: (message: ChatMessage) => void;
+  /** `[[ask:<id>]]` answers already present in the conversation. */
+  answeredQuestionIds?: ReadonlySet<string>;
+  /** Questions whose turn ended without an answer. */
+  unresolvedQuestionIds?: ReadonlySet<string>;
 }
 
 /** @deprecated Use timeline/AgentResponseNode instead. */
-const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, onUndo }) => {
+const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({
+  message, onUndo, answeredQuestionIds, unresolvedQuestionIds,
+}) => {
   const { t } = useLocale();
   const toolCalls = message.agentToolCalls || [];
   const operationCount = message.pendingOperations?.length ?? 0;
@@ -51,7 +57,9 @@ const AgentMessageBubble: React.FC<AgentMessageBubbleProps> = ({ message, onUndo
           {toolCalls.length > 0 && (
             <div className="px-4 pb-3 space-y-2">
               {toolCalls.map((tc) => (
-                <AgentToolCallCard key={tc.id} toolCall={tc} />
+                <AgentToolCallCard key={tc.id} toolCall={tc}
+                  answeredQuestionIds={answeredQuestionIds}
+                  unresolvedQuestionIds={unresolvedQuestionIds} />
               ))}
             </div>
           )}

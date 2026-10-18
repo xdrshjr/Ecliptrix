@@ -1,0 +1,32 @@
+# Agent 通用工具集出厂默认值（docs/plans/agent-general-toolkit/spec.md §5.4）。
+# 写入路径：首次启动由 system_settings_service 播种进 system_settings 表
+# （category = agent_toolkit）。运行期以数据库中的值为准，本文件只提供出厂值。
+#
+# 注意：analysis_enabled 默认 false —— 计算沙箱用 AST 白名单 + 独立进程限制，
+# 不是内核级隔离，只有运行时长上限而没有内存上限，必须由用户显式开启。
+agent_toolkit:
+  enabled: true
+  workspace_enabled: true
+  documents_enabled: true
+  analysis_enabled: false
+  memory_enabled: true
+  # 项目工作区配额（MB，16-2048）
+  workspace_quota_mb: 256
+  # 单文件上限（MB，1-128）；写入类另受 2 MiB 硬上限约束
+  max_file_mb: 32
+  # 文档页数上限（1-5000）；PDF 取物理页，其他格式按 3000 字符分块
+  document_max_pages: 800
+  # 抽取文本上限（10000-10000000），超出截断并标记 truncated
+  document_max_chars: 2000000
+  # 分层摘要档位：fast | research
+  document_digest_model: fast
+  # 沙箱墙钟上限（秒，5-60）
+  analysis_timeout_seconds: 20
+  # stdout / stderr 各自上限（KiB，8-512）
+  analysis_max_output_kb: 64
+  # 单个记忆桶（项目 / 全局各自独立计数）的条数上限（20-1000）
+  memory_max_entries: 200
+  # 记忆过期天数（0 = 永久，0-3650）
+  memory_retention_days: 180
+  # 计划步数上限（4-20）
+  plan_max_steps: 12

@@ -16,13 +16,24 @@
  * @module VideoChatWindow
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, {
+  useState, useRef, useEffect, useCallback, useMemo,
+} from 'react';
 import { Conversation, ChatMessage } from '@/types';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
 import { TimelineChatPanel } from './timeline';
 import AgentBusyBar from './AgentBusyBar';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import {
+  askAnswerMessage, documentRefMessage, parseAskAnswer,
+} from '@/types/agentToolkit';
+import { ASK_ANSWER_EVENT } from './AskUserCard';
+import {
+  AgentToolkitApiError, fetchAgentToolkitCapabilities, uploadDocument,
+} from '@/lib/api/agentToolkit';
+import { resolveAgentToolkitStatus } from '@/lib/agentToolkitStatus';
+import type { AgentToolkitCapabilities } from '@/types/agentToolkit';
 
 export interface VideoChatWindowProps {
   /** 最小化只暂停展示工作，不影响会话与 Agent 执行。 */
@@ -89,6 +100,49 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   const { showConfirm } = useNotification();
   const [inputMessage, setInputMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // 文档上传：同一时刻只允许一个（`uploading` 即互斥锁）。
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [toolkitCaps, setToolkitCaps] =
+    useState<AgentToolkitCapabilities | null>(null);
+
+  const messages = conversation?.messages;
+
+  /**
+   * 已回答的 question_id：该问题之后存在一条 `[[ask:<id>]]` 用户消息。
+   * 只读派生——绝不写回 `ChatMessage`（§3.5.2）。
+   */
+  const answeredQuestionIds = useMemo(() => {
+    const answered = new Set<string>();
+    for (const message of messages ?? []) {
+      if (message.role !== 'user') continue;
+      const questionId = parseAskAnswer(message.content);
+      if (questionId) answered.add(questionId);
+    }
+    return answered;
+  }, [messages]);
+
+  /**
+   * 未回答态：提问存在、本轮已结束、且之后没有对应回答。
+   * 纯由「有没有回答」+「当前是否在跑」两个既知量派生，不引入服务端状态。
+   */
+  const unresolvedQuestionIds = useMemo(() => {
+    const unresolved = new Set<string>();
+    if (agentIsExecuting) return unresolved;
+    for (const message of messages ?? []) {
+      for (const call of message.agentToolCalls ?? []) {
+        if (call.name !== 'ask_user') continue;
+        const result = call.result as { question_id?: unknown } | undefined;
+        const questionId = typeof result?.question_id === 'string'
+          ? result.question_id : '';
+        if (questionId && !answeredQuestionIds.has(questionId)) {
+          unresolved.add(questionId);
+        }
+      }
+    }
+    return unresolved;
+  }, [messages, agentIsExecuting, answeredQuestionIds]);
 
   // ----- Textarea height management -----
 
@@ -149,6 +203,69 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       textareaRef.current.style.overflow = 'hidden';
     }
   }, [inputMessage]);
+
+  /**
+   * `AskUserCard` 的选项按钮只发一个 window 事件；这里把答案变成**一条普通
+   * 用户消息**（`[[ask:<id>]] <answer>`）。不挂起流、不改 SSE 协议。
+   */
+  useEffect(() => {
+    const onAnswer = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        questionId?: string; answer?: string }>).detail;
+      const questionId = detail?.questionId;
+      const answer = detail?.answer?.trim();
+      if (!questionId || !answer) return;
+      if (agentIsExecuting) return;
+      void onSendMessage(askAnswerMessage(questionId, answer));
+    };
+    window.addEventListener(ASK_ANSWER_EVENT, onAnswer);
+    return () => window.removeEventListener(ASK_ANSWER_EVENT, onAnswer);
+  }, [onSendMessage, agentIsExecuting]);
+
+  // 文档能力开关决定「添加文档」按钮是否可用；失败只降级，不阻塞聊天。
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAgentToolkitCapabilities()
+      .then((caps) => { if (!cancelled) setToolkitCaps(caps); })
+      .catch(() => { if (!cancelled) setToolkitCaps(null); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const documentsEnabled = toolkitCaps?.documents.enabled === true
+    && toolkitCaps?.documents.available === true;
+  const documentAccept = (toolkitCaps?.documents.formats ?? [])
+    .join(',');
+  const maxFileMb = toolkitCaps?.limits.max_file_mb ?? 0;
+
+  const uploadSelectedDocument = useCallback(
+    async (file: File | undefined) => {
+      if (!file || uploading) return;
+      setUploadError(null);
+      // 前端预检：超限直接拒绝，不发请求（避免 413 往返）。
+      if (maxFileMb > 0 && file.size > maxFileMb * 1024 * 1024) {
+        setUploadError(t.agentToolkit.attachTooLarge.replace(
+          '{mb}', String(maxFileMb)));
+        return;
+      }
+      setUploading(true);
+      try {
+        const uploaded = await uploadDocument(file);
+        // 成功后**恰**发一条消息；失败绝不发送（否则模型会引用不存在的文档）。
+        await onSendMessage(
+          documentRefMessage(uploaded.document_id, uploaded.name));
+      } catch (error) {
+        const code = error instanceof AgentToolkitApiError
+          ? error.errorCode : 'document_parse_failed';
+        const status = resolveAgentToolkitStatus({ error_code: code });
+        setUploadError(status
+          ? t.agentToolkit[status.key] : t.agentToolkit.attachFailed);
+      } finally {
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    },
+    [uploading, maxFileMb, onSendMessage, t.agentToolkit],
+  );
 
   const handleClearChat = useCallback(() => {
     if (!conversation || conversation.messages.length === 0) return;
@@ -226,6 +343,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           undoDisabled={agentIsExecuting}
           onDismiss={onDismissError}
           singleUndoMessageIds={singleUndoMessageIds}
+          answeredQuestionIds={answeredQuestionIds}
+          unresolvedQuestionIds={unresolvedQuestionIds}
           isVisible={isVisible}
         />
       ) : (
@@ -336,6 +455,46 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
               style={{ height: `${INPUT_MIN_HEIGHT}px`, overflow: 'hidden' }}
             />
           </div>
+          {/* Add Document — the only model-free entry for uploads (§6.3). */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept={documentAccept}
+            onChange={(event) => {
+              void uploadSelectedDocument(event.target.files?.[0]);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!documentsEnabled || uploading || inputDisabled}
+            aria-label={t.agentToolkit.attachDocument}
+            title={documentsEnabled
+              ? t.agentToolkit.attachDocument : t.agentToolkit.attachDisabled}
+            className="bg-card dark:bg-zinc-800 border border-border dark:border-zinc-600 hover:bg-accent dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-foreground dark:text-zinc-300 rounded-md transition-colors flex items-center justify-center shrink-0"
+            style={{ width: '32px', height: '32px' }}
+          >
+            {uploading ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"
+                aria-hidden="true">
+                <circle className="opacity-25" cx="12" cy="12" r="10"
+                  stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 10-5.656-5.656L5.05 10.828a6 6 0 108.485 8.485l6.586-6.586" />
+              </svg>
+            )}
+          </button>
+          <span aria-live="polite" className="sr-only">
+            {uploading ? t.agentToolkit.attaching : ''}
+          </span>
           {/* Clear Chat Button */}
           <button
             type="button"
@@ -388,6 +547,12 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             </button>
           )}
         </form>
+        {uploadError && (
+          <p role="alert"
+            className="mt-1 px-1 text-xs text-red-500 dark:text-red-400">
+            {uploadError}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -180,6 +180,9 @@ def _claim_ownership_for_local_owner(
 async def init_db() -> None:
     """Create the schema and claim legacy rows for the local owner."""
     from app.models.research_db_models import ResearchArtifact  # noqa: F401
+    from app.models.agent_toolkit_db_models import (  # noqa: F401
+        AgentDocument, AgentMemory,
+    )
     from app.models.db_models import Base
 
     async with engine.begin() as conn:

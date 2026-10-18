@@ -88,7 +88,7 @@ describe('createVideoEditingAgent — explored-categories appendix is reflected 
     expect(sp).not.toContain('## 已加载的高级工具');
   });
 
-  it('keeps the prompt under the 14000-char ceiling even when 3 categories have been explored', () => {
+  it('keeps the prompt under the 18000-char ceiling even when 3 categories have been explored', () => {
     const explored = ['script_tools', 'storyboard_tools', 'tts_tools'];
     const history: ChatMessage[] = [
       { id: 'u1', role: 'user', content: 'hi', timestamp: new Date() },
@@ -119,6 +119,6 @@ describe('createVideoEditingAgent — explored-categories appendix is reflected 
       apiBaseUrl: 'http://localhost:3088',
     });
 
-    expect(agent.state.systemPrompt.length).toBeLessThan(14000);
+    expect(agent.state.systemPrompt.length).toBeLessThan(18000);
   });
 });

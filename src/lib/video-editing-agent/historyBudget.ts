@@ -44,6 +44,22 @@ const STALE_SNAPSHOT_TOOLS: ReadonlySet<string> = new Set([
   'check_timeline_overlaps',
 ]);
 
+/**
+ * Tools whose OLDER results are pure history: only the latest one matters, and a
+ * superseded plan/ask is worse than useless (it shows a plan the model no longer
+ * follows, or a question it already asked). agent-general-toolkit spec §3.5.1.
+ */
+const LATEST_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  'update_plan',
+  'ask_user',
+]);
+
+/** 被取代的旧结果在历史里显示的名词（`update_plan` → plan 等）。 */
+const OMITTED_NOUNS: Record<string, string> = {
+  update_plan: 'plan',
+  ask_user: 'question',
+};
+
 /** Synthetic user notes belong to the turn around them, not a new one. */
 const SYSTEM_NOTE_PREFIX = '[System note]';
 
@@ -150,6 +166,36 @@ function omittedTurnsNote(count: number, timestamp: number, artifactIds: string[
 }
 
 /**
+ * Keep only the newest result of each `LATEST_ONLY_TOOLS` tool.
+ *
+ * Deliberately runs across **every** kept turn, including the ones
+ * `RECENT_TURNS_KEPT_VERBATIM` protects: a superseded plan is actively
+ * misleading (it shows steps the model no longer follows), and an old
+ * `ask_user` result would re-render a question that was already answered.
+ * This is a dedicated pass rather than a `compactOlderMessage` branch because
+ * the chat route injects its own compactor, which would bypass that branch.
+ */
+function stubSupersededLatestOnly(messages: Message[]): Message[] {
+  const latest = new Map<string, number>();
+  messages.forEach((message, index) => {
+    if (message.role === 'toolResult'
+      && LATEST_ONLY_TOOLS.has(message.toolName)) {
+      latest.set(message.toolName, index);
+    }
+  });
+  if (latest.size === 0) return messages;
+  return messages.map((message, index) => {
+    if (message.role !== 'toolResult') return message;
+    if (!LATEST_ONLY_TOOLS.has(message.toolName)) return message;
+    if (latest.get(message.toolName) === index) return message;
+    // 旧结果按工具名给出可读原因：同一条通道里既有被取代的计划，也有被取代的提问。
+    const noun = OMITTED_NOUNS[message.toolName] ?? 'result';
+    return textResult(
+      message, JSON.stringify({ omitted: `superseded ${noun}` }));
+  });
+}
+
+/**
  * Compact the history replayed to the model: older turns lose stale
  * snapshots and operation lists; if that is still over `budget`, whole
  * oldest turns are dropped (never the latest two) and a note says so.
@@ -168,14 +214,17 @@ export function compactHistoryForModel(
     index < firstVerbatimTurn ? turn.map(compactToolResult) : [...turn],
   );
 
-  let total = compacted.reduce((sum, turn) => sum + turnChars(turn), 0);
+  // 先做「只留最新」再算总量：这一步省下的字符必须计入预算，否则会多丢整轮
+  // 历史（§3.5.1 的 LATEST_ONLY_TOOLS）。
+  const stubbed = splitIntoTurns(stubSupersededLatestOnly(compacted.flat()));
+  let total = stubbed.reduce((sum, turn) => sum + turnChars(turn), 0);
   let droppedTurns = 0;
   while (total > budget && droppedTurns < firstVerbatimTurn) {
-    total -= turnChars(compacted[droppedTurns]);
+    total -= turnChars(stubbed[droppedTurns]);
     droppedTurns += 1;
   }
 
-  const kept = compacted.slice(droppedTurns).flat();
+  const kept = stubbed.slice(droppedTurns).flat();
   if (droppedTurns === 0) return kept;
   const artifactIds = collectResearchArtifactIds(compacted.slice(0, droppedTurns).flat());
   return [omittedTurnsNote(droppedTurns, kept[0]?.timestamp ?? 0, artifactIds), ...kept];

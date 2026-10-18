@@ -69,6 +69,7 @@ describe('agent material payloads', () => {
       operations: new Map(),
       updateTimeline,
       recordOperation: vi.fn(),
+      turnState: {},
     };
 
     await createAddToTrackTool(context).execute('tc-1', { materialId: 'm1', trackId: 'v1' });

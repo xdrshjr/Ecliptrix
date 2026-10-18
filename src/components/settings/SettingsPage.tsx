@@ -5,6 +5,7 @@ import SettingsSidebar, { SettingsMenuItem } from './SettingsSidebar';
 import GeneralSettingsPanel from './GeneralSettingsPanel';
 import ModelSettingsPanel from './ModelSettingsPanel';
 import WebResearchSettingsPanel from './WebResearchSettingsPanel';
+import AgentToolkitSettingsPanel from './AgentToolkitSettingsPanel';
 import TTSSettingsPanel from './TTSSettingsPanel';
 import YouTubeSettingsPanel from './YouTubeSettingsPanel';
 import UploadSettingsPanel from './UploadSettingsPanel';
@@ -52,6 +53,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => 
         return <ModelSettingsPanel />;
       case 'webResearch':
         return <WebResearchSettingsPanel onOpenModels={() => setActiveItem('model')} />;
+      case 'agentToolkit':
+        return <AgentToolkitSettingsPanel onOpenModels={() => setActiveItem('model')} />;
       case 'tts':
         return <TTSSettingsPanel />;
       case 'videoAnalysis':

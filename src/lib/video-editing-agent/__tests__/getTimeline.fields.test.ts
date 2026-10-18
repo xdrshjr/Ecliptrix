@@ -33,6 +33,7 @@ async function readTimeline(tracks: Track[]) {
     operations: new Map(),
     updateTimeline: () => undefined,
     recordOperation: () => undefined,
+    turnState: {},
   };
   const result = await createGetTimelineTool(context).execute('tc-1', {});
   const text = (result.content[0] as { text: string }).text;
