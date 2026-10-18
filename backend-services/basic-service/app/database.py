@@ -81,7 +81,7 @@ def _create_engine():
     _install_sqlite_pg_type_shims()
     sqlite_engine = create_async_engine(
         _resolve_database_url(),
-        echo=settings.debug
+        echo=settings.debug, hide_parameters=True
     )
 
     @sa.event.listens_for(sqlite_engine.sync_engine, "connect")
@@ -179,6 +179,7 @@ def _claim_ownership_for_local_owner(
 
 async def init_db() -> None:
     """Create the schema and claim legacy rows for the local owner."""
+    from app.models.research_db_models import ResearchArtifact  # noqa: F401
     from app.models.db_models import Base
 
     async with engine.begin() as conn:

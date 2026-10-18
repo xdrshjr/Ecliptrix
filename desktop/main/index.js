@@ -2,7 +2,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { app, dialog } = require('electron')
+const { app, dialog, session } = require('electron')
 
 const { initUserData, saveConfig } = require('./config')
 const { loadUserEnv, backfillUserEnv } = require('./envCheck')
@@ -53,6 +53,12 @@ const state = {
   backendPort: 0,
   backend: null,
   frontend: null,
+  browserHost: null,
+  browserHostRestarts: 0,
+  researchBrowserEnv: null,
+  // 端口只在首次挑选后固定：后端在 spawn 时已锁定 CDP/控制端口的 env，
+  // 宿主崩溃重启若换端口，后端会继续拨号死端口（能力永远不会恢复）。
+  researchBrowserPorts: null,
   mainWindow: null,
   splash: null,
   quitting: false,
@@ -60,8 +66,11 @@ const state = {
 }
 
 // Double-starting would collide on ports and the SQLite WAL lock (spec §2.1).
-const gotSingleInstanceLock = app.requestSingleInstanceLock()
-if (!gotSingleInstanceLock) {
+// --agent-browser-host 子进程模式必须在抢锁之前分流：绝不抢单实例锁、
+// 不建主窗口、不启动后端/前端（spec agent-general-capabilities §3.6）。
+if (process.argv.includes('--agent-browser-host')) {
+  require('./agentBrowserHost')
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
@@ -151,6 +160,7 @@ async function main() {
 
   try {
     await resolvePorts()
+    await startResearchBrowserHost()
     await startServices()
     createMainWindow(`http://127.0.0.1:${state.frontendPort}`)
   } catch (err) {
@@ -203,6 +213,102 @@ async function resolvePorts() {
   }
 }
 
+/**
+ * 拉起并监管 agent-browser-host 子进程（spec §3.6）。
+ *
+ * 失败语义：宿主是能力件不是启动依赖——就绪失败只记录日志并跳过 env
+ * 注入，后端把浏览器能力降级为 unavailable，静态搜索/抓取照常工作。
+ * 崩溃自动重启（上限 3 次），重启后同样重新探测。
+ */
+async function startResearchBrowserHost() {
+  try {
+    // smoke/调试可经 env 固定端口；缺省动态挑选一次并记住（重启复用）。
+    if (!state.researchBrowserPorts) {
+      state.researchBrowserPorts = {
+        cdpPort: Number(process.env.ECLIPTRIX_RESEARCH_CDP_PORT) ||
+          (await pickPort(9222)).port,
+        controlPort: Number(process.env.ECLIPTRIX_RESEARCH_CONTROL_PORT) ||
+          (await pickPort(9333)).port,
+      }
+    }
+    const { cdpPort, controlPort } = state.researchBrowserPorts
+    const hostArgs = isDev
+      ? [app.getAppPath(), '--agent-browser-host', `--cdp-port=${cdpPort}`, `--control-port=${controlPort}`]
+      : ['--agent-browser-host', `--cdp-port=${cdpPort}`, `--control-port=${controlPort}`]
+    // ELECTRON_RUN_AS_NODE 会把子进程降级成纯 Node，必须剥除。
+    const hostEnv = { ...process.env }
+    delete hostEnv.ELECTRON_RUN_AS_NODE
+    state.browserHost = new ManagedService(
+      {
+        name: 'agent-browser-host',
+        command: process.execPath,
+        args: hostArgs,
+        cwd: app.getAppPath(),
+        env: hostEnv,
+        healthUrl: `http://127.0.0.1:${cdpPort}/json/version`,
+        healthTimeoutMs: 20000,
+      },
+      {
+        logger: state.logger,
+        onUnexpectedExit: () => restartResearchBrowserHost(),
+      },
+    )
+    state.browserHost.start()
+    await state.browserHost.waitHealthy()
+
+    const researchBrowserEnv = {
+      AGENT_BROWSER_CDP_URL: `http://127.0.0.1:${cdpPort}`,
+      AGENT_BROWSER_CONTROL_URL: `http://127.0.0.1:${controlPort}`,
+    }
+    // 系统代理探测：auto 模式的第三优先级（spec §3.4/§3.6）。
+    try {
+      const proxyRules = await new Promise((resolve) => {
+        session.defaultSession.resolveProxy('https://example.com', resolve)
+      })
+      const match = /PROXY\s+([^\s;]+)/.exec(proxyRules || '')
+      if (match) {
+        const host = match[1].includes('://') ? match[1] : `http://${match[1]}`
+        researchBrowserEnv.WEB_RESEARCH_SYSTEM_PROXY = host
+        state.logger.info('process', `system proxy for research: ${host}`)
+      }
+    } catch (error) {
+      state.logger.warn('process', `resolveProxy failed: ${error.message}`)
+    }
+    state.researchBrowserEnv = researchBrowserEnv
+    state.logger.info(
+      'process',
+      `agent-browser-host ready (cdp=${researchBrowserEnv.AGENT_BROWSER_CDP_URL})`,
+    )
+  } catch (err) {
+    state.logger.warn(
+      'process',
+      `agent-browser-host unavailable — browser capability degraded: ${(err && err.message) || err}`,
+    )
+    if (state.browserHost) {
+      await state.browserHost.stop().catch(() => {})
+      state.browserHost = null
+    }
+    state.researchBrowserEnv = null
+  }
+}
+
+async function restartResearchBrowserHost() {
+  if (state.quitting) return
+  if (state.browserHostRestarts >= 3) {
+    state.logger.error('process', 'agent-browser-host crashed too often — leaving browser capability degraded')
+    state.browserHost = null
+    state.researchBrowserEnv = null
+    return
+  }
+  state.browserHostRestarts += 1
+  state.logger.warn('process', `agent-browser-host crashed — restarting (${state.browserHostRestarts}/3)`)
+  if (state.browserHost) {
+    await state.browserHost.stop().catch(() => {})
+    state.browserHost = null
+  }
+  await startResearchBrowserHost()
+}
+
 async function startServices() {
   const resourcesPath = process.resourcesPath
 
@@ -214,6 +320,7 @@ async function startServices() {
       backendPort: state.backendPort,
       frontendPort: state.frontendPort,
       userEnv: state.userEnv,
+      researchBrowserEnv: state.researchBrowserEnv,
     }),
     { logger: state.logger, onUnexpectedExit: handleUnexpectedExit }
   )
@@ -366,7 +473,7 @@ async function restartServices() {
 }
 
 async function stopChildren() {
-  const children = [state.frontend, state.backend].filter(Boolean)
+  const children = [state.frontend, state.backend, state.browserHost].filter(Boolean)
   await Promise.all(
     children.map((service) =>
       service.stop().catch((err) => {

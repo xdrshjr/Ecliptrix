@@ -1,6 +1,8 @@
 import type { TimelineState, MaterialItem } from '@/types';
 import type { CategorySummary, ToolInfo } from './registry/ToolRegistry';
 import { ToolRegistry, type CategoryId } from './registry';
+import { utf8Slice } from './modelContextBudget';
+import type { WebCapabilitySnapshot } from './types';
 import {
   CORE_TOOLKIT_TOOL_NAMES,
   WORKFLOW_RECIPES_MD,
@@ -55,7 +57,10 @@ const ALWAYS_AVAILABLE_TOOLS: { name: string; desc: string }[] = [
  *                            (currently unused by the body — see note above).
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function formatToolOverview(categorySummaries: CategorySummary[]): string {
+export function formatToolOverview(
+  categorySummaries: CategorySummary[],
+  availability: Record<string, CategoryAvailability> = {},
+): string {
   const lines: string[] = [];
 
   lines.push('## 始终可用的工具');
@@ -63,7 +68,47 @@ export function formatToolOverview(categorySummaries: CategorySummary[]): string
     lines.push(`- ${tool.name}: ${tool.desc}`);
   }
 
+  lines.push('\n## 按需能力目录',
+    'Use explore_tools(category, tool_names?) to load up to four tools. Loaded tools become callable in the next response.');
+  lines.push(utf8Slice(categorySummaries.filter(category => !category.alwaysAvailable)
+    .map(category => utf8Slice(`- ${category.id}: ${category.description}` +
+      availabilitySuffix(availability[category.id]), 160))
+    .join('\n'), 2400));
+
   return lines.join('\n');
+}
+
+/** `available` / `unavailable(reason)` so the model can predict a closed door. */
+export interface CategoryAvailability {
+  available: boolean;
+  reason?: string;
+}
+
+function availabilitySuffix(state?: CategoryAvailability): string {
+  if (!state) return '';
+  if (state.available) return ' [available]';
+  return ` [unavailable${state.reason ? `: ${state.reason}` : ''}]`;
+}
+
+/** Maps the capability snapshot onto the categories that need the network. */
+export function categoryAvailability(
+  snapshot?: WebCapabilitySnapshot | null,
+): Record<string, CategoryAvailability> {
+  if (!snapshot) return {};
+  return {
+    web_tools: {
+      available: snapshot.search.available && snapshot.downloads.available,
+      reason: snapshot.search.error_code ?? snapshot.downloads.error_code,
+    },
+    browser_tools: {
+      available: snapshot.browser.available && snapshot.browser.enabled !== false,
+      reason: snapshot.browser.error_code,
+    },
+    research_tools: {
+      available: snapshot.search.available,
+      reason: snapshot.search.error_code,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +455,8 @@ export interface BuildSystemPromptInput {
   registry: ToolRegistry;
   /** Categories the user has previously loaded via explore_tools. */
   exploredCategories: CategoryId[];
+  /** Network capability snapshot; omitted means "do not claim anything". */
+  capabilities?: WebCapabilitySnapshot | null;
 }
 
 /**
@@ -439,15 +486,16 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const rules = `## 规则
 - 你必须调用工具来执行任何操作。仅在文字中描述操作不会产生任何效果。
 - 复合任务请自动拆解为多个步骤顺序执行。
-- 搜索/生成的结果会自动添加到素材库。AI生成任务为异步，启动后无需等待。
+- 媒体搜索/生成工具的结果会自动添加到素材库。web_search/web_research/extract_web_images 只产生资料或候选，下载成功才入库。AI生成任务为异步，启动后无需等待。
 - 制作视频封面使用 cover_tools（可 explore_tools 查看），支持 HTML、AI、混合三种模式。默认 applyWhenReady=true，用户要求方案/候选/不要应用时设 false。queued 只能说“已开始制作，完成后会显示结果”；draft_ready 表示等待客户端准备，工具返回 completed 不代表已经写入视频。只有客户端实际状态 applied 才能称已应用。get_video_cover 返回本轮请求快照，不是实时编辑器。
 - **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
-- **失败必须停止**：如果某个生成或搜索工具返回 "success: false"，你必须先向用户报告错误并停止当前流程，不要用编造的 ID 继续调用 add_to_track。连续 5 次工具失败后，Agent 将被自动中断。
+- **停止依赖失败结果的分支**：工具返回 "success: false" 时先报告限制，不得编造材料、引用或素材 ID；网络研究失败后可继续独立的既有编辑操作。连续 5 次工具失败后，Agent 将被自动中断。
 - **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，必须明显低于人声，不可盖过主音频。
 - 对于罕见或本提示词未覆盖的高级工具，可调用 explore_tools 查看详情；常用工作流工具已在下方"核心工作流工具"中给出，无需先 explore。
 - 历史中内容为 {"omitted": "..."} 的工具结果表示较早轮次的状态快照已省略；需要当前状态时重新调用 get_timeline / list_materials 等工具获取，不要依据旧快照操作。`;
 
-  const overview = formatToolOverview(categorySummaries);
+  const overview = formatToolOverview(categorySummaries,
+    categoryAvailability(input.capabilities));
   const coreToolkit = formatCoreToolkit(registry);
   const projectStatus = `## 项目状态\n${formatCompactSummary(timelineState, materials)}`;
   const workflowRecipes = formatWorkflowRecipes();

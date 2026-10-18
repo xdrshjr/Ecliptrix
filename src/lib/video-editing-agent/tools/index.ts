@@ -2,6 +2,10 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { TimelineState, Track, TimelineItem, MaterialItem, AgentMaterialData } from '@/types';
 import { isInlineMediaUrl } from '@/lib/inlineUrl';
 import type { ToolContext } from '../types';
+import type { ToolActivationState } from '../registry/ToolActivationState';
+import { createWebTools } from './webTools';
+import { createBrowserTools } from './browserTools';
+import { createResearchArtifactTool } from './researchArtifactTool';
 import { ToolRegistry, CATEGORY_IDS, createDefaultCategories } from '../registry';
 import { createGetTimelineTool } from './getTimeline';
 import { createListMaterialsTool } from './listMaterials';
@@ -354,6 +358,10 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     registry.registerCategory(category);
   }
 
+  registry.registerToolsForCategory(CATEGORY_IDS.WEB_TOOLS, createWebTools(context));
+  registry.registerToolsForCategory(CATEGORY_IDS.BROWSER_TOOLS, createBrowserTools(context));
+  registry.registerToolsForCategory(CATEGORY_IDS.RESEARCH_TOOLS, [createResearchArtifactTool(context)]);
+
   // Populate query_tools category
   registry.registerToolsForCategory(CATEGORY_IDS.QUERY_TOOLS, [
     createGetTimelineTool(context),
@@ -432,8 +440,18 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
  * @returns Array of all tools to register with the Agent
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function buildAllAgentTools(registry: ToolRegistry): AgentTool<any>[] {
+export function buildAllAgentTools(registry: ToolRegistry, activation?: ToolActivationState): AgentTool<any>[] {
   const allTools = registry.getAllTools();
-  const exploreTool = createExploreToolsTool(registry);
-  return [...allTools, exploreTool];
+  const exploreTool = createExploreToolsTool(registry, activation);
+  let calls = 0;
+  return [...allTools, exploreTool].map(tool => ({ ...tool,
+    execute: async (...args: Parameters<typeof tool.execute>) => {
+      if (activation && !activation.canExecute(tool.name)) {
+        return toolErrorResponse({ success: false,
+          error: 'tool_not_loaded: load with explore_tools, then call on the next response.' });
+      }
+      if (++calls > 80) return toolErrorResponse({ success: false, error: 'tool_call_limit' });
+      return tool.execute(args[0], args[1], args[2], args[3]);
+    },
+  }));
 }

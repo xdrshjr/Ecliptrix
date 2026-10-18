@@ -5,9 +5,54 @@ import {
   formatCoreToolkit,
   formatExploredCategoriesAppendix,
   formatWorkflowRecipes,
+  formatToolOverview,
 } from '../systemPrompt';
+
+it('makes web, browser and artifact categories discoverable without embedding their schemas', () => {
+  const registry = new ToolRegistry();
+  createDefaultCategories().forEach(category => registry.registerCategory(category));
+  const overview = formatToolOverview(registry.getCategorySummaries());
+  expect(overview).toContain('web_tools');
+  expect(overview).toContain('browser_tools');
+  expect(overview).toContain('research_tools');
+  expect(overview).toContain('get_timeline');
+  expect(overview).not.toContain('properties');
+});
 import { ToolRegistry, CATEGORY_IDS, createDefaultCategories, type CategoryId } from '../registry';
+import { categoryAvailability } from '../systemPrompt';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
+import { WEB_RESEARCH_GUIDANCE } from '../promptParts';
+
+it('网络候选不自动入库且失败仅停止依赖分支', () => {
+  const prompt = buildSystemPrompt({ timelineState: emptyTimeline(), materials: [],
+    registry: buildFullStubRegistry(), exploredCategories: [] });
+  expect(prompt).toContain('web_search/web_research/extract_web_images');
+  expect(prompt).toContain('停止依赖失败结果的分支');
+  expect(prompt).not.toContain('搜索/生成的结果会自动添加');
+  expect(WEB_RESEARCH_GUIDANCE).toContain('search_snippet');
+  expect(WEB_RESEARCH_GUIDANCE).toContain('quality');
+});
+
+it('目录行标注可用状态，模型可预知被关闭的能力（D-10）', () => {
+  const registry = new ToolRegistry();
+  createDefaultCategories().forEach(category => registry.registerCategory(category));
+  const availability = categoryAvailability({
+    search: { available: false, configured: false,
+      error_code: 'provider_not_configured' },
+    browser: { available: false, enabled: true, error_code: 'browser_unavailable' },
+    downloads: { available: true },
+  });
+  const overview = formatToolOverview(registry.getCategorySummaries(), availability);
+  expect(overview).toContain('web_tools');
+  expect(overview).toContain('unavailable: provider_not_configured');
+  expect(overview).toContain('unavailable: browser_unavailable');
+  // 每行仍受 160 字节上限约束。
+  for (const line of overview.split('\n')) {
+    expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(160);
+  }
+  // 没有网络依赖的类别不加噪声后缀。
+  expect(categoryAvailability(null)).toEqual({});
+});
 
 function emptyTimeline(): TimelineState {
   return {

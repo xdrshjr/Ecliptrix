@@ -26,6 +26,7 @@ function createFrontendDescriptor({ resourcesPath, frontendPort, backendPort, us
       PORT: String(frontendPort),
       HOSTNAME: '127.0.0.1',
       BACKEND_URL: `http://127.0.0.1:${backendPort}`,
+      RESEARCH_RENDERER_ORIGIN: `http://127.0.0.1:${frontendPort}`,
     },
     healthUrl: `http://127.0.0.1:${frontendPort}/`,
     healthTimeoutMs: 60000,

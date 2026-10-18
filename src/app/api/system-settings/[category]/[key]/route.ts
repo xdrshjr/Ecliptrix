@@ -1,5 +1,6 @@
-import { createPassthroughRoute } from '@/lib/api/server/backend-proxy'
+import { protectedSettingsWrite } from '@/lib/server/researchUiOrigin'
 
-export const { PUT } = createPassthroughRoute(
+export const PUT = protectedSettingsWrite(
   (p) => `/api/system-settings/${p.category as string}/${p.key as string}`,
+  'PUT',
 )

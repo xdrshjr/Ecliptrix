@@ -1,6 +1,14 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model, KnownApi } from '@mariozechner/pi-ai';
+import { streamSimple } from '@mariozechner/pi-ai';
+import { ToolActivationState } from './registry/ToolActivationState';
+import { CORE_TOOLKIT_TOOL_NAMES, WEB_RESEARCH_GUIDANCE } from './promptParts';
+import {
+  budgetModelContext, compactResult, localErrorStream, retryOnContextOverflow,
+  tokensToBytes,
+} from './modelContextBudget';
+import { isResearchTool, sanitizeResearchValue } from './researchEventSanitizer';
 import type { MaterialType, TimelineState } from '@/types';
 import type {
   ToolContext,
@@ -12,7 +20,7 @@ import type {
 } from './types';
 import { buildSystemPrompt } from './systemPrompt';
 import { convertToAgentMessages } from './messageConverter';
-import { compactHistoryForModel } from './historyBudget';
+import { HISTORY_CHAR_BUDGET, compactHistoryForModel } from './historyBudget';
 import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
 import { scanExploredCategories } from './historyScan';
@@ -68,9 +76,8 @@ function resolveModelFormat(
  * Create a video editing agent instance with all tools and configuration.
  * Returns the agent, the shared tool context, and the ToolRegistry.
  *
- * Uses ToolRegistry (Method C): all tools from all categories are registered
- * in the Agent's function-calling schema at init. The system prompt shows
- * only category summaries; explore_tools provides detailed guidance on demand.
+ * Keeps all executors registered, while each provider request receives only
+ * core and explicitly loaded schemas. History never restores authorization.
  */
 export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   agent: Agent;
@@ -89,7 +96,8 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
     reasoning: false,
     input: ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 128000,
+    // v2 R-V2-04：默认 128000 与历史硬编码持平，不静默减半。
+contextWindow: config.contextWindowTokens ?? 128000,
     maxTokens: 4096,
   };
 
@@ -98,31 +106,39 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
 
   // 3. Create shared tool context
   const toolContext: ToolContext = {
+    researchRun: config.researchRun,
     timelineState: localTimelineState,
     materials: config.materials,
     apiBaseUrl: config.apiBaseUrl,
     projectId: config.projectId,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
+      if (toolContext.abortSignal?.aborted) return;
       // An operation the local copy refuses is never forwarded: the client
       // would refuse it too, after the tool already reported success.
       if (!applyOperationLocally(toolContext.timelineState, operation)) return;
       toolContext.operations.set(toolCallId, operation);
     },
     recordOperation: (toolCallId: string, operation: AgentOperation) => {
+      if (toolContext.abortSignal?.aborted) return;
       toolContext.operations.set(toolCallId, operation);
     },
   };
 
   // 4. Create ToolRegistry and build tools
   const registry = createToolRegistry(toolContext);
-  const tools = buildAllAgentTools(registry);
+  const activation = new ToolActivationState(registry, [
+    ...registry.getAlwaysAvailableTools().map(tool => tool.name),
+    ...CORE_TOOLKIT_TOOL_NAMES, 'explore_tools',
+  ]);
+  const tools = buildAllAgentTools(registry, activation);
 
   // 5. Convert conversation history (exclude last user message — it goes to agent.prompt())
   const history = config.conversationHistory.slice(0, -1);
   // Older turns are compacted to a size budget so long conversations stay
   // inside the model's context window.
-  const initialMessages = compactHistoryForModel(convertToAgentMessages(history));
+  const initialMessages = compactHistoryForModel(convertToAgentMessages(history),
+    HISTORY_CHAR_BUDGET, compactResult);
 
   // 6. Build the L0 system prompt.
   //    - exploredCategories: replays any advanced categories the user already
@@ -135,8 +151,13 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
     timelineState: config.timelineState,
     materials: config.materials,
     registry,
-    exploredCategories,
-  });
+    exploredCategories: [],
+    capabilities: config.webCapabilities,
+  }) + '\n' + WEB_RESEARCH_GUIDANCE + (exploredCategories.length
+    ? '\n## 已加载的高级工具（历史提示）\n' +
+      exploredCategories.slice(-2).join(', ') +
+      '：仅供回顾。历史不恢复工具授权；非核心工具须先 explore_tools 再在下一响应调用。'
+    : '');
 
   // Observability: log the prompt size and explored categories on every
   // agent creation so we can verify the persistence fix is active and spot
@@ -152,7 +173,47 @@ export function createVideoEditingAgent(config: VideoEditingAgentConfig): {
   }
 
   // 7. Create Agent
+  let modelCalls = 0;
   const agent = new Agent({
+    streamFn: (currentModel, context, options) => {
+      if (++modelCalls > 40) return localErrorStream('model_call_limit', currentModel);
+      // A conservative retry is only safe before any tool ran this turn.
+      const firstRequest = modelCalls === 1;
+      const request = (window: number, outputCap?: number) => {
+        const names = new Set(activation.offer().map(tool => tool.name));
+        names.add('explore_tools');
+        const selected = { ...context, tools: context.tools?.filter(tool => names.has(tool.name)) };
+        const budget = budgetModelContext(selected, window);
+        const maxTokens = outputCap === undefined ? budget.maxTokens
+          : Math.min(outputCap, budget.maxTokens);
+        // Same unit as budgetModelContext (tokens), converted once to the
+        // schema bytes ToolActivationState enforces (spec §12.3 D-07).
+        activation.setSchemaBudget(tokensToBytes(window - maxTokens -
+          2048 - budget.estimatedTokens));
+        return streamSimple(currentModel, budget.context, { ...options, maxTokens });
+      };
+      // The retry runs inside the stream wrapper, so a local refusal of the
+      // tighter window has to become a terminal error stream there — a throw
+      // would never reach the catch below and would hang the turn (R-01).
+      const retryWithSmallerWindow = () => {
+        try {
+          return request(Math.floor(currentModel.contextWindow * 0.7), 2048);
+        } catch (error) {
+          return localErrorStream(
+            error instanceof Error ? error.message : 'context_budget_exceeded',
+            currentModel,
+          );
+        }
+      };
+      try {
+        return retryOnContextOverflow(request(currentModel.contextWindow),
+          firstRequest ? retryWithSmallerWindow : null,
+          text => !LOCAL_BUDGET_PATTERN.test(text) && CONTEXT_OVERFLOW_PATTERN.test(text),
+          currentModel);
+      } catch (error) {
+        return localErrorStream(error instanceof Error ? error.message : 'context_budget_exceeded', currentModel);
+      }
+    },
     initialState: {
       systemPrompt,
       model,
@@ -193,6 +254,7 @@ const ERROR_DETAIL_MAX_CHARS = 300;
 // tokens", which must not read as an authentication failure. Providers word
 // an overflow differently (OpenAI, Anthropic, Gemini, Kimi, DashScope,
 // Zhipu); an unmatched one only gets the generic "request failed" hint.
+const LOCAL_BUDGET_PATTERN = /context_budget_exceeded|tool_schema_budget/i;
 const CONTEXT_OVERFLOW_PATTERN = new RegExp(
   [
     'context.?length',
@@ -200,6 +262,8 @@ const CONTEXT_OVERFLOW_PATTERN = new RegExp(
     'context window',
     'too many tokens',
     'context_length_exceeded',
+    'context_budget_exceeded',
+    'tool_schema_budget',
     'prompt is too long',
     'prompt exceeds max length',
     'input token count',
@@ -236,6 +300,13 @@ export function formatErrorDetail(raw: string): string {
 }
 
 function classifyProviderError(text: string): AgentStreamErrorCode {
+  // Local terminal states stay distinct: budget refusals are fixable in
+  // Settings, the call ceilings mean the turn looped, while a provider
+  // overflow means the conversation itself is too long (D-05).
+  if (/context_budget_exceeded/i.test(text)) return 'context_budget_exceeded';
+  if (/tool_schema_budget/i.test(text)) return 'tool_schema_budget';
+  if (/model_call_limit/i.test(text)) return 'model_call_limit';
+  if (/tool_call_limit/i.test(text)) return 'tool_call_limit';
   if (CONTEXT_OVERFLOW_PATTERN.test(text)) return 'context_overflow';
   if (RATE_LIMIT_PATTERN.test(text)) return 'provider_rate_limit';
   if (AUTH_FAILURE_PATTERN.test(text)) return 'provider_auth';
@@ -396,7 +467,7 @@ export function subscribeAgentEvents(
           type: 'tool_call',
           toolCallId: event.toolCallId,
           toolName: event.toolName,
-          params: event.args ?? {},
+          params: isResearchTool(event.toolName) ? sanitizeResearchValue(event.args ?? {}) : event.args ?? {},
         });
         break;
 
@@ -418,13 +489,15 @@ export function subscribeAgentEvents(
           details !== null &&
           'success' in details &&
           (details as { success: unknown }).success === false;
-        const failed = event.isError === true || softFailure;
+        const expectedResearchFailure = isResearchTool(event.toolName) &&
+          ['configuration', 'blocked', 'cancelled', 'policy', 'validation'].includes(details?.error_details?.failure_class);
+        const failed = (event.isError === true || softFailure) && !expectedResearchFailure;
 
         if (failed) {
           consecutiveFailures++;
           latestTtsFailure = ['generate_tts', 'batch_generate_tts']
             .includes(event.toolName) ? getTtsFailure(details) : undefined;
-        } else {
+        } else if (!expectedResearchFailure) {
           consecutiveFailures = 0;
           latestTtsFailure = undefined;
         }
@@ -433,8 +506,10 @@ export function subscribeAgentEvents(
           type: 'tool_result',
           toolCallId: event.toolCallId,
           toolName: event.toolName,
-          result: details,
-          operation,
+          result: isResearchTool(event.toolName) ? sanitizeResearchValue(details) : details,
+          operation: toolContext.abortSignal?.aborted ||
+            (isResearchTool(event.toolName) && toolContext.researchRun?.controller.signal.aborted) ? null :
+            isResearchTool(event.toolName) ? sanitizeResearchValue(operation) : operation,
         });
 
         if (

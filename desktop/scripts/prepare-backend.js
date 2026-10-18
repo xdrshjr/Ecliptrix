@@ -11,6 +11,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..')
 const BACKEND_SRC = path.join(REPO_ROOT, 'backend-services', 'basic-service')
 const BUILD_DIR = path.resolve(__dirname, '..', 'build')
 const CACHE_DIR = path.resolve(__dirname, '..', 'cache')
+const PLAYWRIGHT_VERSION = '1.63.0'
 
 // Only what the runtime needs — venv/, tests/, alembic/ (desktop relies on
 // create_all, spec §2.4), static/, logs/ and .env stay out by omission.
@@ -26,7 +27,9 @@ const ISOLATED_PYTHON_ENV = { ...process.env, PYTHONNOUSERSITE: '1' }
 
 function run(command, args, options = {}) {
   console.log(`  $ ${path.basename(command)} ${args.join(' ')}`)
-  const result = spawnSync(command, args, { stdio: 'inherit', ...options })
+  const result = spawnSync(command, args, {
+    stdio: 'inherit', windowsHide: true, ...options,
+  })
   if (result.error) throw result.error
   if (result.status !== 0) {
     throw new Error(`${path.basename(command)} exited with ${result.status}`)
@@ -71,6 +74,22 @@ function copyBackendSources() {
       '# from %APPDATA%/ecliptrix-desktop/.env — do not put keys here.\n'
   )
   return destDir
+}
+
+/**
+ * CDP 方案（spec §3.6）：不执行 playwright install、不打包任何浏览器
+ * 二进制——浏览器 = 应用自带的 Electron Chromium。playwright pip 包
+ * 只贡献 node driver（约 50MB），这里仅验证版本与可导入性。
+ */
+function prepareBrowser(pythonExe) {
+  run(pythonExe, ['-X', 'utf8', '-c',
+    'from importlib.metadata import version; ' +
+    `assert version("playwright") == "${PLAYWRIGHT_VERSION}"; ` +
+    'import playwright.async_api, bs4; print("研究依赖版本验证通过")',
+  ])
+  // 历史构建可能留下打包的 Chromium（v1 门禁 2 的 705MB）——清掉。
+  fs.rmSync(path.join(BUILD_DIR, 'playwright-browsers'),
+    { recursive: true, force: true })
 }
 
 /**
@@ -139,6 +158,8 @@ async function preparePython(urls, backendDir) {
     env: ISOLATED_PYTHON_ENV,
     cwd: backendDir,
   })
+
+  prepareBrowser(pythonExe)
 
   // __pycache__ regenerates at runtime; dropping it trims the payload (risk 4).
   removePycacheDirs(pythonDir)

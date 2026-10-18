@@ -34,7 +34,7 @@ deploy to — the app opens straight into the editing workspace.
 | Tool | Version | Required |
 |------|---------|----------|
 | Node.js | 18+ | Yes |
-| Python | 3.10+ | Yes |
+| Python | 3.11+（网络研究路径） | Yes |
 | FFmpeg | 4+ | For video features |
 
 No database server is needed: the app uses SQLite.
@@ -97,6 +97,78 @@ npm run dev
 On first launch the app prompts you to open **Settings → Model & credentials**
 and enter an LLM key. You can also pre-fill `LLM_API_KEY` / `LLM_API_URL` in
 the backend `.env` before starting.
+
+### 网络研究与动态网页
+
+Agent 可按需加载网页搜索、阅读、图片/音视频下载和动态浏览工具；资料保留
+来源引用，下载验证成功后才导入本地素材库。公开网站内容无需登录，网页中的
+指令不会授予额外操作权限。搜索需在 **设置 → 网络与研究** 配置 Tavily 凭证；
+无凭证、站点拒绝、离线和浏览器不可用会分别显示状态，剪辑仍可使用。
+
+搜索凭证被拒绝时检查并重新保存；限流时稍后手动重试；额度不足时检查服务商
+账户。超时或响应异常不会清除已保存配置。设置中的“已配置”只表示已保存搜索凭证，
+公网连接须通过“测试已保存连接”验证；状态读取失败可点击“刷新状态”。
+连接测试从开始计时冷却5秒；测试仍在运行时不能再次发起。
+
+在 **模型设置 → 功能分配 → 网络资料整理** 选择可选研究模型，并在网络与
+研究中开启资料整理；关闭后由主模型整合。研究模型未单独分配时按完整配置组
+回落到快速模型、再到聊天模型。高级设置中的主模型与研究模型上下文窗口应与
+实际模型上限一致。下载素材保存在本机，临时研究资料按保留期限清理。
+
+研究卡片分别标明“已读取原文”“仅搜索摘要”和“未取得内容”，并显示实际来源
+覆盖情况。读到原文不等于事实已经验证；混合来源报告会保留原文缺失说明。
+资料整理模型失败、超时或上下文不足时，已取得摘录仍可供主模型使用。
+仅生成搜索查询不代表报告整理成功，界面按真实阶段显示模型状态。
+长对话压缩后保留资料编号和来源质量；需要完整证据时按需读取原始研究资料。
+
+网络研究开发路径要求 Python 3.10+（Windows 浏览器路径需 3.10/3.11 冒烟）；
+桌面 smoke 要求 Node.js 22+。依赖只装 pip 包，**不执行**
+`python -m playwright install`——动态浏览经 CDP 复用应用自带的 Electron
+Chromium（spec §3.6），安装包零新增浏览器资源（playwright 包仅贡献约
+50MB 的 node driver）：
+
+```powershell
+python -m pip install -r requirements.txt
+python run.py
+```
+
+开发机的动态浏览调试：先拉起 Electron 浏览器宿主（desktop 目录下
+`npx electron main/agentBrowserHost.js --agent-browser-host --cdp-port=9222
+--control-port=9333`），再为后端设置 `AGENT_BROWSER_CDP_URL=
+http://127.0.0.1:9222` 与 `AGENT_BROWSER_CONTROL_URL=
+http://127.0.0.1:9333`；桌面安装版由主进程自动注入并监管宿主子进程，
+无需手工设置。纯浏览器调试若更改前端地址，在前后端设置相同的
+`RESEARCH_RENDERER_ORIGIN`（例如 `http://localhost:3000`），并将其加入后端
+`CORS_ALLOWED_ORIGINS`。
+
+代理：设置中心「网络与研究 → 代理模式」三选一（自动/直连/自定义）。
+自动 = 自定义地址 > 系统/环境代理 > 直连；直连保留全量公网 IP 校验；
+自定义仅使用填写的 http(s)://host:port（可含认证）。代理模式下目标主机
+名交由代理解析（Fake-IP 代理环境可用），但字面私网/metadata 目标仍拒绝。
+
+Windows 动态浏览验证使用 `python run.py` 的显式 Proactor 循环、单进程、
+无 reload 启动路径（playwright driver 需要子进程支持）。宿主缺失时动态
+浏览优雅降级为不可用，静态研究仍可使用。`node scripts/smoke-test.js`
+检查打包应用的宿主存活/CDP 可达/capabilities/浏览器动作与退出清理。
+
+完整构建成功后生成 `desktop/release/research-build-manifest.json`，绑定整个
+安装资源树及本次安装器。研究发布验收命令在仓库根运行（`<run-id>` 每次使用新值）：
+
+```powershell
+npm --prefix desktop run build
+node desktop/scripts/smoke-test.js --unpacked desktop/release/win-unpacked --research-manifest desktop/release/research-build-manifest.json --research-report .agentmesh/research-r2/<run-id>/package_offline.json
+node desktop/scripts/verify-research-release.js --unpacked desktop/release/win-unpacked --installed .agentmesh/research-r2/<run-id>/installed --manifest desktop/release/research-build-manifest.json --evidence .agentmesh/research-r2/<run-id>/evidence.json
+```
+
+校验退出0表示全部门禁通过，1表示证据失败，2表示仍有合法的未运行或阻断项。
+离线 smoke 不替代真实公网、模型、安装和离线视频闭环；报告与附件结构见
+[第二轮方案](docs/plans/agent-general-capabilities-r2/spec.md)，实际验证与阻断见
+[第三轮验收记录](docs/plans/agent-general-capabilities-r3/acceptance.md)。重建后必须重新验收；
+终态报告不可覆写。运行日志、数据库和临时文件放在独立用户目录。
+
+动态浏览仅允许公开 GET/HEAD 请求，不导入 Cookie，不支持登录、POST API 或
+Service Worker。当前浏览器不能安全重新拦截的重定向会返回
+`redirect_unsupported`；可改为直接打开已核实的最终公开地址。
 
 ## Tech Stack
 

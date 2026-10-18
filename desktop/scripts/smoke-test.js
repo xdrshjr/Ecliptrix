@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Electron uses CommonJS. */
 'use strict'
 
 const fs = require('fs')
@@ -8,6 +9,8 @@ const path = require('path')
 const { spawn, spawnSync } = require('child_process')
 const { withoutElectronRunAsNode } = require('./lib/electron-env')
 const { processesUnder, killPids, waitForNoProcessesUnder } = require('./lib/process-cleanup')
+const { validateReleaseEvidence, verifyPackageManifest } =
+  require('./lib/research-release-evidence')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
@@ -121,6 +124,79 @@ async function until(label, check, timeout = 60000) {
     await sleep(300)
   }
   fail(`timed out: ${label}`)
+}
+
+function runResearchBrowserSmoke(resources, userDataDir, screenshotDir,
+  researchPorts) {
+  return new Promise((resolve, reject) => {
+    const python = path.join(resources, 'python', 'python.exe')
+    const capture = [
+      'from pathlib import Path', 'import sys',
+      'from app.services.web_research import smoke',
+      'original = smoke.MemoryArtifacts.write',
+      'async def write(self, kind, body, context, retention_days=7):',
+      '    row = await original(self, kind, body, context, retention_days)',
+      '    if kind == "screenshot":',
+      '        (Path(sys.argv[1]) / (row.id + ".png")).write_bytes(body)',
+      '    return row',
+      'smoke.MemoryArtifacts.write = write', 'smoke.main()',
+    ].join('\n')
+    const args = screenshotDir ? ['-c', capture, screenshotDir]
+      : ['-m', 'app.services.web_research.smoke']
+    const child = spawn(python, ['-B', '-X', 'utf8', ...args], {
+      cwd: userDataDir,
+      windowsHide: true,
+      env: { ...process.env, PYTHONNOUSERSITE: '1',
+        // 连接正在运行的应用宿主（AC-19：无系统 Chrome、断网可用）。
+        AGENT_BROWSER_CDP_URL: `http://127.0.0.1:${researchPorts.cdp}`,
+        AGENT_BROWSER_CONTROL_URL: `http://127.0.0.1:${researchPorts.control}`,
+        TEMP: path.join(userDataDir, 'temp'),
+        TMP: path.join(userDataDir, 'temp'),
+        TEMP_DIR: path.join(userDataDir, 'temp') },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    const timer = setTimeout(() => {
+      if (child.pid) killPids([String(child.pid)])
+      reject(new Error('包内 Chromium 离线检查超时'))
+    }, 90000)
+    child.stdout.on('data', chunk => { stdout += chunk; process.stdout.write(chunk) })
+    child.stderr.on('data', chunk => process.stderr.write(chunk))
+    child.once('error', error => { clearTimeout(timer); reject(error) })
+    child.once('close', code => {
+      clearTimeout(timer)
+      if (code !== 0) reject(new Error(`研究浏览器检查退出码 ${code}`))
+      else resolve(stdout)
+    })
+  })
+}
+
+/** 用安装包自己的 Python 连接运行中应用的 CDP 宿主做离线动态网页检查。 */
+async function researchBrowserSmoke(unpackedDir, userDataDir, screenshotDir,
+  researchPorts) {
+  const resources = path.join(unpackedDir, 'resources')
+  const python = path.join(resources, 'python', 'python.exe')
+  if (!fs.existsSync(python)) {
+    fail('安装包缺少 Python；此检查不可跳过')
+  }
+  console.log('[smoke-test] 正在验证应用内 CDP 浏览器宿主的离线页面、动作与截图')
+  try {
+    const output = await runResearchBrowserSmoke(resources, userDataDir, screenshotDir)
+    const report = JSON.parse(output.trim().split(/\r?\n/).at(-1))
+    if (report.success !== true || report.skipped === true) {
+      fail('研究浏览器检查未成功完成或被跳过')
+    }
+    fs.writeFileSync(path.join(userDataDir, 'research-browser-report.json'),
+      JSON.stringify(report, null, 2))
+    return report
+  } finally {
+    const leftovers = await waitForNoProcessesUnder(unpackedDir,
+      { timeoutMs: PROCESS_DRAIN_TIMEOUT_MS })
+    if (leftovers.length) {
+      killPids(leftovers)
+      fail(`研究浏览器退出后残留进程（已清理）：${leftovers.join(', ')}`)
+    }
+  }
 }
 
 // Native Node 22 WebSocket keeps the packaged smoke gate dependency-free.
@@ -824,7 +900,102 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
   }
 }
 
-async function main() {
+function researchReportPath(file) {
+  const root = path.resolve(DESKTOP_ROOT, '..', '.agentmesh', 'research-r2')
+  const target = path.resolve(file)
+  const relative = path.relative(root, target)
+  if (path.isAbsolute(relative) || relative.startsWith('..') ||
+      path.basename(target) !== 'package_offline.json') fail('研究报告必须位于独立research-r2运行目录')
+  const segments = relative.split(path.sep)
+  if (segments.length !== 2 || !/^[a-zA-Z0-9_-]+$/.test(segments[0])) fail('研究报告run-id无效')
+  // 创建前逐级拒绝链接，避免已有运行目录指向用户或包资源。
+  let current = path.parse(root).root
+  for (const segment of path.relative(current, path.dirname(target)).split(path.sep)) {
+    current = path.join(current, segment)
+    if (!fs.existsSync(current)) fs.mkdirSync(current)
+    if (fs.lstatSync(current).isSymbolicLink() ||
+        fs.realpathSync(current).toLowerCase() !== current.toLowerCase()) fail('研究报告路径不能包含链接')
+  }
+  return target
+}
+
+function createResearchReport(file, manifestPath, unpackedDir) {
+  const target = researchReportPath(file)
+  const root = path.dirname(target)
+  const manifestFile = path.resolve(manifestPath)
+  const workspaceRoot = path.resolve(DESKTOP_ROOT, '..')
+  const relative = path.relative(workspaceRoot, manifestFile)
+  if (relative.startsWith('..') || path.isAbsolute(relative) ||
+      fs.lstatSync(manifestFile).isSymbolicLink() ||
+      fs.realpathSync(manifestFile).toLowerCase() !== manifestFile.toLowerCase() ||
+      fs.statSync(manifestFile).size > 64 * 1024 * 1024) fail('研究清单路径无效')
+  const bytes = fs.readFileSync(manifestFile)
+  const manifest = JSON.parse(bytes)
+  const names = ['identity_before', 'browser', 'desktop', 'export', 'cleanup', 'identity_after']
+  const report = { schema_version: 1, run_id: path.basename(root),
+    package_id: manifest.package_id,
+    manifest_sha256: createHash('sha256').update(bytes).digest('hex'),
+    started_at: new Date().toISOString(), finished_at: null,
+    status: 'not_run', success: false, skipped: false,
+    steps: Object.fromEntries(names.map(name => [name, { status: 'not_run',
+      started_at: null, finished_at: null, evidence_files: [], metrics: {}, note: '' }])) }
+  fs.writeFileSync(target, JSON.stringify(report, null, 2), { flag: 'wx' })
+  const assertMutable = () => {
+    const previous = JSON.parse(fs.readFileSync(target, 'utf8'))
+    if (previous.status !== 'not_run') fail('终态报告不可覆写，请使用新的run-id')
+  }
+  const persist = () => {
+    assertMutable()
+    const temporary = `${target}.${process.pid}.tmp`
+    fs.writeFileSync(temporary, JSON.stringify(report, null, 2), { flag: 'wx' })
+    fs.renameSync(temporary, target)
+  }
+  const attachment = (role, relativePath) => {
+    const body = fs.readFileSync(path.join(root, relativePath))
+    return { role, path: relativePath, size: body.length,
+      sha256: createHash('sha256').update(body).digest('hex') }
+  }
+  const start = name => {
+    assertMutable()
+    report.steps[name].started_at = new Date().toISOString(); persist()
+  }
+  const finish = (name, success, metrics = {}, files = [], summary = '') => {
+    assertMutable()
+    const step = report.steps[name]
+    step.started_at ||= new Date().toISOString()
+    step.finished_at = new Date().toISOString()
+    step.status = success ? 'pass' : 'fail'
+    step.metrics = metrics
+    step.note = success ? '本次实际执行通过' : '本次执行失败，保留失败证据'
+    const record = `${name}-execution.json`
+    fs.writeFileSync(path.join(root, record), JSON.stringify({
+      schema_version: 1, run_id: report.run_id, package_id: report.package_id,
+      check_id: 'package_offline', step: name, success,
+      summary,
+    }), { flag: 'wx' })
+    step.evidence_files = [attachment('execution_record', record), ...files]
+    persist()
+  }
+  const identity = async () => {
+    const current = fs.readFileSync(manifestFile)
+    if (createHash('sha256').update(current).digest('hex') !== report.manifest_sha256) fail('验收期间清单变化')
+    const result = await verifyPackageManifest({ workspaceRoot,
+      packageRoot: unpackedDir, releaseRoot: path.dirname(manifestFile), manifest,
+      onProgress: message => console.log('[research-identity]', message) })
+    if (!result.success) fail(`研究包身份验证失败: ${result.errors.join('; ')}`)
+  }
+  return { root, report, start, finish, attachment, identity,
+    finalize() {
+      assertMutable()
+      report.finished_at = new Date().toISOString()
+      report.success = names.every(name => report.steps[name].status === 'pass')
+      report.status = report.success ? 'pass' : 'fail'
+      persist()
+      if (!report.success) fail('研究smoke阶段未全部通过')
+    } }
+}
+
+async function runDesktopSmoke(research) {
   if (process.platform !== 'win32') {
     fail('smoke test targets the Windows package (v1 scope)')
   }
@@ -843,24 +1014,34 @@ async function main() {
   // The core regression this guards: the app must fully start and read the DB
   // with zero configuration and no credentials (the in-app setup guide handles
   // LLM keys later).
-  const runtimeRoot = path.resolve(DESKTOP_ROOT, '..', '.agentmesh/cover-finalization-runtime')
+  const runtimeRoot = research?.root || path.resolve(DESKTOP_ROOT, '..', '.agentmesh/cover-finalization-runtime')
   fs.mkdirSync(runtimeRoot, { recursive: true })
-  const userDataDir = fs.mkdtempSync(path.join(runtimeRoot, 'ecliptrix-smoke-'))
+  const userDataDir = research ? path.join(runtimeRoot, 'user-data')
+    : fs.mkdtempSync(path.join(runtimeRoot, 'ecliptrix-smoke-'))
+  if (research) fs.mkdirSync(userDataDir)
   const tempDir = path.join(userDataDir, 'temp')
   fs.mkdirSync(tempDir)
   const reservedPorts = new Set()
-  while (reservedPorts.size < 3) reservedPorts.add(await freePort())
-  const [frontendPort, backendPort, debugPort] = [...reservedPorts]
+  while (reservedPorts.size < 5) reservedPorts.add(await freePort())
+  const [frontendPort, backendPort, debugPort, researchCdpPort, researchControlPort] =
+    [...reservedPorts]
+  const researchPorts = { cdp: researchCdpPort, control: researchControlPort }
   fs.writeFileSync(path.join(userDataDir, 'desktop-config.json'), JSON.stringify({ schemaVersion: 1, frontendPort, backendPort }))
   fs.writeFileSync(path.join(userDataDir, '.env'), '')
   console.log(`[smoke-test] userData: ${userDataDir}`)
   if (provenance) fs.writeFileSync(path.join(userDataDir, 'build-provenance.json'), JSON.stringify(provenance, null, 2))
 
+  const screenshotDir = research ? path.join(research.root, 'browser-screenshots') : null
+  if (screenshotDir) fs.mkdirSync(screenshotDir)
+  research?.start('desktop')
+
   console.log(`[smoke-test] launching ${exePath}`)
   // Strip ELECTRON_RUN_AS_NODE: agent harnesses / Electron-spawned terminals
   // set it, which turns Ecliptrix.exe into plain Node — it then rejects
   // --user-data-dir with "bad option" and the smoke gate false-fails.
-  const childEnv = withoutElectronRunAsNode({ ...process.env, TEMP: tempDir, TMP: tempDir })
+  const childEnv = withoutElectronRunAsNode({ ...process.env, TEMP: tempDir, TMP: tempDir,
+    ECLIPTRIX_RESEARCH_CDP_PORT: String(researchCdpPort),
+    ECLIPTRIX_RESEARCH_CONTROL_PORT: String(researchControlPort) })
   const child = spawn(exePath, [`--user-data-dir=${userDataDir}`, `--remote-debugging-port=${debugPort}`, '--remote-debugging-address=127.0.0.1'], {
     stdio: 'ignore',
     detached: false,
@@ -891,6 +1072,30 @@ async function main() {
     }
     if (!healthy) fail(`services not healthy within ${STARTUP_TIMEOUT_MS / 1000}s (ports ${JSON.stringify(ports)})`)
     console.log(`[smoke-test] services healthy (frontend:${ports.frontend} backend:${ports.backend})`)
+
+    // 1.5. CDP 浏览器宿主随应用就绪，capabilities 必须报告可用（AC-19）。
+    const capabilities = await httpRequest('GET',
+      `http://127.0.0.1:${ports.backend}/api/web-research/capabilities`)
+    if (capabilities.status !== 200) {
+      fail(`GET /api/web-research/capabilities returned HTTP ${capabilities.status}`)
+    }
+    const capabilitiesBody = JSON.parse(capabilities.body)
+    if (capabilitiesBody?.data?.browser?.available !== true) {
+      fail(`browser capability unavailable in packaged app: ${capabilities.body.slice(0, 200)}`)
+    }
+    console.log('[smoke-test] research capabilities report browser available')
+
+    // 1.6. 用包内 Python 连接应用宿主完成离线动态页面动作与截图。
+    research?.start('browser')
+    const browser = await researchBrowserSmoke(unpackedDir, userDataDir,
+      screenshotDir, researchPorts)
+    if (research) {
+      const screenshots = fs.readdirSync(screenshotDir).filter(file => file.endsWith('.png'))
+        .map(file => research.attachment('screenshot', `browser-screenshots/${file}`))
+      if (!screenshots.length || !browser.dynamic_text || !browser.search || !browser.scroll) fail('浏览器动作或截图缺失')
+      research.finish('browser', true, { actions: 4, screenshots: screenshots.length },
+        screenshots, JSON.stringify(browser))
+    }
 
     // 2. Zero-config status endpoint: configured must be false (we wrote no
     //    LLM keys), and success must be true — success:false signals a
@@ -953,8 +1158,15 @@ async function main() {
       fail(`main window did not finish loading within ${WINDOW_LOAD_TIMEOUT_MS / 1000}s`)
     }
     console.log('[smoke-test] main window loaded ok')
+    research?.finish('desktop', true, {}, [],
+      'backend_health=200; frontend_health=200; llm_unconfigured=true; projects=200; sqlite=true; categorized_logs=true; window_loaded=true')
+    research?.start('export')
     await coverSmoke({ ports, debugPort, userDataDir, unpackedDir })
+    research?.finish('export', true, {}, [],
+      '真实UI导出90帧MP4；封面、正文时序、音轨起点与像素比较通过；五模板横竖屏、撤销、离线renderer及键盘回归通过')
   } finally {
+    research?.start('cleanup')
+    let forcedCleanup = false
     // 5. Graceful shutdown: WM_CLOSE to the main window (taskkill without /F),
     //    escalate to a tree kill if it hangs.
     if (!exited && child.pid) {
@@ -965,6 +1177,7 @@ async function main() {
         await sleep(1000)
       }
       if (!exited) {
+        forcedCleanup = true
         console.warn('[smoke-test] graceful shutdown timed out — force killing tree')
         killPids([String(child.pid)])
         await waitForNoProcessesUnder(unpackedDir, { timeoutMs: PROCESS_DRAIN_TIMEOUT_MS })
@@ -976,12 +1189,58 @@ async function main() {
       killPids(leftovers)
       fail(`residual processes after exit (now killed): PIDs ${leftovers.join(', ')}`)
     }
+    if (forcedCleanup) fail('应用未正常退出，被迫终止进程树')
+    research?.finish('cleanup', true, { residual_processes: 0 })
     console.log('[smoke-test] no residual processes')
   }
   console.log('[smoke-test] PASS')
 }
 
-main().catch((err) => {
+async function main() {
+  const reportPath = argValue('--research-report')
+  const manifestPath = argValue('--research-manifest')
+  if (!!reportPath !== !!manifestPath) fail('研究报告必须同时提供清单与报告参数')
+  if (!reportPath) return runDesktopSmoke(null)
+  const unpackedDir = path.resolve(argValue('--unpacked') || DEFAULT_UNPACKED)
+  const reportDir = path.dirname(path.resolve(reportPath))
+  const research = createResearchReport(reportPath, manifestPath, unpackedDir)
+  try {
+    research.start('identity_before')
+    await research.identity()
+    research.finish('identity_before', true)
+    await runDesktopSmoke(research)
+  } catch (error) {
+    const active = Object.keys(research.report.steps).find(name => {
+      const step = research.report.steps[name]
+      return step.started_at && !step.finished_at
+    })
+    if (active) research.finish(active, false)
+    throw error
+  } finally {
+    research.start('identity_after')
+    try { await research.identity(); research.finish('identity_after', true) }
+    catch { research.finish('identity_after', false) }
+    research.finalize()
+    // D-08: the release-evidence gate must actually run at the end of the
+    // packaged smoke, not sit in a CLI nobody calls.
+    const gate = await validateReleaseEvidence({
+      workspaceRoot: path.resolve(DESKTOP_ROOT, '..'),
+      packageRoot: unpackedDir,
+      releaseRoot: path.dirname(path.resolve(manifestPath)),
+      evidenceRoot: reportDir,
+      manifestPath: path.resolve(manifestPath),
+      evidencePath: path.resolve(reportPath),
+      onProgress: message => console.log('[research-release]', message),
+    })
+    if (!gate.success) {
+      fail(`research release evidence rejected: ${gate.blockers.join('; ')}`)
+    }
+    console.log(`[research-release] release_ready package_id=${gate.package_id}`)
+  }
+}
+
+module.exports = { createResearchReport, runResearchBrowserSmoke }
+if (require.main === module) main().catch((err) => {
   console.error(`[smoke-test] FAIL: ${(err && err.stack) || String(err)}`)
   process.exitCode = 1
 })

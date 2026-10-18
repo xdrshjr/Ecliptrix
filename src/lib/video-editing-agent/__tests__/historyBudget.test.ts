@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Message } from '@mariozechner/pi-ai';
 import { compactHistoryForModel } from '../historyBudget';
+import { budgetModelContext } from '../modelContextBudget';
 
 const usage = {
   input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
@@ -54,6 +55,45 @@ function toolResultIds(messages: Message[]): string[] {
 }
 
 describe('compactHistoryForModel', () => {
+  it('删除研究旧轮次仍保留资料句柄，连续两层裁剪后仍能读取', () => {
+    const history = [user('old research'), toolCall('research', 'web_research'),
+      toolResult('research', 'web_research', JSON.stringify({
+        artifact_id: 'old-research-artifact', snapshot_artifact_id: 'old-snapshot',
+        brief: 'x'.repeat(120000), quality: 'mixed',
+      })), user('x'.repeat(14000)), user('latest')];
+    const original = JSON.stringify(history);
+    const first = compactHistoryForModel(history);
+    expect(JSON.stringify(first)).toContain('old-research-artifact');
+    expect(JSON.stringify(first)).toContain('old-snapshot');
+    expect(JSON.stringify(first)).not.toContain('"quality"');
+    const final = budgetModelContext({ systemPrompt: 'rules', messages: first }, 16384);
+    expect(JSON.stringify(final.context)).toContain('old-research-artifact');
+    expect(JSON.stringify(final.context)).toContain('old-snapshot');
+    expect(JSON.stringify(final.context)).toContain('before judging source quality');
+    expect(final.estimatedTokens + final.maxTokens + 2048).toBeLessThanOrEqual(16384);
+    expect(JSON.stringify(history)).toBe(original);
+  });
+
+  it('省略提示只携带有界有效句柄，不携带旧资料正文', () => {
+    const results = Array.from({ length: 120 }, (_, index) =>
+      toolResult(String(index), 'web_research', JSON.stringify({
+        artifact_id: `${index}-${'a'.repeat(120)}`, brief: 'sensitive old body',
+      })));
+    results.push(toolResult('invalid', 'web_research', JSON.stringify({
+      artifact_id: 'z'.repeat(129), snapshot_artifact_id: 'invalid/handle',
+    })));
+    const compacted = compactHistoryForModel([user('old'), ...results, user('next'), user('latest')], 0);
+    const note = String(compacted[0].content);
+    expect(note).toContain('Artifacts: ');
+    const ids = note.split('Artifacts: ')[1].split(',');
+    expect(ids.length).toBeLessThanOrEqual(80);
+    expect(new TextEncoder().encode(ids.join(',')).length).toBeLessThanOrEqual(4096);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.every(id => /^[a-zA-Z0-9-]{1,128}$/.test(id))).toBe(true);
+    expect(note).not.toContain('sensitive old body');
+    expect(note).not.toContain('invalid/handle');
+  });
+
   it('older timeline snapshots become stubs and every tool call keeps its result', () => {
     const history = [...turn(1), ...turn(2), ...turn(3), ...turn(4)];
 

@@ -1,4 +1,5 @@
 export { ToolRegistry } from './ToolRegistry';
+export { ToolActivationState } from './ToolActivationState';
 export type { ToolCategory, CategorySummary, ToolInfo } from './ToolRegistry';
 export {
   CATEGORY_IDS,

@@ -45,7 +45,7 @@ interface ResolveConfigResponse {
   };
 }
 
-type FunctionType = 'chat' | 'fast' | 'video_cut' | 'vision' | 'coding';
+type FunctionType = 'chat' | 'fast' | 'video_cut' | 'vision' | 'coding' | 'research';
 
 type TabType = 'providers' | 'assignments' | 'advanced';
 
@@ -115,7 +115,7 @@ interface TestResult {
   };
 }
 
-const FUNCTION_TYPES: FunctionType[] = ['chat', 'fast', 'video_cut', 'vision', 'coding'];
+const FUNCTION_TYPES: FunctionType[] = ['chat', 'fast', 'video_cut', 'vision', 'coding', 'research'];
 
 // Coding-type provider IDs (used for badge coloring and default_models display)
 const CODING_PROVIDER_TYPES = ['kimi_coding', 'codex', 'claude_coding', 'glm_coding'];
@@ -182,7 +182,7 @@ const ModelSettingsPanel: React.FC = () => {
   const [knownProviders, setKnownProviders] = useState<KnownProvider[]>([]);
   const [savedProviders, setSavedProviders] = useState<ProviderWithModels[]>([]);
   const [assignments, setAssignments] = useState<Record<FunctionType, Assignment | null>>({
-    chat: null, fast: null, video_cut: null, vision: null, coding: null,
+    chat: null, fast: null, video_cut: null, vision: null, coding: null, research: null,
   });
   const [loading, setLoading] = useState(true);
 
@@ -202,6 +202,7 @@ const ModelSettingsPanel: React.FC = () => {
     video_cut: { provider_id: null, model_name: '', temperature: 0.7, modelInputMode: 'select' },
     vision: { provider_id: null, model_name: '', temperature: 0.7, modelInputMode: 'select' },
     coding: { provider_id: null, model_name: '', temperature: 1.0, modelInputMode: 'select' },
+    research: { provider_id: null, model_name: '', temperature: 0.2, modelInputMode: 'select' },
   });
   const [savingAssignment, setSavingAssignment] = useState<FunctionType | null>(null);
 
@@ -216,7 +217,7 @@ const ModelSettingsPanel: React.FC = () => {
 
   // ── Effective Config (Advanced Tab) ──
   const [effectiveConfigs, setEffectiveConfigs] = useState<Record<FunctionType, ResolvedConfig | null>>({
-    chat: null, fast: null, video_cut: null, vision: null, coding: null,
+    chat: null, fast: null, video_cut: null, vision: null, coding: null, research: null,
   });
   const [loadingEffectiveConfig, setLoadingEffectiveConfig] = useState(false);
 
@@ -226,6 +227,7 @@ const ModelSettingsPanel: React.FC = () => {
     video_cut: t.adminSettings.modelVideoCut,
     vision: t.adminSettings.modelVision,
     coding: t.adminSettings.modelCoding,
+    research: t.webResearch.model,
   };
 
   // ── Data Fetching ──
@@ -261,7 +263,7 @@ const ModelSettingsPanel: React.FC = () => {
 
       if (assignData.success) {
         const assignMap: Record<FunctionType, Assignment | null> = {
-          chat: null, fast: null, video_cut: null, vision: null, coding: null,
+          chat: null, fast: null, video_cut: null, vision: null, coding: null, research: null,
         };
         const formUpdates: Record<FunctionType, AssignmentFormState> = {
           chat: { provider_id: null, model_name: '', temperature: 0.7, modelInputMode: 'select' },
@@ -269,6 +271,7 @@ const ModelSettingsPanel: React.FC = () => {
           video_cut: { provider_id: null, model_name: '', temperature: 0.7, modelInputMode: 'select' },
           vision: { provider_id: null, model_name: '', temperature: 0.7, modelInputMode: 'select' },
           coding: { provider_id: null, model_name: '', temperature: 1.0, modelInputMode: 'select' },
+    research: { provider_id: null, model_name: '', temperature: 0.2, modelInputMode: 'select' },
         };
         for (const a of assignData.assignments) {
           const ft = a.function_type as FunctionType;
@@ -617,7 +620,7 @@ const ModelSettingsPanel: React.FC = () => {
     try {
       await http.del(`/api/model-settings/assignments/${ft}`);
       showSuccess(t.adminSettings.modelAssignmentDeleted);
-      const defaultTemp = ft === 'coding' ? 1.0 : 0.7;
+      const defaultTemp = ft === 'coding' ? 1.0 : ft === 'research' ? 0.2 : 0.7;
       updateAssignmentForm(ft, { provider_id: null, model_name: '', temperature: defaultTemp, modelInputMode: 'select' });
       setAssignments(prev => ({ ...prev, [ft]: null }));
     } catch (err) {
@@ -683,7 +686,7 @@ const ModelSettingsPanel: React.FC = () => {
         })
       );
       const configMap: Record<FunctionType, ResolvedConfig | null> = {
-        chat: null, fast: null, video_cut: null, vision: null, coding: null,
+        chat: null, fast: null, video_cut: null, vision: null, coding: null, research: null,
       };
       for (const r of results) {
         configMap[r.ft as FunctionType] = r.config;
@@ -1186,6 +1189,7 @@ const ModelSettingsPanel: React.FC = () => {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
       </svg>
     ),
+    research: <WifiIcon />,
     coding: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -1202,6 +1206,7 @@ const ModelSettingsPanel: React.FC = () => {
       </div>
       <p className="text-sm text-muted-foreground mb-4">
         {t.adminSettings.modelAssignmentsDesc}
+        <span className="block mt-2">{t.webResearch.modelFallback}</span>
       </p>
 
       {savedProviders.length === 0 ? (
@@ -1374,6 +1379,7 @@ const ModelSettingsPanel: React.FC = () => {
     { ft: 'fast', prefix: 'FAST_LLM_*', urlKey: 'FAST_LLM_API_URL', apiKeyKey: 'FAST_LLM_API_KEY', modelKey: 'FAST_LLM_MODEL', descKey: 'envVarFastDesc' },
     { ft: 'video_cut', prefix: 'VIDEO_CUT_LLM_*', urlKey: 'VIDEO_CUT_LLM_API_URL', apiKeyKey: 'VIDEO_CUT_LLM_API_KEY', modelKey: 'VIDEO_CUT_LLM_MODEL', descKey: 'envVarVideoCutDesc' },
     { ft: 'vision', prefix: 'VL_LLM_*', urlKey: 'VL_LLM_API_URL', apiKeyKey: 'VL_LLM_API_KEY', modelKey: 'VL_LLM_MODEL', descKey: 'envVarVisionDesc' },
+    { ft: 'research', prefix: 'RESEARCH_LLM_*', urlKey: 'RESEARCH_LLM_API_URL', apiKeyKey: 'RESEARCH_LLM_API_KEY', modelKey: 'RESEARCH_LLM_MODEL', descKey: 'envVarFastDesc' },
     { ft: 'coding', prefix: 'CODING_LLM_*', urlKey: 'CODING_LLM_API_URL', apiKeyKey: 'CODING_LLM_API_KEY', modelKey: 'CODING_LLM_MODEL', descKey: 'envVarCodingDesc' },
   ];
 
@@ -1414,7 +1420,8 @@ const ModelSettingsPanel: React.FC = () => {
                   <td className="py-2 px-2 font-mono text-foreground">{row.urlKey}</td>
                   <td className="py-2 px-2 font-mono text-foreground">{row.apiKeyKey}</td>
                   <td className="py-2 px-2 font-mono text-foreground">{row.modelKey}</td>
-                  <td className="py-2 px-2 text-muted-foreground">{t.adminSettings[row.descKey] as string}</td>
+                  <td className="py-2 px-2 text-muted-foreground">{row.ft === 'research'
+                    ? t.webResearch.modelFallback : t.adminSettings[row.descKey] as string}</td>
                 </tr>
               ))}
             </tbody>

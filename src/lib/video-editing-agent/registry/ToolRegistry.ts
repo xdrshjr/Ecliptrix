@@ -46,6 +46,9 @@ export interface ToolInfo {
  * understand what's available before calling a tool.
  */
 export class ToolRegistry {
+  getTool(name: string): AgentTool | undefined {
+    return this.getAllTools().find(tool => tool.name === name);
+  }
   private categories: Map<string, ToolCategory> = new Map();
 
   /**

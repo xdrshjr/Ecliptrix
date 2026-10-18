@@ -9,7 +9,7 @@ Prefix: /api/system-settings (registered in main.py with prefix="/api")
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import ValidationError
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +40,7 @@ logger = get_logger(__name__)
 # It must stay in sync with the YAML_TO_DB_MAPPING in system_settings_service.py.
 
 CATEGORY_METADATA: list[SettingsCategoryInfo] = [
+    SettingsCategoryInfo(name="web_research", label="网络与研究", description="搜索、浏览、下载与资料整理"),
     SettingsCategoryInfo(
         name="tts",
         label="TTS 语音合成",
@@ -87,10 +88,16 @@ def _service_response_to_api(resp) -> SystemSettingResponse:
     The service layer has its own SystemSettingInternal (with extra fields like id, category).
     The API model is a slimmed-down version exposing only key-level data.
     """
+    value, default_value = resp.value, resp.default_value
+    if getattr(resp, "category", None) == "web_research" and resp.key == "tavily_api_keys":
+        from app.services.web_research.web_search_service import get_web_search_service
+        keys = get_web_search_service()._api_keys()
+        value = {"configured": bool(keys), "key_count": len(keys)}
+        default_value = None
     return SystemSettingResponse(
         key=resp.key,
-        value=resp.value,
-        default_value=resp.default_value,
+        value=value,
+        default_value=default_value,
         value_type=resp.value_type,
         description=resp.description,
         updated_at=resp.updated_at,
@@ -156,8 +163,8 @@ async def get_audit_log(
         return AuditLogResponse(success=True, logs=logs, total=total)
 
     except Exception as e:
-        logger.error(f"Error querying audit log: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("System settings operation failed")
+        raise HTTPException(status_code=500, detail="settings_operation_failed")
 
 
 @router.get("/{category}", response_model=CategorySettingsResponse)
@@ -175,8 +182,8 @@ async def get_category_settings(
             settings=settings,
         )
     except Exception as e:
-        logger.error(f"Error getting settings for category '{category}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("System settings operation failed")
+        raise HTTPException(status_code=500, detail="settings_operation_failed")
 
 
 @router.put("/{category}/{key}")
@@ -184,9 +191,15 @@ async def update_setting(
     category: str,
     key: str,
     request: UpdateSettingRequest,
+    http_request: Request,
 ):
     """Update a single setting value. The authenticated user is recorded for audit."""
     _validate_category(category)
+    if category == "web_research":
+        from .research_run_router import validate_ui_origin
+        validate_ui_origin(http_request, write=True)
+        if key == "tavily_api_keys":
+            raise HTTPException(status_code=400, detail="use_credentials_endpoint")
     try:
         validate_setting_payload(category, key, request.value)
     except ValidationError as ve:
@@ -195,7 +208,7 @@ async def update_setting(
             detail={
                 'category': category,
                 'key': key,
-                'errors': ve.errors(),
+                'errors': ve.errors(include_input=False, include_context=False),
             },
         )
     except ValueError as ve:
@@ -222,17 +235,23 @@ async def update_setting(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"Error updating setting {category}.{key}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("System settings operation failed")
+        raise HTTPException(status_code=500, detail="settings_operation_failed")
 
 
 @router.put("/{category}")
 async def batch_update_settings(
     category: str,
     request: BatchUpdateSettingsRequest,
+    http_request: Request,
 ):
     """Batch-update multiple settings within a category."""
     _validate_category(category)
+    if category == "web_research":
+        from .research_run_router import validate_ui_origin
+        validate_ui_origin(http_request, write=True)
+        if "tavily_api_keys" in request.settings:
+            raise HTTPException(status_code=400, detail="use_credentials_endpoint")
     try:
         for key, value in request.settings.items():
             validate_setting_payload(category, key, value)
@@ -241,7 +260,7 @@ async def batch_update_settings(
             status_code=422,
             detail={
                 'category': category,
-                'errors': ve.errors(),
+                'errors': ve.errors(include_input=False, include_context=False),
             },
         )
     except ValueError as ve:
@@ -264,16 +283,20 @@ async def batch_update_settings(
             "settings": [_service_response_to_api(r) for r in results],
         }
     except Exception as e:
-        logger.error(f"Error batch-updating category '{category}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("System settings operation failed")
+        raise HTTPException(status_code=500, detail="settings_operation_failed")
 
 
 @router.post("/{category}/reset")
 async def reset_category(
     category: str,
+    http_request: Request,
 ):
     """Reset all settings in a category to their factory default values."""
     _validate_category(category)
+    if category == "web_research":
+        from .research_run_router import validate_ui_origin
+        validate_ui_origin(http_request, write=True)
     try:
         results = await system_settings_service.reset_to_defaults(
             category=category,
@@ -285,14 +308,17 @@ async def reset_category(
             "settings": [_service_response_to_api(r) for r in results],
         }
     except Exception as e:
-        logger.error(f"Error resetting category '{category}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("System settings operation failed")
+        raise HTTPException(status_code=500, detail="settings_operation_failed")
 
 
 @router.post("/reset-all")
 async def reset_all(
+    http_request: Request,
 ):
     """Reset ALL settings across all categories to their factory default values."""
+    from .research_run_router import validate_ui_origin
+    validate_ui_origin(http_request, write=True)
     try:
         await system_settings_service.reset_all_to_defaults(
             updated_by=LOCAL_OWNER_NAME,
@@ -302,5 +328,5 @@ async def reset_all(
             "message": "All settings reset to defaults",
         }
     except Exception as e:
-        logger.error(f"Error resetting all settings: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("System settings operation failed")
+        raise HTTPException(status_code=500, detail="settings_operation_failed")

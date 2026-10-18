@@ -3,6 +3,134 @@ import type { TtsErrorCode } from './ttsErrors';
 // 沿用项目集中式中英文翻译表；文件超过 1000 行，本次只补助手相关键。
 
 export interface Translations {
+  webResearch: {
+    proxyMode: string;
+    proxy_auto: string;
+    proxy_direct: string;
+    proxy_custom: string;
+    proxyHelp: string;
+    customProxyUrl: string;
+    invalidProxyUrl: string;
+    coverageSummary: string;
+    sourcePageText: string;
+    sourceSnippet: string;
+    sourceUnavailable: string;
+    sourceUnrecorded: string;
+    factIncludesSnippet: string;
+    qualityFullText: string;
+    qualityMixed: string;
+    qualitySnippetsOnly: string;
+    qualityNone: string;
+    modelSynthesisSucceeded: string;
+    modelSynthesisFallback: string;
+    modelQueryOnly: string;
+    modelDisabled: string;
+    modelUnknown: string;
+    modelConfiguration: string;
+    modelBusy: string;
+    modelInvalid: string;
+    modelTimeout: string;
+    modelFailed: string;
+    citationMissing: string;
+    saveCredentialsFirst: string;
+    credentialsRejected: string;
+    searchRateLimited: string;
+    searchQuotaExceeded: string;
+    searchResponseInvalid: string;
+    searchTimeout: string;
+    searchConnectionFailed: string;
+    connectionBusy: string;
+    searchConfigured: string;
+    segmentOff: string;
+    capabilityUnavailable: string;
+    searchNotConfigured: string;
+    capabilityEnvironmentUnavailable: string;
+    configureKeys: string;
+    egress: string;
+    egressSettings: string;
+    egressEnv: string;
+    egressSystem: string;
+    egressDirect: string;
+    egressInvalid: string;
+    refreshStatus: string;
+    settingsLoadFailed: string;
+    retry: string;
+    configurationHint: string;
+    capabilityDisabled: string;
+    runLost: string;
+    title: string;
+    description: string;
+    enabled: string;
+    search: string;
+    browser: string;
+    downloads: string;
+    available: string;
+    unavailable: string;
+    disabled: string;
+    offline: string;
+    credentials: string;
+    credentialsHelp: string;
+    newKeys: string;
+    updateCredentials: string;
+    clearCredentials: string;
+    credentialsSaved: string;
+    credentialsCleared: string;
+    configured: string;
+    notConfigured: string;
+    invalidKeys: string;
+    test: string;
+    testing: string;
+    connected: string;
+    failed: string;
+    save: string;
+    saved: string;
+    saving: string;
+    reset: string;
+    resetHelp: string;
+    resetDone: string;
+    loading: string;
+    browsing: string;
+    browserEnabled: string;
+    downloadsEnabled: string;
+    robots: string;
+    browserLimits: string;
+    model: string;
+    useModel: string;
+    mainModel: string;
+    configureModel: string;
+    modelFallback: string;
+    modelSource: string;
+    advanced: string;
+    mainContext: string;
+    researchContext: string;
+    concurrency: string;
+    sources: string;
+    retention: string;
+    invalidNumber: string;
+    searching: string;
+    reading: string;
+    downloading: string;
+    imported: string;
+    reused: string;
+    stopped: string;
+    configuration: string;
+    completed: string;
+    noResults: string;
+    blocked: string;
+    error: string;
+    preview: string;
+    closePreview: string;
+    readMore: string;
+    expired: string;
+    licenseUnknown: string;
+    licenseDeclared: string;
+    retrieved: string;
+    uncertainties: string;
+    partial: string;
+    sourceList: string;
+    localPreview: string;
+    tools: Record<string, string>;
+  };
   /** Import labels shared with the cover timeline. */
   coverStudio: {
     previewCheck: string;
@@ -1202,6 +1330,10 @@ export interface Translations {
       providerAuth: string;
       providerRateLimit: string;
       contextOverflow: string;
+      contextBudgetExceeded: string;
+      toolSchemaBudget: string;
+      modelCallLimit: string;
+      toolCallLimit: string;
       providerError: string;
       emptyResponse: string;
       toolFailures: string;
@@ -3165,6 +3297,149 @@ export interface Translations {
 
 export const translations: Record<string, Translations> = {
   en: {
+    webResearch: {
+      proxyMode: 'Proxy mode',
+      proxy_auto: 'Auto',
+      proxy_direct: 'Direct',
+      proxy_custom: 'Custom',
+      proxyHelp:
+        'Auto: custom address, then system/environment proxy, then direct. ' +
+        'Direct keeps full IP validation; custom uses only the address below.',
+      customProxyUrl: 'Custom proxy address (http://host:port)',
+      invalidProxyUrl:
+        'Proxy address must be http(s)://host:port (credentials allowed).',
+      coverageSummary: 'Original text {page_text} · Snippets {search_snippet} · Unavailable {unavailable}',
+      sourcePageText: 'Original text read',
+      sourceSnippet: 'Search snippet only',
+      sourceUnavailable: 'Content unavailable',
+      sourceUnrecorded: 'Reading status not recorded',
+      factIncludesSnippet: 'Includes search snippets',
+      qualityFullText: 'The listed source texts were read; their content still needs verification.',
+      qualityMixed: 'Some original texts were read; other sources have limited or unavailable content.',
+      qualitySnippetsOnly: 'Only search snippets are available; original texts were not read.',
+      qualityNone: 'No citable material was obtained.',
+      modelSynthesisSucceeded: 'Research synthesis: {model}',
+      modelSynthesisFallback: 'Research synthesis is incomplete; source excerpts are retained.',
+      modelQueryOnly: 'A search query was generated; the report uses source excerpts.',
+      modelDisabled: 'Source excerpts are available to the main model.',
+      modelUnknown: 'Research model status not recorded',
+      modelConfiguration: 'Check the research synthesis model configuration',
+      modelBusy: 'The research model is temporarily busy',
+      modelInvalid: 'The research model response was invalid',
+      modelTimeout: 'Research synthesis timed out',
+      modelFailed: 'Research synthesis could not be completed',
+      citationMissing: 'Citation missing',
+  "configurationHint": "Open Settings → Network & research to configure search credentials and model assignments.",
+  "saveCredentialsFirst": "Save search credentials first",
+  "credentialsRejected": "Search credentials were rejected",
+  "searchRateLimited": "Search is rate limited. Try again later",
+  "searchQuotaExceeded": "Search quota is exhausted",
+  "searchResponseInvalid": "Search service returned an invalid response",
+  "searchTimeout": "Search service timed out",
+  "searchConnectionFailed": "Unable to connect to search service",
+  "connectionBusy": "Connection test is busy. Try again later",
+  "searchConfigured": "Configured",
+  "segmentOff": "Off",
+  "capabilityUnavailable": "Status temporarily unavailable",
+  "searchNotConfigured": "Not configured — add search keys",
+  "capabilityEnvironmentUnavailable": "Not provided by this environment",
+  "configureKeys": "Add search keys",
+  "egress": "Network egress",
+  "egressSettings": "Custom proxy from Settings",
+  "egressEnv": "Proxy from environment variables",
+  "egressSystem": "System proxy detected by the app",
+  "egressDirect": "Direct connection",
+  "egressInvalid": "Saved proxy address is invalid — fix it below",
+  "refreshStatus": "Refresh status",
+  "settingsLoadFailed": "Settings could not be loaded. Retry before making changes.",
+  "retry": "Retry",
+  "capabilityDisabled": "This network capability is disabled in Settings.",
+  "runLost": "The research session ended because the app restarted. Editing still works; send a new message to research again.",
+  "title": "Network & research",
+  "description": "Find sources, read public pages and import local media.",
+  "enabled": "Enable network research",
+  "search": "Web search",
+  "browser": "Dynamic pages",
+  "downloads": "Local downloads",
+  "available": "Available",
+  "unavailable": "Unavailable",
+  "disabled": "Network research is disabled; editing tools remain available.",
+  "offline": "Network research is temporarily unavailable; editing tools remain available.",
+  "credentials": "Search credentials",
+  "credentialsHelp": "Saved keys are never displayed. Separate up to five new keys with commas.",
+  "newKeys": "New search keys",
+  "updateCredentials": "Update credentials",
+  "clearCredentials": "Clear credentials",
+  "credentialsSaved": "Credentials saved",
+  "credentialsCleared": "Credentials cleared; environment fallback is disabled.",
+  "configured": "Saved credentials: {count}",
+  "notConfigured": "No search credentials configured",
+  "invalidKeys": "Enter one to five keys, each at most 512 characters.",
+  "test": "Test saved connection",
+  "testing": "Testing connection…",
+  "connected": "Connection successful",
+  "failed": "The operation failed. Please try again.",
+  "save": "Save",
+  "saved": "Settings saved",
+  "saving": "Saving…",
+  "reset": "Restore defaults",
+  "resetHelp": "Restoring defaults re-enables environment credential inheritance.",
+  "resetDone": "Defaults restored",
+  "loading": "Loading…",
+  "browsing": "Browsing & downloads",
+  "browserEnabled": "Enable public web browsing",
+  "downloadsEnabled": "Enable media downloads",
+  "robots": "Respect website robots rules",
+  "browserLimits": "Public browsing only. Pages requiring cookies, POST APIs or Service Workers may not work. Login, uploads and payments are unavailable.",
+  "model": "Research model",
+  "useModel": "Use an auxiliary research model",
+  "mainModel": "Currently summarized by the main model",
+  "configureModel": "Configure model assignments",
+  "modelFallback": "Research assignment → research environment → fast assignment/environment → chat assignment/environment. Invalid explicit configuration is reported.",
+  "modelSource": "Active model",
+  "advanced": "Advanced resource limits",
+  "mainContext": "Editing model context window",
+  "researchContext": "Research model context window",
+  "concurrency": "Concurrent network requests",
+  "sources": "Maximum sources",
+  "retention": "Research retention (days)",
+  "invalidNumber": "Enter a whole number from {min} to {max}.",
+  "searching": "Searching",
+  "reading": "Reading",
+  "downloading": "Downloading",
+  "imported": "Imported",
+  "reused": "Material already in library",
+  "stopped": "Stopped",
+  "configuration": "Configuration required",
+  "completed": "Completed",
+  "noResults": "No results found",
+  "blocked": "The website or network policy blocked this request.",
+  "error": "Research failed. Please try again.",
+  "preview": "Preview screenshot",
+  "closePreview": "Close preview",
+  "readMore": "Read saved details",
+  "expired": "Saved details are unavailable. Fetch the source again.",
+  "licenseUnknown": "License information not provided",
+  "licenseDeclared": "License declared by source",
+  "retrieved": "Retrieved",
+  "uncertainties": "Uncertainties",
+  "partial": "Research is incomplete; available sources are retained.",
+  "sourceList": "Sources",
+  "localPreview": "Local material preview",
+  "tools": {
+    "web_search": "Search the web",
+    "web_fetch": "Read web page",
+    "web_research": "Research topic",
+    "extract_web_images": "Find web images",
+    "fetch_web_image": "Import web image",
+    "download_web_media": "Download web media",
+    "browser_open": "Open browser",
+    "browser_read": "Read browser",
+    "browser_act": "Interact with page",
+    "browser_close": "Close browser",
+    "read_research_artifact": "Read research details"
+  }
+},
     coverStudio: {
       previewCheck: 'Preview check',
       checkingPreview: 'Checking the preview…',
@@ -4137,6 +4412,10 @@ export const translations: Record<string, Translations> = {
         providerAuth: 'The model provider rejected the API key. Check Settings › Models.',
         providerRateLimit: 'The model provider is rate limiting requests. Wait a moment and try again.',
         contextOverflow: 'This conversation is too long for the model. Clear the chat or start a new one.',
+        contextBudgetExceeded: 'This step no longer fits the context window. Raise the context window in Settings › Network & research, or start a new conversation.',
+        toolSchemaBudget: 'Too many tool definitions were requested for the context window. Raise the context window in Settings › Network & research and try again.',
+        modelCallLimit: 'This turn reached the model-call limit. Send a shorter instruction, or continue from where it stopped.',
+        toolCallLimit: 'This turn reached the tool-call limit. Continue from where it stopped; finished steps are kept.',
         providerError: 'The model request failed: {detail}',
         emptyResponse: 'The model returned an empty response. It may not support tool calling.',
         toolFailures: 'Stopped after 5 consecutive tool failures. Review the failed steps for the specific reasons.',
@@ -6405,6 +6684,148 @@ export const translations: Record<string, Translations> = {
     },
   },
   'zh-CN': {
+    webResearch: {
+      proxyMode: '代理模式',
+      proxy_auto: '自动',
+      proxy_direct: '直连',
+      proxy_custom: '自定义',
+      proxyHelp:
+        '自动：自定义地址 > 系统/环境代理 > 直连；直连保留全量 IP 校验；' +
+        '自定义仅使用下方地址。',
+      customProxyUrl: '自定义代理地址（http://host:port）',
+      invalidProxyUrl: '代理地址须为 http(s)://host:port（可含认证信息）。',
+      coverageSummary: '原文 {page_text} · 摘要 {search_snippet} · 未取得 {unavailable}',
+      sourcePageText: '已读取原文',
+      sourceSnippet: '仅搜索摘要',
+      sourceUnavailable: '未取得内容',
+      sourceUnrecorded: '读取情况未记录',
+      factIncludesSnippet: '含搜索摘要',
+      qualityFullText: '已读取所列来源正文，内容仍需核实',
+      qualityMixed: '已读取部分原文，其他来源仅有摘要或未取得内容',
+      qualitySnippetsOnly: '仅取得搜索摘要，尚未读取来源原文',
+      qualityNone: '未取得可引用资料',
+      modelSynthesisSucceeded: '资料整理：{model}',
+      modelSynthesisFallback: '资料整理未完成，已保留来源摘录',
+      modelQueryOnly: '已生成搜索查询，报告使用来源摘录',
+      modelDisabled: '来源摘录可供主模型使用',
+      modelUnknown: '资料整理模型状态未记录',
+      modelConfiguration: '检查资料整理模型配置',
+      modelBusy: '模型暂时繁忙',
+      modelInvalid: '模型响应无效',
+      modelTimeout: '整理超时',
+      modelFailed: '资料整理未完成',
+      citationMissing: '引用缺失',
+  "configurationHint": "请前往设置 → 网络与研究，配置搜索凭证及模型功能分配。",
+  "saveCredentialsFirst": "请先保存搜索凭证",
+  "credentialsRejected": "搜索服务拒绝了凭证，请检查后重新保存",
+  "searchRateLimited": "搜索请求过于频繁，请稍后重试",
+  "searchQuotaExceeded": "搜索服务额度不足，请检查服务商账户",
+  "searchResponseInvalid": "搜索服务返回异常，请稍后重试",
+  "searchTimeout": "搜索服务响应超时，请稍后重试",
+  "searchConnectionFailed": "无法连接搜索服务，请检查网络",
+  "connectionBusy": "连接测试繁忙，请稍后再试",
+  "searchConfigured": "已配置",
+  "segmentOff": "已关闭",
+  "capabilityUnavailable": "状态暂不可用",
+  "searchNotConfigured": "未配置——请填写搜索密钥",
+  "capabilityEnvironmentUnavailable": "当前环境不提供该能力",
+  "configureKeys": "去填写密钥",
+  "egress": "网络出口",
+  "egressSettings": "设置中的自定义代理",
+  "egressEnv": "环境变量代理",
+  "egressSystem": "应用检测到的系统代理",
+  "egressDirect": "直连",
+  "egressInvalid": "已保存的代理地址无效，请在下方修正",
+  "refreshStatus": "刷新状态",
+  "settingsLoadFailed": "设置读取失败，请重试后再进行修改。",
+  "retry": "重试",
+  "capabilityDisabled": "此网络能力已在设置中关闭。",
+  "runLost": "应用重启导致本次研究会话结束；剪辑不受影响，可再次发起研究。",
+  "title": "网络与研究",
+  "description": "检索来源、阅读公开网页并导入本地素材。",
+  "enabled": "启用网络研究",
+  "search": "网络检索",
+  "browser": "动态网页",
+  "downloads": "本地下载",
+  "available": "可用",
+  "unavailable": "不可用",
+  "disabled": "网络研究已关闭，剪辑工具仍可使用。",
+  "offline": "网络研究暂不可用，剪辑工具仍可使用。",
+  "credentials": "搜索凭证",
+  "credentialsHelp": "已保存密钥不会回显。输入最多五个新密钥，用逗号分隔。",
+  "newKeys": "新搜索密钥",
+  "updateCredentials": "更新凭证",
+  "clearCredentials": "清除凭证",
+  "credentialsSaved": "凭证已保存",
+  "credentialsCleared": "凭证已清除，环境变量回落已禁用。",
+  "configured": "已保存凭证：{count} 个",
+  "notConfigured": "尚未配置搜索凭证",
+  "invalidKeys": "请输入一至五个密钥，每个不超过 512 个字符。",
+  "test": "测试已保存连接",
+  "testing": "正在测试连接…",
+  "connected": "连接成功",
+  "failed": "操作失败，请重试。",
+  "save": "保存",
+  "saved": "设置已保存",
+  "saving": "正在保存…",
+  "reset": "恢复默认",
+  "resetHelp": "恢复默认会重新启用环境变量凭证继承。",
+  "resetDone": "已恢复默认设置",
+  "loading": "正在加载…",
+  "browsing": "浏览与下载",
+  "browserEnabled": "启用公开网页浏览",
+  "downloadsEnabled": "启用素材下载",
+  "robots": "遵守网站 robots 规则",
+  "browserLimits": "仅浏览公开网页。依赖 Cookie、POST API 或 Service Worker 的页面可能无法使用。不支持登录、上传和支付。",
+  "model": "资料整理模型",
+  "useModel": "使用辅助资料整理模型",
+  "mainModel": "当前由主模型整合",
+  "configureModel": "配置模型功能分配",
+  "modelFallback": "研究分配 → 研究环境配置 → 快速模型分配/环境配置 → 聊天模型分配/环境配置。显式无效配置会报告错误。",
+  "modelSource": "实际使用模型",
+  "advanced": "高级资源限额",
+  "mainContext": "剪辑主模型上下文窗口",
+  "researchContext": "资料整理模型上下文窗口",
+  "concurrency": "网络请求并发数",
+  "sources": "最大来源数",
+  "retention": "研究资料保留天数",
+  "invalidNumber": "请输入 {min} 至 {max} 之间的整数。",
+  "searching": "正在检索",
+  "reading": "正在阅读",
+  "downloading": "正在下载",
+  "imported": "已导入",
+  "reused": "素材已在库中",
+  "stopped": "已停止",
+  "configuration": "需要配置",
+  "completed": "已完成",
+  "noResults": "未找到结果",
+  "blocked": "网站或网络策略拒绝了本次请求。",
+  "error": "研究失败，请重试。",
+  "preview": "预览截图",
+  "closePreview": "关闭预览",
+  "readMore": "精读已保存资料",
+  "expired": "资料已不可用，请重新获取来源。",
+  "licenseUnknown": "授权信息未提供",
+  "licenseDeclared": "来源已声明授权信息",
+  "retrieved": "获取时间",
+  "uncertainties": "未确定事项",
+  "partial": "研究尚未完成，已保留可用来源。",
+  "sourceList": "来源",
+  "localPreview": "本地素材预览",
+  "tools": {
+    "web_search": "搜索网络",
+    "web_fetch": "阅读网页",
+    "web_research": "研究主题",
+    "extract_web_images": "发现网络图片",
+    "fetch_web_image": "导入网络图片",
+    "download_web_media": "下载网络素材",
+    "browser_open": "打开浏览器",
+    "browser_read": "读取浏览器",
+    "browser_act": "操作网页",
+    "browser_close": "关闭浏览器",
+    "read_research_artifact": "精读研究资料"
+  }
+},
     coverStudio: {
       previewCheck: '画面检查',
       checkingPreview: '正在检查画面…',
@@ -7377,6 +7798,10 @@ export const translations: Record<string, Translations> = {
         providerAuth: '模型服务拒绝了 API Key，请在设置 › 模型中检查。',
         providerRateLimit: '模型服务请求过于频繁，请稍后重试。',
         contextOverflow: '对话内容超出模型上下文长度，请清空聊天或新建对话。',
+        contextBudgetExceeded: '这一步已超出上下文预算，可在“设置 › 网络与研究”调大上下文窗口，或新建对话。',
+        toolSchemaBudget: '本次请求的工具定义超出上下文预算，请在“设置 › 网络与研究”调大上下文窗口后重试。',
+        modelCallLimit: '本回合已达到模型调用上限，请把指令拆小或从断点继续。',
+        toolCallLimit: '本回合已达到工具调用上限，可从断点继续，已完成的步骤会保留。',
         providerError: '模型请求失败：{detail}',
         emptyResponse: '模型返回了空内容，可能不支持工具调用。',
         toolFailures: '连续 5 次工具调用失败，已停止。请查看失败步骤的具体原因。',

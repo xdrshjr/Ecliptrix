@@ -2,10 +2,12 @@ import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage, Age
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import type { TtsFailure } from '@/lib/ttsErrors';
+import type { ResearchRunClient } from '@/lib/server/researchRunClient';
 
 // --- Tool Context ---
 
 export interface ToolContext {
+  researchRun?: ResearchRunClient;
   timelineState: TimelineState;
   materials: MaterialItem[];
   /**
@@ -178,6 +180,14 @@ export type AgentStreamErrorCode =
   | 'provider_auth'
   | 'provider_rate_limit'
   | 'context_overflow'
+  /** The local byte/token budget refused before any provider request. */
+  | 'context_budget_exceeded'
+  /** On-demand tool schemas exceeded the 48 KiB disclosure cap. */
+  | 'tool_schema_budget'
+  /** The turn hit its model-call ceiling (runaway loop guard). */
+  | 'model_call_limit'
+  /** The turn hit its tool-call ceiling (runaway loop guard). */
+  | 'tool_call_limit'
   | 'provider_error'
   | 'empty_response'
   | 'server_timeout'
@@ -233,9 +243,30 @@ export interface AgentChatRequest {
   projectId?: string;
 }
 
+/**
+ * The four capability segments `/capabilities` answers. Kept structural so the
+ * agent never depends on the transport module (server-only).
+ */
+export interface WebCapabilitySegment {
+  available: boolean;
+  enabled?: boolean;
+  configured?: boolean;
+  error_code?: string;
+}
+
+export interface WebCapabilitySnapshot {
+  search: WebCapabilitySegment;
+  browser: WebCapabilitySegment;
+  downloads: WebCapabilitySegment;
+}
+
 // --- Agent Factory Config ---
 
 export interface VideoEditingAgentConfig {
+  researchRun?: ResearchRunClient;
+  contextWindowTokens?: number;
+  /** Network capability snapshot, rendered into the on-demand catalog (§13). */
+  webCapabilities?: WebCapabilitySnapshot | null;
   llmApiUrl: string;
   llmApiKey: string;
   llmModel: string;

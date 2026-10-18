@@ -15,6 +15,7 @@ class ModelFunctionType(str, Enum):
     """LLM function types that can be individually configured."""
     CHAT = "chat"
     FAST = "fast"
+    RESEARCH = "research"
     VIDEO_CUT = "video_cut"
     VISION = "vision"
     CODING = "coding"

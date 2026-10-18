@@ -1,0 +1,19 @@
+# 网络研究出厂值；null 凭证表示继承环境，[] 表示主动禁用。
+web_research:
+  enabled: true
+  browser_enabled: true
+  downloads_enabled: true
+  respect_robots: true
+  use_research_model: false
+  # v2 评审裁定：默认 128000 与被替代的 agent.ts 硬编码持平（R-V2-04）。
+  context_window_tokens: 128000
+  # 研究模型独立窗口；32768 与整合输入推导上限匹配（R-V2-03）。
+  research_context_window_tokens: 32768
+  global_concurrency: 3
+  max_sources: 4
+  # auto：设置代理 > 进程代理 env > 系统代理（Electron 注入）> 直连；
+  # direct：全量 IP 校验；custom：仅 custom_proxy_url。
+  proxy_mode: auto
+  custom_proxy_url: ''
+  artifact_retention_days: 7
+  tavily_api_keys: null

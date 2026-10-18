@@ -46,7 +46,33 @@ class SystemSettingInternal(BaseModel):
 # Maps each YAML config file to (yaml_root_key, [(yaml_section, db_category, db_key), ...])
 # yaml_root_key is the top-level key in the YAML file (None if keys are at root level)
 
+RESEARCH_DEFAULTS = {
+    "enabled": True, "browser_enabled": True, "downloads_enabled": True,
+    "respect_robots": True, "use_research_model": False,
+    # v2 评审裁定：默认 128000 与被替代的 agent.ts 硬编码持平，
+    # 不得借本设计把既有纯剪辑回合的默认上下文静默减半（R-V2-04）。
+    "context_window_tokens": 128000,
+    # 研究模型独立窗口，默认 32768 与整合输入推导上限匹配（R-V2-03）。
+    "research_context_window_tokens": 32768,
+    "global_concurrency": 3, "max_sources": 4,
+    "proxy_mode": "auto", "custom_proxy_url": "",
+    "artifact_retention_days": 7, "tavily_api_keys": None,
+}
+
+
+def research_settings():
+    """未保存键使用出厂值；None 凭证表示继承 env。"""
+    values = RESEARCH_DEFAULTS.copy()
+    values.update(system_settings_service.get_category("web_research"))
+    return values
+
+
 YAML_TO_DB_MAPPING: List[Dict[str, Any]] = [
+    {"file": "web-research-config.yaml", "root_key": "web_research",
+     "mappings": [{"yaml_keys": [key], "category": "web_research",
+                   "db_key": key, "is_nested": True, "scalar": True,
+                   "value_type": "scalar", "description": key}
+                  for key in RESEARCH_DEFAULTS]},
     {
         "file": "batch_tts_config.yaml",
         "root_key": "batch_tts",
@@ -418,7 +444,7 @@ class SystemSettingsService:
                         if k in source_data:
                             value[k] = source_data[k]
 
-                if not value and value != []:
+                if not value and value != [] and not mapping.get("scalar"):
                     continue
 
                 # Upsert: insert new rows, update default_value + description on existing rows.
@@ -484,6 +510,22 @@ class SystemSettingsService:
         This enables hot-reload: services that read settings.batch_tts.* etc.
         will get the updated value without restart.
         """
+        if category == "web_research":
+            from app.services.web_research.safe_http_client import get_safe_http_client
+            from app.services.web_research.run_registry import run_registry
+            if key == "global_concurrency":
+                await get_safe_http_client().limiter.update(value)
+            if key == "enabled" and not value:
+                await run_registry.close()
+            if key in {"browser_enabled", "downloads_enabled"} and not value:
+                for run in list(run_registry.runs.values()):
+                    for (call_id, action), _ in list(run.idempotency.items()):
+                        if ((key == "browser_enabled" and action.startswith("browser"))
+                                or (key == "downloads_enabled" and action == "download")):
+                            await run_registry.cancel_call(run, call_id, reason="disabled")
+                    if key == "browser_enabled" and run_registry.close_browser:
+                        await run_registry.close_browser(run)
+            return
         try:
             from app.config import settings as app_settings
             self._apply_setting_to_config(app_settings, category, key, value)
@@ -496,7 +538,10 @@ class SystemSettingsService:
             from app.config import settings as app_settings
             for category, keys in self._cache.items():
                 for key, value in keys.items():
-                    self._apply_setting_to_config(app_settings, category, key, value)
+                    if category == "web_research":
+                        await self.sync_to_settings_key(category, key, value)
+                    else:
+                        self._apply_setting_to_config(app_settings, category, key, value)
             logger.info("All settings synced to config.py Settings object")
         except Exception as e:
             logger.warning(f"Failed to sync all settings to config: {e}")

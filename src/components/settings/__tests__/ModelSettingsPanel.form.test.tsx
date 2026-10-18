@@ -22,6 +22,11 @@ const FILE = resolve(__dirname, '..', 'ModelSettingsPanel.tsx');
 const src = readFileSync(FILE, 'utf-8');
 
 describe('ModelSettingsPanel — Bug #3 form-wrap', () => {
+  it('包含 research 分配、环境变量和默认温度', () => {
+    expect(src).toContain("'research'");
+    expect(src).toContain('RESEARCH_LLM_*');
+    expect(src).toMatch(/research: \{[^\n]+temperature: 0\.2/);
+  });
   it('wraps the provider add/edit panel in <form noValidate onSubmit=...>', () => {
     expect(src).toMatch(/<form\s+noValidate\s+onSubmit=\{/);
     expect(src).toMatch(/e\.preventDefault\(\)/);

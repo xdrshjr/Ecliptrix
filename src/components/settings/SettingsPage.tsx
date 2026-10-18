@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import SettingsSidebar, { SettingsMenuItem } from './SettingsSidebar';
 import GeneralSettingsPanel from './GeneralSettingsPanel';
 import ModelSettingsPanel from './ModelSettingsPanel';
+import WebResearchSettingsPanel from './WebResearchSettingsPanel';
 import TTSSettingsPanel from './TTSSettingsPanel';
 import YouTubeSettingsPanel from './YouTubeSettingsPanel';
 import UploadSettingsPanel from './UploadSettingsPanel';
@@ -49,6 +50,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => 
         return <GeneralSettingsPanel />;
       case 'model':
         return <ModelSettingsPanel />;
+      case 'webResearch':
+        return <WebResearchSettingsPanel onOpenModels={() => setActiveItem('model')} />;
       case 'tts':
         return <TTSSettingsPanel />;
       case 'videoAnalysis':
@@ -65,9 +68,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => 
   };
 
   return (
-    <div className="h-full flex overflow-hidden bg-background">
+    <div className="h-full flex flex-col sm:flex-row overflow-hidden bg-background motion-reduce:[&_*]:!transition-none">
       {/* Left Sidebar - 20% width */}
-      <div className="w-1/5 flex-shrink-0">
+      <div className="h-40 w-full sm:h-auto sm:w-1/5 flex-shrink-0">
         <SettingsSidebar
           activeItem={activeItem}
           onSelectItem={setActiveItem}
@@ -75,7 +78,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => 
       </div>
 
       {/* Right Panel - 80% width */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         {renderContent()}
       </div>
     </div>

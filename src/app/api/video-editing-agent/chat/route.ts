@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ResearchRunClient, researchSnapshot } from '@/lib/server/researchRunClient';
+import { budgetThinkingMessages } from '@/lib/video-editing-agent/modelContextBudget';
 import { backendConfig } from '@/lib/config/backend';
 import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat';
 import { createVideoEditingAgent, formatErrorDetail, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
@@ -80,6 +82,9 @@ async function performThinkingPhase(
   config: { apiUrl: string; apiKey: string; model: string; providerType?: string; apiType: LlmApiType },
   signal: AbortSignal,
   editorContext: EditorContextPayload | null = null,
+  // v2 R-V2-04：兜底默认与 agent.ts 被替代的硬编码 128000 持平；
+  // 实际值优先来自后端 web_research.context_window_tokens 设置。
+  contextWindowTokens = 128000,
 ): Promise<void> {
   let thinkingHeartbeatId: ReturnType<typeof setInterval> | null = null;
 
@@ -99,6 +104,11 @@ async function performThinkingPhase(
 
     const recentHistory = conversationHistory.slice(-6, -1);
     const thinkingPrompt = buildThinkingPrompt(userMessage, timelineState, materials, editorContext);
+    const budget = budgetThinkingMessages([
+      { role: 'system', content: thinkingPrompt },
+      ...recentHistory.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: userMessage },
+    ], contextWindowTokens);
 
     const thinkingController = new AbortController();
     const timeoutId = setTimeout(() => thinkingController.abort(), THINKING_TIMEOUT);
@@ -116,12 +126,8 @@ async function performThinkingPhase(
           model: config.model,
           apiType: config.apiType,
         },
-        messages: [
-          { role: 'system', content: thinkingPrompt },
-          ...recentHistory.map(m => ({ role: m.role, content: m.content })),
-          { role: 'user', content: userMessage },
-        ],
-        maxTokens: 800,
+        messages: budget.messages,
+        maxTokens: budget.maxTokens,
         signal: combinedSignal,
       })) {
         if (event.kind === 'error') {
@@ -348,6 +354,8 @@ export async function POST(request: NextRequest) {
         // ────────────────────────────────────────────────────────────────
         const thinkingAbort = new AbortController();
         const toolAbort = new AbortController();
+        const researchRun = new ResearchRunClient({ projectId, signal: toolAbort.signal,
+          locale: request.headers.get('accept-language') ?? undefined });
         const pendingToolCallIds = new Set<string>();
 
         // Forward declarations — populated once agent / cleanupHeartbeat /
@@ -411,6 +419,12 @@ export async function POST(request: NextRequest) {
         }
 
         try {
+          const snapshot = await Promise.race([
+            researchSnapshot(),
+            abortPromise.then(() => null),
+          ]);
+          if (abortTriggered || snapshot === null) return;
+          const contextWindowTokens = snapshot.contextWindow;
           // Thinking phase — combined signal so a route-level abort during
           // thinking tears the LLM stream down immediately. Feature-detect
           // AbortSignal.any so deployments on Node < 19 do not crash.
@@ -430,6 +444,7 @@ export async function POST(request: NextRequest) {
             config,
             thinkingCombinedSignal,
             editorContext,
+            contextWindowTokens,
           );
 
           // If abort happened during thinking, bail out before constructing
@@ -445,6 +460,9 @@ export async function POST(request: NextRequest) {
           // 2026-04-07).
           const apiBaseUrl = resolveAgentLoopbackUrl();
           const { agent, toolContext } = createVideoEditingAgent({
+            researchRun,
+            contextWindowTokens,
+            webCapabilities: snapshot.capabilities,
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
             llmModel: config.model,
@@ -589,6 +607,9 @@ export async function POST(request: NextRequest) {
           stopKeepAlive();
           try { send('[DONE]'); } catch { /* controller may already be closed */ }
           try { controller.close(); } catch { /* already closed by triggerAbort */ }
+          // AC-37: wait for the backend to confirm, so回收不依赖 45s 租约。
+          // close() 自带 2s 超时；此时响应已结束，不阻塞用户。
+          await researchRun.close().catch(() => undefined);
         }
       },
       cancel(reason) {

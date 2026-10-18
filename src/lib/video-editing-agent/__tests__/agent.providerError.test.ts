@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Agent, AgentEvent } from '@mariozechner/pi-agent-core';
 import { formatProviderError, subscribeAgentEvents } from '../agent';
+import { serverErrorMessageKey } from '../errorRecovery';
 import type { SSEEvent, ToolContext } from '../types';
 
 function subscribeToFakeAgent() {
@@ -85,6 +86,19 @@ describe('agent provider errors', () => {
       code: formatted.code,
       leaks: /abcdef1234567890|abc\.def\.ghi|zz9988776655/.test(formatted.message),
     }).toEqual({ code: 'provider_auth', leaks: false });
+  });
+
+  it('a local budget refusal stays distinct from a provider overflow (AC-36)', () => {
+    expect(formatProviderError('context_budget_exceeded').code)
+      .toBe('context_budget_exceeded');
+    expect(formatProviderError('tool_schema_budget').code).toBe('tool_schema_budget');
+    expect(formatProviderError('context_length_exceeded').code)
+      .toBe('context_overflow');
+    // Both local codes get their own actionable copy, not the overflow text.
+    expect(serverErrorMessageKey('context_budget_exceeded'))
+      .toBe('contextBudgetExceeded');
+    expect(serverErrorMessageKey('tool_schema_budget')).toBe('toolSchemaBudget');
+    expect(serverErrorMessageKey('context_overflow')).toBe('contextOverflow');
   });
 
   it('a context-length message that mentions 401 tokens is context_overflow', () => {

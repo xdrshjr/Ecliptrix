@@ -20,6 +20,19 @@ import type { Message, ToolResultMessage, UserMessage } from '@mariozechner/pi-a
 
 export const HISTORY_CHAR_BUDGET = 120_000;
 
+/** A response and every result from its tool batch are indivisible. */
+export function groupToolBatches(messages: readonly Message[]): Message[][] {
+  const groups: Message[][] = [];
+  for (const message of messages) {
+    if (message.role === 'toolResult' && groups.length) {
+      groups[groups.length - 1].push(message);
+    } else {
+      groups.push([message]);
+    }
+  }
+  return groups;
+}
+
 /** The latest turns are the model's working context and are never changed. */
 const RECENT_TURNS_KEPT_VERBATIM = 2;
 
@@ -33,6 +46,35 @@ const STALE_SNAPSHOT_TOOLS: ReadonlySet<string> = new Set([
 
 /** Synthetic user notes belong to the turn around them, not a new one. */
 const SYSTEM_NOTE_PREFIX = '[System note]';
+
+/** Keep recent reading handles across both history and provider compaction. */
+export function collectResearchArtifactIds(messages: readonly Message[]): string[] {
+  const ids = new Set<string>();
+  let bytes = 0;
+  const add = (id: string) => {
+    if (!/^[a-zA-Z0-9-]{1,128}$/.test(id) || ids.has(id)) return;
+    const size = id.length + (ids.size ? 1 : 0);
+    if (ids.size >= 80 || bytes + size > 4096) return;
+    ids.add(id);
+    bytes += size;
+  };
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === 'user' && typeof message.content === 'string' &&
+      message.content.startsWith(SYSTEM_NOTE_PREFIX)) {
+      const match = message.content.match(/Artifacts: ([a-zA-Z0-9,-]+)$/);
+      if (match) match[1].split(',').forEach(add);
+    }
+    if (message.role !== 'toolResult') continue;
+    for (const block of message.content) {
+      if (block.type !== 'text') continue;
+      for (const match of Array.from(block.text.matchAll(/"(?:artifact_id|snapshot_artifact_id)"\s*:\s*"([a-zA-Z0-9-]{1,128})"/g))) {
+        add(match[1]);
+      }
+    }
+  }
+  return Array.from(ids);
+}
 
 function startsTurn(message: Message): boolean {
   if (message.role !== 'user') return false;
@@ -98,10 +140,11 @@ function compactOlderMessage(message: Message): Message {
   return compacted === null ? message : textResult(message, compacted);
 }
 
-function omittedTurnsNote(count: number, timestamp: number): UserMessage {
+function omittedTurnsNote(count: number, timestamp: number, artifactIds: string[]): UserMessage {
   return {
     role: 'user',
-    content: `${SYSTEM_NOTE_PREFIX} ${count} earlier turns omitted to fit the model's context. Call get_timeline or list_materials for the current state.`,
+    content: `${SYSTEM_NOTE_PREFIX} ${count} earlier turns omitted to fit the model's context. Call get_timeline or list_materials for the current state.` +
+      (artifactIds.length ? ' Read research artifacts by ID before judging source quality. Artifacts: ' + artifactIds.join(',') : ''),
     timestamp,
   };
 }
@@ -114,11 +157,15 @@ function omittedTurnsNote(count: number, timestamp: number): UserMessage {
 export function compactHistoryForModel(
   messages: readonly Message[],
   budget: number = HISTORY_CHAR_BUDGET,
+  // The caller passes the request-level compactor so history and request
+  // trimming share ONE artifact-summary implementation (spec §3.3). Passing it
+  // in (instead of importing) keeps this module free of an import cycle.
+  compactToolResult: (message: Message) => Message = compactOlderMessage,
 ): Message[] {
   const turns = splitIntoTurns(messages);
   const firstVerbatimTurn = Math.max(0, turns.length - RECENT_TURNS_KEPT_VERBATIM);
   const compacted = turns.map((turn, index) =>
-    index < firstVerbatimTurn ? turn.map(compactOlderMessage) : [...turn],
+    index < firstVerbatimTurn ? turn.map(compactToolResult) : [...turn],
   );
 
   let total = compacted.reduce((sum, turn) => sum + turnChars(turn), 0);
@@ -130,5 +177,6 @@ export function compactHistoryForModel(
 
   const kept = compacted.slice(droppedTurns).flat();
   if (droppedTurns === 0) return kept;
-  return [omittedTurnsNote(droppedTurns, kept[0]?.timestamp ?? 0), ...kept];
+  const artifactIds = collectResearchArtifactIds(compacted.slice(0, droppedTurns).flat());
+  return [omittedTurnsNote(droppedTurns, kept[0]?.timestamp ?? 0, artifactIds), ...kept];
 }

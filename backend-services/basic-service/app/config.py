@@ -351,6 +351,44 @@ class Settings(BaseModel):
         description="VL LLM API protocol: 'openai' (default) or 'anthropic'",
     )
 
+    # Research LLM Configuration (web research: query expansion + synthesis)
+    # Env fallback chain: RESEARCH_LLM_* -> FAST_LLM_* -> LLM_* (resolved in
+    # model_settings_service.get_effective_config; see
+    # docs/plans/agent-general-capabilities/spec.md section 5.2).
+    research_llm_api_key: str = Field(
+        default="", description="Research LLM API key for web research synthesis"
+    )
+    research_llm_api_url: str = Field(
+        default="", description="Research LLM API base URL"
+    )
+    research_llm_model: str = Field(
+        default="", description="Research LLM model name (empty = FAST/LLM fallback)"
+    )
+    research_llm_api_type: str = Field(
+        default="openai",
+        description="Research LLM API protocol: 'openai' (default) or 'anthropic'",
+    )
+
+    research_renderer_origin: str = Field(
+        default_factory=lambda: os.getenv("RESEARCH_RENDERER_ORIGIN", ""))
+
+    # CDP 浏览器宿主（spec §3.6）：端点由 Electron 主进程注入；
+    # 缺失时浏览器能力优雅降级，静态搜索/抓取不受影响。
+    agent_browser_cdp_url: str = Field(
+        default_factory=lambda: os.getenv("AGENT_BROWSER_CDP_URL", ""))
+    agent_browser_control_url: str = Field(
+        default_factory=lambda: os.getenv("AGENT_BROWSER_CONTROL_URL", ""))
+    web_research_system_proxy: str = Field(
+        default_factory=lambda: os.getenv("WEB_RESEARCH_SYSTEM_PROXY", ""))
+    playwright_browsers_path: str = Field(
+        default_factory=lambda: os.getenv("PLAYWRIGHT_BROWSERS_PATH", ""))
+
+    # Tavily web search keys (comma-separated env; system_settings take priority)
+    tavily_api_keys: List[str] = Field(
+        default=[], description="Tavily API keys (comma-separated)"
+    )
+
+
     # PEXELS API Configuration
     pexels_api_keys: List[str] = Field(
         default=[], description="PEXELS API keys (comma-separated)"
@@ -852,6 +890,15 @@ def get_settings() -> Settings:
         vl_llm_api_url=os.getenv("VL_LLM_API_URL", ""),
         vl_llm_model=os.getenv("VL_LLM_MODEL", "qwen-vl-plus"),
         vl_llm_api_type=os.getenv("VL_LLM_API_TYPE", "openai"),
+        research_llm_api_key=os.getenv("RESEARCH_LLM_API_KEY", ""),
+        research_llm_api_url=os.getenv("RESEARCH_LLM_API_URL", ""),
+        research_llm_model=os.getenv("RESEARCH_LLM_MODEL", ""),
+        research_llm_api_type=os.getenv("RESEARCH_LLM_API_TYPE", "openai"),
+        tavily_api_keys=[
+            key.strip()
+            for key in (os.getenv("TAVILY_API_KEYS") or "").split(",")
+            if key.strip()
+        ],
         pexels_api_keys=pexels_api_keys,
         volcano_tts_api_key=os.getenv("VOLCANO_TTS_API_KEY", ""),
         volcano_tts_resource_id=os.getenv("VOLCANO_TTS_RESOURCE_ID", "seed-tts-2.0"),

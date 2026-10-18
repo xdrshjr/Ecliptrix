@@ -178,12 +178,61 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.services.video_cover_job_service import cover_job_service
     await cover_job_service.start()
+    # Web research is an OPTIONAL capability: an unwritable artifact directory or a
+    # missing browser host degrades research only and must never block boot for the
+    # pure editing product (spec §13-3 / AC-25).
+    research_reaper: asyncio.Task | None = None
+    try:
+        from app.services.web_research.run_registry import run_registry
+        from app.services.web_research.artifact_store import get_artifact_store
+        from app.services.web_research.browser_service import get_browser_service
+
+        browser = get_browser_service()
+        run_registry.close_browser = browser.close
+        await get_artifact_store().recover()
+        from app.services.material_download_service import (
+            get_material_download_service,
+        )
+
+        await get_material_download_service().recover_research_cache_async()
+        from app.services.system_settings_service import research_settings
+
+        if research_settings()["enabled"] and research_settings()["browser_enabled"]:
+            await browser.availability()
+
+        async def reap_research() -> None:
+            """Expire research leases; a failure must not stop the loop."""
+            while True:
+                await asyncio.sleep(5)
+                try:
+                    await run_registry.reap()
+                except Exception as reap_error:  # noqa: BLE001 - loop must survive
+                    logger.warning(f"Research run reaper failed: {reap_error}")
+
+        research_reaper = asyncio.create_task(reap_research())
+    except Exception as research_error:
+        logger.error(
+            "Web research initialization failed; research tools will report "
+            f"unavailable: {research_error}",
+            exc_info=True,
+        )
     logger.info("Application startup completed")
 
     yield
 
     # Shutdown
     logger.info("Shutting down application")
+    if research_reaper is not None:
+        research_reaper.cancel()
+        await asyncio.gather(research_reaper, return_exceptions=True)
+    try:
+        from app.services.web_research.run_registry import run_registry
+        from app.services.web_research.browser_service import get_browser_service
+
+        await run_registry.close()
+        await get_browser_service().shutdown()
+    except Exception as shutdown_error:  # noqa: BLE001 - never block shutdown
+        logger.warning(f"Web research shutdown failed: {shutdown_error}")
     await cover_job_service.close()
     await close_db()
     logger.info("Application shutdown completed")
@@ -264,8 +313,13 @@ async def logging_middleware(request: Request, call_next):
     # Log request (spec/05 V05-D — headers are redacted before logging
     # so Authorization / Cookie / X-Session-Token / X-Api-Key are not
     # written to disk).
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.debug(f"Request headers: {redact_headers(request.headers)}")
+    research_request = (request.url.path.startswith("/api/web-research") or
+                        request.url.path.startswith("/api/system-settings"))
+    if research_request:
+        logger.info("Research request: %s %s", request.method, request.url.path)
+    else:
+        logger.info(f"Request: {request.method} {request.url}")
+        logger.debug(f"Request headers: {redact_headers(request.headers)}")
 
     try:
         # Process request
@@ -279,10 +333,24 @@ async def logging_middleware(request: Request, call_next):
 
         # Add processing time header
         response.headers["X-Process-Time"] = str(process_time)
+        if research_request:
+            response.headers["Cache-Control"] = "no-store"
 
         return response
 
     except Exception as e:
+        if research_request:
+            # Research/settings paths carry credentials and one-time tokens, so
+            # only the exception TYPE may be logged (pinned by a test); the
+            # traceback and message stay out of the log file.
+            logger.error(
+                "Research request failed: %s %s (%s)",
+                request.method, request.url.path, type(e).__name__,
+            )
+            from app.routers.research_run_router import error_response
+            from app.models.web_research_models import WebResearchError
+            return error_response(WebResearchError("internal_error", status_code=500,
+                                                   failure_class="internal"))
         # Log error
         process_time = time.time() - start_time
         logger.error(f"Request failed after {process_time:.3f}s: {str(e)}")
@@ -302,6 +370,35 @@ async def logging_middleware(request: Request, call_next):
         )
 
 
+# Codes a research router may raise through `HTTPException(detail=...)`. Anything
+# else (404 `_validate_category`, 500 `settings_operation_failed`, third-party 4xx)
+# must NOT masquerade as `invalid_parameters`, or the settings centre loses its
+# status/message contract (spec §4.1).
+_RESEARCH_HTTP_CODES = {
+    "use_credentials_endpoint",
+    "origin_forbidden",
+    "run_closed",
+    "run_not_found",
+    "browser_unavailable",
+    "browser_disabled",
+    "provider_not_configured",
+}
+
+
+def _research_http_error(exc, error_cls):
+    """Map an HTTPException raised on a research path to a WebResearchError."""
+    detail = exc.detail
+    code = detail if isinstance(detail, str) and detail in _RESEARCH_HTTP_CODES else None
+    if code is None:
+        # Only 4xx input problems become invalid_parameters; 5xx stays internal.
+        code = "invalid_parameters" if exc.status_code < 500 else "internal_error"
+    return error_cls(
+        code,
+        status_code=exc.status_code,
+        message=detail if isinstance(detail, str) else None,
+    )
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """
@@ -314,6 +411,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     Returns:
         JSON error response
     """
+    if request.url.path.startswith("/api/web-research"):
+        from app.routers.research_run_router import error_response
+        from app.models.web_research_models import WebResearchError
+        return error_response(_research_http_error(exc, WebResearchError))
     logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
 
     return JSONResponse(
@@ -339,6 +440,10 @@ async def fastapi_http_exception_handler(request: Request, exc: HTTPException):
     Returns:
         JSON error response
     """
+    if request.url.path.startswith("/api/web-research"):
+        from app.routers.research_run_router import error_response
+        from app.models.web_research_models import WebResearchError
+        return error_response(_research_http_error(exc, WebResearchError))
     logger.warning(f"FastAPI HTTP exception: {exc.status_code} - {exc.detail}")
 
     # Convert detail to string if it's not already
@@ -370,6 +475,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Returns:
         JSON error response
     """
+    if request.url.path.startswith("/api/web-research"):
+        from app.routers.research_run_router import error_response
+        from app.models.web_research_models import WebResearchError
+        return error_response(WebResearchError("invalid_parameters", status_code=422))
     logger.warning(f"Validation error: {exc.errors()}")
 
     return JSONResponse(
@@ -395,6 +504,11 @@ async def general_exception_handler(request: Request, exc: Exception):
     Returns:
         JSON error response
     """
+    if request.url.path.startswith("/api/web-research"):
+        from app.routers.research_run_router import error_response
+        from app.models.web_research_models import WebResearchError
+        return error_response(WebResearchError("internal_error", status_code=500,
+                                               failure_class="internal"))
     logger.error(f"Unhandled exception: {str(exc)}")
     logger.error(f"Traceback: {traceback.format_exc()}")
 
@@ -558,6 +672,22 @@ from app.routers import video_cover_v2 as video_cover_v2_router
 from app.models.video_cover_v2_models import CoverError
 
 app.include_router(video_cover_v2_router.router, prefix="/api")
+
+# Agent web research tools (web_search / web_fetch / extract-images /
+# download / research) — docs/plans/agent-general-capabilities/spec.md §4.
+from app.routers import web_research_router
+
+app.include_router(web_research_router.router, prefix="/api")
+from app.routers import research_run_router, research_browser_router
+from app.models.web_research_models import WebResearchError
+app.include_router(research_run_router.router, prefix="/api")
+app.include_router(research_browser_router.router, prefix="/api")
+
+
+@app.exception_handler(WebResearchError)
+async def research_error_handler(request: Request, exc: WebResearchError):
+    return research_run_router.error_response(exc)
+
 
 
 @app.exception_handler(CoverError)

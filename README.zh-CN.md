@@ -93,6 +93,49 @@ npm run dev
 首次启动时应用会提示你打开 **设置 → 模型与凭证** 填入 LLM 密钥；也可以在启动前先把
 `LLM_API_KEY` / `LLM_API_URL` 写进后端 `.env`。
 
+### 网络研究与动态网页
+
+Agent 可按需加载网页搜索、阅读、图片/音视频下载和动态浏览工具；资料保留
+来源引用，下载验证成功后才导入本地素材库。公开网站内容无需登录，网页中的
+指令不会授予额外操作权限。搜索需在 **设置 → 网络与研究** 配置 Tavily 凭证；
+无凭证、站点拒绝、离线和浏览器不可用会分别显示状态，剪辑仍可使用。
+
+在 **模型设置 → 功能分配 → 网络资料整理** 选择可选研究模型，并在网络与
+研究中开启资料整理；关闭后由主模型整合。研究模型未单独分配时按完整配置组
+回落到快速模型、再到聊天模型。高级设置中的主模型与研究模型上下文窗口应与
+实际模型上限一致。下载素材保存在本机，临时研究资料按保留期限清理。
+
+网络研究开发路径要求 Python 3.10+（Windows 浏览器路径需 3.10/3.11 冒烟）。
+依赖只装 pip 包，**不执行** `python -m playwright install`——动态浏览经
+CDP 复用应用自带的 Electron Chromium，安装包零新增浏览器资源：
+
+```powershell
+python -m pip install -r requirements.txt
+python run.py
+```
+
+开发机的动态浏览调试：先拉起 Electron 浏览器宿主（desktop 目录下
+`npx electron main/agentBrowserHost.js --agent-browser-host
+--cdp-port=9222 --control-port=9333`），再为后端设置
+`AGENT_BROWSER_CDP_URL=http://127.0.0.1:9222` 与
+`AGENT_BROWSER_CONTROL_URL=http://127.0.0.1:9333`；桌面安装版由主进程
+自动注入并监管宿主子进程。纯浏览器调试若更改前端地址，在前后端设置相同的
+`RESEARCH_RENDERER_ORIGIN`（例如 `http://localhost:3000`），并将其加入后端
+`CORS_ALLOWED_ORIGINS`。
+
+代理：设置中心「网络与研究 → 代理模式」三选一（自动/直连/自定义）。
+自动 = 自定义地址 > 系统/环境代理 > 直连；直连保留全量公网 IP 校验；
+自定义仅使用填写的 http(s)://host:port（可含认证）。代理模式下目标主机
+名交由代理解析（Fake-IP 代理环境可用），但字面私网/metadata 目标仍拒绝。
+
+Windows 动态浏览验证使用 `python run.py` 的显式 Proactor 循环、单进程、
+无 reload 启动路径（playwright driver 需要子进程支持）。宿主缺失时动态
+浏览优雅降级为不可用，静态研究仍可使用。`node scripts/smoke-test.js`
+检查打包应用的宿主存活/CDP 可达/capabilities/浏览器动作与退出清理。
+动态浏览仅允许公开 GET/HEAD 请求，不导入 Cookie，不支持登录、POST API 或
+Service Worker。当前浏览器不能安全重新拦截的重定向会返回
+`redirect_unsupported`；可改为直接打开已核实的最终公开地址。
+
 ## 技术栈
 
 ### 桌面外壳

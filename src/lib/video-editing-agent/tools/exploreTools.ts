@@ -3,8 +3,11 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { ToolRegistry, ON_DEMAND_CATEGORY_IDS } from '../registry';
 import { formatExploreToolsResult } from '../systemPrompt';
 import { getCategoryUsageHints } from '../promptParts';
+import type { ToolActivationState } from '../registry/ToolActivationState';
+import { utf8Slice } from '../modelContextBudget';
 
 const parameters = Type.Object({
+  tool_names: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 4 })),
   category: Type.Union(
     ON_DEMAND_CATEGORY_IDS.map(id => Type.Literal(id)),
     {
@@ -30,7 +33,8 @@ type Params = Static<typeof parameters>;
  * advanced tools it hasn't seen detailed descriptions for.
  */
 export function createExploreToolsTool(
-  registry: ToolRegistry
+  registry: ToolRegistry,
+  activation?: ToolActivationState,
 ): AgentTool<typeof parameters> {
   return {
     name: 'explore_tools',
@@ -61,6 +65,32 @@ export function createExploreToolsTool(
           content: [{ type: 'text', text: JSON.stringify({ success: true, message: emptyMsg, tools: [] }) }],
           details: { success: true, message: emptyMsg, tools: [] },
         };
+      }
+
+      if (activation) {
+        try {
+          const loaded = activation.load(categoryId, params.tool_names);
+          const result = { success: true, categoryId, ...loaded,
+            truncated_tools: [] as string[],
+            tools: info.tools.map(tool => ({ name: tool.name,
+              description: utf8Slice(tool.description, 180) })) };
+          const size = () => new TextEncoder().encode(JSON.stringify(result)).length;
+          while (size() > 8000 && result.tools.length) {
+            result.truncated_tools.push(result.tools.pop()!.name);
+          }
+          if (result.truncated_tools.length) {
+            // `loaded` must match what is really registered, otherwise the model
+            // believes a tool is callable after it was dropped (spec D-20).
+            activation.unload(result.truncated_tools);
+            result.loaded = result.loaded.filter(name =>
+              !result.truncated_tools.includes(name));
+            result.further_load = 'Call explore_tools again with the truncated tool_names only.';
+          }
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+        } catch (error) {
+          const result = { success: false, error: error instanceof Error ? error.message : 'tool_schema_budget' };
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+        }
       }
 
       // Build detailed tool descriptions for the LLM

@@ -16,6 +16,9 @@ import type { ToolCategory } from './ToolRegistry';
 // --- Category IDs (exported as constants for type safety) ---
 
 export const CATEGORY_IDS = {
+  WEB_TOOLS: 'web_tools',
+  BROWSER_TOOLS: 'browser_tools',
+  RESEARCH_TOOLS: 'research_tools',
   QUERY_TOOLS: 'query_tools',
   EDITING_TOOLS: 'editing_tools',
   SEARCH_TOOLS: 'search_tools',
@@ -34,6 +37,9 @@ export type CategoryId = (typeof CATEGORY_IDS)[keyof typeof CATEGORY_IDS];
  * These are the valid enum values for explore_tools' `category` parameter.
  */
 export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
+  CATEGORY_IDS.WEB_TOOLS,
+  CATEGORY_IDS.BROWSER_TOOLS,
+  CATEGORY_IDS.RESEARCH_TOOLS,
   CATEGORY_IDS.SEARCH_TOOLS,
   CATEGORY_IDS.AI_GEN_TOOLS,
   CATEGORY_IDS.TTS_TOOLS,
@@ -52,6 +58,15 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
  */
 export function createDefaultCategories(): ToolCategory[] {
   return [
+    { id: CATEGORY_IDS.WEB_TOOLS, name: '网络检索',
+      description: 'Search, read, research public sources; download local media. Requires Network & Research settings.',
+      alwaysAvailable: false, tools: [] },
+    { id: CATEGORY_IDS.BROWSER_TOOLS, name: '网页浏览',
+      description: 'Browse public dynamic pages, read, click, search, scroll and capture. Requires bundled Chromium.',
+      alwaysAvailable: false, tools: [] },
+    { id: CATEGORY_IDS.RESEARCH_TOOLS, name: '研究资料',
+      description: 'Read stored research artifacts by ID and byte offset. No editor changes.',
+      alwaysAvailable: false, tools: [] },
     {
       id: CATEGORY_IDS.COVER_TOOLS,
       name: '封面工具',

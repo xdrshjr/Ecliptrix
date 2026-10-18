@@ -1,6 +1,11 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Electron uses CommonJS. */
 'use strict'
 
 const assert = require('assert')
+const fs = require('fs')
+const vm = require('vm')
+const path = require('path')
+const { spawnSync } = require('child_process')
 
 const { buildUnderPattern, waitForNoProcessesUnder } = require('./process-cleanup')
 
@@ -96,6 +101,42 @@ testBackslashesAreNotDoubled()
 testTrailingSeparatorAppendedOnce()
 testSiblingPrefixCannotMatch()
 testSingleQuotesAreEscapedForPowerShell()
+
+// 用真实 PowerShell 验证通配转义；不能只断言实现生成的字符串。
+function testLiteralWindowsPathsMatch() {
+  if (process.platform !== 'win32') return
+  for (const root of ['M:/workspace [review]/win-unpacked', 'M:/workspace `literal/win-unpacked']) {
+    const literal = root.replace(/\//g, '\\').replace(/'/g, "''")
+    const pattern = buildUnderPattern(root)
+    const result = spawnSync('powershell', ['-NoProfile', '-Command',
+      `if (('${literal}\\Ecliptrix.exe' -like '${pattern}') -and -not ('${literal}-old\\Ecliptrix.exe' -like '${pattern}')) { exit 0 } else { exit 1 }`],
+    { encoding: 'utf8', windowsHide: true, timeout: 10000 })
+    assert.equal(result.status, 0, `合法目录必须准确匹配自身进程: ${root}; ${result.stderr}`)
+  }
+}
+testLiteralWindowsPathsMatch()
+
+// 不启动系统命令；验证探测失败不能变成“没有进程”。
+function testProcessProbeFailsClosed() {
+  let result = { status: 0, stdout: '' }
+  let invocation
+  const sandbox = { module: { exports: {} }, setTimeout,
+    require: () => ({ spawnSync: (...args) => { invocation = args; return result } }) }
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'process-cleanup.js'), 'utf8'), sandbox)
+  const probe = sandbox.module.exports.processesUnder
+  assert.equal(probe('C:/app').length, 0)
+  assert.ok(invocation[1].at(-1).includes('ErrorActionPreference'))
+  assert.ok(invocation[2].timeout > 0)
+  for (const failure of [{ status: 1, stdout: '' },
+    { status: null, error: new Error('timeout'), stdout: '' },
+    { status: 0, stdout: 'not-a-pid' }]) {
+    result = failure
+    assert.throws(() => probe('C:/app'))
+  }
+  result = { status: 0, stdout: '123\r\n456\r\n' }
+  assert.equal(probe('C:/app').join(','), '123,456')
+}
+testProcessProbeFailsClosed()
 
 Promise.resolve()
   .then(testWaitForNoProcessesUnderWaitsUntilEmpty)

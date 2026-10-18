@@ -647,6 +647,9 @@ export interface MaterialItem {
   uploadStatus?: MaterialUploadStatus; // 上传状态
   uploadProgress?: number; // 上传进度 (0-100)
     metadata?: { // 额外元数据
+      source?: string;
+      sourceId?: string;
+      provenance?: import('./webResearch').WebMaterialProvenance;
       cover?: import('./videoCover').CoverClipMetadata['cover'];
       role?: 'video-cover';
     storageKind?: 'local' | 'cached_remote' | 'legacy_remote';

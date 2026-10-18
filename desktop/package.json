@@ -11,6 +11,7 @@
     "build": "node scripts/build.js",
     "build:dir": "node scripts/build.js --dir",
     "smoke-test": "node scripts/smoke-test.js",
+    "verify:research": "node scripts/verify-research-release.js",
     "test:logger": "node scripts/test-logger.js",
     "clean": "node scripts/build.js --clean"
   },

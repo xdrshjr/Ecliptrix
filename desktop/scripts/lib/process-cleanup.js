@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Electron uses CommonJS. */
 'use strict'
 
 const { spawnSync } = require('child_process')
@@ -16,16 +17,17 @@ function sleep(ms) {
  * a literal character (the only -like metacharacters are * ? [ ]) — so the path
  * must NOT be backslash-escaped. Doubling them (the previous bug) made -like
  * require two backslashes per separator, matching nothing and silently
- * returning zero processes. Only the single quote needs escaping (doubled) for
- * the literal. A trailing separator is appended so a sibling dir (e.g.
- * win-unpacked-old) cannot prefix-match win-unpacked.
+ * returning zero processes. Wildcards and backticks must be escaped for -like;
+ * single quotes are doubled for the outer literal. A trailing separator prevents
+ * a sibling dir (e.g. win-unpacked-old) from prefix-matching win-unpacked.
  *
  * @param {string} rootDir Absolute directory to match executable paths against.
  * @returns {string} The -like wildcard pattern (trailing `*` included).
  */
 function buildUnderPattern(rootDir) {
-  const sep = rootDir.endsWith('\\') ? '' : '\\'
-  return (rootDir + sep).replace(/'/g, "''") + '*'
+  const normalized = rootDir.replace(/\//g, '\\')
+  const sep = normalized.endsWith('\\') ? '' : '\\'
+  return (normalized + sep).replace(/[`*?\[\]]/g, '`$&').replace(/'/g, "''") + '*'
 }
 
 /**
@@ -45,14 +47,21 @@ function processesUnder(rootDir) {
     [
       '-NoProfile',
       '-Command',
-      `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '${buildUnderPattern(rootDir)}' } | Select-Object -ExpandProperty ProcessId`,
+      `$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '${buildUnderPattern(rootDir)}' } | Select-Object -ExpandProperty ProcessId`,
     ],
-    { encoding: 'utf-8', windowsHide: true }
+    { encoding: 'utf-8', windowsHide: true, timeout: 10000, maxBuffer: 1024 * 1024 }
   )
-  return String(result.stdout || '')
+  if (result.error || result.status !== 0) {
+    throw new Error('进程枚举失败，不能确认零残留')
+  }
+  const pids = String(result.stdout || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+  if (pids.some(pid => !/^[1-9][0-9]*$/.test(pid))) {
+    throw new Error('进程枚举返回非法结果')
+  }
+  return pids
 }
 
 /**

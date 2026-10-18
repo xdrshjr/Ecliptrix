@@ -600,6 +600,8 @@ class ModelSettingsService:
 
         Response shape is UNCHANGED — downstream consumers depend on it.
         """
+        if function_type == ModelFunctionType.RESEARCH:
+            return await self.resolve_research_config()
         # Try database first: join assignments with providers
         async with async_session_factory() as session:
             stmt = (
@@ -677,6 +679,51 @@ class ModelSettingsService:
         )
 
     # ── Static data ──
+
+    async def _research_assignment(self, function_type):
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(ModelAssignment)
+                .options(selectinload(ModelAssignment.provider))
+                .where(ModelAssignment.function_type == function_type.value))
+            assignment = result.scalar_one_or_none()
+        if assignment is None:
+            return None
+        provider = assignment.provider
+        if provider is None:
+            from app.models.web_research_models import WebResearchError
+            raise WebResearchError("configuration_invalid")
+        return (provider.api_url, provider.api_key, assignment.model_name,
+                _resolve_api_format(None, provider.api_format,
+                                    provider.provider_type or ""))
+
+    async def resolve_research_config(self):
+        """独立成组回落，绝不借用其他用途 resolver 的逐字段回落。"""
+        from app.models.web_research_models import WebResearchError
+        settings = get_settings()
+        stages = [(ModelFunctionType.RESEARCH, "research_llm"),
+                  (ModelFunctionType.FAST, "fast_llm"),
+                  (ModelFunctionType.CHAT, "llm")]
+        for function_type, prefix in stages:
+            assigned = await self._research_assignment(function_type)
+            environment = tuple(getattr(settings, prefix + suffix)
+                                for suffix in ("_api_url", "_api_key",
+                                               "_model", "_api_type"))
+            if (prefix == "fast_llm" and not any(environment[:2])
+                    and environment[2] == "qwen3-next-80b-a3b-instruct"
+                    and not os.getenv("FAST_LLM_MODEL")):
+                environment = None
+            for source, group in [("database", assigned),
+                                  ("environment", environment)]:
+                if group is None or not any(group[:3]):
+                    continue
+                if not all(group[:3]) or group[3] not in {"openai", "anthropic"}:
+                    raise WebResearchError("configuration_invalid")
+                return ResolvedConfigResponse(
+                    success=True, source=source, api_url=group[0],
+                    api_key=group[1], model_name=group[2], api_type=group[3],
+                    temperature=0.2, max_tokens=1800)
+        raise WebResearchError("provider_not_configured")
 
     def get_providers(self) -> List[ProviderInfo]:
         """Return the list of known provider types (static reference)."""

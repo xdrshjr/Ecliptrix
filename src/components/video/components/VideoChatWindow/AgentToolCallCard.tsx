@@ -5,6 +5,7 @@ import type { AgentToolCallRecord } from '@/types';
 import { COVER_CARD_ACTION_EVENT, type CoverCardActionDetail,
   type CoverOperationStatus } from '@/lib/video-editing-agent/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import WebResearchToolCard, { isWebResearchTool } from './WebResearchToolCard';
 
 /** Business status stays visible even after the tool invocation finished. */
 export function CoverToolStatus({ toolCall }: { toolCall: AgentToolCallRecord }) {
@@ -100,6 +101,9 @@ function formatResult(result: unknown): string {
 /** @deprecated Use timeline/AgentExecutionNode instead. */
 const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({ toolCall }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  if (isWebResearchTool(toolCall.name)) {
+    return <WebResearchToolCard toolCall={toolCall} />;
+  }
   const displayName = TOOL_DISPLAY_NAMES[toolCall.name] || toolCall.name;
   const resultText = toolCall.result ? formatResult(toolCall.result) : '';
 

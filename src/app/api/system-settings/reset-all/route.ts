@@ -1,3 +1,3 @@
-import { createPassthroughRoute } from '@/lib/api/server/backend-proxy'
+import { protectedSettingsWrite } from '@/lib/server/researchUiOrigin'
 
-export const { POST } = createPassthroughRoute('/api/system-settings/reset-all')
+export const POST = protectedSettingsWrite('/api/system-settings/reset-all', 'POST', true)

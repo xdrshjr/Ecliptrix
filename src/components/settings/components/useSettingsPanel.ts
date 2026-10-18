@@ -18,6 +18,7 @@ interface UseSettingsPanelReturn {
   settings: Record<string, unknown>;
   defaultValues: Record<string, unknown>;
   loading: boolean;
+  loadError: boolean;
   saving: boolean;
   isDirty: boolean;
   updateSetting: (key: string, value: unknown) => void;
@@ -59,6 +60,7 @@ export function useSettingsPanel(category: string): UseSettingsPanelReturn {
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [defaultValues, setDefaultValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const originalSettings = useRef<Record<string, unknown>>({});
 
@@ -68,7 +70,7 @@ export function useSettingsPanel(category: string): UseSettingsPanelReturn {
     setLoading(true);
     try {
       const data = await fetchCategorySettings(category);
-      if (data.success && data.settings) {
+      if (data.success && Array.isArray(data.settings)) {
         const settingsMap: Record<string, unknown> = {};
         const defaultsMap: Record<string, unknown> = {};
         for (const item of data.settings) {
@@ -78,10 +80,13 @@ export function useSettingsPanel(category: string): UseSettingsPanelReturn {
         setSettings(settingsMap);
         setDefaultValues(defaultsMap);
         originalSettings.current = { ...settingsMap };
+        setLoadError(false);
+      } else {
+        setLoadError(true);
       }
     } catch {
-      // Optional feature; failure is non-fatal — caller surfaces errors via
-      // its own notification layer if needed.
+      // A failed read must remain distinct from a successfully empty category.
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -136,6 +141,7 @@ export function useSettingsPanel(category: string): UseSettingsPanelReturn {
     settings,
     defaultValues,
     loading,
+    loadError,
     saving,
     isDirty,
     updateSetting,

@@ -6,6 +6,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 export type SettingsMenuItem =
   | 'general'
   | 'model'
+  | 'webResearch'
   | 'tts'
   | 'videoAnalysis'
   | 'upload'
@@ -57,6 +58,12 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeItem, onSelectI
       id: 'ai',
       title: t.adminSettings.groupAi,
       items: [
+        {
+          id: 'webResearch',
+          label: t.webResearch.title,
+          description: t.webResearch.description,
+          icon: <span aria-hidden="true">◎</span>,
+        },
         {
           id: 'model',
           label: t.adminSettings.modelSettings,

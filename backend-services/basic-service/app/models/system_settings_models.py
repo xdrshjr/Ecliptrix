@@ -6,7 +6,29 @@ Downstream consumers (frontend proxy, UI panels) depend on these shapes.
 """
 
 from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import urlsplit
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+
+def valid_proxy_url(value) -> bool:
+    """http(s)://host:port，可带 userinfo；与传输侧解析口径一致（D-17）。"""
+    if not isinstance(value, str) or len(value) > 512:
+        return False
+    if value == "":
+        # 空值表示“没有自定义代理”（auto 模式可用环境/系统代理）。
+        return True
+    if any(ord(character) < 33 for character in value):
+        return False
+    try:
+        parts = urlsplit(value)
+        parts.port
+    except ValueError:
+        return False
+    return (parts.scheme.lower() in {"http", "https"}
+            and bool(parts.hostname) and parts.port is not None
+            and parts.path in {"", "/"}
+            and not parts.query and not parts.fragment)
 
 
 # ── Category metadata ──
@@ -169,6 +191,33 @@ def validate_setting_payload(
     No-op for unknown categories or keys — keeps the validator additive so
     new settings panels don't have to declare bounds before shipping.
     """
+    if category == "web_research":
+        from pydantic import TypeAdapter, StrictBool, StrictInt
+        booleans = {"enabled", "browser_enabled", "downloads_enabled",
+                    "respect_robots", "use_research_model"}
+        ranges = {"context_window_tokens": (16384, 1048576),
+                  "research_context_window_tokens": (4096, 1048576),
+                  "global_concurrency": (1, 3), "max_sources": (2, 5),
+                  "artifact_retention_days": (1, 30)}
+        if key in booleans:
+            TypeAdapter(StrictBool).validate_python(value)
+        elif key in ranges:
+            checked = TypeAdapter(StrictInt).validate_python(value)
+            low, high = ranges[key]
+            if not low <= checked <= high:
+                raise ValueError("setting_out_of_range")
+        elif key == "proxy_mode":
+            if value not in {"auto", "direct", "custom"}:
+                raise ValueError("setting_out_of_range")
+        elif key == "custom_proxy_url":
+            # 保存期即校验 http(s)://host:port，避免用户存下必然失败的代理（D-17）。
+            if not valid_proxy_url(value):
+                raise ValueError("setting_out_of_range")
+        elif key == "tavily_api_keys":
+            raise ValueError("use_credentials_endpoint")
+        else:
+            raise ValueError("unknown_research_setting")
+        return
     cat = CATEGORY_KEY_VALIDATORS.get(category)
     if not cat:
         return

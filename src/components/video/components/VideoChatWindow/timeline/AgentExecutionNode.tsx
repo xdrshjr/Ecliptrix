@@ -26,6 +26,7 @@ import TimelineNodeIcon from './TimelineNodeIcon';
 import type { NodeIconVariant } from './TimelineNodeIcon';
 import ToolStep from './ToolStep';
 import { CoverToolStatus } from '../AgentToolCallCard';
+import WebResearchToolCard, { isWebResearchTool } from '../WebResearchToolCard';
 import { nodeVariants, expandVariants, TIMING } from './animations';
 
 interface AgentExecutionNodeProps {
@@ -130,11 +131,13 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({ node, onCancel 
               <div className="border border-border dark:border-zinc-700 rounded-md overflow-hidden bg-muted/50 dark:bg-zinc-800/50 text-sm">
                 {steps.map((step, idx) => (
                   <React.Fragment key={step.id}>
-                  <ToolStep
+                  {isWebResearchTool(node.toolCalls[idx].name) ? (
+                    <WebResearchToolCard toolCall={node.toolCalls[idx]} />
+                  ) : <ToolStep
                     key={step.id}
                     step={step}
                     isLast={idx === steps.length - 1}
-                  />
+                  />}
                   {node.toolCalls[idx].name.endsWith('_video_cover') && (
                     <CoverToolStatus toolCall={node.toolCalls[idx]} />
                   )}

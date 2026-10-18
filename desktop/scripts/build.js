@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Electron uses CommonJS. */
 'use strict'
 
 const fs = require('fs')
 const path = require('path')
-const { spawn } = require('child_process')
+const { spawn, spawnSync } = require('child_process')
 
 const { parseArgs, resolveUrls, runPreflight } = require('./preflight')
 const { prepareFrontend } = require('./prepare-frontend')
@@ -11,6 +12,7 @@ const { prepareFfmpeg } = require('./prepare-ffmpeg')
 const { prepareEnv } = require('./prepare-env')
 const { sha256File } = require('./lib/download')
 const { processesUnder, killPids } = require('./lib/process-cleanup')
+const { createPackageManifest } = require('./lib/research-release-evidence')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const BUILD_DIR = path.join(DESKTOP_ROOT, 'build')
@@ -56,6 +58,10 @@ const BUILD_ASSERTIONS = [
   'backend/app/main.py',
   'python/python.exe',
   'python/Lib/site-packages/fastapi',
+  'python/Lib/site-packages/playwright/driver/node.exe',
+  'python/Lib/site-packages/playwright/driver/package/browsers.json',
+  'backend/app/services/web_research/smoke.py',
+  'main/agentBrowserHost.js',
   'ffmpeg/ffmpeg.exe',
   'ffmpeg/ffprobe.exe',
   // First-run env template (bundled default credentials) — mapped into the
@@ -245,6 +251,69 @@ function printArtifacts() {
   }
 }
 
+function readPackagedRuntime() {
+  const resources = path.join(UNPACKED_DIR, 'resources')
+  for (const relative of ['backend/run.py',
+    'backend/app/services/web_research/smoke.py',
+    'python/Lib/site-packages/playwright/driver/node.exe',
+    'python/Lib/site-packages/playwright/driver/package/browsers.json']) {
+    if (!fs.statSync(path.join(resources, relative)).isFile()) {
+      throw new Error(`最终包缺少研究资源: ${relative}`)
+    }
+  }
+  const python = path.join(resources, 'python', 'python.exe')
+  // CDP 方案（spec §3.6）：浏览器 = 应用自带的 Electron Chromium，
+  // 不打包 playwright 浏览器二进制；只探测 pip 包与 node driver。
+  const script = [
+    'import json, sys',
+    'from importlib.metadata import version',
+    'import playwright.async_api, bs4',
+    'print(json.dumps(dict(python=sys.version.split()[0], playwright=version("playwright"), bs4=version("beautifulsoup4"))))',
+  ].join('\n')
+  const result = spawnSync(python, ['-B', '-X', 'utf8', '-c', script], {
+    cwd: path.resolve(DESKTOP_ROOT, '..'), windowsHide: true,
+    encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
+    env: { ...process.env, PYTHONNOUSERSITE: '1' },
+  })
+  if (result.status !== 0) throw new Error('包内研究运行时探测失败')
+  const runtime = JSON.parse(result.stdout.trim())
+  return { python: runtime.python, playwright: runtime.playwright,
+    beautifulsoup: runtime.bs4,
+    browser: 'embedded-electron-chromium (CDP)',
+    ffmpeg: 'resources/ffmpeg/ffmpeg.exe', ffprobe: 'resources/ffmpeg/ffprobe.exe' }
+}
+
+async function writeResearchManifest(dirOnly, packagingStartedAt) {
+  const workspaceRoot = path.resolve(DESKTOP_ROOT, '..')
+  const git = args => {
+    const result = spawnSync('git', args, { cwd: workspaceRoot,
+      encoding: 'utf8', windowsHide: true, timeout: 10000 })
+    if (result.status !== 0) throw new Error('无法读取构建源码身份')
+    return result.stdout.trim()
+  }
+  const version = JSON.parse(fs.readFileSync(path.join(DESKTOP_ROOT, 'package.json'), 'utf8')).version
+  // 与 electron-builder.yml 的 NSIS artifactName 精确对应，拒绝旧安装器。
+  const installerPath = dirOnly ? null : path.join(RELEASE_DIR, `Ecliptrix-Setup-${version}.exe`)
+  if (installerPath && fs.statSync(installerPath).mtimeMs < packagingStartedAt) {
+    throw new Error('安装器不是本次打包产物')
+  }
+  const result = await createPackageManifest({ workspaceRoot,
+    packageRoot: UNPACKED_DIR, releaseRoot: RELEASE_DIR,
+    sourceHead: git(['rev-parse', 'HEAD']), dirty: !!git(['status', '--porcelain']),
+    frontendBuildId: fs.readFileSync(path.join(UNPACKED_DIR,
+      'resources/frontend/.next/BUILD_ID'), 'utf8').trim(),
+    runtime: readPackagedRuntime(),
+    installerPath: installerPath ? path.basename(installerPath) : null,
+    onProgress: message => console.log('[research-manifest]', message),
+  })
+  if (!result.success) throw new Error(`研究包清单失败: ${result.errors.join('; ')}`)
+  const target = path.join(RELEASE_DIR, 'research-build-manifest.json')
+  const temporary = `${target}.${process.pid}.tmp`
+  fs.writeFileSync(temporary, JSON.stringify(result.manifest, null, 2), { flag: 'wx' })
+  fs.renameSync(temporary, target)
+  console.log(`[research-manifest] package_id=${result.package_id}`)
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2))
 
@@ -277,7 +346,9 @@ async function main() {
   console.log(`[electron-builder] packaging${args.dir ? ' (win-unpacked only)' : ' (NSIS + win-unpacked)'}...`)
   const builderArgs = ['electron-builder', '--win', '--x64', '--config', 'electron-builder.yml']
   if (args.dir) builderArgs.push('--dir')
+  const packagingStartedAt = Date.now()
   await runElectronBuilder(builderArgs)
+  await writeResearchManifest(args.dir, packagingStartedAt)
 
   printArtifacts()
   console.log(`[build] completed in ${((Date.now() - startedAt) / 60000).toFixed(1)} min`)

@@ -78,6 +78,7 @@ class MaterialDownloadService:
         self._loop_lock = threading.Lock()
         # Tracks active material_ids to avoid duplicate concurrent enqueues.
         self._inflight: Dict[str, asyncio.Future] = {}
+        self._research_locks = {}
 
         logger.info(
             f"MaterialDownloadService initialised "
@@ -111,11 +112,12 @@ class MaterialDownloadService:
             return loop
 
     async def _init_runtime(self) -> None:
+        from app.database import _resolve_database_url
         self._engine = create_async_engine(
-            settings.database.url,
+            _resolve_database_url(),
             pool_size=2,
             max_overflow=4,
-            echo=False,
+            echo=False, hide_parameters=True,
         )
         self._session_factory = async_sessionmaker(
             self._engine, class_=AsyncSession, expire_on_commit=False
@@ -459,6 +461,113 @@ class MaterialDownloadService:
                 continue
             # failed / missing / unknown → no reuse
             return None
+
+    async def store_research_download_async(self, path, digest, extension, url):
+        """返回实际提交的缓存记录；锁和事务始终在下载专属循环。"""
+        return await self._dispatch(self._store_research(
+            Path(path), digest, extension, url))
+
+    async def recover_research_cache_async(self):
+        """仅启动时回收本服务私有 web 缓存的未提交文件。"""
+        if (self.cache_dir / "web").is_dir():
+            await self._dispatch(self._recover_research_cache())
+
+    async def _recover_research_cache(self):
+        import re
+        root = (self.cache_dir / "web").resolve()
+        async with self._session_factory() as session:
+            rows = (await session.execute(select(CachedMaterial).where(
+                CachedMaterial.source == "web"))).scalars().all()
+            ready = {Path(r.local_path).resolve() for r in rows
+                     if r.status == "ready" and r.local_path}
+            for path in root.iterdir():
+                resolved = path.resolve()
+                if not resolved.is_relative_to(root) or path.is_symlink():
+                    continue
+                generated = re.fullmatch(
+                    r"(?:web-[a-f0-9]{24}\.(?:png|jpg|mp4|webm|mp3|wav|m4a)|[a-f0-9-]{36}\.part)", path.name)
+                if path.is_file() and generated and resolved not in ready:
+                    path.unlink(missing_ok=True)
+            for row in rows:
+                if row.status == "ready" and not Path(row.local_path or "").is_file():
+                    row.status = "failed"
+                    row.error_message = "cached_file_missing"
+            await session.commit()
+
+    async def _store_research(self, path, digest, extension, url):
+        import hashlib
+        from app.models.web_research_models import WebResearchError
+        if extension not in {"png", "jpg", "mp4", "webm", "mp3", "wav", "m4a"}:
+            raise WebResearchError("unsupported_media_type")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise WebResearchError("cache_integrity_error")
+        entry = self._research_locks.setdefault(digest, [asyncio.Lock(), 0])
+        entry[1] += 1
+        try:
+            async with entry[0]:
+                return await self._commit_research(path, digest, extension, url)
+        finally:
+            entry[1] -= 1
+            if entry[1] == 0:
+                self._research_locks.pop(digest, None)
+
+    @staticmethod
+    async def _settle_research_commit(session):
+        """取消不能中断提交结果判定，否则补偿会误删已入库文件。"""
+        task = asyncio.create_task(session.commit())
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+        task.result()
+        return cancelled
+
+    async def _commit_research(self, path, digest, extension, url):
+        import hashlib
+        import uuid
+        from app.models.web_research_models import WebResearchError
+        identifier = "web-" + digest[:24]
+        directory = self.cache_dir / "web"
+        directory.mkdir(parents=True, exist_ok=True)
+        final = directory / (identifier + "." + extension)
+        temporary = directory / (str(uuid.uuid4()) + ".part")
+        created, committed = False, False
+        try:
+            async with self._session_factory() as session:
+                row = (await session.execute(select(CachedMaterial).where(
+                    CachedMaterial.source == "web",
+                    CachedMaterial.source_id == identifier))).scalar_one_or_none()
+                reused = bool(row and row.status == "ready" and final.is_file()
+                              and hashlib.sha256(final.read_bytes()).hexdigest() == digest)
+                if not reused:
+                    shutil.copyfile(path, temporary)
+                    temporary.replace(final)
+                    created = True
+                    if row is None:
+                        row = CachedMaterial(source="web", source_id=identifier,
+                                             source_url=url, ref_count=1)
+                        session.add(row)
+                    row.local_path, row.file_size = str(final), final.stat().st_size
+                    row.status = "ready"
+                    cancelled = await self._settle_research_commit(session)
+                    committed = True
+                    if cancelled:
+                        raise asyncio.CancelledError
+                    await session.refresh(row)
+                return {"record_id": str(row.id), "size": row.file_size,
+                        "local_url": "/api/storage/files/cached_materials/web/" + final.name,
+                        "created_at": row.created_at.isoformat(), "reused": reused}
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            raise WebResearchError("cache_commit_failed",
+                                   failure_class="internal") from None
+        finally:
+            temporary.unlink(missing_ok=True)
+            if created and not committed:
+                final.unlink(missing_ok=True)
 
     async def store_external_download_async(
         self,
