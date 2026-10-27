@@ -30,3 +30,11 @@ agent_toolkit:
   memory_retention_days: 180
   # 计划步数上限（4-20）
   plan_max_steps: 12
+  # 研究小队（delegate_research）：开关 / 并发成员数（1-3，且不超过
+  # web_research.global_concurrency）/ 单成员墙钟上限（秒，30-180）
+  crew_enabled: true
+  crew_max_parallel: 3
+  crew_member_timeout_s: 90
+  # 会话记忆：回合结束后按用量自动压缩 / 触发比例（0.6-0.9）
+  auto_compact: true
+  auto_compact_ratio: 0.75

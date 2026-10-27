@@ -93,3 +93,46 @@ def test_unknown_key_is_rejected():
 def test_boolean_is_strict():
     with pytest.raises(Exception):
         validate_setting_payload("agent_toolkit", "enabled", "yes")
+
+
+# ── 研究小队 / 会话记忆（agent-research-crew-and-context-memory §6）──
+
+@pytest.mark.parametrize("key,value", [
+    ("crew_enabled", False), ("auto_compact", True),
+    ("crew_max_parallel", 1), ("crew_max_parallel", 3),
+    ("crew_member_timeout_s", 30), ("crew_member_timeout_s", 180),
+    ("auto_compact_ratio", 0.6), ("auto_compact_ratio", 0.9),
+    ("auto_compact_ratio", 1 - 0.25),
+])
+def test_crew_and_memory_values_are_accepted(key, value):
+    validate_setting_payload("agent_toolkit", key, value)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("crew_max_parallel", 0), ("crew_max_parallel", 4),
+    ("crew_member_timeout_s", 29), ("crew_member_timeout_s", 181),
+    ("auto_compact_ratio", 0.59), ("auto_compact_ratio", 0.91),
+])
+def test_crew_and_memory_out_of_range_is_rejected(key, value):
+    with pytest.raises(ValueError, match="setting_out_of_range"):
+        validate_setting_payload("agent_toolkit", key, value)
+
+
+def test_crew_and_memory_defaults():
+    defaults = settings_service.AGENT_TOOLKIT_DEFAULTS
+    assert defaults["crew_enabled"] is True
+    assert defaults["crew_max_parallel"] == 3
+    assert defaults["crew_member_timeout_s"] == 90
+    assert defaults["auto_compact"] is True
+    assert defaults["auto_compact_ratio"] == 0.75
+
+
+def test_stored_out_of_range_values_are_clamped_on_read(monkeypatch):
+    stored = {"crew_max_parallel": 9, "crew_member_timeout_s": 5,
+              "auto_compact_ratio": 0.99}
+    monkeypatch.setattr(settings_service.system_settings_service,
+                        "get_category", lambda _category: dict(stored))
+    values = settings_service.toolkit_settings()
+    assert values["crew_max_parallel"] == 3
+    assert values["crew_member_timeout_s"] == 30
+    assert values["auto_compact_ratio"] == 0.9

@@ -86,6 +86,19 @@ AGENT_TOOLKIT_DEFAULTS = {
     "memory_max_entries": 200,
     "memory_retention_days": 180,
     "plan_max_steps": 12,
+    # 研究小队与会话记忆（docs/plans/agent-research-crew-and-context-memory §6）。
+    "crew_enabled": True,
+    "crew_max_parallel": 3,
+    "crew_member_timeout_s": 90,
+    "auto_compact": True,
+    "auto_compact_ratio": 0.75,
+}
+
+# 读取时把库里残留的越界值夹取回区间（写入由 validate_setting_payload 拒绝）。
+AGENT_TOOLKIT_CLAMPS = {
+    "crew_max_parallel": (1, 3),
+    "crew_member_timeout_s": (30, 180),
+    "auto_compact_ratio": (0.6, 0.9),
 }
 
 
@@ -97,6 +110,17 @@ def toolkit_settings():
     """
     values = AGENT_TOOLKIT_DEFAULTS.copy()
     values.update(system_settings_service.get_category("agent_toolkit"))
+    for key, (low, high) in AGENT_TOOLKIT_CLAMPS.items():
+        try:
+            number = float(values[key])
+        except (TypeError, ValueError):
+            values[key] = AGENT_TOOLKIT_DEFAULTS[key]
+            continue
+        clamped = min(max(number, low), high)
+        if clamped != number:
+            logger.warning("agent_toolkit setting %s=%r out of range, clamped",
+                           key, values[key])
+        values[key] = type(AGENT_TOOLKIT_DEFAULTS[key])(clamped)
     return values
 
 

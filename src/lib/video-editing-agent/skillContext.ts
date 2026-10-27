@@ -112,11 +112,14 @@ export type SkillAvailability = Partial<Record<string, boolean>>;
 
 export function skillAvailability(
   snapshot?: WebCapabilitySnapshot | null,
+  crewEnabled?: boolean,
 ): SkillAvailability {
-  if (!snapshot) return {};
+  const crew = crewEnabled === false ? { crew: false } : {};
+  if (!snapshot) return crew;
   return {
     web: snapshot.search.available && snapshot.downloads.available,
     browser: snapshot.browser.available && snapshot.browser.enabled !== false,
+    ...crew,
   };
 }
 

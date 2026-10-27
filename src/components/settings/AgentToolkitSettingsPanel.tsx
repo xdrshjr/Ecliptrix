@@ -10,17 +10,22 @@ import {
 import {
   clearProjectMemories, deleteMemory, deleteWorkspaceFile,
   fetchAgentToolkitCapabilities, fetchMemories, fetchWorkspaceListing,
-  workspaceDownloadUrl, type AgentToolkitListing,
+  type AgentToolkitListing,
 } from '@/lib/api/agentToolkit';
 import {
   getCategorySettings, updateCategorySettings,
 } from '@/lib/api/systemSettings';
 import type {
-  AgentToolkitCapabilities, AgentToolkitCapabilitySegment, DocumentEntry,
-  MemoryEntry, WorkspaceEntry,
+  AgentToolkitCapabilities, AgentToolkitCapabilitySegment, MemoryEntry,
 } from '@/types/agentToolkit';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import SettingsSectionCard from './components/SettingsSectionCard';
+import AgentCrewMemorySections from './AgentCrewMemorySections';
+import { DocumentList, WorkspaceFileTable } from './AgentToolkitWorkspaceLists';
+import {
+  CREW_MEMORY_DEFAULTS, crewMemoryFrom, crewMemoryPayload, hasCrewMemoryRangeError,
+  type CrewMemorySettings,
+} from './agentCrewMemorySettings';
 
 /**
  * 设置中心「Agent 能力」面板。
@@ -46,7 +51,7 @@ type NumericKey =
 type DigestModel = 'fast' | 'research';
 type CapabilityId = 'workspace' | 'documents' | 'analysis' | 'memory';
 
-interface ToolkitSettings {
+interface ToolkitSettings extends CrewMemorySettings {
   enabled: boolean;
   workspace_enabled: boolean;
   documents_enabled: boolean;
@@ -85,6 +90,7 @@ const DEFAULTS: ToolkitSettings = {
   memory_max_entries: 200,
   memory_retention_days: 180,
   plan_max_steps: 12,
+  ...CREW_MEMORY_DEFAULTS,
 };
 
 const STORAGE_KEYS: NumericKey[] = ['workspace_quota_mb', 'max_file_mb'];
@@ -178,6 +184,7 @@ function settingsValues(raw: Record<string, unknown>): ToolkitSettings {
     memory_max_entries: numberFrom(raw, 'memory_max_entries'),
     memory_retention_days: numberFrom(raw, 'memory_retention_days'),
     plan_max_steps: numberFrom(raw, 'plan_max_steps'),
+    ...crewMemoryFrom(raw),
   };
 }
 
@@ -201,11 +208,11 @@ function savePayload(
   for (const key of NUMERIC_KEYS) {
     if (values[key] !== original[key]) payload[key] = values[key];
   }
-  return payload;
+  return { ...payload, ...crewMemoryPayload(values, original) };
 }
 
 function hasRangeError(values: ToolkitSettings): boolean {
-  return NUMERIC_KEYS.some((key) => {
+  return hasCrewMemoryRangeError(values) || NUMERIC_KEYS.some((key) => {
     const value = values[key];
     const { min, max } = LIMITS[key];
     return !Number.isInteger(value) || value < min || value > max;
@@ -541,74 +548,6 @@ function DigestModelSection({ value, onSelect, onOpenModels }: {
   );
 }
 
-function WorkspaceFileTable({ files, onDelete }: {
-  files: WorkspaceEntry[];
-  onDelete: (name: string) => void;
-}) {
-  const { t, locale } = useLocale();
-  const copy = t.agentToolkit;
-  if (!files.length) {
-    return <p className="text-sm text-muted-foreground">{copy.emptyFiles}</p>;
-  }
-  return (
-    <table className="w-full text-sm">
-      <caption className="sr-only">{copy.sectionWorkspace}</caption>
-      <tbody>
-        {files.map((file) => (
-          <tr key={file.name} className="border-t border-border align-top">
-            <td className="py-2 pr-2 break-all">{file.name}</td>
-            <td className="py-2 pr-2 whitespace-nowrap">
-              {formatBytes(file.bytes)}
-            </td>
-            <td className="py-2 pr-2 whitespace-nowrap text-muted-foreground">
-              {formatRelativeTime(file.mtime, locale, t)}
-            </td>
-            <td className="py-2 pr-2 whitespace-nowrap">
-              <a href={workspaceDownloadUrl(file.name)} download
-                aria-label={`${copy.download} ${file.name}`}
-                className="underline underline-offset-2">
-                {copy.download}
-              </a>
-            </td>
-            <td className="py-2 whitespace-nowrap">
-              <button type="button"
-                aria-label={`${copy.delete} ${file.name}`}
-                onClick={() => onDelete(file.name)}
-                className="text-destructive underline underline-offset-2">
-                {copy.delete}
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function DocumentList({ documents }: { documents: DocumentEntry[] }) {
-  const { t, locale } = useLocale();
-  const copy = t.agentToolkit;
-  if (!documents.length) {
-    return (
-      <p className="text-sm text-muted-foreground">{copy.emptyDocuments}</p>
-    );
-  }
-  return (
-    <ul className="space-y-1 text-sm">
-      {documents.map((document) => (
-        <li key={document.documentId}
-          className="flex flex-wrap items-baseline justify-between gap-2">
-          <span className="break-all">{document.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {document.pages}{' · '}
-            {formatRelativeTime(document.createdAt, locale, t)}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function WorkspaceSection({ capabilities, listing, failed, onRefresh, onDelete }: {
   capabilities: AgentToolkitCapabilities | null;
   listing: AgentToolkitListing | null;
@@ -843,6 +782,9 @@ export default function AgentToolkitSettingsPanel({ onOpenModels }: {
         <CapabilitySection values={panel.values}
           update={panel.updateSetting} />
         <LimitsSection values={panel.values} update={panel.updateSetting} />
+        <AgentCrewMemorySections values={panel.values}
+          onToggle={(key, checked) => panel.updateSetting(key, checked)}
+          onNumber={(key, value) => panel.updateSetting(key, value)} />
         <DigestModelSection value={panel.values.document_digest_model}
           onSelect={(model) => panel.updateSetting('document_digest_model', model)}
           onOpenModels={onOpenModels} />

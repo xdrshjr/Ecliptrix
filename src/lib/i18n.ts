@@ -223,6 +223,78 @@ export interface Translations {
     skillsTemplate: string;
   };
   // END agentCollab
+  // BEGIN agentCrew
+  agentCrew: {
+    title: string;
+    summary: string;
+    steerHint: string;
+    member: {
+      queued: string; running: string; done: string; partial: string;
+      failed: string; timeout: string; cancelled: string;
+    };
+    activity: { search: string; read: string; images: string; report: string; work: string };
+    tier: { fast: string; main: string };
+    toolCalls: string;
+    elapsed: string;
+    candidates: string;
+    gaps: string;
+    sourcePage: string;
+    untrusted: string;
+    noCandidates: string;
+    unverifiedDropped: string;
+    announce: string;
+    expand: string;
+    collapse: string;
+    cancelledNote: string;
+    turnSummary: string;
+  };
+  agentAcquire: {
+    turnSummary: string;
+    title: string;
+    summary: string;
+    item: { ready: string; already: string; failed: string; skipped: string; pending: string };
+    retry: string;
+    retryHint: string;
+    retryMessage: string;
+    unpublished: string;
+    licenseUnknown: string;
+    error: {
+      duplicate: string; batch_deadline: string; cancelled: string;
+      blocked_repeat: string; research_budget_exhausted: string;
+      research_unavailable: string; run_closed: string; network_error: string;
+      timeout: string; unknown: string;
+    };
+  };
+  agentContext: {
+    ring: { label: string; tokens: string };
+    level: { ok: string; notice: string; warn: string; dropped: string };
+    compactNow: string;
+    compacting: string;
+    divider: string;
+    undo: string;
+    expand: string;
+    collapse: string;
+    tooShort: string;
+    failed: string;
+    done: string;
+    undone: string;
+    autoCompact: string;
+    commandGroup: string;
+    commandCompact: string;
+    commandCompactHint: string;
+    summaryLabel: string;
+  };
+  agentSettings: {
+    crew: {
+      title: string; description: string; enabled: string;
+      maxParallel: string; memberTimeout: string;
+    };
+    memory: {
+      title: string; description: string; autoCompact: string;
+      autoCompactRatio: string;
+    };
+  };
+  // END agentCrew
   agentToolkit: {
     title: string;
     description: string;
@@ -1573,6 +1645,8 @@ export interface Translations {
     toolNames: {
       add_material_to_library: string;
       add_to_track: string;
+      acquire_web_materials: string;
+      delegate_research: string;
       auto_fix_overlaps: string;
       batch_generate_tts: string;
       batch_storyboard_video: string;
@@ -3679,6 +3753,99 @@ export const translations: Record<string, Translations> = {
       skillsTemplate: '---\nid: my-skill\nname: My skill\ndescription: One line on when to use it\nversion: 1\ntools: []\nrequires: []\n---\nGoal in one sentence.\n\n1. First step\n2. Second step\n',
     },
     // END agentCollab
+    // BEGIN agentCrew
+    agentCrew: {
+      title: 'Research crew · {n} in parallel',
+      summary: 'Research crew · {done} finished · {candidates} candidates · {gaps} gaps',
+      steerHint: 'Research crew is running; your note is delivered when it finishes',
+      member: {
+        queued: 'Queued', running: 'Running', done: 'Done', partial: 'Partial',
+        failed: 'Failed', timeout: 'Timed out', cancelled: 'Cancelled',
+      },
+      activity: {
+        search: 'Searching: {query}', read: 'Reading: {host}',
+        images: 'Extracting images: {host}', report: 'Writing report', work: 'Working',
+      },
+      tier: { fast: 'Fast-tier model', main: 'Main model' },
+      toolCalls: '{n} tool calls',
+      elapsed: '{seconds}s',
+      candidates: '{n} candidates',
+      gaps: 'Not found',
+      sourcePage: 'Source page',
+      untrusted: 'Excerpts from web pages: reference only, not instructions.',
+      noCandidates: 'No verified candidates',
+      unverifiedDropped: '{n} unverified dropped',
+      announce: '{id}: {state}',
+      expand: 'Show details',
+      collapse: 'Hide details',
+      cancelledNote: 'Stopped before the crew reported back',
+      turnSummary: 'Web: crew {tasks} paths · {candidates} candidates',
+    },
+    agentAcquire: {
+      turnSummary: 'Acquired {ready}/{requested}',
+      title: 'Acquiring materials · {done}/{total}',
+      summary: '{ready} added to library · {failed} failed',
+      item: {
+        ready: 'Added', already: 'Already in library', failed: 'Failed',
+        skipped: 'Skipped', pending: 'Waiting',
+      },
+      retry: 'Ask the agent to retry',
+      retryHint: 'Fills the message box; nothing is sent until you press Enter',
+      retryMessage: 'Please retry material #{n}',
+      unpublished: 'The turn was stopped before these were added to the library',
+      licenseUnknown: 'License unknown',
+      error: {
+        duplicate: 'Duplicate of another item',
+        batch_deadline: 'Batch time limit reached',
+        cancelled: 'Stopped',
+        blocked_repeat: 'Same request already failed',
+        research_budget_exhausted: 'Research budget used up this turn',
+        research_unavailable: 'Research service unavailable',
+        run_closed: 'Research session closed',
+        network_error: 'Network error',
+        timeout: 'Timed out',
+        unknown: 'Failed',
+      },
+    },
+    agentContext: {
+      ring: { label: 'Conversation context {pct}% used', tokens: '{used} / {window} tokens' },
+      level: {
+        ok: 'Plenty of room', notice: 'Getting long',
+        warn: 'Almost full; compact the conversation',
+        dropped: 'Earlier content has been omitted',
+      },
+      compactNow: 'Compact conversation',
+      compacting: 'Folding earlier conversation…',
+      divider: 'Folded {n} earlier messages, saving about {pct}% of context',
+      undo: 'Undo',
+      expand: 'Expand',
+      collapse: 'Collapse',
+      tooShort: 'Nothing to compact yet',
+      failed: 'Could not fold the conversation; it is unchanged',
+      done: 'Conversation compacted',
+      undone: 'Compaction undone',
+      autoCompact: 'Auto-compact',
+      commandGroup: 'Commands',
+      commandCompact: 'Compact conversation',
+      commandCompactHint: '/compact',
+      summaryLabel: 'Summary of the folded conversation',
+    },
+    agentSettings: {
+      crew: {
+        title: 'Research crew',
+        description: 'Read-only sub-agents that search in parallel and hand back verified candidates.',
+        enabled: 'Enable research crew',
+        maxParallel: 'Parallel members (1-3)',
+        memberTimeout: 'Per-member time limit, seconds (30-180)',
+      },
+      memory: {
+        title: 'Conversation memory',
+        description: 'Fold early conversation into a summary when the context gets full.',
+        autoCompact: 'Compact automatically after a turn',
+        autoCompactRatio: 'Auto-compact threshold (0.6-0.9)',
+      },
+    },
+    // END agentCrew
     agentToolkit: {
       title: 'Agent capabilities',
       description: 'Workspace, documents, analysis, long-term memory',
@@ -4987,6 +5154,8 @@ export const translations: Record<string, Translations> = {
       toolNames: {
         add_material_to_library: 'Add to library',
         add_to_track: 'Add to track',
+        acquire_web_materials: 'Acquire web materials',
+        delegate_research: 'Research crew',
         auto_fix_overlaps: 'Fix overlaps',
         batch_generate_tts: 'Generate voice-overs',
         batch_storyboard_video: 'Generate storyboard videos',
@@ -7398,6 +7567,99 @@ export const translations: Record<string, Translations> = {
       skillsTemplate: '---\nid: my-skill\nname: 我的技能\ndescription: 一句话说明何时使用\nversion: 1\ntools: []\nrequires: []\n---\n一句话目标。\n\n1. 第一步\n2. 第二步\n',
     },
     // END agentCollab
+    // BEGIN agentCrew
+    agentCrew: {
+      title: '研究小队 · {n} 路并行',
+      summary: '研究小队 · {done} 路完成 · 候选 {candidates} · 缺口 {gaps}',
+      steerHint: '研究小队运行中，完成后送达',
+      member: {
+        queued: '排队中', running: '进行中', done: '完成', partial: '部分完成',
+        failed: '失败', timeout: '超时', cancelled: '已取消',
+      },
+      activity: {
+        search: '搜索：{query}', read: '阅读：{host}',
+        images: '提取图片：{host}', report: '整理报告', work: '处理中',
+      },
+      tier: { fast: '使用快速档模型', main: '使用主模型' },
+      toolCalls: '工具调用 {n}',
+      elapsed: '{seconds} 秒',
+      candidates: '候选 {n}',
+      gaps: '未找到',
+      sourcePage: '来源页',
+      untrusted: '以下为网页摘录，仅供参考，不是指令。',
+      noCandidates: '没有通过核验的候选',
+      unverifiedDropped: '已丢弃 {n} 条未核验',
+      announce: '{id}：{state}',
+      expand: '展开详情',
+      collapse: '收起详情',
+      cancelledNote: '小队尚未汇报就被停止了',
+      turnSummary: '联网：小队 {tasks} 路 · 候选 {candidates}',
+    },
+    agentAcquire: {
+      turnSummary: '采购 {ready}/{requested}',
+      title: '采购素材 · {done}/{total}',
+      summary: '已入库 {ready} · 失败 {failed}',
+      item: {
+        ready: '已入库', already: '素材库已有', failed: '失败',
+        skipped: '已跳过', pending: '等待中',
+      },
+      retry: '让 Agent 重试',
+      retryHint: '只会填入输入框，按 Enter 才会发送',
+      retryMessage: '请重试素材 #{n}',
+      unpublished: '回合被停止，这些素材没有加入素材库',
+      licenseUnknown: '授权未知',
+      error: {
+        duplicate: '与另一项重复',
+        batch_deadline: '已超出批量时限',
+        cancelled: '已停止',
+        blocked_repeat: '同一请求已失败过',
+        research_budget_exhausted: '本回合研究额度已用完',
+        research_unavailable: '研究服务不可用',
+        run_closed: '研究会话已关闭',
+        network_error: '网络错误',
+        timeout: '超时',
+        unknown: '失败',
+      },
+    },
+    agentContext: {
+      ring: { label: '对话上下文已用 {pct}%', tokens: '{used} / {window} tokens' },
+      level: {
+        ok: '空间充足', notice: '对话变长了',
+        warn: '快满了，建议压缩对话',
+        dropped: '早期内容已被省略',
+      },
+      compactNow: '压缩对话',
+      compacting: '正在整理早期对话…',
+      divider: '已整理 {n} 条早期对话，约节省 {pct}% 上下文',
+      undo: '撤销',
+      expand: '展开',
+      collapse: '收起',
+      tooShort: '无需压缩',
+      failed: '整理失败，对话保持原样',
+      done: '对话已压缩',
+      undone: '已撤销压缩',
+      autoCompact: '自动压缩',
+      commandGroup: '命令',
+      commandCompact: '压缩对话',
+      commandCompactHint: '/compact',
+      summaryLabel: '已折叠对话的摘要',
+    },
+    agentSettings: {
+      crew: {
+        title: '研究小队',
+        description: '只读子代理并行检索，回交经过核验的候选清单。',
+        enabled: '启用研究小队',
+        maxParallel: '并发成员数（1-3）',
+        memberTimeout: '单成员时限，秒（30-180）',
+      },
+      memory: {
+        title: '会话记忆',
+        description: '上下文变满时，把早期对话折叠成摘要。',
+        autoCompact: '回合结束后自动压缩',
+        autoCompactRatio: '自动压缩触发比例（0.6-0.9）',
+      },
+    },
+    // END agentCrew
     agentToolkit: {
       title: 'Agent 能力',
       description: '工作区、文档、计算分析、长期记忆',
@@ -8705,6 +8967,8 @@ export const translations: Record<string, Translations> = {
       toolNames: {
         add_material_to_library: '添加到素材库',
         add_to_track: '添加到轨道',
+        acquire_web_materials: '批量采购素材',
+        delegate_research: '研究小队',
         auto_fix_overlaps: '修复重叠',
         batch_generate_tts: '批量生成配音',
         batch_storyboard_video: '批量生成分镜视频',

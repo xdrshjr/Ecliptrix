@@ -111,6 +111,17 @@ const ACTIVITY_EVENT_TYPES: ReadonlySet<SSEEvent['type']> = new Set<SSEEvent['ty
   'thinking_delta',
 ]);
 
+/**
+ * Throttled readings (`context_usage`, batch and crew progress). They never
+ * count as the run's "last event" — that is the error context of a failure —
+ * and are not logged one by one: a crew emits a few per second.
+ */
+const TRANSIENT_PROGRESS_TYPES: ReadonlySet<SSEEvent['type']> = new Set<SSEEvent['type']>([
+  'context_usage',
+  'tool_progress',
+  'crew_member',
+]);
+
 /** Value of an SSE field line: text after the `name:` prefix, minus one leading space. */
 function fieldValue(line: string, prefixLength: number): string {
   const value = line.slice(prefixLength);
@@ -404,7 +415,9 @@ export class SSEStreamManager {
           this.trackEvent(event);
 
           // Check for stream-end signals
-          console.log('[SSEStreamManager] event:', event.type, event);
+          if (!TRANSIENT_PROGRESS_TYPES.has(event.type)) {
+            console.log('[SSEStreamManager] event:', event.type, event);
+          }
           if (this.isStreamEndEvent(event)) {
             console.log('[SSEStreamManager] stream-end event detected, completing');
             // Deliver the event, then signal normal completion
@@ -554,7 +567,7 @@ export class SSEStreamManager {
       this.lastReceivedEventId = event._eventId;
     }
 
-    this.lastEvent = event;
+    if (!TRANSIENT_PROGRESS_TYPES.has(event.type)) this.lastEvent = event;
     // Progress restarts the idle window; keepalive comments never get here.
     if (ACTIVITY_EVENT_TYPES.has(event.type)) this.startIdleTimeout();
 

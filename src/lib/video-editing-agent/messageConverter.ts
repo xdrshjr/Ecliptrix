@@ -3,6 +3,7 @@ import type { ChatMessage } from '@/types';
 import type { AgentToolCallRecord } from './types';
 import { compactToolResult } from './compactToolResult';
 import { STEER_WRAPPER } from './promptParts';
+import { wrapCompactionSummary } from './memory/summaryTemplate';
 
 /**
  * Options for `convertToAgentMessages`.
@@ -26,11 +27,15 @@ export interface ConvertToAgentMessagesOptions {
  * The LAST user message should be excluded — it's passed to agent.prompt() separately.
  */
 export function convertToAgentMessages(
-  chatMessages: ChatMessage[],
+  allMessages: ChatMessage[],
   options: ConvertToAgentMessagesOptions = {}
 ): Message[] {
   const { compactExploreToolsResults = false } = options;
-  const result: Message[] = [];
+  // Compaction barrier (spec §3.4.2): the model sees the latest digest and
+  // what follows it. Folded messages stay in the array for the UI and undo.
+  const barrierIndex = findCompactionBarrier(allMessages);
+  const chatMessages = barrierIndex < 0 ? allMessages : allMessages.slice(barrierIndex + 1);
+  const result: Message[] = barrierIndex < 0 ? [] : [digestMessage(allMessages[barrierIndex])];
 
   // The resume system note is about the turn right before this one: it is
   // emitted at most once, and only when the LAST assistant message was
@@ -180,6 +185,26 @@ export function convertToAgentMessages(
   }
 
   return result;
+}
+
+/** Index of the LAST message carrying a usable digest, or -1. */
+function findCompactionBarrier(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const { metadata } = messages[i];
+    if (metadata?.type === 'compaction' && typeof metadata.compaction?.summaryText === 'string') {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** The digest enters as a user message that declares itself data, not instructions (R-07). */
+function digestMessage(msg: ChatMessage): UserMessage {
+  return {
+    role: 'user',
+    content: wrapCompactionSummary(msg.metadata?.compaction?.summaryText ?? ''),
+    timestamp: new Date(msg.timestamp).getTime(),
+  };
 }
 
 type AppliedSteer = NonNullable<ChatMessage['steers']>[number];

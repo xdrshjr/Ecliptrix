@@ -11,9 +11,19 @@ import { toolFetch } from './apiHelper';
  */
 export const RESULT_BYTE_CAP = 12 * 1024;
 
+/**
+ * `'record'` publishes one `add_materials` operation per call (single-item
+ * tools). `'collect'` only validates and hands the material to `onMaterial`:
+ * a batch merges its items into ONE operation, because a tool call id can carry
+ * at most one operation (crew spec F-05 / D-4).
+ */
+export type ImportMode = false | 'record' | 'collect';
+
 interface WebCall {
   path: string; body?: unknown; method?: 'GET' | 'POST' | 'DELETE';
-  timeout?: number; importMaterial?: boolean;
+  timeout?: number; importMaterial?: ImportMode;
+  /** `'collect'` only: receives the normalised material and whether it already existed. */
+  onMaterial?: (material: MaterialItem, alreadyInLibrary: boolean) => void;
 }
 const blockedCalls = new WeakMap<ToolContext, Set<string>>();
 
@@ -28,7 +38,8 @@ function rememberFailure(context: ToolContext, key: string, result: Record<strin
   return toolResult({ ...result, failureClass });
 }
 
-function toolResult(details: Record<string, unknown>) {
+/** Bounded, sanitised tool result; shared with `delegate_research`. */
+export function toolResult(details: Record<string, unknown>) {
   const safe = sanitizeResearchValue(details);
   let visible = safe;
   if (new TextEncoder().encode(JSON.stringify(visible)).length > RESULT_BYTE_CAP) {
@@ -46,7 +57,7 @@ function toolResult(details: Record<string, unknown>) {
     details: visible };
 }
 
-function localMaterial(input: ResearchMaterial): MaterialItem {
+export function localMaterial(input: ResearchMaterial): MaterialItem {
   if (!/^\/api\/storage\/files\/cached_materials\/[a-z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(input.local_url)) {
     throw new Error('invalid_local_material');
   }
@@ -81,6 +92,9 @@ export async function executeWebTool(context: ToolContext, callId: string, call:
   const stopped = () => context.abortSignal?.aborted || run.controller.signal.aborted;
   try {
     if (stopped()) throw new Error('cancelled');
+    // One new backend call id per executed call; members of a research crew
+    // share this counter by reference (crew spec R-03).
+    context.callBudget.used += 1;
     const headers = await run.headers(callId);
     const response = await toolFetch(context, `/api/web-research${call.path}`, {
       method: call.method ?? 'POST', headers, retry: false,
@@ -101,7 +115,9 @@ export async function executeWebTool(context: ToolContext, callId: string, call:
       if (result.status !== 'ready' || !result.material) throw new Error('material_not_ready');
       const material = localMaterial(result.material);
       const exists = context.materials.some(item => item.id === material.id);
-      if (!exists && !stopped()) {
+      if (call.importMaterial === 'collect') {
+        call.onMaterial?.(material, exists);
+      } else if (!exists && !stopped()) {
         context.recordOperation(callId, { type: 'add_materials', materials: [material] });
         context.materials.push(material);
       }

@@ -69,7 +69,7 @@ describe('agent material payloads', () => {
       operations: new Map(),
       updateTimeline,
       recordOperation: vi.fn(),
-      turnState: {},
+      turnState: {}, callBudget: { used: 0 },
     };
 
     await createAddToTrackTool(context).execute('tc-1', { materialId: 'm1', trackId: 'v1' });

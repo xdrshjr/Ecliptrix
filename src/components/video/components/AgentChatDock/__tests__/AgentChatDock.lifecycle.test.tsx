@@ -28,6 +28,8 @@ import * as composerPicker from '../../VideoChatWindow/ComposerPicker';
 import * as useComposerModule from '../../VideoChatWindow/useComposer';
 import * as animations from '../../VideoChatWindow/timeline/animations';
 import * as draggable from '../useDraggableFab';
+import * as liveProgress from '@/components/video/hooks/agentLiveProgress';
+import * as crewProgress from '@/components/video/hooks/useCrewProgress';
 import type { VideoChatWindowProps } from '../../VideoChatWindow';
 import type { TimelineChatPanelProps } from '../../VideoChatWindow/timeline/types';
 
@@ -62,7 +64,7 @@ function compileTimelinePanel(shared: ModuleMap) {
     './TimelineAnimationStyles': stub, './TimelineConnector': stub,
     './UserMessageNode': stub, './AgentThinkingNode': stub,
     './AgentExecutionNode': stub, './AgentResponseNode': stub,
-    './ErrorStateCard': stub,
+    './ErrorStateCard': stub, '../CompactionDivider': stub,
   });
 }
 
@@ -97,6 +99,11 @@ beforeAll(async () => {
     './SteerQueue': { __esModule: true, default: () => null },
     './ComposerSkillPicker': { __esModule: true, default: () => null },
     './ComposerMentionPicker': { __esModule: true, default: () => null },
+    '@/components/video/hooks/agentLiveProgress': liveProgress,
+    '@/components/video/hooks/useCrewProgress': crewProgress,
+    './ContextRing': { ConnectedContextRing: () => null },
+    './useChatCompaction': { useChatCompaction: () => ({
+      commands: [], onCommand: vi.fn(), handleCompact: vi.fn() }) },
     '@/contexts/NotificationContext': {
       useNotification: () => ({ showConfirm: vi.fn() }),
     },

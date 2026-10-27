@@ -35,6 +35,7 @@ import AgentThinkingNode from './AgentThinkingNode';
 import AgentExecutionNode from './AgentExecutionNode';
 import AgentResponseNode from './AgentResponseNode';
 import ErrorStateCard from './ErrorStateCard';
+import CompactionDivider from '../CompactionDivider';
 import type { ErrorCardVariant } from './ErrorStateCard';
 import { CSS_ANIMATIONS } from './animations';
 
@@ -214,6 +215,8 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   singleUndoMessageIds,
   answeredQuestionIds,
   unresolvedQuestionIds,
+  onUndoCompaction,
+  compactingAfterMessageId,
   isVisible = true,
 }) => {
   const { t } = useLocale();
@@ -247,8 +250,9 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
 
   const emptyResponseLabel = t.agentStream.errors.emptyResponse;
   const nodes = useMemo(
-    () => messagesToTimelineNodes(messages, { emptyResponse: emptyResponseLabel }),
-    [messages, emptyResponseLabel],
+    () => messagesToTimelineNodes(messages, { emptyResponse: emptyResponseLabel },
+      { compactingAfterMessageId }),
+    [messages, emptyResponseLabel, compactingAfterMessageId],
   );
 
   // ----- Determine if we need a live execution indicator at the end -----
@@ -308,6 +312,12 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
                   onCancel={isFinishing ? undefined : onCancel}
                   answeredQuestionIds={answeredQuestionIds}
                   unresolvedQuestionIds={unresolvedQuestionIds} />
+              )}
+              {node.kind === 'compaction' && (
+                <CompactionDivider pending={node.pending} messageId={node.messageId}
+                  summaryText={node.summaryText} coveredCount={node.coveredCount}
+                  tokensBefore={node.tokensBefore} tokensAfter={node.tokensAfter}
+                  undoDisabled={undoDisabled} onUndo={onUndoCompaction} />
               )}
               {node.kind === 'response' && (
                 <AgentResponseNode

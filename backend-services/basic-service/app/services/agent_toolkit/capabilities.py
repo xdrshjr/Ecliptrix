@@ -39,6 +39,16 @@ async def capabilities(project_id=None, session_factory=None):
             "enabled": enabled and bool(settings["memory_enabled"]),
             "entries": memories,
         },
+        # 研究小队 / 会话记忆（读取时已夹取越界值）；纯前端工具同样可见。
+        "crew": {
+            "enabled": bool(settings["crew_enabled"]),
+            "max_parallel": int(settings["crew_max_parallel"]),
+            "member_timeout_s": int(settings["crew_member_timeout_s"]),
+        },
+        "memory_compaction": {
+            "auto_compact": bool(settings["auto_compact"]),
+            "auto_compact_ratio": float(settings["auto_compact_ratio"]),
+        },
         # 前端预检与 `accept` 拼接只依赖这几项（R-19）。
         "limits": {
             "max_file_mb": int(settings["max_file_mb"]),

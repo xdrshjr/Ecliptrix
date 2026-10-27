@@ -48,7 +48,7 @@ it('researches, imports local media, edits a track, then undoes both without aff
   const research = await executeWebTool(context, 'research', { path: '/research', body: { topic: '介绍' } });
   expect(research.details.success).toBe(true);
   expect(operations.size).toBe(0);
-  await executeWebTool(context, 'download', { path: '/download', body: { kind: 'image' }, importMaterial: true });
+  await executeWebTool(context, 'download', { path: '/download', body: { kind: 'image' }, importMaterial: 'record' });
   expect(context.materials[0].url).toBe(localUrl);
   expect(JSON.stringify(context.materials)).not.toContain('FAKE_SECRET');
   const applier = new OperationApplier({ getTimelineState: () => timeline,

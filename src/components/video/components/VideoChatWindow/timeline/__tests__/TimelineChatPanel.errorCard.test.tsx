@@ -59,6 +59,7 @@ beforeAll(() => {
     './AgentThinkingNode': stub,
     './AgentExecutionNode': stub,
     './AgentResponseNode': stub,
+    '../CompactionDivider': stub,
     './ErrorStateCard': { __esModule: true, default: ErrorStateCard },
   });
 });

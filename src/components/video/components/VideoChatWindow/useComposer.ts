@@ -11,6 +11,7 @@ import {
   removeTrigger, type TriggerMatch,
 } from './composerTriggers';
 import { visibleSkills, type SkillListStatus } from './ComposerSkillPicker';
+import { visibleCommands, type ComposerCommand } from './composerCommands';
 import { visibleMaterials } from './ComposerMentionPicker';
 import {
   collectInputHistory, createHistoryNavigator, draftStorageKey, useComposerDraft,
@@ -25,6 +26,7 @@ import {
  */
 
 const ESC_ARM_MS = 1_500;
+const NO_COMMANDS: readonly ComposerCommand[] = [];
 
 export interface SelectedSkill { id: string; name: string }
 
@@ -41,6 +43,9 @@ export interface UseComposerParams {
   draftScope: { projectKey: string; conversationId: string } | null;
   onSendMessage: (message: string, options?: SendAgentMessageOptions) => Promise<void>;
   onCancel: () => void;
+  /** Editor commands listed in the `/` menu after the skills. */
+  commands?: readonly ComposerCommand[];
+  onCommand?: (command: ComposerCommand) => void;
 }
 
 type PickerKind = 'skill' | 'mention';
@@ -85,8 +90,10 @@ export function useComposer(params: UseComposerParams) {
   const pickerOpen = triggerKey !== null && dismissed !== triggerKey;
   const { skills, status: skillStatus } = useSkillOptions(pickerOpen && kind === 'skill');
 
+  const commands = params.commands ?? NO_COMMANDS;
   const optionCount = !pickerOpen || !trigger ? 0
-    : kind === 'skill' ? visibleSkills(skills, trigger.query).length
+    : kind === 'skill'
+      ? visibleSkills(skills, trigger.query).length + visibleCommands(commands, trigger.query).length
       : visibleMaterials(materials, trigger.query).length;
 
   useEffect(() => { setActiveIndex(0); }, [triggerKey, trigger?.query]);
@@ -118,16 +125,28 @@ export function useComposer(params: UseComposerParams) {
     moveCaret(next.caret);
   }, [trigger, text, moveCaret]);
 
+  // Selecting a command runs it and removes the `/word`; other typed text stays.
+  const selectCommand = useCallback((command: ComposerCommand) => {
+    if (!trigger) return;
+    const next = removeTrigger(text, trigger);
+    setText(next.text);
+    moveCaret(next.caret);
+    params.onCommand?.(command);
+  }, [trigger, text, moveCaret, params]);
+
   const confirmPicker = useCallback(() => {
     if (!trigger) return;
     if (kind === 'skill') {
-      const chosen = visibleSkills(skills, trigger.query)[activeIndex];
+      const shown = visibleSkills(skills, trigger.query);
+      const chosen = shown[activeIndex];
+      const command = visibleCommands(commands, trigger.query)[activeIndex - shown.length];
       if (chosen) selectSkill(chosen);
+      else if (command) selectCommand(command);
     } else {
       const chosen = visibleMaterials(materials, trigger.query)[activeIndex];
       if (chosen) selectMaterial(chosen);
     }
-  }, [trigger, kind, skills, materials, activeIndex, selectSkill, selectMaterial]);
+  }, [trigger, kind, skills, commands, materials, activeIndex, selectSkill, selectCommand, selectMaterial]);
 
   // ---- draft + history ----
   const draftKey = params.draftScope
@@ -231,7 +250,7 @@ export function useComposer(params: UseComposerParams) {
   return {
     textareaRef, text, setText, disabled, running, skill, clearSkill: () => setSkill(null),
     pickerOpen, pickerKind: kind, pickerQuery: trigger?.query ?? '', activeIndex,
-    setActiveIndex, skills, skillStatus, selectSkill, selectMaterial,
+    setActiveIndex, skills, skillStatus, selectSkill, selectMaterial, selectCommand,
     escArmed, mentionsTruncated, mentionLimit: MAX_MENTIONS,
     submit, handleKeyDown, handleChange, syncCaret,
   };

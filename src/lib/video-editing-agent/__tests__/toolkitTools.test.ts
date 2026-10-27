@@ -20,7 +20,7 @@ function makeContext(): ToolContext {
     operations: new Map(),
     updateTimeline: vi.fn(),
     recordOperation: vi.fn(),
-    turnState: {},
+    turnState: {}, callBudget: { used: 0 },
   };
 }
 

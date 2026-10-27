@@ -108,10 +108,14 @@ export function createTurnMessageIds(): { userMessageId: string; agentMessageId:
 /** The request copy of the conversation, without client-only message fields. */
 export function stripHistoryForRequest(messages: readonly ChatMessage[]): ChatMessage[] {
   return messages.map((message) => {
+    const hasUiSnapshots = message.agentToolCalls?.some(
+      (call) => call.crew !== undefined || call.acquire !== undefined,
+    );
     if (
       message.timelineTrackPatches === undefined &&
       message.pendingOperations === undefined &&
-      message.thinkingContent === undefined
+      message.thinkingContent === undefined &&
+      !hasUiSnapshots
     ) {
       return message;
     }
@@ -119,6 +123,13 @@ export function stripHistoryForRequest(messages: readonly ChatMessage[]): ChatMe
     delete copy.timelineTrackPatches;
     delete copy.pendingOperations;
     delete copy.thinkingContent;
+    if (hasUiSnapshots) {
+      // Crew / acquire snapshots are rebuilt from `result`; sending them wastes body size.
+      copy.agentToolCalls = message.agentToolCalls?.map(({ crew, acquire, ...call }) => {
+        void crew; void acquire;
+        return call;
+      });
+    }
     return copy;
   });
 }

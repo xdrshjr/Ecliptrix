@@ -31,7 +31,7 @@ function context(): ToolContext {
       playbackRate: 1, isPlaying: false, snapToGrid: false, gridSize: 0.1, scrollLeft: 0,
     },
     materials: [], apiBaseUrl: 'http://127.0.0.1:3000', operations: new Map(),
-    updateTimeline: () => undefined, recordOperation: () => undefined, turnState: {},
+    updateTimeline: () => undefined, recordOperation: () => undefined, turnState: {}, callBudget: { used: 0 },
   };
 }
 
@@ -45,10 +45,10 @@ for (const categoryId of registry.getCategoryIds()) {
 }
 
 describe('built-in skills', () => {
-  it('ships exactly the six designed skills', () => {
+  it('ships exactly the seven designed skills', () => {
     expect(skills.map(skill => skill.id).sort()).toEqual([
       'explainer-video', 'final-qc-and-export', 'news-digest-video',
-      'quick-assemble', 'storyboard-short', 'web-footage-sourcing',
+      'parallel-sourcing', 'quick-assemble', 'storyboard-short', 'web-footage-sourcing',
     ]);
   });
 
@@ -72,7 +72,7 @@ describe('built-in skills', () => {
 
   it.each(skills)('$id: declares only known capabilities in requires', ({ markdown }) => {
     for (const requirement of frontmatterList(markdown, 'requires')) {
-      expect(['web', 'browser', 'vision', 'documents', 'tts']).toContain(requirement);
+      expect(['web', 'browser', 'vision', 'documents', 'tts', 'crew']).toContain(requirement);
     }
   });
 

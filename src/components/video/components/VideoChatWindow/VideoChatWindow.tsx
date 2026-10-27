@@ -26,6 +26,10 @@ import type { UseAgentSteeringReturn } from '@/components/video/hooks/useAgentSt
 import type {
   DraftRestore, SkillSkipNotice,
 } from '@/components/video/hooks/useAgentExecutionSteering';
+import type { UseContextMemoryReturn } from '@/components/video/hooks/useContextMemory';
+import type { UseCrewProgressReturn } from '@/components/video/hooks/useCrewProgress';
+import { LiveProgressContext } from '@/components/video/hooks/useCrewProgress';
+import { EMPTY_LIVE_PROGRESS } from '@/components/video/hooks/agentLiveProgress';
 import { scanLatestPlan, selectActiveStep } from '@/lib/video-editing-agent/planScan';
 import { TimelineChatPanel } from './timeline';
 import AgentBusyBar from './AgentBusyBar';
@@ -34,6 +38,8 @@ import ComposerSkillPicker from './ComposerSkillPicker';
 import ComposerMentionPicker from './ComposerMentionPicker';
 import { pickerOptionId } from './ComposerPicker';
 import { useComposer } from './useComposer';
+import { ConnectedContextRing } from './ContextRing';
+import { useChatCompaction } from './useChatCompaction';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import {
@@ -83,6 +89,10 @@ export interface VideoChatWindowProps {
   mentionMaterials?: MaterialItem[];
   /** Project id: part of the draft-storage key. */
   draftProjectKey?: string;
+  /** Context ring and compaction; absent → no ring and no `/compact`. */
+  contextMemory?: UseContextMemoryReturn;
+  /** Live crew / batch-acquire progress for the tool cards. */
+  liveProgress?: Pick<UseCrewProgressReturn, 'crews' | 'acquire' | 'isCrewRunning'>;
 }
 
 const SKILL_LIST_ID = 'agent-skill-listbox';
@@ -124,6 +134,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   skillSkip = null,
   mentionMaterials,
   draftProjectKey,
+  contextMemory,
+  liveProgress,
   isVisible = true,
 }) => {
   const { t } = useLocale();
@@ -162,7 +174,9 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   // applied, so there is nothing left to stop.
   const isFinishing = executionState?.status === 'finishing';
 
+  const compaction = useChatCompaction(contextMemory);
   const composer = useComposer({
+    commands: compaction.commands, onCommand: compaction.onCommand,
     agentMode, agentIsExecuting, isFinishing, isLoading, steering, draftRestore,
     materials: mentionMaterials ?? [],
     messages,
@@ -316,7 +330,10 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           messages yet the area stays blank (an empty flex spacer) so the panel
           opens straight into the chat surface instead of a welcome landing. */}
       {conversation && conversation.messages.length > 0 ? (
+        <LiveProgressContext.Provider value={liveProgress ?? EMPTY_LIVE_PROGRESS}>
         <TimelineChatPanel
+          onUndoCompaction={contextMemory?.undoCompaction}
+          compactingAfterMessageId={contextMemory?.compactingAfterMessageId}
           messages={conversation.messages}
           executionState={executionState}
           onUndoAll={handleUndoAll}
@@ -329,6 +346,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           unresolvedQuestionIds={unresolvedQuestionIds}
           isVisible={isVisible}
         />
+        </LiveProgressContext.Provider>
       ) : (
         <div className="flex-1 min-h-0" />
       )}
@@ -425,6 +443,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           notes={steering.notes}
           queued={steering.queued}
           currentToolName={executionState?.currentTool?.name ?? null}
+          crewRunning={liveProgress?.isCrewRunning}
           onCancel={steering.cancelNote}
           onStopAndResend={steering.promoteToStop}
         />
@@ -469,6 +488,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
                 activeIndex={composer.activeIndex}
                 onSelect={composer.selectSkill}
                 onHover={composer.setActiveIndex}
+                commands={compaction.commands}
+                onSelectCommand={composer.selectCommand}
               />
             )}
             {composer.pickerOpen && composer.pickerKind === 'mention' && (
@@ -618,6 +639,11 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
             </button>
           )}
         </form>
+        {contextMemory && agentMode && (
+          <div className="mt-1 flex justify-end px-1">
+            <ConnectedContextRing memory={contextMemory} onCompact={() => void compaction.handleCompact()} />
+          </div>
+        )}
         {uploadError && (
           <p role="alert"
             className="mt-1 px-1 text-xs text-red-500 dark:text-red-400">

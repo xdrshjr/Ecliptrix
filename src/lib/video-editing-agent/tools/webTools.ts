@@ -53,7 +53,7 @@ export function createWebTools(context: ToolContext): AgentTool[] {
   return specs.map(spec => ({ name: spec.name, label: spec.name,
     description: spec.description, parameters: spec.schema,
     execute: async (id, params) => executeWebTool(context, id, {
-      path: spec.path, timeout: spec.timeout, importMaterial: Boolean(spec.kind),
+      path: spec.path, timeout: spec.timeout, importMaterial: spec.kind ? 'record' : false,
       body: { ...(params as Record<string, unknown>), ...(spec.kind ? { kind: spec.kind } : {}) },
     }) }));
 }

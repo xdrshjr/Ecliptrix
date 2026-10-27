@@ -25,7 +25,7 @@ RESERVED_IDS = ROUTE_RESERVED_IDS | WINDOWS_DEVICE_IDS
 
 ALLOWED_FRONTMATTER_KEYS = frozenset(
     {"id", "name", "description", "version", "tools", "requires"})
-ALLOWED_REQUIRES = frozenset({"web", "browser", "vision", "documents", "tts"})
+ALLOWED_REQUIRES = frozenset({"web", "browser", "vision", "documents", "tts", "crew"})
 
 MAX_NAME_CODEPOINTS = 20
 MAX_DESCRIPTION_CODEPOINTS = 60

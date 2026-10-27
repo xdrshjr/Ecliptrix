@@ -1,4 +1,5 @@
 import type { AgentToolCallRecord, ChatMessage, TimelineItem, Track } from '@/types';
+import { parseAcquireResult, parseCrewResult } from './timeline/liveCardData';
 
 /**
  * 回合总结：本轮改了什么、有没有遗留问题。纯函数，输入只来自已落盘的
@@ -7,6 +8,14 @@ import type { AgentToolCallRecord, ChatMessage, TimelineItem, Track } from '@/ty
  * 设计基线：docs/plans/agent-steering-and-skills/spec.md §3.4.3。
  */
 
+export interface WebActivity {
+  crewTasks: number;
+  candidates: number;
+  /** Items now in the library (new or already there) out of `requested`. */
+  acquired: number;
+  requested: number;
+}
+
 export interface TurnSummary {
   clips: { added: number; removed: number; moved: number; trimmed: number; resized: number };
   materials: {
@@ -14,6 +23,8 @@ export interface TurnSummary {
     generated: { tts: number; image: number; video: number };
     webDownloaded: number;
   };
+  /** Research crew / batch acquisition of this turn; null when neither ran. */
+  web?: WebActivity | null;
   /** 取本回合最后一次 `check_timeline`；没跑过为 null。 */
   check: { blockers: number; warnings: number; unlicensed: number } | null;
   failedTools: number;
@@ -87,6 +98,28 @@ function countByName(calls: readonly AgentToolCallRecord[], names: ReadonlySet<s
   return calls.filter(call => names.has(call.name) && succeeded(call)).length;
 }
 
+function summarizeWeb(calls: readonly AgentToolCallRecord[]): WebActivity | null {
+  const web: WebActivity = { crewTasks: 0, candidates: 0, acquired: 0, requested: 0 };
+  let seen = false;
+  for (const call of calls) {
+    if (call.status !== 'completed') continue;
+    const crew = call.name === 'delegate_research' ? parseCrewResult(call.result) : null;
+    const batch = call.name === 'acquire_web_materials' ? parseAcquireResult(call.result) : null;
+    if (crew) {
+      seen = true;
+      web.crewTasks += crew.tasks.length;
+      web.candidates += crew.tasks.reduce((sum, task) => sum + task.candidates.length, 0);
+    }
+    if (batch) {
+      seen = true;
+      web.requested += batch.requested;
+      web.acquired += batch.items.filter(
+        item => item.status === 'ready' || item.status === 'already_in_library').length;
+    }
+  }
+  return seen ? web : null;
+}
+
 /**
  * `null`：流式中，或没有任何已完成的工具调用（没什么可总结）。
  * 被停止/出错的回合返回 `partial: true`，由卡片展示精简版。
@@ -107,6 +140,7 @@ export function summarizeTurn(message: ChatMessage): TurnSummary | null {
       },
       webDownloaded: countByName(calls, WEB_DOWNLOAD_TOOLS),
     },
+    web: summarizeWeb(calls),
     check: latestCheck(calls),
     failedTools: calls.filter(call => call.status === 'error').length,
     hasUndoable: (message.timelineTrackPatches?.length ?? 0) > 0 && !message.isUndone,
@@ -121,5 +155,6 @@ export function hasSummaryContent(summary: TurnSummary): boolean {
   return clips.added + clips.removed + clips.moved + clips.trimmed + clips.resized > 0
     || materials.imported + materials.webDownloaded > 0
     || materials.generated.tts + materials.generated.image + materials.generated.video > 0
+    || summary.web != null
     || summary.check !== null || summary.failedTools > 0 || summary.partial;
 }

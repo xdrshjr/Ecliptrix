@@ -21,13 +21,28 @@ export type TimelineNodeData =
   | UserMessageNodeData
   | AgentThinkingNodeData
   | AgentExecutionNodeData
-  | AgentResponseNodeData;
+  | AgentResponseNodeData
+  | CompactionNodeData;
 
 export interface UserMessageNodeData {
   kind: 'user';
   id: string;
   timestamp: Date;
   content: string;
+}
+
+/** Where earlier turns were folded into a digest (or are about to be). */
+export interface CompactionNodeData {
+  kind: 'compaction';
+  id: string;
+  timestamp: Date;
+  /** The compaction message; absent for the pending placeholder. */
+  messageId?: string;
+  pending: boolean;
+  summaryText: string;
+  coveredCount: number;
+  tokensBefore: number;
+  tokensAfter: number;
 }
 
 export interface AgentThinkingNodeData {
@@ -107,6 +122,10 @@ export type ConnectorState = 'default' | 'active' | 'undone';
 export interface TimelineChatPanelProps {
   /** 最小化时暂停自动滚动，重开恢复当前会话的阅读位置。 */
   isVisible?: boolean;
+  /** Removes a compaction message, restoring what it superseded. */
+  onUndoCompaction?: (compactionId: string) => void;
+  /** The digest being made will follow this message; shows the skeleton there. */
+  compactingAfterMessageId?: string | null;
   messages: ChatMessage[];
   /** Real-time execution state provided by useAgentExecution (google-dev-04). */
   executionState: AgentExecutionState | null;

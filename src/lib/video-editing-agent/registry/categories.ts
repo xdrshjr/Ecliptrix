@@ -125,7 +125,7 @@ export function createDefaultCategories(): ToolCategory[] {
       description: 'Browse public dynamic pages, read, click, search, scroll and capture. Requires bundled Chromium.',
       alwaysAvailable: false, tools: [] },
     { id: CATEGORY_IDS.RESEARCH_TOOLS, name: '研究资料',
-      description: 'Read stored research artifacts by ID and byte offset. No editor changes.',
+      description: 'Read research artifacts by ID and byte offset; delegate_research: parallel read-only crew. No editor changes.',
       alwaysAvailable: false, tools: [] },
     {
       id: CATEGORY_IDS.REVIEW_TOOLS,

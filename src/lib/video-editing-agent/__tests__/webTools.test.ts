@@ -63,7 +63,7 @@ it('run 丢失后本回合不再发 HTTP，并给出降级语义（AC-41）', as
 
 afterEach(() => vi.unstubAllGlobals());
 function context() {
-  return { apiBaseUrl: 'http://localhost:3000', materials: [], operations: new Map(),
+  return { apiBaseUrl: 'http://localhost:3000', materials: [], operations: new Map(), callBudget: { used: 0 },
     recordOperation: vi.fn(), researchRun: researchRun() } as unknown as ToolContext;
 }
 function researchRun() {
@@ -103,8 +103,8 @@ it.each([
 it('imports ready local media once and uses no fake remote thumbnail', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json(download)));
   const ctx = context();
-  await executeWebTool(ctx, 'call', { path: '/download', body: { kind: 'image', url: 'https://example.com/a' }, importMaterial: true });
-  await executeWebTool(ctx, 'call2', { path: '/download', body: {}, importMaterial: true });
+  await executeWebTool(ctx, 'call', { path: '/download', body: { kind: 'image', url: 'https://example.com/a' }, importMaterial: 'record' });
+  await executeWebTool(ctx, 'call2', { path: '/download', body: {}, importMaterial: 'record' });
   expect(ctx.recordOperation).toHaveBeenCalledTimes(1);
   expect(ctx.materials).toHaveLength(1);
   expect(ctx.materials[0].url).toBe(download.data.material.local_url);
@@ -114,7 +114,7 @@ it('drops late results after stop and does not retry failed requests', async () 
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
     stop.abort(); return Response.json(download);
   }));
-  const result = await executeWebTool(ctx, 'call', { path: '/download', body: {}, importMaterial: true });
+  const result = await executeWebTool(ctx, 'call', { path: '/download', body: {}, importMaterial: 'record' });
   expect(result.details.success).toBe(false);
   expect(ctx.recordOperation).not.toHaveBeenCalled();
   const failing = vi.fn().mockRejectedValue(new TypeError('network'));

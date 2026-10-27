@@ -45,6 +45,7 @@ beforeAll(() => {
       default: () => React.createElement('div', { 'data-testid': 'response' }),
     },
     './ErrorStateCard': stub,
+    '../CompactionDivider': stub,
   });
 });
 

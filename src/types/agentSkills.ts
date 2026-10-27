@@ -25,7 +25,7 @@ export type AgentSkillErrorCode = (typeof AGENT_SKILL_ERROR_CODES)[number];
 
 /** 技能 `requires` 可声明的能力。 */
 export const AGENT_SKILL_REQUIRES = [
-  'web', 'browser', 'vision', 'documents', 'tts',
+  'web', 'browser', 'vision', 'documents', 'tts', 'crew',
 ] as const;
 
 export type AgentSkillRequirement = (typeof AGENT_SKILL_REQUIRES)[number];

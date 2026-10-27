@@ -189,7 +189,7 @@ export function budgetModelContext(
   if (dropped) messages = [historyNote, ...messages];
   if (estimate() > limit) throw new Error('context_budget_exceeded');
   // `estimatedTokens` is a token count, in the same unit as `maxTokens`.
-  return { context: { ...input, messages }, maxTokens, estimatedTokens: estimate() };
+  return { context: { ...input, messages }, maxTokens, estimatedTokens: estimate(), dropped };
 }
 
 /** The subset of `Model` an error message has to echo back to the SDK. */

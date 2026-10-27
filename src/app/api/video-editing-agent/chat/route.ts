@@ -6,6 +6,7 @@ import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/stre
 import { createVideoEditingAgent, formatErrorDetail, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
 import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
 import { loadSkillIndex } from '@/lib/video-editing-agent/skillContext';
+import { loadCrewSettings } from '@/lib/video-editing-agent/crewSettingsLoader';
 import { registerRun, unregisterRun } from '@/lib/server/agentRunRegistry';
 import { createRunHandle, type RunHandle } from './runLifecycle';
 import { resolveTurnPrompt } from './turnPrompt';
@@ -534,9 +535,10 @@ export async function POST(request: NextRequest) {
           // Long-term memory digest: <=5 entries, <=800 chars, 1.5s timeout,
           // 60s in-process cache per project. A failure yields an empty digest
           // and must never block or fail the turn (§3.6).
-          const [memoryDigest, skillIndex] = await Promise.all([
+          const [memoryDigest, skillIndex, crewSettings] = await Promise.all([
             loadMemoryDigest(apiBaseUrl, projectId),
             loadSkillIndex(apiBaseUrl, projectId),
+            loadCrewSettings(apiBaseUrl),
           ]);
           const { agent, toolContext } = createVideoEditingAgent({
             researchRun,
@@ -544,6 +546,8 @@ export async function POST(request: NextRequest) {
             webCapabilities: snapshot.capabilities,
             memoryDigest,
             skillIndex,
+            crewSettings,
+            onContextUsage: send,
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
             llmModel: config.model,
@@ -560,6 +564,7 @@ export async function POST(request: NextRequest) {
           // Wire the route-wide tool-abort signal into the ToolContext so
           // every internal fetch and SDK race honours the same kill-switch.
           toolContext.abortSignal = toolAbort.signal;
+          toolContext.emit = send;
           refs.agent = agent;
           refs.toolContext = toolContext;
 

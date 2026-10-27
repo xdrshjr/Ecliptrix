@@ -37,7 +37,7 @@ export function groupToolBatches(messages: readonly Message[]): Message[][] {
 const RECENT_TURNS_KEPT_VERBATIM = 2;
 
 /** Tools whose results describe state that later turns may have changed. */
-const STALE_SNAPSHOT_TOOLS: ReadonlySet<string> = new Set([
+export const STALE_SNAPSHOT_TOOLS: ReadonlySet<string> = new Set([
   'get_timeline',
   'list_materials',
   'search_materials',

@@ -43,6 +43,8 @@ import {
 } from './hooks';
 import { useAgentExecution, type SendAgentMessageOptions } from './hooks/useAgentExecution';
 import { useInterruptedConversationCleanup } from './hooks/agentTurnLifecycle';
+import { useContextMemory } from './hooks/useContextMemory';
+import { withoutCompaction } from './hooks/conversationCompaction';
 import { useAIMixedEditing } from './hooks/useAIMixedEditing';
 import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
 import { generateNarrationVideoScript } from '@/lib/api/narrationVideoScript';
@@ -143,6 +145,7 @@ function parseAgentScriptToSegments(text: string): ScriptSegment[] {
  * saved almost immediately.
  */
 const PLAYHEAD_PERSIST_SETTLE_MS = 500;
+const NO_CHAT_MESSAGES: ChatMessage[] = [];
 
 interface VideoEditingInterfaceProps {
   taskId: string;
@@ -797,7 +800,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     const activeConversation = content?.conversations?.find(
       conv => conv.id === content?.activeConversationId
     );
-    const chatContent = activeConversation?.messages
+    const chatContent = withoutCompaction(activeConversation?.messages ?? [])
       .map(msg => `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`)
       .join('\n\n') || '';
 
@@ -927,7 +930,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     const activeConversation = content?.conversations?.find(
       conv => conv.id === content?.activeConversationId
     );
-    const chatMessages = activeConversation?.messages || [];
+    const chatMessages = withoutCompaction(activeConversation?.messages || []);
 
     if (!chatMessages.length) {
       showError('无法生成AI视频脚本：请先在聊天面板中进行对话');
@@ -1009,7 +1012,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         conv => conv.id === content?.activeConversationId
       );
       
-      chatMessages = activeConversation?.messages || [];
+      chatMessages = withoutCompaction(activeConversation?.messages || []);
       
       console.log(`[VideoEditingInterface] 使用完整聊天历史生成脚本`, {
         taskId,
@@ -2100,7 +2103,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       try {
         response = await http.stream('/api/video-editing-chat', {
           taskId: taskId,
-          messages: messagesWithUser,
+          messages: withoutCompaction(messagesWithUser),
         }, { timeoutMs: 600_000 });
       } catch (httpError) {
         if (httpError instanceof ApiError) {
@@ -2177,6 +2180,16 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const activeConversation = content?.conversations?.find(
     conv => conv.id === content?.activeConversationId
   );
+  const contextMemory = useContextMemory({
+    conversationId: activeConversation?.id,
+    messages: activeConversation?.messages ?? NO_CHAT_MESSAGES,
+    writeMessages: updateConversationMessages,
+    liveUsage: agent.liveEvents.contextUsage,
+    agentIsExecuting: agent.agentIsExecuting,
+    executionStatus: agent.executionState.status,
+    hasPendingSteers: agent.steering.queued.length > 0
+      || agent.steering.notes.some(note => note.status === 'local' || note.status === 'sent'),
+  });
 
   // 段落中心工作台（spec segment-centric-editor-workbench §3）。段落派生唯一来源（RV-01）：
   // 与传给 ScriptPanel / MaterialsPanel 的是同一对值；其余接线在 useWorkbenchWiring。
@@ -2324,6 +2337,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onAgentUndo: undefined, onUndoAll: agent.undoAllOperations, onUndoSingle: agent.undoSingleOperation,
               onCancel: agent.cancelExecution, onDismissError: agent.dismissExecutionError,
               singleUndoMessageIds: agent.singleUndoMessageIds, steering: agent.steering, draftRestore: agent.draftRestore, skillSkip: agent.skillSkip, mentionMaterials: materialManagement.allMaterials, draftProjectKey: projectId,
+              contextMemory, liveProgress: agent.liveEvents.crew,
             }}
           />
         }

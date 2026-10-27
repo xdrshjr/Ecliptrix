@@ -485,6 +485,8 @@ export interface BuildSystemPromptInput {
   memoryDigest?: { text: string; count: number } | null;
   /** Enabled skills for the "可用技能" index; empty renders nothing at all. */
   skillIndex?: SkillIndexEntry[];
+  /** `false` marks crew-dependent skills `[unavailable: crew]`. */
+  crewEnabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +585,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const projectStatus = `## 项目状态\n${formatCompactSummary(timelineState, materials)}`;
   const workflowRecipes = formatWorkflowRecipes();
   const skillSection = formatSkillIndex(input.skillIndex,
-    skillAvailability(input.capabilities));
+    skillAvailability(input.capabilities, input.crewEnabled));
 
   const smartHandling = `## 智能结果处理
 - 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track

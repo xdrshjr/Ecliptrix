@@ -1,6 +1,6 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentEvent } from '@mariozechner/pi-agent-core';
-import type { Model, KnownApi } from '@mariozechner/pi-ai';
+import type { Model } from '@mariozechner/pi-ai';
 import { streamSimple } from '@mariozechner/pi-ai';
 import { ToolActivationState } from './registry/ToolActivationState';
 import { CORE_TOOLKIT_TOOL_NAMES } from './promptParts';
@@ -18,6 +18,10 @@ import type {
   SSEEvent,
   VideoEditingAgentConfig,
 } from './types';
+import { DEFAULT_CREW_SETTINGS } from './types';
+import { resolveModelFormat } from './modelFormat';
+
+export { resolveModelFormat };
 import { buildSystemPrompt, L0_PROMPT_CHAR_CEILING } from './systemPrompt';
 import { skillAvailability } from './skillContext';
 import { convertToAgentMessages } from './messageConverter';
@@ -40,39 +44,6 @@ export type { AgentStreamErrorCode } from './types';
  * Spec: docs/plans/video-agent-prompt-persistence/spec.md §2.8.
  */
 const PROMPT_DEBUG = process.env.VIDEO_AGENT_PROMPT_DEBUG === '1';
-
-/**
- * Map provider_type + api_type from backend to pi-ai api/provider values.
- *
- * Precedence: explicit `apiType` wins when present. Without it we fall back to
- * `providerType`, which keeps backward compatibility for legacy providers
- * (kimi_coding / claude_coding / anthropic) whose protocol was historically
- * inferred from the brand name. Custom providers MUST send `apiType` —
- * without it, an Anthropic-compatible custom endpoint silently downgrades to
- * OpenAI-format requests, the Agent SDK fails to parse the response, and
- * users see the "model returned an empty response" tool-use error.
- */
-function resolveModelFormat(
-  providerType?: string,
-  apiType?: 'openai' | 'anthropic',
-): { api: KnownApi; provider: string } {
-  if (apiType === 'anthropic') {
-    const provider = providerType === 'kimi_coding' ? 'kimi-coding' : 'anthropic';
-    return { api: 'anthropic-messages', provider };
-  }
-  if (apiType === 'openai') {
-    return { api: 'openai-completions', provider: providerType || 'openai' };
-  }
-  switch (providerType) {
-    case 'kimi_coding':
-      return { api: 'anthropic-messages', provider: 'kimi-coding' };
-    case 'claude_coding':
-    case 'anthropic':
-      return { api: 'anthropic-messages', provider: 'anthropic' };
-    default:
-      return { api: 'openai-completions', provider: 'openai' };
-  }
-}
 
 /**
  * Create a video editing agent instance with all tools and configuration.
@@ -129,7 +100,17 @@ contextWindow: config.contextWindowTokens ?? 128000,
     // Fresh per request: `ask_user`'s one-per-turn rule and the live plan must
     // never leak across an SSE retry (spec §3.5.2 / R-15).
     turnState: {},
-    skillAvailability: skillAvailability(config.webCapabilities),
+    callBudget: { used: 0 },
+    crewRuntime: {
+      settings: config.crewSettings ?? DEFAULT_CREW_SETTINGS,
+      mainModel: {
+        apiUrl: config.llmApiUrl, apiKey: config.llmApiKey, model: config.llmModel,
+        providerType: config.providerType, apiType: config.apiType,
+        contextWindowTokens: config.contextWindowTokens,
+      },
+      globalConcurrency: config.webCapabilities?.limits?.global_concurrency,
+    },
+    skillAvailability: skillAvailability(config.webCapabilities, config.crewSettings?.enabled),
   };
 
   // 4. Create ToolRegistry and build tools
@@ -166,6 +147,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     plan: scanLatestPlan(config.conversationHistory),
     memoryDigest: config.memoryDigest ?? null,
     skillIndex: config.skillIndex,
+    crewEnabled: config.crewSettings?.enabled,
   }) + (exploredCategories.length
     ? '\n## 已加载的高级工具（历史提示）\n' +
       exploredCategories.slice(-2).join(', ') +
@@ -206,6 +188,12 @@ contextWindow: config.contextWindowTokens ?? 128000,
         const budget = budgetModelContext(selected, window);
         const maxTokens = outputCap === undefined ? budget.maxTokens
           : Math.min(outputCap, budget.maxTokens);
+        // 回调缺省或抛错都不能影响本次模型请求（评审 R-10：事件由 route 接到 SSE）。
+        try {
+          config.onContextUsage?.({ type: 'context_usage', usedTokens: budget.estimatedTokens,
+            windowTokens: currentModel.contextWindow, maxOutputTokens: budget.maxTokens,
+            dropped: budget.dropped });
+        } catch { /* a broken observer must not fail the turn */ }
         // Same unit as budgetModelContext (tokens), converted once to the
         // schema bytes ToolActivationState enforces (spec §12.3 D-07).
         activation.setSchemaBudget(tokensToBytes(window - maxTokens -

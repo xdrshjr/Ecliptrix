@@ -58,6 +58,26 @@ export interface ToolContext {
    */
   turnState: ToolkitTurnState;
   /**
+   * Narrow, tool-side window onto the SSE stream (progress / crew events).
+   * Absent in contexts built outside the route (unit tests): a missing
+   * emitter is a no-op, never an error.
+   */
+  emit?: (event: ToolSideEvent) => void;
+  /**
+   * New backend call ids issued this turn. Deliberately NOT part of
+   * `turnState`: a research-crew member's derived context copies this by
+   * reference (`{ ...parent }`) so every member's calls add up on the parent's
+   * count, while `turnState` stays member-private. A fresh `{ used: 0 }` is
+   * created per request, so an SSE re-run starts from zero.
+   */
+  callBudget: { used: number };
+  /**
+   * What `delegate_research` needs that tools otherwise never see: the main
+   * model (fallback for the crew's fast tier) and the crew limits. Absent in
+   * contexts built outside `createVideoEditingAgent` (unit tests).
+   */
+  crewRuntime?: CrewRuntime;
+  /**
    * Narrow window onto `ToolActivationState.load` for `use_skill`: it lets a
    * skill preload the tools it names without exposing the whole activation
    * object to tools. Throws the same errors as `load`
@@ -264,7 +284,26 @@ export type SSEEvent =
   /** Steers still undelivered when the turn completed (completed path only). */
   | { type: 'steer_dropped'; steerIds: string[] }
   /** The requested skill could not be loaded; the turn ran without it. */
-  | { type: 'skill_skipped'; skillId: string; reason: SkillSkipReason };
+  | { type: 'skill_skipped'; skillId: string; reason: SkillSkipReason }
+  /** Prompt-size reading for the context ring; the last one of a call wins. */
+  | { type: 'context_usage'; usedTokens: number; windowTokens: number;
+      maxOutputTokens: number; dropped: boolean }
+  /** Transient batch-acquire progress; the final state rides on `tool_result`. */
+  | { type: 'tool_progress'; toolCallId: string; done: number; total: number;
+      itemIndex: number; status: 'ready' | 'already_in_library' | 'failed' | 'skipped' }
+  | { type: 'crew_start'; toolCallId: string; crewId: string;
+      modelTier: 'fast' | 'main'; members: Array<{ id: string; goal: string }> }
+  | { type: 'crew_member'; crewId: string; memberId: string; state: CrewMemberState;
+      activity?: string; toolCalls: number; modelCalls: number; elapsedMs: number }
+  | { type: 'crew_end'; crewId: string; ready: number; failed: number; candidates: number };
+
+export type CrewMemberState =
+  'queued' | 'running' | 'done' | 'partial' | 'failed' | 'timeout' | 'cancelled';
+
+/** The four SSE events a tool may emit through `ToolContext.emit`. */
+export type ToolSideEvent = Extract<SSEEvent, {
+  type: 'tool_progress' | 'crew_start' | 'crew_member' | 'crew_end';
+}>;
 
 export type SkillSkipReason = 'not_found' | 'disabled' | 'invalid' | 'unavailable';
 
@@ -301,7 +340,36 @@ export interface WebCapabilitySnapshot {
   search: WebCapabilitySegment;
   browser: WebCapabilitySegment;
   downloads: WebCapabilitySegment;
+  limits?: { global_concurrency?: number; max_sources?: number };
 }
+
+/** The turn's main model, reusable by a crew member when `fast` is unavailable. */
+export interface CrewMainModel {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  providerType?: string;
+  apiType?: 'openai' | 'anthropic';
+  contextWindowTokens?: number;
+}
+
+export interface CrewRuntime {
+  settings: CrewSettings;
+  mainModel: CrewMainModel;
+  /** `webCapabilities.limits.global_concurrency`; undefined = unknown (use 3). */
+  globalConcurrency?: number;
+}
+
+/** Research-crew switches resolved server-side from `agent_toolkit` settings. */
+export interface CrewSettings {
+  enabled: boolean;
+  maxParallel: number;
+  memberTimeoutSeconds: number;
+}
+
+export const DEFAULT_CREW_SETTINGS: CrewSettings = {
+  enabled: true, maxParallel: 3, memberTimeoutSeconds: 90,
+};
 
 // --- Agent Factory Config ---
 
@@ -368,6 +436,10 @@ export interface VideoEditingAgentConfig {
    * means an empty digest, never a blocked turn.
    */
   memoryDigest?: { text: string; count: number } | null;
+  /** Called once per model request with the prompt-size reading (context ring). */
+  onContextUsage?: (event: Extract<SSEEvent, { type: 'context_usage' }>) => void;
+  /** Research-crew limits from the toolkit settings; absent = factory defaults. */
+  crewSettings?: CrewSettings;
   /** Enabled skills for the L0 "可用技能" section; empty/absent renders nothing. */
   skillIndex?: SkillIndexEntry[];
 }

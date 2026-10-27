@@ -9,7 +9,11 @@
 
 import type { AgentToolCallRecord, ChatMessage } from '@/types';
 import { summarizeTurn } from '../turnSummary';
+import {
+  isCompactionMessage, supersededCompactionIds,
+} from '@/components/video/hooks/conversationCompaction';
 import type {
+  CompactionNodeData,
   TimelineNodeData,
   ToolStepData,
   ToolStepStatus,
@@ -142,11 +146,35 @@ export interface TimelineNodeLabels {
   emptyResponse: string;
 }
 
+function compactionNode(message: ChatMessage): CompactionNodeData {
+  const digest = message.metadata?.compaction;
+  return {
+    kind: 'compaction',
+    id: `${message.id}-compaction`,
+    timestamp: message.timestamp,
+    messageId: message.id,
+    pending: false,
+    summaryText: digest?.summaryText ?? '',
+    coveredCount: digest?.coveredCount ?? 0,
+    tokensBefore: digest?.tokensBefore ?? 0,
+    tokensAfter: digest?.tokensAfter ?? 0,
+  };
+}
+
+function pendingCompactionNode(afterMessageId: string): CompactionNodeData {
+  return {
+    kind: 'compaction', id: `${afterMessageId}-compaction-pending`, timestamp: new Date(),
+    pending: true, summaryText: '', coveredCount: 0, tokensBefore: 0, tokensAfter: 0,
+  };
+}
+
 // 映射分支保留在一起以确保节点顺序和稳定 ID；既有函数超过 60 行。
 export function mapMessageToNodes(
   message: ChatMessage,
   labels: TimelineNodeLabels,
 ): TimelineNodeData[] {
+  // A digest is never a chat bubble: only the divider renders it.
+  if (isCompactionMessage(message)) return [compactionNode(message)];
   const nodes: TimelineNodeData[] = [];
 
   if (!message.isAgentMessage) {
@@ -266,6 +294,15 @@ export function mapMessageToNodes(
 export function messagesToTimelineNodes(
   messages: ChatMessage[],
   labels: TimelineNodeLabels,
+  options: { compactingAfterMessageId?: string | null } = {},
 ): TimelineNodeData[] {
-  return messages.flatMap(message => mapMessageToNodes(message, labels));
+  // A digest that a later one replaced stays in the array (undo restores it)
+  // but must not show a second divider.
+  const superseded = supersededCompactionIds(messages);
+  return messages.flatMap(message => {
+    if (superseded.has(message.id)) return [];
+    const nodes = mapMessageToNodes(message, labels);
+    return message.id === options.compactingAfterMessageId
+      ? [...nodes, pendingCompactionNode(message.id)] : nodes;
+  });
 }

@@ -108,6 +108,10 @@ export interface AgentToolkitCapabilities {
   documents: AgentToolkitCapabilitySegment & { formats: string[] };
   analysis: AgentToolkitCapabilitySegment;
   memory: AgentToolkitCapabilitySegment & { entries: Record<string, number> };
+  /** Research-crew switches (optional: absent from older backends). */
+  crew?: { enabled: boolean; max_parallel: number; member_timeout_s: number };
+  /** Conversation-compaction switches; `memory` above is the memory-tool segment. */
+  memory_compaction?: { auto_compact: boolean; auto_compact_ratio: number };
   limits: {
     max_file_mb: number;
     document_max_pages: number;
@@ -128,6 +132,10 @@ export interface AgentToolkitUsage {
 export interface ToolkitTurnState {
   plan?: AgentPlan;
   askedQuestionId?: string;
+  /** Research-crew budget used this turn (`delegate_research`). */
+  crew?: { crewCalls: number; crewToolCalls: number; crewModelCalls: number };
+  /** Model tier the crew resolved this turn, so it is resolved only once. */
+  crewModelTier?: 'fast' | 'main';
 }
 
 /** 计划/提问卡片与工具结果共用的工具名谓词集合。 */

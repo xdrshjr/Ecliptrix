@@ -31,6 +31,8 @@ import { CoverToolStatus } from '../AgentToolCallCard';
 import WebResearchToolCard, { isWebResearchTool } from '../WebResearchToolCard';
 import ToolkitToolCard, { askQuestionId, isToolkitTool } from '../ToolkitToolCard';
 import QualityReportCard, { ExportInspectCard } from '../QualityReportCard';
+import CrewCard from './CrewCard';
+import AcquireProgress from './AcquireProgress';
 import VisionObservationCard from '../VisionObservationCard';
 import {
   isExportInspectTool, isQualityTool, isVisionTool,
@@ -194,6 +196,10 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({
                     <ExportInspectCard toolCall={toolCall} />
                   ) : settled && isVisionTool(toolCall.name) ? (
                     <VisionObservationCard toolCall={toolCall} />
+                  ) : toolCall.name === 'delegate_research' ? (
+                    <CrewCard toolCall={toolCall} />
+                  ) : toolCall.name === 'acquire_web_materials' ? (
+                    <AcquireProgress toolCall={toolCall} />
                   ) : isToolkitTool(toolCall.name) ? (
                     <ToolkitToolCard toolCall={toolCall}
                       answeredQuestionIds={answeredQuestionIds as Set<string> | undefined}

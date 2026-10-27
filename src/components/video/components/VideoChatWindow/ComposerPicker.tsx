@@ -15,6 +15,8 @@ export interface PickerItem {
   secondary?: string;
   /** 右侧小标，如「内置」「我的」。 */
   badge?: string;
+  /** Heading shown once above the first item of each group. */
+  group?: string;
   /** 次要提示（如依赖不满足的原因），不阻止选择。 */
   note?: string;
   dimmed?: boolean;
@@ -60,9 +62,16 @@ const ComposerPicker: React.FC<ComposerPickerProps> = ({
         <ul id={id} role="listbox" aria-label={label} className="py-1">
           {items.map((item, index) => {
             const active = index === activeIndex;
+            const heading = item.group && item.group !== items[index - 1]?.group;
             return (
+              <React.Fragment key={item.id}>
+              {heading ? (
+                <li role="presentation" aria-hidden="true"
+                  className="px-3 pt-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {item.group}
+                </li>
+              ) : null}
               <li
-                key={item.id}
                 id={pickerOptionId(id, index)}
                 ref={active ? activeRef : undefined}
                 role="option"
@@ -92,6 +101,7 @@ const ComposerPicker: React.FC<ComposerPickerProps> = ({
                   </span>
                 ) : null}
               </li>
+              </React.Fragment>
             );
           })}
         </ul>

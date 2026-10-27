@@ -24,7 +24,7 @@ function makeContext(overrides: Partial<ToolContext> = {}): ToolContext {
     operations: new Map(),
     updateTimeline: vi.fn(),
     recordOperation: vi.fn(),
-    turnState: {},
+    turnState: {}, callBudget: { used: 0 },
     ...overrides,
   };
 }

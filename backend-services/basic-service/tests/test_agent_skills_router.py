@@ -63,7 +63,7 @@ async def error_of(awaitable):
 async def test_management_list_needs_only_origin():
     response = await router_module.list_skills(read_request())
     skills = response.data["skills"]
-    assert len(skills) == 6 and all(s["builtin"] for s in skills)
+    assert len(skills) == 7 and all(s["builtin"] for s in skills)
     assert set(skills[0]) >= {
         "id", "name", "description", "version", "tools", "requires",
         "builtin", "enabled", "valid", "shadowed", "problem", "body_chars",
@@ -80,7 +80,8 @@ async def test_index_requires_call_id_and_returns_entries():
     assert response.data["truncated"] is False
     assert {e["id"] for e in response.data["skills"]} == {
         "explainer-video", "storyboard-short", "quick-assemble",
-        "news-digest-video", "web-footage-sourcing", "final-qc-and-export"}
+        "news-digest-video", "web-footage-sourcing", "final-qc-and-export",
+        "parallel-sourcing"}
     assert set(response.data["skills"][0]) == {
         "id", "name", "description", "requires", "builtin"}
 

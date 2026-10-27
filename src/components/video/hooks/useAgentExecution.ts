@@ -16,7 +16,6 @@ import type {
   MaterialItem,
   ChatMessage,
   Conversation,
-  AgentTimelineOperation,
   AgentTrackPatch,
 } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -54,6 +53,8 @@ import {
   type UseAgentExecutionSteeringReturn,
 } from './useAgentExecutionSteering';
 import type { MaterialMention } from '@/types/agentSteering';
+import { triggerClipAnimation } from './clipAnimation';
+import { useAgentLiveEvents, type AgentLiveEvents } from './useAgentLiveEvents';
 import {
   createAgentPlaceholder,
   createTurnMessageIds,
@@ -137,6 +138,8 @@ export interface UseAgentExecutionReturn {
   steering: UseAgentExecutionSteeringReturn['steering'];
   draftRestore: UseAgentExecutionSteeringReturn['draftRestore'];
   skillSkip: UseAgentExecutionSteeringReturn['skillSkip'];
+  /** Crew / batch-acquire progress and the latest prompt-size reading. */
+  liveEvents: AgentLiveEvents;
   /** Cancel the current execution. */
   cancelExecution: () => void;
   /** Undo all operations of an agent message (reverts its track patches). */
@@ -256,6 +259,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   const agentIsExecuting = isStreamLive || executionState.status === 'finishing';
   const agentIsExecutingRef = useRef(agentIsExecuting);
   agentIsExecutingRef.current = agentIsExecuting;
+  const liveEvents = useAgentLiveEvents(agentIsExecuting);
 
   // -- Re-entry guard for sendAgentMessage until its request has started --
   const sendingRef = useRef(false);
@@ -276,48 +280,6 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   });
   const steeringBridgeRef = useRef(steeringBridge);
   steeringBridgeRef.current = steeringBridge;
-
-  // -----------------------------------------------------------------------
-  // triggerClipAnimation — visual feedback for timeline operations
-  // -----------------------------------------------------------------------
-
-  const triggerClipAnimation = useCallback((operation: AgentTimelineOperation) => {
-    let clipId = '';
-    let animClass = '';
-
-    switch (operation.type) {
-      case 'add_clip':
-        clipId = operation.clip.id;
-        animClass = 'agent-clip-added';
-        break;
-      case 'trim_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-trimmed';
-        break;
-      case 'delete_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-deleting';
-        break;
-      case 'move_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-moving';
-        break;
-      case 'resize_clip':
-        clipId = operation.clipId;
-        animClass = 'agent-clip-resized';
-        break;
-    }
-
-    if (clipId && animClass) {
-      requestAnimationFrame(() => {
-        const el = document.querySelector(`[data-clip-id="${clipId}"]`);
-        if (el) {
-          el.classList.add(animClass);
-          setTimeout(() => el.classList.remove(animClass), 700);
-        }
-      });
-    }
-  }, []);
 
   // -----------------------------------------------------------------------
   // Event chain, turn patches and per-turn collaborators
@@ -361,7 +323,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         },
         onTriggerAnimation: triggerClipAnimation,
       }),
-    [setTimelineState, onTimelineUpdate, triggerClipAnimation],
+    [setTimelineState, onTimelineUpdate],
   );
 
   /** Localised text for an SSE `error` event; an old server sends no code. */
@@ -414,8 +376,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         },
         onError: notifyAgentError,
         describeError: describeServerError,
+        ...liveEvents.sinks,
       }),
-    [notifyAgentError, describeServerError],
+    [notifyAgentError, describeServerError, liveEvents.sinks],
   );
 
   // Over 60 lines: every callback closes over this turn's subscription and
@@ -882,6 +845,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     steering: steeringBridge.steering,
     draftRestore: steeringBridge.draftRestore,
     skillSkip: steeringBridge.skillSkip,
+    liveEvents,
     cancelExecution,
     undoAllOperations,
     undoSingleOperation,

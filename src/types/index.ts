@@ -67,9 +67,11 @@ export interface ChatMessage {
   timestamp: Date;
   isStreaming?: boolean;
   metadata?: {
-    type?: 'intent_detection' | 'intent_result';
+    type?: 'intent_detection' | 'intent_result' | 'compaction';
     status?: string;
     intention?: any;
+    /** Present when `type === 'compaction'`: a folded-history digest. */
+    compaction?: ConversationCompaction;
   };
   // Agent mode fields
   isAgentMessage?: boolean;
@@ -91,6 +93,45 @@ export interface ChatMessage {
   isThinking?: boolean;
 }
 
+/**
+ * A semantic digest that replaces earlier turns in what the model sees. The
+ * folded messages stay in the array (the UI can expand and undo them); only the
+ * model view is cut at the latest compaction message.
+ */
+export interface ConversationCompaction {
+  summaryText: string;
+  /** Id of the last message folded into the digest. */
+  coveredThroughMessageId: string;
+  coveredCount: number;
+  tokensBefore: number;
+  tokensAfter: number;
+  auto: boolean;
+  createdAt: string;
+  /** Previous compaction message this one replaced (rolling merge). */
+  supersedes?: string;
+}
+
+/** Terminal snapshot of one research-crew run, rebuilt from `tool_result`. */
+export interface CrewSnapshot {
+  crewId: string;
+  modelTier: 'fast' | 'main';
+  members: Array<{
+    id: string; goal: string; state: string; toolCalls: number;
+    candidates: number; elapsedMs: number;
+  }>;
+}
+
+/** Final state of each slot of one `acquire_web_materials` batch. */
+export interface AcquireSnapshot {
+  requested: number;
+  published: boolean;
+  items: Array<{
+    index: number; status: 'ready' | 'already_in_library' | 'failed' | 'skipped';
+    name?: string; errorCode?: string; retryable?: boolean;
+    licenseStatus?: 'unknown' | 'declared';
+  }>;
+}
+
 export interface AgentToolCallRecord {
   id: string;
   name: string;
@@ -103,6 +144,9 @@ export interface AgentToolCallRecord {
    * leave it unset (their whole-turn undo is unaffected).
    */
   changedTimeline?: boolean;
+  /** UI-only terminal snapshots (rebuildable from `result`); stripped from requests. */
+  crew?: CrewSnapshot;
+  acquire?: AcquireSnapshot;
 }
 
 /**

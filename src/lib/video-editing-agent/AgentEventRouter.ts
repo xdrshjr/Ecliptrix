@@ -56,7 +56,20 @@ export interface AgentEventRouterConfig {
   describeError?: (error: {
     message: string; code?: AgentStreamErrorCode; cause?: TtsFailure;
   }) => string;
+  /**
+   * Transient progress for the context ring, the batch-acquire grid and the
+   * research-crew card. They are readings, not state sources: the final state
+   * rides on `tool_result`, and none of them reaches operation dispatch.
+   */
+  onContextUsage?: (event: SSEEvent & { type: 'context_usage' }) => void;
+  onToolProgress?: (event: SSEEvent & { type: 'tool_progress' }) => void;
+  onCrewEvent?: (event: CrewLiveEvent) => void;
 }
+
+/** The three events that drive a live research-crew card. */
+export type CrewLiveEvent = SSEEvent & {
+  type: 'crew_start' | 'crew_member' | 'crew_end';
+};
 
 // ---------------------------------------------------------------------------
 // AgentEventRouter
@@ -74,6 +87,8 @@ export class AgentEventRouter {
   private readonly onOperationApplied?: AgentEventRouterConfig['onOperationApplied'];
   private readonly onError?: AgentEventRouterConfig['onError'];
   private readonly describeError?: AgentEventRouterConfig['describeError'];
+  private readonly progress: Pick<AgentEventRouterConfig,
+    'onContextUsage' | 'onToolProgress' | 'onCrewEvent'>;
 
   constructor(config: AgentEventRouterConfig) {
     this.coverAgentBridge = config.coverAgentBridge;
@@ -83,6 +98,11 @@ export class AgentEventRouter {
     this.onOperationApplied = config.onOperationApplied;
     this.onError = config.onError;
     this.describeError = config.describeError;
+    this.progress = {
+      onContextUsage: config.onContextUsage,
+      onToolProgress: config.onToolProgress,
+      onCrewEvent: config.onCrewEvent,
+    };
   }
 
   /**
@@ -97,6 +117,7 @@ export class AgentEventRouter {
    *   tool_result    -> StateManager.updateToolStatus() + OperationApplier.apply()
    *   error          -> StateManager.setError()
    *   agent_end      -> StateManager.finalize()
+   *   context_usage / tool_progress / crew_* -> progress callbacks only
    *   others         -> no-op (lifecycle markers forwarded but no state change)
    */
   async handleEvent(event: SSEEvent): Promise<void> {
@@ -166,6 +187,20 @@ export class AgentEventRouter {
 
       case 'script_delta':
         this.handleScriptDelta(event.content);
+        break;
+
+      case 'context_usage':
+        this.progress.onContextUsage?.(event);
+        break;
+
+      case 'tool_progress':
+        this.progress.onToolProgress?.(event);
+        break;
+
+      case 'crew_start':
+      case 'crew_member':
+      case 'crew_end':
+        this.progress.onCrewEvent?.(event);
         break;
 
       // Lifecycle markers (agent_start, turn_start, turn_end, message_start,

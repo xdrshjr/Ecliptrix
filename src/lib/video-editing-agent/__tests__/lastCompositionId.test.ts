@@ -41,7 +41,7 @@ function context(overrides: Partial<ToolContext> = {}): ToolContext {
     operations: new Map(),
     updateTimeline: () => {},
     recordOperation: () => {},
-    turnState: {},
+    turnState: {}, callBudget: { used: 0 },
     ...overrides,
   };
 }

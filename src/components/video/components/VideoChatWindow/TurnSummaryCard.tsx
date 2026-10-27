@@ -77,6 +77,14 @@ const TurnSummaryCard: React.FC<TurnSummaryCardProps> = ({
         {materials.webDownloaded > 0 && (
           <Chip>{fill(copy.summaryWeb, { n: materials.webDownloaded })}</Chip>
         )}
+        {summary.web?.crewTasks ? (
+          <Chip>{fill(t.agentCrew.turnSummary, {
+            tasks: summary.web.crewTasks, candidates: summary.web.candidates })}</Chip>
+        ) : null}
+        {summary.web?.requested ? (
+          <Chip>{fill(t.agentAcquire.turnSummary, {
+            ready: summary.web.acquired, requested: summary.web.requested })}</Chip>
+        ) : null}
         {check && (issues === 0
           ? <Chip tone="ok">{copy.summaryCheckOk}</Chip>
           : (

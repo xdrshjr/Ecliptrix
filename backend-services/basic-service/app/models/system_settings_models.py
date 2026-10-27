@@ -255,7 +255,8 @@ def validate_setting_payload(
         # （复用既有码，spec §5.4）。
         from pydantic import TypeAdapter, StrictBool, StrictInt
         booleans = {"enabled", "workspace_enabled", "documents_enabled",
-                    "analysis_enabled", "memory_enabled"}
+                    "analysis_enabled", "memory_enabled",
+                    "crew_enabled", "auto_compact"}
         ranges = {"workspace_quota_mb": (16, 2048), "max_file_mb": (1, 128),
                   "document_max_pages": (1, 5000),
                   "document_max_chars": (10000, 10000000),
@@ -263,9 +264,16 @@ def validate_setting_payload(
                   "analysis_max_output_kb": (8, 512),
                   "memory_max_entries": (20, 1000),
                   "memory_retention_days": (0, 3650),
-                  "plan_max_steps": (4, 20)}
+                  "plan_max_steps": (4, 20),
+                  "crew_max_parallel": (1, 3),
+                  "crew_member_timeout_s": (30, 180)}
         if key in booleans:
             TypeAdapter(StrictBool).validate_python(value)
+        elif key == "auto_compact_ratio":
+            from pydantic import StrictFloat
+            checked = TypeAdapter(StrictFloat | StrictInt).validate_python(value)
+            if not 0.6 <= checked <= 0.9:
+                raise ValueError("setting_out_of_range")
         elif key in ranges:
             checked = TypeAdapter(StrictInt).validate_python(value)
             low, high = ranges[key]

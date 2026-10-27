@@ -4,6 +4,8 @@ import { isInlineMediaUrl } from '@/lib/inlineUrl';
 import type { ToolContext } from '../types';
 import type { ToolActivationState } from '../registry/ToolActivationState';
 import { createWebTools } from './webTools';
+import { createAcquireWebMaterialsTool } from './acquireWebMaterials';
+import { createDelegateResearchTools } from './delegateResearch';
 import { createBrowserTools } from './browserTools';
 import { createResearchArtifactTool } from './researchArtifactTool';
 import { ToolRegistry, CATEGORY_IDS, createDefaultCategories } from '../registry';
@@ -369,9 +371,11 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     registry.registerCategory(category);
   }
 
-  registry.registerToolsForCategory(CATEGORY_IDS.WEB_TOOLS, createWebTools(context));
+  registry.registerToolsForCategory(CATEGORY_IDS.WEB_TOOLS,
+    [...createWebTools(context), createAcquireWebMaterialsTool(context)]);
   registry.registerToolsForCategory(CATEGORY_IDS.BROWSER_TOOLS, createBrowserTools(context));
-  registry.registerToolsForCategory(CATEGORY_IDS.RESEARCH_TOOLS, [createResearchArtifactTool(context)]);
+  registry.registerToolsForCategory(CATEGORY_IDS.RESEARCH_TOOLS,
+    [createResearchArtifactTool(context), ...createDelegateResearchTools(context)]);
 
   // Populate query_tools category
   registry.registerToolsForCategory(CATEGORY_IDS.QUERY_TOOLS, [

@@ -5,6 +5,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import type { SkillSummary } from '@/types/agentSkills';
 import { matchesQuery } from './composerTriggers';
 import ComposerPicker, { type PickerItem } from './ComposerPicker';
+import { visibleCommands, type ComposerCommand } from './composerCommands';
 
 /**
  * `/` 技能选择器：只列出启用且有效的技能，依赖不满足的行置灰但仍可选
@@ -23,6 +24,9 @@ export interface ComposerSkillPickerProps {
   unavailable?: ReadonlySet<string>;
   onSelect: (skill: SkillSummary) => void;
   onHover: (index: number) => void;
+  /** Editor commands listed after the skills, in their own group. */
+  commands?: readonly ComposerCommand[];
+  onSelectCommand?: (command: ComposerCommand) => void;
 }
 
 /** 选择器当前可见的技能（过滤后）；父组件用同一函数做键盘导航，避免两份判定。 */
@@ -35,6 +39,7 @@ export function visibleSkills(
 
 const ComposerSkillPicker: React.FC<ComposerSkillPickerProps> = ({
   id, query, skills, status, activeIndex, unavailable, onSelect, onHover,
+  commands = [], onSelectCommand,
 }) => {
   const { t } = useLocale();
   const copy = t.agentCollab;
@@ -50,6 +55,13 @@ const ComposerSkillPicker: React.FC<ComposerSkillPickerProps> = ({
       dimmed: missing.length > 0,
     };
   });
+  const shownCommands = visibleCommands(commands, query);
+  items.push(...shownCommands.map(command => ({
+    id: `command:${command.id}`,
+    primary: command.name,
+    secondary: command.hint,
+    group: t.agentContext.commandGroup,
+  })));
   const emptyText = status === 'error' ? copy.skillLoadFailed
     : status === 'loading' ? '…'
       : skills.length === 0 ? copy.skillEmpty : copy.skillNoMatch;
@@ -59,7 +71,9 @@ const ComposerSkillPicker: React.FC<ComposerSkillPickerProps> = ({
       label={copy.skillPickerLabel}
       items={items}
       activeIndex={activeIndex}
-      onSelect={index => onSelect(visible[index])}
+      onSelect={index => (index < visible.length
+        ? onSelect(visible[index])
+        : onSelectCommand?.(shownCommands[index - visible.length]))}
       onHover={onHover}
       emptyText={emptyText}
     />

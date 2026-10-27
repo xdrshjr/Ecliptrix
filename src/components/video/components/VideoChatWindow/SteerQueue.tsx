@@ -20,6 +20,8 @@ export interface SteerQueueProps {
   queued: readonly QueuedFollowUp[];
   /** 当前正在执行的工具名（用于「将在『X』完成后送达」）。 */
   currentToolName?: string | null;
+  /** A research crew is running: the note waits for it, not for one tool. */
+  crewRunning?: boolean;
   onCancel: (id: string) => void;
   /** 「改为停止并重发」：停止当前回合后把该文本作为新一轮发出。 */
   onStopAndResend: (id: string) => void;
@@ -83,15 +85,16 @@ const Chip: React.FC<ChipProps> = ({
 };
 
 const SteerQueue: React.FC<SteerQueueProps> = ({
-  notes, queued, currentToolName, onCancel, onStopAndResend,
+  notes, queued, currentToolName, crewRunning = false, onCancel, onStopAndResend,
 }) => {
   const { t } = useLocale();
   const copy = t.agentCollab;
   const pending = notes.filter(note => note.status === 'local' || note.status === 'sent');
   if (pending.length === 0 && queued.length === 0) return null;
-  const waitingText = currentToolName
-    ? copy.steerChipWaitingTool.replace('{tool}', currentToolName)
-    : copy.steerChipWaitingStep;
+  const waitingText = crewRunning ? t.agentCrew.steerHint
+    : currentToolName
+      ? copy.steerChipWaitingTool.replace('{tool}', currentToolName)
+      : copy.steerChipWaitingStep;
   return (
     <ul
       aria-label={copy.steerQueueLabel}
