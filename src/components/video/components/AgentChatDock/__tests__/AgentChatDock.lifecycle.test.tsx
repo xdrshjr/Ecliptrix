@@ -18,6 +18,14 @@ import {
 } from '@/components/video/timeline/__tests__/test-utils/compileComponent';
 import * as errorRecovery from '@/lib/video-editing-agent/errorRecovery';
 import * as timelineUtils from '../../VideoChatWindow/timeline/utils';
+import * as planScan from '@/lib/video-editing-agent/planScan';
+import * as askScan from '@/lib/video-editing-agent/askScan';
+import * as agentToolkitTypes from '@/types/agentToolkit';
+import * as agentToolkitApi from '@/lib/api/agentToolkit';
+import * as agentToolkitStatus from '@/lib/agentToolkitStatus';
+import * as askUserCard from '../../VideoChatWindow/AskUserCard';
+import * as composerPicker from '../../VideoChatWindow/ComposerPicker';
+import * as useComposerModule from '../../VideoChatWindow/useComposer';
 import * as animations from '../../VideoChatWindow/timeline/animations';
 import * as draggable from '../useDraggableFab';
 import type { VideoChatWindowProps } from '../../VideoChatWindow';
@@ -78,6 +86,17 @@ beforeAll(async () => {
       createPortal(React.createElement('button', null, 'portal'), document.body),
     ) },
     './AgentBusyBar': { __esModule: true, default: () => null },
+    '@/lib/video-editing-agent/planScan': planScan,
+    '@/lib/video-editing-agent/askScan': askScan,
+    '@/types/agentToolkit': agentToolkitTypes,
+    '@/lib/api/agentToolkit': agentToolkitApi,
+    '@/lib/agentToolkitStatus': agentToolkitStatus,
+    './AskUserCard': askUserCard,
+    './ComposerPicker': composerPicker,
+    './useComposer': useComposerModule,
+    './SteerQueue': { __esModule: true, default: () => null },
+    './ComposerSkillPicker': { __esModule: true, default: () => null },
+    './ComposerMentionPicker': { __esModule: true, default: () => null },
     '@/contexts/NotificationContext': {
       useNotification: () => ({ showConfirm: vi.fn() }),
     },

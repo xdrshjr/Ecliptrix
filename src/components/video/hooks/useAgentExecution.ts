@@ -20,7 +20,6 @@ import type {
   AgentTrackPatch,
 } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
-import { isInlineMediaUrl } from '@/lib/inlineUrl';
 import { readLastCompositionId } from '@/lib/api/agentVision';
 import { nextExternalUpdateId } from '@/components/video/timeline/lib/externalUpdateId';
 import { useTimelineStore } from '@/components/video/timeline/store/useTimelineStore';
@@ -33,7 +32,6 @@ import {
 } from '@/lib/video-editing-agent/OperationApplier';
 import {
   diffTimelineTracks,
-  rebaseTrackPatches,
   revertTrackPatches,
 } from '@/lib/video-editing-agent/trackPatch';
 import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
@@ -52,9 +50,18 @@ import type {
 } from './useAgentExecutionState';
 import { useAgentExecutionState } from './useAgentExecutionState';
 import {
+  useAgentExecutionSteering,
+  type UseAgentExecutionSteeringReturn,
+} from './useAgentExecutionSteering';
+import type { MaterialMention } from '@/types/agentSteering';
+import {
+  createAgentPlaceholder,
   createTurnMessageIds,
+  markToolCallUndone,
+  rebaseMessagePatches,
   replaceRetiredTurnMessage,
   stripHistoryForRequest,
+  stripInlineMediaForAgent,
 } from './agentTurnLifecycle';
 
 // ---------------------------------------------------------------------------
@@ -106,6 +113,12 @@ export function buildEditorContextField(
   return context && context.selectedSegmentId ? { editorContext: context } : {};
 }
 
+/** Extras the composer attaches to a turn: a `/` skill and `@` material mentions. */
+export interface SendAgentMessageOptions {
+  skillId?: string;
+  mentions?: MaterialMention[];
+}
+
 export interface UseAgentExecutionReturn {
   /** Detailed execution state from useAgentExecutionState. */
   executionState: AgentExecutionState;
@@ -119,7 +132,11 @@ export interface UseAgentExecutionReturn {
   /** Toggle agent mode on/off. */
   setAgentMode: (mode: boolean) => void;
   /** Send a message to the agent (starts SSE execution). */
-  sendAgentMessage: (text: string) => Promise<void>;
+  sendAgentMessage: (text: string, options?: SendAgentMessageOptions) => Promise<void>;
+  /** Mid-run notes, the follow-up queue, input restore and the skill-skip notice. */
+  steering: UseAgentExecutionSteeringReturn['steering'];
+  draftRestore: UseAgentExecutionSteeringReturn['draftRestore'];
+  skillSkip: UseAgentExecutionSteeringReturn['skillSkip'];
   /** Cancel the current execution. */
   cancelExecution: () => void;
   /** Undo all operations of an agent message (reverts its track patches). */
@@ -150,80 +167,6 @@ type TurnStreamCallbacks = Pick<
   StartExecutionParams,
   'onEvent' | 'onRestart' | 'onComplete' | 'onError' | 'onCancel' | 'onFinishingTimeout'
 >;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Empty streaming reply shown until the first agent event arrives. */
-function createAgentPlaceholder(agentMessageId: string): ChatMessage {
-  return {
-    id: agentMessageId,
-    role: 'assistant',
-    content: '',
-    timestamp: new Date(),
-    isStreaming: true,
-    isAgentMessage: true,
-    agentToolCalls: [],
-    pendingOperations: [],
-  };
-}
-
-/**
- * Request copy of the materials without inline media: `data:` thumbnails
- * would be re-sent (and reach tool results) on every turn, and `blob:` local
- * proxies mean nothing outside this page.
- */
-function stripInlineMediaForAgent(materials: readonly MaterialItem[]): MaterialItem[] {
-  return materials.map(material => {
-    if (!isInlineMediaUrl(material.thumbnailUrl) && material.localProxyUrl === undefined) {
-      return material;
-    }
-    const copy: MaterialItem = { ...material };
-    delete copy.localProxyUrl;
-    if (isInlineMediaUrl(copy.thumbnailUrl)) delete copy.thumbnailUrl;
-    return copy;
-  });
-}
-
-function markToolCallUndone(
-  messages: ChatMessage[],
-  messageId: string,
-  toolCallId: string,
-): ChatMessage[] {
-  return messages.map(msg => {
-    if (msg.id !== messageId || !msg.agentToolCalls) return msg;
-    return {
-      ...msg,
-      agentToolCalls: msg.agentToolCalls.map(tc =>
-        tc.id === toolCallId ? { ...tc, status: 'undone' as const } : tc
-      ),
-    };
-  });
-}
-
-/**
- * After one step of a turn was undone, point the turn's patches for the
- * tracks that step touched at the live timeline (see rebaseTrackPatches).
- */
-function rebaseMessagePatches(
-  messages: ChatMessage[],
-  messageId: string,
-  trackIds: readonly string[],
-  live: TimelineState | null,
-): ChatMessage[] {
-  if (!live || trackIds.length === 0) return messages;
-  return messages.map(msg =>
-    msg.id === messageId && msg.timelineTrackPatches
-      ? {
-        ...msg,
-        timelineTrackPatches: rebaseTrackPatches(
-          msg.timelineTrackPatches, trackIds, live,
-        ),
-      }
-      : msg
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -316,6 +259,23 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   // -- Re-entry guard for sendAgentMessage until its request has started --
   const sendingRef = useRef(false);
+
+  // -- Mid-run steering. It sends follow-ups and stops turns through refs
+  //    because `sendAgentMessage` / `cancelByUser` are defined further down. --
+  const sendAgentMessageRef = useRef<(text: string) => Promise<void>>(async () => undefined);
+  const cancelByUserRef = useRef<() => void>(() => undefined);
+  const steeringBridge = useAgentExecutionSteering({
+    agentIsExecuting,
+    executionStatus: executionState.status,
+    getStateManager: () => stateManagerRef.current,
+    getMessages: () => conversationsRef.current
+      .find(c => c.id === activeConversationIdRef.current)?.messages,
+    sendFollowUp: text => { void sendAgentMessageRef.current(text); },
+    cancelTurn: () => cancelByUserRef.current(),
+    onNotification,
+  });
+  const steeringBridgeRef = useRef(steeringBridge);
+  steeringBridgeRef.current = steeringBridge;
 
   // -----------------------------------------------------------------------
   // triggerClipAnimation — visual feedback for timeline operations
@@ -476,12 +436,14 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
       return {
         onEvent: (event: SSEEvent) => {
+          if (steeringBridgeRef.current.routeEvent(event)) return;
           if (event.type === 'tool_call') router.beginCoverOperation(event);
           runAfterQueuedEvents(() => router.handleEvent(event), 'handling event');
         },
         // A restart only happens before any tool call (the stream manager
         // refuses afterwards): nothing was applied, only the text is stale.
         onRestart: () => {
+          steeringBridgeRef.current.steering.onRestart();
           runAfterQueuedEvents(
             () => stateManager.resetForRestart(),
             'restarting agent message',
@@ -606,7 +568,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   // Over 60 lines: one ordered sequence (drain, retire, snapshot, placeholder,
   // start) whose steps must not interleave with another send.
-  const sendAgentMessage = useCallback(async (message: string) => {
+  const sendAgentMessage = useCallback(async (
+    message: string, options?: SendAgentMessageOptions,
+  ) => {
     if (sendingRef.current || agentIsExecutingRef.current) return;
     if (!activeConversationIdRef.current) return;
     sendingRef.current = true;
@@ -636,7 +600,10 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         role: 'user',
         content: message,
         timestamp: new Date(),
+        ...(options?.skillId ? { skillId: options.skillId } : {}),
+        ...(options?.mentions?.length ? { mentions: options.mentions } : {}),
       };
+      steeringBridgeRef.current.beginTurn(userMessage);
       const messagesWithUser = [...activeConversation.messages, userMessage];
       updateConversationMessages(convId, [
         ...messagesWithUser,
@@ -666,6 +633,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           // Locator only (spec §4.4 P1-1): the export hook recorded it and
           // `inspect_export` falls back to it when the model omits the id.
           lastCompositionId: readLastCompositionId(projectId),
+          ...(options?.skillId ? { skillId: options.skillId } : {}),
+          ...(options?.mentions?.length ? { mentions: options.mentions } : {}),
           ...buildEditorContextField(getEditorContextRef.current),
         },
         ...callbacks,
@@ -679,6 +648,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     startExecution,
     projectId,
   ]);
+
+  sendAgentMessageRef.current = sendAgentMessage;
 
   // -----------------------------------------------------------------------
   // cancelByUser / cancelByNavigation (spec §2.6)
@@ -745,6 +716,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // through cancelByUser. The exposed name `cancelExecution` stays for the
   // existing prop wiring in VideoEditingInterface.
   const cancelExecution = cancelByUser;
+  cancelByUserRef.current = cancelByUser;
 
   /** Clears the error card of a run that already ended; a live run is left alone. */
   const dismissExecutionError = useCallback(() => {
@@ -907,6 +879,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     agentIsExecuting,
     setAgentMode,
     sendAgentMessage,
+    steering: steeringBridge.steering,
+    draftRestore: steeringBridge.draftRestore,
+    skillSkip: steeringBridge.skillSkip,
     cancelExecution,
     undoAllOperations,
     undoSingleOperation,

@@ -19,10 +19,21 @@
 import React, {
   useState, useRef, useEffect, useCallback, useMemo,
 } from 'react';
-import { Conversation, ChatMessage } from '@/types';
+import { Conversation, ChatMessage, MaterialItem } from '@/types';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
+import type { SendAgentMessageOptions } from '@/components/video/hooks/useAgentExecution';
+import type { UseAgentSteeringReturn } from '@/components/video/hooks/useAgentSteering';
+import type {
+  DraftRestore, SkillSkipNotice,
+} from '@/components/video/hooks/useAgentExecutionSteering';
+import { scanLatestPlan, selectActiveStep } from '@/lib/video-editing-agent/planScan';
 import { TimelineChatPanel } from './timeline';
 import AgentBusyBar from './AgentBusyBar';
+import SteerQueue from './SteerQueue';
+import ComposerSkillPicker from './ComposerSkillPicker';
+import ComposerMentionPicker from './ComposerMentionPicker';
+import { pickerOptionId } from './ComposerPicker';
+import { useComposer } from './useComposer';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import {
@@ -33,13 +44,15 @@ import {
   AgentToolkitApiError, fetchAgentToolkitCapabilities, uploadDocument,
 } from '@/lib/api/agentToolkit';
 import { resolveAgentToolkitStatus } from '@/lib/agentToolkitStatus';
+import { collectUnansweredQuestionIds } from '@/lib/video-editing-agent/askScan';
 import type { AgentToolkitCapabilities } from '@/types/agentToolkit';
 
 export interface VideoChatWindowProps {
   /** 最小化只暂停展示工作，不影响会话与 Agent 执行。 */
   isVisible?: boolean;
   conversation: Conversation | undefined;
-  onSendMessage: (message: string) => Promise<void>;
+  /** `options` (skill / mentions) only reach the agent path. */
+  onSendMessage: (message: string, options?: SendAgentMessageOptions) => Promise<void>;
   onClearMessages: () => void;
   isLoading: boolean;
   onCreativeBrainstormingClick?: () => void;
@@ -60,8 +73,20 @@ export interface VideoChatWindowProps {
   onDismissError?: () => void;
   /** Agent messages whose steps can still be undone one by one this session. */
   singleUndoMessageIds?: ReadonlySet<string>;
+  /** Mid-run steering state machine; absent → the input stays locked while the agent runs. */
+  steering?: UseAgentSteeringReturn;
+  /** Text the steering layer wants put back in the input (never lose user text). */
+  draftRestore?: DraftRestore | null;
+  /** The `/` skill of the latest turn could not be loaded. */
+  skillSkip?: SkillSkipNotice | null;
+  /** Project materials offered by the `@` picker. */
+  mentionMaterials?: MaterialItem[];
+  /** Project id: part of the draft-storage key. */
+  draftProjectKey?: string;
 }
 
+const SKILL_LIST_ID = 'agent-skill-listbox';
+const MENTION_LIST_ID = 'agent-mention-listbox';
 const INPUT_MIN_HEIGHT = 40;
 const INPUT_MAX_HEIGHT = 120;
 const INPUT_COMPACT_MAX_HEIGHT = 80;
@@ -94,12 +119,15 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   onCancel,
   onDismissError,
   singleUndoMessageIds,
+  steering,
+  draftRestore = null,
+  skillSkip = null,
+  mentionMaterials,
+  draftProjectKey,
   isVisible = true,
 }) => {
   const { t } = useLocale();
   const { showConfirm } = useNotification();
-  const [inputMessage, setInputMessage] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 文档上传：同一时刻只允许一个（`uploading` 即互斥锁）。
   const [uploading, setUploading] = useState(false);
@@ -109,10 +137,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   const messages = conversation?.messages;
 
-  /**
-   * 已回答的 question_id：该问题之后存在一条 `[[ask:<id>]]` 用户消息。
-   * 只读派生——绝不写回 `ChatMessage`（§3.5.2）。
-   */
+  /** 已回答的 question_id 由消息历史派生；只读，不写回 `ChatMessage`（§3.5.2）。 */
   const answeredQuestionIds = useMemo(() => {
     const answered = new Set<string>();
     for (const message of messages ?? []) {
@@ -124,85 +149,41 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   }, [messages]);
 
   /**
-   * 未回答态：提问存在、本轮已结束、且之后没有对应回答。
-   * 纯由「有没有回答」+「当前是否在跑」两个既知量派生，不引入服务端状态。
+   * 未回答态：提问存在、本轮已结束、且之后没有对应回答（判定与插话状态机共用
+   * `collectUnansweredQuestionIds`）。
    */
-  const unresolvedQuestionIds = useMemo(() => {
-    const unresolved = new Set<string>();
-    if (agentIsExecuting) return unresolved;
-    for (const message of messages ?? []) {
-      for (const call of message.agentToolCalls ?? []) {
-        if (call.name !== 'ask_user') continue;
-        const result = call.result as { question_id?: unknown } | undefined;
-        const questionId = typeof result?.question_id === 'string'
-          ? result.question_id : '';
-        if (questionId && !answeredQuestionIds.has(questionId)) {
-          unresolved.add(questionId);
-        }
-      }
-    }
-    return unresolved;
-  }, [messages, agentIsExecuting, answeredQuestionIds]);
+  const unresolvedQuestionIds = useMemo(
+    () => (agentIsExecuting
+      ? new Set<string>() : collectUnansweredQuestionIds(messages)),
+    [messages, agentIsExecuting],
+  );
+
+  // `finishing`: the stream already ended and the last operations are being
+  // applied, so there is nothing left to stop.
+  const isFinishing = executionState?.status === 'finishing';
+
+  const composer = useComposer({
+    agentMode, agentIsExecuting, isFinishing, isLoading, steering, draftRestore,
+    materials: mentionMaterials ?? [],
+    messages,
+    draftScope: conversation && draftProjectKey
+      ? { projectKey: draftProjectKey, conversationId: conversation.id } : null,
+    onSendMessage,
+    onCancel: () => onCancel?.(),
+  });
+  const { textareaRef } = composer;
+  const [inputFocused, setInputFocused] = useState(false);
 
   // ----- Textarea height management -----
 
   useEffect(() => {
-    if (textareaRef.current) {
-      resizeInput(textareaRef.current);
-    }
-  }, []);
+    if (textareaRef.current) resizeInput(textareaRef.current);
+  }, [composer.text, textareaRef]);
 
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      if (inputMessage.trim() && !isLoading && !agentIsExecuting) {
-        console.log('[VideoChatWindow] Sending message', {
-          messageLength: inputMessage.length,
-          agentMode,
-          timestamp: new Date().toISOString(),
-        });
-        onSendMessage(inputMessage.trim());
-        setInputMessage('');
-
-        if (textareaRef.current) {
-          textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`;
-          textareaRef.current.style.overflow = 'hidden';
-        }
-      }
-    },
-    [inputMessage, isLoading, agentIsExecuting, agentMode, onSendMessage],
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.nativeEvent.isComposing) return;
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSubmit(e);
-      }
-    },
-    [handleSubmit],
-  );
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    setInputMessage(newValue);
-
-    resizeInput(e.target);
-  }, []);
-
-  const handleFocus = useCallback(() => {
-    if (!textareaRef.current) return;
-    resizeInput(textareaRef.current);
-  }, []);
-
-  const handleBlur = useCallback(() => {
-    if (!textareaRef.current) return;
-    if (!inputMessage.trim()) {
-      textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`;
-      textareaRef.current.style.overflow = 'hidden';
-    }
-  }, [inputMessage]);
+  const handleSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    composer.submit();
+  }, [composer]);
 
   /**
    * `AskUserCard` 的选项按钮只发一个 window 事件；这里把答案变成**一条普通
@@ -296,10 +277,6 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     [onUndoSingle],
   );
 
-  // `finishing`: the stream already ended and the last operations are being
-  // applied, so there is nothing left to stop.
-  const isFinishing = executionState?.status === 'finishing';
-
   const handleCancel = useCallback(() => {
     if (isFinishing) return;
     onCancel?.();
@@ -316,10 +293,15 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   const inputDisabled = isLoading || agentIsExecuting;
   const placeholderText = agentIsExecuting
-    ? t.videoChatWindow.agentWorkingPlaceholder
+    ? (steering ? t.agentCollab.steerPlaceholder : t.videoChatWindow.agentWorkingPlaceholder)
     : agentMode
       ? t.videoChatWindow.agentInputPlaceholder
       : t.videoChatWindow.inputPlaceholder;
+
+  const currentTurn = messages && messages.length > 0
+    ? [messages[messages.length - 1]] : [];
+  const planStep = agentIsExecuting
+    ? selectActiveStep(scanLatestPlan(currentTurn)) : null;
 
   // ----- Main render -----
   //
@@ -417,6 +399,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         <AgentBusyBar
           executionState={executionState}
           onCancel={handleCancel}
+          planStep={planStep}
+          showSteerHint={!!steering && !inputFocused && !composer.text}
         />
       )}
       {isFinishing && (
@@ -436,25 +420,94 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         </div>
       )}
 
+      {steering && (
+        <SteerQueue
+          notes={steering.notes}
+          queued={steering.queued}
+          currentToolName={executionState?.currentTool?.name ?? null}
+          onCancel={steering.cancelNote}
+          onStopAndResend={steering.promoteToStop}
+        />
+      )}
+
+      {skillSkip && (
+        <p role="status" className="flex-shrink-0 px-3 pt-1 text-xs text-muted-foreground">
+          {t.agentCollab.skillSkipped.replace('{name}', skillSkip.skillId)}
+        </p>
+      )}
+
       {/* Input Area */}
       <div className="agent-chat-input-area flex-shrink-0 bg-card">
+        {composer.skill && (
+          <div className="mb-1 flex items-center gap-1 px-1">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
+              {t.agentCollab.skillChip.replace('{name}', composer.skill.name)}
+              <button
+                type="button"
+                onClick={composer.clearSkill}
+                aria-label={t.agentCollab.skillChipRemove}
+                className="rounded text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <span aria-hidden="true">✕</span>
+              </button>
+            </span>
+          </div>
+        )}
+        {composer.escArmed && (
+          <p role="status" className="px-1 pb-1 text-xs text-amber-700 dark:text-amber-300">
+            {t.agentCollab.escToStop}
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="flex items-center space-x-2">
           <div className="flex-1 relative flex items-center">
+            {composer.pickerOpen && composer.pickerKind === 'skill' && (
+              <ComposerSkillPicker
+                id={SKILL_LIST_ID}
+                query={composer.pickerQuery}
+                skills={composer.skills}
+                status={composer.skillStatus}
+                activeIndex={composer.activeIndex}
+                onSelect={composer.selectSkill}
+                onHover={composer.setActiveIndex}
+              />
+            )}
+            {composer.pickerOpen && composer.pickerKind === 'mention' && (
+              <ComposerMentionPicker
+                id={MENTION_LIST_ID}
+                query={composer.pickerQuery}
+                materials={mentionMaterials ?? []}
+                activeIndex={composer.activeIndex}
+                onSelect={composer.selectMaterial}
+                onHover={composer.setActiveIndex}
+              />
+            )}
             <textarea
               ref={textareaRef}
               // 卡片（自检 / 视觉观察）预填修复指令的唯一落点：
               // `sendPrefilledMessage` 只认这个属性，不依赖任何 store（§7.1）。
               data-agent-input=""
-              value={inputMessage}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
+              value={composer.text}
+              onChange={composer.handleChange}
+              onKeyDown={composer.handleKeyDown}
+              onKeyUp={(event) => composer.syncCaret(event.currentTarget)}
+              onClick={(event) => composer.syncCaret(event.currentTarget)}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              // Stays a plain textbox: a multi-line field is not a valid combobox,
+              // and existing consumers look it up by role. The picker is linked through
+              // aria-controls / aria-activedescendant, which textbox supports.
+              aria-haspopup="listbox"
+              aria-autocomplete="list"
+              aria-controls={composer.pickerOpen
+                ? (composer.pickerKind === 'skill' ? SKILL_LIST_ID : MENTION_LIST_ID) : undefined}
+              aria-activedescendant={composer.pickerOpen
+                ? pickerOptionId(composer.pickerKind === 'skill' ? SKILL_LIST_ID : MENTION_LIST_ID,
+                  composer.activeIndex) : undefined}
               placeholder={placeholderText}
               aria-label={t.videoChatWindow.inputAriaLabel}
               className="agent-chat-input w-full px-3 py-2 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-muted text-sm text-foreground"
               rows={1}
-              disabled={inputDisabled}
+              disabled={composer.disabled}
               style={{ height: `${INPUT_MIN_HEIGHT}px`, overflow: 'hidden' }}
             />
           </div>
@@ -514,6 +567,21 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           {/* Send / Stop Button — polymorphic. While the agent is executing
               it renders as a red Stop button that calls onCancel. Otherwise
               it acts as the regular submit button. */}
+          {agentIsExecuting && steering && (
+            <button
+              type="submit"
+              disabled={!composer.text.trim() || isFinishing}
+              className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
+              title={t.agentCollab.steerButton}
+              aria-label={t.agentCollab.steerButton}
+              data-testid="agent-steer-button"
+              style={{ width: '32px', height: '32px' }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </button>
+          )}
           {agentIsExecuting ? (
             <button
               type="button"
@@ -532,7 +600,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           ) : (
             <button
               type="submit"
-              disabled={!inputMessage.trim() || inputDisabled}
+              disabled={!composer.text.trim() || inputDisabled}
               className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
               title={t.videoChatWindow.sendMessageTooltip}
               style={{ width: '32px', height: '32px' }}

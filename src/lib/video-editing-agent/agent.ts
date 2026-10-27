@@ -19,6 +19,7 @@ import type {
   VideoEditingAgentConfig,
 } from './types';
 import { buildSystemPrompt, L0_PROMPT_CHAR_CEILING } from './systemPrompt';
+import { skillAvailability } from './skillContext';
 import { convertToAgentMessages } from './messageConverter';
 import { HISTORY_CHAR_BUDGET, compactHistoryForModel } from './historyBudget';
 import { createToolRegistry, buildAllAgentTools } from './tools';
@@ -128,6 +129,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     // Fresh per request: `ask_user`'s one-per-turn rule and the live plan must
     // never leak across an SSE retry (spec §3.5.2 / R-15).
     turnState: {},
+    skillAvailability: skillAvailability(config.webCapabilities),
   };
 
   // 4. Create ToolRegistry and build tools
@@ -136,6 +138,9 @@ contextWindow: config.contextWindowTokens ?? 128000,
     ...registry.getAlwaysAvailableTools().map(tool => tool.name),
     ...CORE_TOOLKIT_TOOL_NAMES, 'explore_tools',
   ]);
+  // `use_skill` preloads the tools a skill names through this narrow window;
+  // the activation object itself never reaches a tool.
+  toolContext.loadTools = (category, names) => activation.load(category, names);
   const tools = buildAllAgentTools(registry, activation);
 
   // 5. Convert conversation history (exclude last user message — it goes to agent.prompt())
@@ -160,6 +165,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     capabilities: config.webCapabilities,
     plan: scanLatestPlan(config.conversationHistory),
     memoryDigest: config.memoryDigest ?? null,
+    skillIndex: config.skillIndex,
   }) + (exploredCategories.length
     ? '\n## 已加载的高级工具（历史提示）\n' +
       exploredCategories.slice(-2).join(', ') +

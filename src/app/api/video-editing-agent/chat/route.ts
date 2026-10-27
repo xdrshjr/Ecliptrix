@@ -5,6 +5,10 @@ import { backendConfig } from '@/lib/config/backend';
 import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat';
 import { createVideoEditingAgent, formatErrorDetail, subscribeAgentEvents } from '@/lib/video-editing-agent/agent';
 import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
+import { loadSkillIndex } from '@/lib/video-editing-agent/skillContext';
+import { registerRun, unregisterRun } from '@/lib/server/agentRunRegistry';
+import { createRunHandle, type RunHandle } from './runLifecycle';
+import { resolveTurnPrompt } from './turnPrompt';
 import { AGENT_IDLE_TIMEOUT_MS } from '@/lib/video-editing-agent/timeouts';
 import {
   appendEditorContext,
@@ -429,11 +433,13 @@ export async function POST(request: NextRequest) {
           toolContext: import('@/lib/video-editing-agent/types').ToolContext | null;
           cleanupHeartbeat: (() => void) | null;
           timeoutId: ReturnType<typeof setTimeout> | undefined;
+          runHandle: RunHandle | null;
         } = {
           agent: null,
           toolContext: null,
           cleanupHeartbeat: null,
           timeoutId: undefined,
+          runHandle: null,
         };
 
         type AbortReason = 'client_aborted' | 'server_timeout' | 'thinking_aborted';
@@ -462,6 +468,9 @@ export async function POST(request: NextRequest) {
               refs.toolContext?.operations.delete(id);
             });
           }
+          // Close BEFORE `cancelled`: a steer that arrives after the abort gets
+          // 409 run_closed instead of being accepted with nobody left to read it.
+          try { refs.runHandle?.close(); } catch { /* already closed */ }
           try { send({ type: 'cancelled', reason, timestamp: Date.now() }); } catch { /* controller may be closed */ }
           resolveAbortPromise?.(reason);
         };
@@ -525,12 +534,16 @@ export async function POST(request: NextRequest) {
           // Long-term memory digest: <=5 entries, <=800 chars, 1.5s timeout,
           // 60s in-process cache per project. A failure yields an empty digest
           // and must never block or fail the turn (§3.6).
-          const memoryDigest = await loadMemoryDigest(apiBaseUrl, projectId);
+          const [memoryDigest, skillIndex] = await Promise.all([
+            loadMemoryDigest(apiBaseUrl, projectId),
+            loadSkillIndex(apiBaseUrl, projectId),
+          ]);
           const { agent, toolContext } = createVideoEditingAgent({
             researchRun,
             contextWindowTokens,
             webCapabilities: snapshot.capabilities,
             memoryDigest,
+            skillIndex,
             llmApiUrl: config.apiUrl,
             llmApiKey: config.apiKey,
             llmModel: config.model,
@@ -549,6 +562,19 @@ export async function POST(request: NextRequest) {
           toolContext.abortSignal = toolAbort.signal;
           refs.agent = agent;
           refs.toolContext = toolContext;
+
+          // Steering: register the run, then tell the client its id before
+          // anything else so mid-run notes can be addressed to it (§3.2.2).
+          const runHandle = createRunHandle({ agent, send });
+          refs.runHandle = runHandle;
+          registerRun(runHandle);
+          send({ type: 'run_started', runId: runHandle.runId });
+          const turnPrompt = await resolveTurnPrompt({
+            apiBaseUrl, text: lastUserMessage, skillId: body.skillId,
+            mentions: body.mentions, materials: effectiveMaterials, send,
+          });
+          // A Stop during the skill fetch must not start the model afterwards.
+          if (abortTriggered) return;
 
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           let rejectTimeout: ((err: Error) => void) | undefined;
@@ -623,6 +649,7 @@ export async function POST(request: NextRequest) {
           // Hook the agent's own event stream so we can track pending
           // tool-call IDs without changing subscribeAgentEvents' signature.
           const trackUnsub = agent.subscribe((event) => {
+            runHandle.onAgentEvent(event);
             if (event.type === 'tool_execution_start') {
               pendingToolCallIds.add(event.toolCallId);
             } else if (event.type === 'tool_execution_end') {
@@ -643,7 +670,7 @@ export async function POST(request: NextRequest) {
             // even if pi-agent-core's prompt() does not settle after
             // agent.abort().
             await Promise.race([
-              agent.prompt(lastUserMessage),
+              agent.prompt(turnPrompt),
               timeoutPromise,
               abortPromise.then((reason) => {
                 throw new Error(`aborted_by_user:${reason}`);
@@ -674,6 +701,10 @@ export async function POST(request: NextRequest) {
           }
         } finally {
           stopKeepAlive();
+          if (refs.runHandle) {
+            try { refs.runHandle.close(); } catch { /* already closed */ }
+            unregisterRun(refs.runHandle.runId);
+          }
           try { send('[DONE]'); } catch { /* controller may already be closed */ }
           try { controller.close(); } catch { /* already closed by triggerAbort */ }
           // AC-37: wait for the backend to confirm, so回收不依赖 45s 租约。

@@ -4,6 +4,7 @@ import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import type { TtsFailure } from '@/lib/ttsErrors';
 import type { ResearchRunClient } from '@/lib/server/researchRunClient';
 import type { ToolkitTurnState } from '@/types/agentToolkit';
+import type { SkillIndexEntry } from '@/types/agentSkills';
 
 // --- Tool Context ---
 
@@ -56,6 +57,16 @@ export interface ToolContext {
    * resets the "one ask per turn" rule — nothing here is persisted.
    */
   turnState: ToolkitTurnState;
+  /**
+   * Narrow window onto `ToolActivationState.load` for `use_skill`: it lets a
+   * skill preload the tools it names without exposing the whole activation
+   * object to tools. Throws the same errors as `load`
+   * (`invalid_tool_selection` / `tool_schema_budget`). Absent in contexts
+   * built outside `createVideoEditingAgent` (unit tests).
+   */
+  loadTools?: (category: string, names: string[]) => { loaded: string[] };
+  /** Capability availability for skill `requires` (false = known unavailable). */
+  skillAvailability?: Partial<Record<string, boolean>>;
 }
 
 // --- Timeline Operations (produced by tools, applied by frontend) ---
@@ -245,7 +256,17 @@ export type SSEEvent =
       type: 'cancelled';
       reason: 'client_aborted' | 'server_timeout' | 'thinking_aborted';
       timestamp?: number;
-    };
+    }
+  /** The run is registered and can receive steers (precedes `agent_start`). */
+  | { type: 'run_started'; runId: string }
+  /** A mid-run steer reached the model; `afterToolCallId` null = turn start. */
+  | { type: 'steer_applied'; steerId: string; afterToolCallId: string | null }
+  /** Steers still undelivered when the turn completed (completed path only). */
+  | { type: 'steer_dropped'; steerIds: string[] }
+  /** The requested skill could not be loaded; the turn ran without it. */
+  | { type: 'skill_skipped'; skillId: string; reason: SkillSkipReason };
+
+export type SkillSkipReason = 'not_found' | 'disabled' | 'invalid' | 'unavailable';
 
 // --- API Route Request ---
 
@@ -259,6 +280,10 @@ export interface AgentChatRequest {
   projectId?: string;
   /** Exported composition the next inspect_export call should probe. */
   lastCompositionId?: string;
+  /** Skill the user picked with `/`; its body rides along with this turn only. */
+  skillId?: string;
+  /** Materials the user referenced with `@`; validated server-side. */
+  mentions?: Array<{ materialId: string; label: string }>;
 }
 
 /**
@@ -343,6 +368,8 @@ export interface VideoEditingAgentConfig {
    * means an empty digest, never a blocked turn.
    */
   memoryDigest?: { text: string; count: number } | null;
+  /** Enabled skills for the L0 "可用技能" section; empty/absent renders nothing. */
+  skillIndex?: SkillIndexEntry[];
 }
 
 // Re-export from central types for convenience

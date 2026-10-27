@@ -14,6 +14,7 @@
 
 import type { ChatMessage, AgentToolCallRecord, AgentTimelineOperation } from '@/types';
 import type { AgentOperation } from './types';
+import type { SteerNote } from '@/types/agentSteering';
 import { compactToolResult } from './compactToolResult';
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,7 @@ export class AgentStateManager {
   private accumulatedContent = '';
   private toolCalls: InternalToolCallRecord[] = [];
   private pendingOperations: AgentOperation[] = [];
+  private steers: SteerNote[] = [];
   private isFinalized = false;
   private errorMessage: string | null = null;
   private thinkingContent = '';
@@ -159,6 +161,16 @@ export class AgentStateManager {
     this.scheduleFlush();
   }
 
+  /**
+   * Replace the notes the user added while this turn ran. Only delivered
+   * (`applied`) ones belong here: they are persisted with the message and
+   * replayed to the model on later turns.
+   */
+  setSteers(notes: readonly SteerNote[]): void {
+    this.steers = notes.filter(note => note.status === 'applied');
+    this.scheduleFlush();
+  }
+
   /** Record an agent operation (timeline, material, script, storyboard, or async task). */
   addOperation(operation: AgentOperation): void {
     this.pendingOperations.push(operation);
@@ -231,6 +243,7 @@ export class AgentStateManager {
     this.thinkingContent = '';
     this.toolCalls = [];
     this.pendingOperations = [];
+    this.steers = [];
     this.errorMessage = null;
     this.isThinking = false;
     this.flushNow();
@@ -361,6 +374,7 @@ export class AgentStateManager {
       thinkingContent: this.thinkingContent || undefined,
       isThinking: this.isThinking,
       isCancelled: this.isCancelled || undefined,
+      ...(this.steers.length ? { steers: [...this.steers] } : {}),
     };
   }
 

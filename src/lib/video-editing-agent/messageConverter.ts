@@ -2,6 +2,7 @@ import type { Message, UserMessage, AssistantMessage, ToolResultMessage, TextCon
 import type { ChatMessage } from '@/types';
 import type { AgentToolCallRecord } from './types';
 import { compactToolResult } from './compactToolResult';
+import { STEER_WRAPPER } from './promptParts';
 
 /**
  * Options for `convertToAgentMessages`.
@@ -55,11 +56,17 @@ export function convertToAgentMessages(
     if (msg.role === 'user') {
       const userMsg: UserMessage = {
         role: 'user',
-        content: msg.content,
+        content: msg.skillId
+          ? `${msg.content}
+（本轮使用技能：${msg.skillId}）` : msg.content,
         timestamp: new Date(msg.timestamp).getTime(),
       };
       result.push(userMsg);
     } else if (msg.role === 'assistant') {
+      const steers = appliedSteers(msg);
+      // A steer delivered at the very start of the turn precedes the first
+      // assistant message (spec §3.2.5, afterToolCallId = null).
+      pushSteers(result, steers.filter(note => !hasToolCall(msg, note)), msg);
       if (msg.isAgentMessage && msg.agentToolCalls && msg.agentToolCalls.length > 0) {
         // Agent assistant message: reconstruct ToolCall content + subsequent ToolResultMessages
         const content: (TextContent | ToolCall)[] = [];
@@ -130,6 +137,11 @@ export function convertToAgentMessages(
             result.push(toolResult);
           }
         }
+        // History is flattened to ONE assistant message followed by all its
+        // tool results; a user message between two of those results would
+        // break the tool_use/tool_result pairing, so the steer lands after
+        // the whole block instead of right after its own tool result.
+        pushSteers(result, steers.filter(note => hasToolCall(msg, note)), msg);
       } else {
         // Normal assistant message
         const assistantMsg: AssistantMessage = {
@@ -168,4 +180,26 @@ export function convertToAgentMessages(
   }
 
   return result;
+}
+
+type AppliedSteer = NonNullable<ChatMessage['steers']>[number];
+
+/** Only delivered steers are replayed: queued/failed ones already exist as normal user messages. */
+function appliedSteers(msg: ChatMessage): AppliedSteer[] {
+  return (msg.steers ?? []).filter(note => note.status === 'applied');
+}
+
+function hasToolCall(msg: ChatMessage, note: AppliedSteer): boolean {
+  return !!note.afterToolCallId
+    && (msg.agentToolCalls ?? []).some(call => call.id === note.afterToolCallId);
+}
+
+function pushSteers(result: Message[], notes: AppliedSteer[], msg: ChatMessage): void {
+  for (const note of notes) {
+    result.push({
+      role: 'user',
+      content: STEER_WRAPPER(note.text),
+      timestamp: note.createdAt || new Date(msg.timestamp).getTime(),
+    });
+  }
 }

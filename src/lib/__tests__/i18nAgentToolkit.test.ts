@@ -59,7 +59,7 @@ describe('agentToolkit i18n', () => {
 /**
  * `agentVision` 命名空间的双语一致性（agent-visual-review AC-21）。
  *
- * 与上面同一套纪律，另外多钉三条：15 条自检规则标题、19 个错误码文案、
+ * 与上面同一套纪律，另外多钉三条：16 条自检规则标题、19 个错误码文案、
  * 4 个工具名都必须两种语言齐备——它们都是卡片与面板的渲染输入，缺一个就会在
  * 用户面前显示成 key 或空白。
  */
@@ -69,6 +69,7 @@ const LINT_CODES = [
   'subtitle_overlap', 'subtitle_style_drift', 'track_hidden', 'audio_gap',
   'volume_out_of_range', 'upscale_blur', 'static_image_too_long',
   'timeline_gap', 'cover_not_applied', 'duration_mismatch', 'timeline_empty',
+  'web_material_license_unknown',
 ];
 
 // 工具的人类可读名沿用 `agentTimeline.toolNames`（ToolStep 也读它），
@@ -105,7 +106,7 @@ describe('agentVision i18n', () => {
     }
   });
 
-  it('titles all 15 self-check rules in both languages', () => {
+  it('titles all 16 self-check rules in both languages', () => {
     for (const locale of ['en', 'zh-CN'] as const) {
       const lint = translations[locale].agentVision.lint;
       expect(Object.keys(lint).sort()).toEqual([...LINT_CODES].sort());

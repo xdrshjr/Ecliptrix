@@ -26,6 +26,7 @@ import { formatTimestamp, toolCallToStepData } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
 import type { NodeIconVariant } from './TimelineNodeIcon';
 import ToolStep from './ToolStep';
+import SteerNoteNode from './SteerNoteNode';
 import { CoverToolStatus } from '../AgentToolCallCard';
 import WebResearchToolCard, { isWebResearchTool } from '../WebResearchToolCard';
 import ToolkitToolCard, { askQuestionId, isToolkitTool } from '../ToolkitToolCard';
@@ -51,13 +52,24 @@ interface AgentExecutionNodeProps {
  *
  * `tool_call` events are recorded with `status: 'executing'` and **no** result,
  * and a cancelled / timed-out call never gets one. Rendering e.g. the lint card
- * from an empty result makes it say "all 15 checks passed" while the check is
+ * from an empty result makes it say "all 16 checks passed" while the check is
  * still running — the exact fake-green the self-check exists to prevent. Until
  * the result lands, the plain `ToolStep` row (spinner / cancelled state) is the
  * honest rendering.
  */
 function hasResult(toolCall: AgentToolCallRecord | undefined): boolean {
   return toolCall !== undefined && toolCall.result !== undefined;
+}
+
+/**
+ * Notes delivered at the very start of the turn (`afterToolCallId` null) or
+ * after a step that is no longer listed: they precede the first step, so no
+ * note ever disappears from the timeline.
+ */
+function steerNotesBefore(node: AgentExecutionNodeData) {
+  const known = new Set(node.toolCalls.map(call => call.id));
+  return (node.steers ?? []).filter(
+    note => !note.afterToolCallId || !known.has(note.afterToolCallId));
 }
 
 const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({
@@ -168,6 +180,9 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({
               className="overflow-hidden"
             >
               <div className="border border-border dark:border-zinc-700 rounded-md overflow-hidden bg-muted/50 dark:bg-zinc-800/50 text-sm">
+                {steerNotesBefore(node).map(note => (
+                  <SteerNoteNode key={note.id} note={note} />
+                ))}
                 {steps.map((step, idx) => {
                   const toolCall = node.toolCalls[idx];
                   const settled = hasResult(toolCall);
@@ -193,6 +208,9 @@ const AgentExecutionNode: React.FC<AgentExecutionNodeProps> = ({
                   {toolCall.name.endsWith('_video_cover') && (
                     <CoverToolStatus toolCall={toolCall} />
                   )}
+                  {(node.steers ?? [])
+                    .filter(note => note.afterToolCallId === step.id)
+                    .map(note => <SteerNoteNode key={note.id} note={note} />)}
                   </React.Fragment>
                   );
                 })}

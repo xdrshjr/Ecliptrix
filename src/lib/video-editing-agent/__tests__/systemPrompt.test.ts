@@ -237,7 +237,9 @@ describe('formatWorkflowRecipes', () => {
   it('returns a non-empty block under the 工作流配方 header', () => {
     const out = formatWorkflowRecipes();
     expect(out).toContain('## 工作流配方');
-    expect(out).toContain('配方 1');
+    // Recipes 1-3 became built-in skills; the every-turn rule stays inline.
+    expect(out).toContain('仅入库 vs 上轨');
+    expect(out).not.toContain('配方 1');
     expect(out.length).toBeGreaterThan(100);
   });
 });

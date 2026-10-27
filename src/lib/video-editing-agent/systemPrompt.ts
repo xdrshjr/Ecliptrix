@@ -4,7 +4,9 @@ import { ToolRegistry, type CategoryId } from './registry';
 import { utf8Slice } from './modelContextBudget';
 import type { WebCapabilitySnapshot } from './types';
 import type { AgentPlan } from '@/types/agentToolkit';
+import type { SkillIndexEntry } from '@/types/agentSkills';
 import { AGENT_TOOLKIT_GUIDANCE } from './promptParts';
+import { formatSkillIndex, skillAvailability } from './skillContext';
 import {
   CORE_TOOLKIT_TOOL_NAMES,
   WEB_RESEARCH_GUIDANCE,
@@ -481,6 +483,8 @@ export interface BuildSystemPromptInput {
   plan?: AgentPlan | null;
   /** Long-term memory digest (<=5 entries, <=800 chars). */
   memoryDigest?: { text: string; count: number } | null;
+  /** Enabled skills for the "可用技能" index; empty renders nothing at all. */
+  skillIndex?: SkillIndexEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -578,6 +582,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const coreToolkit = formatCoreToolkit(registry);
   const projectStatus = `## 项目状态\n${formatCompactSummary(timelineState, materials)}`;
   const workflowRecipes = formatWorkflowRecipes();
+  const skillSection = formatSkillIndex(input.skillIndex,
+    skillAvailability(input.capabilities));
 
   const smartHandling = `## 智能结果处理
 - 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track
@@ -612,6 +618,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     coreToolkit,
     projectStatus,
     workflowRecipes,
+    ...(skillSection ? [skillSection] : []),
     smartHandling,
     hardConstraints,
     AGENT_TOOLKIT_GUIDANCE.trim(),

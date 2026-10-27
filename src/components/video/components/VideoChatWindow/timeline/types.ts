@@ -8,6 +8,8 @@
  */
 
 import type { AgentToolCallRecord, ChatMessage, TimelineState } from '@/types';
+import type { SteerNote } from '@/types/agentSteering';
+import type { TurnSummary } from '../turnSummary';
 import type { AgentExecutionState, ToolCallRecord as ExecToolCallRecord } from '@/components/video/hooks/useAgentExecutionState';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +52,8 @@ export interface AgentExecutionNodeData {
   isActive: boolean;
   /** Source message ID, for undo correlation. */
   messageId: string;
+  /** Notes the user added mid-run; each sits after the step it followed. */
+  steers?: SteerNote[];
 }
 
 export interface AgentResponseNodeData {
@@ -67,6 +71,8 @@ export interface AgentResponseNodeData {
   canUndo: boolean;
   /** Whether this response is still being streamed. */
   isStreaming?: boolean;
+  /** What this turn changed; absent while streaming or when there is nothing to report. */
+  summary?: TurnSummary | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@ import type { ToolCategory } from './ToolRegistry';
 // --- Category IDs (exported as constants for type safety) ---
 
 export const CATEGORY_IDS = {
-  /** Always-available workflow category: update_plan + ask_user + check_timeline. */
+  /** Always-available workflow category: update_plan + ask_user + check_timeline + use_skill. */
   WORKFLOW_TOOLS: 'workflow_tools',
   WORKSPACE_TOOLS: 'workspace_tools',
   DOCUMENT_TOOLS: 'document_tools',
@@ -194,7 +194,7 @@ export function createDefaultCategories(): ToolCategory[] {
     {
       id: CATEGORY_IDS.MATERIAL_TOOLS,
       name: '素材管理',
-      description: 'Add or remove materials from the material library',
+      description: 'Add or remove materials from the library; build the web-material source & licence list.',
       alwaysAvailable: false,
       tools: [], // Populated by Phase 2 (Task 08)
     },

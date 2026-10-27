@@ -45,6 +45,7 @@ function loadResponseNode(): React.FC<ResponseNodeProps> {
     './utils': utils,
     './animations': animations,
     './TimelineNodeIcon': { __esModule: true, default: () => null },
+    '../TurnSummaryCard': { __esModule: true, default: () => null },
   });
 }
 

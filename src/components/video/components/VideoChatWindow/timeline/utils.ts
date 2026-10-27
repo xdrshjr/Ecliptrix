@@ -8,6 +8,7 @@
  */
 
 import type { AgentToolCallRecord, ChatMessage } from '@/types';
+import { summarizeTurn } from '../turnSummary';
 import type {
   TimelineNodeData,
   ToolStepData,
@@ -213,6 +214,7 @@ export function mapMessageToNodes(
       toolCalls: message.agentToolCalls!,
       isActive: isStreaming,
       messageId: message.id,
+      ...(message.steers?.length ? { steers: message.steers } : {}),
     });
   }
 
@@ -232,6 +234,7 @@ export function mapMessageToNodes(
       toolCalls: message.agentToolCalls ?? [],
       isUndone: !!message.isUndone,
       messageId: message.id,
+      summary: summarizeTurn(message),
       canUndo: patchCount > 0 && !message.isUndone,
       isStreaming: false,
     });

@@ -42,6 +42,7 @@ beforeAll(() => {
     './utils': utils,
     './animations': animations,
     './TimelineNodeIcon': { __esModule: true, default: () => null },
+    '../TurnSummaryCard': { __esModule: true, default: () => null },
   });
 });
 

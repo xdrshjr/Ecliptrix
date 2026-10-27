@@ -729,6 +729,12 @@ async def agent_vision_error_handler(request: Request, exc: AgentVisionError):
     return agent_vision_router.error_response(exc)
 
 
+# Agent 技能库 — docs/plans/agent-steering-and-skills/spec.md §3.3.4.
+from app.routers import agent_skills_router
+
+agent_skills_router.register(app)
+
+
 @app.exception_handler(CoverError)
 async def cover_error_handler(request: Request, exc: CoverError):
     return JSONResponse(status_code=exc.status, content=ErrorResponse(

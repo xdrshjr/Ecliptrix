@@ -16,8 +16,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type {
-  AgentToolCallRecord, ChatMessage, VideoEditingTaskContent,
+  AgentToolCallRecord, ChatMessage, MaterialItem, TimelineState, VideoEditingTaskContent,
 } from '@/types';
+import { isInlineMediaUrl } from '@/lib/inlineUrl';
+import { rebaseTrackPatches } from '@/lib/video-editing-agent/trackPatch';
 
 /** 恢复历史时仅结束残留活动，不删除思考内容或已完成的操作。 */
 export function normalizeInterruptedAgentMessages(
@@ -154,4 +156,74 @@ export function replaceRetiredTurnMessage(
   };
   if (!existing.timelineTrackPatches) delete merged.timelineTrackPatches;
   return messages.map((message, i) => (i === index ? merged : message));
+}
+
+/** Empty streaming reply shown until the first agent event arrives. */
+export function createAgentPlaceholder(agentMessageId: string): ChatMessage {
+  return {
+    id: agentMessageId,
+    role: 'assistant',
+    content: '',
+    timestamp: new Date(),
+    isStreaming: true,
+    isAgentMessage: true,
+    agentToolCalls: [],
+    pendingOperations: [],
+  };
+}
+
+/**
+ * Request copy of the materials without inline media: `data:` thumbnails
+ * would be re-sent (and reach tool results) on every turn, and `blob:` local
+ * proxies mean nothing outside this page.
+ */
+export function stripInlineMediaForAgent(materials: readonly MaterialItem[]): MaterialItem[] {
+  return materials.map(material => {
+    if (!isInlineMediaUrl(material.thumbnailUrl) && material.localProxyUrl === undefined) {
+      return material;
+    }
+    const copy: MaterialItem = { ...material };
+    delete copy.localProxyUrl;
+    if (isInlineMediaUrl(copy.thumbnailUrl)) delete copy.thumbnailUrl;
+    return copy;
+  });
+}
+
+export function markToolCallUndone(
+  messages: ChatMessage[],
+  messageId: string,
+  toolCallId: string,
+): ChatMessage[] {
+  return messages.map(msg => {
+    if (msg.id !== messageId || !msg.agentToolCalls) return msg;
+    return {
+      ...msg,
+      agentToolCalls: msg.agentToolCalls.map(tc =>
+        tc.id === toolCallId ? { ...tc, status: 'undone' as const } : tc
+      ),
+    };
+  });
+}
+
+/**
+ * After one step of a turn was undone, point the turn's patches for the
+ * tracks that step touched at the live timeline (see rebaseTrackPatches).
+ */
+export function rebaseMessagePatches(
+  messages: ChatMessage[],
+  messageId: string,
+  trackIds: readonly string[],
+  live: TimelineState | null,
+): ChatMessage[] {
+  if (!live || trackIds.length === 0) return messages;
+  return messages.map(msg =>
+    msg.id === messageId && msg.timelineTrackPatches
+      ? {
+        ...msg,
+        timelineTrackPatches: rebaseTrackPatches(
+          msg.timelineTrackPatches, trackIds, live,
+        ),
+      }
+      : msg
+  );
 }

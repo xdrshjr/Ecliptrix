@@ -1,5 +1,5 @@
 /**
- * qualityLint.ts — `check_timeline` 的纯规则引擎（15 条）。
+ * qualityLint.ts — `check_timeline` 的纯规则引擎（16 条）。
  *
  * 设计基线：docs/plans/agent-visual-review/spec.md §4.10（规则表）、§3.3
  * （为什么放在前端纯函数里）。
@@ -23,6 +23,9 @@ import {
 } from '@/components/video/lib/subtitleLayout';
 import { ItemPlacementService } from '@/components/video/timeline/domain/services/ItemPlacementService';
 import {
+  collectTimelineWebMaterials, isLicenseDeclared,
+} from './webMaterialProvenance';
+import {
   findMaterial, getTrackEndTime, getVideoTrackMaxDuration, isStillClip,
 } from './index';
 
@@ -35,7 +38,7 @@ export const LINT_DEFAULTS = {
   durationTolerance: 0.05,
 } as const;
 
-/** 15 条规则，顺序即 §4.10 的表格顺序（`checked_rules` 原样回显）。 */
+/** 16 条规则，顺序即 §4.10 的表格顺序（`checked_rules` 原样回显）。 */
 export const LINT_RULE_CODES = [
   'missing_material',
   'clip_bounds',
@@ -52,6 +55,7 @@ export const LINT_RULE_CODES = [
   'cover_not_applied',
   'duration_mismatch',
   'timeline_empty',
+  'web_material_license_unknown',
 ] as const;
 
 export type LintRuleCode = (typeof LINT_RULE_CODES)[number];
@@ -436,6 +440,25 @@ function lintCover(scope: LintScope): void {
     undefined, 'apply_video_cover');
 }
 
+// --- 规则 16：web_material_license_unknown -----------------------------
+
+/** 详情里最多列出几个素材名。 */
+const LICENSE_RULE_NAME_LIMIT = 5;
+
+function lintWebMaterialLicense(scope: LintScope): void {
+  const unlicensed = collectTimelineWebMaterials(scope.state, scope.materials)
+    .filter(entry => !isLicenseDeclared(entry.provenance));
+  if (unlicensed.length === 0) return;
+  const names = unlicensed.slice(0, LICENSE_RULE_NAME_LIMIT).map(entry => entry.name);
+  const rest = unlicensed.length - names.length;
+  push(scope, 'web_material_license_unknown', 'warning',
+    `${unlicensed.length} web material(s) on the timeline have no declared licence: `
+      + `${names.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}. The source page `
+      + 'stated no licence, which is not permission to use it commercially; tell '
+      + 'the user, and run build_credits for a source list.',
+    undefined, 'build_credits');
+}
+
 // --- 规则 14：duration_mismatch -----------------------------------------
 
 function lintDurationMismatch(scope: LintScope): void {
@@ -508,7 +531,7 @@ function nextStep(
     return `Nothing blocks the export; the ${counts.note} note(s) are optional `
       + 'polish.';
   }
-  return 'All 15 checks passed; export when the user is ready.';
+  return 'All 16 checks passed; export when the user is ready.';
 }
 
 function assembleReport(
@@ -536,7 +559,7 @@ function assembleReport(
 }
 
 /**
- * 跑完 15 条规则并组装报告。纯函数：同样的输入永远得到同样的输出。
+ * 跑完 16 条规则并组装报告。纯函数：同样的输入永远得到同样的输出。
  *
  * `includeNotes` 默认 false（§5.3）：默认只把 blocker + warning 塞进上下文，
  * 但 `notes` 计数仍如实返回，`next_step` 会说明还有几条没展开。
@@ -573,5 +596,6 @@ export function lintTimeline(input: {
   lintTimelineGaps(scope);
   lintCover(scope);
   lintDurationMismatch(scope);
+  lintWebMaterialLicense(scope);
   return assembleReport(scope.issues, input.includeNotes === true);
 }

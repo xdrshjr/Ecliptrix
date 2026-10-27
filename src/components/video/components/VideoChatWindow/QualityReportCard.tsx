@@ -5,7 +5,7 @@
  * 导出 `ExportInspectCard`（`inspect_export` 的成品探测 + 视觉抽检）。
  *
  * 设计基线：docs/plans/agent-visual-review/spec.md §7.1（自检卡片 +
- * `ExportInspectReport` 视图）、§4.10（15 条规则）、§4.12（降级矩阵）。
+ * `ExportInspectReport` 视图）、§4.10（16 条规则）、§4.12（降级矩阵）。
  *
  * 五条纪律：
  *   1. 有 blocker 时**不得**出现绿色文案（§4.10 的前置闸门）；
@@ -35,7 +35,7 @@ export interface QualityCardProps {
 }
 
 /** §4.10 的规则总数（只用于"全部 N 项通过"的兜底文案）。 */
-const LINT_RULE_COUNT = 15;
+const LINT_RULE_COUNT = 16;
 
 // ── 读取 ──────────────────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ function LintIssueRow({ issue }: { issue: TimelineLintIssue }) {
   );
 }
 
-/** 15 条规则的 ✓/✗ 列表：让"哪些查了、哪些没查"可见（§7.1）。 */
+/** 16 条规则的 ✓/✗ 列表：让"哪些查了、哪些没查"可见（§7.1）。 */
 function CheckedRules({ rules, failed }: {
   rules: string[];
   failed: ReadonlySet<string>;
@@ -206,7 +206,7 @@ export function QualityReportCard({
     ? payload.checked_rules.map(textOf).filter(Boolean) : [];
   const failed = new Set(issues.map((issue) => issue.code));
   const allPassed = issues.length === 0 && blockers === 0;
-  // 规则表固定 15 条（§4.10）；`checked_rules` 被裁掉时仍按 15 计数。
+  // 规则表固定 16 条（§4.10 + 授权规则）；`checked_rules` 被裁掉时仍按 16 计数。
   const ruleCount = rules.length || LINT_RULE_COUNT;
   const summary = copy.lintSummary
     .replace('{blockers}', String(blockers))

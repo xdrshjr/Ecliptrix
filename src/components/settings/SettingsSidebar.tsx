@@ -8,6 +8,7 @@ export type SettingsMenuItem =
   | 'model'
   | 'webResearch'
   | 'agentToolkit'
+  | 'agentSkills'
   | 'agentVision'
   | 'tts'
   | 'videoAnalysis'
@@ -71,6 +72,12 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeItem, onSelectI
           label: t.agentToolkit.title,
           description: t.agentToolkit.description,
           icon: <span aria-hidden="true">◧</span>,
+        },
+        {
+          id: 'agentSkills',
+          label: t.agentCollab.skillsTitle,
+          description: t.agentCollab.skillsDescription,
+          icon: <span aria-hidden="true">✦</span>,
         },
         {
           id: 'agentVision',

@@ -22,6 +22,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentResponseNodeData } from './types';
 import { formatTimestamp, getToolDisplayName } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
+import TurnSummaryCard from '../TurnSummaryCard';
 import {
   nodeVariants,
   undoneNodeVariants,
@@ -321,6 +322,8 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
             )}
           </div>
         )}
+
+        {node.summary && !node.isUndone && <TurnSummaryCard summary={node.summary} />}
 
         {/* Undone indicator */}
         {node.isUndone && (

@@ -51,7 +51,7 @@ export function createCheckTimelineTool(
     name: 'check_timeline',
     label: 'Check Timeline',
     description:
-      'Free local static check of the timeline: 15 rules, no network, no model '
+      'Free local static check of the timeline: 16 rules, no network, no model '
       + 'call. Run it before export and after edits; fix blockers first. Each '
       + 'issue names the tool that fixes it.',
     parameters,

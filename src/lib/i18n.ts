@@ -131,6 +131,98 @@ export interface Translations {
     localPreview: string;
     tools: Record<string, string>;
   };
+  // BEGIN agentCollab
+  agentCollab: {
+    steerPlaceholder: string;
+    steerButton: string;
+    steerQueueLabel: string;
+    steerChipWaitingTool: string;
+    steerChipWaitingStep: string;
+    steerChipQueued: string;
+    steerChipCancel: string;
+    steerChipSentTooltip: string;
+    steerStopAndResend: string;
+    steerNoteLabel: string;
+    noticeQueueFull: string;
+    noticeRestoredAfterQuestion: string;
+    noticeRestoredAfterStop: string;
+    escToStop: string;
+    skillSkipped: string;
+    busyStep: string;
+    busyEnterHint: string;
+    busyElapsed: string;
+    summaryLabel: string;
+    summaryClipsAdded: string;
+    summaryClipsRemoved: string;
+    summaryClipsChanged: string;
+    summaryImported: string;
+    summaryGenerated: string;
+    summaryWeb: string;
+    summaryCheckOk: string;
+    summaryCheckIssues: string;
+    summaryFailed: string;
+    summaryStopped: string;
+    summaryUndo: string;
+    summaryFix: string;
+    summaryCredits: string;
+    summaryFixPrompt: string;
+    summaryCreditsPrompt: string;
+    skillPickerLabel: string;
+    skillChip: string;
+    skillChipRemove: string;
+    skillBuiltinBadge: string;
+    skillMineBadge: string;
+    skillNeeds: string;
+    skillEmpty: string;
+    skillLoadFailed: string;
+    skillNoMatch: string;
+    mentionPickerLabel: string;
+    mentionEmpty: string;
+    mentionTruncated: string;
+    skillsTitle: string;
+    skillsDescription: string;
+    skillsLoading: string;
+    skillsLoadFailed: string;
+    skillsRetry: string;
+    skillsEmpty: string;
+    skillsNew: string;
+    skillsImport: string;
+    skillsBadgeDisabled: string;
+    skillsBadgeInvalid: string;
+    skillsBadgeShadowed: string;
+    skillsEnabledLabel: string;
+    skillsView: string;
+    skillsEdit: string;
+    skillsDuplicate: string;
+    skillsDelete: string;
+    skillsDeleteTitle: string;
+    skillsDeleteConfirm: string;
+    skillsSave: string;
+    skillsCreate: string;
+    skillsCancel: string;
+    skillsClose: string;
+    skillsSaved: string;
+    skillsCreated: string;
+    skillsDeleted: string;
+    skillsActionFailed: string;
+    skillsEditorTitleNew: string;
+    skillsEditorTitleEdit: string;
+    skillsEditorTitleView: string;
+    skillsEditorTitleImport: string;
+    skillsBuiltinReadonly: string;
+    skillsImportHint: string;
+    skillsMarkdownLabel: string;
+    skillsMarkdownPlaceholder: string;
+    skillsPreview: string;
+    skillsPreviewEmpty: string;
+    skillsChecking: string;
+    skillsPreviewInvalid: string;
+    skillsPreviewTools: string;
+    skillsPreviewRequires: string;
+    skillsPreviewBody: string;
+    skillsTemplate: string;
+  };
+  // END agentCollab
   agentToolkit: {
     title: string;
     description: string;
@@ -239,7 +331,7 @@ export interface Translations {
   /**
    * 视觉审阅与成品自检（docs/plans/agent-visual-review/spec.md §7.2）。
    *
-   * `errors` 的键是 §5.4 的错误码闭集，`lint` 的键是 §4.10 的 15 条规则
+   * `errors` 的键是 §5.4 的错误码闭集，`lint` 的键是 §4.10 的 16 条规则
    * code —— 两者都由后端/工具层给值，所以是 `Record`；缺键时卡片回落到
    * `errors.internal` / 原始 code，永不渲染空白。
    */
@@ -3495,6 +3587,98 @@ export interface Translations {
 
 export const translations: Record<string, Translations> = {
   en: {
+    // BEGIN agentCollab
+    agentCollab: {
+      steerPlaceholder: 'Add a note or change course — Enter to steer · Alt+Enter to queue',
+      steerButton: 'Steer',
+      steerQueueLabel: 'Notes waiting to be delivered',
+      steerChipWaitingTool: 'Delivered after “{tool}” finishes',
+      steerChipWaitingStep: 'Delivered after the current step',
+      steerChipQueued: 'Sent when this turn ends',
+      steerChipCancel: 'Remove this note',
+      steerChipSentTooltip: 'Already submitted — it will be delivered after the current step',
+      steerStopAndResend: 'Stop and resend',
+      steerNoteLabel: 'Added while running',
+      noticeQueueFull: 'Too many notes waiting (3 max). Try again in a moment.',
+      noticeRestoredAfterQuestion: 'The agent is waiting for your answer — your note was put back in the input.',
+      noticeRestoredAfterStop: 'Undelivered notes were put back in the input.',
+      escToStop: 'Press Esc again to stop',
+      skillSkipped: 'Skill “{name}” could not be loaded; ran as a normal request.',
+      busyStep: 'Step {index}/{total} · {title}',
+      busyEnterHint: 'Enter to steer',
+      busyElapsed: 'Elapsed',
+      summaryLabel: 'Turn summary',
+      summaryClipsAdded: '+{n} clips',
+      summaryClipsRemoved: '−{n} clips',
+      summaryClipsChanged: '{n} clips adjusted',
+      summaryImported: '{n} materials imported',
+      summaryGenerated: '{n} generated',
+      summaryWeb: '{n} from the web',
+      summaryCheckOk: 'Check ✓',
+      summaryCheckIssues: 'Check: {blockers} blocking · {warnings} warnings',
+      summaryFailed: '{n} steps failed',
+      summaryStopped: '{n} steps done before stopping',
+      summaryUndo: 'Undo this turn',
+      summaryFix: 'Ask the agent to fix',
+      summaryCredits: 'Build source list',
+      summaryFixPrompt: 'Please fix the problems found by the last self-check, then run check_timeline again.',
+      summaryCreditsPrompt: 'Please build a source and licence list for the web materials on the timeline.',
+      skillPickerLabel: 'Choose a skill',
+      skillChip: 'Skill: {name}',
+      skillChipRemove: 'Remove skill',
+      skillBuiltinBadge: 'Built-in',
+      skillMineBadge: 'Mine',
+      skillNeeds: 'Needs: {what}',
+      skillEmpty: 'No skills yet — add one under Settings → Agent skills.',
+      skillLoadFailed: 'Skills are unavailable right now.',
+      skillNoMatch: 'No matching skill.',
+      mentionPickerLabel: 'Reference a material',
+      mentionEmpty: 'No materials in this project yet.',
+      mentionTruncated: 'At most {n} materials can be referenced; the rest were ignored.',
+      skillsTitle: 'Agent skills',
+      skillsDescription: 'Reusable editing procedures the agent can load on demand. Skills grant no permissions.',
+      skillsLoading: 'Loading skills…',
+      skillsLoadFailed: 'Could not load skills: {message}',
+      skillsRetry: 'Retry',
+      skillsEmpty: 'No skills found.',
+      skillsNew: 'New skill',
+      skillsImport: 'Import SKILL.md',
+      skillsBadgeDisabled: 'Disabled',
+      skillsBadgeInvalid: 'Invalid',
+      skillsBadgeShadowed: 'Overridden by built-in',
+      skillsEnabledLabel: 'Enable skill {name}',
+      skillsView: 'View',
+      skillsEdit: 'Edit',
+      skillsDuplicate: 'Copy as mine',
+      skillsDelete: 'Delete',
+      skillsDeleteTitle: 'Delete skill',
+      skillsDeleteConfirm: 'Delete skill “{name}”? This cannot be undone.',
+      skillsSave: 'Save',
+      skillsCreate: 'Create',
+      skillsCancel: 'Cancel',
+      skillsClose: 'Close',
+      skillsSaved: 'Skill saved.',
+      skillsCreated: 'Skill created.',
+      skillsDeleted: 'Skill deleted.',
+      skillsActionFailed: 'That did not work: {message}',
+      skillsEditorTitleNew: 'New skill',
+      skillsEditorTitleEdit: 'Edit skill',
+      skillsEditorTitleView: 'Built-in skill',
+      skillsEditorTitleImport: 'Import a skill',
+      skillsBuiltinReadonly: 'Built-in skills cannot be changed. Copy one as your own skill to edit it.',
+      skillsImportHint: 'Text from elsewhere may contain instructions meant to mislead the agent. Read the full preview on the right before creating it.',
+      skillsMarkdownLabel: 'SKILL.md',
+      skillsMarkdownPlaceholder: '---\nid: my-skill\nname: My skill\ndescription: When to use it\n---\nSteps…',
+      skillsPreview: 'Preview and validation',
+      skillsPreviewEmpty: 'Type or paste a SKILL.md to validate it.',
+      skillsChecking: 'Checking…',
+      skillsPreviewInvalid: 'Not valid yet: {message}',
+      skillsPreviewTools: 'This skill will preload these tools: {tools}',
+      skillsPreviewRequires: 'Needs: {requires}',
+      skillsPreviewBody: 'Full procedure text',
+      skillsTemplate: '---\nid: my-skill\nname: My skill\ndescription: One line on when to use it\nversion: 1\ntools: []\nrequires: []\n---\nGoal in one sentence.\n\n1. First step\n2. Second step\n',
+    },
+    // END agentCollab
     agentToolkit: {
       title: 'Agent capabilities',
       description: 'Workspace, documents, analysis, long-term memory',
@@ -3662,7 +3846,7 @@ export const translations: Record<string, Translations> = {
       cacheClearConfirm: 'Clear cached visual observations?',
       cacheClearConfirmBody: 'Cached results belong to this project. The next review calls the model again and counts against today’s quota.',
       cacheCleared: 'Cache cleared.',
-      rulesWhy: 'All 15 self-check rules run on every call. There is no per-rule switch: disabling one would let a report read “all passed” while that rule never ran.',
+      rulesWhy: 'All 16 self-check rules run on every call. There is no per-rule switch: disabling one would let a report read “all passed” while that rule never ran.',
       lintTitle: 'Self-check',
       lintSummary: '{blockers} blockers · {warnings} warnings',
       lintAllPassed: 'All {count} checks passed',
@@ -3728,6 +3912,7 @@ export const translations: Record<string, Translations> = {
         cover_not_applied: 'Cover is not on the timeline',
         duration_mismatch: 'Total duration does not match the clips',
         timeline_empty: 'Timeline is empty',
+        web_material_license_unknown: 'Web material without a declared licence',
       },
     },
     webResearch: {
@@ -7121,6 +7306,98 @@ export const translations: Record<string, Translations> = {
     },
   },
   'zh-CN': {
+    // BEGIN agentCollab
+    agentCollab: {
+      steerPlaceholder: '补充说明或纠正方向，Enter 插话 · Alt+Enter 排队',
+      steerButton: '插话',
+      steerQueueLabel: '等待送达的补充',
+      steerChipWaitingTool: '将在『{tool}』完成后送达',
+      steerChipWaitingStep: '将在当前步骤完成后送达',
+      steerChipQueued: '回合结束后发送',
+      steerChipCancel: '撤回这条补充',
+      steerChipSentTooltip: '已提交，将在当前步骤结束后送达',
+      steerStopAndResend: '改为停止并重发',
+      steerNoteLabel: '运行中补充',
+      noticeQueueFull: '待送达的补充已满（最多 3 条），请稍后再试。',
+      noticeRestoredAfterQuestion: 'Agent 在等你回答，补充内容已放回输入框。',
+      noticeRestoredAfterStop: '未送达的补充已放回输入框。',
+      escToStop: '再按一次 Esc 停止',
+      skillSkipped: '技能『{name}』未能加载，已按普通请求处理。',
+      busyStep: '步骤 {index}/{total} · {title}',
+      busyEnterHint: 'Enter 插话',
+      busyElapsed: '已用时',
+      summaryLabel: '本轮总结',
+      summaryClipsAdded: '+{n} 片段',
+      summaryClipsRemoved: '−{n} 片段',
+      summaryClipsChanged: '调整 {n} 个片段',
+      summaryImported: '导入 {n} 素材',
+      summaryGenerated: '生成 {n}',
+      summaryWeb: '网络 {n}',
+      summaryCheckOk: '质检 ✓',
+      summaryCheckIssues: '质检 {blockers} 阻断 · {warnings} 提醒',
+      summaryFailed: '{n} 步失败',
+      summaryStopped: '停止前已完成 {n} 步',
+      summaryUndo: '撤销本轮',
+      summaryFix: '让 Agent 修复',
+      summaryCredits: '生成来源清单',
+      summaryFixPrompt: '请修复上一轮自检发现的问题，并再次运行 check_timeline',
+      summaryCreditsPrompt: '请为时间线上的网络素材生成来源与授权清单',
+      skillPickerLabel: '选择技能',
+      skillChip: '技能：{name}',
+      skillChipRemove: '移除技能',
+      skillBuiltinBadge: '内置',
+      skillMineBadge: '我的',
+      skillNeeds: '需要：{what}',
+      skillEmpty: '还没有可用的技能，可在设置中心「Agent 技能」里添加。',
+      skillLoadFailed: '技能暂不可用。',
+      skillNoMatch: '没有匹配的技能。',
+      mentionPickerLabel: '引用素材',
+      mentionEmpty: '项目里还没有素材。',
+      mentionTruncated: '最多引用 {n} 个素材，多余的已忽略。',
+      skillsTitle: 'Agent 技能',
+      skillsDescription: '可被 Agent 按需加载的剪辑套路。技能不授予任何权限。',
+      skillsLoading: '正在加载技能…',
+      skillsLoadFailed: '无法加载技能：{message}',
+      skillsRetry: '重试',
+      skillsEmpty: '没有找到技能。',
+      skillsNew: '新建技能',
+      skillsImport: '导入 SKILL.md',
+      skillsBadgeDisabled: '已禁用',
+      skillsBadgeInvalid: '无效',
+      skillsBadgeShadowed: '被内置覆盖',
+      skillsEnabledLabel: '启用技能 {name}',
+      skillsView: '查看',
+      skillsEdit: '编辑',
+      skillsDuplicate: '复制为我的技能',
+      skillsDelete: '删除',
+      skillsDeleteTitle: '删除技能',
+      skillsDeleteConfirm: '确定删除技能「{name}」？此操作无法撤销。',
+      skillsSave: '保存',
+      skillsCreate: '创建',
+      skillsCancel: '取消',
+      skillsClose: '关闭',
+      skillsSaved: '技能已保存。',
+      skillsCreated: '技能已创建。',
+      skillsDeleted: '技能已删除。',
+      skillsActionFailed: '操作失败：{message}',
+      skillsEditorTitleNew: '新建技能',
+      skillsEditorTitleEdit: '编辑技能',
+      skillsEditorTitleView: '内置技能',
+      skillsEditorTitleImport: '导入技能',
+      skillsBuiltinReadonly: '内置技能不可修改，可复制为我的技能后编辑。',
+      skillsImportHint: '来自外部的文本可能带有诱导 Agent 的指令。请先完整阅读右侧预览，再决定是否创建。',
+      skillsMarkdownLabel: 'SKILL.md',
+      skillsMarkdownPlaceholder: '---\nid: my-skill\nname: 我的技能\ndescription: 何时使用它\n---\n步骤…',
+      skillsPreview: '预览与校验',
+      skillsPreviewEmpty: '输入或粘贴 SKILL.md 以校验。',
+      skillsChecking: '正在校验…',
+      skillsPreviewInvalid: '暂不合格：{message}',
+      skillsPreviewTools: '该技能将预加载这些工具：{tools}',
+      skillsPreviewRequires: '依赖：{requires}',
+      skillsPreviewBody: '完整套路正文',
+      skillsTemplate: '---\nid: my-skill\nname: 我的技能\ndescription: 一句话说明何时使用\nversion: 1\ntools: []\nrequires: []\n---\n一句话目标。\n\n1. 第一步\n2. 第二步\n',
+    },
+    // END agentCollab
     agentToolkit: {
       title: 'Agent 能力',
       description: '工作区、文档、计算分析、长期记忆',
@@ -7288,7 +7565,7 @@ export const translations: Record<string, Translations> = {
       cacheClearConfirm: '确定清空视觉观察缓存？',
       cacheClearConfirmBody: '缓存结果属于本项目。下次审阅会重新调用模型，并计入当日配额。',
       cacheCleared: '缓存已清空。',
-      rulesWhy: '15 条自检规则每次都会全部运行。不提供逐条开关：关掉某条会造成“自检通过”的假象——报告写着全部通过，而那条规则从未运行。',
+      rulesWhy: '16 条自检规则每次都会全部运行。不提供逐条开关：关掉某条会造成“自检通过”的假象——报告写着全部通过，而那条规则从未运行。',
       lintTitle: '自检',
       lintSummary: '{blockers} 阻塞 · {warnings} 警告',
       lintAllPassed: '全部 {count} 项通过',
@@ -7354,6 +7631,7 @@ export const translations: Record<string, Translations> = {
         cover_not_applied: '封面未应用到时间线',
         duration_mismatch: '总时长与片段不一致',
         timeline_empty: '时间线为空',
+        web_material_license_unknown: '网络素材未声明授权',
       },
     },
     webResearch: {

@@ -41,7 +41,7 @@ import {
   useVideoAnalysis,
   useNarrationDirectScript
 } from './hooks';
-import { useAgentExecution } from './hooks/useAgentExecution';
+import { useAgentExecution, type SendAgentMessageOptions } from './hooks/useAgentExecution';
 import { useInterruptedConversationCleanup } from './hooks/agentTurnLifecycle';
 import { useAIMixedEditing } from './hooks/useAIMixedEditing';
 import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
@@ -2050,10 +2050,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   });
 
   // --- Unified send handler: routes to agent or regular based on agentMode ---
-  const handleSendChatMessage = useCallback(async (message: string) => {
+  const handleSendChatMessage = useCallback(async (message: string, options?: SendAgentMessageOptions) => {
     if (!isConversationReady) return;
     if (agent.agentMode) {
-      return agent.sendAgentMessage(message);
+      return agent.sendAgentMessage(message, options);
     }
 
     // Original non-agent chat logic below
@@ -2323,7 +2323,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               agentIsExecuting: agent.agentIsExecuting, executionState: agent.executionState,
               onAgentUndo: undefined, onUndoAll: agent.undoAllOperations, onUndoSingle: agent.undoSingleOperation,
               onCancel: agent.cancelExecution, onDismissError: agent.dismissExecutionError,
-              singleUndoMessageIds: agent.singleUndoMessageIds,
+              singleUndoMessageIds: agent.singleUndoMessageIds, steering: agent.steering, draftRestore: agent.draftRestore, skillSkip: agent.skillSkip, mentionMaterials: materialManagement.allMaterials, draftProjectKey: projectId,
             }}
           />
         }

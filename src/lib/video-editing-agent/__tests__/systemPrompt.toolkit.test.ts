@@ -16,6 +16,7 @@ import {
 import type { ToolContext } from '../types';
 import type { AgentPlan } from '@/types/agentToolkit';
 import type { TimelineState } from '@/types';
+import type { SkillIndexEntry } from '@/types/agentSkills';
 
 /**
  * L0 预算实测 + 计划/记忆注入上限 + 常驻工具恰好一次（AC-24 / AC-28）。
@@ -52,10 +53,11 @@ const MEMORY = {
   count: 2,
 };
 
-function prompt() {
+function prompt(skillIndex?: SkillIndexEntry[]) {
   const context = makeContext();
   const registry = createToolRegistry(context);
   return buildSystemPrompt({
+    skillIndex,
     timelineState: context.timelineState,
     materials: [],
     registry,
@@ -86,7 +88,7 @@ describe('L0 prompt budget', () => {
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('update_plan');
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('ask_user');
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('check_timeline');
-    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(18);
+    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(19);
   });
 
   it('renders the real check_timeline section, not the unavailable stub', () => {
@@ -116,6 +118,51 @@ describe('L0 prompt budget', () => {
     const text = prompt();
     expect(text).toContain(WEB_RESEARCH_GUIDANCE.trim().slice(0, 40));
     expect(text.length).toBeLessThanOrEqual(18_900);
+  });
+});
+
+/**
+ * AC-B8 (spec 评审 R-05): measured, not estimated. `L0_BASE` is the worst-case
+ * prompt (full plan + memory) measured BEFORE the skill library landed.
+ * Skills replaced recipes 1-3 in the prompt, so the net increase with a full
+ * 10-entry index must stay ≤ 400 chars, and the existing 18 500 / 18 900
+ * ceilings above are NOT relaxed.
+ */
+const L0_BASE = 17_075;
+const MAX_INDEX = Array.from({ length: 10 }, (_, index): SkillIndexEntry => ({
+  id: `skill-${index}-${'x'.repeat(30)}`.slice(0, 40),
+  name: 'n',
+  description: '描'.repeat(60),
+  requires: ['web'],
+  builtin: index < 6,
+}));
+
+describe('skill index budget (AC-B8)', () => {
+  it('adds at most 400 chars over the pre-skills baseline with a full index', () => {
+    const withIndex = prompt(MAX_INDEX);
+    expect(withIndex.length - L0_BASE).toBeLessThanOrEqual(400);
+    expect(withIndex.length).toBeLessThanOrEqual(18_500);
+  });
+
+  it('keeps the index section within 1300 chars and 130 chars per line', () => {
+    const text = prompt(MAX_INDEX);
+    const section = text.slice(text.indexOf('## 可用技能')).split('\n\n')[0];
+    expect(section.length).toBeLessThanOrEqual(1_300);
+    for (const line of section.split('\n').filter(item => item.startsWith('- '))) {
+      expect(Array.from(line).length).toBeLessThanOrEqual(130);
+    }
+  });
+
+  it('renders no skill section at all without an index, and keeps recipe rule 4', () => {
+    const text = prompt();
+    expect(text).not.toContain('## 可用技能');
+    expect(text).toContain('仅入库 vs 上轨');
+    expect(text).not.toContain('### 配方 1');
+  });
+
+  it('lists the skill section exactly once when present', () => {
+    const text = prompt(MAX_INDEX);
+    expect(text.split('## 可用技能').length - 1).toBe(1);
   });
 });
 
@@ -190,7 +237,7 @@ describe('registry wiring', () => {
   it('puts check_timeline in the resident workflow category', () => {
     const registry = createToolRegistry(makeContext());
     expect(registry.getCategoryTools('workflow_tools').map(tool => tool.name))
-      .toEqual(['update_plan', 'ask_user', 'check_timeline']);
+      .toEqual(['update_plan', 'ask_user', 'check_timeline', 'use_skill']);
     const always = registry.getAlwaysAvailableTools().map(tool => tool.name);
     expect(always).toContain('check_timeline');
     expect(always).not.toContain('view_image');

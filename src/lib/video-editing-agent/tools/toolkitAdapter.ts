@@ -18,8 +18,15 @@ import { toolFetch } from './apiHelper';
  */
 
 export interface ToolkitCall {
-  /** 形如 `/workspace/write`、`/documents/read`（拼到 `/api/agent-toolkit` 后）。 */
+  /** 形如 `/workspace/write`、`/documents/read`（拼到 `basePath` 后）。 */
   path: string;
+  /** 默认 `/api/agent-toolkit`；技能库等其它域传自己的前缀，不复制适配器。 */
+  basePath?: string;
+  /**
+   * 只保留响应 `data` 里的这些键。响应里有会撑爆 `RESULT_BYTE_CAP` 的冗余字段
+   * （如技能的 `markdown` 原文与 `body` 并存）时用它，免得整体被头尾截断。
+   */
+  select?: readonly string[];
   method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined | null>;
@@ -28,6 +35,7 @@ export interface ToolkitCall {
   nextStep?: string;
 }
 
+const DEFAULT_BASE_PATH = '/api/agent-toolkit';
 const DEFAULT_TIMEOUT = 30_000;
 const LONG_TIMEOUT = 120_000;
 
@@ -52,6 +60,9 @@ const NEXT_STEPS: Record<string, string> = {
   policy_blocked: 'Store the decision without the credential.',
   invalid_workspace_name: 'Use a short relative name such as script/outline.md.',
   invalid_argument: 'Check the parameters and try once more.',
+  skill_not_found: 'Pick an id from the 可用技能 list, or continue without a skill.',
+  invalid_skill: 'Tell the user the skill file is invalid; continue without it.',
+  skill_disabled: 'The skill is turned off; continue without it or ask the user to enable it.',
 };
 
 function bytesOf(value: unknown): number {
@@ -147,6 +158,13 @@ function buildQuery(query: ToolkitCall['query']): string {
   return encoded ? `?${encoded}` : '';
 }
 
+function selectKeys(
+  data: Record<string, unknown>, keys: ToolkitCall['select'],
+): Record<string, unknown> {
+  if (!keys) return data;
+  return Object.fromEntries(keys.filter(key => key in data).map(key => [key, data[key]]));
+}
+
 function timeoutFor(call: ToolkitCall): number {
   if (call.timeout) return call.timeout;
   if (call.path.startsWith('/analysis/run')
@@ -181,7 +199,7 @@ export async function executeToolkitTool(
   try {
     const response = await toolFetch(
       context,
-      `/api/agent-toolkit${call.path}${buildQuery(call.query)}`,
+      `${call.basePath ?? DEFAULT_BASE_PATH}${call.path}${buildQuery(call.query)}`,
       {
         method,
         headers,
@@ -209,7 +227,7 @@ export async function executeToolkitTool(
         call.nextStep ?? (envelope.error_details?.next_step as string | undefined),
       );
     }
-    const data = (envelope.data ?? {}) as Record<string, unknown>;
+    const data = selectKeys((envelope.data ?? {}) as Record<string, unknown>, call.select);
     return toolkitResult({
       ...data,
       project_id: context.projectId ?? null,

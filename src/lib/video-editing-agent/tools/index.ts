@@ -41,6 +41,8 @@ import { createCheckOverlapsTool, summarizeOverlapReport } from './checkOverlaps
 import { createPlanTool } from './planTool';
 import { createAskUserTool } from './askUserTool';
 import { createCheckTimelineTool } from './qualityTool';
+import { createSkillTool } from './skillTools';
+import { createBuildCreditsTool } from './creditsTool';
 import { createViewImageTool, createReviewFramesTool } from './visionTools';
 import { createInspectExportTool } from './exportInspectTool';
 import { createWorkspaceTools } from './workspaceTools';
@@ -433,6 +435,7 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
   registry.registerToolsForCategory(CATEGORY_IDS.MATERIAL_TOOLS, [
     createAddMaterialToLibraryTool(context),
     createRemoveMaterialTool(context),
+    createBuildCreditsTool(context),
   ]);
 
   // Agent general toolkit (docs/plans/agent-general-toolkit/spec.md §3.2):
@@ -444,6 +447,8 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     createPlanTool(context),
     createAskUserTool(context),
     createCheckTimelineTool(context),
+    // use_skill reads the registry lazily (at call time) to map a skill's tools to categories.
+    createSkillTool(context, registry),
   ]);
   registry.registerToolsForCategory(
     CATEGORY_IDS.WORKSPACE_TOOLS, createWorkspaceTools(context));

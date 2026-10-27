@@ -71,3 +71,27 @@ export function scanLatestPlan(messages: readonly ChatMessage[]): AgentPlan | nu
   }
   return null;
 }
+
+export interface ActiveStep {
+  /** 1-based，给人看的步骤序号。 */
+  index: number;
+  total: number;
+  title: string;
+}
+
+/**
+ * 忙碌条要显示的「步骤 i/n · 标题」：优先 `in_progress` 的那一步，没有则取第一个
+ * 未完成的；全部完成或没有计划时返回 null（调用方回退为「正在运行 xxx 工具」）。
+ */
+export function selectActiveStep(plan: AgentPlan | null | undefined): ActiveStep | null {
+  if (!plan || plan.steps.length === 0) return null;
+  const current = plan.activeStep !== null
+    ? plan.steps.find(step => step.index === plan.activeStep)
+    : plan.steps.find(step => step.status !== 'completed');
+  if (!current) return null;
+  return {
+    index: plan.steps.indexOf(current) + 1,
+    total: plan.total,
+    title: current.title,
+  };
+}

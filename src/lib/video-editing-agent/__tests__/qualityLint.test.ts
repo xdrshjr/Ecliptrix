@@ -1,5 +1,5 @@
 /**
- * `qualityLint.ts` 的 15 条规则表驱动测试。
+ * `qualityLint.ts` 的 16 条规则表驱动测试。
  *
  * 证据：docs/plans/agent-visual-review/spec.md §10.1
  *   - AC-04：每条规则至少 1 正例 + 1 反例；`missing_material` 正例必须是 blocker
@@ -134,12 +134,13 @@ describe('report shape and thresholds', () => {
     });
   });
 
-  it('lists exactly the 15 rule codes in §4.10 order', () => {
+  it('lists exactly the 16 rule codes in §4.10 order', () => {
     expect(LINT_RULE_CODES).toEqual([
       'missing_material', 'clip_bounds', 'item_overlap', 'subtitle_overflow',
       'subtitle_overlap', 'subtitle_style_drift', 'track_hidden', 'audio_gap',
       'volume_out_of_range', 'upscale_blur', 'static_image_too_long',
       'timeline_gap', 'cover_not_applied', 'duration_mismatch', 'timeline_empty',
+      'web_material_license_unknown',
     ]);
   });
 
@@ -152,12 +153,12 @@ describe('report shape and thresholds', () => {
     expect(defaultTargetResolution('21:9')).toEqual({ width: 2560, height: 1080 });
   });
 
-  it('reports a clean timeline as ok with all 15 checks listed', () => {
+  it('reports a clean timeline as ok with all 16 checks listed', () => {
     const report = run();
     expect(report.ok).toBe(true);
     expect(report.issues).toEqual([]);
     expect(report.checked_rules).toEqual([...LINT_RULE_CODES]);
-    expect(report.next_step).toContain('All 15 checks passed');
+    expect(report.next_step).toContain('All 16 checks passed');
   });
 
   it('sorts blockers before warnings before notes', () => {
@@ -725,7 +726,7 @@ describe('check_timeline tool', () => {
       const out = await tool.execute('call-1', { aspect_ratio: '9:16' });
       const details = out.details as { ok: boolean; checked_rules: string[] };
       expect(details.ok).toBe(true);
-      expect(details.checked_rules).toHaveLength(15);
+      expect(details.checked_rules).toHaveLength(16);
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
