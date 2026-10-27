@@ -625,7 +625,7 @@ class ModelSettingsService:
                 success=True,
                 source="database",
                 api_url=assignment.provider.api_url,
-                api_key=***REMOVED***,
+                api_key=assignment.provider.api_key,
                 model_name=assignment.model_name,
                 temperature=assignment.temperature,
                 max_tokens=assignment.max_tokens,
@@ -642,7 +642,7 @@ class ModelSettingsService:
             ),
             ModelFunctionType.FAST: (
                 settings.fast_llm_api_url or settings.llm_api_url,
-                ***REMOVED*** or settings.llm_api_key,
+                settings.fast_llm_api_key or settings.llm_api_key,
                 settings.fast_llm_model or settings.llm_model,
                 settings.fast_llm_api_type,
             ),
@@ -815,7 +815,7 @@ class ModelSettingsService:
             )
         return (
             settings.video_cut_llm_api_url,
-            ***REMOVED*** or settings.llm_api_key,
+            settings.video_cut_llm_api_key or settings.llm_api_key,
             settings.video_cut_llm_model or settings.llm_model,
             settings.video_cut_llm_api_type,
         )

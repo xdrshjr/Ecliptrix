@@ -117,7 +117,7 @@
 ┌────────────────────────────────── 后端 (FastAPI) ─────────────────────────────────┐
 │ auth_router.login → auth_service.authenticate_user                                  │
 │   - (本方案新增可选) ROOT_ONLY_LOGIN 时:非 root 用户直接 INVALID_CREDENTIALS           │
-│   - root 用户: hmac.compare_digest(input, ***REMOVED***)  ← .env 唯一源 │
+│   - root 用户: hmac.compare_digest(input, settings.auth.root_password)  ← .env 唯一源 │
 │   - 成功 → session_service.create_session → 返回 {success,user,session_token}          │
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```

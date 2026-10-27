@@ -152,7 +152,7 @@ Content-Type: application/json
 
 ```env
 # Fast LLM 配置（必需）
-FAST_LLM_API_KEY=***REMOVED***
+FAST_LLM_API_KEY=<redacted>
 FAST_LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 FAST_LLM_MODEL=qwen-max-latest
 ```

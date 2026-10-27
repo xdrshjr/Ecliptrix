@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const getConfig = () => {
   const apiUrl = process.env.AI_VIDEO_MATCH_LLM_API_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-  const apiKey = ***REMOVED*** || '';
+  const apiKey = process.env.AI_VIDEO_MATCH_LLM_API_KEY || '';
   const model = process.env.AI_VIDEO_MATCH_LLM_MODEL || 'qwen-max-latest';
 
   if (!apiKey) {

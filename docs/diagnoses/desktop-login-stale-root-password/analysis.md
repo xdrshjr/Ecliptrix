@@ -126,10 +126,10 @@ propagates into the backend:
   `ROOT_PASSWORD` priority over deprecated `ADMIN_*` values.
 - `backend-services/basic-service/app/database.py:123` to
   `backend-services/basic-service/app/database.py:154` sync the root user from
-  `settings.auth.root_username` and `***REMOVED***` at startup.
+  `settings.auth.root_username` and `settings.auth.root_password` at startup.
 - `backend-services/basic-service/app/services/auth_service.py:151` to
   `backend-services/basic-service/app/services/auth_service.py:158` verify root
-  logins directly against `***REMOVED***`.
+  logins directly against `settings.auth.root_password`.
 
 The log evidence matches that flow:
 
@@ -162,7 +162,7 @@ This excludes two plausible alternatives:
   `User query successful`, and the local DB row is root and active. The stored
   hash matching `change_me_on_first_run` is consistent with startup sync from
   the stale `.env`; root auth also compares directly against
-  `***REMOVED***`, so the decisive password source is still the
+  `settings.auth.root_password`, so the decisive password source is still the
   environment value.
 
 Root-cause hypothesis: existing installs that still carry the older
@@ -223,7 +223,7 @@ Add or update tests in `desktop/main/window-state.test.js` or a focused
 1. 失败路径闭环成立：打包启动时 `main/index.js` 先执行
    `backfillUserEnv()`，再执行 `loadUserEnv()`，随后把 `state.userEnv` 注入
    后端；后端配置优先读取 `ROOT_PASSWORD`，数据库初始化从该配置同步 root
-   用户，root 登录又直接与 `***REMOVED***` 比较。
+   用户，root 登录又直接与 `settings.auth.root_password` 比较。
 2. 现有打包产物与源码模板都已经是 `admin/admin`，但已有
    `%APPDATA%/ecliptrix-desktop/.env` 不会被重新复制；当前失败机器保留
    `ROOT_PASSWORD=change_me_on_first_run`，而当前迁移集合只包含 `adminjr`。

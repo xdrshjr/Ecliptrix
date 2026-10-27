@@ -41,6 +41,20 @@ tsconfig.tsbuildinfo
 !**/env.template
 !**/.env.example
 
+# === Key material (2026-10-27 incident: an SSH private key sat in ops/key/) ===
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+ops/key/
+secrets/
+
+# === Local secret-scanner output ===
+.secret-scan/
 # === Python ===
 *.pyd
 .pytest_cache/

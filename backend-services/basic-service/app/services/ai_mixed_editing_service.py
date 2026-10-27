@@ -116,7 +116,7 @@ class AIMixedEditingService:
     @staticmethod
     def _config_from_settings() -> LLMCallConfig:
         """Legacy VIDEO_CUT_LLM_* config; raises ValueError when unset."""
-        api_key = ***REMOVED***
+        api_key = settings.video_cut_llm_api_key
         api_url = settings.video_cut_llm_api_url
         if not api_key or not api_url:
             raise ValueError("Video Cut LLM API key and URL must be configured")

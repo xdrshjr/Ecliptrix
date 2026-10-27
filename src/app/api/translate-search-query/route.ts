@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const getConfig = () => {
   // 优先使用快速LLM配置，用于搜索查询翻译等快速响应场景
   const apiUrl = process.env.FAST_LLM_API_URL || process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
-  const apiKey = ***REMOVED*** || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = process.env.FAST_LLM_API_KEY || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   const model = process.env.FAST_LLM_MODEL || process.env.LLM_MODEL || 'gpt-3.5-turbo';
 
   if (!apiKey) {
@@ -12,7 +12,7 @@ const getConfig = () => {
   }
 
   // 判断使用的是哪个配置
-  const configType = ***REMOVED*** ? 'FAST_LLM' : 
+  const configType = process.env.FAST_LLM_API_KEY ? 'FAST_LLM' : 
                      process.env.LLM_API_KEY ? 'LLM' : 'OPENAI';
 
   return { apiUrl, apiKey, model, configType };

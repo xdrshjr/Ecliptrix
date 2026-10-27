@@ -185,7 +185,7 @@ class AudioTranscriptionService:
         misconfigured.
         """
         self.appid = settings.volcano_asr_appid
-        self.access_token = ***REMOVED***
+        self.access_token = settings.volcano_asr_access_token
         self.resource_id = settings.volcano_asr_resource_id
         self.max_clip_seconds = max(1, int(getattr(settings, "asr_max_clip_seconds", 300)))
         self.ws_url = _ASR_WS_URL
@@ -197,7 +197,7 @@ class AudioTranscriptionService:
             )
         if not self.access_token:
             logger.warning(
-                "***REMOVED*** is not configured — Subtitles button "
+                "VOLCANO_ASR_ACCESS_TOKEN is not configured — Subtitles button "
                 "will return ASR_NOT_CONFIGURED until set."
             )
         if not self.resource_id:
@@ -256,7 +256,7 @@ class AudioTranscriptionService:
         if not self.appid:
             return "VOLCANO_ASR_APPID"
         if not self.access_token:
-            return "***REMOVED***"
+            return "VOLCANO_ASR_ACCESS_TOKEN"
         if not self.resource_id:
             return "VOLCANO_ASR_RESOURCE_ID"
         return None

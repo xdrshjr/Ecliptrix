@@ -375,7 +375,7 @@ FAST_LLM_API_KEY = 102d06… / len 49 / sha8 544ebc1f   FAST_LLM_API_URL = …da
   `102d06…`）。
 - **推论（升格 F-A）**：对**本轮用户报告的具体场景**，F-A（透传 token 让 resolve 命中 DB）**既必要又充分**——
   resolve 一旦带 token 返回 `source="database"`，聊天就会改用 `deepseek-v4-pro @ dashscope` + 有效 `sk-62…`
-  key（`model_settings_service.py:613-632` 直接回吐 `***REMOVED***` 明文）→ **200，聊天恢复**。
+  key（`model_settings_service.py:613-632` 直接回吐 `assignment.provider.api_key` 明文）→ **200，聊天恢复**。
   F-B 对**这位用户**并非修复其报障的必要条件（其 DB 配置本就有效），而是面向「**未在应用内配置 DB 的用户**」的
   默认可用性兜底（见 §9.5）。
 

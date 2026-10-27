@@ -5,7 +5,7 @@
 - **作者**: Subtask #0 方案设计 Agent ｜ **评审/修复**: Subtask #1 方案评审 Agent
 - **日期**: 2026-06-02
 - **状态**: 已评审修复（交付 Subtask #2 代码开发）
-- **关联任务板**: `.agentmesh/ta***REMOVED***/task-board.md`
+- **关联任务板**: `.agentmesh/task-*/task-board.md`
 
 ---
 

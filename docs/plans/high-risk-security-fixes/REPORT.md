@@ -172,7 +172,7 @@
 
   **Volcano TTS / ASR（ByteDance speech）：**
   - `VOLCANO_TTS_API_KEY` / `VOLCANO_TTS_APPID` / `VOLCANO_TTS_ACCESS_TOKEN` / `VOLCANO_TTS_SECRET_KEY`
-  - `VOLCANO_ASR_APPID` / `***REMOVED***` / `VOLCANO_ASR_SECRET_KEY`
+  - `VOLCANO_ASR_APPID` / `<redacted>` / `VOLCANO_ASR_SECRET_KEY`
 
   **Aliyun OSS：**
   - `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET`
@@ -230,9 +230,9 @@
 执行 Phase 5 集成验证后又做了一遍"review and fix possible issues"，发现并修复 2 项遗留：
 
 ### Bug 1（已修）— `.env.example` 仍含真实 Dashscope 密钥
-- **位置:** `.env.example` line 6 + line 11，值 `***REMOVED***`（已在 §运维动作 LLM_API_KEY 轮换列表中）
+- **位置:** `.env.example` line 6 + line 11，值 `<redacted>`（已在 §运维动作 LLM_API_KEY 轮换列表中）
 - **根因:** dev-05 报告将 `.env.example` `git rm --cached`，但 `test_no_env_files_tracked_except_templates` 显式将 `.env.example` 列为允许的 template，导致它被重新跟踪（合理意图：保留为模板）；但 dev-05 没有同步将真实 key 替换成 placeholder。
-- **修复:** orchestrator 将 `***REMOVED***` 替换为 `your_llm_api_key_here`（一次性 replace_all）。
+- **修复:** orchestrator 将 `<redacted>` 替换为 `your_llm_api_key_here`（一次性 replace_all）。
 - **防回归:** 在 `tests/security/test_05_secrets.py::test_env_template_has_no_real_keys` 的参数化列表中追加 `.env.example`（template_path2）。19/19 PASS。
 
 ### Bug 2（确认与本次安全审计无关）— 2 个 pre-existing 测试 collection ERROR

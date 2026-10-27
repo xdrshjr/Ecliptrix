@@ -109,8 +109,10 @@ class TestRedactBody:
         assert REDACTED in out
 
     def test_string_pass_redacts_sk_key(self):
-        out = redact_string("token=***REMOVED*** ok")
-        assert "***REMOVED***" not in out
+        # Synthetic key: never a real credential, only shaped like one.
+        fake_key = "sk-" + "0" * 8 + "deadbeef" + "cafebabe"
+        out = redact_string(f"token={fake_key} ok")
+        assert fake_key not in out
         # Either the prefixed form or the api_key= form replaces it.
         assert REDACTED in out
 
@@ -223,3 +225,81 @@ def test_env_template_has_no_real_keys(template_path: Path):
             f"matching {pattern.pattern!r}: {match.group(0)[:12]}...; replace "
             f"with a `<your-key-here>` placeholder."
         )
+
+# ---------------------------------------------------------------------------
+# V05-F: no credential-shaped literal anywhere in the tracked tree
+#
+# The 2026-10-27 incident: live keys sat in docs, env templates and a debug
+# script, all of them public. Template checks (V05-E) only covered three files,
+# so this gate scans every tracked file. Patterns are deliberately long enough
+# that prose, examples ("sk-test") and vendor placeholders ("AKIA...EXAMPLE")
+# do not match. See docs/security/secret-rotation-2026-10-27.md.
+# ---------------------------------------------------------------------------
+
+
+_CREDENTIAL_SHAPES = [
+    re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),  # OpenAI / DashScope style
+    re.compile(r"\bsk-proj-[A-Za-z0-9_-]{32,}\b"),
+    re.compile(r"\bsk-kimi-[A-Za-z0-9]{30,}"),
+    re.compile(r"\btvly-[A-Za-z0-9]{30,}"),  # Tavily
+    re.compile(r"\bLTAI[0-9A-Za-z]{16,}\b"),  # Aliyun AccessKeyId
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS AccessKeyId
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b|github_pat_[A-Za-z0-9_]{30,}"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),  # Google API key
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    re.compile(
+        r"\beyJ[A-Za-z0-9_-]{15,}\.eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}"
+    ),  # signed JWT
+]
+
+# Files that legitimately contain synthetic, credential-shaped strings.
+_SCAN_ALLOWLIST = (
+    "backend-services/basic-service/tests/security/test_05_secrets.py",
+    "scripts/scan-secrets.py",
+    "docs/security/",
+)
+
+# Vendor documentation examples reused as fixtures.
+_KNOWN_PLACEHOLDERS = ("EXAMPLE", "XAMPLE", "xxxxxxxx", "00000000")
+
+_SCAN_SKIP_SUFFIXES = (
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".mp4", ".mp3",
+    ".wav", ".webm", ".zip", ".tgz", ".woff", ".woff2", ".ttf", ".otf",
+    ".db", ".sqlite", ".pyc", ".bundle", ".pack",
+)
+
+_SCAN_SKIP_NAMES = ("package-lock.json", "tsconfig.tsbuildinfo")
+_SCAN_MAX_BYTES = 2 * 1024 * 1024
+
+
+def test_no_credential_shaped_literal_in_tracked_files():
+    tracked = _git_ls_files()
+    if tracked is None:
+        pytest.skip("git not available or not a checkout")
+
+    offenders: list[str] = []
+    for name in tracked:
+        if name.startswith(_SCAN_ALLOWLIST) or name.endswith(_SCAN_SKIP_SUFFIXES):
+            continue
+        if Path(name).name in _SCAN_SKIP_NAMES:
+            continue
+        path = REPO_ROOT / name
+        if not path.is_file() or path.stat().st_size > _SCAN_MAX_BYTES:
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for pattern in _CREDENTIAL_SHAPES:
+            match = pattern.search(content)
+            if match is None:
+                continue
+            if any(marker in match.group(0) for marker in _KNOWN_PLACEHOLDERS):
+                continue
+            offenders.append(f"{name}: {pattern.pattern[:28]}...")
+
+    assert offenders == [], (
+        "Tracked files contain credential-shaped literals: "
+        f"{offenders[:5]}. Replace with a placeholder, move the value into an "
+        "untracked .env, and see docs/security/secret-rotation-2026-10-27.md."
+    )

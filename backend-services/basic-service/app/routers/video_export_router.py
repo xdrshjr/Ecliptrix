@@ -68,7 +68,7 @@ async def enhance_video_metadata_with_llm(video_url: str, filename: str) -> Dict
     """
     try:
         # Get Fast LLM configuration from Settings (single source of truth).
-        fast_llm_api_key = ***REMOVED***
+        fast_llm_api_key = settings.fast_llm_api_key
         fast_llm_api_url = settings.fast_llm_api_url
         fast_llm_model = settings.fast_llm_model
         fast_llm_api_type = normalize_api_type(settings.fast_llm_api_type)

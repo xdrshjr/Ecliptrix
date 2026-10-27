@@ -104,12 +104,12 @@ data: [DONE]
 Python后端需要配置以下环境变量：
 ```env
 # 主 LLM 配置（用于正常对话响应）
-LLM_API_KEY=***REMOVED***
+LLM_API_KEY=<redacted>
 LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=deepseek-v3
 
 # Fast LLM 配置（用于快速意图检测）
-FAST_LLM_API_KEY=***REMOVED***
+FAST_LLM_API_KEY=<redacted>
 FAST_LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 FAST_LLM_MODEL=qwen-max-latest
 ```

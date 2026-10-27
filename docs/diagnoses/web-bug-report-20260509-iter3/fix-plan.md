@@ -292,7 +292,7 @@ iter2 已经修复了 `LoginModal` 与 `UserManagement` 的密码框 form 包裹
         <input
           type={showApiKey ? 'text' : 'password'}
           autoComplete="new-password"  // 阻止浏览器自动填充其他凭据
-          value={***REMOVED*** ? providerForm.api_key : ''}
+          value={providerForm.api_key_changed ? providerForm.api_key : ''}
           onChange={...}
           onFocus={...}
           placeholder={...}

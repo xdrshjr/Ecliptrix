@@ -243,7 +243,7 @@ class TTSService:
     def __init__(self):
         # V3 凭据（X-Api-Key + X-Api-Resource-Id）。legacy appid/access_token
         # 保留只为旧的 ASR / 声音克隆调用链兜底，本服务不再使用。
-        self.api_key = ***REMOVED***
+        self.api_key = settings.volcano_tts_api_key
         self.resource_id = settings.volcano_tts_resource_id
         # Generated audio lives under the persistent, writable STORAGE_ROOT so it
         # survives packaged-desktop installs (the service install dir is volatile/

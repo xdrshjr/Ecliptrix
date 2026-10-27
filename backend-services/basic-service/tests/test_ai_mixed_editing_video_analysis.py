@@ -148,7 +148,7 @@ class TestAIMixedEditingVideoAnalysisIntegration:
     def setup_method(self):
         """Set up test fixtures."""
         with patch('app.services.ai_mixed_editing_service.settings') as mock_settings:
-            mock_***REMOVED*** = "test-api-key"
+            mock_settings.video_cut_llm_api_key = "test-api-key"
             mock_settings.video_cut_llm_api_url = "https://test-api.com"
             mock_settings.video_cut_llm_model = "test-model"
             mock_settings.debug = False

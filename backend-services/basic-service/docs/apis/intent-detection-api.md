@@ -72,7 +72,7 @@
 
 ```env
 # Fast LLM Configuration (for intent detection)
-FAST_LLM_API_KEY=***REMOVED***
+FAST_LLM_API_KEY=<redacted>
 FAST_LLM_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 FAST_LLM_MODEL=qwen-max-latest
 ```

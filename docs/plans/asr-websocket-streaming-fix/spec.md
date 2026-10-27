@@ -53,7 +53,7 @@ request time:
 * `AudioTranscriptionService.__init__` raises `ValueError` when either
   `volcano_asr_api_key` (a new-console UUID) **or** `public_base_url` is empty
   — and in production neither is set in `.env`. The credentials shipped with
-  the task (`VOLCANO_ASR_APPID=***REMOVED***` etc.) are *legacy V1 console* keys.
+  the task (`VOLCANO_ASR_APPID=<redacted>` etc.) are *legacy V1 console* keys.
   They are accepted by the WebSocket streaming bigmodel API, but they are **not**
   the UUID API Key the file-submit endpoint demands.
 * The raise propagates → import fails → uvicorn boot aborts → the proxy
@@ -102,8 +102,8 @@ HTTP headers:
 
 | Header | Source |
 |---|---|
-| `X-Api-App-Key` | `settings.volcano_asr_appid` (e.g. `***REMOVED***`) |
-| `X-Api-Access-Key` | `***REMOVED***` |
+| `X-Api-App-Key` | `settings.volcano_asr_appid` (e.g. `<redacted>`) |
+| `X-Api-Access-Key` | `<redacted>` |
 | `X-Api-Resource-Id` | `settings.volcano_asr_resource_id` (default `volc.bigasr.sauc.duration`; switch to `...sauc.concurrent` if the console only enabled the concurrency-billed tier) |
 | `X-Api-Request-Id` | random UUID per request (also used as task id for tracing) |
 | `X-Api-Sequence` | constant `-1` |
@@ -267,7 +267,7 @@ non-blocking improvement, not part of this slice.
 | `backend-services/basic-service/app/services/audio_transcription_service.py` | **rewrite** | Replace V3 file-submit code with a WebSocket streaming `bigmodel_nostream` client. Lazy credential validation (no `raise` in `__init__`). Expose **both** native-async (`aprocess_audio_file`, `atranscribe_audio_urls`) and sync (`process_audio_file`, `transcribe_audio_urls`) facades; the sync facade exists for legacy callers and tests only and uses `asyncio.new_event_loop().run_until_complete(...)`. Keep `convert_to_srt`, `ms_to_srt_time`, `save_srt_file`. |
 | `backend-services/basic-service/app/routers/audio_router.py` | **modify** | (1) Rename the second duplicate `@router.get("/health")` (currently shadowing the transcription health) to **`@router.get("/search/health")`** so `/audio/health` once again maps to the ASR-transcription handler; (2) rewrite `health_check` to read the new attribute names (`appid`, `access_token`, `resource_id`) and drop `secret_key` / `base_url`; (3) switch all router handlers to `await audio_transcription_service.aprocess_audio_file(...)` / `await audio_transcription_service.atranscribe_audio_urls(...)`. **No** `asyncio.run` / `asyncio.to_thread` shim — the router is async and the service exposes a native coroutine. |
 | `backend-services/basic-service/app/config.py` | **modify** | Drop the hard requirement on `volcano_asr_api_key` & `public_base_url`. Add `volcano_asr_resource_id` default `volc.bigasr.sauc.duration` (overriding the previous `volc.bigasr.auc`). Keep all envs backward-compatible. Document the `volc.bigasr.sauc.concurrent` alternative for accounts on the concurrency-billed tier. |
-| `backend-services/basic-service/.env` | **modify** | Set `VOLCANO_ASR_RESOURCE_ID=volc.bigasr.sauc.duration` (or `.concurrent`). Document but do not require `VOLCANO_ASR_API_KEY` / `PUBLIC_BASE_URL`. **Keep `VOLCANO_ASR_SECRET_KEY` in place** — it's used by voice-clone, not ASR. No secret rotation required — `VOLCANO_ASR_APPID` / `***REMOVED***` are already provisioned. |
+| `backend-services/basic-service/.env` | **modify** | Set `VOLCANO_ASR_RESOURCE_ID=volc.bigasr.sauc.duration` (or `.concurrent`). Document but do not require `VOLCANO_ASR_API_KEY` / `PUBLIC_BASE_URL`. **Keep `VOLCANO_ASR_SECRET_KEY` in place** — it's used by voice-clone, not ASR. No secret rotation required — `VOLCANO_ASR_APPID` / `<redacted>` are already provisioned. |
 | `backend-services/basic-service/env.template` | **modify** | Mirror the `.env` doc-comment updates: the comment on `VOLCANO_ASR_RESOURCE_ID` lists both `duration` and `concurrent` variants. Make clear `VOLCANO_ASR_API_KEY` / `PUBLIC_BASE_URL` are no longer required. |
 | `backend-services/basic-service/requirements.txt` | **verify only — no change** | Already pins `websockets==15.0.1`; spec's `>=12.0` requirement is satisfied. |
 | `backend-services/basic-service/tests/test_volcano_ws_protocol.py` | **new** | Header encode round-trip; gzip framing; positive-seq & negative-seq audio packets; full-client-request frame matches the §2.3 byte layout; error-frame parsing surfaces `error_code` + UTF-8 message. |

@@ -150,7 +150,7 @@ ValueError: Video Cut LLM API key and URL must be configured
 
 ```python
 def __init__(self):
-    self.api_key = ***REMOVED***
+    self.api_key = settings.video_cut_llm_api_key
     ...
     if not self.api_key or not self.api_url:
         raise ValueError("Video Cut LLM API key and URL must be configured")

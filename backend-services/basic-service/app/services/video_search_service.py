@@ -132,7 +132,7 @@ class VideoSearchService:
         Returns:
             Optional[Dict[str, Any]]: API response data or None
         """
-        api_key = ***REMOVED***()
+        api_key = self._get_random_api_key()
         if not api_key:
             return None
         

@@ -372,7 +372,7 @@ Response Body:
 ### 配置要求
 Python后端需要配置以下环境变量：
 ```env
-VIDEO_CUT_LLM_API_KEY=***REMOVED***
+VIDEO_CUT_LLM_API_KEY=<redacted>
 VIDEO_CUT_LLM_API_URL=https://club.claudecode.site
 VIDEO_CUT_LLM_MODEL=claude-sonnet-4-20250514
 ```

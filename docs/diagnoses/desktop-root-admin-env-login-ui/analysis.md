@@ -110,12 +110,12 @@ The backend then gives `ROOT_*` priority over `ADMIN_*`:
 - `backend-services/basic-service/app/config.py:971` sets `root_password` from
   `ROOT_PASSWORD` first, falling back to `ADMIN_PASSWORD`.
 
-The database startup syncs the root user from `***REMOVED***`:
+The database startup syncs the root user from `settings.auth.root_password`:
 
 - `backend-services/basic-service/app/database.py:123` reads
   `settings.auth.root_username`.
 - `backend-services/basic-service/app/database.py:124` reads
-  `***REMOVED***`.
+  `settings.auth.root_password`.
 - `backend-services/basic-service/app/database.py:139` to
   `backend-services/basic-service/app/database.py:142` hashes that root
   password.
@@ -127,11 +127,11 @@ The database startup syncs the root user from `***REMOVED***`:
   `backend-services/basic-service/app/database.py:182`.
 
 Finally, root login does not verify against the stored hash. It compares the
-typed password directly to `***REMOVED***`:
+typed password directly to `settings.auth.root_password`:
 
 - `backend-services/basic-service/app/services/auth_service.py:172` to
   `backend-services/basic-service/app/services/auth_service.py:179` use
-  `hmac.compare_digest(login_data.password, ***REMOVED***)` for
+  `hmac.compare_digest(login_data.password, settings.auth.root_password)` for
   root users.
 - `backend-services/basic-service/app/services/auth_service.py:183` to
   `backend-services/basic-service/app/services/auth_service.py:197` return

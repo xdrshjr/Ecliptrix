@@ -59,7 +59,7 @@ class ImageSearchService:
         Returns:
             API response data or None if failed
         """
-        api_key = ***REMOVED***()
+        api_key = self._get_current_api_key()
         if not api_key:
             logger.error("No Unsplash API key available")
             return None
@@ -86,7 +86,7 @@ class ImageSearchService:
                     logger.warning(f"Rate limit hit for API key index {self.current_key_index}")
                     if attempt < max_retries - 1:
                         self._rotate_api_key()
-                        api_key = ***REMOVED***()
+                        api_key = self._get_current_api_key()
                         headers['Authorization'] = f'Client-ID {api_key}'
                         continue
                 
@@ -111,7 +111,7 @@ class ImageSearchService:
                 
                 if attempt < max_retries - 1:
                     self._rotate_api_key()
-                    api_key = ***REMOVED***()
+                    api_key = self._get_current_api_key()
                     headers['Authorization'] = f'Client-ID {api_key}'
                 
             except Exception as e:

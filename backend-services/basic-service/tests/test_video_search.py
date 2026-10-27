@@ -68,7 +68,7 @@ class TestVideoSearchService:
         with patch('app.services.video_search_service.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1", "key2", "key3"]
             service = VideoSearchService()
-            api_key = ***REMOVED***()
+            api_key = service._get_random_api_key()
             assert api_key in ["key1", "key2", "key3"]
     
     def test_get_random_api_key_no_keys(self):
@@ -76,7 +76,7 @@ class TestVideoSearchService:
         with patch('app.services.video_search_service.settings') as mock_settings:
             mock_settings.pexels_api_keys = []
             service = VideoSearchService()
-            api_key = ***REMOVED***()
+            api_key = service._get_random_api_key()
             assert api_key is None
     
     def test_is_landscape_video(self):

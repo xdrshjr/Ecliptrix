@@ -27,7 +27,7 @@ class VideoUnderstandingScriptService:
     
     def __init__(self):
         """Initialize the video understanding script service."""
-        self.api_key = ***REMOVED***
+        self.api_key = settings.video_cut_llm_api_key
         self.api_url = settings.video_cut_llm_api_url
         self.model = settings.video_cut_llm_model
         self.api_type = normalize_api_type(settings.video_cut_llm_api_type)

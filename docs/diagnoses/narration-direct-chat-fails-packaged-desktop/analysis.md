@@ -138,7 +138,7 @@ if (!apiKey) {
 ```py
 # backend-services/basic-service/app/services/model_settings_service.py:574-601
 if assignment and assignment.provider:           # ① DB 里有 ModelAssignment（用户在 设置→模型设置 配过）
-    return ResolvedConfigResponse(api_key=***REMOVED***, ...)
+    return ResolvedConfigResponse(api_key=assignment.provider.api_key, ...)
 settings = get_settings()                          # ② 否则回退后端环境变量
 env_map = { ModelFunctionType.CHAT: (settings.llm_api_url, settings.llm_api_key, ...) }  # = LLM_API_URL / LLM_API_KEY
 ```

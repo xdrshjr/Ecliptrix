@@ -399,7 +399,7 @@ const ModelSettingsPanel: React.FC = () => {
             name: providerForm.name,
             provider_type: providerForm.provider_type,
             api_url: providerForm.api_url,
-            api_key: ***REMOVED*** ? providerForm.api_key : '__KEEP__',
+            api_key: providerForm.api_key_changed ? providerForm.api_key : '__KEEP__',
             api_format: providerForm.api_format,
           },
         );
@@ -995,10 +995,10 @@ const ModelSettingsPanel: React.FC = () => {
               <input
                 type={showApiKey ? 'text' : 'password'}
                 autoComplete="new-password"
-                value={***REMOVED*** ? providerForm.api_key : ''}
+                value={providerForm.api_key_changed ? providerForm.api_key : ''}
                 onChange={e => setProviderForm(prev => prev ? { ...prev, api_key: e.target.value, api_key_changed: true } : null)}
                 onFocus={() => {
-                  if (!***REMOVED*** && providerForm.id) {
+                  if (!providerForm.api_key_changed && providerForm.id) {
                     setProviderForm(prev => prev ? { ...prev, api_key: '', api_key_changed: true } : null);
                   }
                 }}

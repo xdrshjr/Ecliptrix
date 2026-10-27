@@ -444,7 +444,7 @@ class Settings(BaseModel):
     # previous V3 file-submit path required a publicly fetchable audio URL,
     # which production cannot guarantee. The streaming endpoint authenticates
     # with the legacy-console headers (X-Api-App-Key + X-Api-Access-Key) we
-    # already provision via VOLCANO_ASR_APPID / ***REMOVED***.
+    # already provision via VOLCANO_ASR_APPID / VOLCANO_ASR_ACCESS_TOKEN.
     # `volcano_asr_api_key` is retained for forward compatibility with the
     # new-console single-key handshake; it is **not** required for the
     # WebSocket path.
@@ -909,7 +909,7 @@ def get_settings() -> Settings:
             "VOLCANO_ASR_APPID", os.getenv("VOLCANO_TTS_APPID", "")
         ),
         volcano_asr_access_token=os.getenv(
-            "***REMOVED***", os.getenv("VOLCANO_TTS_ACCESS_TOKEN", "")
+            "VOLCANO_ASR_ACCESS_TOKEN", os.getenv("VOLCANO_TTS_ACCESS_TOKEN", "")
         ),
         volcano_asr_secret_key=os.getenv(
             "VOLCANO_ASR_SECRET_KEY", os.getenv("VOLCANO_TTS_SECRET_KEY", "")

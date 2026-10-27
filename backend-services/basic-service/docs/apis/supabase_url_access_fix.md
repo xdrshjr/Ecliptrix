@@ -105,7 +105,7 @@ if '?' in public_url and '/object/public/' in public_url:
 
 ```env
 SUPABASE_URL=https://hlqvzgwmbejiviaekdns.supabase.co
-SUPABASE_ANON_KEY=***REMOVED***t_IDz-_tlUR8C4Yai2G05l4UdFiHOMUom-DNW08dIws
+SUPABASE_ANON_KEY=your_supabase_anon_key_here
 SUPABASE_BUCKET=articraft-dev
 ENVIRONMENT=development
 ```

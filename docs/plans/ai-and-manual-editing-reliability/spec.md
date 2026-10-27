@@ -422,7 +422,7 @@ Ctrl+Z / Delete / S 等键盘改写（`agent-timeline-lock-overlay` 只挡指针
    ```python
    ModelFunctionType.VIDEO_CUT: (
        (settings.video_cut_llm_api_url,
-        ***REMOVED*** or settings.llm_api_key,  # v2 RV-10：保留旧 .env 的 key 回退
+        settings.video_cut_llm_api_key or settings.llm_api_key,  # v2 RV-10：保留旧 .env 的 key 回退
         settings.video_cut_llm_model or settings.llm_model, settings.video_cut_llm_api_type)
        if settings.video_cut_llm_api_url
        else (settings.llm_api_url, settings.llm_api_key, settings.llm_model, settings.llm_api_type)

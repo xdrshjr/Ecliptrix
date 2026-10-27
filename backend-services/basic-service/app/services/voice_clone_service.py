@@ -44,7 +44,7 @@ ERROR_CODE_MAP = {
 class VoiceCloneService:
     def __init__(self):
         self.app_key = settings.volcano_voice_clone_app_key
-        self.access_key = ***REMOVED***
+        self.access_key = settings.volcano_voice_clone_access_key
         self.speaker_id_prefix = settings.volcano_voice_clone_speaker_id_prefix
 
     def _build_headers(self) -> dict:
