@@ -19,6 +19,8 @@ export type SettingsMenuItem =
 interface SettingsSidebarProps {
   activeItem: SettingsMenuItem;
   onSelectItem: (item: SettingsMenuItem) => void;
+  /** Entries that still need setup get an amber dot + screen-reader text. */
+  attentionItems?: SettingsMenuItem[];
 }
 
 interface MenuEntry {
@@ -34,7 +36,11 @@ interface MenuGroup {
   items: MenuEntry[];
 }
 
-const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeItem, onSelectItem }) => {
+const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
+  activeItem,
+  onSelectItem,
+  attentionItems = [],
+}) => {
   const { t } = useLocale();
 
   // Three groups instead of nine flat rows: the owner is looking for either an
@@ -192,6 +198,15 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeItem, onSelectI
                         activeItem === item.id ? 'text-primary' : 'text-foreground'
                       }`}>
                         {item.label}
+                        {attentionItems.includes(item.id) && (
+                          <>
+                            <span
+                              aria-hidden="true"
+                              className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle"
+                            />
+                            <span className="sr-only"> {t.setupWizard.needsSetup}</span>
+                          </>
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">
                         {item.description}

@@ -11,23 +11,23 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 from typing import Optional
 
 from fastapi import APIRouter, Header, Query
 
 from app.logger import get_logger
 from app.models.model_settings_models import ModelFunctionType
+from app.models.setup_status_models import CapabilityStatusData
 from app.services.model_settings_service import model_settings_service
+from app.services.setup_status_service import (
+    PLACEHOLDER_PATTERN,
+    compute_capability_status,
+)
 
 router = APIRouter(prefix="/config", tags=["Config"])
 logger = get_logger(__name__)
 
 _FLAG_HASH_SALT = "playback_v2"
-
-# Mirrors the desktop env.template placeholder convention (your_*_here) so a
-# template value copied verbatim into a web .env still reads as "unconfigured".
-_PLACEHOLDER_PATTERN = re.compile(r"^your_.*_here$", re.IGNORECASE)
 
 
 def _parse_rollout_percent() -> int:
@@ -54,15 +54,15 @@ def _bucket(user_id: str) -> int:
 async def llm_status() -> dict:
     """Report whether a usable CHAT LLM credential exists (DB assignment or env).
 
-    Public by design (auth middleware allowlists /api/config/) and secret-free:
-    only booleans/enums are returned so the renderer can decide whether to show
-    the first-run setup guide. NEVER add api_key/api_url fields here.
+    Deprecated: superseded by ``/capability-status`` (kept one release as a
+    rollback buffer). Secret-free: only booleans/enums are returned.
+    NEVER add api_key/api_url fields here.
     """
     try:
         config = await model_settings_service.get_effective_config(ModelFunctionType.CHAT)
         api_key = (config.api_key or "").strip()
         api_url = (config.api_url or "").strip()
-        configured = bool(api_key) and bool(api_url) and not _PLACEHOLDER_PATTERN.match(api_key)
+        configured = bool(api_key) and bool(api_url) and not PLACEHOLDER_PATTERN.match(api_key)
         source = config.source if configured else "none"
     except Exception:
         # R4: resolution fault ≠ "unconfigured" — signal indeterminate so the
@@ -71,6 +71,23 @@ async def llm_status() -> dict:
         logger.exception("llm-status resolution failed — reporting indeterminate")
         return {"success": False, "data": {"configured": False, "source": "none"}}
     return {"success": True, "data": {"configured": configured, "source": source}}
+
+
+@router.get("/capability-status")
+async def capability_status() -> dict:
+    """Per-capability readiness for the first-run setup wizard.
+
+    No auth dependency (the app has no login; the backend binds 127.0.0.1).
+    Secret-free by contract: NEVER add api_key/api_url fields here.
+    """
+    try:
+        data = await compute_capability_status()
+    except Exception:
+        # Whole-resolver fault ≠ "unconfigured": the renderer maps this to
+        # 'unknown' and does not flash the wizard.
+        logger.exception("capability-status failed — reporting indeterminate")
+        return {"success": False, "data": CapabilityStatusData(capabilities=[]).model_dump()}
+    return {"success": True, "data": data.model_dump()}
 
 
 @router.get("/playback-flag")

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { ApiError, RateLimitError, TimeoutError } from '@/lib/api/http-client';
 import { resolveResearchStatus } from '@/lib/webResearchStatus';
+import { notifySetupConfigUpdated } from '@/lib/setupEvents';
 import {
   getWebResearchCapabilities, saveResearchCredentials,
   saveWebResearchSettings, testResearchConnection,
@@ -141,6 +142,7 @@ export default function WebResearchSettingsPanel({ onOpenModels }: {
     setKeyError(false);
     void run(async () => {
       const status = await saveResearchCredentials(entries);
+      notifySetupConfigUpdated();
       setKeys('');
       await refreshCapabilities();
       setKeyCount(status.key_count);

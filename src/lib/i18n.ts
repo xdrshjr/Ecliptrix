@@ -3251,6 +3251,97 @@ export interface Translations {
     later: string;
     settingsAttentionHint: string;
   };
+  setupWizard: {
+    title: string;
+    subtitle: string;
+    privacyNote: string;
+    duration: string;
+    stepOverview: string;
+    stepProvider: string;
+    stepModels: string;
+    stepSearch: string;
+    stepDone: string;
+    stepCounter: string;
+    start: string;
+    resume: string;
+    later: string;
+    back: string;
+    backToKey: string;
+    next: string;
+    saveContinue: string;
+    verifyContinue: string;
+    verifying: string;
+    saving: string;
+    savingChat: string;
+    saveTest: string;
+    testing: string;
+    saveAnyway: string;
+    skipSearch: string;
+    skipVerify: string;
+    retry: string;
+    finish: string;
+    finishPartial: string;
+    finishPartialNote: string;
+    doneTitle: string;
+    donePartialTitle: string;
+    doneDesc: string;
+    openSettings: string;
+    rerun: string;
+    rerunDesc: string;
+    needsSetup: string;
+    discardPrompt: string;
+    keepEditing: string;
+    discard: string;
+    showKey: string;
+    hideKey: string;
+    providerTitle: string;
+    providerDesc: string;
+    savedProviders: string;
+    regionDomestic: string;
+    regionInternational: string;
+    customProvider: string;
+    usingSaved: string;
+    apiKey: string;
+    apiKeyPlaceholder: string;
+    keyKept: string;
+    apiUrl: string;
+    providerName: string;
+    advanced: string;
+    modelsTitle: string;
+    modelsDesc: string;
+    mainModel: string;
+    manualModel: string;
+    useSameForAll: string;
+    visionHint: string;
+    visionLikely: string;
+    searchTitle: string;
+    searchDesc: string;
+    searchKeys: string;
+    searchKeysHint: string;
+    getKey: string;
+    cap: Record<'chat' | 'fast' | 'video_cut' | 'vision' | 'research' | 'web_search', { name: string; desc: string }>;
+    state: {
+      ready: string;
+      inherited: string;
+      missing: string;
+      invalid: string;
+      indeterminate: string;
+      optedOut: string;
+    };
+    source: { database: string; environment: string; inherited: string };
+    err: {
+      keyRequired: string;
+      keyPlaceholder: string;
+      keyInvalid: string;
+      unreachable: string;
+      noModelList: string;
+      chatFailed: string;
+      slotFailed: string;
+      searchUnreachable: string;
+      tooManyKeys: string;
+      generic: string;
+    };
+  };
   narrationDirectScript: {
     modeNarrationDirect: string;
     modeNarrationDirectDesc: string;
@@ -7069,6 +7160,108 @@ export const translations: Record<string, Translations> = {
       later: 'Maybe later',
       settingsAttentionHint: 'Model credentials need configuration',
     },
+    setupWizard: {
+      title: 'Let\'s connect your AI',
+      subtitle: 'Ecliptrix needs your own API keys to power chat, mixed editing and research.',
+      privacyNote: 'Keys are stored on this computer only.',
+      duration: 'Takes about 2 minutes. You can change everything later in Settings.',
+      stepOverview: 'Overview',
+      stepProvider: 'Connect a provider',
+      stepModels: 'Choose models',
+      stepSearch: 'Web search',
+      stepDone: 'All set',
+      stepCounter: 'Step {current} of {total}',
+      start: 'Get started',
+      resume: 'Continue setup',
+      later: 'Maybe later',
+      back: 'Back',
+      backToKey: 'Edit key',
+      next: 'Continue',
+      saveContinue: 'Save and continue',
+      verifyContinue: 'Verify and continue',
+      verifying: 'Verifying…',
+      saving: 'Saving…',
+      savingChat: 'Checking the chat model…',
+      saveTest: 'Save and test',
+      testing: 'Testing…',
+      saveAnyway: 'Save and continue anyway',
+      skipSearch: 'Skip web search',
+      skipVerify: 'Skip check, enter a model manually',
+      retry: 'Retry',
+      finish: 'Start creating',
+      finishPartial: 'Enter the app',
+      finishPartialNote: '{count} left to set up. You can finish them any time in Settings.',
+      doneTitle: 'You\'re ready',
+      donePartialTitle: 'Almost there',
+      doneDesc: 'Everything below is configured. Adjust it any time in Settings.',
+      openSettings: 'Open Settings',
+      rerun: 'Re-run setup wizard',
+      rerunDesc: 'Walk through provider, model and search setup again.',
+      needsSetup: 'Needs setup',
+      discardPrompt: 'You have unsaved input. Close and discard it?',
+      keepEditing: 'Keep editing',
+      discard: 'Discard',
+      showKey: 'Show',
+      hideKey: 'Hide',
+      providerTitle: 'Connect a model provider',
+      providerDesc: 'Pick the service you have an API key for.',
+      savedProviders: 'Saved on this computer',
+      regionDomestic: 'China',
+      regionInternational: 'International',
+      customProvider: 'Custom (OpenAI-compatible)',
+      usingSaved: 'Using “{name}”. Its key is already saved on this computer.',
+      apiKey: 'API key',
+      apiKeyPlaceholder: 'Paste your API key',
+      keyKept: 'Already saved. Leave blank to keep it.',
+      apiUrl: 'API address',
+      providerName: 'Display name',
+      advanced: 'Advanced',
+      modelsTitle: 'Choose a model',
+      modelsDesc: 'One model can cover several features. Features that are already set up stay as they are.',
+      mainModel: 'Model',
+      manualModel: 'e.g. deepseek-chat',
+      useSameForAll: 'Use this model for',
+      visionHint: 'Needs a model that accepts images.',
+      visionLikely: 'This model may accept images.',
+      searchTitle: 'Add web search',
+      searchDesc: 'Lets the assistant look things up online. This is optional.',
+      searchKeys: 'Tavily API keys',
+      searchKeysHint: 'One per line, up to {max}.',
+      getKey: 'Get a Tavily key',
+      cap: {
+        chat: { name: 'Chat & agent', desc: 'Talk to the editing assistant' },
+        fast: { name: 'Quick model', desc: 'Translation and short helper tasks' },
+        video_cut: { name: 'AI mixed editing', desc: 'Cut and arrange clips automatically' },
+        vision: { name: 'Visual review', desc: 'Look at frames and images' },
+        research: { name: 'Research', desc: 'Gather and summarise sources' },
+        web_search: { name: 'Web search', desc: 'Search the web for material' },
+      },
+      state: {
+        ready: 'Configured',
+        inherited: 'Uses chat model',
+        missing: 'Needs setup',
+        invalid: 'Incomplete',
+        indeterminate: 'Can\'t tell',
+        optedOut: 'Not using',
+      },
+      source: {
+        database: 'Settings',
+        environment: 'Environment',
+        inherited: 'Inherited',
+      },
+      err: {
+        keyRequired: 'Enter your API key to continue.',
+        keyPlaceholder: 'That looks like a template placeholder, not a real key.',
+        keyInvalid: 'The key is invalid or lacks permission. Check it and try again.',
+        unreachable: 'Can\'t reach the provider. Check your network or the API address.',
+        noModelList: 'This provider doesn\'t list its models. Type the model name instead.',
+        chatFailed: 'The chat model couldn\'t be reached, so nothing else was saved.',
+        slotFailed: 'Couldn\'t save:',
+        searchUnreachable: 'Saved, but the connection test failed.',
+        tooManyKeys: 'Up to {max} keys are supported.',
+        generic: 'Something went wrong.',
+      },
+    },
     narrationDirectScript: {
       modeNarrationDirect: 'Narration — direct',
       modeNarrationDirectDesc: 'Chat with AI to write & split the narration',
@@ -10879,6 +11072,108 @@ export const translations: Record<string, Translations> = {
       goToSettings: '前往设置',
       later: '稍后再说',
       settingsAttentionHint: '模型凭证待配置',
+    },
+    setupWizard: {
+      title: '先把 AI 能力接通',
+      subtitle: '对话、AI 混剪和研究都需要你自己的 API Key。',
+      privacyNote: 'Key 只保存在本机。',
+      duration: '大约 2 分钟，之后都可以在设置里修改。',
+      stepOverview: '总览',
+      stepProvider: '连接服务商',
+      stepModels: '选择模型',
+      stepSearch: '联网搜索',
+      stepDone: '准备就绪',
+      stepCounter: '第 {current} 步 / 共 {total} 步',
+      start: '开始配置',
+      resume: '继续配置',
+      later: '稍后再说',
+      back: '返回',
+      backToKey: '返回修改 Key',
+      next: '继续',
+      saveContinue: '保存并继续',
+      verifyContinue: '验证并继续',
+      verifying: '正在验证…',
+      saving: '正在保存…',
+      savingChat: '正在验证对话模型…',
+      saveTest: '保存并测试',
+      testing: '正在测试…',
+      saveAnyway: '仍然保存并继续',
+      skipSearch: '暂不使用联网搜索',
+      skipVerify: '跳过验证，手动填写模型名',
+      retry: '重试',
+      finish: '开始创作',
+      finishPartial: '先进入应用',
+      finishPartialNote: '还有 {count} 项未配置，可随时在设置中补全。',
+      doneTitle: '准备就绪',
+      donePartialTitle: '还差一点',
+      doneDesc: '下面的能力都已配置，之后可随时在设置中调整。',
+      openSettings: '在设置中查看',
+      rerun: '重新运行设置向导',
+      rerunDesc: '重新走一遍服务商、模型和搜索的配置流程。',
+      needsSetup: '待配置',
+      discardPrompt: '有尚未提交的输入，确定关闭并放弃吗？',
+      keepEditing: '继续编辑',
+      discard: '放弃',
+      showKey: '显示',
+      hideKey: '隐藏',
+      providerTitle: '连接模型服务商',
+      providerDesc: '选择你持有 API Key 的服务商。',
+      savedProviders: '本机已保存',
+      regionDomestic: '国内',
+      regionInternational: '国际',
+      customProvider: '自定义（OpenAI 兼容）',
+      usingSaved: '使用已保存的「{name}」，它的 Key 已保存在本机。',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: '粘贴你的 API Key',
+      keyKept: '已保存。留空则保持不变。',
+      apiUrl: 'API 地址',
+      providerName: '显示名称',
+      advanced: '高级',
+      modelsTitle: '选择模型',
+      modelsDesc: '一个模型可以覆盖多个功能；已经配置好的功能保持不变。',
+      mainModel: '模型',
+      manualModel: '例如 deepseek-chat',
+      useSameForAll: '同一模型用于',
+      visionHint: '需要支持图片输入的模型。',
+      visionLikely: '该模型可能支持图片输入。',
+      searchTitle: '添加联网搜索',
+      searchDesc: '让助手能在线查资料，可选。',
+      searchKeys: 'Tavily API Key',
+      searchKeysHint: '每行一个，最多 {max} 个。',
+      getKey: '获取 Tavily Key',
+      cap: {
+        chat: { name: '对话与 Agent', desc: '与剪辑助手对话' },
+        fast: { name: '快速模型', desc: '翻译等简短辅助任务' },
+        video_cut: { name: 'AI 混剪', desc: '自动剪切并编排片段' },
+        vision: { name: '视觉审阅', desc: '查看画面与图片' },
+        research: { name: '研究', desc: '收集并整理资料来源' },
+        web_search: { name: '联网搜索', desc: '在网上搜索素材与资料' },
+      },
+      state: {
+        ready: '已配置',
+        inherited: '沿用对话模型',
+        missing: '待配置',
+        invalid: '配置不完整',
+        indeterminate: '无法确认',
+        optedOut: '不使用',
+      },
+      source: {
+        database: '设置',
+        environment: '环境变量',
+        inherited: '沿用',
+      },
+      err: {
+        keyRequired: '请先填写 API Key。',
+        keyPlaceholder: '这看起来是模板占位符，不是真实的 Key。',
+        keyInvalid: 'Key 无效或无权限，请检查后重试。',
+        unreachable: '无法连接到服务商，请检查网络或 API 地址。',
+        noModelList: '该服务商未提供模型列表，请直接填写模型名。',
+        chatFailed: '对话模型无法连通，因此其余项均未保存。',
+        slotFailed: '保存失败：',
+        searchUnreachable: '已保存，但连接测试未通过。',
+        tooManyKeys: '最多支持 {max} 个 Key。',
+        generic: '出了点问题。',
+      },
     },
     narrationDirectScript: {
       modeNarrationDirect: '解说直接生成',

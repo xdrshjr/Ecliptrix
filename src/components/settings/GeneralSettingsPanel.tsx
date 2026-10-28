@@ -66,7 +66,14 @@ const SELECT_CLASS =
  * which produced two sources of truth for one local setting; a single-owner
  * desktop app has nowhere to sync them to.
  */
-const GeneralSettingsPanel: React.FC = () => {
+interface GeneralSettingsPanelProps {
+  /** Re-open the first-run setup wizard (all capabilities, manual mode). */
+  onRerunSetupWizard?: () => void;
+}
+
+const GeneralSettingsPanel: React.FC<GeneralSettingsPanelProps> = ({
+  onRerunSetupWizard,
+}) => {
   const { t, locale, setLocale } = useLocale();
   const [theme, setTheme] = useState<ThemePreference>(() => readCurrentTheme());
 
@@ -139,6 +146,26 @@ const GeneralSettingsPanel: React.FC = () => {
             </select>
           </div>
         </div>
+
+        {onRerunSetupWizard && (
+          <div className="mt-6 flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">
+                {t.setupWizard.rerun}
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t.setupWizard.rerunDesc}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onRerunSetupWizard}
+              className="flex-shrink-0 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+            >
+              {t.setupWizard.rerun}
+            </button>
+          </div>
+        )}
 
         <div className="pt-6 mt-6 border-t border-border">
           <p role="status" aria-live="polite" className="text-xs text-muted-foreground">

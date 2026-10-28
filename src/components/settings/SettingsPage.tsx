@@ -17,9 +17,17 @@ import VideoAnalysisSettingsPanel from './VideoAnalysisSettingsPanel';
 interface SettingsPageProps {
   onClose: () => void;
   initialItem?: SettingsMenuItem;
+  /** Sidebar entries that still need setup (same verdict as the wizard). */
+  attentionItems?: SettingsMenuItem[];
+  onRerunSetupWizard?: () => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({
+  onClose,
+  initialItem,
+  attentionItems,
+  onRerunSetupWizard,
+}) => {
   const [activeItem, setActiveItem] = useState<SettingsMenuItem>(initialItem ?? 'general');
 
   useEffect(() => {
@@ -50,7 +58,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => 
   const renderContent = () => {
     switch (activeItem) {
       case 'general':
-        return <GeneralSettingsPanel />;
+        return <GeneralSettingsPanel onRerunSetupWizard={onRerunSetupWizard} />;
       case 'model':
         return <ModelSettingsPanel />;
       case 'webResearch':
@@ -83,6 +91,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose, initialItem }) => 
         <SettingsSidebar
           activeItem={activeItem}
           onSelectItem={setActiveItem}
+          attentionItems={attentionItems}
         />
       </div>
 

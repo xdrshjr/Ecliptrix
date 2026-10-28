@@ -12,7 +12,7 @@ interface ModelQuickStartCardProps {
  *
  * Kept outside ModelSettingsPanel.tsx (already over the 800-line threshold) —
  * the panel only swaps its dashed empty-state div for this card. Step copy is
- * shared with SetupGuideDialog via the setupGuide i18n namespace.
+ * from the setupGuide i18n namespace (the first-run wizard has its own setupWizard one).
  */
 const ModelQuickStartCard: React.FC<ModelQuickStartCardProps> = ({ onAddProvider }) => {
   const { t } = useLocale();

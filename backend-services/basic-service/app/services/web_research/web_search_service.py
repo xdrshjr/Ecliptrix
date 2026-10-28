@@ -27,14 +27,18 @@ class WebSearchService:
             return configured
         return list(get_settings().tavily_api_keys)
 
+    def usable_keys(self):
+        """归一化后实际参与搜索的 key（strip → 去重 → 至多 3 个）。"""
+        return list(dict.fromkeys(key.strip() for key in self._api_keys()
+                                  if isinstance(key, str) and key.strip()))[:3]
+
     async def _tavily_post(self, api_key, payload):
         return await fetch_search_response(api_key, payload)
 
     async def search(self, query, max_results=5, search_depth="basic",
                      include_images=False, run=None):
         deadline = _clock() + SEARCH_TIMEOUT
-        keys = list(dict.fromkeys(key.strip() for key in self._api_keys()
-                                  if isinstance(key, str) and key.strip()))[:3]
+        keys = self.usable_keys()
         if not keys:
             raise WebResearchError("provider_not_configured")
         payload = {"query": query, "max_results": max_results,

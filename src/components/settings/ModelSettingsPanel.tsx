@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { http, ApiError } from '@/lib/api/http-client';
+import { notifySetupConfigUpdated } from '@/lib/setupEvents';
 import ModelQuickStartCard from './components/ModelQuickStartCard';
 
 // ── API response envelope types (loose-typed because the backend response
@@ -420,7 +421,7 @@ const ModelSettingsPanel: React.FC = () => {
       if (data.success) {
         showSuccess(t.adminSettings.modelProviderSaved);
         // 通知首页引导/徽标实时刷新 LLM 配置状态
-        window.dispatchEvent(new Event('ecliptrix-llm-config-updated'));
+        notifySetupConfigUpdated();
         setProviderForm(null);
         await fetchData();
       } else {
@@ -444,6 +445,7 @@ const ModelSettingsPanel: React.FC = () => {
       );
       if (data.success) {
         showSuccess(t.adminSettings.modelProviderDeleted);
+        notifySetupConfigUpdated();
         setDeleteConfirmId(null);
         await fetchData();
       } else {
@@ -600,7 +602,7 @@ const ModelSettingsPanel: React.FC = () => {
       if (data.success) {
         showSuccess(t.adminSettings.modelAssignmentSaved);
         // 通知首页引导/徽标实时刷新 LLM 配置状态
-        window.dispatchEvent(new Event('ecliptrix-llm-config-updated'));
+        notifySetupConfigUpdated();
         await fetchData();
       } else {
         showError(data.detail || t.adminSettings.modelSaveError);
@@ -620,6 +622,7 @@ const ModelSettingsPanel: React.FC = () => {
     try {
       await http.del(`/api/model-settings/assignments/${ft}`);
       showSuccess(t.adminSettings.modelAssignmentDeleted);
+      notifySetupConfigUpdated();
       const defaultTemp = ft === 'coding' ? 1.0 : ft === 'research' ? 0.2 : 0.7;
       updateAssignmentForm(ft, { provider_id: null, model_name: '', temperature: defaultTemp, modelInputMode: 'select' });
       setAssignments(prev => ({ ...prev, [ft]: null }));

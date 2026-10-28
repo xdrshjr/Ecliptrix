@@ -6,9 +6,13 @@ import VerticalTaskbar from '@/components/VerticalTaskbar';
 import Container from '@/components/Container';
 import SettingsPage from '@/components/settings/SettingsPage';
 import { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
-import SetupGuideDialog from '@/components/Onboarding/SetupGuideDialog';
+import SetupWizard from '@/components/Onboarding/SetupWizard';
+import {
+  settingsAttentionItems,
+  type WizardMode,
+} from '@/components/Onboarding/wizard/wizardSteps';
 import { useTasks } from '@/hooks/useTasks';
-import { useLlmConfigStatus } from '@/hooks/useLlmConfigStatus';
+import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useDesktopCloseGuard } from '@/hooks/useDesktopCloseGuard';
 
 // Session-scoped (not localStorage): re-prompt on next launch if still
@@ -35,7 +39,12 @@ export default function HomePage() {
   useDesktopCloseGuard();
 
   // No RBAC any more — the single local owner may always fix credentials.
-  const { status: llmStatus, refresh: refreshLlmStatus } = useLlmConfigStatus();
+  const {
+    status: setupStatus,
+    capabilities,
+    optOuts,
+    refresh: refreshSetupStatus,
+  } = useSetupStatus();
 
   // Straight to the editing workspace once the tab store has hydrated. The
   // gate is `hydrated` alone — SSR and the first client frame both render the
@@ -65,6 +74,18 @@ export default function HomePage() {
     setSetupGuideDismissed(true);
   };
 
+  // The wizard stays open once started: its own writes make the status turn
+  // 'complete' mid-flow, and the done page must not be yanked away.
+  const [wizardMode, setWizardMode] = useState<WizardMode | null>(null);
+  useEffect(() => {
+    const shouldAutoOpen =
+      hydrated
+      && setupStatus === 'needs-setup'
+      && !setupGuideDismissed
+      && !isSettingsOpen;
+    if (shouldAutoOpen) setWizardMode((current) => current ?? 'auto');
+  }, [hydrated, setupStatus, setupGuideDismissed, isSettingsOpen]);
+
   const handleSelectTab = (tabId: string) => {
     setIsSettingsOpen(false);
     selectTab(tabId);
@@ -73,19 +94,37 @@ export default function HomePage() {
   const closeSettings = () => {
     setIsSettingsOpen(false);
     setSettingsItem('general');
-    // The owner may have just saved model credentials — re-read the status so
-    // the gear's attention dot clears immediately.
-    refreshLlmStatus();
+    // The owner may have just saved credentials — re-read the status so the
+    // gear's attention dot clears immediately.
+    refreshSetupStatus();
   };
 
-  const showSetupGuide =
-    llmStatus === 'unconfigured' && !setupGuideDismissed && !isSettingsOpen;
+  const handleWizardClose = () => {
+    // Any exit from the automatic prompt (including "enter the app" with gaps
+    // left) is remembered for the session, or the effect above would reopen it
+    // at once. A manual re-run is the owner's own request and is not.
+    if (wizardMode === 'auto') dismissSetupGuide();
+    setWizardMode(null);
+    refreshSetupStatus();
+  };
+
+  const openSettingsFromWizard = (item: SettingsMenuItem) => {
+    if (wizardMode === 'auto') dismissSetupGuide();
+    setWizardMode(null);
+    setSettingsItem(item);
+    setIsSettingsOpen(true);
+  };
+
+  const rerunSetupWizard = () => {
+    setIsSettingsOpen(false);
+    setWizardMode('manual');
+  };
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <AppTitleBar
         onSettingsClick={() => setIsSettingsOpen(true)}
-        showSettingsAttention={llmStatus === 'unconfigured'}
+        showSettingsAttention={setupStatus === 'needs-setup'}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -106,7 +145,12 @@ export default function HomePage() {
 
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {isSettingsOpen ? (
-                <SettingsPage initialItem={settingsItem} onClose={closeSettings} />
+                <SettingsPage
+                  initialItem={settingsItem}
+                  onClose={closeSettings}
+                  attentionItems={settingsAttentionItems(capabilities, optOuts)}
+                  onRerunSetupWizard={rerunSetupWizard}
+                />
               ) : (
                 <Container
                   activeTask={activeTask}
@@ -122,15 +166,15 @@ export default function HomePage() {
         )}
       </div>
 
-      <SetupGuideDialog
-        open={showSetupGuide}
-        onGoToSettings={() => {
-          dismissSetupGuide();
-          setSettingsItem('model');
-          setIsSettingsOpen(true);
-        }}
-        onDismiss={dismissSetupGuide}
-      />
+      {wizardMode && (
+        <SetupWizard
+          mode={wizardMode}
+          capabilities={capabilities}
+          optOuts={optOuts}
+          onClose={handleWizardClose}
+          onOpenSettings={openSettingsFromWizard}
+        />
+      )}
     </div>
   );
 }

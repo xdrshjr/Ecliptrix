@@ -135,7 +135,7 @@ const TitleBarActions: React.FC<TitleBarActionsProps> = ({
   }, []);
 
   // Escape closes an open dropdown. Act only while it is open and never
-  // preventDefault/stopPropagation, so SetupGuideDialog keeps its own Escape
+  // preventDefault/stopPropagation, so the setup wizard keeps its own Escape
   // handling.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

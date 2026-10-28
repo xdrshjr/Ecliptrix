@@ -738,6 +738,13 @@ class ModelSettingsService:
 
     async def _resolve_staged_config(self, stages):
         """按 stages 顺序成组回落；组内缺项即 configuration_invalid。"""
+        return (await self._pick_stage(stages))[1]
+
+    async def resolve_stage_origin(self, stages):
+        """与 `_resolve_staged_config` 同规则，另返回命中的档位。"""
+        return await self._pick_stage(stages)
+
+    async def _pick_stage(self, stages):
         from app.models.web_research_models import WebResearchError
         settings = get_settings()
         for function_type, prefix in stages:
@@ -749,13 +756,18 @@ class ModelSettingsService:
                     and environment[2] == "qwen3-next-80b-a3b-instruct"
                     and not os.getenv("FAST_LLM_MODEL")):
                 environment = None
+            # vl_llm_model 自带默认值 qwen-vl-plus：只有默认模型而无 url/key
+            # 不算「已配置」，否则干净安装下 vision 永远 configuration_invalid。
+            if (prefix == "vl_llm" and not any(environment[:2])
+                    and not os.getenv("VL_LLM_MODEL")):
+                environment = None
             for source, group in [("database", assigned),
                                   ("environment", environment)]:
                 if group is None or not any(group[:3]):
                     continue
                 if not all(group[:3]) or group[3] not in {"openai", "anthropic"}:
                     raise WebResearchError("configuration_invalid")
-                return ResolvedConfigResponse(
+                return function_type, ResolvedConfigResponse(
                     success=True, source=source, api_url=group[0],
                     api_key=group[1], model_name=group[2], api_type=group[3],
                     temperature=0.2, max_tokens=1800)
