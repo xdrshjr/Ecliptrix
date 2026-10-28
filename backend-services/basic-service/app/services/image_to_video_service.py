@@ -1,599 +1,438 @@
-"""
-Image to video conversion service using FFmpeg.
-Supports static, Ken Burns, and pan effects.
+"""Image -> video conversion (static / Ken Burns / pan) on local FFmpeg.
+
+Design points (docs/plans/agent-still-to-clip/spec.md §6.2):
+
+* The source may be base64, a storage key, a same-origin path or a remote URL;
+  every path is validated before any byte is read.
+* Nothing blocks the event loop: disk and PIL work run in threads, FFmpeg is an
+  ``asyncio`` subprocess with a timeout, and cancellation kills it.
+* Output is content-addressed (``sha1(image bytes + canonical params)``) so a
+  repeated call - SSE replay, model retry, user retry - returns the same file
+  without re-rendering.
 """
 
+from __future__ import annotations
+
+import asyncio
+import base64
+import hashlib
+import io
+import json
 import os
-import time
+import shutil
 import tempfile
-import subprocess
-import requests
+import time
+import uuid
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
-from PIL import Image
+from typing import Optional, Tuple
+from urllib.parse import quote
+
+import httpx
+from PIL import Image, ImageOps
 
 from app.logger import get_logger
 from app.models import (
+    ImageToVideoErrorResponse,
     ImageToVideoRequest,
     ImageToVideoResponse,
-    ImageToVideoErrorResponse,
-    ImageToVideoEffect
+)
+from app.models.agent_vision_models import AgentVisionError
+from app.security.url_guard import URLGuardError, validate_external_url
+from app.services import image_to_video_filters as filters
+from app.services.agent_vision.image_source import validate_storage_key
+from app.services.local_media_resolver import (
+    LocalMediaResolveError,
+    ResolvedMediaPath,
+    resolve_media_reference,
 )
 from app.services.storage_service import storage_service
 
 logger = get_logger(__name__)
 
+MAX_IMAGE_BYTES = 25 * 1024 * 1024
+MAX_IMAGE_PIXELS = 64_000_000
+DOWNLOAD_TIMEOUT_SECONDS = 30.0
+MAX_REDIRECTS = 3
+GENERATED_DIR = "video/generated"
+STORAGE_URL_PREFIX = "/api/storage/files/"
+
+_ffmpeg_path_cache: Optional[str] = None
+
+
+class ImageToVideoFailure(Exception):
+    """A conversion failure that maps to one stable ``error_code``."""
+
+    def __init__(self, error_code: str, message: str,
+                 details: Optional[str] = None) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.message = message
+        self.details = details
+
+
+def find_ffmpeg() -> str:
+    """Return the FFmpeg executable path or raise ``FFMPEG_UNAVAILABLE``.
+
+    Only a positive lookup is cached, so installing FFmpeg while the app runs
+    takes effect on the next call instead of needing a restart.
+    """
+    global _ffmpeg_path_cache
+    if _ffmpeg_path_cache:
+        return _ffmpeg_path_cache
+    found = shutil.which("ffmpeg")
+    if not found:
+        raise ImageToVideoFailure(
+            "FFMPEG_UNAVAILABLE",
+            "FFmpeg was not found on this machine",
+            "Install FFmpeg and make sure it is on PATH.",
+        )
+    _ffmpeg_path_cache = found
+    return found
+
+
+# ── source acquisition ──────────────────────────────────────────────────────
+
+
+def _decode_base64_image(image_data: str) -> bytes:
+    payload = image_data.split(",", 1)[1] if image_data.startswith("data:") \
+        else image_data
+    try:
+        return base64.b64decode(payload, validate=False)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise ImageToVideoFailure(
+            "IMAGE_UNREADABLE", "image_data is not valid base64") from exc
+
+
+def _read_local_file(path: Path) -> bytes:
+    try:
+        if path.stat().st_size > MAX_IMAGE_BYTES:
+            raise ImageToVideoFailure(
+                "IMAGE_TOO_LARGE",
+                f"Image exceeds the {MAX_IMAGE_BYTES // (1024 * 1024)} MB limit")
+        return path.read_bytes()
+    except OSError as exc:
+        raise ImageToVideoFailure(
+            "IMAGE_NOT_FOUND", f"Cannot read image file: {exc}") from exc
+
+
+def _resolve_storage_key(storage_key: str) -> Path:
+    """Anchor a storage-root-relative key via the route branch (spec RV-02).
+
+    ``resolve_media_reference`` anchors bare relative strings at the service
+    directory, not the storage root, so the key is rewritten into the
+    ``/api/storage/files/`` route form, whose branch is rooted correctly and
+    containment-checked.
+    """
+    try:
+        key = validate_storage_key(storage_key)
+    except AgentVisionError as exc:
+        raise ImageToVideoFailure("INVALID_ARGUMENT", exc.message) from exc
+    return _resolve_reference(STORAGE_URL_PREFIX + quote(key, safe="/")).path
+
+
+def _resolve_reference(reference: str) -> ResolvedMediaPath:
+    """Map a reference to a validated local file or an SSRF-checked URL."""
+    try:
+        return resolve_media_reference(reference, allow_remote=True)
+    except LocalMediaResolveError as exc:
+        raise ImageToVideoFailure(
+            "IMAGE_NOT_FOUND", "Image could not be resolved",
+            str(exc)) from exc
+
+
+async def _download_remote(url: str) -> bytes:
+    """Download with a size cap, an ``image/`` check and per-hop SSRF checks."""
+    current = url
+    async with httpx.AsyncClient(
+        timeout=DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=False
+    ) as client:
+        for _ in range(MAX_REDIRECTS + 1):
+            try:
+                await asyncio.to_thread(validate_external_url, current)
+            except URLGuardError as exc:
+                raise ImageToVideoFailure(
+                    "IMAGE_NOT_FOUND", "Remote image URL is not allowed",
+                    str(exc)) from exc
+            async with client.stream("GET", current) as response:
+                if response.is_redirect:
+                    current = str(response.next_request.url) \
+                        if response.next_request else current
+                    continue
+                return await _read_image_stream(response)
+    raise ImageToVideoFailure(
+        "IMAGE_NOT_FOUND", "Too many redirects while downloading the image")
+
+
+async def _read_image_stream(response: httpx.Response) -> bytes:
+    if response.status_code != 200:
+        raise ImageToVideoFailure(
+            "IMAGE_NOT_FOUND",
+            f"Remote image request failed with HTTP {response.status_code}")
+    content_type = response.headers.get("content-type", "").lower()
+    if not content_type.startswith("image/"):
+        raise ImageToVideoFailure(
+            "IMAGE_UNREADABLE",
+            f"Remote resource is not an image (content-type: {content_type})")
+    declared = int(response.headers.get("content-length") or 0)
+    if declared > MAX_IMAGE_BYTES:
+        raise ImageToVideoFailure("IMAGE_TOO_LARGE", "Image is too large")
+    chunks, total = [], 0
+    async for chunk in response.aiter_bytes():
+        total += len(chunk)
+        if total > MAX_IMAGE_BYTES:
+            raise ImageToVideoFailure("IMAGE_TOO_LARGE", "Image is too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+async def load_image_bytes(request: ImageToVideoRequest) -> bytes:
+    """Fetch the source bytes: ``image_data`` > ``storage_key`` > ``image_url``."""
+    if request.image_data:
+        data = _decode_base64_image(request.image_data)
+    elif request.storage_key:
+        path = await asyncio.to_thread(_resolve_storage_key, request.storage_key)
+        data = await asyncio.to_thread(_read_local_file, path)
+    elif request.image_url:
+        resolved = await asyncio.to_thread(
+            _resolve_reference, request.image_url)
+        if resolved.source_kind == "legacy_remote":
+            data = await _download_remote(resolved.public_url)
+        else:
+            data = await asyncio.to_thread(_read_local_file, resolved.path)
+    else:
+        raise ImageToVideoFailure(
+            "MISSING_IMAGE_SOURCE",
+            "One of image_data, storage_key or image_url is required")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ImageToVideoFailure("IMAGE_TOO_LARGE", "Image is too large")
+    return data
+
+
+# ── decoding ────────────────────────────────────────────────────────────────
+
+
+def normalize_image(image_bytes: bytes, target: Path) -> Tuple[int, int]:
+    """Decode, apply EXIF rotation, flatten alpha and write ``target`` (PNG).
+
+    Returns the normalized ``(width, height)``. ``Image.open`` is lazy, so the
+    pixel cap is checked before any decoding; the process-wide
+    ``Image.MAX_IMAGE_PIXELS`` is deliberately left alone.
+    """
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            width, height = image.size
+            if width * height > MAX_IMAGE_PIXELS:
+                raise ImageToVideoFailure(
+                    "IMAGE_TOO_LARGE",
+                    f"Image is {width}x{height}; the limit is "
+                    f"{MAX_IMAGE_PIXELS // 1_000_000} megapixels")
+            image.seek(0)
+            upright = ImageOps.exif_transpose(image)
+            flat = _flatten_alpha(upright)
+            flat.save(target, format="PNG", compress_level=1)
+            return flat.size
+    except ImageToVideoFailure:
+        raise
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ImageToVideoFailure(
+            "IMAGE_UNREADABLE", "Image could not be decoded", str(exc)) from exc
+
+
+def _flatten_alpha(image: Image.Image) -> Image.Image:
+    if image.mode in ("RGBA", "LA") or (
+        image.mode == "P" and "transparency" in image.info
+    ):
+        rgba = image.convert("RGBA")
+        backdrop = Image.new("RGB", rgba.size, (0, 0, 0))
+        backdrop.paste(rgba, mask=rgba.getchannel("A"))
+        return backdrop
+    return image.convert("RGB")
+
+
+# ── rendering ───────────────────────────────────────────────────────────────
+
+
+def _content_key(image_bytes: bytes, params: dict) -> str:
+    digest = hashlib.sha1(image_bytes)
+    digest.update(json.dumps(params, sort_keys=True,
+                             separators=(",", ":")).encode("utf-8"))
+    return digest.hexdigest()[:16]
+
+
+async def _run_ffmpeg(args: list, timeout: float) -> str:
+    """Run FFmpeg; kill it on timeout or cancellation. Returns stderr."""
+    process = await asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE)
+    try:
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout)
+    except asyncio.TimeoutError as exc:
+        await _kill(process)
+        raise ImageToVideoFailure(
+            "QUEUE_TIMEOUT", f"FFmpeg did not finish within {int(timeout)}s",
+        ) from exc
+    except asyncio.CancelledError:
+        await _kill(process)
+        raise
+    text = stderr.decode("utf-8", errors="ignore")
+    if process.returncode != 0:
+        raise ImageToVideoFailure(
+            "FFMPEG_ERROR", "Video generation failed", text[-2000:])
+    return text
+
+
+async def _kill(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is None:
+        process.kill()
+    await process.wait()
+
+
+def _plan_render(
+    request: ImageToVideoRequest, source_size: Tuple[int, int]
+) -> Tuple[str, Optional[str], Tuple[int, int], Tuple[float, float], str]:
+    """Resolve effect, direction, frame size, focus and fit mode."""
+    effect = request.effect.value
+    direction = None
+    if effect == filters.EFFECT_KEN_BURNS:
+        direction = request.ken_burns_direction or filters.KB_ZOOM_IN
+    elif effect == filters.EFFECT_PAN:
+        direction = request.pan_direction or filters.PAN_LEFT_TO_RIGHT
+    size = filters.output_size(
+        *source_size, request.aspect_ratio, request.max_long_side)
+    uses_focus = effect != filters.EFFECT_STATIC
+    focus = (request.focus_x if request.focus_x is not None else 0.5,
+             request.focus_y if request.focus_y is not None else 0.5) \
+        if uses_focus else (0.5, 0.5)
+    fit = "contain"
+    if effect == filters.EFFECT_STATIC and not filters.ratios_match(
+            *source_size, *size):
+        fit = "blur"
+    return effect, direction, size, focus, fit
+
+
+def _storage_target(key: str, suffix: str) -> Path:
+    root = Path(storage_service.root).resolve()
+    return root / GENERATED_DIR / f"i2v_{key}{suffix}"
+
+
+def _storage_url(key: str, suffix: str) -> str:
+    return f"{STORAGE_URL_PREFIX}{GENERATED_DIR}/i2v_{key}{suffix}"
+
+
+def _part_suffix() -> str:
+    """Unique per call: two identical conversions in flight must not share a file."""
+    return f"{os.getpid()}.{uuid.uuid4().hex[:8]}.part"
+
+
+async def _render_video(final_path: Path, render) -> None:
+    """Render to a temp name beside ``final_path`` and publish atomically."""
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    partial = final_path.with_name(f".{final_path.stem}.{_part_suffix()}.mp4")
+    try:
+        await render(partial)
+        if not partial.exists() or partial.stat().st_size == 0:
+            raise ImageToVideoFailure(
+                "FILE_NOT_CREATED", "Output video file was not created")
+        os.replace(partial, final_path)
+    finally:
+        partial.unlink(missing_ok=True)
+
+
+async def _write_thumbnail(
+    ffmpeg: str, video_path: Path, thumb_path: Path, duration: float
+) -> bool:
+    """Best-effort poster frame; a failure only costs the thumbnail."""
+    partial = thumb_path.with_name(f".{thumb_path.stem}.{_part_suffix()}.jpg")
+    args = filters.build_thumbnail_args(
+        ffmpeg, str(video_path), str(partial), min(1.0, duration / 2))
+    try:
+        await _run_ffmpeg(args, 30)
+        os.replace(partial, thumb_path)
+        return True
+    except (ImageToVideoFailure, OSError) as exc:
+        logger.warning("Image-to-video thumbnail failed: %s", exc)
+        return False
+    finally:
+        partial.unlink(missing_ok=True)
+
 
 class ImageToVideoService:
-    """Service for converting images to videos with various effects."""
-    
-    def __init__(self):
-        """Initialize the image to video service."""
-        self.output_dir = Path("static/video/generated")
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    """Converts one image into one cached MP4 clip."""
 
-        # Check ffmpeg availability
-        self._check_ffmpeg()
-        
-        logger.info("ImageToVideoService initialized")
-    
-    def _check_ffmpeg(self) -> bool:
-        """Check if ffmpeg is available."""
+    async def convert_image_to_video(
+        self, request: ImageToVideoRequest
+    ) -> ImageToVideoResponse | ImageToVideoErrorResponse:
+        started = time.time()
         try:
-            subprocess.run(['ffmpeg', '-version'], 
-                         capture_output=True, check=True)
-            logger.info("ffmpeg is available for image-to-video conversion")
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.error("ffmpeg not found - image-to-video conversion will not work")
-            return False
-    
-    async def download_image(self, image_url: str) -> str:
-        """Download image from URL to temporary file."""
-        try:
-            logger.info(f"Downloading image from URL: {image_url}")
-            
-            response = requests.get(image_url, timeout=30)
-            response.raise_for_status()
-            
-            # Create temporary file with appropriate extension
-            file_extension = self._get_image_extension(image_url, response.headers.get('content-type'))
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
-            temp_file.write(response.content)
-            temp_file.close()
-            
-            logger.info(f"Image downloaded to: {temp_file.name}")
-            return temp_file.name
-            
-        except Exception as e:
-            logger.error(f"Failed to download image: {str(e)}")
-            raise
-
-    async def save_image_data(self, image_data: str, filename: Optional[str] = None) -> str:
-        """Save base64 image data to temporary file."""
-        try:
-            import base64
-            
-            logger.info("Saving base64 image data to temporary file")
-            
-            # Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
-            if image_data.startswith('data:'):
-                header, image_data = image_data.split(',', 1)
-                # Extract content type from header
-                content_type = header.split(';')[0].split(':')[1]
-            else:
-                content_type = None
-            
-            # Decode base64 data
-            image_bytes = base64.b64decode(image_data)
-            
-            # Determine file extension
-            file_extension = self._get_image_extension_from_content_type(content_type) if content_type else '.jpg'
-            if filename:
-                original_ext = os.path.splitext(filename)[1].lower()
-                if original_ext in ['.jpg', '.jpeg', '.png', '.webp']:
-                    file_extension = original_ext
-            
-            # Create temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
-            temp_file.write(image_bytes)
-            temp_file.close()
-            
-            logger.info(f"Image data saved to: {temp_file.name}")
-            return temp_file.name
-            
-        except Exception as e:
-            logger.error(f"Failed to save image data: {str(e)}")
-            raise
-
-    def _get_image_extension_from_content_type(self, content_type: str) -> str:
-        """Get file extension from content type."""
-        if not content_type:
-            return '.jpg'
-        
-        if 'jpeg' in content_type or 'jpg' in content_type:
-            return '.jpg'
-        elif 'png' in content_type:
-            return '.png'
-        elif 'webp' in content_type:
-            return '.webp'
-        
-        return '.jpg'  # Default
-
-    def _sanitize_filename(self, filename: str) -> str:
-        """Sanitize filename to remove special characters and non-ASCII characters."""
-        import re
-        
-        # Remove file extension if present
-        name_without_ext = os.path.splitext(filename)[0]
-        
-        # Keep only ASCII alphanumeric characters, hyphens, and underscores
-        # Replace everything else with underscores
-        sanitized = re.sub(r'[^a-zA-Z0-9\-_]', '_', name_without_ext)
-        
-        # Remove multiple consecutive underscores
-        sanitized = re.sub(r'_+', '_', sanitized)
-        
-        # Remove leading/trailing underscores
-        sanitized = sanitized.strip('_')
-        
-        # Ensure the filename is not empty
-        if not sanitized:
-            sanitized = 'image'
-        
-        # Limit length to avoid issues
-        if len(sanitized) > 50:
-            sanitized = sanitized[:50]
-        
-        return sanitized
-    
-    def _get_image_extension(self, url: str, content_type: Optional[str]) -> str:
-        """Get appropriate file extension for image."""
-        if content_type:
-            if 'jpeg' in content_type or 'jpg' in content_type:
-                return '.jpg'
-            elif 'png' in content_type:
-                return '.png'
-            elif 'webp' in content_type:
-                return '.webp'
-        
-        # Fallback to URL extension
-        if url.lower().endswith(('.jpg', '.jpeg')):
-            return '.jpg'
-        elif url.lower().endswith('.png'):
-            return '.png'
-        elif url.lower().endswith('.webp'):
-            return '.webp'
-        
-        return '.jpg'  # Default
-    
-    def get_image_dimensions(self, image_path: str) -> Tuple[int, int]:
-        """Get image dimensions."""
-        try:
-            with Image.open(image_path) as img:
-                return img.size
-        except Exception as e:
-            logger.error(f"Failed to get image dimensions: {str(e)}")
-            return (1920, 1080)  # Default dimensions
-    
-    def _ensure_even_dimensions(self, width: int, height: int) -> Tuple[int, int]:
-        """Ensure dimensions are even numbers (divisible by 2) for H.264 encoding."""
-        # Round up to next even number if odd
-        even_width = width if width % 2 == 0 else width + 1
-        even_height = height if height % 2 == 0 else height + 1
-        return even_width, even_height
-    
-    def _build_static_ffmpeg_command(
-        self, 
-        input_image: str, 
-        output_video: str, 
-        duration: float,
-        width: int,
-        height: int
-    ) -> list:
-        """Build FFmpeg command for static image to video conversion."""
-        # Ensure minimum dimensions for video encoding
-        min_width = max(width, 64)  # Minimum 64 pixels width
-        min_height = max(height, 64)  # Minimum 64 pixels height
-        
-        # Ensure dimensions are even for H.264 encoding
-        even_width, even_height = self._ensure_even_dimensions(min_width, min_height)
-        
-        return [
-            'ffmpeg',
-            '-loop', '1',
-            '-i', input_image,
-            '-c:v', 'libx264',
-            '-t', str(duration),
-            '-pix_fmt', 'yuv420p',
-            '-vf', f'scale={even_width}:{even_height}:force_original_aspect_ratio=decrease,pad={even_width}:{even_height}:(ow-iw)/2:(oh-ih)/2:color=black',
-            '-r', '30',
-            '-y',
-            output_video
-        ]
-    
-    def _build_ken_burns_ffmpeg_command(
-        self, 
-        input_image: str, 
-        output_video: str, 
-        duration: float,
-        width: int,
-        height: int,
-        direction: str = "zoom_in",
-        focus_x: float = 0.5,
-        focus_y: float = 0.5
-    ) -> list:
-        """Build FFmpeg command for Ken Burns effect."""
-        # Ensure minimum dimensions for video encoding
-        min_width = max(width, 64)
-        min_height = max(height, 64)
-        
-        # Ensure dimensions are even for H.264 encoding
-        even_width, even_height = self._ensure_even_dimensions(min_width, min_height)
-        
-        # Ensure doubled dimensions are also even for scaling
-        scale_width, scale_height = self._ensure_even_dimensions(even_width * 2, even_height * 2)
-        
-        # Calculate total frames for the duration
-        fps = 30
-        total_frames = int(duration * fps)
-        
-        # Define zoom range for Ken Burns effect (subtle zoom for natural look)
-        if direction == "zoom_out":
-            # Start slightly zoomed in, zoom out to normal
-            zoom_start = 1.1
-            zoom_end = 1.0
-            logger.info(f"Ken Burns zoom_out effect: {zoom_start} -> {zoom_end} over {duration}s ({total_frames} frames)")
-        else:
-            # Start normal, zoom in slightly
-            zoom_start = 1.0
-            zoom_end = 1.1
-            logger.info(f"Ken Burns zoom_in effect: {zoom_start} -> {zoom_end} over {duration}s ({total_frames} frames)")
-        
-        # Create smooth linear interpolation for zoom
-        # Formula: zoom_start + (zoom_end - zoom_start) * (frame / total_frames)
-        # Using 'on' variable which represents current frame number in zoompan
-        zoom_formula = f"{zoom_start}+({zoom_end}-{zoom_start})*on/{total_frames}"
-        
-        # Calculate focus point coordinates for Ken Burns effect
-        # Convert relative coordinates (0.0-1.0) to pixel coordinates
-        focus_x_pixels = focus_x * even_width
-        focus_y_pixels = focus_y * even_height
-        
-        # Ken Burns effect with smooth zoom transition focused on user-specified point
-        # x and y expressions define the center of the zoom area
-        # For focus-based Ken Burns, we want to keep the focus point at the center of the output
-        x_expression = f"({focus_x_pixels}-ow/2*{zoom_formula})"
-        y_expression = f"({focus_y_pixels}-oh/2*{zoom_formula})"
-        
-        filter_complex = (
-            f"scale={even_width}:{even_height}:force_original_aspect_ratio=increase,"
-            f"crop={even_width}:{even_height},"
-            f"zoompan=z='{zoom_formula}'"
-            f":d={total_frames}"
-            f":x='{x_expression}'"
-            f":y='{y_expression}'"
-            f":s={even_width}x{even_height}"
-            f":fps={fps}"
-        )
-        
-        logger.info(f"Ken Burns effect configured with focus point at ({focus_x:.3f}, {focus_y:.3f})")
-        logger.info(f"Focus point pixels: ({focus_x_pixels:.1f}, {focus_y_pixels:.1f})")
-        logger.info(f"Ken Burns filter complex: {filter_complex}")
-        
-        return [
-            'ffmpeg',
-            '-loop', '1',
-            '-i', input_image,
-            '-c:v', 'libx264',
-            '-t', str(duration),
-            '-pix_fmt', 'yuv420p',
-            '-vf', filter_complex,
-            '-r', str(fps),
-            '-y',
-            output_video
-        ]
-    
-    def _build_pan_ffmpeg_command(
-        self, 
-        input_image: str, 
-        output_video: str, 
-        duration: float,
-        width: int,
-        height: int,
-        direction: str = "left_to_right",
-        focus_x: float = 0.5,
-        focus_y: float = 0.5
-    ) -> list:
-        """Build FFmpeg command for pan effect."""
-        # Ensure minimum dimensions for video encoding
-        min_width = max(width, 64)
-        min_height = max(height, 64)
-        
-        # Ensure dimensions are even for H.264 encoding
-        even_width, even_height = self._ensure_even_dimensions(min_width, min_height)
-        
-        # Scale image larger than output for panning, ensure it's also even
-        scale_width_raw = int(even_width * 1.5)
-        scale_width, _ = self._ensure_even_dimensions(scale_width_raw, even_height)
-        
-        # Calculate focus-based panning positions
-        # The focus point should be visible throughout the pan animation
-        focus_x_scaled = focus_x * scale_width
-        
-        # Ensure the focus point is always within the visible area during panning
-        max_x_offset = scale_width - even_width
-        focus_centered_x = focus_x_scaled - even_width / 2
-        
-        # Clamp the centered focus position to valid range
-        focus_centered_x = max(0, min(max_x_offset, focus_centered_x))
-        
-        if direction == "right_to_left":
-            # Start from right side of focus area, pan to left side
-            x_start = f"{min(max_x_offset, focus_centered_x + even_width/4)}"
-            x_end = f"{max(0, focus_centered_x - even_width/4)}"
-        else:
-            # Start from left side of focus area, pan to right side  
-            x_start = f"{max(0, focus_centered_x - even_width/4)}"
-            x_end = f"{min(max_x_offset, focus_centered_x + even_width/4)}"
-            
-        logger.info(f"Pan effect configured with focus point at ({focus_x:.3f}, {focus_y:.3f})")
-        logger.info(f"Focus centered X: {focus_centered_x:.1f}, Pan range: {x_start} -> {x_end}")
-        
-        filter_complex = (
-            f"scale={scale_width}:{even_height}:force_original_aspect_ratio=increase,"
-            f"crop={scale_width}:{even_height},"
-            f"crop={even_width}:{even_height}:x='if(lte(t,0),{x_start},{x_start}+({x_end}-{x_start})*t/{duration})':y=0"
-        )
-        
-        return [
-            'ffmpeg',
-            '-loop', '1',
-            '-i', input_image,
-            '-c:v', 'libx264',
-            '-t', str(duration),
-            '-pix_fmt', 'yuv420p',
-            '-vf', filter_complex,
-            '-r', '30',
-            '-y',
-            output_video
-        ]
-    
-    def generate_thumbnail(self, video_path: str) -> str:
-        """Generate thumbnail from video."""
-        try:
-            thumbnail_path = video_path.replace('.mp4', '_thumb.jpg')
-            
-            cmd = [
-                'ffmpeg',
-                '-i', video_path,
-                '-ss', '1',
-                '-vframes', '1',
-                '-y',
-                thumbnail_path
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
-            
-            if result.returncode == 0 and os.path.exists(thumbnail_path):
-                logger.info(f"Thumbnail generated: {thumbnail_path}")
-                return thumbnail_path
-            else:
-                logger.error(f"Failed to generate thumbnail: {result.stderr}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Thumbnail generation error: {str(e)}")
-            return None
-    
-    async def convert_image_to_video(self, request: ImageToVideoRequest) -> ImageToVideoResponse:
-        """Convert image to video with specified effect."""
-        start_time = time.time()
-        temp_image_path = None
-        output_video_path = None
-        thumbnail_path = None
-        
-        try:
-            logger.info(f"Starting image-to-video conversion", {
-                "image_url": request.image_url,
-                "has_image_data": bool(request.image_data),
-                "effect": request.effect,
-                "duration": request.duration,
-                "task_id": request.task_id,
-                "ken_burns_direction": request.ken_burns_direction,
-                "pan_direction": request.pan_direction,
-                "custom_filename": request.custom_filename,
-                "focus_x": request.focus_x,
-                "focus_y": request.focus_y
-            })
-            
-            # Get image (either download from URL or save from base64 data)
-            if request.image_data:
-                temp_image_path = await self.save_image_data(request.image_data, request.image_filename)
-            elif request.image_url:
-                temp_image_path = await self.download_image(request.image_url)
-            else:
-                raise ValueError("Either image_url or image_data must be provided")
-            
-            # Get image dimensions
-            img_width, img_height = self.get_image_dimensions(temp_image_path)
-            logger.info(f"Image dimensions: {img_width}x{img_height}")
-            
-            # Generate output filename (sanitize to avoid special characters)
-            timestamp = int(time.time())
-            if request.custom_filename:
-                # Sanitize custom filename
-                safe_custom_name = self._sanitize_filename(request.custom_filename)
-                filename = f"{safe_custom_name}_{timestamp}.mp4"
-            else:
-                filename = f"image_to_video_{request.effect}_{timestamp}.mp4"
-            
-            output_video_path = str(self.output_dir / filename)
-            
-            # Build FFmpeg command based on effect
-            if request.effect == ImageToVideoEffect.STATIC:
-                ffmpeg_cmd = self._build_static_ffmpeg_command(
-                    temp_image_path, output_video_path, request.duration, img_width, img_height
-                )
-            elif request.effect == ImageToVideoEffect.KEN_BURNS:
-                ffmpeg_cmd = self._build_ken_burns_ffmpeg_command(
-                    temp_image_path, output_video_path, request.duration, 
-                    img_width, img_height, request.ken_burns_direction,
-                    request.focus_x, request.focus_y
-                )
-            elif request.effect == ImageToVideoEffect.PAN:
-                ffmpeg_cmd = self._build_pan_ffmpeg_command(
-                    temp_image_path, output_video_path, request.duration,
-                    img_width, img_height, request.pan_direction,
-                    request.focus_x, request.focus_y
-                )
-            else:
-                raise ValueError(f"Unsupported effect: {request.effect}")
-            
-            # Execute FFmpeg command
-            logger.info(f"Executing FFmpeg command: {' '.join(ffmpeg_cmd)}")
-            
-            result = subprocess.run(
-                ffmpeg_cmd,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='ignore',  # 忽略编码错误
-                timeout=300  # 5 minute timeout
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"FFmpeg failed: {result.stderr}")
-                return ImageToVideoErrorResponse(
-                    success=False,
-                    message="Video generation failed",
-                    error_code="FFMPEG_ERROR",
-                    details=result.stderr
-                )
-            
-            # Check if output file was created
-            if not os.path.exists(output_video_path):
-                logger.error("Output video file was not created")
-                return ImageToVideoErrorResponse(
-                    success=False,
-                    message="Output video file was not created",
-                    error_code="FILE_NOT_CREATED"
-                )
-            
-            # Generate thumbnail
-            thumbnail_path = self.generate_thumbnail(output_video_path)
-            
-            # Get file size
-            file_size = os.path.getsize(output_video_path)
-            
-            # Upload to storage
-            video_upload_result = await self._upload_to_storage(
-                output_video_path, request.task_id, "video"
-            )
-
-            thumbnail_url = None
-            if thumbnail_path:
-                thumbnail_upload_result = await self._upload_to_storage(
-                    thumbnail_path, request.task_id, "thumbnail"
-                )
-                if thumbnail_upload_result["success"]:
-                    thumbnail_url = thumbnail_upload_result["file_url"]
-
-            if not video_upload_result["success"]:
-                logger.error(f"Failed to upload video to storage: {video_upload_result['message']}")
-                return ImageToVideoErrorResponse(
-                    success=False,
-                    message="Failed to upload video to storage",
-                    error_code="UPLOAD_FAILED",
-                    details=video_upload_result["message"]
-                )
-            
-            processing_time = time.time() - start_time
-            
-            logger.info(f"Image-to-video conversion completed successfully", {
-                "processing_time": processing_time,
-                "file_size": file_size,
-                "video_url": video_upload_result["file_url"],
-                "thumbnail_url": thumbnail_url
-            })
-            
-            return ImageToVideoResponse(
-                success=True,
-                message="Image converted to video successfully",
-                video_url=video_upload_result["file_url"],
-                thumbnail_url=thumbnail_url,
-                file_size=file_size,
-                duration=request.duration,
-                width=img_width,
-                height=img_height,
-                effect_applied=request.effect,
-                processing_time=processing_time
-            )
-            
-        except Exception as e:
-            logger.error(f"Image-to-video conversion failed: {str(e)}")
+            return await self._convert(request, started)
+        except ImageToVideoFailure as failure:
+            logger.error("Image-to-video failed: %s %s",
+                         failure.error_code, failure.message)
             return ImageToVideoErrorResponse(
-                success=False,
-                message=f"Conversion failed: {str(e)}",
-                error_code="CONVERSION_ERROR",
-                details=str(e)
-            )
-        
-        finally:
-            # Cleanup temporary files
-            if temp_image_path and os.path.exists(temp_image_path):
-                try:
-                    os.unlink(temp_image_path)
-                    logger.debug(f"Cleaned up temporary image: {temp_image_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup temporary image: {e}")
-            
-            if output_video_path and os.path.exists(output_video_path):
-                try:
-                    os.unlink(output_video_path)
-                    logger.debug(f"Cleaned up output video: {output_video_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup output video: {e}")
-            
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                try:
-                    os.unlink(thumbnail_path)
-                    logger.debug(f"Cleaned up thumbnail: {thumbnail_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup thumbnail: {e}")
-    
-    async def _upload_to_storage(self, file_path: str, task_id: Optional[str], file_type: str) -> Dict[str, Any]:
-        """Upload file to local storage service."""
+                success=False, message=failure.message,
+                error_code=failure.error_code, details=failure.details)
+
+    async def _convert(
+        self, request: ImageToVideoRequest, started: float
+    ) -> ImageToVideoResponse:
+        ffmpeg = find_ffmpeg()
+        image_bytes = await load_image_bytes(request)
+        workdir = Path(tempfile.mkdtemp(prefix="i2v_"))
         try:
-            import mimetypes
-            filename = os.path.basename(file_path)
-            content_type, _ = mimetypes.guess_type(file_path)
-            content_type = content_type or "application/octet-stream"
+            normalized = workdir / "source.png"
+            source_size = await asyncio.to_thread(
+                normalize_image, image_bytes, normalized)
+            return await self._render_or_reuse(
+                request, ffmpeg, image_bytes, normalized, source_size, started)
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
 
-            with open(file_path, "rb") as f:
-                file_data = f.read()
+    async def _render_or_reuse(
+        self, request: ImageToVideoRequest, ffmpeg: str, image_bytes: bytes,
+        normalized: Path, source_size: Tuple[int, int], started: float,
+    ) -> ImageToVideoResponse:
+        effect, direction, size, focus, fit = _plan_render(request, source_size)
+        key = _content_key(image_bytes, filters.canonical_params(
+            effect, direction, request.duration, focus, size, fit))
+        video_path = _storage_target(key, ".mp4")
+        thumb_path = _storage_target(key, "_thumb.jpg")
+        reused = video_path.exists() and video_path.stat().st_size > 0
+        if not reused:
+            video_filter = filters.build_video_filter(
+                effect, source_size, size, request.duration, direction, focus)
 
-            folder = "video" if file_type in ("video", "thumbnail") else "files"
+            async def render(partial: Path) -> None:
+                args = filters.build_ffmpeg_args(
+                    ffmpeg, str(normalized), str(partial), effect,
+                    video_filter, request.duration)
+                await _run_ffmpeg(args, max(60.0, request.duration * 12))
 
-            result = await storage_service.upload_file(
-                file_data=file_data,
-                filename=filename,
-                content_type=content_type,
-                folder=folder,
-                user_id="anonymous",
-                task_id=task_id,
-            )
+            await _render_video(video_path, render)
+        if not thumb_path.exists():
+            await _write_thumbnail(
+                ffmpeg, video_path, thumb_path, request.duration)
+        return self._build_response(
+            key, video_path, thumb_path, request, effect, size, reused,
+            time.time() - started)
 
-            logger.info(f"File uploaded to storage", {
-                "file_type": file_type,
-                "success": result["success"]
-            })
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Storage upload failed: {str(e)}")
-            return {
-                "success": False,
-                "message": str(e)
-            } 
+    @staticmethod
+    def _build_response(
+        key: str, video_path: Path, thumb_path: Path,
+        request: ImageToVideoRequest, effect: str, size: Tuple[int, int],
+        reused: bool, elapsed: float,
+    ) -> ImageToVideoResponse:
+        return ImageToVideoResponse(
+            success=True,
+            message="Image converted to video successfully",
+            video_url=_storage_url(key, ".mp4"),
+            storage_key=f"{GENERATED_DIR}/i2v_{key}.mp4",
+            thumbnail_url=_storage_url(key, "_thumb.jpg")
+            if thumb_path.exists() else None,
+            file_size=video_path.stat().st_size,
+            duration=request.duration,
+            width=size[0],
+            height=size[1],
+            effect_applied=effect,
+            processing_time=elapsed,
+            reused=reused,
+        )

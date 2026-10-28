@@ -684,39 +684,44 @@ class ImageToVideoEffect(str, Enum):
     KEN_BURNS = "ken_burns"
     PAN = "pan"
 
+ImageToVideoAspectRatio = Literal["16:9", "9:16", "1:1", "4:3", "21:9"]
+
+
 class ImageToVideoRequest(BaseModel):
-    """Request model for image to video conversion."""
-    image_url: Optional[str] = Field(None, description="URL of the image to convert (for remote images)")
+    """Request model for image to video conversion.
+
+    Image source precedence: ``image_data`` > ``storage_key`` > ``image_url``.
+    """
+    image_url: Optional[str] = Field(None, description="URL or same-origin path of the image (/api/storage/files/... or http(s))")
+    storage_key: Optional[str] = Field(None, max_length=256, description="STORAGE_ROOT-relative key, e.g. uploads/images/a.jpg")
     image_data: Optional[str] = Field(None, description="Base64 encoded image data (for blob/local images)")
     image_filename: Optional[str] = Field(None, description="Original filename of the image")
     effect: ImageToVideoEffect = Field(..., description="Video effect to apply")
     duration: float = Field(default=5.0, ge=1.0, le=30.0, description="Video duration in seconds")
-    task_id: Optional[str] = Field(None, description="Task ID for organization")
-    custom_filename: Optional[str] = Field(None, description="Custom filename for the output video")
-    
+    task_id: Optional[str] = Field(None, description="Task ID for queue tracking")
+    custom_filename: Optional[str] = Field(None, description="Deprecated: output names are content-addressed and ignore this")
+
     # Focus point parameters (0.0 to 1.0 range representing relative position on image)
     focus_x: Optional[float] = Field(default=0.5, ge=0.0, le=1.0, description="Focus point X coordinate (0.0-1.0, 0.5 is center)")
     focus_y: Optional[float] = Field(default=0.5, ge=0.0, le=1.0, description="Focus point Y coordinate (0.0-1.0, 0.5 is center)")
-    
+
     # Ken Burns effect parameters
     ken_burns_direction: Optional[str] = Field(default="zoom_in", description="Ken Burns direction: zoom_in or zoom_out")
-    
-    # Pan effect parameters  
+
+    # Pan effect parameters
     pan_direction: Optional[str] = Field(default="left_to_right", description="Pan direction: left_to_right or right_to_left")
 
-    @validator('image_data')
-    def validate_image_source(cls, v, values):
-        """Ensure either image_url or image_data is provided."""
-        image_url = values.get('image_url')
-        if not image_url and not v:
-            raise ValueError('Either image_url or image_data must be provided')
-        return v
+    # Output frame
+    aspect_ratio: Optional[ImageToVideoAspectRatio] = Field(None, description="Output aspect ratio; omit to keep the image's own ratio")
+    max_long_side: int = Field(default=1920, ge=480, le=3840, description="Upper bound for the output's longer side in pixels")
+
 
 class ImageToVideoResponse(BaseModel):
     """Response model for image to video conversion."""
     success: bool = Field(..., description="Whether the conversion was successful")
     message: str = Field(..., description="Response message")
     video_url: Optional[str] = Field(None, description="URL of the generated video")
+    storage_key: Optional[str] = Field(None, description="STORAGE_ROOT-relative key of the generated video")
     thumbnail_url: Optional[str] = Field(None, description="URL of the video thumbnail")
     file_size: Optional[int] = Field(None, description="File size in bytes")
     duration: Optional[float] = Field(None, description="Video duration in seconds")
@@ -724,6 +729,7 @@ class ImageToVideoResponse(BaseModel):
     height: Optional[int] = Field(None, description="Video height in pixels")
     effect_applied: Optional[str] = Field(None, description="Effect that was applied")
     processing_time: Optional[float] = Field(None, description="Processing time in seconds")
+    reused: bool = Field(False, description="True when a content-addressed cached render was returned")
 
 class ImageToVideoErrorResponse(BaseModel):
     """Error response model for image to video conversion."""

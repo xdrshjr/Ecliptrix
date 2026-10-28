@@ -2,7 +2,7 @@
 id: news-digest-video
 name: 资讯速览视频
 description: 联网查资料，并做成一条资讯速览视频
-version: 1
+version: 2
 tools: [web_search, web_fetch, download_web_media, build_credits]
 requires: [web]
 ---
@@ -13,7 +13,7 @@ requires: [web]
 3. 脚本：用要点调用 `generate_video_script` 生成脚本；事实性表述保留来源 ID，来源不足或相互矛盾时在旁白里如实说明，不要补编。
 4. 旁白：`batch_generate_tts`，text 必须使用脚本返回的 narration_text。
 5. 配图：优先 `download_web_media` / `fetch_web_image` 下载与要点相关的公开素材，或用 `generate_ai_image` 生成示意图。授权不明的网络素材必须提醒用户。
-6. 上轨：`add_to_track` 把画面与旁白放上轨道，再 `check_timeline` 修复阻断项。
+6. 上轨：配图是静图，先 `use_skill('still-to-clip')` 把它们转成视频镜头；再用 `add_to_track` 把视频画面与旁白放上轨道，最后 `check_timeline` 修复阻断项。
 7. 来源：调用 `build_credits` 生成来源与授权清单，并告诉用户清单位置。
 
 注意：联网能力未开启时，如实告诉用户并改用本地素材与用户提供的稿子；不要编造来源。

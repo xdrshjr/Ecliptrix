@@ -130,11 +130,11 @@ it('filters actual provider schemas and refuses a guessed tool in the explore re
 });
 
 describe('category catalog (AC-01)', () => {
-  it('declares 18 categories / 15 on-demand / 3 always-available', () => {
+  it('declares 19 categories / 16 on-demand / 3 always-available', () => {
     const categories = createDefaultCategories();
     const ids = categories.map(category => category.id);
-    expect(categories).toHaveLength(18);
-    expect(ON_DEMAND_CATEGORY_IDS).toHaveLength(15);
+    expect(categories).toHaveLength(19);
+    expect(ON_DEMAND_CATEGORY_IDS).toHaveLength(16);
     expect(categories.filter(category => category.alwaysAvailable)).toHaveLength(3);
     expect(ids.sort()).toEqual([...ON_DEMAND_CATEGORY_IDS,
       CATEGORY_IDS.WORKFLOW_TOOLS, CATEGORY_IDS.QUERY_TOOLS,

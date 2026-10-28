@@ -43,7 +43,7 @@ const IMPORT_TOOLS = new Set([
 const WEB_DOWNLOAD_TOOLS = new Set(['download_web_media', 'fetch_web_image']);
 const TTS_TOOLS = new Set(['generate_tts', 'batch_generate_tts']);
 const IMAGE_TOOLS = new Set(['generate_ai_image']);
-const VIDEO_TOOLS = new Set(['generate_ai_video', 'image_to_video', 'batch_storyboard_video']);
+const VIDEO_TOOLS = new Set(['generate_ai_video', 'image_to_video', 'batch_image_to_video', 'batch_storyboard_video']);
 const LICENSE_RULE = 'web_material_license_unknown';
 
 function succeeded(call: AgentToolCallRecord): boolean {

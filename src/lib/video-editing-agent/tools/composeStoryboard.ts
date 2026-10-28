@@ -14,6 +14,7 @@ import {
   runOverlapPostCheck,
   formatOverlapWarning,
 } from './index';
+import { checkStillGuard, STILL_NEEDS_CONVERSION, type StillGuardRejection } from './stillGuard';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -44,6 +45,9 @@ interface SkippedScene {
   scene_id: string;
   material_id: string;
   reason: string;
+  /** Present when the still-image guard refused the scene. */
+  error_code?: typeof STILL_NEEDS_CONVERSION;
+  next_step?: StillGuardRejection['next_step'];
 }
 
 /** Target track; `isNew` tracks join the timeline only once a clip is accepted. */
@@ -128,6 +132,19 @@ export function createComposeStoryboardTool(context: ToolContext): AgentTool<typ
 
       for (const mapping of params.video_materials) {
         const material = context.materials.find(m => m.id === mapping.material_id);
+        const stillRejection = material
+          ? checkStillGuard(material, { turnState: context.turnState })
+          : null;
+        if (material && stillRejection) {
+          skipped.push({
+            scene_id: mapping.scene_id,
+            material_id: mapping.material_id,
+            reason: stillRejection.error,
+            error_code: stillRejection.error_code,
+            next_step: stillRejection.next_step,
+          });
+          continue;
+        }
         const reason = !material
           ? `Material not found: ${mapping.material_id}`
           : materialTrackMismatchError(track, material.type)?.error;
@@ -148,9 +165,15 @@ export function createComposeStoryboardTool(context: ToolContext): AgentTool<typ
       }
 
       if (allOperations.length === 0) {
+        // Only a purely guard-caused failure carries the code that the circuit
+        // breaker exempts; a mix with "not found" stays an ordinary failure.
+        const onlyStills = skipped.length > 0 && skipped.every(s => s.error_code === STILL_NEEDS_CONVERSION);
         return textResponse({
           success: false,
-          error: 'Failed to add any clips to the timeline. Check that scene videos are in the material library.',
+          error: onlyStills
+            ? 'Every scene is a still image. Convert them with batch_image_to_video, then compose again with the returned video materialIds.'
+            : 'Failed to add any clips to the timeline. Check that scene videos are in the material library.',
+          ...(onlyStills ? { error_code: STILL_NEEDS_CONVERSION } : {}),
           ...(skipped.length > 0 ? { skipped } : {}),
         });
       }

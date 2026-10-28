@@ -34,6 +34,7 @@ import { reconcileOverlapsAfterAgentOp } from './reconcile';
 import { validateOperationTargets } from './operationGuards';
 import { getTtsFailure } from '@/lib/ttsErrors';
 import type { TtsFailure } from '@/lib/ttsErrors';
+import { isStillGuardRejection } from './tools/stillGuard';
 
 export type { AgentStreamErrorCode } from './types';
 
@@ -499,13 +500,17 @@ export function subscribeAgentEvents(
           (details as { success: unknown }).success === false;
         const expectedResearchFailure = isResearchTool(event.toolName) &&
           ['configuration', 'blocked', 'cancelled', 'policy', 'validation'].includes(details?.error_details?.failure_class);
-        const failed = (event.isError === true || softFailure) && !expectedResearchFailure;
+        // A still-image refusal is a one-step self-correction, not a failing
+        // tool: it neither counts toward the breaker nor resets it.
+        const expectedGuardRejection = softFailure && isStillGuardRejection(details);
+        const failed = (event.isError === true || softFailure)
+          && !expectedResearchFailure && !expectedGuardRejection;
 
         if (failed) {
           consecutiveFailures++;
           latestTtsFailure = ['generate_tts', 'batch_generate_tts']
             .includes(event.toolName) ? getTtsFailure(details) : undefined;
-        } else if (!expectedResearchFailure) {
+        } else if (!expectedResearchFailure && !expectedGuardRejection) {
           consecutiveFailures = 0;
           latestTtsFailure = undefined;
         }

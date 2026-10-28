@@ -3,6 +3,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import { toolFetch, parseToolResponse } from './apiHelper';
+import { STILL_IMAGE_NEXT_STEP } from './stillGuard';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -130,6 +131,7 @@ export function createGenerateAiImageTool(context: ToolContext): AgentTool<typeo
           success: true,
           taskId,
           message: `Image generation started (${count} image${count > 1 ? 's' : ''}). Expected to complete in 15-30 seconds.`,
+          next_step: STILL_IMAGE_NEXT_STEP,
         };
 
         return {

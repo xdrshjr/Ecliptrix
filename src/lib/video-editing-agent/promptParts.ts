@@ -78,7 +78,6 @@ export const CORE_TOOLKIT_TOOL_NAMES: readonly string[] = [
   // ai_gen_tools
   'generate_ai_image',
   'generate_ai_video',
-  'image_to_video',
   // tts_tools
   'generate_tts',
   'batch_generate_tts',
@@ -142,12 +141,22 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
   [CATEGORY_IDS.SEARCH_TOOLS]:
     'Search tools query external APIs (Pexels, Unsplash, Freesound). ' +
     'Results are automatically added to the material library. ' +
-    'Use add_to_track to place them directly on the timeline.\n' +
+    'Videos and audio can go straight to add_to_track; IMAGES are stills and must be turned into video first ' +
+    '(explore_tools still_tools -> image_to_video) unless they are logo/sticker overlays.\n' +
     'Tip: English keywords yield better results; Chinese queries are auto-translated.',
   [CATEGORY_IDS.AI_GEN_TOOLS]:
     'AI generation tools start async tasks. The tool returns a taskId and the generation runs in the background. ' +
     'Results are automatically added to the material library when complete. ' +
-    'You can inform the user that generation has started and continue with other tasks.',
+    'You can inform the user that generation has started and continue with other tasks. ' +
+    'A generated IMAGE is a still: to use it as a shot, convert it with image_to_video (still_tools) before add_to_track.',
+  [CATEGORY_IDS.STILL_TOOLS]:
+    'image_to_video turns ONE image into a full-frame video clip (ken_burns push, pan or static), locally and free, ' +
+    'usually 2-8s. It is synchronous: the result carries the new video materialId, so pass it straight to add_to_track. ' +
+    'Same image + same parameters returns the same clip, so retrying is safe. ' +
+    'For 2+ images use batch_image_to_video (max 12 per call): results keep input order, shots alternate push/pan by default, ' +
+    'and failed[] lists images that could not convert - tell the user, do not swap in other images. ' +
+    'Pass aspect_ratio when the project frame is known; set focus_x/focus_y when the subject is off-centre. ' +
+    'Logos, stickers and watermarks are overlays: add_to_track with as_still:true, no conversion.',
   [CATEGORY_IDS.TTS_TOOLS]:
     'TTS tools convert text to speech audio. Use generate_tts for a single piece of text (sync, ~2-5s), ' +
     'or batch_generate_tts for multiple sentences/paragraphs. Generated audio is auto-added to the material library.\n\n' +

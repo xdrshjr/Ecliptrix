@@ -104,7 +104,10 @@ function buildFullStubRegistry(): ToolRegistry {
   registry.registerToolsForCategory(CATEGORY_IDS.AI_GEN_TOOLS, [
     makeStubTool('generate_ai_image'),
     makeStubTool('generate_ai_video'),
+  ]);
+  registry.registerToolsForCategory(CATEGORY_IDS.STILL_TOOLS, [
     makeStubTool('image_to_video'),
+    makeStubTool('batch_image_to_video'),
   ]);
   registry.registerToolsForCategory(CATEGORY_IDS.TTS_TOOLS, [
     makeStubTool('generate_tts'),

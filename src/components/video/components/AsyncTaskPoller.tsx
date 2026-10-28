@@ -11,7 +11,8 @@
  * Supported task types:
  *   - ai_video   → polls GET /api/ark-video/status/:arkTaskId
  *   - ai_image   → handled synchronously in generateAiImage.ts (no polling needed)
- *   - image_to_video → result is typically synchronous; polling is a fallback
+ *   - image_to_video → synchronous in the agent tool (no polling); the type stays
+ *     in the union only so tasks persisted by older versions still load
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -24,10 +25,9 @@ import { http, ApiError } from '@/lib/api/http-client';
 // Polling interval per task type (ms)
 // ---------------------------------------------------------------------------
 
-const POLL_INTERVALS: Record<AsyncTaskType, number> = {
+const POLL_INTERVALS: Partial<Record<AsyncTaskType, number>> = {
   ai_video: 5_000,
   ai_image: 3_000,
-  image_to_video: 5_000,
   tts: 3_000,
   batch_tts: 5_000,
   storyboard_video: 5_000,
@@ -75,9 +75,6 @@ export function AsyncTaskPoller() {
         // — no polling needed. If somehow one ends up pending, just skip.
         case 'ai_image':
           break;
-        case 'image_to_video':
-          await pollImageToVideoTask(task);
-          break;
         case 'storyboard_video':
           await pollStoryboardVideoTask(task);
           break;
@@ -105,7 +102,7 @@ export function AsyncTaskPoller() {
     for (const task of taskEntries) {
       const isActive = task.status === 'pending' || task.status === 'processing';
       // Only poll types that have async status endpoints
-      const needsPolling = task.type === 'ai_video' || task.type === 'image_to_video' || task.type === 'storyboard_video';
+      const needsPolling = task.type === 'ai_video' || task.type === 'storyboard_video';
 
       if (isActive && needsPolling) {
         activeTaskIds.add(task.taskId);
@@ -252,75 +249,6 @@ async function pollAiVideoTask(task: AsyncTask): Promise<void> {
       status: 'processing',
       progress: Math.max(task.progress, estimatedProgress),
     });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Image-to-video polling (fallback for async backends)
-// ---------------------------------------------------------------------------
-
-async function pollImageToVideoTask(task: AsyncTask): Promise<void> {
-  const store = useVideoEditingStore.getState();
-  const backendTaskId = task.metadata.backendTaskId as string | undefined;
-
-  if (!backendTaskId) {
-    // No backend task ID means the result should have been synchronous.
-    // If we're here, something went wrong.
-    store.updateTask(task.taskId, {
-      status: 'failed',
-      error: 'Image-to-video task has no backend task ID for polling',
-    });
-    return;
-  }
-
-  // Use the same image-to-video endpoint with task_id query param
-  let data: any;
-  try {
-    data = await http.get<any>(`/api/video/image-to-video?task_id=${backendTaskId}`);
-  } catch (httpError) {
-    if (httpError instanceof ApiError) {
-      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}: HTTP ${httpError.status}`);
-    } else {
-      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}:`, httpError);
-    }
-    return;
-  }
-
-  if (data.success && data.video_url) {
-    store.updateTask(task.taskId, {
-      status: 'completed',
-      progress: 100,
-      result: data,
-    });
-
-    const sourceName = (task.metadata.sourceMaterialName as string) || 'Image';
-    const materialId = `i2v-mat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-    store.addMaterial({
-      id: materialId,
-      name: `Video from: ${sourceName.slice(0, 30)}`,
-      type: 'video',
-      format: 'mp4',
-      size: 0,
-      duration: data.duration || (task.metadata.duration as number) || 5,
-      width: data.width,
-      height: data.height,
-      url: data.video_url,
-      thumbnailUrl: data.thumbnail_url || (task.metadata.sourceImageUrl as string),
-      createdAt: new Date(),
-      tags: ['image-to-video', 'generated'],
-      description: `Video generated from image "${sourceName}"`,
-    });
-
-    console.log(`[AsyncTaskPoller] Image-to-video task ${task.taskId} completed. Material added: ${materialId}`);
-  } else if (data.status === 'failed' || data.error) {
-    store.updateTask(task.taskId, {
-      status: 'failed',
-      error: data.error || data.message || 'Image-to-video conversion failed',
-    });
-  } else {
-    // Still processing
-    store.updateTask(task.taskId, { status: 'processing' });
   }
 }
 

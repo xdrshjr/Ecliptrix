@@ -1664,6 +1664,7 @@ export interface Translations {
       generate_video_script: string;
       get_timeline: string;
       image_to_video: string;
+      batch_image_to_video: string;
       inspect_export: string;
       list_materials: string;
       move_clip: string;
@@ -5173,6 +5174,7 @@ export const translations: Record<string, Translations> = {
         generate_video_script: 'Write video script',
         get_timeline: 'Read timeline',
         image_to_video: 'Image to video',
+        batch_image_to_video: 'Batch image to video',
         inspect_export: 'Inspect export',
         list_materials: 'List materials',
         move_clip: 'Move clip',
@@ -8986,6 +8988,7 @@ export const translations: Record<string, Translations> = {
         generate_video_script: '生成视频脚本',
         get_timeline: '读取时间轴',
         image_to_video: '图片生成视频',
+        batch_image_to_video: '批量图片转视频',
         inspect_export: '自检成片',
         list_materials: '列出素材',
         move_clip: '移动片段',

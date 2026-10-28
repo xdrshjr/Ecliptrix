@@ -35,6 +35,7 @@ import {
 } from './coverTools';
 import { createGenerateAiVideoTool } from './generateAiVideo';
 import { createImageToVideoTool } from './imageToVideo';
+import { createBatchImageToVideoTool } from './batchImageToVideo';
 import { createGenerateStoryboardTool } from './generateStoryboard';
 import { createDescribeStoryboardTool } from './describeStoryboard';
 import { createBatchStoryboardVideoTool } from './batchStoryboardVideo';
@@ -359,7 +360,7 @@ export function serializeMaterial(m: MaterialItem) {
  * Create and populate a ToolRegistry with all category definitions and
  * the currently available tools (query + editing).
  *
- * On-demand categories (search, ai_gen, tts, script, storyboard, material)
+ * On-demand categories (search, ai_gen, still, tts, script, storyboard, material)
  * are registered with empty tools arrays. Phase 2+ agents populate them
  * via registry.registerToolsForCategory().
  */
@@ -406,7 +407,12 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
   registry.registerToolsForCategory(CATEGORY_IDS.AI_GEN_TOOLS, [
     createGenerateAiImageTool(context),
     createGenerateAiVideoTool(context),
+  ]);
+
+  // Populate still_tools category (image -> video clip, before add_to_track)
+  registry.registerToolsForCategory(CATEGORY_IDS.STILL_TOOLS, [
     createImageToVideoTool(context),
+    createBatchImageToVideoTool(context),
   ]);
 
   // Populate tts_tools category

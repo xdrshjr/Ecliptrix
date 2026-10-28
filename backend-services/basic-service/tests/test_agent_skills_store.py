@@ -55,7 +55,7 @@ async def expect_code(awaitable, code):
 
 
 def test_builtin_directory_is_non_empty():
-    assert len(BUILTIN_IDS) == 7
+    assert len(BUILTIN_IDS) == 8
 
 
 @pytest.mark.asyncio
@@ -247,7 +247,7 @@ async def test_corrupt_state_file_is_treated_as_empty(store, user_root):
     records = await store.list_skills()
     assert all(r.enabled for r in records)
     entries, truncated = await store.index()
-    assert len(entries) == 7 and not truncated
+    assert len(entries) == 8 and not truncated
 
 
 @pytest.mark.asyncio
@@ -275,9 +275,9 @@ async def test_index_orders_builtin_first_then_newest_user_and_truncates(
 
     entries, truncated = await store.index()
     assert truncated and len(entries) == limits.MAX_INDEX_ENTRIES
-    assert [e.builtin for e in entries] == [True] * 7 + [False] * 3
-    assert [e.id for e in entries[7:]] == [
-        "user-skill-5", "user-skill-4", "user-skill-3"]
+    assert [e.builtin for e in entries] == [True] * 8 + [False] * 2
+    assert [e.id for e in entries[8:]] == [
+        "user-skill-5", "user-skill-4"]
     assert set(entries[0].to_index_entry()) == {
         "id", "name", "description", "requires", "builtin"}
 

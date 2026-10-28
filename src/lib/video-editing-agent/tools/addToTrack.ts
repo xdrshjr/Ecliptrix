@@ -1,12 +1,16 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
+import { checkStillGuard } from './stillGuard';
 import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning, collectClipStarts, diffClipStarts, findClip, toAgentClipMaterial, POSITION_EPSILON } from './index';
 
 const parameters = Type.Object({
   materialId: Type.String({ description: 'The ID of the material to add' }),
   trackId: Type.Optional(Type.String({ description: 'Target track ID. Auto-selected if omitted.' })),
   startTime: Type.Optional(Type.Number({ description: 'Insertion point in seconds on the timeline. Defaults to end of track.' })),
+  as_still: Type.Optional(Type.Boolean({
+    description: 'Place an IMAGE as a still overlay (logo, sticker, watermark, picture-in-picture). Scene images must be converted with image_to_video first.',
+  })),
 });
 type Params = Static<typeof parameters>;
 
@@ -49,7 +53,8 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
     description:
       'Add a material from the library to a timeline track. If no track is specified, automatically selects the appropriate track based on material type. If no start time is specified, places it at the end of the track. ' +
       'Clips on video and audio tracks sit end to end: startTime is an insertion point — the clip goes before any clip starting at the same moment, then the whole track is re-packed from 0. ' +
-      'The startTime in the result is where the clip actually landed; shiftedClips lists clips that moved to make room.',
+      'The startTime in the result is where the clip actually landed; shiftedClips lists clips that moved to make room. ' +
+      'Images are refused unless as_still:true (overlays only): convert scene images with image_to_video first.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -80,6 +85,13 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
+
+      // Before any track is auto-created, so a refusal leaves no empty track.
+      const stillRejection = checkStillGuard(material, {
+        allowStill: params.as_still,
+        turnState: context.turnState,
+      });
+      if (stillRejection) return toolErrorResponse(stillRejection);
 
       let trackId = params.trackId;
       if (!trackId) {

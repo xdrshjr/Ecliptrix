@@ -136,6 +136,12 @@ export interface ToolkitTurnState {
   crew?: { crewCalls: number; crewToolCalls: number; crewModelCalls: number };
   /** Model tier the crew resolved this turn, so it is resolved only once. */
   crewModelTier?: 'fast' | 'main';
+  /**
+   * Still-image guard refusals this turn, by material id. After the third
+   * refusal the guard escalates its hint so a model cannot loop on
+   * add_to_track forever (tools/stillGuard.ts).
+   */
+  stillRejections?: Record<string, number>;
 }
 
 /** 计划/提问卡片与工具结果共用的工具名谓词集合。 */

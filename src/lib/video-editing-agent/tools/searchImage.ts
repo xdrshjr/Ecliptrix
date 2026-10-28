@@ -3,6 +3,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { MaterialItem } from '@/types';
 import { toolFetch, parseToolResponse } from './apiHelper';
+import { STILL_IMAGE_NEXT_STEP } from './stillGuard';
 
 const parameters = Type.Object({
   query: Type.String({ description: 'Search keywords (English or Chinese — Chinese auto-translated)' }),
@@ -156,6 +157,7 @@ export function createSearchImageTool(context: ToolContext): AgentTool<typeof pa
           total_found: materials.length,
           message: `Found ${materials.length} image(s) for '${searchQuery}'`,
           searchQuery,
+          next_step: STILL_IMAGE_NEXT_STEP,
         };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
 

@@ -22,6 +22,8 @@ export type ImportMode = false | 'record' | 'collect';
 interface WebCall {
   path: string; body?: unknown; method?: 'GET' | 'POST' | 'DELETE';
   timeout?: number; importMaterial?: ImportMode;
+  /** Fields merged into a successful result (e.g. a point-of-use `next_step`). */
+  successFields?: Record<string, unknown>;
   /** `'collect'` only: receives the normalised material and whether it already existed. */
   onMaterial?: (material: MaterialItem, alreadyInLibrary: boolean) => void;
 }
@@ -123,7 +125,8 @@ export async function executeWebTool(context: ToolContext, callId: string, call:
       }
       result.already_in_library = exists;
     }
-    return toolResult({ ...result, project_id: context.projectId ?? null, success: true });
+    return toolResult({ ...result, ...call.successFields,
+      project_id: context.projectId ?? null, success: true });
   } catch (error) {
     void run.cancelCall(callId);
     const code = stopped() ? 'cancelled' : error instanceof Error &&

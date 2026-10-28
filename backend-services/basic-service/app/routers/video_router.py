@@ -17,6 +17,7 @@ from app.models import (
     VideoAnalysisResponse,
     BatchVideoAnalysisRequest,
     BatchVideoAnalysisResponse,
+    ImageToVideoEffect,
     ImageToVideoRequest,
     ImageToVideoResponse,
     ImageToVideoErrorResponse,
@@ -981,6 +982,7 @@ async def _process_image_to_video(request: ImageToVideoRequest) -> Union[ImageTo
     """
     logger.info(f"Processing image-to-video conversion", {
         "image_url": request.image_url,
+        "storage_key": request.storage_key,
         "effect": request.effect,
         "duration": request.duration,
         "task_id": request.task_id,
@@ -1060,23 +1062,11 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
         "custom_filename": request.custom_filename
     })
     
-    # Validate request parameters before queuing
-    if not request.image_url and not request.image_data:
-        logger.error("Either image URL or image data is required")
-        return ImageToVideoErrorResponse(
-            success=False,
-            message="Either image URL or image data is required",
-            error_code="MISSING_IMAGE_SOURCE"
-        )
-    
-    if request.duration <= 0 or request.duration > 30:
-        logger.error(f"Invalid duration: {request.duration}")
-        return ImageToVideoErrorResponse(
-            success=False,
-            message="Duration must be between 1 and 30 seconds",
-            error_code="INVALID_DURATION"
-        )
-    
+    invalid = _validate_image_to_video_request(request)
+    if invalid is not None:
+        logger.error(f"Invalid image-to-video request: {invalid.message}")
+        return invalid
+
     # Process through queue management system
     try:
         return await _process_image_to_video(request)
@@ -1088,6 +1078,50 @@ async def convert_image_to_video(request: ImageToVideoRequest) -> Union[ImageToV
             error_code="QUEUE_ERROR",
             details=str(e)
         )
+
+
+_KEN_BURNS_DIRECTIONS = ("zoom_in", "zoom_out")
+_PAN_DIRECTIONS = ("left_to_right", "right_to_left")
+
+
+def _validate_image_to_video_request(
+    request: ImageToVideoRequest,
+) -> Optional[ImageToVideoErrorResponse]:
+    """Cheap request checks done before queuing; ``None`` means valid.
+
+    A direction that belongs to another effect (``static`` + ``zoom_in``) is
+    deliberately ignored rather than rejected: it costs a model one retry for
+    no benefit.
+    """
+    if not (request.image_url or request.image_data or request.storage_key):
+        return ImageToVideoErrorResponse(
+            success=False,
+            message="One of image_data, storage_key or image_url is required",
+            error_code="MISSING_IMAGE_SOURCE",
+        )
+    if request.duration <= 0 or request.duration > 30:
+        return ImageToVideoErrorResponse(
+            success=False,
+            message="Duration must be between 1 and 30 seconds",
+            error_code="INVALID_DURATION",
+        )
+    direction_error = _direction_error(request)
+    if direction_error:
+        return ImageToVideoErrorResponse(
+            success=False, message=direction_error,
+            error_code="INVALID_ARGUMENT")
+    return None
+
+
+def _direction_error(request: ImageToVideoRequest) -> Optional[str]:
+    if (request.effect == ImageToVideoEffect.KEN_BURNS
+            and request.ken_burns_direction not in (*_KEN_BURNS_DIRECTIONS, None)):
+        return (f"ken_burns_direction must be one of "
+                f"{', '.join(_KEN_BURNS_DIRECTIONS)}")
+    if (request.effect == ImageToVideoEffect.PAN
+            and request.pan_direction not in (*_PAN_DIRECTIONS, None)):
+        return f"pan_direction must be one of {', '.join(_PAN_DIRECTIONS)}"
+    return None
 
 
 @router.post("/cut", response_model=VideoCutResponse)

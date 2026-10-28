@@ -2,6 +2,7 @@ import { Type, type TSchema } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import { executeWebTool } from './webToolAdapter';
+import { STILL_IMAGE_NEXT_STEP } from './stillGuard';
 
 const shortText = (maxLength: number) => Type.String({ minLength: 1, maxLength });
 const url = shortText(4096);
@@ -54,6 +55,7 @@ export function createWebTools(context: ToolContext): AgentTool[] {
     description: spec.description, parameters: spec.schema,
     execute: async (id, params) => executeWebTool(context, id, {
       path: spec.path, timeout: spec.timeout, importMaterial: spec.kind ? 'record' : false,
+      ...(spec.kind === 'image' ? { successFields: { next_step: STILL_IMAGE_NEXT_STEP } } : {}),
       body: { ...(params as Record<string, unknown>), ...(spec.kind ? { kind: spec.kind } : {}) },
     }) }));
 }

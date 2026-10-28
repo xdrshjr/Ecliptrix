@@ -88,7 +88,9 @@ describe('L0 prompt budget', () => {
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('update_plan');
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('ask_user');
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('check_timeline');
-    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(19);
+    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(18);
+    // image_to_video is on demand (still_tools): its schema must not sit in L0.
+    expect(CORE_TOOLKIT_TOOL_NAMES).not.toContain('image_to_video');
   });
 
   it('renders the real check_timeline section, not the unavailable stub', () => {

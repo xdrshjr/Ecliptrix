@@ -202,7 +202,7 @@ describe('report shape and thresholds', () => {
   it('only ever suggests tools that exist', () => {
     const allowed = new Set(['list_materials', 'add_to_track', 'delete_clip',
       'trim_clip', 'move_clip', 'resize_clip', 'auto_fix_overlaps',
-      'generate_tts', 'apply_video_cover']);
+      'generate_tts', 'apply_video_cover', 'image_to_video']);
     const report = run({
       tracks: [
         videoTrack('v1', [
@@ -553,7 +553,7 @@ const SLOW_PUSH: CameraMotion = {
 };
 
 describe('rule 11 — static_image_too_long', () => {
-  it('notes a still held past 8s and suggests no tool (none exists)', () => {
+  it('notes a still held past 8s and suggests image_to_video', () => {
     const report = run({
       tracks: [videoTrack('v1', [
         clip('img', 0, 10, 'v1', { originalMaterialType: 'image' }),
@@ -561,8 +561,8 @@ describe('rule 11 — static_image_too_long', () => {
     });
     const [issue] = only('static_image_too_long', report);
     expect(issue.severity).toBe('note');
-    expect(issue.suggested_tool).toBeNull();
-    expect(issue.message).toContain('camera-motion panel');
+    expect(issue.suggested_tool).toBe('image_to_video');
+    expect(issue.message).toContain('image_to_video');
   });
 
   it('accepts a short still or one with camera motion', () => {

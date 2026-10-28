@@ -1,14 +1,14 @@
 import type { ToolCategory } from './ToolRegistry';
 
 /**
- * Every tool category definition for the video editing agent (18 today:
- * 3 always-available + 15 on-demand).
+ * Every tool category definition for the video editing agent (19 today:
+ * 3 always-available + 16 on-demand).
  *
  * Categories are split into two groups:
  * - Always available: workflow_tools, query_tools and editing_tools — their
  *   tools are populated by createToolRegistry() in tools/index.ts at agent
  *   creation time.
- * - On-demand: the other 15 categories start with an empty tools array and are
+ * - On-demand: the other 16 categories start with an empty tools array and are
  *   populated via registry.registerToolsForCategory().
  *
  * The category IDs here are the canonical identifiers used by explore_tools
@@ -33,6 +33,8 @@ export const CATEGORY_IDS = {
   EDITING_TOOLS: 'editing_tools',
   SEARCH_TOOLS: 'search_tools',
   AI_GEN_TOOLS: 'ai_gen_tools',
+  /** 按需：静图成片（image_to_video / batch_image_to_video），上轨前把图片变成视频镜头。 */
+  STILL_TOOLS: 'still_tools',
   TTS_TOOLS: 'tts_tools',
   SCRIPT_TOOLS: 'script_tools',
   STORYBOARD_TOOLS: 'storyboard_tools',
@@ -57,6 +59,7 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
   CATEGORY_IDS.REVIEW_TOOLS,
   CATEGORY_IDS.SEARCH_TOOLS,
   CATEGORY_IDS.AI_GEN_TOOLS,
+  CATEGORY_IDS.STILL_TOOLS,
   CATEGORY_IDS.TTS_TOOLS,
   CATEGORY_IDS.SCRIPT_TOOLS,
   CATEGORY_IDS.STORYBOARD_TOOLS,
@@ -76,7 +79,7 @@ export const REVIEW_TOOLS = CATEGORY_IDS.REVIEW_TOOLS;
 // --- Category definitions (metadata only; tools[] populated later) ---
 
 /**
- * Returns all 18 category definitions with empty tools arrays.
+ * Returns all 19 category definitions with empty tools arrays.
  * Call this to seed the ToolRegistry, then populate tools via
  * registry.registerToolsForCategory() or by passing tools directly.
  */
@@ -166,9 +169,17 @@ export function createDefaultCategories(): ToolCategory[] {
     {
       id: CATEGORY_IDS.AI_GEN_TOOLS,
       name: 'AI 生成',
-      description: 'AI image generation (Seedream), AI video generation (ARK Seedance), image-to-video conversion (generate_ai_image, generate_ai_video, image_to_video)',
+      description: 'AI image generation (Seedream) and AI video generation (ARK Seedance): generate_ai_image, generate_ai_video',
       alwaysAvailable: false,
-      tools: [], // Populated by tools/index.ts (Task 04: generate_ai_image, generate_ai_video, image_to_video)
+      tools: [], // Populated by tools/index.ts (Task 04: generate_ai_image, generate_ai_video)
+    },
+    {
+      id: CATEGORY_IDS.STILL_TOOLS,
+      name: '静图成片',
+      // 描述 ≤160 字节（风格约束，§3.2）：图片要作为镜头上轨前，先经此类别变成视频。
+      description: 'Turn still images into video clips (Ken Burns/pan/static): image_to_video, batch_image_to_video. Local, free. Use before add_to_track.',
+      alwaysAvailable: false,
+      tools: [], // Populated by tools/index.ts: image_to_video, batch_image_to_video
     },
     {
       id: CATEGORY_IDS.TTS_TOOLS,

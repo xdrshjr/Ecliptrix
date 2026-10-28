@@ -1,368 +1,160 @@
-# Image to Video Conversion API Documentation
+# Image to Video Conversion API
 
-## Overview
-The Image to Video Conversion API transforms static images into videos with various visual effects. It supports three types of effects: static conversion, Ken Burns effect (zoom), and pan effect (horizontal movement).
+Turns one still image into one MP4 clip with a camera move. It runs on the
+local FFmpeg, costs nothing and needs no network for local images. It serves two
+callers: the material panel's "image to video" dialog and the editing agent's
+`image_to_video` / `batch_image_to_video` tools
+(`docs/plans/agent-still-to-clip/spec.md`).
 
-### Key Features
-- **Multiple Effects**: Static, Ken Burns (zoom in/out), Pan (left-to-right/right-to-left)
-- **Focus Point Control**: User-defined focus points for enhanced Ken Burns and Pan effects
-- **Smooth Ken Burns Effect**: Enhanced with linear interpolation for gradual and fluid zoom transitions focused on specified points
-- **Focus-Based Panning**: Pan effects that maintain focus on user-specified areas of interest
-- **Automatic Upload**: Generated videos are automatically uploaded to Supabase storage
-- **Thumbnail Generation**: Automatic thumbnail creation for generated videos
-- **Flexible Duration**: Configurable video duration (1-30 seconds)
-- **High Quality**: Uses FFmpeg for professional video generation with optimized scaling
-- **Queue Management**: Built-in request queuing system with maximum 2 concurrent conversions
-- **Task Tracking**: Real-time task status tracking with estimated wait times
-- **Automatic Scaling**: Handles multiple requests efficiently with queue management
+## Endpoint
 
-## Base URL
 ```
 POST /api/video/image-to-video
 ```
 
-## Authentication
-No authentication required for this endpoint.
+No authentication (single-user desktop app, bound to `127.0.0.1`).
 
 ## Request
 
-### Request Body
-```json
+```jsonc
 {
-  "image_url": "string",
-  "effect": "static|ken_burns|pan",
+  "image_url": "/api/storage/files/uploads/images/a.jpg",
+  "storage_key": "uploads/images/a.jpg",
+  "image_data": null,
+  "effect": "ken_burns",
   "duration": 5.0,
-  "task_id": "string (optional)",
-  "custom_filename": "string (optional)",
-  "ken_burns_direction": "zoom_in|zoom_out (optional)",
-  "pan_direction": "left_to_right|right_to_left (optional)",
-  "focus_x": "float (optional, 0.0-1.0, default: 0.5)",
-  "focus_y": "float (optional, 0.0-1.0, default: 0.5)"
-}
-```
-
-### Parameters
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `image_url` | string | Yes | - | URL of the image to convert to video |
-| `effect` | string | Yes | - | Effect type: `static`, `ken_burns`, or `pan` |
-| `duration` | float | No | 5.0 | Video duration in seconds (1.0-30.0) |
-| `task_id` | string | No | null | Task ID for organization and logging |
-| `custom_filename` | string | No | null | Custom filename for the output video |
-| `focus_x` | float | No | 0.5 | Focus point X coordinate (0.0-1.0, where 0.0=left, 1.0=right, 0.5=center) |
-| `focus_y` | float | No | 0.5 | Focus point Y coordinate (0.0-1.0, where 0.0=top, 1.0=bottom, 0.5=center) |
-| `ken_burns_direction` | string | No | "zoom_in" | Ken Burns direction: `zoom_in` or `zoom_out` |
-| `pan_direction` | string | No | "left_to_right" | Pan direction: `left_to_right` or `right_to_left` |
-
-### Focus Point Usage
-
-The focus point parameters (`focus_x` and `focus_y`) allow precise control over where visual effects are centered:
-
-#### For Ken Burns Effect
-- **Zoom In**: The animation starts with the full image and gradually zooms into the specified focus point
-- **Zoom Out**: The animation starts zoomed into the focus point and gradually zooms out to show the full image
-- The focus point remains at the center of the frame throughout the animation
-
-#### For Pan Effect
-- The pan animation is calculated to keep the focus point visible throughout the movement
-- **Left to Right**: Pans from the left side of the focus area to the right side
-- **Right to Left**: Pans from the right side of the focus area to the left side
-- The focus point influences the pan path to ensure important content remains in view
-
-#### For Static Effect
-- Focus points are currently not used for static effects but are accepted for future enhancements
-- The entire image is converted to video without animation
-
-#### Coordinate System
-- `focus_x`: 0.0 = leftmost edge, 0.5 = horizontal center, 1.0 = rightmost edge
-- `focus_y`: 0.0 = top edge, 0.5 = vertical center, 1.0 = bottom edge
-- Coordinates are relative to the original image dimensions
-
-### Queue Management
-
-The Image to Video API implements a sophisticated queue management system to handle high-volume requests efficiently:
-
-#### Concurrency Limits
-- **Maximum Concurrent Conversions**: 2 simultaneous video generations
-- **Automatic Queuing**: Additional requests are automatically queued when the limit is reached
-- **Fair Processing**: Tasks are processed in first-in-first-out (FIFO) order
-
-#### Task Tracking
-- **Unique Task IDs**: Each request receives a unique task identifier for tracking
-- **Real-time Status**: Monitor task progress through dedicated status endpoints
-- **Estimated Wait Times**: Receive accurate wait time estimates for queued tasks
-- **Processing Metrics**: Track conversion times and queue performance
-
-#### Queue Features
-- **Position Tracking**: Know your exact position in the queue
-- **Task Cancellation**: Cancel queued tasks before processing begins
-- **Automatic Cleanup**: Completed tasks are automatically cleaned up to maintain performance
-- **Detailed Logging**: Comprehensive logging for debugging and monitoring
-
-### Effect Types
-
-#### Static
-Simple conversion of image to video with no motion effects.
-```json
-{
-  "image_url": "https://example.com/image.jpg",
-  "effect": "static",
-  "duration": 5.0
-}
-```
-
-#### Ken Burns Effect
-Creates smooth zoom transitions on images with enhanced linear interpolation.
-
-**Zoom In** (zoom_in): Starts at normal size (1.0x) and gradually zooms to 1.1x over the duration for a subtle effect
-```json
-{
-  "image_url": "https://example.com/image.jpg",
-  "effect": "ken_burns",
   "ken_burns_direction": "zoom_in",
-  "duration": 5.0
-}
-```
-
-**Zoom Out** (zoom_out): Starts at zoomed in state (1.1x) and gradually zooms out to normal size (1.0x)
-```json
-{
-  "image_url": "https://example.com/image.jpg",
-  "effect": "ken_burns",
-  "ken_burns_direction": "zoom_out",
-  "duration": 5.0
-}
-```
-
-**Technical Details:**
-- Uses linear interpolation formula: `zoom_start + (zoom_end - zoom_start) * (frame / total_frames)`
-- Zoom range: 1.0x to 1.1x for subtle, natural-looking transitions
-- Frame rate: 30 fps for fluid motion
-- Stable center positioning using `(iw-ow)/2, (ih-oh)/2` to eliminate jitter
-- No camera movement or shaking - pure zoom effect only
-
-#### Pan Effect
-Creates horizontal movement across the image.
-
-**Left to Right**:
-```json
-{
-  "image_url": "https://example.com/image.jpg",
-  "effect": "pan",
   "pan_direction": "left_to_right",
-  "duration": 5.0
+  "focus_x": 0.5,
+  "focus_y": 0.5,
+  "aspect_ratio": null,
+  "max_long_side": 1920
 }
 ```
 
-**Right to Left**:
-```json
-{
-  "image_url": "https://example.com/image.jpg",
-  "effect": "pan",
-  "pan_direction": "right_to_left",
-  "duration": 5.0
-}
-```
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `image_data` | string | - | Base64 or `data:` URL. Highest precedence (browser-only `blob:` images). |
+| `storage_key` | string | - | `STORAGE_ROOT`-relative key (no drive letter, no leading `/`, no `..`, at most 256 chars). Second precedence. |
+| `image_url` | string | - | Same-origin path (`/api/storage/files/...`), loopback URL, or public `http(s)` URL. Lowest precedence. |
+| `effect` | `static` \| `ken_burns` \| `pan` | required | |
+| `duration` | float | 5.0 | 1.0 - 30.0 seconds. |
+| `ken_burns_direction` | `zoom_in` \| `zoom_out` | `zoom_in` | Only read for `ken_burns`. |
+| `pan_direction` | `left_to_right` \| `right_to_left` | `left_to_right` | Only read for `pan`. A direction that belongs to another effect is ignored. |
+| `focus_x`, `focus_y` | float 0..1 | 0.5 | Subject centre. Ignored for `static`. |
+| `aspect_ratio` | `16:9` \| `9:16` \| `1:1` \| `4:3` \| `21:9` | `null` | Output frame. `null` keeps the image's own ratio. |
+| `max_long_side` | int 480..3840 | 1920 | Upper bound for the output's longer side; width and height are made even. |
+| `task_id` | string | - | Queue tracking only. |
+| `custom_filename` | string | - | Deprecated and ignored: output names are content-addressed. |
 
-### Request Example
-```json
-{
-  "image_url": "https://example.com/beautiful-landscape.jpg",
-  "effect": "ken_burns",
-  "duration": 8.0,
-  "task_id": "video-editing-task-123",
-  "custom_filename": "landscape_zoom",
-  "ken_burns_direction": "zoom_in"
-}
-```
+At least one of `image_data`, `storage_key`, `image_url` is required.
+
+### Image sources
+
+* **`storage_key`** is validated, then resolved through the
+  `/api/storage/files/<key>` route branch of `local_media_resolver`, which is
+  anchored at `STORAGE_ROOT` and containment-checked. (Passing a bare relative
+  string to the resolver would anchor it at the service directory instead.)
+* **Same-origin path / loopback URL** resolve the same way and are read from
+  disk.
+* **Remote `http(s)`** goes through `validate_external_url` (loopback, private,
+  link-local and cloud-metadata hosts are refused), is downloaded with a 30 s
+  timeout and a 25 MB cap, must answer `image/*`, and every redirect hop is
+  validated again (at most 3 hops).
+* Images over 25 MB or 64 megapixels are refused before decoding.
+  Phone photos are rotated by their EXIF orientation; transparency is flattened
+  onto black.
+
+## Effects
+
+| Effect | What it renders |
+|---|---|
+| `static` | The picture, scaled. When `aspect_ratio` differs from the image's ratio, the frame is filled with the same blurred, darkened backdrop the exporter uses (no black bars). |
+| `ken_burns` | Slow push (`zoom_in`: 1.00 to 1.12x) or pull (`zoom_out`: 1.12 to 1.00x) on a 2x supersampled frame, so it does not shimmer. The crop window is clamped inside the image, so an off-centre focus never shows black. |
+| `pan` | Horizontal drift across a strip 1.25x the frame width with smooth-step easing. |
+
+Output: H.264 (`libx264`, CRF 18, `veryfast`), `yuv420p`, 30 fps, `+faststart`,
+no audio.
 
 ## Response
 
-### Success Response
-```json
+Success (HTTP 200):
+
+```jsonc
 {
   "success": true,
   "message": "Image converted to video successfully",
-  "video_url": "https://supabase-url/video.mp4",
-  "thumbnail_url": "https://supabase-url/thumbnail.jpg",
-  "file_size": 2048576,
-  "duration": 8.0,
+  "video_url": "/api/storage/files/video/generated/i2v_3f9a1c0b2e7d4a55.mp4",
+  "storage_key": "video/generated/i2v_3f9a1c0b2e7d4a55.mp4",
+  "thumbnail_url": "/api/storage/files/video/generated/i2v_3f9a1c0b2e7d4a55_thumb.jpg",
+  "file_size": 123456,
+  "duration": 5.0,
   "width": 1920,
   "height": 1080,
   "effect_applied": "ken_burns",
-  "processing_time": 12.5
+  "processing_time": 2.4,
+  "reused": false
 }
 ```
 
-### Error Response
+### Idempotency
+
+The file name is `i2v_<16 hex>` where the hex is
+`sha1(image bytes + canonical parameters + filter version)[:16]`. A repeat call
+with the same image and parameters returns the same file with `reused: true` and
+does not render again. Bump `FILTER_VERSION` in `image_to_video_filters.py`
+whenever a filter string changes so stale renders are never served as new.
+Files are written under a temporary name and moved into place atomically, so a
+half-written clip is never a cache hit. `video/generated/` is not touched by
+`derived_gc_service`.
+
+### Failure
+
+Business failures return HTTP 200 with `success: false` (the material panel
+depends on this); only a malformed body returns 422.
+
 ```json
 {
   "success": false,
-  "message": "Conversion failed: Invalid image format",
-  "error_code": "CONVERSION_ERROR",
-  "details": "Unsupported image format: .bmp"
+  "message": "Image could not be decoded",
+  "error_code": "IMAGE_UNREADABLE",
+  "details": "cannot identify image file"
 }
 ```
 
-### Response Fields
+| `error_code` | Meaning |
+|---|---|
+| `MISSING_IMAGE_SOURCE` | None of `image_data`, `storage_key`, `image_url` was given. |
+| `INVALID_DURATION` | Duration outside 1-30 s. |
+| `INVALID_ARGUMENT` | Unsafe `storage_key`, or a direction that is not valid for the chosen effect. |
+| `IMAGE_NOT_FOUND` | The source could not be resolved, read or downloaded (including refused internal URLs). |
+| `IMAGE_UNREADABLE` | Not a decodable image, or a remote resource that is not `image/*`. |
+| `IMAGE_TOO_LARGE` | Over 25 MB or 64 megapixels. |
+| `FFMPEG_UNAVAILABLE` | FFmpeg is not on `PATH`. |
+| `FFMPEG_ERROR` | FFmpeg exited non-zero; `details` carries the tail of its stderr. |
+| `QUEUE_TIMEOUT` | FFmpeg did not finish within `max(60, duration x 12)` seconds and was killed. |
+| `FILE_NOT_CREATED` | FFmpeg reported success but produced no output. |
+| `INTERNAL_ERROR` | Unexpected server error. |
+| `QUEUE_ERROR`, `CONVERSION_ERROR`, `UPLOAD_FAILED` | Legacy codes, kept for compatibility. Clients treat them as `conversion_failed`. |
 
-#### Success Response Fields
-| Field | Type | Description |
-|-------|------|-------------|
-| `success` | boolean | Always `true` for successful conversions |
-| `message` | string | Success message |
-| `video_url` | string | URL of the generated video in Supabase storage |
-| `thumbnail_url` | string | URL of the generated thumbnail (optional) |
-| `file_size` | integer | File size of the generated video in bytes |
-| `duration` | float | Actual duration of the generated video |
-| `width` | integer | Video width in pixels |
-| `height` | integer | Video height in pixels |
-| `effect_applied` | string | The effect that was applied |
-| `processing_time` | float | Time taken to process the conversion in seconds |
+Error codes are public API; renaming one is a breaking change.
 
-#### Error Response Fields
-| Field | Type | Description |
-|-------|------|-------------|
-| `success` | boolean | Always `false` for error responses |
-| `message` | string | Human-readable error message |
-| `error_code` | string | Machine-readable error code |
-| `details` | string | Additional error details (optional) |
+## Concurrency
 
-### Error Codes
+The route runs through the `image_to_video` queue with at most 2 conversions at
+once. FFmpeg is an `asyncio` subprocess (never `subprocess.run`), so a render
+does not block other requests, and a cancelled request kills its FFmpeg.
 
-| Error Code | Description |
-|------------|-------------|
-| `MISSING_IMAGE_URL` | Image URL is required but not provided |
-| `INVALID_DURATION` | Duration is outside the allowed range (1-30 seconds) |
-| `FFMPEG_ERROR` | FFmpeg processing failed |
-| `FILE_NOT_CREATED` | Output video file was not created |
-| `UPLOAD_FAILED` | Failed to upload video to Supabase storage |
-| `CONVERSION_ERROR` | General conversion error |
-| `INTERNAL_ERROR` | Internal server error |
+## Example
 
-## Status Codes
-
-| Status Code | Description |
-|-------------|-------------|
-| 200 | Success - Image converted successfully |
-| 400 | Bad Request - Invalid parameters |
-| 500 | Internal Server Error - Processing failed |
-
-## Usage Examples
-
-### cURL Examples
-
-#### Static Conversion
 ```bash
-curl -X POST "http://localhost:8000/api/video/image-to-video" \
+curl -X POST "http://127.0.0.1:8000/api/video/image-to-video" \
   -H "Content-Type: application/json" \
   -d '{
-    "image_url": "https://example.com/photo.jpg",
-    "effect": "static",
-    "duration": 5.0,
-    "task_id": "my-task-123"
-  }'
-```
-
-#### Ken Burns Effect
-```bash
-curl -X POST "http://localhost:8000/api/video/image-to-video" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image_url": "https://example.com/landscape.jpg",
+    "storage_key": "uploads/images/a.jpg",
     "effect": "ken_burns",
-    "duration": 10.0,
-    "ken_burns_direction": "zoom_out",
-    "custom_filename": "landscape_zoom_out"
+    "duration": 5,
+    "aspect_ratio": "16:9",
+    "focus_x": 0.3
   }'
 ```
-
-#### Pan Effect
-```bash
-curl -X POST "http://localhost:8000/api/video/image-to-video" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image_url": "https://example.com/panorama.jpg",
-    "effect": "pan",
-    "duration": 8.0,
-    "pan_direction": "right_to_left"
-  }'
-```
-
-### JavaScript Example
-```javascript
-const convertImageToVideo = async (imageUrl, effect, options = {}) => {
-  const response = await fetch('/api/video/image-to-video', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      image_url: imageUrl,
-      effect: effect,
-      duration: options.duration || 5.0,
-      task_id: options.taskId,
-      custom_filename: options.filename,
-      ken_burns_direction: options.kenBurnsDirection || 'zoom_in',
-      pan_direction: options.panDirection || 'left_to_right'
-    }),
-  });
-
-  const result = await response.json();
-  
-  if (result.success) {
-    console.log('Video generated:', result.video_url);
-    return result;
-  } else {
-    console.error('Conversion failed:', result.message);
-    throw new Error(result.message);
-  }
-};
-
-// Usage
-convertImageToVideo(
-  'https://example.com/image.jpg',
-  'ken_burns',
-  {
-    duration: 7.0,
-    taskId: 'video-task-456',
-    kenBurnsDirection: 'zoom_in'
-  }
-);
-```
-
-## Technical Details
-
-### Supported Image Formats
-- JPEG (.jpg, .jpeg)
-- PNG (.png)
-- WebP (.webp)
-
-### Video Output Specifications
-- **Format**: MP4 (H.264)
-- **Frame Rate**: 30 FPS
-- **Pixel Format**: YUV420P
-- **Resolution**: Maintains original image aspect ratio
-- **Quality**: High quality encoding
-
-### Processing Pipeline
-1. **Download**: Image is downloaded from the provided URL
-2. **Analysis**: Image dimensions and format are analyzed
-3. **Conversion**: FFmpeg processes the image with the selected effect
-4. **Thumbnail**: A thumbnail is generated from the video
-5. **Upload**: Both video and thumbnail are uploaded to Supabase
-6. **Cleanup**: Temporary files are cleaned up
-7. **Response**: URLs and metadata are returned
-
-### Performance Considerations
-- Processing time varies based on image size and effect complexity
-- Ken Burns and Pan effects take longer than static conversion
-- Large images (>4K) may take significantly longer to process
-- Timeout is set to 5 minutes for processing
-
-## Rate Limits
-No specific rate limits are currently enforced, but consider implementing them for production use.
-
-## Error Handling
-The API provides detailed error messages and codes to help diagnose issues. Always check the `success` field in the response to determine if the conversion was successful. 

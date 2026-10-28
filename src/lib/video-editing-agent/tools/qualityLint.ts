@@ -388,8 +388,8 @@ function lintUpscale(scope: LintScope): void {
 }
 
 // --- 规则 11：static_image_too_long --------------------------------------
-// 没有运镜工具可建议：运镜只有 UI 通路（CameraMotionModal / store.setCameraMotion），
-// 写 set_camera_motion 会让模型调一个不存在的工具（§4.10 的 P1-8 更正）。
+// 运镜只有 UI 通路（CameraMotionModal / store.setCameraMotion），没有 set_camera_motion
+// 工具（§4.10 的 P1-8 更正）；Agent 能做的是 image_to_video：把静图换成带推拉/平移的视频镜头。
 function lintStaticImages(scope: LintScope): void {
   for (const { track, item } of placedItems(pictureTracks(scope.state))) {
     if (item.duration <= STATIC_IMAGE_MAX_SECONDS || item.cameraMotion) continue;
@@ -397,8 +397,10 @@ function lintStaticImages(scope: LintScope): void {
     push(scope, 'static_image_too_long', 'note',
       `still image "${item.name}" holds ${seconds(item.duration)} without camera `
         + `motion; past ${STATIC_IMAGE_MAX_SECONDS}s it reads as a frozen frame. `
-        + 'Suggest a slow push in the camera-motion panel (no agent tool does it).',
-      { trackId: track.id, itemId: item.id, at_seconds: item.startTime });
+        + 'Replace it with a video clip: image_to_video on the source image '
+        + '(slow push or pan), or keep it only if it is a deliberate overlay.',
+      { trackId: track.id, itemId: item.id, at_seconds: item.startTime },
+      'image_to_video');
   }
 }
 

@@ -45,10 +45,11 @@ for (const categoryId of registry.getCategoryIds()) {
 }
 
 describe('built-in skills', () => {
-  it('ships exactly the seven designed skills', () => {
+  it('ships exactly the eight designed skills', () => {
     expect(skills.map(skill => skill.id).sort()).toEqual([
       'explainer-video', 'final-qc-and-export', 'news-digest-video',
-      'parallel-sourcing', 'quick-assemble', 'storyboard-short', 'web-footage-sourcing',
+      'parallel-sourcing', 'quick-assemble', 'still-to-clip', 'storyboard-short',
+      'web-footage-sourcing',
     ]);
   });
 
@@ -80,6 +81,22 @@ describe('built-in skills', () => {
     const explainer = skills.find(skill => skill.id === 'explainer-video')!;
     expect(explainer.markdown).toContain('narration_text');
   });
+
+  it('still-to-clip preloads both converters from the one still_tools category', () => {
+    const skill = skills.find(item => item.id === 'still-to-clip')!;
+    const tools = frontmatterList(skill.markdown, 'tools');
+    expect(tools).toEqual(['image_to_video', 'batch_image_to_video']);
+    expect(tools.map(name => categoryOf.get(name))).toEqual(['still_tools', 'still_tools']);
+    expect(skill.markdown).toContain('as_still');
+  });
+
+  it.each(['quick-assemble', 'explainer-video', 'news-digest-video'])(
+    '%s is v2 and no longer sends images straight to add_to_track', id => {
+      const { markdown } = skills.find(item => item.id === id)!;
+      expect(markdown).toMatch(/^version: 2$/m);
+      expect(markdown).not.toMatch(/add_to_track[^。\n]*(视频\/图片|把图片|图片放到)/);
+      expect(markdown).toMatch(/image_to_video|still-to-clip/);
+    });
 
   it('does not ask the agent to export by itself (final-qc-and-export)', () => {
     const qc = skills.find(skill => skill.id === 'final-qc-and-export')!;

@@ -289,7 +289,7 @@ def test_replace_skill_id_rewrites_only_the_id_line():
 EXPECTED_BUILTIN = {
     "explainer-video", "storyboard-short", "quick-assemble",
     "news-digest-video", "web-footage-sourcing", "final-qc-and-export",
-    "parallel-sourcing",
+    "parallel-sourcing", "still-to-clip",
 }
 
 

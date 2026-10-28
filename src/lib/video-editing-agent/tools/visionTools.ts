@@ -3,6 +3,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { VisionImageRef } from '@/types/agentVision';
 import { findMaterial } from './index';
+import { normalizeStorageKey, storageKeyForMaterial } from './storageKey';
 import { createInspectExportTool } from './exportInspectTool';
 import {
   executeVisionTool,
@@ -23,9 +24,6 @@ import {
  */
 
 const MAX_IMAGES = 6;
-
-/** `/api/storage/files/` 之后的相对键才是后端认的 `storage_key`。 */
-const MATERIAL_STORAGE_PREFIX = '/api/storage/files/';
 
 const sourceKind = Type.Union([
   Type.Literal('material'), Type.Literal('cover'), Type.Literal('workspace'),
@@ -115,29 +113,6 @@ type ImageRefParams = ViewImageParams['images'][number];
 type FrameSourceParams = ReviewFramesParams['source'];
 
 /**
- * 只接受「相对键」：非空、≤256 字符、不带盘符/前导 `/`/`..`/scheme。
- *
- * 服务端还会做一次白名单根校验（§4.4），这里只是把显然不会通过的输入
- * 挡在出口，免得模型为了一个错键反复试错。
- */
-function normalizeStorageKey(raw?: string): string | undefined {
-  if (typeof raw !== 'string') return undefined;
-  const value = raw.trim();
-  if (!value || value.length > 256) return undefined;
-  if (value.startsWith('/') || value.includes('..')) return undefined;
-  if (/^[a-zA-Z]:/.test(value) || /^[a-z][a-z0-9+.-]*:/i.test(value)) {
-    return undefined;
-  }
-  return value;
-}
-
-function relativeStorageKey(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  return raw.startsWith(MATERIAL_STORAGE_PREFIX)
-    ? raw.slice(MATERIAL_STORAGE_PREFIX.length) : raw;
-}
-
-/**
  * `storage_key` 的来源（§4.4 路径 A）。
  *
  * 模型给的键优先（它照抄了工具输出）；模型漏了就用 `ToolContext.materials`
@@ -152,10 +127,7 @@ function storageKeyFor(
   const explicit = normalizeStorageKey(provided);
   if (explicit) return explicit;
   if (!materialId) return undefined;
-  const material = findMaterial(context.materials, materialId);
-  return normalizeStorageKey(material?.storageKey)
-    ?? normalizeStorageKey(relativeStorageKey(material?.cacheUrl))
-    ?? normalizeStorageKey(relativeStorageKey(material?.url));
+  return storageKeyForMaterial(findMaterial(context.materials, materialId));
 }
 
 function toImageRef(
