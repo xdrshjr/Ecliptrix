@@ -110,3 +110,9 @@ coverage/
 /logs/
 .run-log/
 .claude-index/graph.json
+
+# === Diagnostic scratch worktree ===
+# `.baseline-check/` is a registered git worktree (.git/worktrees/-baseline-check)
+# from a past baseline-diagnosis session: a full mirror of this repo that holds
+# pre-sanitization credential-shaped literals and must never be committed.
+/.baseline-check/

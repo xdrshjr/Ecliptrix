@@ -32,9 +32,23 @@ const {
 // documented contract — ({ key, length }[], never the value) — instead of
 // depending on the real heuristics' thresholds.
 
+// The dirty value has to satisfy BOTH gates at once, because this very file is
+// tracked and therefore read by scripts/scan-secrets.py:
+//   1. ./lib/secret-shape must classify it as a secret-shaped pair — sensitive
+//      key name, value long enough, no documented placeholder — otherwise the
+//      dirty-archive case below stops exercising the detection path and passes
+//      vacuously;
+//   2. scripts/scan-secrets.py must find no vendor credential shape in it, or
+//      the repo-wide gate goes red on its own fixture.
+// Hence a deliberately vendor-less literal: no sk-/tvly-/AKIA/ghp_/AIza/LTAI
+// prefix, no BEGIN ... PRIVATE KEY, no base64-of-a-JWT shape. The detector
+// needs a sensitive key name plus a long non-placeholder value — it never
+// requires a vendor prefix — so nothing is weakened by dropping one.
+const DIRTY_LLM_VALUE = 'fixture-only-credential-a1b2c3d4e5f60718293a4b5c'
+
 const DIRTY_TEMPLATE = [
   '# fixture: stands in for a prepare-env.js build that baked real keys',
-  'LLM_API_KEY=sk-live0123456789abcdef0123456789abcdefab',
+  `LLM_API_KEY=${DIRTY_LLM_VALUE}`,
   'PEXELS_API_KEY=563492ad6f91700001000001abcdefabcdefabcd',
   'LLM_API_URL=https://api.example.invalid/v1',
   '',
@@ -48,7 +62,7 @@ const CLEAN_TEMPLATE = [
   '',
 ].join('\n')
 
-const LEAKED_VALUE = 'sk-live0123456789abcdef0123456789abcdefab'
+const LEAKED_VALUE = DIRTY_LLM_VALUE
 const URL_VALUE = /^[a-z][a-z0-9+.-]*:\/\//i
 const PLACEHOLDER_VALUE = /^(your[_-]|<|placeholder|change[-_]?me)/i
 
@@ -209,7 +223,10 @@ async function testUnreadableEntryExitsTwo(sandbox) {
 async function testScansEveryEnvShapedEntry(sandbox) {
   const archive = await packArchive(sandbox, 'multi', {
     'package.json': '{"name":"fixture"}',
-    'main/index.js': 'const LEAK = "sk-live0123456789abcdef0123456"\n',
+    // A non-env entry is never scanned, so its contents only need to not look
+    // like a credential shape to scripts/scan-secrets.py, which reads this
+    // tracked fixture file itself.
+    'main/index.js': `const LEAK = "${DIRTY_LLM_VALUE}"\n`,
     'scripts/env.template.desktop': CLEAN_TEMPLATE,
     '.env': DIRTY_TEMPLATE,
     'config/app.env': 'FAST_LLM_API_KEY=other0123456789abcdefghij0123\n',
@@ -326,8 +343,16 @@ function testRealPredicateIsWiredWhenAvailable() {
     'function',
     'lib/secret-shape must export findSecretShapedPairs',
   )
-  const pairs = predicate('LLM_API_KEY=sk-live0123456789abcdef0123456\n')
+  // Pin the dirty fixture against the REAL predicate, not just the double: if
+  // it ever stops being classified as a secret-shaped pair, the dirty-archive
+  // case above would pass without testing detection at all.
+  const pairs = predicate(`LLM_API_KEY=${DIRTY_LLM_VALUE}\n`)
   assert.ok(Array.isArray(pairs), 'findSecretShapedPairs must return an array')
+  assert.strictEqual(
+    pairs.length,
+    1,
+    'the dirty fixture must be a secret-shaped pair for the real predicate',
+  )
   assert.ok(
     pairs.every(
       (pair) => Object.keys(pair).sort().join(',') === 'key,length',
