@@ -9,7 +9,12 @@ const { parseArgs, resolveUrls, runPreflight } = require('./preflight')
 const { prepareFrontend } = require('./prepare-frontend')
 const { prepareBackend } = require('./prepare-backend')
 const { prepareFfmpeg } = require('./prepare-ffmpeg')
-const { prepareEnv } = require('./prepare-env')
+const {
+  prepareEnv,
+  formatSecretFindings,
+  isBundleSecretsOptedIn,
+} = require('./prepare-env')
+const { findSecretShapedPairs } = require('./lib/secret-shape')
 const { sha256File } = require('./lib/download')
 const { processesUnder, killPids } = require('./lib/process-cleanup')
 const { checkPayloads, formatMissingPayloads } =
@@ -69,8 +74,10 @@ const BUILD_PAYLOADS = [
   'backend/app/services/web_research/smoke.py',
   'ffmpeg/ffmpeg.exe',
   'ffmpeg/ffprobe.exe',
-  // First-run env template (bundled default credentials) — generated into
-  // build/ by prepare-env.js, then mapped into the asar by electron-builder.yml.
+  // First-run env template — generated into build/ by prepare-env.js:
+  // placeholders only unless ECLIPTRIX_BUNDLE_SECRETS opts in; the content
+  // ships publicly (see assertEnvTemplateIsPublicSafe) and electron-builder.yml
+  // maps it into the asar.
   'env.template.desktop',
 ]
 
@@ -250,6 +257,68 @@ function assertBuildOutputs() {
   console.log('[assert] all payloads present')
 }
 
+/**
+ * Fail the build when the generated first-run template carries real
+ * credentials.
+ *
+ * build/env.template.desktop is packed into app.asar as
+ * scripts/env.template.desktop and copied to %APPDATA%\Ecliptrix\.env on first
+ * run, so everything in it ships to every downloader — the v1.0.0 readiness
+ * audit found the maintainer's live keys there (cache/release-prep/readiness.md
+ * B1). prepare-env.js now defaults to placeholders; this assertion makes that
+ * default impossible to regress, exactly like BUILD_PAYLOADS makes a missing
+ * payload impossible to ship. Only KEY NAMES and value lengths are printed,
+ * never the values.
+ *
+ * @param {object} [options] Overrides, so tests never need a packaging build.
+ * @param {string} [options.templatePath] File to inspect; defaults to the
+ *   generated build/env.template.desktop.
+ * @param {Record<string, string|undefined>} [options.env] Environment read for
+ *   the opt-in flag; defaults to process.env.
+ * @returns {void}
+ * @throws {Error} When the template is missing, or when it holds a
+ *   secret-shaped non-placeholder pair and bundling real values was not
+ *   explicitly opted into.
+ */
+function assertEnvTemplateIsPublicSafe(options = {}) {
+  const templatePath =
+    options.templatePath || path.join(BUILD_DIR, 'env.template.desktop')
+  const env = options.env || process.env
+  const displayPath = options.templatePath
+    ? templatePath
+    : 'build/env.template.desktop'
+  console.log(`[assert] checking ${displayPath} for secrets...`)
+  if (isBundleSecretsOptedIn(env)) {
+    console.warn(
+      '[assert] skipped — ECLIPTRIX_BUNDLE_SECRETS is set: this package ' +
+        'carries REAL credentials and must never be published'
+    )
+    return
+  }
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(
+      `missing first-run env template: ${templatePath} ` +
+        '(scripts/prepare-env.js must run before this check)'
+    )
+  }
+  const findings = findSecretShapedPairs(
+    fs.readFileSync(templatePath, 'utf-8')
+  )
+  if (findings.length > 0) {
+    throw new Error(
+      'build/env.template.desktop contains secret-shaped values that would ' +
+        'ship in app.asar (scripts/env.template.desktop) and be copied to ' +
+        '%APPDATA%\\Ecliptrix\\.env on first run. Names only, values never ' +
+        'printed:\n' +
+        formatSecretFindings(findings) +
+        '\nECLIPTRIX_BUNDLE_SECRETS is not set, so a public-safe template ' +
+        '(placeholders only) was expected — regenerate it with ' +
+        '`node scripts/prepare-env.js` (see scripts/prepare-env.js).'
+    )
+  }
+  console.log('[assert] env.template.desktop: 0 secret-shaped values')
+}
+
 function dirSizeBytes(dir) {
   let total = 0
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -367,9 +436,14 @@ async function main() {
   await prepareFfmpeg(urls)
 
   // Independent of the frontend/backend skip flags — reads the source .env
-  // files directly, so it must run on every build to keep the bundled defaults
-  // in sync with the current .env.
+  // files (read-only) and emits a placeholder-only template unless
+  // ECLIPTRIX_BUNDLE_SECRETS opts in, so it must run on every build to keep the
+  // shipped key set in sync with the current .env.
   prepareEnv()
+  // Security gate: build/env.template.desktop ships inside app.asar, so it
+  // may only carry placeholders unless bundling secrets was explicitly opted
+  // in (ECLIPTRIX_BUNDLE_SECRETS).
+  assertEnvTemplateIsPublicSafe()
 
   assertBuildOutputs()
 
@@ -384,7 +458,14 @@ async function main() {
   console.log(`[build] completed in ${((Date.now() - startedAt) / 60000).toFixed(1)} min`)
 }
 
-main().catch((err) => {
-  console.error(`\n[build] FAILED: ${err.message}`)
-  process.exit(1)
-})
+// Exported so the secret gate can be exercised on a synthetic template without
+// running a packaging build (scripts/lib/secret-shape.test.js does exactly
+// that); `npm run build` still goes through the require.main branch below.
+module.exports = { assertEnvTemplateIsPublicSafe }
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`\n[build] FAILED: ${err.message}`)
+    process.exit(1)
+  })
+}
