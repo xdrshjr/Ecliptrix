@@ -4,11 +4,12 @@
 - **诊断日期**: 2026-10-29
 - **主 Bug 状态**: 已修复并已验证(`npm run build` 退出码 0,产出安装包)
 - **附带发现**: 五条,编号 A、B-1、B-2、C、D。其中 **A、B-1、B-2、C 已修复
-  并在打包产物上验证**;**D(冒烟门禁把运行中的应用判成残留进程)代码已修在
-  工作区,打包态门禁尚未重跑**,它是今天最后一条红灯,亮在门禁自身而不是
-  产品上。
+  并在打包产物上验证**;**D(冒烟门禁把运行中的应用判成残留进程)的修复
+  已随 `7eaa502b` 入库,打包态门禁也已重跑**,最后那条红灯(亮在门禁
+  自身而不是产品上)由此熄灭。
 - **最终结论**: 打包链路已绿,打包态启动链路已绿(宿主健康 → 后端健康 →
-  前端健康 → 窗口创建);冒烟门禁的绿灯待一次新的全流程冒烟(第 9 节)。
+  前端健康 → 窗口创建);**D 的修复已在打包态重跑**(第 13.4 节:该构件
+  7 轮里 4 轮 `[smoke-test] PASS`,3 条失败均为门禁抖动,D 本身未再亮红)。
 
 同目录下的 `pipeline-audit.md`(打包流水线「错了根目录」审计)、
 `release-manifest-audit.md`(打包后收尾审计)与 `startup-audit.md`(打包态
@@ -171,7 +172,8 @@ electron-builder 之前死在这里。
 即:此前「必然中止」的门禁现在放行了,而且放行之后的下游步骤
 (electron-builder / NSIS / 研究包清单)全部成功。修复代码本身仍在工作区
 (`desktop/scripts/build.js`、`desktop/scripts/lib/build-payload-checks.js`、
-`desktop/scripts/lib/build-payload-checks.test.js`),尚未提交。
+`desktop/scripts/lib/build-payload-checks.test.js`),当时尚未提交——**现已随
+`7eaa502b` 入库,见第 13.1 节**。
 
 ---
 
@@ -358,9 +360,10 @@ electron-builder 之前死在这里。
 
 ---
 
-## 9. 附带发现 D:冒烟门禁把「仍在运行的应用」判成残留进程(代码已修,门禁待重跑)
+## 9. 附带发现 D:冒烟门禁把「仍在运行的应用」判成残留进程(已修,门禁已重跑)
 
-> **状态:代码已修在工作区(未提交),门禁尚未重跑。** 本文写作期间
+> **状态(已被第 13 节更新):修复已随 `7eaa502b` 入库,打包态门禁随后重跑
+> ——第 13.4 节那个构件 7 轮里 4 轮 `[smoke-test] PASS`。** 本文写作期间
 > `desktop/scripts/smoke-test.js` 从「枚举整个 `win-unpacked`」改成了
 > 「检查前基线的差集」(`:199-227` + 新模块
 > `desktop/scripts/lib/process-scope.js`)。所以本节记录的**失败日志是修复
@@ -406,7 +409,7 @@ electron-builder 之前死在这里。
 - 引入提交:该 `finally` 的代码路径来自 `3b7b6ac6`(与主 Bug 同一提交),
   在今天之前从未被执行到——因为门禁在更早的步骤(断言、端口透传、宿主
   `cwd`、`resolveProxy` 挂起)就已经死了。
-- 修复(工作区,未提交):
+- 修复(现已随 `7eaa502b` 入库):
   - 新增 `desktop/scripts/lib/process-scope.js`:
     `selectLeakedProcesses({ after, baseline })` 只把「检查后存在、检查前不在
     基线里」的 PID 判为泄漏(`:40-43`),`waitForNoLeakedProcesses()` 在
@@ -424,10 +427,13 @@ electron-builder 之前死在这里。
 - 回归测试:`desktop/scripts/smoke-test.process-scope.test.js`。今日手工执行
   `node scripts/smoke-test.process-scope.test.js` →
   `smoke-test process scope tests passed`(注入假枚举器,无需真实进程)。
-- 仍未验证:修复后的**真实**门禁全流程(跑到 `[smoke-test] PASS`)尚未重跑。
-  验收标准就是那一条:一次 `node scripts/smoke-test.js` 在
-  `gate-smoke-1.log:26` 之后继续往下走,最终打印 `[smoke-test] PASS`;在产品
-  本身健康、浏览器检查返回 `success: true` 的轮次里,不再出现「残留进程」。
+- ~~仍未验证:修复后的**真实**门禁全流程尚未重跑。~~ **已重跑**:第 13.4
+  节的构件 7 轮里 4 轮跑到 `[smoke-test] PASS`,`研究浏览器退出后残留进
+  程` 这一条在 33–37 轮都没有出现(第 32 轮的残留属相反方向,见 13.5)。
+  原验收标准(一次 `node scripts/smoke-test.js` 越过
+  `gate-smoke-1.log:26` 之后继续往下走,最终打印 `[smoke-test] PASS`;在
+  产品健康、浏览器检查返回 `success: true` 的轮次里不再出现「残留进程」)
+  现在已被满足 4 次。
 - 回退条件:不可回退。若将来浏览器检查改成独立于被测应用的进程(例如自带
   Chromium),则这一步的排空对象应当是那个独立进程树,而不是放宽成
   「不检查残留」。
@@ -517,23 +523,179 @@ electron-builder 之前死在这里。
 - **第 9 节的日志是修复前的**:`gate-smoke-1.log` / `gate-smoke-2.log` 两轮真实
   冒烟都跑在「整目录枚举」那版代码上,因此本文**没有**任何「门禁已绿」的
   结论。修复(`process-scope.js` 基线差集 + 它的单测)在我读完源码、执行过
-  单测之后由并行的 agent 确认为最终版;**打包态全流程冒烟仍未重跑**。
+  单测之后由并行的 agent 确认为最终版;**打包态全流程冒烟已于其后重跑**
+  (第 13.4 节:该构件 7 轮里 4 轮 PASS)。所谓「本文没有任何门禁已绿的
+  结论」仍然成立——本文写作时确实没有,结论在第 13 节。
 - **尚未定性**:`gate-smoke-2.log:9-22` 里包内 Python 在导入 `cv2`/`numpy`
   时抛 `MemoryError`(第 1 轮同一段代码正常返回 `success: true`)。
   更可能是并行打包/冒烟时的内存压力,但**没有测量过**,不作为结论。
 - 门禁之后还有未跑到的检查(封面导出 `coverSmoke`、`PASS` 收尾),
   它们的状态在本文里一律记为未知——`gate-smoke-*` 从未走到那里。
+  **第 13 节已补上这部分实测**:33–37 轮走完了全部检查(其中 4 轮 PASS)。
 - 与同目录审计报告的差异(我无权修改那三份,仅在此记录,便于下一轮更新):
   - `startup-audit.md` §7 把「`proxyProbe` 是否真的在打包态封住了
     `resolveProxy`」列为 UNVERIFIED,并提到 `release/win-unpacked` 是陈旧
     产物;**今天两者都已被实测更新**(第 8 节;本轮打包在 04:53–04:54 重写了
     `release/`,该目录现为 2026-10-29 的产物)。
   - `release-manifest-audit.md:60` 记的安装包是 214,909,149 B /
-    2026-10-03;**当前产物是 248,742,693 B / 2026-10-29 04:53**。
+    2026-10-03;**最终发布的产物是 248,742,032 B / 2026-10-29 10:34**
+    (第 13.3 节);04:53 那份带凭证,已废弃。
   - `pipeline-audit.md` D1 的判断是「冒烟门禁永远无法通过(`smoke-test.js:184`)」;
     该处已于今日修复并在打包态跑通(第 6 节),现在挡住门禁的是 D1 之后的
     另一个位置(第 9 节)。
   - `pipeline-audit.md` D5 说的「`main/**` 把单测一并打进 asar」**成立**:
     今日实测 asar 内确有 `\main\proxyProbe.test.js`(第 5 节)。
-- `desktop/scripts/build.js` 的当前状态包含修复(未提交),而
+- `desktop/scripts/build.js` 的当前状态包含修复。**「(未提交)」已过期**:
+  这些修复随 `7eaa502b` 入库,凭据门禁随 `dca783aa`、扫描门禁误报修复随
+  `496c4d59` 入库(三者均已推送,见第 13 节);与第 13 节冲突处以第 13 节
+  为准。而
   `desktop/build/`、`desktop/release/` 的目录/大小是本文写作时刻的实测值。
+  其中第 5 节那个安装包**不是**最终发布的产物:它带着 21 个真实凭据,
+  已被丢弃(第 13.2、13.3 节)。
+
+---
+
+## 13. 发布结果(当天收尾)
+
+> 第 1–12 节写于「修复在工作区、发布尚未决定」的时刻。本节记录它入库、
+> 被自己新加的门禁拦下一次、重新出包之后的实际结局。**与前面冲突时以本节
+> 为准**;前面各节的日志与证据仍然有效,变的只是「当前状态」和「发的是哪
+> 一份字节」。
+
+### 13.1 三个提交
+
+| 提交 | 内容 |
+|---|---|
+| `7eaa502b` | 打包全链路修复(第 1、4、6–9 节) |
+| `dca783aa` | 默认脱敏 + 打包前后双重凭据门禁 |
+| `496c4d59` | 修扫描门禁误报(测试夹具 + `.gitignore`) |
+
+`git log --oneline -3` 实测为上表顺序(head = `496c4d59`,三者均已推送)。
+因此第 5 节「修复代码本身仍在工作区……尚未提交」与第 9 节「代码已修在工作区
+(未提交)」两句已经过期:第 9 节那条 `process-scope.js` 修复已随 `7eaa502b`
+入库,并带回归测试。
+
+### 13.2 凭据泄露:一次真正的发布阻断
+
+第 5 节那个「成功产物」后来成了事故本身:`prepare-env.js` 会把打包机上的
+两份 `.env` 合并进 `build/env.template.desktop`,该文件被打进 `app.asar`,
+首次启动时又被复制成 `%APPDATA%\Ecliptrix\.env`。所以那一次打包把 **21 个
+密钥形状的值烤进了安装包**(打包日志口径是 21 个键,含 `ADMIN_PASSWORD`;
+轮换清单按 20 把厂商凭据计)。任何能解包 asar 的人都能直接读到。
+定级、范围界定与逐服务轮换清单见
+`docs/security/credential-rotation-2026-10-29.md`。
+
+它拦住了发布(`v1.0.0` 当时没有发出),换来 `dca783aa` 的四件东西:
+
+- `prepare-env.js` **默认 public-safe**:未设 `ECLIPTRIX_BUNDLE_SECRETS` 时
+  只写占位符,密钥类值一律脱敏(`prepare-env.js:35,79,346`);
+- `build.js` 在 `electron-builder` **之前**对刚生成的模板再断言一次
+  「0 个密钥形状值」,唯一放行条件是显式 opt-in(`build.js:291`);opt-in
+  时日志明写「此包带真实凭证,绝不可发布」;
+- 判定谓词抽成共享模块 `desktop/scripts/lib/secret-shape.js`
+  (`findSecretShapedPairs`),打包前断言与打包后扫描用的是同一个;
+- `desktop/scripts/verify-no-bundled-secrets.js` 扫**成品** `app.asar`,
+  退出码 `0` 干净 / `1` 有凭证 / `2` 检查不了 ——「脏」和「不知道」不合流。
+
+`496c4d59` 修的是门禁自己的误报:一个合成测试夹具用了厂商键形状,让
+`scripts/scan-secrets.py` 转红;夹具改成非厂商形状,并把诊断用的
+`.baseline-check/` 工作树写进 `.gitignore`。head 上扫描器复测为绿(13.3)。
+
+### 13.3 最终发布的干净产物
+
+以下各项均为今日实测,命令与输出如下:
+
+- 安装包:`desktop\release\Ecliptrix-Setup-1.0.0.exe`,**248,742,032 B**
+  (`dir` 实测)。
+- sha256:`537633e51bb81a5665ae90f3e442952f1a770247e7f2087d9807a2de3234e203`
+  (`certutil -hashfile … SHA256` 实测,与 `artifact-report.md` 一致)。
+- asar 扫描(cwd `desktop`):`node scripts/verify-no-bundled-secrets.js`
+  → 扫 1 个条目 `scripts/env.template.desktop`,`OK`,exit 0。
+- 打包日志(`public-build-2.log`)四个标记:`mode=public-safe`、
+  `redacted 21 secret-shaped key(s)`、
+  `[assert] env.template.desktop: 0 secret-shaped values`、`EXITCODE=0`。
+- 仓库扫描门禁:`python scripts/scan-secrets.py` → 2428 个受跟踪文件,
+  `OK`,exit 0。
+
+**三个安装包不是同一个东西**:第 5 节的 248,742,693 B / `bdb0b07e…`,以及
+更早那次带凭证的 248,742,450 B / `a4b39a40…`,都已废弃,不得发布、上传或
+链接;可发布的字节只有上面这一份。三者体积只差几百字节,**只核大小会认错,
+必须核 sha256**。
+
+包内模板的成分(26 个占位符值 + 13 个长于 15 字符的非占位值,后者全是
+URL / 模型名 / 资源 id)取自
+`desktop/cache/release-prep/artifact-report.md` §4 的独立解包统计,
+**这两个计数我未复测**;我复测的是上面两个退出码与构建日志标记。
+
+### 13.4 打包态门禁:7 次里 4 次 PASS,3 次失败全在门禁自身
+
+| 轮次 | 结果 | 失败点 |
+|---|---|---|
+| 33 / 34 / 35 / 37 | **PASS**(exit 0) | — |
+| 31 | FAIL | `timed out: cover autosaved to project`(90 s 轮询) |
+| 32 | FAIL | `研究浏览器退出后残留进程(已清理):14260`(25 s 排空窗口) |
+| 36 | FAIL | `CDP timeout: Page.captureScreenshot`(30 s CDP 预算) |
+
+按事实写,**不写「门禁稳定绿」**:`4/7` 就是这个门禁在这台机器上的真实
+水平。三条失败逐条判定为门禁抖动,**没有一条由凭据脱敏引起**:
+
+- 第 31 条那条断言在第 33–37 轮里都是**第一次轮询就通过**(第 32 轮在更早
+  的浏览器检查就失败了,没走到这一步);
+- 第 32 条与更早的凭据版构件上第 9、13 次失败属同一族(同检查、同窗口);
+- 第 36 条是本地渲染器截图超时,该路径不调用任何模型;
+- 三条涉及的 `coverSmoke` / `researchBrowserSmoke` 都是门禁驱动代码,
+  它们测的是时序与稳定退出,不是产品契约。
+
+### 13.5 第 9 节那条「残留进程」为什么不再亮红
+
+`7eaa502b` 里的 `process-scope.js`(检查前基线差集)确实生效:第 33–37 轮
+的浏览器检查都过去了。第 32 条失败不是同一个 bug 复活,而是**相反的那
+一侧**——检查自己 spawn 的包内 Python 在 25 s 窗口内没退干净。
+
+### 13.6 一条顺带被证伪的假设
+
+第 5 节那几次早期的 `[smoke-test] PASS` 一度被怀疑「靠包里内置的 key 才
+通」。**不成立**,理由是结构性的:门禁给被测应用预写的是**空** `.env`
+(`desktop/scripts/smoke-test.js:1438`:
+`fs.writeFileSync(path.join(userDataDir, '.env'), '')`),而
+`initUserData` 只在 `.env` 缺失时才复制包内模板
+(`desktop/main/config.js:34-37`)。所以**无论包里带不带 key,门禁跑的都是
+零凭据状态**;凭据版与无凭据版被测量的是同一条件。逐族判定见同目录
+`keyless-smoke-dependency.md`,5 轮串行 soak 的原始记录见
+`desktop/cache/build-logs/keyless-soak-summary.md`。
+
+### 13.7 发布状态(以 API 实测为准)
+
+`v1.0.0` **已发布**。证据是本节写作末尾亲自查的那次 API 返回,不是别人
+的转述:
+
+```
+curl -s https://api.github.com/repos/xdrshjr/Ecliptrix/releases/tags/v1.0.0
+```
+
+- `id` 428022109,`tag_name` `v1.0.0`,`draft:false`、`prerelease:false`;
+- `target_commitish` = `496c4d599f564752be24b36a5c0f8bba03157b62`;
+- `published_at` 2026-10-29T15:08:38Z;
+- 公开地址:https://github.com/xdrshjr/Ecliptrix/releases/tag/v1.0.0;
+- 附件 `Ecliptrix-Setup-1.0.0.exe`:`size` 248742032,`digest`
+  `sha256:537633e51bb81a5665ae90f3e442952f1a770247e7f2087d9807a2de3234e203`
+  ——**与磁盘上那份字节完全一致**(13.3),即线上发的不是带凭证的那一份;
+- 另有 `.exe.blockmap`(258,262 B)与 `LICENSE`(773 B)。
+
+> 时间线务必保留:同一节的前一稿查到的还是 `404 Not Found`(发布进行中),
+> 十几分钟后才变成上面的结果。所以判断「发没发」只能靠**当场再查一次
+> API**,不能靠任何文档里的一句静态结论——包括这一句。
+
+发布动作本身不属于本文职责;本文只负责三件事:发的是哪一份字节、它的凭据
+状态如何、门禁结论是什么。
+
+### 13.8 仍未验证 / 未确认
+
+- 13.7 是**观测时刻**的状态(2026-10-29T15:08Z 发布,约 40 分钟后观测),
+  不是终态:若日后 release 被删或资产被替换,以当时的 API 返回为准。
+- 带凭证那份构件(248,742,450 B / `a4b39a40…`)已不在 `desktop/release`,
+  其摘要与存在性只见于 `artifact-report.md`,**我未亲自复核**;
+- 13.3 的 26 / 13 两个计数未复测;
+- 第 31 条若在后续轮次重演,应改判为「可能的真产品缺陷」(封面 apply 之后
+  90 s 内工程记录始终没写回),而不是继续归入门禁抖动;判定顺序是先读
+  `artifacts\failure.json`,再看 `.cover-error` 的文案。
