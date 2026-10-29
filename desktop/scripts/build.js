@@ -12,6 +12,8 @@ const { prepareFfmpeg } = require('./prepare-ffmpeg')
 const { prepareEnv } = require('./prepare-env')
 const { sha256File } = require('./lib/download')
 const { processesUnder, killPids } = require('./lib/process-cleanup')
+const { checkPayloads, formatMissingPayloads } =
+  require('./lib/build-payload-checks')
 const { createPackageManifest } = require('./lib/research-release-evidence')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
@@ -50,7 +52,11 @@ const TRANSIENT_LOCK_RE = /EBUSY|EPERM|EACCES|addWinAsarIntegrity|EnsureEmptyDir
 
 // Existence of these proves each prepare step actually produced its payload
 // (spec §6.1) — fail loudly here instead of shipping a broken installer.
-const BUILD_ASSERTIONS = [
+//
+// These are the GENERATED runtime payloads, all owned by build/. They enter the
+// package as extraResources (frontend/, backend/, python/, ffmpeg/) or are
+// copied into the asar from build/ (env.template.desktop).
+const BUILD_PAYLOADS = [
   'frontend/server.js',
   'frontend/.next/static',
   'frontend/node_modules/@mariozechner',
@@ -61,12 +67,22 @@ const BUILD_ASSERTIONS = [
   'python/Lib/site-packages/playwright/driver/node.exe',
   'python/Lib/site-packages/playwright/driver/package/browsers.json',
   'backend/app/services/web_research/smoke.py',
-  'main/agentBrowserHost.js',
   'ffmpeg/ffmpeg.exe',
   'ffmpeg/ffprobe.exe',
-  // First-run env template (bundled default credentials) — mapped into the
-  // asar by electron-builder.yml's files: entry.
+  // First-run env template (bundled default credentials) — generated into
+  // build/ by prepare-env.js, then mapped into the asar by electron-builder.yml.
   'env.template.desktop',
+]
+
+// App-shell payloads are committed SOURCE under desktop/ that electron-builder
+// packs into app.asar via its files: globs — build/ never contains them, so
+// they must be checked against DESKTOP_ROOT. Regression: asserting
+// main/agentBrowserHost.js against build/ failed every build from commit
+// 3b7b6ac6 ("feat: 为剪辑 Agent 补齐通用网络能力") onwards.
+const APP_PAYLOADS = [
+  'main/agentBrowserHost.js',
+  'preload/preload.js',
+  'assets/icon.ico',
 ]
 
 function sleep(ms) {
@@ -209,13 +225,27 @@ async function runElectronBuilder(builderArgs) {
   }
 }
 
+/**
+ * Verify every declared payload exists under the directory that owns it:
+ * generated runtime payloads under build/, app-shell sources under desktop/.
+ * Each miss is reported with the root it was expected under, so the message
+ * says immediately where the file belongs.
+ */
 function assertBuildOutputs() {
   console.log('[assert] verifying build/ payloads...')
-  const missing = BUILD_ASSERTIONS.filter(
-    (rel) => !fs.existsSync(path.join(BUILD_DIR, ...rel.split('/')))
-  )
+  const missing = checkPayloads({
+    buildDir: BUILD_DIR,
+    appRoot: DESKTOP_ROOT,
+    buildPayloads: BUILD_PAYLOADS,
+    appPayloads: APP_PAYLOADS,
+    existsSync: fs.existsSync,
+  })
   if (missing.length > 0) {
-    throw new Error(`build/ is missing required payloads:\n  - ${missing.join('\n  - ')}`)
+    throw new Error(
+      'missing required payloads (build/ = generated runtime payloads, ' +
+        'desktop/ = app-shell files packed into app.asar):\n' +
+        formatMissingPayloads(missing)
+    )
   }
   console.log('[assert] all payloads present')
 }

@@ -37,8 +37,8 @@ startup (see **Database** below).
 
 ```bash
 npm run dev        # Electron + backend + Next dev server, all wired together
-npm run build      # Package the installer (prepare-env → prepare-frontend →
-                   # prepare-backend → electron-builder)
+npm run build      # Package the installer (prepare-frontend → prepare-backend →
+                   # prepare-ffmpeg → prepare-env → electron-builder)
 npm run build:dir  # Unpacked build, for the smoke test
 node scripts/smoke-test.js      # End-to-end gate on the packaged app
 node main/window-state.test.js  # Main-process unit tests
@@ -134,7 +134,7 @@ YouTube download/upload uses `yt-dlp` (no API key needed for downloads).
 
 ### Storage
 
-**Primary**: Local filesystem (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by the Electron main process (`initUserData()`) on first launch: `static/uploads/{video,audio,images,files}`, `static/video/{composed,thumbnails}`, `static/audio/{generated,subtitles}`, `static/timeline_exports`, `temp/`, `logs/`. As a self-contained local desktop app, all material uploads and generated artifacts are saved local-only — there is no "upload to server" / cloud-object-storage step.
+**Primary**: Local filesystem (replaced Supabase). Root at `STORAGE_ROOT` env var (default: `static/uploads`). Static files served via FastAPI mounts at `/api/storage/files`, `/api/audio/generated`, `/api/audio/subtitles`, `/static/timeline_exports`. Directory structure created by the Electron main process (`initUserData()` in `desktop/main/config.js`) on first launch: `data/` (SQLite), `storage/` (injected to the backend as `STORAGE_ROOT`), `logs/`, plus `desktop-config.json` and a first-run `.env` copied from the bundled template. The backend creates its own subdirectories at startup: uploads/cache/preview-proxy dirs under `STORAGE_ROOT`, and `static/audio/{generated,subtitles}` + `static/timeline_exports` relative to its cwd (which the launcher sets to the userData dir), so those also live under userData rather than in the install directory. As a self-contained local desktop app, all material uploads and generated artifacts are saved local-only — there is no "upload to server" / cloud-object-storage step.
 
 **Cached remote materials** (`cached_materials/<source>/<file>`): Remote video assets (Pexels, ARK, etc.) are pre-downloaded into `STORAGE_ROOT/cached_materials/<source>/<source_id>.<ext>` and tracked in the `cached_materials` table. They're served via the existing `/api/storage/files` mount — no separate static mount.
 
@@ -158,8 +158,9 @@ The frontend reads `local_url` from `/api/material/{ingest,lookup}` responses; t
 This project has a pre-generated index for quick codebase understanding.
 
 - **Location:** `.claude-index/index.md`
-- **Last Updated:** 2026-09-01
+- **Last Updated:** 2026-10-27
 - **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
+- **Machine-readable graph:** `.claude-index/graph.json` — modules, components and relations, rendered as an interactive architecture view
 
 **Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.
 
@@ -168,35 +169,87 @@ This project has a pre-generated index for quick codebase understanding.
 ## Clean Code Guidelines
 
 <!-- project-indexer:cleancode:begin v1.2.0 -->
-Google-style limits for **TypeScript, Python**. These are review gates, not lint config — exceed one only with a comment saying why.
+> Maintained by `project-indexer` from `.claude-index/config.md` (preset `strict`, intersected with this repo's primary languages). Google-style thresholds, not lint config — exceed one only with a comment saying why. Do not hand-edit between the markers: say "regenerate index" to refresh.
 
-**Size**
-- File ≤ 1000 lines; method/function ≤ 60 lines; line ≤ 80 chars.
-- Parameters ≤ 5 — past that, take an options object / dataclass.
-- Cyclomatic complexity ≤ 10; nesting ≤ 4 — return early instead of indenting.
+### 1. Overview
 
-**Naming**
-- Intention-revealing and searchable; no abbreviations, no type prefixes.
-- Functions are verb phrases; booleans read as predicates (`isReady`, `has_frames`).
-- One concept, one name across the repo — don't alias the same idea two ways.
+Read this before writing or changing any code in this repo. The rules exist so that code written by humans and code written by agents sits on the same measurable floor: no thousand-line files, no hundred-line methods, no swallowed errors, no missing tests. Every threshold below can be changed — but only by editing `.claude-index/config.md` and saying so in review, never by quietly ignoring the number.
 
-**Structure**
-- One responsibility per unit; extract when a function needs a section comment.
-- No duplicated logic — the third copy becomes a helper.
-- Comments explain *why*; delete commented-out code, git remembers it.
+### 2. File and function size
 
-**Errors**
-- Never swallow an exception: log with context or re-raise.
-- Fail fast on invalid input; no silent fallback that hides a bug.
-- No secrets, tokens or API keys in logs, messages or fixtures.
+- Files ≤ **800** lines. Past that, split by responsibility into a new module.
+- Functions / methods ≤ **50** lines. If it feels like it is growing, extract.
+- Parameters ≤ **5** — beyond that take an options object, a dataclass, or a named struct. Never stack positional arguments.
+- Cyclomatic complexity ≤ **10** — extract a function or introduce a lookup table.
+- Lines ≤ **80** columns. Judgement is simple: over the threshold is debt; fix it before committing.
 
-**Tests**
-- Every bug fix ships with a regression test named for the behaviour it pins.
-- One assertion topic per test; never sleep for synchronisation.
+### 3. Naming
 
-**Review checklist** — before calling work done: limits above respected; names honest; errors handled and logged; tests added *and actually run*; no stray debug output, TODOs or dead code; public API changes documented.
+- Functions start with a verb (`loadConfig`, `parseToken`); queries may be nouns or `get`/`find`.
+- Booleans and predicates start with `is`, `has`, `should`, `can`.
+- Constants in UPPER_SNAKE, classes and interfaces in PascalCase, variables in camelCase (TS) or snake_case (Python) — consistently.
+- Do not abbreviate domain words; five more letters is cheaper than a reader's guess.
+- Ban contentless names: `data`, `info`, `temp`, `obj`. Use the domain noun.
 
-**Language notes**
-- TypeScript: prefer `interface` for public API shapes; `unknown` over `any`; keep bindings `const` (`prefer-const` is an error in this repo's ESLint config).
-- Python: type-hint every public signature; keep `async`/`await` end-to-end; no import cycles between `routers/`, `services/` and `models/`.
+### 4. Comments and docs
+
+- Comments explain *why*, not *what* — the code is the truth about what.
+- Every public API gets a docstring/JSDoc: parameters, return value, thrown errors.
+- Delete commented-out code and zombie comments; git remembers it. A surviving `TODO` carries an owner and a date.
+- Line-level comments are precious — do not stack one per line.
+- Business rules, past incidents and workarounds must state the reason and the condition under which they can be reverted.
+
+### 5. Error handling
+
+- Propagate errors explicitly. Never swallow an exception or return `null` as if nothing happened.
+- Validate external input once, at the boundary; trust internal data afterwards — no repeated re-validation.
+- Do not write defensive `try/except` for branches that "cannot happen"; that is noise.
+- Error messages must carry location clues: where, which inputs, what the caller should do.
+- At IO, network and subprocess boundaries use a structured wrapper with timeout and retry, not a bare call.
+- Keep catch scopes narrow; handle only the error kinds you can actually act on.
+- Exposed error codes and exception classes are API — renaming one is a breaking change and belongs in the changelog.
+
+### 6. Complexity and nesting
+
+- Nesting ≤ **4** levels; deep nesting is the precursor of a long function.
+- Prefer guard clauses over `else` ladders.
+- More than three boolean conditions in one expression → extract a well-named helper.
+- Complex branching inside a loop usually wants a lookup table or a strategy object.
+- One function, one job. If describing its responsibility needs "and", "also" or "then", split it.
+
+### 7. Tests
+
+- Fixing a bug starts with a test that reproduces it, then the fix.
+- Public behaviour needs a normal-path test and at least one failure-path test.
+- Test names describe the behaviour, not the implementation (`rejects_expired_token`).
+- Do not mock high-risk paths (schema creation, FFmpeg invocation, the timeline aggregate) — use real integration tests.
+- Tests must be fast and repeatable; isolate external dependencies, never depend on shared environment state.
+- Every regression found gets its own test, so the old pit becomes a permanent guardrail.
+
+### 8. Review checklist
+
+Before calling work done, all 8 must hold:
+
+1. Names are self-explanatory and free of meaningless abbreviations.
+2. File, method, parameter, nesting and complexity thresholds are all respected.
+3. Errors propagate explicitly; boundary validation is in place.
+4. Comments explain only *why*; no dead code, no orphan TODOs.
+5. Tests cover normal and failure paths and pin any bug that was fixed.
+6. New dependencies are necessary and carry no security/licence risk.
+7. No secrets, personal data or internal links leaked into code, logs or fixtures.
+8. Consistent with the existing architecture and naming — no new island.
+
+### 9. Language notes
+
+Primary languages: **TypeScript, Python**.
+
+- TypeScript: Prefer `interface` over `type` for public APIs.
+- Python: PEP 8 + Google docstrings.
+- Project TypeScript: use `unknown` over `any` (ESLint warns); keep bindings `const` — `prefer-const` is an *error* here; `exhaustive-deps` is a warning, so honour it rather than silence it.
+- Project Python: type-hint every public signature; keep `async`/`await` end-to-end (`get_db_session`, httpx, aiofiles); no import cycles between `routers/`, `services/` and `models/`.
+- Cross-language: the camera-motion math in `src/components/video/playback/camera/` and `app/services/composition/camera_motion.py` is mirrored 1:1 — change both, and keep the golden vectors passing.
+
+### 10. Meta
+
+Template and marker version match. Say "regenerate index" or "更新索引" to rebuild this section; say "disable cleancode" to drop it.
 <!-- project-indexer:cleancode:end -->

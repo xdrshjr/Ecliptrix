@@ -49,11 +49,13 @@ class ManagedService {
     this.onUnexpectedExit = onUnexpectedExit
     this.child = null
     this.stopping = false
+    this.spawnError = null
   }
 
   start() {
     const { name, command, args, cwd, env } = this.descriptor
     this.stopping = false
+    this.spawnError = null
     // Supervision events all belong to the `process` category (the name is in
     // the message); `attachChild` keeps the child's raw output in its own sink.
     this.logger.info('process', `starting ${name}: ${command} ${args.join(' ')}`)
@@ -64,10 +66,17 @@ class ManagedService {
       windowsHide: true,
     })
     this.logger.attachChild(this.child, name)
+    // ENOENT / EACCES / EPERM arrive as an async 'error' event and never as
+    // 'exit', so without this listener a spawn that could not even start left
+    // no trace at all and the health wait ran to its full timeout (incident:
+    // agent-browser-host cwd inside app.asar). See recordSpawnError.
+    this.child.on('error', (error) => this.recordSpawnError(error))
     this.child.on('exit', (code, signal) => {
+      this.child = null
+      // A spawn failure already rejected waitHealthy() — never escalate twice.
+      if (this.spawnError) return
       // Unexpected exits are escalated to error() by the index.js callback.
       this.logger.info('process', `${name} exited (code=${code}, signal=${signal})`)
-      this.child = null
       if (!this.stopping && this.onUnexpectedExit) {
         this.onUnexpectedExit(name, code)
       }
@@ -75,14 +84,40 @@ class ManagedService {
     return this.child
   }
 
+  /**
+   * Record a spawn 'error' (ENOENT/EACCES/EPERM): log the command, args and cwd
+   * at ERROR level — that triple is what makes a failed spawn diagnosable in
+   * one line — and remember the failure so waitHealthy() rejects immediately
+   * instead of polling until its timeout.
+   * @param {Error & {code?: string}} error The payload Node emitted.
+   */
+  recordSpawnError(error) {
+    const { name, command, args, cwd } = this.descriptor
+    const message =
+      `${name} failed to spawn (code=${error.code || 'unknown'}): ${command} ` +
+      `${args.join(' ')} (cwd=${cwd}) — ${error.message}`
+    this.child = null
+    this.spawnError = new Error(message, { cause: error })
+    this.logger.error('process', message)
+  }
+
+  /** Throw if the child never started or has already exited. */
+  assertChildRunning() {
+    const { name } = this.descriptor
+    if (this.spawnError) {
+      throw this.spawnError
+    }
+    if (!this.child) {
+      throw new Error(`${name} exited before becoming healthy — see logs`)
+    }
+  }
+
   /** Poll the descriptor's healthUrl once per second until OK or timeout. */
   async waitHealthy() {
     const { name, healthUrl, healthTimeoutMs } = this.descriptor
     const deadline = Date.now() + healthTimeoutMs
     while (Date.now() < deadline) {
-      if (!this.child) {
-        throw new Error(`${name} exited before becoming healthy — see logs`)
-      }
+      this.assertChildRunning()
       if (await httpOk(healthUrl)) {
         this.logger.info('process', `${name} healthy at ${healthUrl}`)
         return

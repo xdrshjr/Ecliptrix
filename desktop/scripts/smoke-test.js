@@ -9,6 +9,11 @@ const path = require('path')
 const { spawn, spawnSync } = require('child_process')
 const { withoutElectronRunAsNode } = require('./lib/electron-env')
 const { processesUnder, killPids, waitForNoProcessesUnder } = require('./lib/process-cleanup')
+const { waitForNoLeakedProcesses } = require('./lib/process-scope')
+const { awaitStableState, describeReadinessFailure,
+  describeReadinessLayoutProblems } = require('./lib/readiness-sample')
+const { describeFocusFailure, evaluateFocusSamples } =
+  require('./lib/preview-focus')
 const { validateReleaseEvidence, verifyPackageManifest } =
   require('./lib/research-release-evidence')
 
@@ -21,7 +26,32 @@ const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
 const STARTUP_TIMEOUT_MS = 120 * 1000
 const WINDOW_LOAD_TIMEOUT_MS = 60 * 1000
 const SHUTDOWN_TIMEOUT_MS = 30 * 1000
+// Post-shutdown residual checks: the whole directory must be empty. Keep it
+// strict — widening it would weaken the gate that proves the app exited.
 const PROCESS_DRAIN_TIMEOUT_MS = 10 * 1000
+// Research-browser drain only, and it runs while the app is still alive: the
+// packaged Python the check spawned can still be tearing down its imports when
+// the report line is already on stdout. 10 s reported PID 49244 as a leak in a
+// run where four others were clean (final-gate-9). A real leak still fails —
+// only the window is longer. Revert to PROCESS_DRAIN_TIMEOUT_MS once that
+// teardown is measured under 10 s on the packaging machine.
+const RESEARCH_BROWSER_DRAIN_TIMEOUT_MS = 25 * 1000
+
+// Cover-preview focus waits, final-gate-11/12/14. CoverPreviewDialog.tsx
+// opens the modal and takes focus from a React effect one commit after the
+// pointer press (showModal() then closeButton.focus(), see
+// src/components/video/cover/CoverPreviewDialog.tsx:22-36), so the focused
+// state is only observable after a bounded transient. 10s is ~33 polls at the
+// gate 300ms cadence: hundreds of times the measured one-commit lag, and far
+// cheaper than the 60s default that made a real escape cost a whole run.
+const PREVIEW_FOCUS_SETTLE_TIMEOUT_MS = 10 * 1000
+// Closing is the same commit-sized path (effect cleanup: dialog.close() then
+// trigger.focus()). A layer that has not closed and restored focus in 15s is a
+// defect, not a slow frame; the 60s default here burned 100s of runs 4 and 5.
+const PREVIEW_CLOSE_TIMEOUT_MS = 15 * 1000
+// The settled state must hold for two consecutive samples, i.e. for one poll
+// interval, so one lucky read taken during the commit cannot pass the check.
+const PREVIEW_FOCUS_STABLE_SAMPLES = 2
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -171,7 +201,30 @@ function runResearchBrowserSmoke(resources, userDataDir, screenshotDir,
   })
 }
 
-/** 用安装包自己的 Python 连接运行中应用的 CDP 宿主做离线动态网页检查。 */
+/**
+ * 用安装包自己的 Python 连接运行中应用的 CDP 宿主做离线动态网页检查，
+ * 并确认这次检查没有留下它自己的进程。
+ *
+ * 残留判定是「检查前基线 + 差集」，不是对整目录枚举：调用本函数时受测应用
+ * 仍在运行，win-unpacked 下的进程本来就包含主进程、渲染器、后端 Python 与
+ * 浏览器宿主，把它们一律当残留必然误报（gate-smoke-1/2 就是这么失败的）。
+ * 因此 spawn 之前先拍一张基线快照，收工后只把「不在基线里」的进程判为泄漏。
+ * 检查自己 spawn 的 Python 及同 exe 的子孙仍然抓得住 —— 它们的 PID 产生于
+ * 快照之后，不可能出现在基线里。
+ *
+ * 已知失败模式：① 应用若在检查窗口内合法新建子进程（例如浏览器宿主崩溃后
+ * 重启，重启上限 3 次），它不在基线中，会被判为泄漏并让检查失败 —— 方向是
+ * fail-closed：宁可在日志里指出一个真实可疑的子进程，也不静默放过泄漏；
+ * ② 反向漏报要求基线中的某个进程先退出、且它的 PID 在窗口内被系统回收给
+ * 泄漏进程，概率可忽略；并且关停之后的零残留检查（runDesktopSmoke 的
+ * finally，仍是对整个目录的无基线枚举）继续兜底。
+ *
+ * @param {string} unpackedDir 解包目录
+ * @param {string} userDataDir 本次运行使用的临时 userData
+ * @param {string|null} screenshotDir 截图输出目录
+ * @param {{cdp: number, control: number}} researchPorts 宿主 CDP/控制端口
+ * @returns {Promise<object>} 解析后的研究浏览器报告，失败时抛出 Error
+ */
 async function researchBrowserSmoke(unpackedDir, userDataDir, screenshotDir,
   researchPorts) {
   const resources = path.join(unpackedDir, 'resources')
@@ -179,9 +232,12 @@ async function researchBrowserSmoke(unpackedDir, userDataDir, screenshotDir,
   if (!fs.existsSync(python)) {
     fail('安装包缺少 Python；此检查不可跳过')
   }
+  // 此刻本检查还没 spawn 过任何东西：目录里的进程都属于受测应用自身。
+  const baseline = processesUnder(unpackedDir)
   console.log('[smoke-test] 正在验证应用内 CDP 浏览器宿主的离线页面、动作与截图')
   try {
-    const output = await runResearchBrowserSmoke(resources, userDataDir, screenshotDir)
+    const output = await runResearchBrowserSmoke(resources, userDataDir,
+      screenshotDir, researchPorts)
     const report = JSON.parse(output.trim().split(/\r?\n/).at(-1))
     if (report.success !== true || report.skipped === true) {
       fail('研究浏览器检查未成功完成或被跳过')
@@ -190,11 +246,11 @@ async function researchBrowserSmoke(unpackedDir, userDataDir, screenshotDir,
       JSON.stringify(report, null, 2))
     return report
   } finally {
-    const leftovers = await waitForNoProcessesUnder(unpackedDir,
-      { timeoutMs: PROCESS_DRAIN_TIMEOUT_MS })
-    if (leftovers.length) {
-      killPids(leftovers)
-      fail(`研究浏览器退出后残留进程（已清理）：${leftovers.join(', ')}`)
+    const leaked = await waitForNoLeakedProcesses(unpackedDir,
+      { baseline, timeoutMs: RESEARCH_BROWSER_DRAIN_TIMEOUT_MS })
+    if (leaked.length) {
+      killPids(leaked)
+      fail(`研究浏览器退出后残留进程（已清理）：${leaked.join(', ')}`)
     }
   }
 }
@@ -300,8 +356,265 @@ function coverBodyFixture(userDataDir, unpackedDir) {
     snapToGrid: false, gridSize: 1, scrollLeft: 0 } } }
 }
 
+// A fresh userData dir is guaranteed first-run state: useSetupStatus() finds
+// the core capability gaps and src/app/page.tsx:80-87 auto-opens the setup
+// wizard. That wizard is ui/Modal — a fixed z-[100] overlay div, not a native
+// dialog — so a pointer press aimed at the cover-preview trigger lands on its
+// backdrop and the cover preview never opens. That is exactly what
+// final-gate-15/17/19 measured: document.activeElement was the wizard's
+// autoFocus primary button and dialogOpen stayed false in all 33 samples.
+// Dismissing it is a precondition of the pointer check, not an assertion of it:
+// the gate uses the product's own "Maybe later" control, which is what stores
+// the session-level dismiss key (src/app/page.tsx:20,70-75), and no pointer
+// work starts until the wizard is provably gone.
+const SETUP_WIZARD_SELECTOR =
+  '[role="dialog"][aria-labelledby="setup-wizard-title"]'
+// Same key as the product. It is session state, so it survives the
+// Page.reload() that reopen() performs and the wizard stays dismissed.
+const SETUP_DISMISSED_KEY = 'ecliptrix-setup-guide-dismissed'
+// useSetupStatus() retries the capability probe at 1s/2s/4s
+// (src/hooks/useSetupStatus.ts:16), so the wizard decision has landed long
+// before this window ends. It bounds the wait; it is not a sleep.
+const SETUP_WIZARD_DECISION_TIMEOUT_MS = 15 * 1000
+const SETUP_WIZARD_CLOSE_TIMEOUT_MS = 10 * 1000
+// A synthesized click is dispatched on the renderer's own input queue, so it is
+// observable a frame later; this is the window the press diagnostics give it.
+const PRESS_CLICK_TIMEOUT_MS = 2 * 1000
+
+// One probe, one job: report the wizard's state and dismiss it through the
+// product's own control while it is up. Controls are matched by label (the
+// wizard's "Maybe later", and the discard bar that replaces it when a field has
+// unsubmitted input), never by position, so a step change cannot make this
+// click the wrong button.
+const SETUP_WIZARD_PROBE = `(() => {
+  const wizard = document.querySelector(
+    ${JSON.stringify(SETUP_WIZARD_SELECTOR)})
+  let dismissed = false
+  try {
+    dismissed = sessionStorage.getItem(
+      ${JSON.stringify(SETUP_DISMISSED_KEY)}) === '1'
+  } catch (error) { dismissed = false }
+  if (!wizard) return { present: false, dismissed, clicked: null }
+  if (dismissed) return { present: true, dismissed, clicked: null }
+  const control = [...wizard.querySelectorAll('button')].find(button =>
+    /^(Maybe later|稍后再说|Discard|放弃)$/i.test(button.textContent.trim()))
+  if (!control) return { present: true, dismissed, clicked: null }
+  control.click()
+  return { present: true, dismissed, clicked: control.textContent.trim() }
+})()`
+
+/**
+ * Wait until the product's setup-wizard decision has landed.
+ *
+ * A fresh profile always ends in `needs-setup`, so the wizard appears within a
+ * frame or two and the probe dismisses it. A profile that is already configured
+ * legitimately has no wizard, so this reports "absent" instead of failing — the
+ * press diagnostics below are what surfaces a genuinely late overlay.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @returns {Promise<{present: boolean, dismissed: boolean, clicked: ?string}>}
+ *   the probe that ended the wait
+ */
+async function waitForSetupWizardDecision(cdp) {
+  const deadline = Date.now() + SETUP_WIZARD_DECISION_TIMEOUT_MS
+  let probe = await cdp.evaluate(SETUP_WIZARD_PROBE)
+  while (!probe.present && !probe.dismissed && Date.now() < deadline) {
+    await sleep(250)
+    probe = await cdp.evaluate(SETUP_WIZARD_PROBE)
+  }
+  return probe
+}
+
+/**
+ * One dismissal pass: false while the wizard is still up, the state otherwise.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @returns {Promise<object|false>} probe result once the wizard is gone
+ */
+async function dismissSetupWizardPass(cdp) {
+  const probe = await cdp.evaluate(SETUP_WIZARD_PROBE)
+  return probe.present ? false : probe
+}
+
+/**
+ * Build the per-run first-run-wizard guard used before any pointer work.
+ *
+ * The decision wait runs once per run; every later call is a cheap probe that
+ * also re-dismisses the wizard if it somehow remounted (a silent capability
+ * refetch can raise it again), so the precondition cannot be lost mid-run.
+ *
+ * @returns {(cdp: object) => Promise<object>} ensureSetupWizardClosed(cdp)
+ */
+function createSetupWizardGuard() {
+  let decisionSettled = false
+  return async function ensureSetupWizardClosed(cdp) {
+    if (!decisionSettled) {
+      const decision = await waitForSetupWizardDecision(cdp)
+      decisionSettled = true
+      console.log('[smoke-test] setup wizard decision: ' +
+        JSON.stringify(decision))
+    }
+    return until('setup wizard closed', () => dismissSetupWizardPass(cdp),
+      SETUP_WIZARD_CLOSE_TIMEOUT_MS)
+  }
+}
+
+/**
+ * Measure the press target and arm a one-shot click observer.
+ *
+ * Re-measured immediately before every dispatch: Emulation.
+ * setDeviceMetricsOverride reflows the studio and the cover canvas resizes
+ * after it, so a rectangle taken before the override aims at whatever moved
+ * into that spot — final-gate-16/18 missed with the wizard already dismissed
+ * and reported only `activeTag:"BODY"`. `elementFromPoint` is the miss
+ * detector: if an overlay covers the trigger, the report names that element.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @param {string} selector CSS selector of the element to press
+ * @returns {Promise<object>} centre in CSS pixels plus the hit-test result
+ */
+async function locatePressTarget(cdp, selector) {
+  return until(`locate ${selector}`, () => cdp.evaluate(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el || el.disabled) return false;
+    el.scrollIntoView({ block: 'center', inline: 'center' });
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    window.__smokePressClick = null;
+    document.addEventListener('click', event => {
+      const node = event.target;
+      window.__smokePressClick = {
+        onTrigger: !!node && (node === el || el.contains(node)),
+        tag: node?.tagName ?? null,
+        className: String(node?.className ?? '').slice(0, 80) };
+    }, { capture: true, once: true });
+    return { x, y,
+      hitOnTrigger: !!hit && (hit === el || el.contains(hit)),
+      hitTag: hit?.tagName ?? null,
+      hitClass: String(hit?.className ?? '').slice(0, 80) };
+  })()`))
+}
+
+/**
+ * Read the click the press synthesized, giving the renderer a frame to run it.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @returns {Promise<object|null>} the observed click and its target, or null
+ *   when no click reached the page at all
+ */
+async function readPressClick(cdp) {
+  const deadline = Date.now() + PRESS_CLICK_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    const click = await cdp.evaluate('window.__smokePressClick ?? null')
+    if (click) return click
+    await sleep(50)
+  }
+  return null
+}
+
+/**
+ * Press an element with a synthetic left click through CDP pointer input.
+ *
+ * Regression, final-gate-15..19: the press dispatched mousePressed and
+ * mouseReleased with no `buttons` field, i.e. a press with no button held.
+ * Blink then never synthesizes a `click`, the React handler never runs and the
+ * dialog never opens (`dialogOpen:false` in 165/165 probes). A real pointer
+ * press carries `buttons:1` on the way down and `buttons:0` on the way up, and
+ * a real user also moves onto the target first, so the dispatch is mouseMoved →
+ * mousePressed → mouseReleased. A pointer press (rather than
+ * HTMLElement.click()) is what keeps the "native Esc closes this layer and
+ * restores the trigger" contract under test.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @param {string} selector CSS selector of the element to press
+ * @returns {Promise<object>} press diagnostics for the failure report: the
+ *   dispatched point, what elementFromPoint hit there, and whether a click
+ *   event reached the trigger
+ */
+async function pressWithPointer(cdp, selector) {
+  const target = await locatePressTarget(cdp, selector)
+  const fields = { x: target.x, y: target.y, button: 'left', clickCount: 1 }
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...fields })
+  await cdp.send('Input.dispatchMouseEvent',
+    { type: 'mousePressed', buttons: 1, ...fields })
+  await cdp.send('Input.dispatchMouseEvent',
+    { type: 'mouseReleased', buttons: 0, ...fields })
+  const click = await readPressClick(cdp)
+  return { x: Math.round(target.x), y: Math.round(target.y),
+    hitOnTrigger: target.hitOnTrigger, hitTag: target.hitTag,
+    hitClass: target.hitClass, clickOnTrigger: click?.onTrigger ?? false,
+    clickTag: click?.tag ?? null, clickClass: click?.className ?? null }
+}
+
+/**
+ * Dispatch one trusted key press through CDP input.
+ *
+ * Input.dispatchKeyEvent produces the same trusted event a real keyboard
+ * produces; a scripted KeyboardEvent would not exercise the browser own
+ * dialog and Escape handling (see the pressWithPointer note above).
+ *
+ * `nativeVirtualKeyCode` is part of that shape: a real key press carries the
+ * platform key code, and cache/build-logs/dialog-escape-probe2.js exists to
+ * isolate this one field. Omitting it leaves Blink without the physical key,
+ * which is the difference between a layer that closes on Escape and one that
+ * never receives the close request.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @param {string} key DOM key and code, e.g. Tab or Escape
+ * @param {number} keyCode windowsVirtualKeyCode, e.g. 9 or 27
+ * @param {number} [modifiers] CDP modifier mask: 8 is Alt, 0 none
+ * @returns {Promise<void>} resolves once keyDown and keyUp were dispatched
+ */
+async function pressKey(cdp, key, keyCode, modifiers = 0) {
+  const fields = { key, code: key, windowsVirtualKeyCode: keyCode,
+    nativeVirtualKeyCode: keyCode, modifiers }
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...fields })
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...fields })
+}
+
+/**
+ * Wait for the preview dialog to settle into an expected focus state.
+ *
+ * Retries the same probe the failure report prints, so the commit-sized
+ * transient between the pointer press and showModal() is accepted while a
+ * state that is still wrong when the window ends is not: the last sample is
+ * the verdict, and it is reported with dialogOpen, activeInDialog, the focused
+ * element and trigger presence. final-gate-11/12/14 could not tell an unopened
+ * dialog from an escaped focus because the check was a single boolean.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @param {{label: string, expected: string, context?: object,
+ *   failure?: string, timeoutMs?: number}} options label is logged while the
+ *   wait polls, expected is the state to settle on (focused or closed),
+ *   context is added to the report and failure overrides its prefix
+ * @returns {Promise<void>} resolves once the state settled
+ * @throws {Error} when it did not settle inside the window, carrying the probe
+ */
+async function untilFocusSettled(cdp, options) {
+  const samples = []
+  const judge = () => evaluateFocusSamples(samples, {
+    expected: options.expected,
+    stableSamples: PREVIEW_FOCUS_STABLE_SAMPLES,
+  })
+  let verdict = judge()
+  try {
+    await until(options.label, async () => {
+      samples.push(await cdp.evaluate(PREVIEW_STATE_PROBE))
+      verdict = judge()
+      return verdict.settled
+    }, options.timeoutMs || PREVIEW_FOCUS_SETTLE_TIMEOUT_MS)
+  } catch (error) {
+    if (!/^timed out: /.test(String(error.message))) throw error
+    fail(describeFocusFailure(options.failure || error.message, verdict,
+      options.context))
+  }
+}
+
+
 async function portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject,
-  frontend, projectId, artifacts }) {
+  frontend, projectId, artifacts, ensureSetupWizardClosed }) {
   // The export modal is left mounted after completion; reload through the
   // editor's normal persistence path before changing the canvas.
   await reopen()
@@ -318,13 +631,26 @@ async function portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject,
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width, height, deviceScaleFactor: 1, mobile: false,
     })
-    await click('[data-cover-preview]')
+    await ensureSetupWizardClosed(cdp)
+    const press = await pressWithPointer(cdp, '[data-cover-preview]')
+    // The modal takes focus from a React effect one commit after the
+    // pointer press, so the trap is only observable once the dialog owns
+    // focus: a Tab dispatched inside that window lands on the page and
+    // proves nothing about the modal. final-gate-11/12/14 asserted there,
+    // in the same tick as the press, and reported the race as an escape.
+    await untilFocusSettled(cdp, {
+      label: 'native preview dialog takes focus',
+      expected: 'focused',
+      context: { viewport: `${width}x${height}`, press },
+    })
     for (const modifiers of [0, 8]) {
-      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers })
-      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers })
-      if (!await cdp.evaluate("document.querySelector('.cover-preview-dialog[open]')?.contains(document.activeElement)")) {
-        fail('native preview dialog Tab focus escaped')
-      }
+      await pressKey(cdp, 'Tab', 9, modifiers)
+      await untilFocusSettled(cdp, {
+        label: `native preview dialog keeps Tab focus ${modifiers}`,
+        expected: 'focused',
+        failure: 'native preview dialog Tab focus escaped',
+        context: { viewport: `${width}x${height}`, modifiers, press },
+      })
     }
     const bounds = await until('portrait dialog fits viewport', () => cdp.evaluate(`(() => {
       const dialog = document.querySelector('.cover-preview-dialog[open]');
@@ -347,10 +673,17 @@ async function portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject,
     const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
     fs.writeFileSync(path.join(artifacts, `cover-portrait-${width}x${height}.png`),
       Buffer.from(screenshot.data, 'base64'))
-    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
-    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
-    await until('preview closes and restores focus', () => cdp.evaluate("!document.querySelector('.cover-preview-dialog[open]') && document.activeElement?.hasAttribute('data-cover-preview')"))
-  }
+    await pressKey(cdp, 'Escape', 27)
+    // Same commit-sized path on the way out: CoverPreviewDialog closes
+    // the layer and refocuses the trigger in its effect cleanup, so the
+    // restore is retried instead of sampled once.
+    await untilFocusSettled(cdp, {
+      label: 'preview closes and restores focus',
+      expected: 'closed',
+      timeoutMs: PREVIEW_CLOSE_TIMEOUT_MS,
+      context: { viewport: `${width}x${height}`, press },
+    })
+    }
   await click('.cover-header [role="tablist"] > button:nth-child(2)')
   await click('.cover-properties-toggle')
   await until('narrow properties dialog opens', () => cdp.evaluate("!!document.querySelector('.cover-properties-dialog[open]')"))
@@ -412,6 +745,86 @@ async function coverEntryRaceSmoke({ cdp, click, backend }) {
   await sleep(1600)
   if (await cdp.evaluate("!!document.querySelector('.cover-studio')")) fail('old frame capture opened new project cover studio')
   return { destinationProjectId: other.id, lateCaptureDiscarded: true }
+}
+
+// The readiness panel publishes its verdict on data-status; one read per
+// animation frame is the same signal the user sees. A stalled renderer reports
+// "no-frame" instead of hanging the CDP call.
+const READINESS_FRAME_PROBE = `new Promise(resolve => {
+  const done = value => { clearTimeout(timer); resolve(value) }
+  const timer = setTimeout(() => done('no-frame'), 2000)
+  requestAnimationFrame(() => done(
+    document.querySelector('.cover-readiness')?.dataset.status ?? 'absent'))
+})`
+
+
+// A dialog that never closed and a dialog that closed without returning focus
+// are different defects (Escape/CloseWatcher vs. CoverPreviewDialog's effect
+// cleanup in src/components/video/cover/CoverPreviewDialog.tsx), so the wait
+// reports which one happened instead of just "timed out".
+const PREVIEW_STATE_PROBE = `(() => {
+  const dialog = document.querySelector('.cover-preview-dialog')
+  const active = document.activeElement
+  return { dialogPresent: !!dialog, dialogOpen: dialog?.open === true,
+    activeTag: active?.tagName ?? null,
+    activeId: active?.id || null,
+    activeClass: active?.className || null,
+    activeIsPreviewTrigger: active?.hasAttribute('data-cover-preview') === true,
+    activeInDialog: !!(dialog && active && dialog.contains(active)),
+    activeInStudio: active?.closest('.cover-studio') != null,
+    studioPresent: !!document.querySelector('.cover-studio'),
+    previewTriggerPresent: !!document.querySelector('[data-cover-preview]'),
+    setupWizardPresent: !!document.querySelector(
+      '[role="dialog"][aria-labelledby="setup-wizard-title"]'),
+    documentFocused: document.hasFocus() }
+})()`
+
+const READINESS_GEOMETRY_PROBE = `(() => {
+  const footer = document.querySelector('.cover-footer')
+    .getBoundingClientRect()
+  const panel = document.querySelector('.cover-readiness')
+    .getBoundingClientRect()
+  const stage = document.querySelector('.cover-viewport')
+    .getBoundingClientRect()
+  const frame = document.querySelector('.cover-preview-frame')
+    ?.getBoundingClientRect()
+  return { panelHeight: panel.height, footerTop: footer.top,
+    footerBottom: footer.bottom, stageHeight: stage.height,
+    framePresent: !!frame, canvasWidth: frame?.width,
+    canvasHeight: frame?.height, canvasBottom: frame?.bottom,
+    viewportHeight: innerHeight }
+})()`
+
+/**
+ * Sample the blocked readiness panel at one viewport until it converges.
+ *
+ * Emulation.setDeviceMetricsOverride reflows the studio and the panel
+ * legitimately re-enters "checking" (see lib/readiness-sample.js), so the wait
+ * has to be re-established after every override and the sample has to measure
+ * convergence — a bounded transient followed by a stable "blocked" tail — not
+ * a single observation that happened to race ahead of the reflow.
+ *
+ * @param {object} cdp CDP connection from connectCdp()
+ * @param {number} width emulated viewport width
+ * @param {number} height emulated viewport height
+ * @returns {Promise<{verdict: object, geometry: object, problems: string[]}>}
+ *   sampling verdict plus the geometry measured once the state settled
+ */
+async function sampleReadinessLayout(cdp, width, height) {
+  await cdp.send('Page.bringToFront')
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width, height, deviceScaleFactor: 1, mobile: false })
+  const verdict = await awaitStableState({
+    sampleFrame: () => cdp.evaluate(READINESS_FRAME_PROBE),
+    expected: 'blocked',
+  })
+  const geometry = await cdp.evaluate(READINESS_GEOMETRY_PROBE)
+  if (verdict.unexpected.length) {
+    console.log('[smoke-test] readiness transient states seen: ' +
+      verdict.unexpected.join(', '))
+  }
+  return { verdict, geometry,
+    problems: describeReadinessLayoutProblems(geometry, height) }
 }
 
 // Keep CDP scenarios together: they share the real editor and isolated fixture.
@@ -498,29 +911,17 @@ async function coverReadinessSmoke({ cdp, click, reopen, openStudio,
   const layouts = []
   for (const [width, height] of [[1440, 900], [900, 640], [960, 600]]) {
     console.log(`[smoke-test] sampling blocked layout ${width}x${height}`)
-    await cdp.send('Page.bringToFront')
-    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
-    await until('overflow feedback remains blocked', () => cdp.evaluate("document.querySelector('.cover-readiness')?.dataset.status === 'blocked'"))
-    const stable = await cdp.evaluate(`new Promise(resolve => {
-      let frames = 0; const states = [];
-      const timer = setTimeout(() => resolve({ states, incomplete: true,
-        visibility: document.visibilityState, focus: document.hasFocus() }), 10000);
-      const tick = () => { states.push(document.querySelector('.cover-readiness').dataset.status);
-        if (++frames < 60) requestAnimationFrame(tick); else {
-          clearTimeout(timer);
-          const footer = document.querySelector('.cover-footer').getBoundingClientRect();
-          const panel = document.querySelector('.cover-readiness').getBoundingClientRect();
-          const canvas = document.querySelector('.cover-preview-frame')?.getBoundingClientRect();
-          resolve({ states, panelHeight: panel.height, footerBottom: footer.bottom,
-            footerTop: footer.top, canvasBottom: canvas?.bottom,
-            canvasWidth: canvas?.width, canvasHeight: canvas?.height, viewportHeight: innerHeight });
-        }
-      }; requestAnimationFrame(tick);
-    })`)
-    if (stable.incomplete || stable.states.some(state => state !== 'blocked') || stable.panelHeight > 113 ||
-      !(stable.canvasWidth > 0 && stable.canvasHeight > 0) ||
-      stable.footerBottom > height + 1 || stable.canvasBottom > stable.footerTop + 1) fail(`readiness layout did not converge: ${JSON.stringify(stable)}`)
-    layouts.push({ width, height, ...stable })
+    const { verdict, geometry, problems } =
+      await sampleReadinessLayout(cdp, width, height)
+    if (!verdict.converged || problems.length) {
+      fail(describeReadinessFailure(verdict,
+        { viewport: `${width}x${height}`, problems, geometry }))
+    }
+    console.log(`[smoke-test] readiness converged at ${width}x${height} ` +
+      `after ${verdict.frames} frames ${JSON.stringify(verdict.stateCounts)}`)
+    layouts.push({ width, height, frames: verdict.frames,
+      settledAtFrame: verdict.convergedAt, stateCounts: verdict.stateCounts,
+      ...geometry })
     fs.writeFileSync(path.join(artifacts, `cover-blocked-${width}x${height}.png`),
       Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
     await click('.cover-readiness li button')
@@ -639,13 +1040,19 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     const click = async (selector) => {
       await until(`click ${selector}`, () => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e || e.disabled) return false; e.focus(); e.click(); return true; })()`))
     }
+    const ensureSetupWizardClosed = createSetupWizardGuard()
     const reopen = async () => {
       const expectedLoads = pageLoads + 1
       await cdp.send('Page.reload', { ignoreCache: true })
       await until('renderer reloaded', () => pageLoads >= expectedLoads)
+      // Dismissed here, not opportunistically inside the project click below:
+      // that click ran before capability-status resolved, so the wizard
+      // mounted afterwards and stayed up over the cover studio (final-gate
+      // 15..19). The guard also re-checks on every later reopen().
+      await ensureSetupWizardClosed(cdp)
       await until('open saved project', () => cdp.evaluate(`(() => {
         const buttons = [...document.querySelectorAll('button')];
-        buttons.find(e => /^(Later|Maybe later|稍后再说)$/i.test(e.textContent.trim()))?.click();
+        // The first-run wizard is already gone: reopen() dismissed it above.
         if (document.querySelector('.editor-workbench')) return true;
         const project = buttons.find(e => e.textContent.trim() === ${JSON.stringify(name)});
         if (!project) return false; project.click(); return true;
@@ -882,7 +1289,8 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     const readiness = await coverReadinessSmoke({ cdp, click, reopen, openStudio,
       artifacts, pngPath, blockImages: value => { blockAssetImages = value },
       writes: () => coverWrites })
-    const portrait = await portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject, frontend, projectId, artifacts })
+    const portrait = await portraitCoverSmoke({ cdp, click, reopen, openStudio,
+      readProject, frontend, projectId, artifacts, ensureSetupWizardClosed })
     const entryRace = await coverEntryRaceSmoke({ cdp, click, backend })
     if (generationPosts !== 0 || errors.length) fail(`HTML path generated AI requests (${generationPosts}) or renderer errors: ${errors.join('\n')}`)
     fs.writeFileSync(path.join(artifacts, 'cover-report.json'), JSON.stringify({ projectId, revisionId: metadata.revisionId, sha256: metadata.sha256, offlineRenderer: true, generationPosts, coverWrites, nativeDownloads, blockedRequests: blocked, expiredInterceptions, probe, differences, bodyFrame: 30, bodyMeanRgbError, audioOnset: onset, history, draftDownload, portrait, entryRace, layouts, themes, keyboard, timings, readiness }, null, 2))
@@ -1239,7 +1647,8 @@ async function main() {
   }
 }
 
-module.exports = { createResearchReport, runResearchBrowserSmoke }
+module.exports = { createResearchReport, runResearchBrowserSmoke,
+  untilFocusSettled }
 if (require.main === module) main().catch((err) => {
   console.error(`[smoke-test] FAIL: ${(err && err.stack) || String(err)}`)
   process.exitCode = 1

@@ -86,6 +86,33 @@ node scripts/build.js [--dir] [--skip-frontend] [--skip-backend] [--cn-mirror]
   --cn-mirror      python/pip/electron 走国内镜像(npmmirror / 清华 pypi)
 ```
 
+### 载荷断言:`build/` 与 `desktop/` 两个根
+
+`scripts/build.js` 在调 `electron-builder` 之前先校验「包里必须有的文件」,分两张
+表(`BUILD_PAYLOADS` / `APP_PAYLOADS`),各自盯一个根目录:
+
+- `BUILD_PAYLOADS` —— `prepare-*` 生成的产物,按 `build/` 校验:
+  `frontend/`、`backend/`、`python/`、`ffmpeg/`、`env.template.desktop`;
+- `APP_PAYLOADS` —— 应用外壳源码,按 `desktop/` 校验:`main/`、`preload/`、
+  `assets/`。这几个目录由 `electron-builder.yml` 的 `files:` 直接打进
+  `app.asar`,`build/` 里**永远不会**出现它们。
+
+所以新增文件时按归属加进对应列表:**在 `main/` 或 `preload/` 下新增会被打包的
+运行时文件,加 `APP_PAYLOADS`;新增某个 prepare 步骤的产物,加
+`BUILD_PAYLOADS`。** 缺项会带上它归属的根(`build/xxx` 或 `desktop/xxx`)报出:
+
+```
+[assert] verifying build/ payloads...
+[build] FAILED: missing required payloads (build/ = generated runtime payloads,
+desktop/ = app-shell files packed into app.asar):
+  - desktop/main/agentBrowserHost.js
+```
+
+把 app-shell 文件错写进 `BUILD_PAYLOADS` 正是曾经的打包卡点(见
+`docs/diagnoses/desktop-build-agent-browser-host-missing-payload/root-cause.md`)。
+校验逻辑与单测在 `scripts/lib/build-payload-checks.js`;
+`node scripts/lib/build-payload-checks.test.js` 目前需手动执行,未接入 `build.ps1`。
+
 下载源均可用环境变量覆盖:`ECLIPTRIX_PYTHON_URL`、`ECLIPTRIX_GET_PIP_URL`、
 `ECLIPTRIX_FFMPEG_URL`、`ECLIPTRIX_PIP_INDEX`。FFmpeg 默认使用 gyan.dev 的
 release-essentials 构建(GPL,许可证文本随包发布);国内网络不通时请用
@@ -179,6 +206,10 @@ npm run dev:attach     # Electron 直连 http://localhost:3000,不拉起任何�
 - **启动失败**:错误页会给出日志目录(`%APPDATA%\Ecliptrix\logs`),
   先看 `error.log`(汇聚所有告警/错误)与 `process.log`(子进程监管时序),
   再按需查看 `config.log` / `main.log` / `backend.log` / `frontend.log`。详见下方「日志」。
+  启动链自身的回归测试是纯 node 文件,无 npm 脚本、需手动执行:
+  `node main/browserHostCwd.test.js`(打包态宿主 cwd)、
+  `node main/processManager.spawn-error.test.js`(spawn 失败必须立刻报错)、
+  `node main/proxyProbe.test.js`(系统代理探测必须有 deadline)。
 - **杀毒软件拦截**:本地会启动 `python.exe` 子进程,部分杀软会拦截,需放行安装目录。
 - **数据库结构演进约束**:桌面端跳过 alembic,完全依赖启动时 `create_all` 建表
   (spec §7 风险 12)。后端模型变更必须保持「create_all 可直接建出完整 schema」。

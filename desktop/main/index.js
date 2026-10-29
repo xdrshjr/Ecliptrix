@@ -13,6 +13,8 @@ const { createFrontendDescriptor } = require('./frontendService')
 const { Logger, LogLevel } = require('./logger')
 const { APP_ICON_PATH, resolveAppUserModelId } = require('./appIcon')
 const { registerWindowControlIpc } = require('./windowControls')
+const { resolveBrowserHostCwd } = require('./browserHostPaths')
+const { probeSystemProxy } = require('./proxyProbe')
 const windows = require('./window')
 
 // `npm run dev` — attach to manually started dev servers instead of spawning
@@ -222,62 +224,22 @@ async function resolvePorts() {
  */
 async function startResearchBrowserHost() {
   try {
-    // smoke/调试可经 env 固定端口；缺省动态挑选一次并记住（重启复用）。
-    if (!state.researchBrowserPorts) {
-      state.researchBrowserPorts = {
-        cdpPort: Number(process.env.ECLIPTRIX_RESEARCH_CDP_PORT) ||
-          (await pickPort(9222)).port,
-        controlPort: Number(process.env.ECLIPTRIX_RESEARCH_CONTROL_PORT) ||
-          (await pickPort(9333)).port,
-      }
-    }
-    const { cdpPort, controlPort } = state.researchBrowserPorts
-    const hostArgs = isDev
-      ? [app.getAppPath(), '--agent-browser-host', `--cdp-port=${cdpPort}`, `--control-port=${controlPort}`]
-      : ['--agent-browser-host', `--cdp-port=${cdpPort}`, `--control-port=${controlPort}`]
-    // ELECTRON_RUN_AS_NODE 会把子进程降级成纯 Node，必须剥除。
-    const hostEnv = { ...process.env }
-    delete hostEnv.ELECTRON_RUN_AS_NODE
-    state.browserHost = new ManagedService(
-      {
-        name: 'agent-browser-host',
-        command: process.execPath,
-        args: hostArgs,
-        cwd: app.getAppPath(),
-        env: hostEnv,
-        healthUrl: `http://127.0.0.1:${cdpPort}/json/version`,
-        healthTimeoutMs: 20000,
-      },
-      {
-        logger: state.logger,
-        onUnexpectedExit: () => restartResearchBrowserHost(),
-      },
-    )
+    const ports = await ensureResearchBrowserPorts()
+    state.browserHost = createBrowserHostService(ports)
     state.browserHost.start()
     await state.browserHost.waitHealthy()
-
-    const researchBrowserEnv = {
-      AGENT_BROWSER_CDP_URL: `http://127.0.0.1:${cdpPort}`,
-      AGENT_BROWSER_CONTROL_URL: `http://127.0.0.1:${controlPort}`,
-    }
-    // 系统代理探测：auto 模式的第三优先级（spec §3.4/§3.6）。
-    try {
-      const proxyRules = await new Promise((resolve) => {
-        session.defaultSession.resolveProxy('https://example.com', resolve)
-      })
-      const match = /PROXY\s+([^\s;]+)/.exec(proxyRules || '')
-      if (match) {
-        const host = match[1].includes('://') ? match[1] : `http://${match[1]}`
-        researchBrowserEnv.WEB_RESEARCH_SYSTEM_PROXY = host
-        state.logger.info('process', `system proxy for research: ${host}`)
-      }
-    } catch (error) {
-      state.logger.warn('process', `resolveProxy failed: ${error.message}`)
-    }
-    state.researchBrowserEnv = researchBrowserEnv
+    // Unconditional marker: startup once stalled exactly here (the system-proxy
+    // probe never returned) and left no line at all, so process.log could not
+    // say how far it had got. Exactly one INFO line, no more.
     state.logger.info(
       'process',
-      `agent-browser-host ready (cdp=${researchBrowserEnv.AGENT_BROWSER_CDP_URL})`,
+      'agent-browser-host healthy — resolving research browser env',
+    )
+    state.researchBrowserEnv = await buildResearchBrowserEnv(ports)
+    const cdpUrl = state.researchBrowserEnv.AGENT_BROWSER_CDP_URL
+    state.logger.info(
+      'process',
+      `agent-browser-host ready (cdp=${cdpUrl})`,
     )
   } catch (err) {
     state.logger.warn(
@@ -289,6 +251,106 @@ async function startResearchBrowserHost() {
       state.browserHost = null
     }
     state.researchBrowserEnv = null
+  }
+}
+
+/**
+ * 挑选并记住宿主的 CDP / 控制端口。
+ *
+ * 端口只在首次挑选后固定：后端在 spawn 时已锁定这两个端口的 env，宿主崩溃
+ * 重启若换端口，后端会继续拨号死端口（能力永远不会恢复）。
+ *
+ * @returns {Promise<{ cdpPort: number, controlPort: number }>} 固定端口。
+ */
+async function ensureResearchBrowserPorts() {
+  // smoke/调试可经 env 固定端口；缺省动态挑选一次并记住（重启复用）。
+  if (!state.researchBrowserPorts) {
+    state.researchBrowserPorts = {
+      cdpPort: Number(process.env.ECLIPTRIX_RESEARCH_CDP_PORT) ||
+        (await pickPort(9222)).port,
+      controlPort: Number(process.env.ECLIPTRIX_RESEARCH_CONTROL_PORT) ||
+        (await pickPort(9333)).port,
+    }
+  }
+  return state.researchBrowserPorts
+}
+
+/**
+ * 构建宿主服务的描述符与监管器（尚未启动）。
+ *
+ * cwd 必须走 resolveBrowserHostCwd：打包态 app.getAppPath() 是 app.asar
+ * 文件本身，拿它当子进程工作目录会让 spawn 立即 ENOENT。
+ *
+ * @param {{ cdpPort: number, controlPort: number }} ports 固定端口。
+ * @returns {import('./processManager').ManagedService} 宿主服务实例。
+ */
+function createBrowserHostService({ cdpPort, controlPort }) {
+  const portArgs = [`--cdp-port=${cdpPort}`, `--control-port=${controlPort}`]
+  // dev 下 argv[1] 必须是应用目录，Electron 才能从源码加载宿主入口。
+  const hostArgs = isDev
+    ? [app.getAppPath(), '--agent-browser-host', ...portArgs]
+    : ['--agent-browser-host', ...portArgs]
+  // ELECTRON_RUN_AS_NODE 会把子进程降级成纯 Node，必须剥除。
+  const hostEnv = { ...process.env }
+  delete hostEnv.ELECTRON_RUN_AS_NODE
+  return new ManagedService(
+    {
+      name: 'agent-browser-host',
+      command: process.execPath,
+      args: hostArgs,
+      cwd: resolveBrowserHostCwd({
+        appRoot: app.getAppPath(),
+        resourcesPath: process.resourcesPath,
+      }),
+      env: hostEnv,
+      healthUrl: `http://127.0.0.1:${cdpPort}/json/version`,
+      healthTimeoutMs: 20000,
+    },
+    {
+      logger: state.logger,
+      onUnexpectedExit: () => restartResearchBrowserHost(),
+    },
+  )
+}
+
+/**
+ * 组装要注入后端的宿主环境变量，并附上系统代理（auto 模式第三优先级）。
+ *
+ * @param {{ cdpPort: number, controlPort: number }} ports 固定端口。
+ * @returns {Promise<Record<string, string>>} 注入后端的宿主 env。
+ */
+async function buildResearchBrowserEnv({ cdpPort, controlPort }) {
+  const researchBrowserEnv = {
+    AGENT_BROWSER_CDP_URL: `http://127.0.0.1:${cdpPort}`,
+    AGENT_BROWSER_CONTROL_URL: `http://127.0.0.1:${controlPort}`,
+  }
+  const proxyUrl = await resolveSystemProxyUrl()
+  if (proxyUrl) researchBrowserEnv.WEB_RESEARCH_SYSTEM_PROXY = proxyUrl
+  return researchBrowserEnv
+}
+
+/**
+ * 探测系统代理（spec §3.4/§3.6）；探测失败或超时只告警，改用直连。
+ *
+ * 探测有硬上限：打包态 resolveProxy 的回调可能永不触发，直接 await 会让
+ * 启动卡在 startServices() 之前（见 proxyProbe.js）。
+ *
+ * @returns {Promise<string|null>} 代理 URL，未探测到或失败时为 null。
+ */
+async function resolveSystemProxyUrl() {
+  try {
+    const proxyUrl = await probeSystemProxy({
+      // 必须包一层：resolveProxy 依赖 session 作为 this，不能只传方法引用。
+      resolveProxy: (probeUrl, callback) =>
+        session.defaultSession.resolveProxy(probeUrl, callback),
+      logger: state.logger,
+    })
+    if (!proxyUrl) return null
+    state.logger.info('process', `system proxy for research: ${proxyUrl}`)
+    return proxyUrl
+  } catch (error) {
+    state.logger.warn('process', `resolveProxy failed: ${error.message}`)
+    return null
   }
 }
 
