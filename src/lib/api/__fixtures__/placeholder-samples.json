@@ -1,0 +1,18 @@
+[
+  { "value": "your_volcano_tts_api_key", "usable": false },
+  { "value": "your_llm_api_key_here", "usable": false },
+  { "value": "YOUR_API_KEY_HERE", "usable": false },
+  { "value": "your_pexels_key", "usable": false },
+  { "value": "<your-key>", "usable": false },
+  { "value": "change-me", "usable": false },
+  { "value": "replace_me", "usable": false },
+  { "value": "xxxxxxxxxxxx", "usable": false },
+  { "value": "placeholder", "usable": false },
+  { "value": "000000000000", "usable": false },
+  { "value": "  your_ark_api_key_here  ", "usable": false },
+  { "value": "sk-test-secret-123", "usable": true },
+  { "value": "sk-secret-chat-key-123", "usable": true },
+  { "value": "tvly-0123456789abcdef", "usable": true },
+  { "value": "ak_live_EXAMPLEbut9realkeyvalue0042", "usable": true },
+  { "value": "7f3c1d2e-9b4a-4c8e-a1f0-5d6e7f8a9b0c", "usable": true }
+]

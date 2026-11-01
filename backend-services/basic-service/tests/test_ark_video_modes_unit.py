@@ -73,7 +73,9 @@ async def _capture_payload(request: ArkVideoGenerateRequest) -> dict:
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
 
-    with patch.object(ark_video_service, "settings") as mock_settings:
+    # ark_api_key() reads the shared app.config.settings, so patch it too.
+    with patch.object(ark_video_service, "settings") as mock_settings, \
+            patch("app.config.settings", mock_settings):
         mock_settings.ark_api_key = "test-api-key"
         with patch("httpx.AsyncClient", return_value=mock_client):
             result = await ark_video_service.create_task(request)
@@ -243,7 +245,9 @@ async def test_keyframe_mode_missing_first_frame_raises():
         mode="keyframe",
         # first_frame_url not set
     )
-    with patch.object(ark_video_service, "settings") as mock_settings:
+    # ark_api_key() reads the shared app.config.settings, so patch it too.
+    with patch.object(ark_video_service, "settings") as mock_settings, \
+            patch("app.config.settings", mock_settings):
         mock_settings.ark_api_key = "test-api-key"
         with pytest.raises(ValueError, match="first_frame_url is required"):
             await ark_video_service.create_task(request)
@@ -402,7 +406,9 @@ async def test_router_returns_400_for_keyframe_validation():
 
     transport = ASGITransport(app=test_app)
 
-    with patch.object(ark_video_service, "settings") as mock_settings:
+    # ark_api_key() reads the shared app.config.settings, so patch it too.
+    with patch.object(ark_video_service, "settings") as mock_settings, \
+            patch("app.config.settings", mock_settings):
         mock_settings.ark_api_key = "test-api-key"
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(

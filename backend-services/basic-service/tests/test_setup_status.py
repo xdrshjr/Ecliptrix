@@ -144,7 +144,8 @@ async def test_clean_install_reports_every_capability_missing(env, client):
     body = client.get("/api/config/capability-status").json()
 
     assert set(_states(client).values()) == {"missing"}
-    assert len(body["data"]["capabilities"]) == 6
+    # 6 model/search slots (R1) + 8 credential-backed capabilities (R2).
+    assert len(body["data"]["capabilities"]) == 14
     assert set(body["data"]["missing_core"]) == {
         "chat", "fast", "video_cut", "vision",
     }
@@ -329,3 +330,116 @@ def test_placeholder_helper_rejects_blank_and_templates():
     assert not setup_status_service.is_usable_secret("  ")
     assert not setup_status_service.is_usable_secret("YOUR_X_HERE")
     assert setup_status_service.is_usable_secret("sk-real")
+
+
+# ---------------------------------------------------------------------------
+# Credential-backed capabilities (setup-wizard-full-capability-coverage §3.4)
+# ---------------------------------------------------------------------------
+
+INTEGRATION_CAPABILITIES = [
+    "tts", "asr", "voice_clone", "ai_image", "ai_video",
+    "video_library", "image_library", "audio_library",
+]
+CANARY = "CANARY-integration-secret-77aa"
+
+
+def _use_app_settings(monkeypatch, **attrs):
+    from app import config as config_module
+
+    for name, value in attrs.items():
+        monkeypatch.setattr(config_module.settings, name, value)
+
+
+@pytest.mark.asyncio
+async def test_integration_capabilities_are_extended_and_missing_on_clean_install(
+    env, client, integration_db
+):
+    items = _by_id(client)
+
+    for capability in INTEGRATION_CAPABILITIES:
+        assert items[capability]["tier"] == "extended"
+        assert items[capability]["state"] == "missing"
+        assert items[capability]["source"] == "none"
+    assert set(_by_id(client)["tts"]) <= {
+        "id", "tier", "state", "source", "provider_name", "model_name", "inherited_from",
+    }
+
+
+@pytest.mark.asyncio
+async def test_packaged_placeholders_never_read_as_ready(env, client, monkeypatch, integration_db):
+    _use_app_settings(
+        monkeypatch,
+        volcano_tts_api_key="your_volcano_tts_api_key",
+        ark_api_key="your_ark_api_key_here",
+        pexels_api_keys=["your_pexels_api_key_here"],
+        volcano_asr_appid="your_volcano_asr_appid_here",
+        volcano_asr_access_token="your_volcano_asr_access_token_here",
+    )
+
+    states = _states(client)
+
+    assert states["tts"] == "missing"
+    assert states["ai_image"] == states["ai_video"] == "missing"
+    assert states["video_library"] == "missing"
+    assert states["asr"] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_asr_with_only_an_app_id_is_invalid_then_ready_when_complete(
+    env, client, integration_db
+):
+    from app.services.integration_credentials_service import integration_credentials
+
+    await integration_credentials.save("volcano_asr", {"appid": "1234567890"})
+    assert _states(client)["asr"] == "invalid"
+
+    await integration_credentials.save("volcano_asr", {"access_token": "token-aaaaaaaa"})
+    item = _by_id(client)["asr"]
+    assert (item["state"], item["source"]) == ("ready", "database")
+
+
+@pytest.mark.asyncio
+async def test_one_ark_key_makes_image_and_video_ready_together(env, client, integration_db):
+    from app.services.integration_credentials_service import integration_credentials
+
+    await integration_credentials.save("ark", {"api_key": "ark-key-12345678"})
+
+    states = _states(client)
+    assert states["ai_image"] == states["ai_video"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_a_real_env_value_reports_environment_as_the_source(
+    env, client, monkeypatch, integration_db
+):
+    _use_app_settings(monkeypatch, volcano_tts_api_key="real-env-key-12345")
+
+    item = _by_id(client)["tts"]
+
+    assert (item["state"], item["source"]) == ("ready", "environment")
+
+
+@pytest.mark.asyncio
+async def test_a_failed_credential_load_is_indeterminate_not_missing(
+    env, client, integration_db
+):
+    from app.services.integration_credentials_service import integration_credentials
+
+    integration_credentials.load_failed = True
+
+    states = _states(client)
+
+    assert all(states[c] == "indeterminate" for c in INTEGRATION_CAPABILITIES)
+    assert states["chat"] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_integration_rows_never_contain_credentials(env, client, integration_db):
+    from app.services.integration_credentials_service import integration_credentials
+
+    await integration_credentials.save("volcano_asr", {"appid": "1234567890", "access_token": CANARY})
+    await integration_credentials.save("pexels", {"api_keys": [CANARY + "-p"]})
+
+    raw = client.get("/api/config/capability-status").text
+
+    assert CANARY not in raw and "1234567890" not in raw

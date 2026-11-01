@@ -9,6 +9,7 @@ import AgentToolkitSettingsPanel from './AgentToolkitSettingsPanel';
 import AgentSkillsSettingsPanel from './AgentSkillsSettingsPanel';
 import AgentVisionSettingsPanel from './AgentVisionSettingsPanel';
 import TTSSettingsPanel from './TTSSettingsPanel';
+import IntegrationsSettingsPanel from './IntegrationsSettingsPanel';
 import YouTubeSettingsPanel from './YouTubeSettingsPanel';
 import UploadSettingsPanel from './UploadSettingsPanel';
 import WatermarkSettingsPanel from './WatermarkSettingsPanel';
@@ -71,6 +72,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         return <AgentVisionSettingsPanel onOpenModels={() => setActiveItem('model')} />;
       case 'tts':
         return <TTSSettingsPanel />;
+      case 'integrations':
+        return <IntegrationsSettingsPanel onOpenWebResearch={() => setActiveItem('webResearch')} />;
       case 'videoAnalysis':
         return <VideoAnalysisSettingsPanel />;
       case 'upload':

@@ -2,12 +2,12 @@
 Audio search service for Freesound API integration.
 """
 
-import os
 import requests
 from typing import Optional, Dict, Any
 
 from app.models.audio_search_models import AudioSearchResponse, AudioInfo
 from app.logger import get_logger
+from app.services.integration_credentials_service import credential_property
 
 logger = get_logger(__name__)
 
@@ -23,16 +23,14 @@ class AudioSearchService:
     - Error handling and logging
     """
     
+    # Live key (saved in the app, falling back to .env); do not assign in
+    # __init__ - see credential_property.
+    api_key = credential_property("freesound", "api_key")
+
     def __init__(self):
         """Initialize the audio search service with API configuration."""
-        # Get API key from environment variables
-        self.api_key = os.getenv("FREESOUND_API_KEY")
         self.base_url = "https://freesound.org/apiv2"
-        
-        if not self.api_key:
-            logger.warning("Freesound API key not configured. Audio search will not work.")
-        else:
-            logger.info("Audio search service initialized with Freesound API")
+        logger.info("Audio search service initialized")
     
     def _make_api_request(self, endpoint: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -49,18 +47,18 @@ class AudioSearchService:
             logger.error("Freesound API key not configured")
             return None
         
-        # Add API key to parameters
-        params['token'] = self.api_key
-        
         url = f"{self.base_url}/{endpoint}"
-        
+        # Header auth keeps the key out of the URL, so request errors and logs
+        # (requests puts the full URL in its exception text) never contain it.
+        headers = {'Authorization': f'Token {self.api_key}'}
+
         try:
             logger.info(f"Making Freesound API request to {endpoint}", extra={
                 'url': url,
-                'params': {k: v for k, v in params.items() if k != 'token'}  # Don't log API key
+                'params': params
             })
-            
-            response = requests.get(url, params=params, timeout=30)
+
+            response = requests.get(url, params=params, headers=headers, timeout=30)
             response.raise_for_status()
             
             data = response.json()
@@ -75,7 +73,7 @@ class AudioSearchService:
         except requests.exceptions.RequestException as e:
             logger.error(f"Freesound API request failed: {str(e)}", extra={
                 'endpoint': endpoint,
-                'params': {k: v for k, v in params.items() if k != 'token'}
+                'params': params
             })
             return None
         except Exception as e:

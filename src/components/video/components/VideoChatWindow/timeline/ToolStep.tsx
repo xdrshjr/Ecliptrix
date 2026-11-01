@@ -26,6 +26,7 @@ import {
   describeTtsFailure, getTtsFailure, getLegacyTtsFailure, isTtsRecord,
   type TtsFailure,
 } from '@/lib/ttsErrors';
+import ConfigureCta from '@/components/integrations/ConfigureCta';
 import type { ToolStepData, ToolStepStatus } from './types';
 import { formatElapsedTime, formatParamValue, formatResult } from './utils';
 import {
@@ -281,6 +282,9 @@ function TtsFailureReason({ entry, t }: {
       </div>}
       <p className="text-red-600 dark:text-red-400 break-words">{summary}</p>
       {action && <p className="text-muted-foreground break-words">{action}</p>}
+      {entry.failure.error_code === 'TTS_CONFIG_MISSING' && (
+        <ConfigureCta integrationId="volcano_tts" />
+      )}
     </div>
   );
 }

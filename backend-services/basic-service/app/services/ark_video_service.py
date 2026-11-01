@@ -14,6 +14,10 @@ import aiofiles
 import httpx
 
 from app.config import settings
+from app.services.integration_credentials_service import (
+    ARK_NOT_CONFIGURED_MESSAGE,
+    ark_api_key,
+)
 from app.models.ark_video_models import ArkVideoGenerateRequest, ArkVideoStatusResponse
 
 logger = logging.getLogger(__name__)
@@ -329,10 +333,8 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     Raises ValueError if ARK_API_KEY is not configured or if keyframe mode is missing first_frame_url.
     Raises httpx.HTTPStatusError or httpx.RequestError on network/API failure.
     """
-    if not settings.ark_api_key:
-        raise ValueError(
-            "ARK_API_KEY is not configured. Set ARK_API_KEY in the backend .env file."
-        )
+    if not ark_api_key():
+        raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
 
     # Build content list — always starts with the text prompt
     content: list = [{"type": "text", "text": request.prompt}]
@@ -446,7 +448,7 @@ async def create_task(request: ArkVideoGenerateRequest) -> str:
     }
 
     headers = {
-        "Authorization": f"Bearer {settings.ark_api_key}",
+        "Authorization": f"Bearer {ark_api_key()}",
         "Content-Type": "application/json",
     }
 
@@ -527,11 +529,11 @@ async def get_status(ark_task_id: str) -> ArkVideoStatusResponse:
             height=cdn.get("height"),
         )
 
-    if not settings.ark_api_key:
-        raise ValueError("ARK_API_KEY is not configured.")
+    if not ark_api_key():
+        raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
 
     headers = {
-        "Authorization": f"Bearer {settings.ark_api_key}",
+        "Authorization": f"Bearer {ark_api_key()}",
         "Content-Type": "application/json",
     }
 

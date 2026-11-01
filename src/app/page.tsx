@@ -7,6 +7,7 @@ import Container from '@/components/Container';
 import SettingsPage from '@/components/settings/SettingsPage';
 import { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
 import SetupWizard from '@/components/Onboarding/SetupWizard';
+import CredentialMissingListener from '@/components/integrations/CredentialMissingListener';
 import {
   settingsAttentionItems,
   type WizardMode,
@@ -14,6 +15,8 @@ import {
 import { useTasks } from '@/hooks/useTasks';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useDesktopCloseGuard } from '@/hooks/useDesktopCloseGuard';
+import type { IntegrationId } from '@/lib/api/integrations';
+import { OPEN_SETUP_WIZARD_EVENT, type OpenSetupWizardDetail } from '@/lib/setupEvents';
 
 // Session-scoped (not localStorage): re-prompt on next launch if still
 // unconfigured, but never twice in one session.
@@ -77,6 +80,18 @@ export default function HomePage() {
   // The wizard stays open once started: its own writes make the status turn
   // 'complete' mid-flow, and the done page must not be yanked away.
   const [wizardMode, setWizardMode] = useState<WizardMode | null>(null);
+  // Set by "go configure" buttons next to a missing-credentials error.
+  const [wizardFocus, setWizardFocus] = useState<IntegrationId | undefined>(undefined);
+  useEffect(() => {
+    const openRequested = (event: Event) => {
+      const detail = (event as CustomEvent<OpenSetupWizardDetail>).detail;
+      setIsSettingsOpen(false);
+      setWizardFocus(detail?.focus);
+      setWizardMode('manual');
+    };
+    window.addEventListener(OPEN_SETUP_WIZARD_EVENT, openRequested);
+    return () => window.removeEventListener(OPEN_SETUP_WIZARD_EVENT, openRequested);
+  }, []);
   useEffect(() => {
     const shouldAutoOpen =
       hydrated
@@ -105,18 +120,21 @@ export default function HomePage() {
     // at once. A manual re-run is the owner's own request and is not.
     if (wizardMode === 'auto') dismissSetupGuide();
     setWizardMode(null);
+    setWizardFocus(undefined);
     refreshSetupStatus();
   };
 
   const openSettingsFromWizard = (item: SettingsMenuItem) => {
     if (wizardMode === 'auto') dismissSetupGuide();
     setWizardMode(null);
+    setWizardFocus(undefined);
     setSettingsItem(item);
     setIsSettingsOpen(true);
   };
 
   const rerunSetupWizard = () => {
     setIsSettingsOpen(false);
+    setWizardFocus(undefined);
     setWizardMode('manual');
   };
 
@@ -166,9 +184,13 @@ export default function HomePage() {
         )}
       </div>
 
+      <CredentialMissingListener />
+
       {wizardMode && (
         <SetupWizard
+          key={wizardFocus ?? 'default'}
           mode={wizardMode}
+          focus={wizardFocus}
           capabilities={capabilities}
           optOuts={optOuts}
           onClose={handleWizardClose}

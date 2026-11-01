@@ -1,0 +1,167 @@
+{
+  "integrations": [
+    {
+      "id": "volcano_tts",
+      "capabilities": [
+        "tts"
+      ],
+      "verifyLevel": "billed_minimal",
+      "fields": [
+        {
+          "name": "api_key",
+          "kind": "secret",
+          "required": true
+        },
+        {
+          "name": "resource_id",
+          "kind": "choice",
+          "required": false,
+          "choices": [
+            "seed-tts-2.0",
+            "seed-tts-1.0",
+            "seed-tts-1.0-concurr"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "volcano_asr",
+      "capabilities": [
+        "asr"
+      ],
+      "verifyLevel": "handshake",
+      "fields": [
+        {
+          "name": "appid",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "name": "access_token",
+          "kind": "secret",
+          "required": true
+        },
+        {
+          "name": "resource_id",
+          "kind": "choice",
+          "required": false,
+          "choices": [
+            "volc.bigasr.sauc.duration",
+            "volc.bigasr.sauc.concurrent",
+            "volc.seedasr.sauc.duration",
+            "volc.seedasr.sauc.concurrent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "volcano_voice_clone",
+      "capabilities": [
+        "voice_clone"
+      ],
+      "verifyLevel": "none",
+      "fields": [
+        {
+          "name": "app_key",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "name": "access_key",
+          "kind": "secret",
+          "required": true
+        },
+        {
+          "name": "tts_resource_id",
+          "kind": "choice",
+          "required": false,
+          "choices": [
+            "seed-icl-1.0",
+            "seed-icl-1.0-concurr"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ark",
+      "capabilities": [
+        "ai_image",
+        "ai_video"
+      ],
+      "verifyLevel": "free",
+      "fields": [
+        {
+          "name": "api_key",
+          "kind": "secret",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "pexels",
+      "capabilities": [
+        "video_library"
+      ],
+      "verifyLevel": "free",
+      "fields": [
+        {
+          "name": "api_keys",
+          "kind": "secret_list",
+          "required": true,
+          "maxItems": 5
+        }
+      ]
+    },
+    {
+      "id": "unsplash",
+      "capabilities": [
+        "image_library"
+      ],
+      "verifyLevel": "free",
+      "fields": [
+        {
+          "name": "access_keys",
+          "kind": "secret_list",
+          "required": true,
+          "maxItems": 5
+        }
+      ]
+    },
+    {
+      "id": "freesound",
+      "capabilities": [
+        "audio_library"
+      ],
+      "verifyLevel": "free",
+      "fields": [
+        {
+          "name": "api_key",
+          "kind": "secret",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "extendedCapabilities": [
+    "tts",
+    "asr",
+    "voice_clone",
+    "ai_image",
+    "ai_video",
+    "video_library",
+    "image_library",
+    "audio_library"
+  ],
+  "providerPresetIds": [
+    "deepseek",
+    "alibaba",
+    "zhipu",
+    "openai",
+    "anthropic",
+    "google",
+    "kimi_coding",
+    "codex",
+    "claude_coding",
+    "glm_coding"
+  ]
+}

@@ -46,6 +46,7 @@ import websockets
 from app.config import settings
 from app.logger import get_logger
 from app.models.audio_models import SubtitleItem
+from app.services.integration_credentials_service import credential_property
 from app.services.local_media_resolver import (
     audio_generated_dir,
     audio_subtitle_dir,
@@ -176,41 +177,25 @@ class VolcanoAsrError(RuntimeError):
 class AudioTranscriptionService:
     """音频转字幕服务 — WebSocket streaming bigmodel_nostream client."""
 
+    # Credentials are read from the integration resolver at call time (saved in
+    # the setup wizard / settings, falling back to .env). Never assign them in
+    # __init__: that would freeze a construction-time snapshot again.
+    appid = credential_property("volcano_asr", "appid")
+    access_token = credential_property("volcano_asr", "access_token")
+    resource_id = credential_property("volcano_asr", "resource_id")
+
     def __init__(self) -> None:
         """Initialise without ever raising.
 
-        Missing credentials surface as ``logger.warning`` lines only;
-        ``aprocess_audio_file`` re-validates per call and returns
-        ``ASR_NOT_CONFIGURED`` so the API process stays alive when ASR is
-        misconfigured.
+        Missing credentials are re-validated per call:
+        ``aprocess_audio_file`` returns ``ASR_NOT_CONFIGURED`` so the API
+        process stays alive when ASR is not configured yet.
         """
-        self.appid = settings.volcano_asr_appid
-        self.access_token = settings.volcano_asr_access_token
-        self.resource_id = settings.volcano_asr_resource_id
         self.max_clip_seconds = max(1, int(getattr(settings, "asr_max_clip_seconds", 300)))
         self.ws_url = _ASR_WS_URL
 
-        if not self.appid:
-            logger.warning(
-                "VOLCANO_ASR_APPID is not configured — Subtitles button will "
-                "return ASR_NOT_CONFIGURED until set."
-            )
-        if not self.access_token:
-            logger.warning(
-                "VOLCANO_ASR_ACCESS_TOKEN is not configured — Subtitles button "
-                "will return ASR_NOT_CONFIGURED until set."
-            )
-        if not self.resource_id:
-            logger.warning(
-                "VOLCANO_ASR_RESOURCE_ID is not configured — defaulting to "
-                "'volc.bigasr.sauc.duration'."
-            )
-
         logger.info(
-            "音频转字幕服务初始化完成 (WS streaming): appid=%s, resource_id=%s, "
-            "max_clip_seconds=%d",
-            self._mask(self.appid),
-            self.resource_id or "volc.bigasr.sauc.duration",
+            "音频转字幕服务初始化完成 (WS streaming): max_clip_seconds=%d",
             self.max_clip_seconds,
         )
 

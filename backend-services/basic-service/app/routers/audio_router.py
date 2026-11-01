@@ -17,6 +17,7 @@ from app.models.audio_search_models import AudioSearchRequest, AudioSearchRespon
 from app.services.audio_transcription_service import audio_transcription_service
 from app.services.audio_search_service import AudioSearchService
 from app.logger import get_logger
+from app.services.credential_errors import require_configured
 
 # Initialize router and logger
 router = APIRouter(prefix="/audio", tags=["Audio Transcription", "Audio Search"])
@@ -450,6 +451,7 @@ async def search_audios(request: AudioSearchRequest) -> AudioSearchResponse:
     Raises:
         HTTPException: 400 for invalid request parameters, 500 for internal errors
     """
+    require_configured("freesound")
     logger.info(f"Audio search request received", extra={
         'query': request.query,
         'max_audios': request.max_audios,

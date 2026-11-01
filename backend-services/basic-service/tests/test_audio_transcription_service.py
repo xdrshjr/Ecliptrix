@@ -112,7 +112,9 @@ def test_init_with_empty_creds_does_not_raise(monkeypatch):
     svc = AudioTranscriptionService()
     assert svc.appid == ""
     assert svc.access_token == ""
-    assert svc.resource_id == ""
+    # resource_id is a choice field: the resolver always falls back to its
+    # code default, so it is never empty (it used to mirror a blank env var).
+    assert svc.resource_id == "volc.bigasr.sauc.duration"
     assert svc._missing_credentials() == "VOLCANO_ASR_APPID"
 
 

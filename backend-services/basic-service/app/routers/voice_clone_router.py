@@ -19,6 +19,7 @@ from app.models.tts_models import TTSResponse, TTSErrorResponse
 from app.services.voice_clone_service import voice_clone_service
 from app.config import settings
 from app.logger import get_logger
+from app.services.credential_errors import require_configured
 
 router = APIRouter(prefix="/voice-clone", tags=["Voice Clone"])
 logger = get_logger(__name__)
@@ -31,6 +32,7 @@ logger = get_logger(__name__)
     description="Upload reference audio and start voice clone training",
 )
 async def train_voice_clone(request: VoiceCloneTrainRequest):
+    require_configured("volcano_voice_clone")
     try:
         result = await voice_clone_service.train_voice(
             speaker_id=request.speaker_id,
@@ -150,6 +152,7 @@ async def get_voice_clone_status(speaker_id: str):
     description="Use a trained cloned voice to synthesize audio from text",
 )
 async def synthesize_with_cloned_voice(request: AIAudioSynthesizeRequest):
+    require_configured("volcano_voice_clone")
     try:
         speaker_id = request.voice_type
         text = request.text

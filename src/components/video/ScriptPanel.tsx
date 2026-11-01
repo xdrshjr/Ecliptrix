@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { ScriptSegment, ScriptSentence, MaterialItem, AIVideoScriptSegment, StoryboardScriptSegment } from '@/types';
 import { SentenceTTSResult } from '@/lib/api/tts';
 import {
@@ -460,6 +461,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
         }));
       }
     } catch (error) {
+      reportCredentialMissing(error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       
              logger.error('字幕识别异常', new Error(errorMessage), {

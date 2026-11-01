@@ -4,6 +4,7 @@
  */
 
 import { AudioSearchResponse } from '../types';
+import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { VideoEditingLogger } from '../utils';
 import { http, ApiError } from '@/lib/api/http-client';
 
@@ -122,6 +123,7 @@ export class AudioSearchServiceImpl implements AudioSearchService {
           sort_by: sortBy,
         });
       } catch (httpError) {
+        reportCredentialMissing(httpError);
         const errorMessage = httpError instanceof ApiError
           ? (httpError.message || `HTTP error! status: ${httpError.status}`)
           : (httpError instanceof Error ? httpError.message : String(httpError));

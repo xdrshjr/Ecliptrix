@@ -2,12 +2,12 @@
 Image search service for Unsplash API integration.
 """
 
-import os
 import requests
 from typing import Optional, Dict, Any
 
 from app.models.image_search_models import ImageSearchResponse, ImageInfo
 from app.logger import get_logger
+from app.services.integration_credentials_service import credential_property
 
 logger = get_logger(__name__)
 
@@ -23,25 +23,24 @@ class ImageSearchService:
     - Error handling and logging
     """
     
+    # Live keys (saved in the app, falling back to .env); do not assign in
+    # __init__ - see credential_property.
+    api_keys = credential_property("unsplash", "access_keys")
+
     def __init__(self):
         """Initialize the image search service with API configuration."""
-        # Get API keys from environment variables (comma-separated list)
-        api_keys_str = os.getenv("UNSPLASH_ACCESS_KEYS", "")
-        self.api_keys = [key.strip() for key in api_keys_str.split(",") if key.strip()]
         self.current_key_index = 0
         self.base_url = "https://api.unsplash.com"
-        
-        if not self.api_keys:
-            logger.warning("Unsplash API keys not configured. Image search will not work.")
-        else:
-            logger.info(f"Image search service initialized with {len(self.api_keys)} Unsplash API key(s)")
-    
+        logger.info("Image search service initialized")
+
     def _get_current_api_key(self) -> Optional[str]:
         """Get the current API key for rotation."""
-        if not self.api_keys:
+        keys = self.api_keys
+        if not keys:
             return None
-        return self.api_keys[self.current_key_index]
-    
+        # The list can shrink between calls (settings edited), so wrap the index.
+        return keys[self.current_key_index % len(keys)]
+
     def _rotate_api_key(self):
         """Rotate to the next API key."""
         if len(self.api_keys) > 1:

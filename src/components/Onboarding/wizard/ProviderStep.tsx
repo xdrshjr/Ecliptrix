@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import GetCredentialLink from '@/components/integrations/GetCredentialLink';
 import type { KnownProvider } from '@/lib/api/modelSettings';
 import SecretInput from './SecretInput';
 import Spinner from './Spinner';
@@ -152,6 +153,7 @@ const ProviderStep: React.FC<ProviderStepProps> = ({ wizard }) => {
             describedBy={errorText ? 'setup-provider-error' : undefined}
             autoFocus
           />
+          <GetCredentialLink id={draft.knownId} showDocs={false} className="-mt-2" />
           {isCustom && (
             <div>
               <label htmlFor="setup-api-url" className="block text-sm font-medium text-foreground">

@@ -16,8 +16,12 @@ from app.services.tts_errors import TTSServiceError
 def prevent_live_tts_requests(monkeypatch):
     """未被隔离的旧 fixture 也不能访问付费语音服务。"""
     import requests
+    from app.config import settings
     monkeypatch.setattr(requests, 'post', Mock(side_effect=
         requests.ConnectionError('isolated-test')))
+    # validate_config runs before the mocked conversion; give it a configured
+    # key so these tests no longer depend on the developer's real .env.
+    monkeypatch.setattr(settings, 'volcano_tts_api_key', 'test-key-12345678')
 
 client = TestClient(app)
 

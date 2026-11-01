@@ -714,6 +714,8 @@ export interface Translations {
     cancel: string;
     modelSettings: string;
     modelSettingsDesc: string;
+    integrationsSettings: string;
+    integrationsSettingsDesc: string;
     modelChat: string;
     modelFast: string;
     modelVideoCut: string;
@@ -3261,6 +3263,10 @@ export interface Translations {
     stepModels: string;
     stepSearch: string;
     stepDone: string;
+    stepVoice: string;
+    stepGeneration: string;
+    stepMedia: string;
+    group: Record<'models' | 'voice' | 'generation' | 'media' | 'search', { title: string; desc: string }>;
     stepCounter: string;
     start: string;
     resume: string;
@@ -3319,7 +3325,7 @@ export interface Translations {
     searchKeys: string;
     searchKeysHint: string;
     getKey: string;
-    cap: Record<'chat' | 'fast' | 'video_cut' | 'vision' | 'research' | 'web_search', { name: string; desc: string }>;
+    cap: Record<'chat' | 'fast' | 'video_cut' | 'vision' | 'research' | 'web_search' | 'tts' | 'asr' | 'voice_clone' | 'ai_image' | 'ai_video' | 'video_library' | 'image_library' | 'audio_library', { name: string; desc: string }>;
     state: {
       ready: string;
       inherited: string;
@@ -3341,6 +3347,80 @@ export interface Translations {
       tooManyKeys: string;
       generic: string;
     };
+  };
+  integrations: Record<'volcano_tts' | 'volcano_asr' | 'volcano_voice_clone' | 'ark' | 'pexels' | 'unsplash' | 'freesound', { name: string; desc: string; pitfall: string }> & {
+    field: {
+      apiKey: string;
+      appId: string;
+      accessToken: string;
+      accessKey: string;
+      appKey: string;
+      resourceId: string;
+      ttsResourceId: string;
+      apiKeys: string;
+      accessKeys: string;
+    };
+    choice: Record<string, string>;
+    hint: {
+      configuredCount: string;
+      keepSecret: string;
+      replaceList: string;
+      listHint: string;
+      billedTest: string;
+      priority: string;
+      fromEnv: string;
+    };
+    action: {
+      saveTest: string;
+      save: string;
+      saving: string;
+      testing: string;
+      clear: string;
+      skip: string;
+      skipGroup: string;
+      skipOptional: string;
+      continueLater: string;
+      continueNext: string;
+      change: string;
+      reenable: string;
+      configure: string;
+      retype: string;
+      saveAnyway: string;
+    };
+    test: Record<
+      'ok' | 'okArk' | 'invalid_credentials' | 'not_entitled' | 'rate_limited' | 'unreachable' | 'upstream_error' | 'unverifiable',
+      string
+    >;
+    err: {
+      placeholder: string;
+      malformed: string;
+      tooMany: string;
+      invalidChoice: string;
+      saveFailed: string;
+      required: string;
+      originForbidden: string;
+      unknownField: string;
+    };
+    source: { database: string; environment: string; default: string; none: string };
+    link: {
+      getKey: string;
+      docs: string;
+      activate: string;
+      copy: string;
+      copied: string;
+      external: string;
+      noLink: string;
+    };
+    panel: {
+      description: string;
+      loadFailed: string;
+      retry: string;
+      loading: string;
+      tavilyNote: string;
+      openWebSearch: string;
+      notUsing: string;
+    };
+    cta: { configure: string; missing: string };
   };
   narrationDirectScript: {
     modeNarrationDirect: string;
@@ -4607,6 +4687,8 @@ export const translations: Record<string, Translations> = {
       cancel: 'Cancel',
       modelSettings: 'Model Settings',
       modelSettingsDesc: 'Configure AI models for each function',
+      integrationsSettings: 'Services & libraries',
+      integrationsSettingsDesc: 'Credentials for voice, subtitles, AI generation and material libraries',
       modelChat: 'Chat',
       modelFast: 'Fast LLM',
       modelVideoCut: 'Video Cut',
@@ -7162,14 +7244,24 @@ export const translations: Record<string, Translations> = {
     },
     setupWizard: {
       title: 'Let\'s connect your AI',
-      subtitle: 'Ecliptrix needs your own API keys to power chat, mixed editing and research.',
+      subtitle: 'Ecliptrix needs your own API keys to power chat, mixed editing, voice-over, subtitles and material libraries.',
       privacyNote: 'Keys are stored on this computer only.',
-      duration: 'Takes about 2 minutes. You can change everything later in Settings.',
+      duration: 'Models take about 2 minutes; everything else is optional and can be added any time in Settings.',
       stepOverview: 'Overview',
       stepProvider: 'Connect a provider',
       stepModels: 'Choose models',
       stepSearch: 'Web search',
       stepDone: 'All set',
+      stepVoice: 'Voice & subtitles',
+      stepGeneration: 'AI image & video',
+      stepMedia: 'Material libraries',
+      group: {
+        models: { title: 'AI models', desc: 'Chat, mixed editing and visual review.' },
+        voice: { title: 'Voice & subtitles', desc: 'Credentials for voice-over, subtitle recognition and voice cloning.' },
+        generation: { title: 'AI image & video', desc: 'One Volcano Ark key powers Seedream images and Seedance video.' },
+        media: { title: 'Material libraries', desc: 'Stock video, photos and sound effects to use in your edits.' },
+        search: { title: 'Online lookup', desc: 'Lets the assistant look things up online.' },
+      },
       stepCounter: 'Step {current} of {total}',
       start: 'Get started',
       resume: 'Continue setup',
@@ -7196,7 +7288,7 @@ export const translations: Record<string, Translations> = {
       doneDesc: 'Everything below is configured. Adjust it any time in Settings.',
       openSettings: 'Open Settings',
       rerun: 'Re-run setup wizard',
-      rerunDesc: 'Walk through provider, model and search setup again.',
+      rerunDesc: 'Walk through model, voice, AI generation, material library and search setup again.',
       needsSetup: 'Needs setup',
       discardPrompt: 'You have unsaved input. Close and discard it?',
       keepEditing: 'Keep editing',
@@ -7235,6 +7327,14 @@ export const translations: Record<string, Translations> = {
         vision: { name: 'Visual review', desc: 'Look at frames and images' },
         research: { name: 'Research', desc: 'Gather and summarise sources' },
         web_search: { name: 'Web search', desc: 'Search the web for material' },
+        tts: { name: 'Voice-over (TTS)', desc: 'Turn narration into speech' },
+        asr: { name: 'Subtitle recognition', desc: 'Generate subtitles from speech' },
+        voice_clone: { name: 'Voice cloning', desc: 'Clone a voice for narration' },
+        ai_image: { name: 'AI images', desc: 'Generate images with Seedream' },
+        ai_video: { name: 'AI video', desc: 'Generate clips with Seedance' },
+        video_library: { name: 'Video library', desc: 'Search Pexels for stock footage' },
+        image_library: { name: 'Image library', desc: 'Search Unsplash for photos' },
+        audio_library: { name: 'Sound library', desc: 'Search Freesound for effects' },
       },
       state: {
         ready: 'Configured',
@@ -7261,6 +7361,136 @@ export const translations: Record<string, Translations> = {
         tooManyKeys: 'Up to {max} keys are supported.',
         generic: 'Something went wrong.',
       },
+    },
+    integrations: {
+      volcano_tts: {
+        name: 'Speech synthesis',
+        desc: 'Volcano Engine · turns narration into voice-over',
+        pitfall: 'Use the API Key from the new Doubao Speech console, not an APP ID or Access Token. The resource ID decides which voices work: 2.0 voices need seed-tts-2.0, 1.0 voices need seed-tts-1.0. A wrong choice makes synthesis fail.',
+      },
+      volcano_asr: {
+        name: 'Subtitle recognition',
+        desc: 'Volcano Engine · generates subtitles from speech',
+        pitfall: 'Subtitle recognition uses a different app: the “streaming speech recognition” app, with its own APP ID and Access Token. They are not the speech-synthesis API Key, and an APP ID’s synthesis and recognition permissions are separate. Nothing is borrowed from the voice-over card.',
+      },
+      volcano_voice_clone: {
+        name: 'Voice cloning',
+        desc: 'Volcano Engine · clone your own voice',
+        pitfall: 'Besides these credentials you must buy a speaker_id (a voice slot) in the console; it is not part of the key. This service can’t be checked for free, so it is only verified the first time you train a voice.',
+      },
+      ark: {
+        name: 'AI image & video generation',
+        desc: 'Volcano Ark · Seedream images and Seedance video',
+        pitfall: 'One key unlocks AI images (Seedream) and AI video (Seedance), and also storyboard and cover generation. After creating the key, enable the models under “Activation management”; otherwise generation is refused even though the key is valid.',
+      },
+      pexels: {
+        name: 'Pexels video library',
+        desc: 'Search free stock video',
+        pitfall: 'The free tier is rate-limited. You can add up to 5 keys and the app rotates between them.',
+      },
+      unsplash: {
+        name: 'Unsplash image library',
+        desc: 'Search free, high-quality photos',
+        pitfall: 'Use the application’s Access Key, not the Secret Key. Free demo apps are rate-limited; up to 5 keys rotate.',
+      },
+      freesound: {
+        name: 'Freesound sound library',
+        desc: 'Search and preview free sound effects',
+        pitfall: 'Free to apply for. The app only searches and previews sounds; downloading original-quality audio would need OAuth, which isn’t used.',
+      },
+      field: {
+        apiKey: 'API Key',
+        appId: 'APP ID',
+        accessToken: 'Access Token',
+        accessKey: 'Access Key',
+        appKey: 'App Key',
+        resourceId: 'Resource ID',
+        ttsResourceId: 'Synthesis resource ID',
+        apiKeys: 'API Keys',
+        accessKeys: 'Access Keys',
+      },
+      choice: {
+        'seed-tts-2.0': '2.0 voices · billed per character (recommended)',
+        'seed-tts-1.0': '1.0 voices · billed per character',
+        'seed-tts-1.0-concurr': '1.0 voices · billed by concurrency',
+        'volc.bigasr.sauc.duration': 'Recognition 1.0 · hourly (default)',
+        'volc.bigasr.sauc.concurrent': 'Recognition 1.0 · concurrency',
+        'volc.seedasr.sauc.duration': 'Recognition 2.0 · hourly',
+        'volc.seedasr.sauc.concurrent': 'Recognition 2.0 · concurrency',
+        'seed-icl-1.0': 'Voice cloning 1.0 (default)',
+        'seed-icl-1.0-concurr': 'Voice cloning 1.0 · concurrency',
+      },
+      hint: {
+        configuredCount: '{count} configured',
+        keepSecret: 'Saved. Leave blank to keep it.',
+        replaceList: 'Leave blank to keep the current keys. Anything you enter replaces all of them, so to add one, include the existing keys too.',
+        listHint: 'One per line, up to {max}.',
+        billedTest: 'Testing synthesises a single character, which costs next to nothing.',
+        priority: 'A value saved here takes priority over the .env file.',
+        fromEnv: 'Currently read from the .env file.',
+      },
+      action: {
+        saveTest: 'Save and test',
+        save: 'Save',
+        saving: 'Saving…',
+        testing: 'Testing…',
+        clear: 'Clear and fall back to .env',
+        skip: 'Not using',
+        skipGroup: 'Skip this whole group',
+        skipOptional: 'Only set up models; the rest later',
+        continueLater: 'Continue, finish later',
+        continueNext: 'Continue',
+        change: 'Replace',
+        reenable: 'Turn reminders back on',
+        configure: 'Set up',
+        retype: 'Re-enter',
+        saveAnyway: 'Keep it saved and continue',
+      },
+      test: {
+        ok: 'Connected.',
+        okArk: 'The key is valid. Also make sure the Seedream / Seedance models are enabled for it.',
+        invalid_credentials: 'The credentials were rejected. Check them and try again.',
+        not_entitled: 'The credentials work, but this service isn’t enabled for the account (or its quota is used up).',
+        rate_limited: 'Too many checks in a row. Wait a moment and try again.',
+        unreachable: 'Couldn’t reach the service. Check your network.',
+        upstream_error: 'The service couldn’t be checked right now. It is saved; you can test it later in Settings.',
+        unverifiable: 'Saved. This service can’t be checked for free; it is verified the first time you use it.',
+      },
+      err: {
+        placeholder: 'That looks like a template placeholder, not a real credential.',
+        malformed: 'That value isn’t in a valid format. Check for spaces or a truncated paste.',
+        tooMany: 'Too many keys: up to {max} are supported.',
+        invalidChoice: 'That option isn’t available.',
+        saveFailed: 'Couldn’t save. Try again.',
+        required: 'Fill in the required fields first.',
+        originForbidden: 'The request was rejected because it didn’t come from the app window. Reload the app and try again.',
+        unknownField: 'Unexpected field.',
+      },
+      source: {
+        database: 'Saved in app',
+        environment: '.env file',
+        default: 'Default',
+        none: 'Not set',
+      },
+      link: {
+        getKey: 'Get a key',
+        docs: 'Docs',
+        activate: 'Enable models',
+        copy: 'Copy link',
+        copied: 'Copied',
+        external: '(opens in your system browser)',
+        noLink: 'Get an API key from your provider’s console.',
+      },
+      panel: {
+        description: 'Credentials for voice, subtitles, AI generation and material libraries. They are stored on this computer only.',
+        loadFailed: 'Couldn’t load the service list.',
+        retry: 'Retry',
+        loading: 'Loading…',
+        tavilyNote: 'Web search keys are managed in the Web search panel.',
+        openWebSearch: 'Open web search settings',
+        notUsing: 'You chose not to use this.',
+      },
+      cta: { configure: 'Go configure', missing: '“{name}” isn’t set up yet.' },
     },
     narrationDirectScript: {
       modeNarrationDirect: 'Narration — direct',
@@ -8523,6 +8753,8 @@ export const translations: Record<string, Translations> = {
       cancel: '取消',
       modelSettings: '模型设置',
       modelSettingsDesc: '为每个功能配置AI模型',
+      integrationsSettings: '服务与素材库',
+      integrationsSettingsDesc: '配置语音、字幕、AI 生成与素材库的凭证',
       modelChat: '主聊天',
       modelFast: '快速LLM',
       modelVideoCut: '视频剪辑',
@@ -11075,14 +11307,24 @@ export const translations: Record<string, Translations> = {
     },
     setupWizard: {
       title: '先把 AI 能力接通',
-      subtitle: '对话、AI 混剪和研究都需要你自己的 API Key。',
+      subtitle: '对话、AI 混剪、配音、字幕和素材库都需要你自己的 API Key。',
       privacyNote: 'Key 只保存在本机。',
-      duration: '大约 2 分钟，之后都可以在设置里修改。',
+      duration: '模型约 2 分钟；其余为可选，随时可在设置里补充。',
       stepOverview: '总览',
       stepProvider: '连接服务商',
       stepModels: '选择模型',
       stepSearch: '联网搜索',
       stepDone: '准备就绪',
+      stepVoice: '语音与字幕',
+      stepGeneration: 'AI 图片与视频',
+      stepMedia: '素材库',
+      group: {
+        models: { title: 'AI 模型', desc: '对话、AI 混剪与视觉审阅。' },
+        voice: { title: '语音与字幕', desc: '配音合成、字幕识别和声音克隆所需的凭证。' },
+        generation: { title: 'AI 图片与视频', desc: '同一个火山方舟 Key 即可使用 Seedream 图片和 Seedance 视频。' },
+        media: { title: '素材库', desc: '可在剪辑中使用的视频、图片和音效素材。' },
+        search: { title: '在线查资料', desc: '让助手能在线查资料。' },
+      },
       stepCounter: '第 {current} 步 / 共 {total} 步',
       start: '开始配置',
       resume: '继续配置',
@@ -11109,7 +11351,7 @@ export const translations: Record<string, Translations> = {
       doneDesc: '下面的能力都已配置，之后可随时在设置中调整。',
       openSettings: '在设置中查看',
       rerun: '重新运行设置向导',
-      rerunDesc: '重新走一遍服务商、模型和搜索的配置流程。',
+      rerunDesc: '重新走一遍模型、语音、AI 生成、素材库和搜索的配置流程。',
       needsSetup: '待配置',
       discardPrompt: '有尚未提交的输入，确定关闭并放弃吗？',
       keepEditing: '继续编辑',
@@ -11148,6 +11390,14 @@ export const translations: Record<string, Translations> = {
         vision: { name: '视觉审阅', desc: '查看画面与图片' },
         research: { name: '研究', desc: '收集并整理资料来源' },
         web_search: { name: '联网搜索', desc: '在网上搜索素材与资料' },
+        tts: { name: '配音合成', desc: '把文案合成为配音' },
+        asr: { name: '字幕识别', desc: '从语音自动生成字幕' },
+        voice_clone: { name: '声音克隆', desc: '复刻声音用于解说' },
+        ai_image: { name: 'AI 图片', desc: '用 Seedream 生成图片' },
+        ai_video: { name: 'AI 视频', desc: '用 Seedance 生成视频片段' },
+        video_library: { name: '视频素材库', desc: '在 Pexels 搜索视频素材' },
+        image_library: { name: '图片素材库', desc: '在 Unsplash 搜索图片' },
+        audio_library: { name: '音效库', desc: '在 Freesound 搜索音效' },
       },
       state: {
         ready: '已配置',
@@ -11174,6 +11424,136 @@ export const translations: Record<string, Translations> = {
         tooManyKeys: '最多支持 {max} 个 Key。',
         generic: '出了点问题。',
       },
+    },
+    integrations: {
+      volcano_tts: {
+        name: '语音合成',
+        desc: '火山引擎 · 把文案合成为配音',
+        pitfall: '请使用「豆包语音」新版控制台的 API Key，而不是 APP ID 或 Access Token。资源 ID 决定可用的音色：2.0 音色选 seed-tts-2.0，1.0 音色选 seed-tts-1.0；选错会导致合成失败。',
+      },
+      volcano_asr: {
+        name: '字幕识别',
+        desc: '火山引擎 · 从语音自动生成字幕',
+        pitfall: '字幕识别用的是另一个应用：「流式语音识别」应用的 APP ID 与 Access Token，与语音合成的 API Key 不通用；同一个 APP ID 的合成与识别授权也相互独立。这里不会再借用配音卡片里填的内容。',
+      },
+      volcano_voice_clone: {
+        name: '声音克隆',
+        desc: '火山引擎 · 复刻你自己的声音',
+        pitfall: '除了这些凭证，还需要在控制台另外购买 speaker_id（声音名额），它不属于 Key 的一部分。本项无法免费验证，会在你第一次训练声音时才校验。',
+      },
+      ark: {
+        name: 'AI 图片与视频生成',
+        desc: '火山方舟 · Seedream 图片 / Seedance 视频',
+        pitfall: '一个 Key 同时开启 AI 图片（Seedream）和 AI 视频（Seedance），也用于分镜和封面生成。创建 Key 后，还需要在「开通管理」里开通对应模型，否则 Key 有效也会被拒绝。',
+      },
+      pexels: {
+        name: 'Pexels 视频素材库',
+        desc: '搜索免费的视频素材',
+        pitfall: '免费额度有调用频率限制。最多可添加 5 个 Key，应用会轮换使用。',
+      },
+      unsplash: {
+        name: 'Unsplash 图片素材库',
+        desc: '搜索免费的高质量图片',
+        pitfall: '请填写应用的 Access Key（不是 Secret Key）。免费的演示应用有频率限制，最多可添加 5 个 Key 轮换使用。',
+      },
+      freesound: {
+        name: 'Freesound 音效库',
+        desc: '搜索并试听免费音效',
+        pitfall: '免费申请。应用只用来搜索和试听；下载原始高品质音频需要 OAuth，这里不涉及。',
+      },
+      field: {
+        apiKey: 'API Key',
+        appId: 'APP ID',
+        accessToken: 'Access Token',
+        accessKey: 'Access Key',
+        appKey: 'App Key',
+        resourceId: '资源 ID',
+        ttsResourceId: '合成资源 ID',
+        apiKeys: 'API Key（可多个）',
+        accessKeys: 'Access Key（可多个）',
+      },
+      choice: {
+        'seed-tts-2.0': '2.0 音色 · 按字符计费（推荐）',
+        'seed-tts-1.0': '1.0 音色 · 按字符计费',
+        'seed-tts-1.0-concurr': '1.0 音色 · 按并发计费',
+        'volc.bigasr.sauc.duration': '识别 1.0 · 小时版（默认）',
+        'volc.bigasr.sauc.concurrent': '识别 1.0 · 并发版',
+        'volc.seedasr.sauc.duration': '识别 2.0 · 小时版',
+        'volc.seedasr.sauc.concurrent': '识别 2.0 · 并发版',
+        'seed-icl-1.0': '声音复刻 1.0（默认）',
+        'seed-icl-1.0-concurr': '声音复刻 1.0 · 并发版',
+      },
+      hint: {
+        configuredCount: '已配置 {count} 个',
+        keepSecret: '已保存。留空则保持不变。',
+        replaceList: '留空则保持现有 Key 不变；填入内容会替换全部现有 Key，想新增一个时请把已有的也一并填上。',
+        listHint: '每行一个，最多 {max} 个。',
+        billedTest: '测试只会合成 1 个字，几乎不产生费用。',
+        priority: '在这里保存的值优先于 .env 文件。',
+        fromEnv: '当前读取自 .env 文件。',
+      },
+      action: {
+        saveTest: '保存并测试',
+        save: '保存',
+        saving: '正在保存…',
+        testing: '正在测试…',
+        clear: '清除并回退到 .env',
+        skip: '暂不使用',
+        skipGroup: '本组全部暂不使用',
+        skipOptional: '只配置模型，其余以后再说',
+        continueLater: '稍后配置并继续',
+        continueNext: '继续',
+        change: '更换',
+        reenable: '重新启用提醒',
+        configure: '去配置',
+        retype: '重新输入',
+        saveAnyway: '仍然保存并继续',
+      },
+      test: {
+        ok: '连接正常。',
+        okArk: 'Key 有效；还需确认已开通 Seedream / Seedance 模型。',
+        invalid_credentials: '凭证被拒绝，请检查后重试。',
+        not_entitled: '凭证有效，但该账号尚未开通此服务（或额度已用完）。',
+        rate_limited: '连续检查过于频繁，请稍后再试。',
+        unreachable: '无法连接到服务，请检查网络。',
+        upstream_error: '暂时无法验证。配置已保存，可稍后在设置里测试。',
+        unverifiable: '已保存。此服务无法免费验证，首次使用时才会校验。',
+      },
+      err: {
+        placeholder: '这看起来是模板占位符，不是真实的凭证。',
+        malformed: '格式不正确，请检查是否含空格或粘贴不完整。',
+        tooMany: '填写过多：最多支持 {max} 个。',
+        invalidChoice: '该选项不可用。',
+        saveFailed: '保存失败，请重试。',
+        required: '请先填写必填项。',
+        originForbidden: '请求因不是来自应用窗口而被拒绝，请重新加载应用后再试。',
+        unknownField: '出现了未知字段。',
+      },
+      source: {
+        database: '应用内',
+        environment: '.env 文件',
+        default: '默认值',
+        none: '未设置',
+      },
+      link: {
+        getKey: '获取 Key',
+        docs: '文档',
+        activate: '开通模型',
+        copy: '复制链接',
+        copied: '已复制',
+        external: '（在系统浏览器中打开）',
+        noLink: '请在你的服务商控制台获取 API Key。',
+      },
+      panel: {
+        description: '语音、字幕、AI 生成和素材库所需的凭证，只保存在本机。',
+        loadFailed: '无法加载服务列表。',
+        retry: '重试',
+        loading: '加载中…',
+        tavilyNote: '联网搜索的 Key 在「联网搜索」面板中管理。',
+        openWebSearch: '打开联网搜索设置',
+        notUsing: '你选择了不使用此项。',
+      },
+      cta: { configure: '去配置', missing: '尚未配置「{name}」。' },
     },
     narrationDirectScript: {
       modeNarrationDirect: '解说直接生成',

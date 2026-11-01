@@ -14,8 +14,17 @@ import aiofiles
 import httpx
 from app.config import settings
 from app.logger import get_logger
+from app.services.integration_credentials_service import (
+    credential_property,
+    integration_credentials,
+)
 
 logger = get_logger(__name__)
+
+NOT_CONFIGURED_MESSAGE = (
+    "Voice Clone credentials are not configured. Open Settings -> "
+    "Services & asset libraries and fill in the voice cloning card."
+)
 
 VOICE_CLONE_BASE_URL = "https://openspeech.bytedance.com/api/v3/tts"
 VOICE_CLONE_TRAIN_PATH = "/voice_clone"
@@ -42,9 +51,13 @@ ERROR_CODE_MAP = {
 
 
 class VoiceCloneService:
+    # Live credentials (saved in the app, falling back to .env); never assign
+    # them in __init__ - see credential_property.
+    app_key = credential_property("volcano_voice_clone", "app_key")
+    access_key = credential_property("volcano_voice_clone", "access_key")
+
     def __init__(self):
-        self.app_key = settings.volcano_voice_clone_app_key
-        self.access_key = settings.volcano_voice_clone_access_key
+        # Not a credential: stays a plain settings read (guard-test allowlist).
         self.speaker_id_prefix = settings.volcano_voice_clone_speaker_id_prefix
 
     def _build_headers(self) -> dict:
@@ -107,9 +120,7 @@ class VoiceCloneService:
         enable_audio_denoise: bool = True,
     ) -> dict:
         if not self.app_key or not self.access_key:
-            raise ValueError(
-                "Voice Clone API keys not configured. Please set VOLCANO_VOICE_CLONE_APP_KEY and VOLCANO_VOICE_CLONE_ACCESS_KEY."
-            )
+            raise ValueError(NOT_CONFIGURED_MESSAGE)
 
         if not speaker_id:
             raise ValueError(
@@ -219,10 +230,12 @@ class VoiceCloneService:
         self, speaker_id: str, text: str, language: int = 0
     ) -> bytes:
         if not self.app_key or not self.access_key:
-            raise ValueError("Voice Clone API keys not configured.")
+            raise ValueError(NOT_CONFIGURED_MESSAGE)
 
         headers = self._build_headers()
-        headers["X-Api-Resource-Id"] = settings.volcano_voice_clone_tts_resource_id or "seed-icl-1.0"
+        headers["X-Api-Resource-Id"] = integration_credentials.value(
+            "volcano_voice_clone", "tts_resource_id"
+        )
 
         url = f"{VOICE_CLONE_BASE_URL}{VOICE_CLONE_TTS_PATH}"
 

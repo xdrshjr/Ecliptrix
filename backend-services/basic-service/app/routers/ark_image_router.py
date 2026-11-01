@@ -5,6 +5,7 @@ Router for Ark Seedream image generation endpoints.
 from fastapi import APIRouter, HTTPException
 
 from app.logger import get_logger
+from app.services.credential_errors import require_configured
 from app.models.ark_image_models import (
     ArkImageGenerateRequest,
     ArkImageGenerateResponse,
@@ -23,6 +24,7 @@ async def generate_images(request: ArkImageGenerateRequest) -> ArkImageGenerateR
 
     Returns a list of generated image URLs.
     """
+    require_configured("ark")
     try:
         images, pack = await ark_image_service.generate_images_with_pack(request)
         message = (

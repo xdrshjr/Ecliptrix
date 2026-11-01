@@ -51,21 +51,21 @@ class TestVideoSearchService:
     
     def test_init_with_api_keys(self):
         """Test service initialization with API keys."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1", "key2"]
             service = VideoSearchService()
             assert service.api_keys == ["key1", "key2"]
     
     def test_init_without_api_keys(self):
         """Test service initialization without API keys."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = []
             service = VideoSearchService()
             assert service.api_keys == []
     
     def test_get_random_api_key_success(self):
         """Test successful API key selection."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1", "key2", "key3"]
             service = VideoSearchService()
             api_key = service._get_random_api_key()
@@ -73,7 +73,7 @@ class TestVideoSearchService:
     
     def test_get_random_api_key_no_keys(self):
         """Test API key selection with no keys available."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = []
             service = VideoSearchService()
             api_key = service._get_random_api_key()
@@ -81,7 +81,7 @@ class TestVideoSearchService:
     
     def test_is_landscape_video(self):
         """Test landscape video detection."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1"]
             service = VideoSearchService()
             
@@ -91,7 +91,7 @@ class TestVideoSearchService:
     
     def test_select_video_file_hd_preferred(self):
         """Test video file selection prefers HD quality."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1"]
             service = VideoSearchService()
             
@@ -107,7 +107,7 @@ class TestVideoSearchService:
     
     def test_select_video_file_sd_fallback(self):
         """Test video file selection falls back to SD quality."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1"]
             service = VideoSearchService()
             
@@ -122,7 +122,7 @@ class TestVideoSearchService:
     
     def test_select_video_file_empty_list(self):
         """Test video file selection with empty list."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1"]
             service = VideoSearchService()
             
@@ -131,7 +131,7 @@ class TestVideoSearchService:
     
     def test_filter_by_orientation_mixed(self):
         """Test orientation filtering with mixed setting."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1"]
             service = VideoSearchService()
             
@@ -142,7 +142,7 @@ class TestVideoSearchService:
     @patch('requests.get')
     def test_make_api_request_success(self, mock_get, mock_pexels_response):
         """Test successful API request."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["test_key"]
             service = VideoSearchService()
             
@@ -158,7 +158,7 @@ class TestVideoSearchService:
     @patch('requests.get')
     def test_make_api_request_retry_success(self, mock_get, mock_pexels_response):
         """Test API request with successful retry."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["key1", "key2"]
             service = VideoSearchService()
             
@@ -179,7 +179,7 @@ class TestVideoSearchService:
     @patch('requests.get')
     def test_make_api_request_failure(self, mock_get):
         """Test API request failure."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["test_key"]
             service = VideoSearchService()
             
@@ -191,7 +191,7 @@ class TestVideoSearchService:
     @patch('app.services.video_search_service.VideoSearchService._make_api_request')
     def test_search_videos_success(self, mock_api_request, mock_pexels_response):
         """Test successful video search."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["test_key"]
             service = VideoSearchService()
             
@@ -207,7 +207,7 @@ class TestVideoSearchService:
     
     def test_search_videos_no_api_keys(self):
         """Test video search without API keys."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = []
             service = VideoSearchService()
             
@@ -220,7 +220,7 @@ class TestVideoSearchService:
     @patch('app.services.video_search_service.VideoSearchService._make_api_request')
     def test_search_videos_api_failure(self, mock_api_request):
         """Test video search with API failure."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["test_key"]
             service = VideoSearchService()
             
@@ -235,7 +235,7 @@ class TestVideoSearchService:
     @patch('app.services.video_search_service.VideoSearchService._make_api_request')
     def test_search_videos_no_results(self, mock_api_request):
         """Test video search with no results."""
-        with patch('app.services.video_search_service.settings') as mock_settings:
+        with patch('app.config.settings') as mock_settings:
             mock_settings.pexels_api_keys = ["test_key"]
             service = VideoSearchService()
             

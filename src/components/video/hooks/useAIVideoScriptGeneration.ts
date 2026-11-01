@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { AIVideoScriptSegment, MaterialItem } from '@/types';
 import { createArkVideoTask, getArkVideoStatus } from '@/lib/api/arkVideo';
 import { extractVideoThumbnail, extractFrameFromEnd } from '../utils/extractVideoThumbnail';
@@ -231,6 +232,7 @@ export function useAIVideoScriptGeneration(
 
         startPolling(segmentId, result.ark_task_id);
       } catch (error) {
+        reportCredentialMissing(error);
         updateSegment(segmentId, {
           generationStatus: 'failed',
           generationProgress: 0,
@@ -335,6 +337,7 @@ export function useAIVideoScriptGeneration(
         startPolling(segmentId, result.ark_task_id);
       }
     } catch (error) {
+      reportCredentialMissing(error);
       updateSegment(segmentId, {
         generationStatus: 'failed',
         generationProgress: 0,

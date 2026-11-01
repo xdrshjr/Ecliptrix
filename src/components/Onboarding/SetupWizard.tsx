@@ -4,8 +4,10 @@ import React, { useCallback, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import Modal from '@/components/ui/Modal';
 import type { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
+import type { IntegrationId } from '@/lib/api/integrations';
 import type { CapabilityId, CapabilityStatus } from '@/lib/api/setupStatus';
 import DoneStep from './wizard/DoneStep';
+import IntegrationGroupStep from './wizard/IntegrationGroupStep';
 import ModelsStep from './wizard/ModelsStep';
 import OverviewStep from './wizard/OverviewStep';
 import ProviderStep from './wizard/ProviderStep';
@@ -13,6 +15,7 @@ import SearchStep from './wizard/SearchStep';
 import WizardStepper from './wizard/WizardStepper';
 import { useSetupWizard } from './wizard/useSetupWizard';
 import { BUTTON_GHOST, BUTTON_PRIMARY } from './wizard/wizardStyles';
+import { INTEGRATION_GROUP_ORDER } from './wizard/integrationGroups';
 import type { WizardMode } from './wizard/wizardSteps';
 
 export interface SetupWizardProps {
@@ -24,6 +27,8 @@ export interface SetupWizardProps {
   /** `later` → the page remembers a session-level dismiss (auto mode only). */
   onClose: (reason: 'finished' | 'later') => void;
   onOpenSettings: (item: SettingsMenuItem) => void;
+  /** Manual re-run from a "go configure" button: open on this integration. */
+  focus?: IntegrationId;
 }
 
 /**
@@ -37,9 +42,10 @@ const SetupWizard: React.FC<SetupWizardProps> = ({
   optOuts,
   onClose,
   onOpenSettings,
+  focus,
 }) => {
   const copy = useLocale().t.setupWizard;
-  const wizard = useSetupWizard({ capabilities, optOuts, mode });
+  const wizard = useSetupWizard({ capabilities, optOuts, mode, focus });
   const [confirmingClose, setConfirmingClose] = useState(false);
 
   // Esc and "later" both land here. Unsubmitted input asks first (inline bar,
@@ -93,20 +99,27 @@ const SetupWizard: React.FC<SetupWizardProps> = ({
           {wizard.current === 'overview' && (
             <OverviewStep
               capabilities={capabilities}
-              optOuts={optOuts}
+              optOuts={wizard.optOuts}
               mode={mode}
               onStart={wizard.goNext}
               onLater={requestClose}
               onOpenModelSettings={openModelSettings}
+              onSkipOptional={wizard.skipOptional}
             />
           )}
           {wizard.current === 'provider' && <ProviderStep wizard={wizard} />}
           {wizard.current === 'models' && <ModelsStep wizard={wizard} />}
+          {INTEGRATION_GROUP_ORDER.map(
+            (group) =>
+              wizard.current === group && (
+                <IntegrationGroupStep key={group} wizard={wizard} group={group} />
+              ),
+          )}
           {wizard.current === 'search' && <SearchStep wizard={wizard} />}
           {wizard.current === 'done' && (
             <DoneStep
               capabilities={capabilities}
-              optOuts={optOuts}
+              optOuts={wizard.optOuts}
               onFinish={() => onClose('finished')}
               onOpenModelSettings={openModelSettings}
             />

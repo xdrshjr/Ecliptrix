@@ -91,6 +91,11 @@ def setup_logging(log_level: Optional[str] = None) -> logging.Logger:
     # watchfiles is used by uvicorn for auto-reload and generates excessive logs during video processing
     logging.getLogger("watchfiles").setLevel(logging.WARNING)
     logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
+    # aiosqlite logs every statement WITH its bound parameters at DEBUG, which
+    # would write saved API keys (integration_credentials, model_providers)
+    # into the log file whenever LOG_LEVEL=DEBUG. Keep them at WARNING.
+    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     
     # Create application logger
     app_logger = logging.getLogger("basic_service")

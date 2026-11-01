@@ -1,4 +1,4 @@
-import type { CapabilityId } from '@/lib/api/setupStatus';
+import { EXTENDED_CAPABILITIES, type CapabilityId } from '@/lib/api/setupStatus';
 
 /**
  * "I don't want this capability" memory (D7). Lives in localStorage so it
@@ -7,10 +7,8 @@ import type { CapabilityId } from '@/lib/api/setupStatus';
  */
 export const SETUP_OPT_OUT_KEY = 'ecliptrix-setup-optouts';
 
-const OPT_OUT_CAPABILITIES: readonly CapabilityId[] = ['research', 'web_search'];
-
 function isOptOutCapability(value: unknown): value is CapabilityId {
-  return OPT_OUT_CAPABILITIES.includes(value as CapabilityId);
+  return EXTENDED_CAPABILITIES.includes(value as CapabilityId);
 }
 
 /** Read the stored opt-outs; storage faults and junk degrade to "none". */

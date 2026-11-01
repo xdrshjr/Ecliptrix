@@ -22,6 +22,7 @@ from app.models.video_cover_v2_models import (
     SaveCoverRequest,
     ImportCoverRequest,
 )
+from app.services.integration_credentials_service import ark_api_key
 from app.services import video_cover_asset_service as assets
 
 
@@ -184,8 +185,6 @@ async def applied_revision(
 
 # 超过 60 行：此入口集中装配同一项目快照，避免分散响应契约字段。
 async def load_state(db: AsyncSession, project_id: str) -> dict:
-    from app.config import settings
-
     project = await assets.require_project(db, project_id)
     draft = await get_document(db, project_id)
     revisions = (
@@ -249,7 +248,7 @@ async def load_state(db: AsyncSession, project_id: str) -> dict:
     return {
         **draft_data(draft),
         "revisions": readable,
-        "generation_configured": bool(settings.ark_api_key),
+        "generation_configured": bool(ark_api_key()),
         "assets": [
             assets.asset_data(row)
             for row in background_assets

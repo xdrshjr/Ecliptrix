@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from app.models.image_search_models import ImageSearchRequest, ImageSearchResponse
 from app.services.image_search_service import ImageSearchService
 from app.logger import get_logger
+from app.services.credential_errors import require_configured
 
 # Initialize router and logger
 router = APIRouter(prefix="/image", tags=["Image Search"])
@@ -34,6 +35,7 @@ async def search_images(request: ImageSearchRequest) -> ImageSearchResponse:
     Raises:
         HTTPException: 400 for invalid request parameters, 500 for internal errors
     """
+    require_configured("unsplash")
     logger.info(f"Image search request received", extra={
         'query': request.query,
         'max_images': request.max_images,

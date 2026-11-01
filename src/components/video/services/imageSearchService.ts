@@ -1,4 +1,5 @@
 import { ImageSearchResponse, ImageSearchResult, ImageOrientation, ImageColor, ImageOrderBy } from '../types';
+import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { VideoEditingLogger } from '../utils';
 import { http, ApiError } from '@/lib/api/http-client';
 
@@ -75,6 +76,7 @@ export class ImageSearchServiceImpl implements ImageSearchService {
           order_by: orderBy
         });
       } catch (httpError) {
+        reportCredentialMissing(httpError);
         const errorMessage = httpError instanceof ApiError
           ? `API请求失败: ${httpError.status} ${httpError.message}`
           : `图片搜索异常: ${httpError instanceof Error ? httpError.message : String(httpError)}`;

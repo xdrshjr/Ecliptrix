@@ -24,6 +24,10 @@ import aiofiles
 import httpx
 
 from app.config import settings
+from app.services.integration_credentials_service import (
+    ARK_NOT_CONFIGURED_MESSAGE,
+    ark_api_key,
+)
 from app.models.ark_image_models import (
     ArkImageGenerateRequest,
     ArkImagePack,
@@ -125,7 +129,7 @@ async def _resolve_multi_references(
 async def _call_ark(payload: dict) -> str:
     """POST to ARK Seedream and return the first result URL."""
     headers = {
-        "Authorization": f"Bearer {settings.ark_api_key}",
+        "Authorization": f"Bearer {ark_api_key()}",
         "Content-Type": "application/json",
     }
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -336,7 +340,7 @@ async def _generate_legacy_images(
         payload["n"] = 1
 
     headers = {
-        "Authorization": f"Bearer {settings.ark_api_key}",
+        "Authorization": f"Bearer {ark_api_key()}",
         "Content-Type": "application/json",
     }
 
@@ -435,10 +439,8 @@ async def generate_images_with_pack(
     Returns (images, pack). In grid mode, ``images`` contains exactly one
     entry (the composite) and ``pack`` carries the 9 cropped frames.
     """
-    if not settings.ark_api_key:
-        raise ValueError(
-            "ARK_API_KEY is not configured. Set ARK_API_KEY in the backend .env file."
-        )
+    if not ark_api_key():
+        raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
 
     if _should_generate_grid_pack(request):
         pack, composite = await _generate_grid_pack(request)

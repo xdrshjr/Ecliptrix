@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { UseMaterialManagementReturn } from '../../types';
 import { MaterialType, MaterialItem } from '@/types';
 import { VideoEditingLogger } from '../../utils/logger';
@@ -2339,6 +2340,7 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
               showError(result.message || t.materialsPanel.aiAudioFailed || 'AI音频生成失败');
             }
           } catch (err: any) {
+            reportCredentialMissing(err);
             showError(err?.message || t.materialsPanel.aiAudioFailed || 'AI音频生成失败');
           }
         }}

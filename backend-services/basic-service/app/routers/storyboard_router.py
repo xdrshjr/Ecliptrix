@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.constants import LOCAL_OWNER_ID
 from app.database import get_db_session
 from app.logger import get_logger
+from app.services.credential_errors import require_configured
 from app.models.base_models import BaseResponse
 from app.models.storyboard_models import (
     GenerateScriptRequest,
@@ -70,6 +71,7 @@ async def generate_storyboard(
     """Generate a chained 2x2 storyboard pack. On partial failure returns
     HTTP 200 with ``data.partial = true`` and whatever frames completed.
     """
+    require_configured("ark")
     user_id = LOCAL_OWNER_ID
     project_id = _require_project_id(request.project_id, where="storyboard generation")
     request.project_id = project_id
@@ -367,6 +369,7 @@ async def batch_generate_videos(
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardBatchVideoResponse:
     """Submit batch video generation tasks for storyboard frames."""
+    require_configured("ark")
     user_id = LOCAL_OWNER_ID
     await storyboard_service._assert_pack_owned(
         db=db, pack_id=request.pack_id, user_id=user_id

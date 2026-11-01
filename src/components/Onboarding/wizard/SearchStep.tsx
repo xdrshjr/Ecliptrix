@@ -11,11 +11,9 @@ import {
   BUTTON_PRIMARY,
   ERROR_TEXT,
   FIELD_INPUT,
-  TEXT_LINK,
 } from './wizardStyles';
 import { MAX_SEARCH_KEYS } from './modelHints';
-
-const TAVILY_KEYS_URL = 'https://app.tavily.com/home';
+import GetCredentialLink from '@/components/integrations/GetCredentialLink';
 
 interface SearchStepProps {
   wizard: SetupWizardState;
@@ -73,14 +71,7 @@ const SearchStep: React.FC<SearchStepProps> = ({ wizard }) => {
           aria-describedby={feedbackText ? 'setup-search-feedback' : undefined}
           className={`mt-1.5 font-mono ${FIELD_INPUT}`}
         />
-        <a
-          href={TAVILY_KEYS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`mt-2 inline-block ${TEXT_LINK}`}
-        >
-          {copy.getKey}
-        </a>
+        <GetCredentialLink id="tavily" label={copy.getKey} className="mt-2" />
       </div>
 
       {feedbackText && (

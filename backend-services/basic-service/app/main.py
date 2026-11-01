@@ -143,6 +143,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to load system settings: {str(e)}", exc_info=True)
 
+    # Integration credentials (TTS/ASR/ARK/libraries). load_all never raises:
+    # on failure it flags load_failed so capability-status fails open.
+    from app.services.integration_credentials_service import integration_credentials
+
+    await integration_credentials.load_all()
+
     # Schedule a background derived-file orphan-reclaim DIAGNOSTIC pass
     # (local-video-editing-refactor spec 06 §2.4). This is rate-limited and
     # non-blocking, and runs in DRY-RUN mode at startup: the backend alone
@@ -678,6 +684,11 @@ from app.routers import config_router
 
 app.include_router(config_router.router, prefix="/api")
 
+# External-service credentials (TTS/ASR/ARK/libraries) — setup wizard + settings.
+from app.routers import integrations_router
+
+app.include_router(integrations_router.router, prefix="/api")
+
 # Import and include Video Cover router (per-project thumbnail/cover authoring)
 from app.routers import video_cover as video_cover_router
 
@@ -685,6 +696,11 @@ app.include_router(video_cover_router.router, prefix="/api")
 
 from app.routers import video_cover_v2 as video_cover_v2_router
 from app.models.video_cover_v2_models import CoverError
+from app.services.credential_errors import (
+    CREDENTIAL_NOT_CONFIGURED,
+    NOT_CONFIGURED_STATUS,
+    CredentialNotConfigured,
+)
 
 app.include_router(video_cover_v2_router.router, prefix="/api")
 
@@ -733,6 +749,16 @@ async def agent_vision_error_handler(request: Request, exc: AgentVisionError):
 from app.routers import agent_skills_router
 
 agent_skills_router.register(app)
+
+
+@app.exception_handler(CredentialNotConfigured)
+async def credential_not_configured_handler(
+    request: Request, exc: CredentialNotConfigured
+):
+    return JSONResponse(status_code=NOT_CONFIGURED_STATUS, content=ErrorResponse(
+        success=False, message=exc.message, error_code=CREDENTIAL_NOT_CONFIGURED,
+        error_details={"integration_id": exc.integration_id},
+    ).model_dump(mode="json"))
 
 
 @app.exception_handler(CoverError)

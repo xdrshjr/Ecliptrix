@@ -7,7 +7,6 @@ output carries no secrets: only ids, states, sources and display names.
 
 from __future__ import annotations
 
-import re
 from typing import Awaitable, Callable, List, Optional
 
 from app.logger import get_logger
@@ -18,15 +17,14 @@ from app.models.setup_status_models import (
     CapabilityStatusItem,
 )
 from app.models.web_research_models import WebResearchError
+from app.services.integration_credentials_service import integration_credentials
+from app.services.integration_registry import INTEGRATION_CAPABILITIES, REGISTRY
 from app.services.model_settings_service import model_settings_service
+from app.services.secret_values import is_usable_secret
 from app.services.system_settings_service import system_settings_service
 from app.services.web_research.web_search_service import get_web_search_service
 
 logger = get_logger(__name__)
-
-# Mirrors the desktop env.template placeholder convention (your_*_here) so a
-# template value copied verbatim into a .env still reads as "unconfigured".
-PLACEHOLDER_PATTERN = re.compile(r"^your_.*_here$", re.IGNORECASE)
 
 _STAGE_CAPABILITY = {
     ModelFunctionType.VISION: "vision",
@@ -45,12 +43,6 @@ _RESEARCH_STAGES = [
     (ModelFunctionType.FAST, "fast_llm"),
     (ModelFunctionType.CHAT, "llm"),
 ]
-
-
-def is_usable_secret(value: Optional[str]) -> bool:
-    """True for a non-empty value that is not a template placeholder."""
-    stripped = (value or "").strip()
-    return bool(stripped) and not PLACEHOLDER_PATTERN.match(stripped)
 
 
 def _provider_display_name(provider_type: Optional[str]) -> Optional[str]:
@@ -128,6 +120,32 @@ async def _web_search_slot() -> CapabilityStatusItem:
     )
 
 
+async def _integration_slot(
+    capability: CapabilityId, integration_id: str
+) -> CapabilityStatusItem:
+    """Credential-backed capability: ready / invalid (partial) / missing.
+
+    Judged by the SAME resolver the runtime reads, so "ready" here means the
+    feature will find its credentials. A failed startup load is indeterminate
+    (fail-open) rather than a false "missing".
+    """
+    if integration_credentials.load_failed:
+        return CapabilityStatusItem(
+            id=capability, tier="extended", state="indeterminate"
+        )
+    resolved = integration_credentials.resolve(integration_id)
+    if resolved.usable:
+        return CapabilityStatusItem(
+            id=capability, tier="extended", state="ready", source=resolved.source
+        )
+    state = "invalid" if resolved.filled_required else "missing"
+    return CapabilityStatusItem(id=capability, tier="extended", state=state)
+
+
+def _integration_probe(capability: str, integration_id: str):
+    return lambda: _integration_slot(capability, integration_id)
+
+
 _REGISTRY: List[tuple] = [
     ("chat", lambda: _direct_slot("chat", ModelFunctionType.CHAT)),
     ("fast", lambda: _direct_slot("fast", ModelFunctionType.FAST)),
@@ -135,8 +153,17 @@ _REGISTRY: List[tuple] = [
     ("vision", lambda: _staged_slot("vision", "core", _VISION_STAGES)),
     ("research", lambda: _staged_slot("research", "extended", _RESEARCH_STAGES)),
     ("web_search", _web_search_slot),
+    *[
+        (capability, _integration_probe(capability, spec.id))
+        for spec in REGISTRY
+        for capability in spec.capabilities
+    ],
 ]
-_TIERS = {"web_search": "extended", "research": "extended"}
+_TIERS = {
+    "web_search": "extended",
+    "research": "extended",
+    **{capability: "extended" for capability in INTEGRATION_CAPABILITIES},
+}
 
 
 async def _safe_probe(

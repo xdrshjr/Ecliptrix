@@ -5,6 +5,7 @@ Router for Ark Seedance video generation endpoints.
 from fastapi import APIRouter, HTTPException
 
 from app.logger import get_logger
+from app.services.credential_errors import require_configured
 from app.models.ark_video_models import (
     ArkVideoGenerateRequest,
     ArkVideoGenerateResponse,
@@ -24,6 +25,7 @@ async def generate_video(request: ArkVideoGenerateRequest) -> ArkVideoGenerateRe
 
     Returns the ark_task_id for polling.
     """
+    require_configured("ark")
     try:
         ark_task_id = await ark_video_service.create_task(request)
         return ArkVideoGenerateResponse(

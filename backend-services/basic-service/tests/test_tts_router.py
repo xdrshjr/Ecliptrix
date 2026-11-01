@@ -189,8 +189,13 @@ class TestTTSRouter:
             storage_loop=ANY,
         )
 
-    def test_convert_text_to_speech_empty_text(self):
+    def test_convert_text_to_speech_empty_text(self, monkeypatch):
         """Test conversion with empty text."""
+        # The empty-text check sits behind the credential check; configure a
+        # key explicitly instead of relying on the developer's real .env.
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "volcano_tts_api_key", "test-key-12345678")
         request_data = {
             "text": "",
             "voice_type": "zh_female_wanqudashu_moon_bigtts"

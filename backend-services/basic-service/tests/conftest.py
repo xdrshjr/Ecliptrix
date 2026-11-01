@@ -166,3 +166,57 @@ def storage_root(tmp_path):
     storage_dir = tmp_path / "test_uploads"
     storage_dir.mkdir()
     return storage_dir
+
+
+# ---------------------------------------------------------------------------
+# Integration credentials isolation (setup-wizard-full-capability-coverage
+# §3.2). The resolver's environment layer reads the shared ``settings``
+# singleton and the process environment, i.e. the developer's real ``.env``.
+# Neutralise exactly the fields the registry knows about, then clear the
+# resolver cache. The reader itself is NOT replaced: older tests simulate a
+# configured service by patching attributes on the shared ``settings`` object
+# AFTER this fixture ran, and that must keep working.
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _isolate_integration_credentials(monkeypatch):
+    from app import config as config_module
+    from app.services.integration_credentials_service import (
+        integration_credentials,
+    )
+    from app.services.integration_registry import REGISTRY
+
+    for spec in REGISTRY:
+        for spec_field in spec.fields:
+            ref = spec_field.baseline
+            if ref is None:
+                continue
+            if ref.settings_attr and hasattr(config_module.settings, ref.settings_attr):
+                empty = [] if spec_field.kind == "secret_list" else ""
+                monkeypatch.setattr(config_module.settings, ref.settings_attr, empty)
+            if ref.env_var:
+                monkeypatch.delenv(ref.env_var, raising=False)
+    integration_credentials.reset()
+    yield
+    integration_credentials.reset()
+
+
+@pytest_asyncio.fixture
+async def integration_db(monkeypatch):
+    """In-memory SQLite bound into the credential resolver's session factory."""
+    from sqlalchemy.pool import StaticPool
+
+    from app.services import integration_credentials_service as service_module
+
+    engine = create_async_engine(
+        TEST_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(service_module, "async_session_factory", factory)
+    try:
+        yield factory
+    finally:
+        await engine.dispose()

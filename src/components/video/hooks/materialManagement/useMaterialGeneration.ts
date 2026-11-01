@@ -1,4 +1,5 @@
 import { Dispatch, MutableRefObject, SetStateAction, useCallback, useEffect, useRef } from 'react';
+import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { MaterialItem, StoryboardGenerateParams, StoryboardPack } from '@/types';
 import { VideoEditingLogger } from '../../utils';
 import { extractVideoThumbnail } from '../../utils/extractVideoThumbnail';
@@ -96,6 +97,7 @@ export function useMaterialGeneration(params: UseMaterialGenerationParams): UseM
       const result = await createArkVideoTask(params);
       arkTaskId = result.ark_task_id;
     } catch (error) {
+      reportCredentialMissing(error);
       logger.error('创建Ark视频任务失败', error as Error);
       setMaterials(prev => prev.filter(m => m.id !== tempId));
       notifyFailed((error as Error)?.message || 'createArkVideoTask failed');
@@ -321,6 +323,7 @@ export function useMaterialGeneration(params: UseMaterialGenerationParams): UseM
       }
       return null;
     } catch (error) {
+      reportCredentialMissing(error);
       logger.error('AI图像生成失败', error as Error);
       // Remove all placeholders on failure
       setMaterials(prev => prev.filter(m => !placeholderIds.includes(m.id)));
@@ -333,7 +336,13 @@ export function useMaterialGeneration(params: UseMaterialGenerationParams): UseM
     const createdAt = new Date();
     const timeStr = createdAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const pack = await generateStoryboard(params);
+    let pack: StoryboardPack;
+    try {
+      pack = await generateStoryboard(params);
+    } catch (error) {
+      reportCredentialMissing(error);
+      throw error;
+    }
 
     // 分镜包不再加到 materials[] — 由 MaterialsPanel 的 storyboardPacks[] 单独管理
     logger.info(`分镜包生成成功: ${pack.packId}, ${pack.frameCount} 帧`);

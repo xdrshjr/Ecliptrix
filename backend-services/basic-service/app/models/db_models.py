@@ -321,6 +321,22 @@ class ProjectCoverJob(Base):
     __table_args__ = (UniqueConstraint("project_id", "request_id"),)
 
 
+class IntegrationCredential(Base):
+    """App-level credentials for external services (TTS, ASR, ARK, libraries).
+
+    One row per integration; ``fields`` maps field name -> value (secret_list
+    fields hold a JSON array). Global like ``model_providers``: no user_id.
+    Plain text on purpose, same protection level as ``model_providers.api_key``
+    (userData is OS-protected); encryption is a tracked follow-up.
+    """
+    __tablename__ = "integration_credentials"
+
+    integration_id = Column(String(40), primary_key=True)
+    fields = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class SettingsAuditLog(Base):
     """Audit trail for settings changes."""
     __tablename__ = "settings_audit_log"

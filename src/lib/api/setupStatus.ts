@@ -6,7 +6,29 @@ export type CapabilityId =
   | 'video_cut'
   | 'vision'
   | 'research'
-  | 'web_search';
+  | 'web_search'
+  | 'tts'
+  | 'asr'
+  | 'voice_clone'
+  | 'ai_image'
+  | 'ai_video'
+  | 'video_library'
+  | 'image_library'
+  | 'audio_library';
+
+/** Capabilities the user may knowingly decline (everything but the 4 model slots). */
+export const EXTENDED_CAPABILITIES: readonly CapabilityId[] = [
+  'research',
+  'web_search',
+  'tts',
+  'asr',
+  'voice_clone',
+  'ai_image',
+  'ai_video',
+  'video_library',
+  'image_library',
+  'audio_library',
+];
 export type CapabilityState =
   | 'ready'
   | 'inherited'

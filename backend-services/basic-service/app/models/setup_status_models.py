@@ -5,7 +5,9 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel
 
 CapabilityId = Literal[
-    "chat", "fast", "video_cut", "vision", "research", "web_search"
+    "chat", "fast", "video_cut", "vision", "research", "web_search",
+    "tts", "asr", "voice_clone", "ai_image", "ai_video",
+    "video_library", "image_library", "audio_library",
 ]
 CapabilityTier = Literal["core", "extended"]
 CapabilityState = Literal[

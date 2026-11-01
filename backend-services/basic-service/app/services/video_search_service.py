@@ -5,9 +5,9 @@ Video search service for PEXELS API integration.
 import requests
 import random
 from typing import List, Dict, Any, Optional
-from app.config import settings
 from app.logger import get_logger
 from app.models.video_models import VideoInfo, VideoSearchResponse
+from app.services.integration_credentials_service import credential_property
 
 logger = get_logger(__name__)
 
@@ -15,15 +15,14 @@ logger = get_logger(__name__)
 class VideoSearchService:
     """Service for searching videos using PEXELS API."""
     
+    # Live keys (saved in the app, falling back to .env); do not assign in
+    # __init__ - see credential_property.
+    api_keys = credential_property("pexels", "api_keys")
+
     def __init__(self):
         """Initialize the video search service."""
-        self.api_keys = settings.pexels_api_keys
         self.base_url = "https://api.pexels.com/videos/search"
-        
-        if not self.api_keys:
-            logger.warning("No PEXELS API keys configured. Video search will not work.")
-        else:
-            logger.info(f"VideoSearchService initialized with {len(self.api_keys)} API keys")
+        logger.info("VideoSearchService initialized")
     
     def _get_random_api_key(self) -> Optional[str]:
         """
@@ -36,9 +35,7 @@ class VideoSearchService:
             logger.error("No PEXELS API keys available")
             return None
         
-        api_key = random.choice(self.api_keys)
-        logger.debug(f"Selected API key: {api_key[:10]}...{api_key[-5:]}")
-        return api_key
+        return random.choice(self.api_keys)
     
     def _is_landscape_video(self, width: int, height: int) -> bool:
         """

@@ -20,6 +20,7 @@ import yaml
 from app.config import settings
 from app.logger import get_logger
 from app.models.tts_models import VoiceType, VoiceTypeInfo
+from app.services.integration_credentials_service import credential_property
 from app.services.local_media_resolver import audio_generated_dir
 from app.services.storage_service import storage_service
 from app.services.tts_errors import (
@@ -55,9 +56,15 @@ class TTSClient:
     selects which voice family is acceptable.
     """
 
-    def __init__(self, api_key: str, resource_id: str = "seed-tts-1.0"):
+    def __init__(
+        self, api_key: str, resource_id: str = "seed-tts-1.0",
+        timeout: float = 30,
+    ):
         self.api_key = api_key
         self.resource_id = resource_id
+        # Connectivity probes pass a shorter budget; the sync request cannot be
+        # cancelled from asyncio, so the bound has to live in the call itself.
+        self.timeout = timeout
         self.base_url = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
 
     def synthesize_speech(
@@ -91,7 +98,7 @@ class TTSClient:
                 'text_length': len(text), 'request_id': request_id,
             })
             response = requests.post(
-                self.base_url, data=json.dumps(payload), timeout=30,
+                self.base_url, data=json.dumps(payload), timeout=self.timeout,
                 headers={'X-Api-Key': self.api_key,
                          'X-Api-Resource-Id': self.resource_id,
                          'X-Api-Connect-Id': request_id,
@@ -239,12 +246,13 @@ class TTSClient:
 
 class TTSService:
     """Text-to-Speech service."""
-    
+
+    # V3 凭据（X-Api-Key + X-Api-Resource-Id）每次调用时从凭证解析器读取，
+    # 向导/设置里保存后无需重启即生效；构造函数里不得再给它们赋值。
+    api_key = credential_property("volcano_tts", "api_key")
+    resource_id = credential_property("volcano_tts", "resource_id")
+
     def __init__(self):
-        # V3 凭据（X-Api-Key + X-Api-Resource-Id）。legacy appid/access_token
-        # 保留只为旧的 ASR / 声音克隆调用链兜底，本服务不再使用。
-        self.api_key = settings.volcano_tts_api_key
-        self.resource_id = settings.volcano_tts_resource_id
         # Generated audio lives under the persistent, writable STORAGE_ROOT so it
         # survives packaged-desktop installs (the service install dir is volatile/
         # read-only). Bug B / B1 — see local_media_resolver.audio_generated_dir.

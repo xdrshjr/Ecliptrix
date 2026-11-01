@@ -26,6 +26,10 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.services.integration_credentials_service import (
+    ARK_NOT_CONFIGURED_MESSAGE,
+    ark_api_key,
+)
 from app.logger import get_logger
 from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
 from app.models.ark_video_models import ArkVideoGenerateRequest
@@ -507,7 +511,7 @@ async def _call_ark_seedream(
         payload["image"] = reference_image
 
     headers = {
-        "Authorization": f"Bearer {settings.ark_api_key}",
+        "Authorization": f"Bearer {ark_api_key()}",
         "Content-Type": "application/json",
     }
 
@@ -759,10 +763,8 @@ async def _generate_storyboard_core(
     (module-level entry point) so tests can call this function directly with
     a mocked Seedream stub.
     """
-    if not settings.ark_api_key:
-        raise ValueError(
-            "ARK_API_KEY is not configured. Set ARK_API_KEY in the backend .env file."
-        )
+    if not ark_api_key():
+        raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
 
     # Validator guarantees grid_size == "2x2" and 1 <= frame_count <= 16.
     rows, cols = 2, 2

@@ -32,7 +32,7 @@ export function researchProxyError(code: string, status: number) {
 
 /** Existing settings writes share the same boundary as credentials writes. */
 export function protectedSettingsWrite(path: string | ((p: Record<string, string | string[]>) => string),
-  method: 'POST' | 'PUT', always = false) {
+  method: 'POST' | 'PUT' | 'DELETE', always = false) {
   const proxy = createPassthroughRoute(path, { forwardHeaders: ['Origin'] });
   return async (request: NextRequest, context: RouteContext) => {
     const params = await context?.params;

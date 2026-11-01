@@ -19,10 +19,8 @@ from app.logger import get_logger
 from app.models.model_settings_models import ModelFunctionType
 from app.models.setup_status_models import CapabilityStatusData
 from app.services.model_settings_service import model_settings_service
-from app.services.setup_status_service import (
-    PLACEHOLDER_PATTERN,
-    compute_capability_status,
-)
+from app.services.secret_values import is_placeholder
+from app.services.setup_status_service import compute_capability_status
 
 router = APIRouter(prefix="/config", tags=["Config"])
 logger = get_logger(__name__)
@@ -62,7 +60,7 @@ async def llm_status() -> dict:
         config = await model_settings_service.get_effective_config(ModelFunctionType.CHAT)
         api_key = (config.api_key or "").strip()
         api_url = (config.api_url or "").strip()
-        configured = bool(api_key) and bool(api_url) and not PLACEHOLDER_PATTERN.match(api_key)
+        configured = bool(api_key) and bool(api_url) and not is_placeholder(api_key)
         source = config.source if configured else "none"
     except Exception:
         # R4: resolution fault ≠ "unconfigured" — signal indeterminate so the

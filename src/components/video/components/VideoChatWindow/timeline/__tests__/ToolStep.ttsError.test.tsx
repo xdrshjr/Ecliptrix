@@ -1,7 +1,7 @@
 import React from 'react';
 import * as motion from 'framer-motion';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getTranslations, type SupportedLocale } from '@/lib/i18n';
 import * as ttsErrors from '@/lib/ttsErrors';
 // @ts-expect-error Vitest raw source loader for JSX-preserving projects.
@@ -13,9 +13,16 @@ import {
   compileComponent, reactModules, localeContextModule,
 } from '@/components/video/timeline/__tests__/test-utils/compileComponent';
 
+const openWizard = vi.fn();
+// The compiled module cannot load the real "go configure" button, so it gets a
+// stand-in that wires the same click → openSetupWizard(integrationId) contract.
+const ConfigureCta = ({ integrationId }: { integrationId: string }) =>
+  React.createElement('button', { type: 'button', onClick: () => openWizard(integrationId) }, '去配置');
+
 let locale: SupportedLocale = 'zh-CN';
 const ToolStep = compileComponent<{ step: ToolStepData }>(source, {
   ...reactModules(), ...localeContextModule(() => locale),
+  '@/components/integrations/ConfigureCta': { __esModule: true, default: ConfigureCta },
   'framer-motion': motion, '@/lib/ttsErrors': ttsErrors,
   './utils': utils, './animations': animations,
 });
@@ -89,5 +96,19 @@ describe('TTS 失败卡片', () => {
     expect(screen.queryByText(
       getTranslations('zh-CN').ttsErrors.summary.TTS_INSUFFICIENT_BALANCE,
     )).not.toBeInTheDocument();
+  });
+
+  it('未配置语音凭证时给出「去配置」入口并指向语音合成', () => {
+    render(React.createElement(ToolStep, { step: step({
+      success: false, error_code: 'TTS_CONFIG_MISSING', error: 'x',
+      error_details: { source: 'backend', retryable: false },
+    }) }));
+    fireEvent.click(screen.getAllByRole('button').find((b) => b.textContent === '去配置')!);
+    expect(openWizard).toHaveBeenCalledWith('volcano_tts');
+  });
+
+  it('其他 TTS 失败不出现「去配置」入口', () => {
+    render(React.createElement(ToolStep, { step: step() }));
+    expect(screen.queryByText('去配置')).not.toBeInTheDocument();
   });
 });

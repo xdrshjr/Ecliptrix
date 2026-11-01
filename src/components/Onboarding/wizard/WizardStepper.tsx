@@ -15,6 +15,9 @@ const STEP_LABEL_KEY = {
   overview: 'stepOverview',
   provider: 'stepProvider',
   models: 'stepModels',
+  voice: 'stepVoice',
+  generation: 'stepGeneration',
+  media: 'stepMedia',
   search: 'stepSearch',
   done: 'stepDone',
 } as const;

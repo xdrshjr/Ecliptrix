@@ -47,6 +47,7 @@ from app.services.composition.cover_contract import (
 )
 from app.services.simple_queue_decorator import with_simple_queue
 from app.logger import get_logger
+from app.services.credential_errors import require_configured
 from app.utils import client_disconnect
 from typing import Union
 
@@ -76,6 +77,7 @@ async def search_videos(request: VideoSearchRequest) -> VideoSearchResponse:
     Raises:
         HTTPException: 400 for invalid request parameters, 500 for internal errors
     """
+    require_configured("pexels")
     logger.info(f"Video search request received - Query: '{request.query}', Max: {request.max_videos}, Orientation: {request.orientation}")
     
     try:
