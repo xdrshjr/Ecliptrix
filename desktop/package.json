@@ -1,6 +1,6 @@
 {
   "name": "ecliptrix-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Ecliptrix desktop (Electron) shell and Windows packaging scripts",
   "author": "Ecliptrix",

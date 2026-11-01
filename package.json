@@ -1,6 +1,6 @@
 {
   "name": "ecliptrix",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Ecliptrix - Where light and shadow collide. A content creation platform for social media, video editing, voice synthesis, and creative brainstorming.",
   "scripts": {
