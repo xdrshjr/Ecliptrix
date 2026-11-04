@@ -29,6 +29,8 @@ export interface UserMessageNodeData {
   id: string;
   timestamp: Date;
   content: string;
+  /** 客户端自动发起的回合（如 YOLO 续跑）的本地化小标记；缺省不渲染。 */
+  automaticLabel?: string;
 }
 
 /** Where earlier turns were folded into a digest (or are about to be). */

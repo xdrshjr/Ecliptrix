@@ -51,6 +51,7 @@ const steeringStub = () => ({
   notes: [], queued: [], runId: 'run', submit: vi.fn(() => 'accepted' as const),
   cancelNote: vi.fn(), promoteToStop: vi.fn(), startTurn: vi.fn(), onRunStarted: vi.fn(),
   onRestart: vi.fn(), onSteerApplied: vi.fn(), onSteerDropped: vi.fn(), onTurnEnd: vi.fn(),
+  hasPendingInput: vi.fn(() => false),
 });
 
 beforeEach(() => { window.localStorage.clear(); });

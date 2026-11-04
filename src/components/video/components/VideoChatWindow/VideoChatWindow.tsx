@@ -33,6 +33,8 @@ import { EMPTY_LIVE_PROGRESS } from '@/components/video/hooks/agentLiveProgress'
 import { scanLatestPlan, selectActiveStep } from '@/lib/video-editing-agent/planScan';
 import { TimelineChatPanel } from './timeline';
 import AgentBusyBar from './AgentBusyBar';
+import YoloToggle from './YoloToggle';
+import YoloNotice from './YoloNotice';
 import SteerQueue from './SteerQueue';
 import ComposerSkillPicker from './ComposerSkillPicker';
 import ComposerMentionPicker from './ComposerMentionPicker';
@@ -68,6 +70,11 @@ export interface VideoChatWindowProps {
   agentMode: boolean;
   onAgentModeChange: (enabled: boolean) => void;
   agentIsExecuting: boolean;
+  /** 全自动模式（YOLO）是否已武装；全局偏好，由 useAgentYoloMode 提供。 */
+  yolo?: boolean;
+  /** 首次读取持久化值是否已回；`false` 时开关禁用（评审 P2-02）。 */
+  yoloReady?: boolean;
+  onYoloChange?: (enabled: boolean) => void;
   /** @deprecated Use onUndoAll instead. Kept for backward compatibility. */
   onAgentUndo?: (message: ChatMessage) => void;
   // New timeline UI props (provided by useAgentExecution / google-dev-04)
@@ -122,6 +129,9 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   agentMode,
   onAgentModeChange,
   agentIsExecuting,
+  yolo = false,
+  yoloReady = true,
+  onYoloChange,
   onAgentUndo,
   executionState = null,
   onUndoAll,
@@ -406,6 +416,17 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
                 }`}
               />
             </button>
+
+            {/* YOLO 全自动模式：前置 1px 分隔线，几何与左侧 Agent 开关同源
+                （agent-yolo-autonomous-mode §4.9.1）。 */}
+            <div className="w-px h-4 bg-border dark:bg-zinc-700" aria-hidden="true" />
+            <YoloToggle
+              yolo={yolo}
+              yoloReady={yoloReady}
+              agentMode={agentMode}
+              agentIsExecuting={agentIsExecuting}
+              onYoloChange={(next) => onYoloChange?.(next)}
+            />
           </div>
         </div>
       </div>
@@ -413,11 +434,13 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
       {/* Agent busy status bar — narrow strip that appears between the
           action-buttons bar and the input form while the agent is
           executing. Conditionally rendered so idle-state DOM is unchanged. */}
+      <YoloNotice yolo={yolo} />
       {agentIsExecuting && !isFinishing && (
         <AgentBusyBar
           executionState={executionState}
           onCancel={handleCancel}
           planStep={planStep}
+          yolo={yolo}
           showSteerHint={!!steering && !inputFocused && !composer.text}
         />
       )}

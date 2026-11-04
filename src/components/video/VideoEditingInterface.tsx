@@ -42,6 +42,8 @@ import {
   useNarrationDirectScript
 } from './hooks';
 import { useAgentExecution, type SendAgentMessageOptions } from './hooks/useAgentExecution';
+import { useAgentYoloMode } from './hooks/useAgentYoloMode';
+import { useYoloAutoContinue } from './hooks/useYoloAutoContinue';
 import { useInterruptedConversationCleanup } from './hooks/agentTurnLifecycle';
 import { useContextMemory } from './hooks/useContextMemory';
 import { withoutCompaction } from './hooks/conversationCompaction';
@@ -1311,10 +1313,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       timestamp: new Date().toISOString()
     });
 
-    setVideoCutModal({
-      isOpen: true,
-      material
-    });
+    setVideoCutModal({ isOpen: true, material });
   }, [taskId]);
 
   // 处理水印去除
@@ -1335,10 +1334,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       timestamp: new Date().toISOString()
     });
 
-    setVideoCutModal({
-      isOpen: false,
-      material: null
-    });
+    setVideoCutModal({ isOpen: false, material: null });
   }, [taskId]);
 
   // 处理导出切片到素材管理面板
@@ -2011,6 +2007,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     window.addEventListener(COVER_CARD_ACTION_EVENT, handle);
     return () => window.removeEventListener(COVER_CARD_ACTION_EVENT, handle);
   }, [projectId, openCover, cover.applyExisting]);
+  const yoloMode = useAgentYoloMode({ onSaveFailed: () => showError(t.videoChatWindow.yoloSaveFailed) });
   const agent = useAgentExecution({
     coverAgentBridge: cover.bridge,
     coverAspectRatio: (content?.canvasSettings?.aspectRatioId ?? '16:9') as CoverAspectRatio,
@@ -2029,7 +2026,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       else showSuccess(message);
     },
     agentMode, setAgentMode, projectId, getEditorContext: () => workbench.getEditorContext(),
-  });
+    yolo: yoloMode.yolo });
 
   // External edit lock: agent operations are undoable, so a keyboard/toolbar
   // undo or delete issued mid-run would fork the client timeline from the
@@ -2180,6 +2177,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const activeConversation = content?.conversations?.find(
     conv => conv.id === content?.activeConversationId
   );
+  // 全自动模式：开关真相在 autonomyStore（AC-C9）；续跑只读 lastTurnEnd（AC-C6）。
+  useYoloAutoContinue({ agent, yolo: yoloMode.yolo, conversation: activeConversation });
   const contextMemory = useContextMemory({
     conversationId: activeConversation?.id,
     messages: activeConversation?.messages ?? NO_CHAT_MESSAGES,
@@ -2220,7 +2219,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         isTimelineLocked={agent.agentIsExecuting}
         topBar={<EditorTopBar project={projectChrome} isAssistantOpen={isAgentDockOpen}
           isAgentBusy={agent.agentIsExecuting} onToggleAssistant={workbench.toggleAssistant}
-          exportState={editorExport.exportState} onExport={() => void editorExport.handleExport()} />}
+          isYoloArmed={yoloMode.yolo} exportState={editorExport.exportState}
+          onExport={() => void editorExport.handleExport()} />}
         left={
           <ScriptPanel
             segments={editorSegments} className="h-full" taskId={taskId} projectId={projectId}
@@ -2337,7 +2337,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onAgentUndo: undefined, onUndoAll: agent.undoAllOperations, onUndoSingle: agent.undoSingleOperation,
               onCancel: agent.cancelExecution, onDismissError: agent.dismissExecutionError,
               singleUndoMessageIds: agent.singleUndoMessageIds, steering: agent.steering, draftRestore: agent.draftRestore, skillSkip: agent.skillSkip, mentionMaterials: materialManagement.allMaterials, draftProjectKey: projectId,
-              contextMemory, liveProgress: agent.liveEvents.crew,
+              contextMemory, liveProgress: agent.liveEvents.crew, yolo: yoloMode.yolo, yoloReady: yoloMode.yoloReady, onYoloChange: yoloMode.toggleYolo,
             }}
           />
         }

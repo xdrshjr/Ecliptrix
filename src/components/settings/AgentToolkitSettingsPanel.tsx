@@ -20,6 +20,7 @@ import type {
 } from '@/types/agentToolkit';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import SettingsSectionCard from './components/SettingsSectionCard';
+import AgentAutonomySection from './components/AgentAutonomySection';
 import AgentCrewMemorySections from './AgentCrewMemorySections';
 import { DocumentList, WorkspaceFileTable } from './AgentToolkitWorkspaceLists';
 import {
@@ -450,10 +451,10 @@ function AnalysisRiskNote() {
   );
 }
 
-function CapabilitySection({ values, update }: {
-  values: ToolkitSettings;
-  update: UpdateSetting;
-}) {
+/** 「能力」与「限额」两节同形，共用一个 props 类型（别复制两份成员声明）。 */
+type ToolkitSectionProps = { values: ToolkitSettings; update: UpdateSetting };
+
+function CapabilitySection({ values, update }: ToolkitSectionProps) {
   const { t } = useLocale();
   const copy = t.agentToolkit;
   return (
@@ -474,10 +475,7 @@ function CapabilitySection({ values, update }: {
   );
 }
 
-function LimitsSection({ values, update }: {
-  values: ToolkitSettings;
-  update: UpdateSetting;
-}) {
+function LimitsSection({ values, update }: ToolkitSectionProps) {
   const { t } = useLocale();
   const copy = t.agentToolkit;
   // 三组用三列表达（存储 / 文档 / 其余），不为分组标题新增文案。
@@ -779,6 +777,7 @@ export default function AgentToolkitSettingsPanel({ onOpenModels }: {
           {notice}
         </div>
 
+        <AgentAutonomySection />
         <CapabilitySection values={panel.values}
           update={panel.updateSetting} />
         <LimitsSection values={panel.values} update={panel.updateSetting} />

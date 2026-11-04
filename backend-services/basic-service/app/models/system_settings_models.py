@@ -256,7 +256,7 @@ def validate_setting_payload(
         from pydantic import TypeAdapter, StrictBool, StrictInt
         booleans = {"enabled", "workspace_enabled", "documents_enabled",
                     "analysis_enabled", "memory_enabled",
-                    "crew_enabled", "auto_compact"}
+                    "crew_enabled", "auto_compact", "yolo_mode"}
         ranges = {"workspace_quota_mb": (16, 2048), "max_file_mb": (1, 128),
                   "document_max_pages": (1, 5000),
                   "document_max_chars": (10000, 10000000),

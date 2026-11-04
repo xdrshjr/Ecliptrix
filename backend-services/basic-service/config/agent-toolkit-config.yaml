@@ -38,3 +38,6 @@ agent_toolkit:
   # 会话记忆：回合结束后按用量自动压缩 / 触发比例（0.6-0.9）
   auto_compact: true
   auto_compact_ratio: 0.75
+  # 全自动模式（YOLO，docs/plans/agent-yolo-autonomous-mode/spec.md §7.1）：
+  # 出厂关闭；开启后 Agent 不再提问，自行决定并跑完整个剪辑流程。
+  yolo_mode: false

@@ -57,6 +57,14 @@ describe('AgentBusyBar', () => {
     expect(screen.getByText(/Enter to steer/)).toBeTruthy();
   });
 
+  it('marks a YOLO turn with a small badge, and nothing otherwise (AC-C4)', () => {
+    const { rerender } = render(<AgentBusyBar executionState={state()} onCancel={vi.fn()} />);
+    expect(screen.queryByTestId('agent-busy-yolo')).toBeNull();
+    rerender(<AgentBusyBar executionState={state()} onCancel={vi.fn()} yolo />);
+    expect(screen.getByTestId('agent-busy-yolo').textContent)
+      .toBe(translations.en.videoChatWindow.yoloToggleLabel);
+  });
+
   it('stops the run from its ghost button and drops the ping animation under reduced motion', () => {
     const onCancel = vi.fn();
     const { container } = render(<AgentBusyBar executionState={state()} onCancel={onCancel} />);

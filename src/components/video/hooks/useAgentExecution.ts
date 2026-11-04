@@ -10,7 +10,16 @@
  */
 
 import { useCallback, useRef, useEffect, useState } from 'react';
-import { describeTtsFailure, getTtsFailure, type TtsFailure } from '@/lib/ttsErrors';
+import {
+  describeServerErrorText,
+  describeStreamErrorText,
+  type ServerErrorPayload,
+} from './agentErrorCopy';
+import {
+  buildEditorContextField,
+  type AgentEditorContext,
+  type SendAgentMessageOptions,
+} from './agentTurnContext';
 import type {
   TimelineState,
   MaterialItem,
@@ -34,13 +43,9 @@ import {
   revertTrackPatches,
 } from '@/lib/video-editing-agent/trackPatch';
 import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
-import {
-  serverErrorMessageKey,
-  streamErrorMessageKey,
-  type StreamError,
-} from '@/lib/video-editing-agent/errorRecovery';
+import type { StreamError } from '@/lib/video-editing-agent/errorRecovery';
 import type {
-  AgentStreamErrorCode, SSEEvent, CoverAgentBridge,
+  AgentAutonomy, LastAgentTurnEnd, SSEEvent, CoverAgentBridge,
 } from '@/lib/video-editing-agent/types';
 import type { CoverAspectRatio } from '@/types/videoCover';
 import type {
@@ -52,7 +57,6 @@ import {
   useAgentExecutionSteering,
   type UseAgentExecutionSteeringReturn,
 } from './useAgentExecutionSteering';
-import type { MaterialMention } from '@/types/agentSteering';
 import { triggerClipAnimation } from './clipAnimation';
 import { useAgentLiveEvents, type AgentLiveEvents } from './useAgentLiveEvents';
 import {
@@ -97,28 +101,15 @@ export interface UseAgentExecutionParams {
   projectId?: string;
   /** What the user is editing right now (R2 §3.12); sent as `editorContext`. */
   getEditorContext?: () => AgentEditorContext | null;
+  /** 全自动模式（YOLO）：true 时请求体带 `autonomy: 'yolo'`（§4.3）。 */
+  yolo?: boolean;
 }
 
-/** The segment the user is working on, so "this segment" means that segment. */
-export interface AgentEditorContext {
-  selectedSegmentId: string | null;
-  segmentLabel: string | null;
-  segmentRange: { start: number; end: number } | null;
-}
-
-/** `{ editorContext }` only when a segment is selected — otherwise nothing (T-AG-1). */
-export function buildEditorContextField(
-  getEditorContext: (() => AgentEditorContext | null) | undefined,
-): { editorContext?: AgentEditorContext } {
-  const context = getEditorContext?.() ?? null;
-  return context && context.selectedSegmentId ? { editorContext: context } : {};
-}
-
-/** Extras the composer attaches to a turn: a `/` skill and `@` material mentions. */
-export interface SendAgentMessageOptions {
-  skillId?: string;
-  mentions?: MaterialMention[];
-}
+// 回合上下文形状与组装已抽到 `agentTurnContext`（见文件头 §5.2.1 棘轮）；
+// 这里原样再导出，既有导入点无需改路径。
+export type {
+  AgentEditorContext, SendAgentMessageOptions,
+} from './agentTurnContext';
 
 export interface UseAgentExecutionReturn {
   /** Detailed execution state from useAgentExecutionState. */
@@ -150,6 +141,8 @@ export interface UseAgentExecutionReturn {
   dismissExecutionError: () => void;
   /** Agent messages whose steps can still be undone one at a time this session. */
   singleUndoMessageIds: ReadonlySet<string>;
+  /** 最近一次回合结束事实（§4.6.2）：自动续跑只读它，不自己判断时机。 */
+  lastTurnEnd: LastAgentTurnEnd | null;
 }
 
 /** Per-turn collaborators the stream callbacks close over. */
@@ -190,6 +183,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     projectId,
   } = params;
   const getEditorContextRef = useRef(params.getEditorContext);
+  const yolo = params.yolo === true;
   const coverBridgeRef = useRef(params.coverAgentBridge);
   coverBridgeRef.current = params.coverAgentBridge;
   const coverAspectRatioRef = useRef(params.coverAspectRatio);
@@ -264,6 +258,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // -- Re-entry guard for sendAgentMessage until its request has started --
   const sendingRef = useRef(false);
 
+  // -- 看门狗接管收尾时否决续跑：事件链没排干，可能把同一次编辑写两遍。 --
+  const finishingTimedOutRef = useRef(false);
+
   // -- Mid-run steering. It sends follow-ups and stops turns through refs
   //    because `sendAgentMessage` / `cancelByUser` are defined further down. --
   const sendAgentMessageRef = useRef<(text: string) => Promise<void>>(async () => undefined);
@@ -271,6 +268,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   const steeringBridge = useAgentExecutionSteering({
     agentIsExecuting,
     executionStatus: executionState.status,
+    autonomy: yolo ? 'yolo' : 'interactive',
+    finishingTimedOut: finishingTimedOutRef.current,
+    activeConversationId,
     getStateManager: () => stateManagerRef.current,
     getMessages: () => conversationsRef.current
       .find(c => c.id === activeConversationIdRef.current)?.messages,
@@ -328,28 +328,13 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   /** Localised text for an SSE `error` event; an old server sends no code. */
   const describeServerError = useCallback(
-    ({ message, code, cause }: {
-      message: string; code?: AgentStreamErrorCode; cause?: TtsFailure;
-    }): string => {
-      if (code === 'tool_failures') {
-        const failure = getTtsFailure(cause);
-        if (!failure) return t.agentStream.errors.toolFailures;
-        const description = describeTtsFailure(failure, t);
-        return t.agentStream.errors.toolFailuresWithCause.replace(
-          '{detail}', [description.summary, description.action]
-            .filter(Boolean).join(' '),
-        );
-      }
-      return code
-        ? t.agentStream.errors[serverErrorMessageKey(code)].replace('{detail}', message)
-        : message;
-    },
+    (payload: ServerErrorPayload): string => describeServerErrorText(t, payload),
     [t],
   );
 
   /** Localised text for a stream (transport) failure. */
   const describeStreamError = useCallback(
-    (error: StreamError): string => t.agentStream.errors[streamErrorMessageKey(error)],
+    (error: StreamError): string => describeStreamErrorText(t, error),
     [t],
   );
 
@@ -446,6 +431,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         // settles, but then updates only this message. Later turns must not
         // queue behind it (sending awaits the chain and would wait forever).
         onFinishingTimeout: () => {
+          finishingTimedOutRef.current = true;
           router.cancelCoverOperations(true);
           unsubscribe();
           writeAgentMessage({
@@ -537,6 +523,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     if (sendingRef.current || agentIsExecutingRef.current) return;
     if (!activeConversationIdRef.current) return;
     sendingRef.current = true;
+    finishingTimedOutRef.current = false;
     try {
       // Operations still queued from the previous turn must land before the
       // new turn snapshots the timeline, or its patches would swallow them.
@@ -565,6 +552,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         timestamp: new Date(),
         ...(options?.skillId ? { skillId: options.skillId } : {}),
         ...(options?.mentions?.length ? { mentions: options.mentions } : {}),
+        // 自动续跑的消息绝不假装是用户亲手打的字（§7.3）。
+        ...(options?.automatic ? { metadata: { type: options.automatic } } : {}),
       };
       steeringBridgeRef.current.beginTurn(userMessage);
       const messagesWithUser = [...activeConversation.messages, userMessage];
@@ -599,6 +588,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           ...(options?.skillId ? { skillId: options.skillId } : {}),
           ...(options?.mentions?.length ? { mentions: options.mentions } : {}),
           ...buildEditorContextField(getEditorContextRef.current),
+          // 请求即快照：本回合的自主模式（缺省 undefined = 互动模式）。
+          ...(yolo ? { autonomy: 'yolo' as AgentAutonomy } : {}),
         },
         ...callbacks,
       });
@@ -610,6 +601,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     createTurnRuntime,
     startExecution,
     projectId,
+    // 少了它 `sendAgentMessage` 会一直闭包着首次渲染的 `yolo`（=false）：
+    // 开关打开后请求体仍不带 `autonomy`，整个全自动模式静默失效。
+    yolo,
   ]);
 
   sendAgentMessageRef.current = sendAgentMessage;
@@ -851,5 +845,6 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     undoSingleOperation,
     dismissExecutionError,
     singleUndoMessageIds,
+    lastTurnEnd: steeringBridge.lastTurnEnd,
   };
 }

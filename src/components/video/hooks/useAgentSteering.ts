@@ -31,6 +31,8 @@ export interface UseAgentSteeringReturn extends SteeringSnapshot {
   onSteerApplied: (event: { steerId: string; afterToolCallId: string | null }) => void;
   onSteerDropped: (event: { steerIds: readonly string[] }) => void;
   onTurnEnd: (end: TurnEnd) => void;
+  /** 还有未送达的插话/排队文本（回合结束时的唯一发送者仲裁用）。 */
+  hasPendingInput: () => boolean;
 }
 
 function newSteerId(): string {
@@ -74,6 +76,7 @@ export function useAgentSteering(params: UseAgentSteeringParams): UseAgentSteeri
       machine.onSteerApplied(event),
     onSteerDropped: (event: { steerIds: readonly string[] }) => machine.onSteerDropped(event),
     onTurnEnd: (end: TurnEnd) => machine.onTurnEnd(end),
+    hasPendingInput: () => machine.hasPendingInput(),
   }), [machine]);
 
   return { ...snapshot, ...actions };

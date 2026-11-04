@@ -2,10 +2,14 @@ import type { TimelineState, MaterialItem } from '@/types';
 import type { CategorySummary, ToolInfo } from './registry/ToolRegistry';
 import { ToolRegistry, type CategoryId } from './registry';
 import { utf8Slice } from './modelContextBudget';
-import type { WebCapabilitySnapshot } from './types';
+import type { AgentAutonomy, WebCapabilitySnapshot } from './types';
 import type { AgentPlan } from '@/types/agentToolkit';
 import type { SkillIndexEntry } from '@/types/agentSkills';
-import { AGENT_TOOLKIT_GUIDANCE } from './promptParts';
+import {
+  AGENT_TOOLKIT_GUIDANCE,
+  YOLO_DIRECTIVE,
+  YOLO_TOOLKIT_GUIDANCE,
+} from './promptParts';
 import { formatSkillIndex, skillAvailability } from './skillContext';
 import {
   CORE_TOOLKIT_TOOL_NAMES,
@@ -292,8 +296,18 @@ function formatParamSignature(parametersSchema: unknown): string | null {
  * from the registry, emit a `console.warn` and write a single
  * "(currently unavailable)" stub line for that tool. We intentionally do
  * NOT throw — that would 500 the user request inside `createVideoEditingAgent`.
+ *
+ * `exclude` is the **planned exclusion** channel (agent-yolo-autonomous-mode
+ * §4.4): names dropped on purpose by the current autonomy mode are skipped
+ * whole — no stub and no warn, because a "currently unavailable" line would
+ * invite the model to hunt for a tool it must not use. Optional so the older
+ * single-argument call sites keep working unchanged.
  */
-export function formatCoreToolkit(registry: ToolRegistry): string {
+export function formatCoreToolkit(
+  registry: ToolRegistry,
+  exclude: readonly string[] = [],
+): string {
+  const excluded = new Set(exclude);
   const allTools = registry.getAllTools();
   const byName = new Map<string, (typeof allTools)[number]>();
   for (const t of allTools) byName.set(t.name, t);
@@ -306,6 +320,7 @@ export function formatCoreToolkit(registry: ToolRegistry): string {
   );
 
   for (const name of CORE_TOOLKIT_TOOL_NAMES) {
+    if (excluded.has(name)) continue;
     const tool = byName.get(name);
     if (!tool) {
       console.warn(
@@ -487,6 +502,11 @@ export interface BuildSystemPromptInput {
   skillIndex?: SkillIndexEntry[];
   /** `false` marks crew-dependent skills `[unavailable: crew]`. */
   crewEnabled?: boolean;
+  /**
+   * 本请求的自主模式。`'yolo'` 时不渲染 `ask_user` 段，改用 YOLO 指令与
+   * YOLO 工具箱引导；缺省视为互动模式（默认路径逐字节不变，R-13）。
+   */
+  autonomy?: AgentAutonomy;
 }
 
 // ---------------------------------------------------------------------------
@@ -564,6 +584,7 @@ export function formatMemoryDigest(
  */
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const { timelineState, materials, registry, exploredCategories } = input;
+  const isYolo = (input.autonomy ?? 'interactive') === 'yolo';
   const categorySummaries = registry.getCategorySummaries();
 
   const role = `你是一个全能视频编辑助手。分析用户需求，选择正确的工具，逐步执行编辑操作。`;
@@ -582,7 +603,9 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 
   const overview = formatToolOverview(categorySummaries,
     categoryAvailability(input.capabilities));
-  const coreToolkit = formatCoreToolkit(registry);
+  // YOLO 下 `ask_user` 不进工具集（§4.4），提示词也不许自曝它「currently
+  // unavailable」——那是诱导模型去猜一个它拿不到的工具。
+  const coreToolkit = formatCoreToolkit(registry, isYolo ? ['ask_user'] : []);
   const projectStatus = `## 项目状态\n${formatCompactSummary(timelineState, materials)}`;
   const workflowRecipes = formatWorkflowRecipes();
   const skillSection = formatSkillIndex(input.skillIndex,
@@ -617,6 +640,9 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const sections: string[] = [
     role,
     rules,
+    // YOLO 指令紧跟规则：模式指令优先于类别提示（评审 P2-05），且它属于
+    // 确定性前缀，不能挪到可变段之后（§4.5.3）。
+    ...(isYolo ? [YOLO_DIRECTIVE.trim()] : []),
     overview,
     coreToolkit,
     projectStatus,
@@ -624,7 +650,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     ...(skillSection ? [skillSection] : []),
     smartHandling,
     hardConstraints,
-    AGENT_TOOLKIT_GUIDANCE.trim(),
+    (isYolo ? YOLO_TOOLKIT_GUIDANCE : AGENT_TOOLKIT_GUIDANCE).trim(),
     // Web 研究引导与工具集引导同属**确定性**前缀：放在这里而不是由调用方
     // 事后拼接，才能被 `L0_PROMPT_CHAR_CEILING` 真正约束（D-04 的同一条理由）。
     WEB_RESEARCH_GUIDANCE.trim(),

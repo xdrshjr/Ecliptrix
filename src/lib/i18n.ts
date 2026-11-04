@@ -293,6 +293,10 @@ export interface Translations {
       title: string; description: string; autoCompact: string;
       autoCompactRatio: string;
     };
+    /** 全自动模式小节（agent-yolo-autonomous-mode §4.9.5）。 */
+    autonomy: {
+      title: string; description: string; saveFailed: string;
+    };
   };
   // END agentCrew
   agentToolkit: {
@@ -2678,6 +2682,29 @@ export interface Translations {
     agentBusyWorking: string;
     /** Label for tool calls that ended in the `cancelled` status. */
     agentToolCancelled: string;
+    // ── 全自动模式 YOLO（agent-yolo-autonomous-mode §4.9）──
+    /** 开关标签；品牌词，中英文都不翻译。 */
+    yoloToggleLabel: string;
+    /** title：已武装。 */
+    yoloTitleOn: string;
+    /** title：关态（遇到不确定会提问）。 */
+    yoloTitleOff: string;
+    /** title：先开 Agent 模式。 */
+    yoloTitleNeedsAgent: string;
+    /** title：执行中不可切换。 */
+    yoloTitleBusy: string;
+    /** title：偏好尚未读取回来。 */
+    yoloTitleLoading: string;
+    /** 顶栏只读徽标的 title / aria-label。 */
+    yoloBadgeTitle: string;
+    /** 首次开启的一次性行内说明。 */
+    yoloNotice: string;
+    /** 说明条上的「知道了」。 */
+    yoloNoticeDismiss: string;
+    /** 写入失败的通知文案。 */
+    yoloSaveFailed: string;
+    /** 时间线上「YOLO 自动继续」小标记。 */
+    yoloAutoContinue: string;
   };
   aiChat: {
     welcomePage: {
@@ -4015,6 +4042,11 @@ export const translations: Record<string, Translations> = {
         description: 'Fold early conversation into a summary when the context gets full.',
         autoCompact: 'Compact automatically after a turn',
         autoCompactRatio: 'Auto-compact threshold (0.6-0.9)',
+      },
+      autonomy: {
+        title: 'Autonomous mode (YOLO)',
+        description: 'The agent stops asking, decides on its own and runs the whole edit to the end. The clip toolbar can toggle it too.',
+        saveFailed: 'Could not save the YOLO preference; it was reverted.',
       },
     },
     // END agentCrew
@@ -6666,6 +6698,17 @@ export const translations: Record<string, Translations> = {
       agentBusyTool: 'Agent is running {tool}…',
       agentBusyWorking: 'Agent is working…',
       agentToolCancelled: 'Cancelled',
+      yoloToggleLabel: 'YOLO',
+      yoloTitleOn: 'YOLO on: the agent decides everything and runs to the end',
+      yoloTitleOff: 'YOLO off: the agent will ask you when a decision changes the result',
+      yoloTitleNeedsAgent: 'Turn on Agent mode first',
+      yoloTitleBusy: 'Cannot switch while running; stop or wait for this turn',
+      yoloTitleLoading: 'Loading the YOLO preference…',
+      yoloBadgeTitle: 'YOLO is on — switch it in the AI panel toolbar',
+      yoloNotice: 'YOLO on: this turn runs end to end; you can stop it any time',
+      yoloNoticeDismiss: 'Got it',
+      yoloSaveFailed: 'Could not save the YOLO preference; it was reverted.',
+      yoloAutoContinue: 'YOLO auto-continue',
     },
     aiChat: {
       welcomePage: {
@@ -8082,6 +8125,11 @@ export const translations: Record<string, Translations> = {
         description: '上下文变满时，把早期对话折叠成摘要。',
         autoCompact: '回合结束后自动压缩',
         autoCompactRatio: '自动压缩触发比例（0.6-0.9）',
+      },
+      autonomy: {
+        title: '全自动模式（YOLO）',
+        description: '开启后 Agent 不再向你提问，自行决定并跑完整个剪辑流程；剪辑台工具栏也可随时切换。',
+        saveFailed: '全自动模式设置保存失败，已恢复原值。',
       },
     },
     // END agentCrew
@@ -10730,6 +10778,17 @@ export const translations: Record<string, Translations> = {
       agentBusyTool: 'Agent 正在执行 {tool}…',
       agentBusyWorking: 'Agent 执行中…',
       agentToolCancelled: '已取消',
+      yoloToggleLabel: 'YOLO',
+      yoloTitleOn: 'YOLO 已开启：AI 自行决策并跑完全程，不会向你提问',
+      yoloTitleOff: '全自动模式已关闭：遇到不确定会向你提问',
+      yoloTitleNeedsAgent: '先打开 Agent 模式',
+      yoloTitleBusy: '执行中不可切换，结束或停止后可切换',
+      yoloTitleLoading: '正在读取全自动模式设置…',
+      yoloBadgeTitle: 'YOLO 已开启 — 在 AI 面板工具栏切换',
+      yoloNotice: 'YOLO 已开启：本轮全自动执行，可随时点停止',
+      yoloNoticeDismiss: '知道了',
+      yoloSaveFailed: '全自动模式设置保存失败，已恢复原值。',
+      yoloAutoContinue: 'YOLO 自动继续',
     },
     aiChat: {
       welcomePage: {

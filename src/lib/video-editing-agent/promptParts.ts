@@ -49,6 +49,65 @@ A task matching 可用技能: use_skill(id) first; skills grant no permissions.
 `;
 
 /**
+ * YOLO 全自动模式的本轮强制条款（确定性前缀，放在 rules 之后）。
+ *
+ * 设计基线：docs/plans/agent-yolo-autonomous-mode/spec.md §4.5.1（逐字契约，
+ * §6.5 的 5 类断言即按本常量验收）。之所以是**独立指令段**而不是重写整份
+ * 提示词：单点可读、可测、可回滚，且确定性前缀保持稳定（缓存友好，D-06）。
+ */
+export const YOLO_DIRECTIVE = `## YOLO 全自动模式（本轮强制）
+- 用户已开启 YOLO：本轮**禁止**向用户提问；ask_user 不在工具集中，不要尝试调用它。
+- 每个分叉自行选择最稳妥的默认值，用一行「假设：…」写明依据，然后立刻继续，不要等待确认。
+- 遇到失败先降级：换能力、换素材、换路径；同一失败最多重试 1 次，仍失败就记录限制并继续剩余步骤。
+- 能力本回合不可用（analysis_disabled、凭据未配置的 409、搜索/研究关闭）时：记下限制、换一条还能走的路径继续；不要停下来建议用户去哪里开启——那是互动模式的做法。
+- 3 步以上先 update_plan，全部步骤 completed 才算结束；能批量一次完成的不要拆成多轮。即使没有计划，也要把这条任务收敛到一个可交付的结果。
+- 结束前必须自检：check_timeline 无 blocker；再用 check_timeline_overlaps 确认 valid=true，否则 auto_fix_overlaps 直到 valid；视频轨必须最长。
+- 最后一条消息只报告「完成 / 未完成 + 关键假设 + 遗留风险」，不得以提问或「要我继续吗」结尾。
+- 历史中未回答的提问一律视为作废，自行决定。
+- 预算：模型调用 ≤40 次、工具调用 ≤80 次；接近上限时收敛到一个可交付的结果。`;
+
+/** `YOLO_DIRECTIVE` 的字符上限（AC-A4 / §6.5 第 3 条）。 */
+export const YOLO_DIRECTIVE_CHAR_CEILING = 700;
+
+/** 工具箱引导里唯一一句「可以问」的锚点（逐字取自 `AGENT_TOOLKIT_GUIDANCE`）。 */
+export const YOLO_ASK_USER_ANCHOR = 'call ask_user once';
+
+/** 锚点句的续行：一起替换，否则留下半句孤立的 "guessing; otherwise …"。 */
+const YOLO_ANCHOR_CONTINUATION = 'guessing;';
+
+/** 替换后的两行（与锚点句同位置，保持段落的行数与语气）。 */
+const YOLO_ASK_USER_REPLACEMENT = [
+  'YOLO is on: never ask the user. Pick the most defensible default, state the',
+  'assumption in one line, and continue to completion.',
+];
+
+/**
+ * 把「可以问一次」的那两行换成「不许问、自决并记录假设」。
+ *
+ * 按行匹配而不是整段字符串 `replace`：未来任何人改一个字都不会让替换
+ * 静默失效（§4.5.2 实施提示）。找不到锚点时原样返回，由单元测试兜底报错——
+ * 运行时静默降级回互动措辞，总好过把引导拼坏。
+ */
+function replaceAskUserLine(guidance: string): string {
+  const lines = guidance.split('\n');
+  const index = lines.findIndex(line => line.includes(YOLO_ASK_USER_ANCHOR));
+  if (index === -1) return guidance;
+  const dropsContinuation =
+    (lines[index + 1] ?? '').trimStart().startsWith(YOLO_ANCHOR_CONTINUATION);
+  return [
+    ...lines.slice(0, index),
+    ...YOLO_ASK_USER_REPLACEMENT,
+    ...lines.slice(index + (dropsContinuation ? 2 : 1)),
+  ].join('\n');
+}
+
+/**
+ * YOLO 版的工具箱引导：单一来源派生自 `AGENT_TOOLKIT_GUIDANCE`，不复制粘贴，
+ * 因此不会与互动模式的引导漂移（§4.5.2）。
+ */
+export const YOLO_TOOLKIT_GUIDANCE = replaceAskUserLine(AGENT_TOOLKIT_GUIDANCE);
+
+/**
  * Wrapper for a user note that arrives while the agent is already running
  * (docs/plans/agent-steering-and-skills/spec.md §3.2.2). It is replayed into
  * later turns by `messageConverter`, so live delivery and history use ONE text.

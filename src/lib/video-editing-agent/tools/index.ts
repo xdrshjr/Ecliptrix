@@ -453,9 +453,13 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
   // workflow_tools is alwaysAvailable, so its three tools reach the model without
   // explore_tools; they are also listed in CORE_TOOLKIT_TOOL_NAMES so
   // formatCoreToolkit renders their parameters in the L0 prompt.
+  // YOLO（docs/plans/agent-yolo-autonomous-mode/spec.md §4.4）：提问权限整类
+  // 移除。不是「拦截」而是「不存在」——注册表里没有，offer() 就不会发
+  // schema，explore_tools 也列不出来，load() 会 invalid_tool_selection。
+  const isYolo = context.autonomy === 'yolo';
   registry.registerToolsForCategory(CATEGORY_IDS.WORKFLOW_TOOLS, [
     createPlanTool(context),
-    createAskUserTool(context),
+    ...(isYolo ? [] : [createAskUserTool(context)]),
     createCheckTimelineTool(context),
     // use_skill reads the registry lazily (at call time) to map a skill's tools to categories.
     createSkillTool(context, registry),

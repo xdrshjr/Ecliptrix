@@ -31,6 +31,8 @@ interface AgentBusyBarProps {
   planStep?: ActiveStep | null;
   /** Show the "Enter to steer" hint (input empty and unfocused). */
   showSteerHint?: boolean;
+  /** true 时在最左侧渲染 `YOLO` 徽标，让「为什么不问我」在运行中自解释。 */
+  yolo?: boolean;
 }
 
 /** `m:ss`; hours are not expected within the idle timeout but stay correct. */
@@ -56,6 +58,7 @@ function useElapsedSeconds(startTime: number | null): number {
 
 const AgentBusyBar: React.FC<AgentBusyBarProps> = ({
   executionState, onCancel, planStep = null, showSteerHint = false,
+  yolo = false,
 }) => {
   const { t } = useLocale();
   const elapsed = useElapsedSeconds(executionState?.startTime ?? null);
@@ -83,6 +86,17 @@ const AgentBusyBar: React.FC<AgentBusyBarProps> = ({
       className="flex-shrink-0 flex items-center justify-between h-7 px-3 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border-y border-amber-200 dark:border-amber-900"
     >
       <div className="flex items-center gap-2 min-w-0">
+        {yolo ? (
+          <span
+            data-testid="agent-busy-yolo"
+            title={t.videoChatWindow.yoloBadgeTitle}
+            className="shrink-0 rounded border border-amber-300 dark:border-amber-800
+              bg-amber-100/70 dark:bg-amber-900/40 px-1 text-[10px] font-semibold
+              uppercase tracking-[0.06em] text-amber-800 dark:text-amber-200"
+          >
+            {t.videoChatWindow.yoloToggleLabel}
+          </span>
+        ) : null}
         <span className="relative inline-flex h-2 w-2 shrink-0" aria-hidden="true">
           <span className="absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75 motion-safe:animate-ping" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />

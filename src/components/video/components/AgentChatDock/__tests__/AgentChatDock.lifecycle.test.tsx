@@ -88,6 +88,9 @@ beforeAll(async () => {
       createPortal(React.createElement('button', null, 'portal'), document.body),
     ) },
     './AgentBusyBar': { __esModule: true, default: () => null },
+    // YOLO 开关与首开说明不在本用例的关注面内（见 YoloToggle/YoloNotice 测试）。
+    './YoloToggle': { __esModule: true, default: () => null },
+    './YoloNotice': { __esModule: true, default: () => null },
     '@/lib/video-editing-agent/planScan': planScan,
     '@/lib/video-editing-agent/askScan': askScan,
     '@/types/agentToolkit': agentToolkitTypes,

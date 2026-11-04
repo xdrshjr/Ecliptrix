@@ -83,6 +83,16 @@ export class SteeringMachine {
     return this.pendingNotes().length + this.queued.length;
   }
 
+  /**
+   * 是否还有未送达到模型的插话或排队文本。
+   *
+   * 回合结束边沿上的「唯一发送者」仲裁（YOLO 自动续跑）必须问这个，而不是
+   * 自己再写一遍 `local | sent` 过滤：那条规则只有这里一份。
+   */
+  hasPendingInput(): boolean {
+    return this.totalPending() > 0;
+  }
+
   // ---- lifecycle ----
 
   /** 新回合开始：插话记录归零（上一轮已送达的已随其消息持久化）。 */

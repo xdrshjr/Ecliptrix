@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentStateManager } from '@/lib/video-editing-agent/AgentStateManager';
 import { endsWithUnansweredQuestion } from '@/lib/video-editing-agent/askScan';
-import type { SSEEvent } from '@/lib/video-editing-agent/types';
+import type {
+  AgentAutonomy, LastAgentTurnEnd, SSEEvent,
+} from '@/lib/video-editing-agent/types';
 import type { ChatMessage } from '@/types';
 import type { AgentExecutionStatus } from './useAgentExecutionState';
 import type { SteeringNotice } from './steeringMachine';
@@ -28,6 +30,12 @@ export interface SkillSkipNotice {
 export interface UseAgentExecutionSteeringArgs {
   agentIsExecuting: boolean;
   executionStatus: AgentExecutionStatus;
+  /** 本回合发起时快照的自主模式（请求体里发出去的那个值）。 */
+  autonomy: AgentAutonomy;
+  /** 15s finishing 看门狗是否接管了本回合的收尾（`onFinishingTimeout`）。 */
+  finishingTimedOut: boolean;
+  /** 采样时绑定当前活动会话，防止切换会话后对着新会话求值。 */
+  activeConversationId?: string | null;
   getStateManager: () => AgentStateManager | null;
   getMessages: () => readonly ChatMessage[] | undefined;
   sendFollowUp: (text: string) => void;
@@ -43,6 +51,12 @@ export interface UseAgentExecutionSteeringReturn {
   routeEvent: (event: SSEEvent) => boolean;
   /** 新回合开始：登记承载技能的用户消息，清空上一回合的提示。 */
   beginTurn: (userMessage: ChatMessage) => void;
+  /**
+   * 回合结束事实（评审 P0-1 / P1-1）：在既有 turn-end edge 上**先采样**，
+   * 再交给 steering 与 YOLO 消费。`steeredOrQueued` / `followUpSent` 必须在
+   * `onTurnEnd` drain 之前取值——drain 之后队列恒为空，读到的是假象。
+   */
+  lastTurnEnd: LastAgentTurnEnd | null;
 }
 
 function toReason(status: AgentExecutionStatus): 'completed' | 'cancelled' | 'error' {
@@ -60,6 +74,9 @@ export function useAgentExecutionSteering(
   const [skillSkip, setSkillSkip] = useState<SkillSkipNotice | null>(null);
   const nonceRef = useRef(0);
   const turnUserMessageRef = useRef<ChatMessage | null>(null);
+  const [lastTurnEnd, setLastTurnEnd] = useState<LastAgentTurnEnd | null>(null);
+  /** 递增：每次回合结束都是一个新事实（幂等判据，§4.6.5）。 */
+  const turnSeqRef = useRef(0);
 
   const notify = useCallback((notice: SteeringNotice) => {
     const copy = t.agentCollab;
@@ -84,10 +101,28 @@ export function useAgentExecutionSteering(
   const wasExecuting = useRef(args.agentIsExecuting);
   useEffect(() => {
     if (wasExecuting.current && !args.agentIsExecuting) {
-      steeringRef.current.onTurnEnd({
-        reason: toReason(args.executionStatus),
-        endedWithAskUser: endsWithUnansweredQuestion(args.getMessages()),
+      const reason = toReason(args.executionStatus);
+      const endedWithAskUser = endsWithUnansweredQuestion(args.getMessages());
+      // 1) 先采样：此刻 steering 还没 drain，队列内容就是「用户是否在管」的证据。
+      //    判定走 SteeringMachine 自己的 `hasPendingInput()`，不在这里复制
+      //    「哪些 note 算未送达」那条规则。
+      const steeringNow = steeringRef.current;
+      const steeredOrQueued = steeringNow.hasPendingInput();
+      setLastTurnEnd({
+        autonomy: argsRef.current.autonomy,
+        reason,
+        finishingTimedOut: argsRef.current.finishingTimedOut,
+        steeredOrQueued,
+        // steering 只在「正常完成且没有未回答提问」时自行发下一轮；有文本
+        // 要发却没发（非正常终态/以提问收尾）时它回填输入框，不算发送者。
+        followUpSent: steeredOrQueued && reason === 'completed'
+          && !endedWithAskUser,
+        endedWithAskUser,
+        conversationId: argsRef.current.activeConversationId ?? null,
+        turnSeq: ++turnSeqRef.current,
       });
+      // 2) 再交给 steering：有排队文本就在这一步发出（followUpSent 已定格）。
+      steeringNow.onTurnEnd({ reason, endedWithAskUser });
     }
     wasExecuting.current = args.agentIsExecuting;
   }, [args, args.agentIsExecuting, args.executionStatus]);
@@ -117,5 +152,7 @@ export function useAgentExecutionSteering(
     steeringRef.current.startTurn();
   }, []);
 
-  return { steering, draftRestore, skillSkip, routeEvent, beginTurn };
+  return {
+    steering, draftRestore, skillSkip, routeEvent, beginTurn, lastTurnEnd,
+  };
 }

@@ -112,13 +112,20 @@ contextWindow: config.contextWindowTokens ?? 128000,
       globalConcurrency: config.webCapabilities?.limits?.global_concurrency,
     },
     skillAvailability: skillAvailability(config.webCapabilities, config.crewSettings?.enabled),
+    // 请求即快照：本回合的自主模式不会中途改变（D-08）。缺省 undefined =
+    // 互动模式，工具与提示词两处都按旧行为渲染。
+    autonomy: config.autonomy,
   };
 
   // 4. Create ToolRegistry and build tools
   const registry = createToolRegistry(toolContext);
+  // YOLO：`ask_user` 整类移除。coreNames 必须同步剔除，否则会出现
+  // `canExecute('ask_user') === true` 却无工具可调用的自相矛盾（§4.4）。
+  const isYolo = config.autonomy === 'yolo';
   const activation = new ToolActivationState(registry, [
     ...registry.getAlwaysAvailableTools().map(tool => tool.name),
-    ...CORE_TOOLKIT_TOOL_NAMES, 'explore_tools',
+    ...CORE_TOOLKIT_TOOL_NAMES.filter(name => !isYolo || name !== 'ask_user'),
+    'explore_tools',
   ]);
   // `use_skill` preloads the tools a skill names through this narrow window;
   // the activation object itself never reaches a tool.
@@ -149,6 +156,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     memoryDigest: config.memoryDigest ?? null,
     skillIndex: config.skillIndex,
     crewEnabled: config.crewSettings?.enabled,
+    autonomy: config.autonomy,
   }) + (exploredCategories.length
     ? '\n## 已加载的高级工具（历史提示）\n' +
       exploredCategories.slice(-2).join(', ') +

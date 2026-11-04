@@ -46,6 +46,15 @@ const UserMessageNode: React.FC<UserMessageNodeProps> = ({ node }) => {
           <span className="text-xs font-medium text-foreground dark:text-zinc-300">
             {t.agentTimeline.userAuthor}
           </span>
+          {node.automaticLabel ? (
+            <span
+              data-testid="agent-user-message-automatic"
+              className="text-[10px] font-medium uppercase tracking-[0.06em]
+                text-amber-700 dark:text-amber-300"
+            >
+              {node.automaticLabel}
+            </span>
+          ) : null}
         </div>
 
         {/* Message body */}

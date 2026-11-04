@@ -178,6 +178,17 @@ describe('the 12 toolkit tools', () => {
     expect(always).not.toContain('run_analysis');
   });
 
+  it('drops ask_user in YOLO while leaving the other 11 toolkit tools alone', async () => {
+    const { createToolRegistry } = await import('../tools/index');
+    const registry = createToolRegistry({ ...makeContext(), autonomy: 'yolo' });
+    const names = registry.getAllTools().map(tool => tool.name);
+    expect(names).not.toContain('ask_user');
+    for (const name of ['update_plan', 'check_timeline', 'workspace_write',
+      'memory_search', 'run_analysis']) {
+      expect(names).toContain(name);
+    }
+  });
+
   it('keeps every new on-demand category discoverable with one line', async () => {
     const { createDefaultCategories } = await import('../registry');
     const categories = createDefaultCategories();

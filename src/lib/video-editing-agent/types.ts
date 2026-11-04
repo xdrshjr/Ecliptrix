@@ -8,6 +8,15 @@ import type { SkillIndexEntry } from '@/types/agentSkills';
 
 // --- Tool Context ---
 
+/**
+ * 本请求的自主模式（docs/plans/agent-yolo-autonomous-mode/spec.md §6.4）。
+ *
+ * `'yolo'` = 全自动：注册表不注册 `ask_user`，提示词换成 YOLO 指令；
+ * `'interactive'`（缺省）= 今天的协作式行为。缺省值就是"失败即旧行为"的
+ * 语义保证，类型与 route 两处都写死（R-13）。
+ */
+export type AgentAutonomy = 'interactive' | 'yolo';
+
 export interface ToolContext {
   researchRun?: ResearchRunClient;
   timelineState: TimelineState;
@@ -87,6 +96,8 @@ export interface ToolContext {
   loadTools?: (category: string, names: string[]) => { loaded: string[] };
   /** Capability availability for skill `requires` (false = known unavailable). */
   skillAvailability?: Partial<Record<string, boolean>>;
+  /** 本请求的自主模式快照；缺省 `'interactive'`。YOLO 下 `ask_user` 不注册。 */
+  autonomy?: AgentAutonomy;
 }
 
 // --- Timeline Operations (produced by tools, applied by frontend) ---
@@ -323,6 +334,8 @@ export interface AgentChatRequest {
   skillId?: string;
   /** Materials the user referenced with `@`; validated server-side. */
   mentions?: Array<{ materialId: string; label: string }>;
+  /** 本请求的自主模式；非法值按 `'interactive'`（route 白名单校验）。 */
+  autonomy?: AgentAutonomy;
 }
 
 /**
@@ -442,6 +455,40 @@ export interface VideoEditingAgentConfig {
   crewSettings?: CrewSettings;
   /** Enabled skills for the L0 "可用技能" section; empty/absent renders nothing. */
   skillIndex?: SkillIndexEntry[];
+  /**
+   * 本请求的自主模式（`autonomy` 请求字段的快照）。缺省 `'interactive'`：
+   * 只有明确传入 `'yolo'` 才会改动工具集与提示词，旧客户端逐字节同旧行为。
+   */
+  autonomy?: AgentAutonomy;
+}
+
+// --- Turn-end fact ---
+
+/**
+ * 回合结束事实（docs/plans/agent-yolo-autonomous-mode/spec.md §4.6.2 / §6.4）。
+ *
+ * 在既有的「执行态空闲边沿」上**同步采样一次**，供 steering 与 YOLO 共同
+ * 消费。**只有它能决定「要不要自动续跑」**——`onComplete` 回调期间
+ * `executionState.status` 仍是 `'finishing'`，那一刻发送会被
+ * `sendAgentMessage` 的静默 guard 吞掉（评审 P0-1）。
+ */
+export interface LastAgentTurnEnd {
+  /** 本回合发起时快照的自主模式（请求体里发出去的那个值）。 */
+  autonomy: AgentAutonomy;
+  /** 终态：只有 `completed` 才可能续跑。 */
+  reason: 'completed' | 'cancelled' | 'error';
+  /** 15s finishing 看门狗是否接管了收尾；true 时一律不续跑。 */
+  finishingTimedOut: boolean;
+  /** 采样时刻本回合是否有过插话或排队文本（`onTurnEnd` drain 之前取值）。 */
+  steeredOrQueued: boolean;
+  /** steering 是否已因排队文本自行发起了下一轮（唯一发送者仲裁）。 */
+  followUpSent: boolean;
+  /** 本回合是否以未回答的 `ask_user` 收尾（YOLO 下应恒为 false）。 */
+  endedWithAskUser: boolean;
+  /** 绑定会话，防止切换会话后对着新会话求值。 */
+  conversationId: string | null;
+  /** 单调递增：用于判断这条事实是否已被处理 / 已被新一轮覆盖。 */
+  turnSeq: number;
 }
 
 // Re-export from central types for convenience

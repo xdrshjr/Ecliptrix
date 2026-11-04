@@ -245,6 +245,21 @@ describe('registry wiring', () => {
     expect(always).not.toContain('view_image');
   });
 
+  it('drops the ask_user section only for YOLO (default path unchanged)', () => {
+    const context = makeContext();
+    const registry = createToolRegistry(context);
+    const base = {
+      timelineState: context.timelineState, materials: [], registry,
+      exploredCategories: [], plan: PLAN, memoryDigest: MEMORY,
+    };
+    const interactive = buildSystemPrompt(base);
+    expect((interactive.match(/### ask_user/g) ?? []).length).toBe(1);
+    const yolo = buildSystemPrompt({ ...base, autonomy: 'yolo' });
+    expect(yolo).not.toContain('### ask_user');
+    expect(yolo).toContain('YOLO 全自动模式');
+    expect(yolo.length).toBeLessThanOrEqual(interactive.length + 400);
+  });
+
   it('registers review_tools with the three visual tools', () => {
     const registry = createToolRegistry(makeContext());
     expect(registry.getCategoryTools('review_tools').map(tool => tool.name))

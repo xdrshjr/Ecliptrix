@@ -92,6 +92,8 @@ AGENT_TOOLKIT_DEFAULTS = {
     "crew_member_timeout_s": 90,
     "auto_compact": True,
     "auto_compact_ratio": 0.75,
+    # 全自动模式（YOLO）：出厂关闭，见 agent-yolo-autonomous-mode §7.1。
+    "yolo_mode": False,
 }
 
 # 读取时把库里残留的越界值夹取回区间（写入由 validate_setting_payload 拒绝）。

@@ -47,6 +47,8 @@ export interface EditorTopBarProps {
   onToggleAssistant(): void;
   exportState: EditorExportState;
   onExport(): void;
+  /** YOLO 已武装时渲染只读徽标；缺省 false，零布局影响（AC-C3）。 */
+  isYoloArmed?: boolean;
 }
 
 const ICON = { size: 16, strokeWidth: 1.75, 'aria-hidden': true } as const;
@@ -149,6 +151,7 @@ function ExportButton({ exportState, onExport }: Pick<EditorTopBarProps, 'export
 
 const EditorTopBar: React.FC<EditorTopBarProps> = ({
   project, isAssistantOpen, isAgentBusy, onToggleAssistant, exportState, onExport,
+  isYoloArmed = false,
 }) => {
   const { t } = useLocale();
   const copy = t.workbench.topBar;
@@ -169,6 +172,16 @@ const EditorTopBar: React.FC<EditorTopBarProps> = ({
       <SaveStatusIndicator status={project.saveStatus} lastSavedAt={project.lastSavedAt}
         onRetry={project.onRetrySave} />
       <div style={{ flex: 1, minWidth: 8 }} />
+      {/* 只读状态：顶栏 48px 已拥挤，切换入口在 AI 面板工具栏（D-02）。
+          复用既有 `.ws-chip--warn`，不新建视觉岛（评审 P2-01）。 */}
+      {isYoloArmed && (
+        <span className="ws-chip ws-chip--warn ws-hide-narrow"
+          data-testid="topbar-yolo-chip" role="status"
+          aria-label={t.videoChatWindow.yoloBadgeTitle}
+          title={t.videoChatWindow.yoloBadgeTitle}>
+          {t.videoChatWindow.yoloToggleLabel}
+        </span>
+      )}
       <HistoryButtons />
       <div className="ws-topbar-divider" aria-hidden="true" />
       <TaskCenterButton

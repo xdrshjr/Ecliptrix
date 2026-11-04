@@ -249,10 +249,12 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   // ----- Map messages to timeline nodes -----
 
   const emptyResponseLabel = t.agentStream.errors.emptyResponse;
+  const yoloAutoContinueLabel = t.videoChatWindow.yoloAutoContinue;
   const nodes = useMemo(
-    () => messagesToTimelineNodes(messages, { emptyResponse: emptyResponseLabel },
+    () => messagesToTimelineNodes(
+      messages, { emptyResponse: emptyResponseLabel, yoloAutoContinue: yoloAutoContinueLabel },
       { compactingAfterMessageId }),
-    [messages, emptyResponseLabel, compactingAfterMessageId],
+    [messages, emptyResponseLabel, yoloAutoContinueLabel, compactingAfterMessageId],
   );
 
   // ----- Determine if we need a live execution indicator at the end -----

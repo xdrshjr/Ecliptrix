@@ -81,4 +81,11 @@ describe('ask_user', () => {
     const second = questionIdFor('q', [{ label: 'a' }, { label: 'c' }]);
     expect(first).not.toBe(second);
   });
+
+  it('is absent from a YOLO registry, so the turn can never end on a question', async () => {
+    const { createToolRegistry } = await import('../tools/index');
+    const registry = createToolRegistry({ ...makeContext(), autonomy: 'yolo' });
+    expect(registry.getTool('ask_user')).toBeUndefined();
+    expect(registry.getAllTools().map(tool => tool.name)).not.toContain('ask_user');
+  });
 });

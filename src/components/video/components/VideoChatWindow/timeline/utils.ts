@@ -143,6 +143,8 @@ export function toolCallToStepData(
  * message that produced neither text nor tool calls.
  */
 export interface TimelineNodeLabels {
+  /** 「YOLO 自动继续」小标记（`metadata.type === 'yolo_continue'`）；缺省不渲染。 */
+  yoloAutoContinue?: string;
   emptyResponse: string;
 }
 
@@ -185,6 +187,9 @@ export function mapMessageToNodes(
         id: `${message.id}-user`,
         timestamp: message.timestamp,
         content: message.content,
+        // 自动续跑的消息必须自报身份，绝不假装是用户亲手打的字（§7.3）。
+        ...(message.metadata?.type === 'yolo_continue' && labels.yoloAutoContinue
+          ? { automaticLabel: labels.yoloAutoContinue } : {}),
       });
     } else {
       // assistant or system — render as a response node

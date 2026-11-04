@@ -16,7 +16,11 @@ import {
   readEditorContext,
   type EditorContextPayload,
 } from '@/lib/video-editing-agent/editorContextPrompt';
-import type { AgentChatRequest, SSEEvent } from '@/lib/video-editing-agent/types';
+import type {
+  AgentAutonomy,
+  AgentChatRequest,
+  SSEEvent,
+} from '@/lib/video-editing-agent/types';
 import type { ChatMessage, TimelineState, MaterialItem } from '@/types';
 
 // SWEEP-EXCEPTION: third-party LLM Agent SDK with custom SSE/heartbeat lifecycle
@@ -305,6 +309,15 @@ function readCompositionId(value: unknown): string | undefined {
   return /^[A-Za-z0-9_.:-]+$/.test(trimmed) ? trimmed : undefined;
 }
 
+/**
+ * 本请求的自主模式（agent-yolo-autonomous-mode §4.3）。与 `readCompositionId`
+ * 同风格：只认白名单字面量，其余一律按互动模式——多问一句是可接受的降级，
+ * 「整轮 400」不是。
+ */
+function readAutonomy(value: unknown): AgentAutonomy {
+  return value === 'yolo' ? 'yolo' : 'interactive';
+}
+
 function resolveAgentLoopbackUrl(): string {
   const port =
     process.env.AGENT_LOOPBACK_PORT ??
@@ -326,6 +339,7 @@ export async function POST(request: NextRequest) {
     const { messages, timelineState, materials, projectId } = body as AgentChatRequest & { projectId?: string };
     const lastCompositionId = readCompositionId(body.lastCompositionId);
     const editorContext = readEditorContext((body as { editorContext?: unknown }).editorContext);
+    const autonomy = readAutonomy((body as { autonomy?: unknown }).autonomy);
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
@@ -559,6 +573,7 @@ export async function POST(request: NextRequest) {
             apiBaseUrl,
             projectId,
             lastCompositionId,
+            autonomy,
           });
 
           // Wire the route-wide tool-abort signal into the ToolContext so

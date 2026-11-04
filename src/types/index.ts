@@ -67,9 +67,9 @@ export interface ChatMessage {
   timestamp: Date;
   isStreaming?: boolean;
   metadata?: {
-    type?: 'intent_detection' | 'intent_result' | 'compaction';
-    status?: string;
-    intention?: any;
+    // 'yolo_continue' = 客户端自动续跑发出的回合（agent-yolo-autonomous-mode §7.3）。
+    type?: 'intent_detection' | 'intent_result' | 'compaction' | 'yolo_continue';
+    status?: string; intention?: any;
     /** Present when `type === 'compaction'`: a folded-history digest. */
     compaction?: ConversationCompaction;
   };
