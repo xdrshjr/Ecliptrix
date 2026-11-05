@@ -2026,6 +2026,10 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       else showSuccess(message);
     },
     agentMode, setAgentMode, projectId, getEditorContext: () => workbench.getEditorContext(),
+    // 与左侧「全片默认音色」底栏、以及手动「转换语音」同源同值（`workbench.defaultVoiceId`
+    // 就是 `content?.defaultVoiceId`，见 useWorkbenchWiring:196；此处须读 content，
+    // 因为 workbench 在下方才声明）。保证 Agent 配音不会另用一套默认值。
+    defaultVoiceId: content?.defaultVoiceId ?? DEFAULT_VOICE_ID,
     yolo: yoloMode.yolo });
 
   // External edit lock: agent operations are undoable, so a keyboard/toolbar

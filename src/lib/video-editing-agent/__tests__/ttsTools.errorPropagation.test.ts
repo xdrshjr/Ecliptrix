@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ToolContext } from '../types';
 import { createGenerateTtsTool } from '../tools/generateTts';
 import { createBatchGenerateTtsTool } from '../tools/batchGenerateTts';
+import { FALLBACK_TTS_VOICE_ID } from '../voiceDefaults';
 
-const DEFAULT_VOICE = 'zh_female_qingxinnvsheng_uranus_bigtts';
+// 工具在「调用方没有工程默认音色」时的兜底音色 = 界面「全片默认音色」的缺省值
+// （docs/diagnoses/agent-tts-ignores-project-default-voice/analysis.md §8.6）。
+const DEFAULT_VOICE = FALLBACK_TTS_VOICE_ID;
 
 function context(signal?: AbortSignal): ToolContext {
   return {

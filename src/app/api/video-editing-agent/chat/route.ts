@@ -11,6 +11,7 @@ import { registerRun, unregisterRun } from '@/lib/server/agentRunRegistry';
 import { createRunHandle, type RunHandle } from './runLifecycle';
 import { resolveTurnPrompt } from './turnPrompt';
 import { AGENT_IDLE_TIMEOUT_MS } from '@/lib/video-editing-agent/timeouts';
+import { readVoiceId } from '@/lib/video-editing-agent/voiceDefaults';
 import {
   appendEditorContext,
   readEditorContext,
@@ -340,6 +341,10 @@ export async function POST(request: NextRequest) {
     const lastCompositionId = readCompositionId(body.lastCompositionId);
     const editorContext = readEditorContext((body as { editorContext?: unknown }).editorContext);
     const autonomy = readAutonomy((body as { autonomy?: unknown }).autonomy);
+    // 工程「全片默认音色」（界面底栏同源）。非法值一律降级为 undefined，不 400。
+    // 校验器放在 `video-editing-agent/voiceDefaults.ts` 而不是本文件：Route 模块
+    // 只能导出 HTTP 方法与路由字段，纯函数留在这里就无法被单测覆盖。
+    const defaultVoiceId = readVoiceId((body as { defaultVoiceId?: unknown }).defaultVoiceId);
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
@@ -574,6 +579,7 @@ export async function POST(request: NextRequest) {
             projectId,
             lastCompositionId,
             autonomy,
+            defaultVoiceId,
           });
 
           // Wire the route-wide tool-abort signal into the ToolContext so

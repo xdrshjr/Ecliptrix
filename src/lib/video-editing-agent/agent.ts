@@ -86,6 +86,8 @@ contextWindow: config.contextWindowTokens ?? 128000,
     apiBaseUrl: config.apiBaseUrl,
     projectId: config.projectId,
     lastCompositionId: config.lastCompositionId,
+    // 请求即快照：本回合的工程默认音色，TTS 工具的缺省值来源（不再硬编码）。
+    defaultVoiceId: config.defaultVoiceId,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
       if (toolContext.abortSignal?.aborted) return;

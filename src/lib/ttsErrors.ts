@@ -49,6 +49,8 @@ export interface TtsBatchToolResult {
   success: boolean;
   partial: boolean;
   taskId: string;
+  /** 本批「全片默认音色」：未逐段指定 `voice_type` 的段落实际用的就是这个值。 */
+  voice_type?: string;
   total_segments: number;
   successful_segments: number;
   failed_segments: number;

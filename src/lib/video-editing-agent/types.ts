@@ -98,6 +98,13 @@ export interface ToolContext {
   skillAvailability?: Partial<Record<string, boolean>>;
   /** 本请求的自主模式快照；缺省 `'interactive'`。YOLO 下 `ask_user` 不注册。 */
   autonomy?: AgentAutonomy;
+  /**
+   * 工程「全片默认音色」快照（界面左侧「全片默认音色」底栏的值，持久化在
+   * `content.defaultVoiceId`，由前端请求体透传）。TTS 工具的缺省音色取它：
+   * 用户显式 `voice_type` > 本字段 > `FALLBACK_TTS_VOICE_ID`（`voiceDefaults.ts`）。
+   * 缺省 undefined 表示调用方没带（旧客户端 / 单元测试），落到兜底音色。
+   */
+  defaultVoiceId?: string;
 }
 
 // --- Timeline Operations (produced by tools, applied by frontend) ---
@@ -336,6 +343,9 @@ export interface AgentChatRequest {
   mentions?: Array<{ materialId: string; label: string }>;
   /** 本请求的自主模式；非法值按 `'interactive'`（route 白名单校验）。 */
   autonomy?: AgentAutonomy;
+  /** 工程「全片默认音色」（界面底栏同源）；route 侧过白名单后注入 ToolContext，
+   *  TTS 工具在模型省略 `voice_type` 时用它。 */
+  defaultVoiceId?: string;
 }
 
 /**
@@ -460,6 +470,12 @@ export interface VideoEditingAgentConfig {
    * 只有明确传入 `'yolo'` 才会改动工具集与提示词，旧客户端逐字节同旧行为。
    */
   autonomy?: AgentAutonomy;
+  /**
+   * 工程「全片默认音色」（`defaultVoiceId` 请求字段的快照，已过 route 白名单）。
+   * 原样注入 `ToolContext.defaultVoiceId`，TTS 工具据此解析缺省音色，
+   * 不再回落到工具里硬编码的音色。
+   */
+  defaultVoiceId?: string;
 }
 
 // --- Turn-end fact ---

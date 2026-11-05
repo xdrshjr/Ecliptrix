@@ -103,6 +103,13 @@ export interface UseAgentExecutionParams {
   getEditorContext?: () => AgentEditorContext | null;
   /** 全自动模式（YOLO）：true 时请求体带 `autonomy: 'yolo'`（§4.3）。 */
   yolo?: boolean;
+  /**
+   * 工程「全片默认音色」（界面左侧「全片默认音色」底栏的值）。随请求体下发，
+   * Agent 侧 TTS 工具在模型省略 `voice_type` 时用它，保证「界面显示的」
+   * 与「Agent 实际用的」是同一个音色（docs/diagnoses/
+   * agent-tts-ignores-project-default-voice/analysis.md §9.1）。
+   */
+  defaultVoiceId?: string;
 }
 
 // 回合上下文形状与组装已抽到 `agentTurnContext`（见文件头 §5.2.1 棘轮）；
@@ -214,6 +221,11 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   const materialsRef = useRef(materials);
   materialsRef.current = materials;
+
+  // 工程默认音色同样走 ref：`sendAgentMessage` 不必为它重建回调，
+  // 而用户刚点完「更换」立刻发消息时读到的一定是最新值（无 800ms 落盘延迟）。
+  const defaultVoiceIdRef = useRef(params.defaultVoiceId);
+  defaultVoiceIdRef.current = params.defaultVoiceId;
 
   const updateConvMessagesRef = useRef(updateConversationMessages);
   updateConvMessagesRef.current = updateConversationMessages;
@@ -590,6 +602,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           ...buildEditorContextField(getEditorContextRef.current),
           // 请求即快照：本回合的自主模式（缺省 undefined = 互动模式）。
           ...(yolo ? { autonomy: 'yolo' as AgentAutonomy } : {}),
+          // 工程「全片默认音色」：TTS 工具省略 voice_type 时用它。
+          ...(defaultVoiceIdRef.current
+            ? { defaultVoiceId: defaultVoiceIdRef.current } : {}),
         },
         ...callbacks,
       });

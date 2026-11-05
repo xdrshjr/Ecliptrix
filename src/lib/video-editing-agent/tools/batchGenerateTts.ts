@@ -3,6 +3,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { MaterialItem } from '@/types';
 import type { TtsBatchToolResult, TtsSegmentSuccess } from '@/lib/ttsErrors';
 import type { ToolContext } from '../types';
+import { resolveVoiceType } from '../voiceDefaults';
 import { toolFetch } from './apiHelper';
 import {
   assertTtsNotAborted, invalidTtsRequest, normalizeBatchTtsResponse,
@@ -10,14 +11,15 @@ import {
 } from './ttsResponse';
 import type { TtsRequestSegment } from './ttsResponse';
 
-const DEFAULT_VOICE_TYPE = 'zh_female_qingxinnvsheng_uranus_bigtts';
 const MAX_SEGMENTS = 50;
 const MAX_TEXT_LENGTH = 5000;
 
 const parameters = Type.Object({
   segments: Type.Array(Type.Object({
     text: Type.String({ description: '本段需要转换的文本。' }),
-    voice_type: Type.Optional(Type.String({ description: '本段的火山语音音色 ID。' })),
+    voice_type: Type.Optional(Type.String({
+      description: '本段的火山语音音色 ID；省略则使用本工程「全片默认音色」。',
+    })),
   }), { description: '待生成配音的段落；可以逐段指定音色。' }),
   speed: Type.Optional(Type.Number({ description: '统一语速倍数，0.5–2.0，默认 1.0。' })),
 });
@@ -29,7 +31,9 @@ export function createBatchGenerateTtsTool(
 ): AgentTool<typeof parameters> {
   return {
     name: 'batch_generate_tts', label: '批量生成配音',
-    description: '同步生成各段配音并返回素材 ID、原始索引及失败段落。taskId 仅用于关联；部分失败后只按用户意图重试指定失败段落。',
+    description: '同步生成各段配音并返回素材 ID、原始索引及失败段落。默认使用本工程「全片默认音色」，' +
+      '不要每轮追问；仅当用户提到性别/风格/语言/年龄/情绪或抱怨音色不对时，先用 ask_user 问一次' +
+      '（YOLO 模式除外）。taskId 仅用于关联；部分失败后只按用户意图重试指定失败段落。',
     parameters,
     execute: async (toolCallId, params: Params) => {
       assertTtsNotAborted(context);
@@ -40,7 +44,7 @@ export function createBatchGenerateTtsTool(
       const requests = params.segments.map((segment, input_index) => ({
         segment_id: `${taskId}-seg-${input_index}`, input_index,
         text: segment.text.trim(),
-        voice_type: segment.voice_type ?? DEFAULT_VOICE_TYPE,
+        voice_type: resolveVoiceType(segment.voice_type, context.defaultVoiceId),
       }));
       let normalized: ReturnType<typeof normalizeBatchTtsResponse>;
       try {
@@ -63,7 +67,8 @@ export function createBatchGenerateTtsTool(
       if (normalized.ignoredResults) {
         console.warn('[batch_generate_tts] 忽略无关或无效结果条数：', normalized.ignoredResults);
       }
-      return ttsToolResult(batchPayload(taskId, normalized));
+      const defaultVoiceType = resolveVoiceType(undefined, context.defaultVoiceId);
+      return ttsToolResult(batchPayload(taskId, normalized, defaultVoiceType));
     },
   };
 }
@@ -92,7 +97,9 @@ async function callBatchTtsApi(
       segments: requests.map(({ segment_id, text, voice_type }) => ({
         segment_id, text, voice_type,
       })),
-      voice_type: DEFAULT_VOICE_TYPE,
+      // 段级已逐段解析；顶层只是兜底，后端语义仍是「段级优先」
+      // （batch_tts_service.py:157 `segment.voice_type or request.voice_type`）。
+      voice_type: resolveVoiceType(undefined, context.defaultVoiceId),
       speed_ratio: Math.max(0.5, Math.min(2, speed ?? 1)), task_id: taskId,
     }),
   });
@@ -105,6 +112,7 @@ async function callBatchTtsApi(
 function batchPayload(
   taskId: string,
   normalized: ReturnType<typeof normalizeBatchTtsResponse>,
+  defaultVoiceType: string,
 ): TtsBatchToolResult {
   const { results, failures } = normalized;
   const total = results.length + failures.length;
@@ -112,6 +120,8 @@ function batchPayload(
   const first = failures[0];
   return {
     success, partial: success && failures.length > 0, taskId,
+    // 回显「全片默认音色」：未逐段指定音色的段落实际用的就是它。
+    voice_type: defaultVoiceType,
     total_segments: total, successful_segments: results.length,
     failed_segments: failures.length, results, failures,
     message: `成功 ${results.length}/${total} 段，${failures.length} 段失败。`,

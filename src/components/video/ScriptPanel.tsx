@@ -53,9 +53,10 @@ import {
   shouldAutoGeneratePrompt,
   runWithConcurrency,
 } from '@/lib/api/sentenceAiVideoPrompt';
+import { FALLBACK_TTS_VOICE_ID } from '@/lib/video-editing-agent/voiceDefaults';
 
 /** 全片默认音色的内置缺省值（旧工程没有 content.defaultVoiceId 时沿用，I-1）。 */
-export const DEFAULT_VOICE_ID = 'zh_male_shaonianzixin_uranus_bigtts';
+export const DEFAULT_VOICE_ID = FALLBACK_TTS_VOICE_ID;
 
 interface ScriptPanelProps {
   segments: ScriptSegment[];

@@ -167,7 +167,7 @@ export const TTS_VOICE_TABLE_MD = `常用音色（voice_type, Volcano TTS 2.0 / 
   - zh_male_dongfanghaoran_uranus_bigtts     — 东方浩然 2.0 (male, Chinese)
   - en_female_dacey_uranus_bigtts             — Dacey (female, American English)
   - en_male_tim_uranus_bigtts                  — Tim (male, American English)
-省略 voice_type 时默认使用 zh_female_qingxinnvsheng_uranus_bigtts。所有可选音色见 /api/tts/voices；不要使用 *_moon_bigtts (1.0) — 已停用。`;
+省略 voice_type 时使用本工程「全片默认音色」（用户明确指定则以用户为准）；所有可选音色见 /api/tts/voice-types；不要使用 *_moon_bigtts (1.0) — 已停用。`;
 
 /**
  * Workflow recipes (Layer C). Recipes 1-3 (explainer video, storyboard short,
