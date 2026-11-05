@@ -342,6 +342,12 @@ export async function POST(request: NextRequest) {
     }
     const { messages, timelineState, materials, projectId } = body as AgentChatRequest & { projectId?: string };
     const lastCompositionId = readCompositionId(body.lastCompositionId);
+    const rawConversationId = (body as { conversationId?: unknown }).conversationId;
+    const conversationId = typeof rawConversationId === 'string'
+      && rawConversationId.length <= 200 ? rawConversationId : undefined;
+    const generationConfigRevision = typeof body.generationConfigRevision === 'string'
+      && /^[a-zA-Z0-9-]{1,100}$/.test(body.generationConfigRevision)
+      ? body.generationConfigRevision : undefined;
     const editorContext = readEditorContext((body as { editorContext?: unknown }).editorContext);
     const autonomy = readAutonomy((body as { autonomy?: unknown }).autonomy);
     // 工程「全片默认音色」（界面底栏同源）。非法值一律降级为 undefined，不 400。
@@ -581,6 +587,8 @@ export async function POST(request: NextRequest) {
             timelineState: effectiveTimelineState,
             materials: effectiveMaterials,
             conversationHistory: messages,
+            conversationId,
+            generationConfigRevision,
             apiBaseUrl,
             projectId,
             lastCompositionId,

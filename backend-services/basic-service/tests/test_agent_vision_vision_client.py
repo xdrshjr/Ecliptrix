@@ -113,6 +113,18 @@ def test_messages_put_images_before_the_question():
     assert "legible" in parts[-1]["text"]
 
 
+def test_generated_labels_are_separate_from_question_limit():
+    annotations = {"version": "contact-sheet-labels-v1", "labels": [
+        {"text": "#1  00:00.5", "region": [0.01, 0.01, 0.2, 0.1]}]}
+    text = vision_client.build_user_text("问" * 300, "scan", [], annotations)
+    assert "#1  00:00.5" in text
+    assert "真实水印" in text
+    assert "无标签原帧" in text
+    plain = vision_client.build_user_text("检查源画面时间码", "scan", [])
+    assert "contact-sheet-labels" not in plain
+    assert "工具添加" not in plain
+
+
 # ── 网关错误映射 ──────────────────────────────────────────────────────────
 
 

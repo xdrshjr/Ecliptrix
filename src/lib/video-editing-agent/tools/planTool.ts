@@ -1,8 +1,11 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
-import type { AgentPlan, PlanStep, PlanStepStatus } from '@/types/agentToolkit';
+import type { AgentPlan, EditingDeliverable, PlanStep, PlanStepStatus } from '@/types/agentToolkit';
 import { toolkitResult } from './toolkitAdapter';
+import { lintTimeline } from './qualityLint';
+import { readEditingGoal } from '../planScan';
+import { isTrackRendered } from '@/components/video/timeline/infrastructure/renderableTimeline';
 
 /**
  * `update_plan`：显式执行计划（常驻工具，界面可见）。
@@ -22,6 +25,13 @@ const parameters = Type.Object({
     status: Type.Optional(Type.Union([
       Type.Literal('pending'), Type.Literal('in_progress'),
       Type.Literal('completed'), Type.Literal('blocked')])),
+    deliverable: Type.Optional(Type.Union([
+      Type.Literal('editing'), Type.Literal('bgm'),
+      Type.Literal('export'), Type.Literal('inspection'),
+    ], { description: 'Editing commitment.' })),
+    material_ids: Type.Optional(Type.Array(Type.String(), {
+      description: 'Downloaded BGM ids on audible tracks.',
+    })),
   }), { minItems: 1, maxItems: 20,
     description: 'Ordered steps. At most one may be in_progress.' }),
   note: Type.Optional(Type.String({ maxLength: 200,
@@ -58,7 +68,8 @@ export function planIdFor(steps: readonly PlanStep[]): string {
 
 /** 归一化：多个 `in_progress` 只保留第一个，其余降级为 `pending`。 */
 export function normalizePlanSteps(
-  raw: ReadonlyArray<{ title: string; status?: string }>,
+  raw: ReadonlyArray<{ title: string; status?: string;
+    deliverable?: EditingDeliverable; material_ids?: string[] }>,
   maxSteps = DEFAULT_MAX_STEPS,
 ): { steps: PlanStep[]; normalized: boolean } {
   let normalized = false;
@@ -87,7 +98,10 @@ export function normalizePlanSteps(
         seenInProgress = true;
       }
     }
-    steps.push({ index: steps.length, title, status });
+    steps.push({ index: steps.length, title, status,
+      ...(item.deliverable ? { deliverable: item.deliverable } : {}),
+      ...(item.material_ids ? { materialIds: item.material_ids } : {}),
+    });
   }
   return { steps, normalized };
 }
@@ -115,9 +129,8 @@ export function createPlanTool(
     name: 'update_plan',
     label: 'Update Plan',
     description:
-      'Publish or update the visible execution plan for a multi-step task (3+ steps). ' +
-      'Call it once at the start, again whenever a step changes state, and a final time ' +
-      'with every step completed. At most one step may be in_progress.',
+      'Update a multi-step plan. Declare editing deliverables; completion needs evidence. '
+      + 'Keep blocked work blocked. At most one in_progress step.',
     parameters,
     execute: async (_toolCallId: string, params: Params) => {
       if (params.steps.length > maxSteps) {
@@ -137,12 +150,21 @@ export function createPlanTool(
           next_step: 'Give every step a non-empty title.',
         });
       }
+      const failures = checkEditingDelivery(context, steps);
       const planId = planIdFor(steps);
       const plan = summarizePlan(planId, steps, params.note?.trim() || undefined);
+      if (context.turnState.editingGoal) plan.editingGoal = context.turnState.editingGoal;
       // 本轮权威状态；跨轮由 planScan 从工具记录派生。
       context.turnState.plan = plan;
       return toolkitResult({
-        success: true,
+        success: failures.length === 0,
+        ...(failures.length ? {
+          error_code: 'delivery_incomplete',
+          plan_applied: true,
+          failureClass: 'validation',
+          error_details: { failure_class: 'validation', retryable: false },
+          next_step: failures.join(' '),
+        } : {}),
         plan_id: planId,
         steps: plan.steps,
         active_step: plan.activeStep,
@@ -150,7 +172,65 @@ export function createPlanTool(
         total: plan.total,
         note: plan.note ?? null,
         normalized,
+        ...(plan.editingGoal ? { editing_goal: plan.editingGoal } : {}),
       });
     },
   };
+}
+
+/** 只约束有用户目标的编辑计划；不从自然语言标题推断交付类型。 */
+function checkEditingDelivery(context: ToolContext, steps: PlanStep[]): string[] {
+  const goal = context.turnState.editingGoal;
+  if (!goal) return [];
+  if (!readEditingGoal(goal)) {
+    steps.forEach(step => { if (step.status === 'completed') step.status = 'blocked'; });
+    return ['编辑目标必须有有效来源及有限正数时长/帧率。'];
+  }
+  const previous = context.turnState.plan;
+  goal.commitments = Array.from(new Set([...goal.commitments,
+    ...steps.flatMap(step => step.deliverable ? [step.deliverable] : [])]));
+  const requestedComplete = steps.every(step => step.status === 'completed');
+  const failures: string[] = [];
+  for (const kind of goal.commitments) {
+    let step = steps.find(item => item.deliverable === kind);
+    if (!step) {
+      const old = previous?.steps.find(item => item.deliverable === kind);
+      step = { ...old, index: steps.length, title: old?.title ?? `交付：${kind}`,
+        deliverable: kind, status: requestedComplete ? 'completed' : old?.status ?? 'pending' };
+      steps.push(step);
+    }
+    if (step.status !== 'completed') continue;
+    const problem = deliveryProblem(context, kind, step.materialIds);
+    if (problem) { step.status = 'blocked'; failures.push(problem); }
+  }
+  return failures;
+}
+
+function deliveryProblem(context: ToolContext, kind: EditingDeliverable, ids?: string[]): string | undefined {
+  if (kind === 'export' || kind === 'inspection') {
+    return '当前没有绑定本项目和当前编辑版本的导出完成回执；保留 blocked，并交接编辑器导出/检查。';
+  }
+  if (kind === 'bgm') {
+    const audible = context.timelineState.tracks.filter(track => track.type === 'audio'
+      && isTrackRendered(track) && track.volume > 0).flatMap(track => track.items);
+    const verified = ids?.length && ids.every(id => audible.some(item => item.materialId === id
+      && (item.volume ?? 1) > 0) && context.materials.some(material => material.id === id
+      && material.type === 'audio' && !id.startsWith('tts-')
+      && (!!material.cacheUrl || !!material.storageKey
+        || (typeof material.url === 'string' && material.url.startsWith('/api/storage/files/')))));
+    return verified ? undefined : 'BGM 尚无已下载且实际落在可听音轨的素材证据；保留 blocked，说明纯旁白降级。';
+  }
+  const usedIds = new Set(context.timelineState.tracks
+    .filter(isTrackRendered)
+    .flatMap(track => track.items.map(item => item.materialId)));
+  if (context.materials.some(material => usedIds.has(material.id)
+    && material.metadata?.candidate === true && material.metadata?.materialized !== true)) {
+    return '当前使用的搜索候选尚无下载回执；下载并使用实际素材后再完成编辑验收。';
+  }
+  const report = lintTimeline({ timelineState: context.timelineState,
+    materials: context.materials, targetWidth: 1920, targetHeight: 1080,
+    targetDurationSeconds: context.turnState.editingGoal!.targetDurationSeconds,
+    fps: context.turnState.editingGoal!.fps });
+  return report.ok ? undefined : `编辑验收未通过：${report.issues
+    .filter(issue => issue.severity === 'blocker').map(issue => issue.code).join(', ')}。`;
 }

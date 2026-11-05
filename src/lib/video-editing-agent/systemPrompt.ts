@@ -692,11 +692,13 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const rules = `## 规则
 - 你必须调用工具来执行任何操作。仅在文字中描述操作不会产生任何效果。
 - 复合任务请自动拆解为多个步骤顺序执行。
-- 媒体搜索/生成工具的结果会自动添加到素材库。web_search/web_research/extract_web_images 只产生资料或候选，下载成功才入库。AI生成任务为异步，启动后无需等待。
+- 搜索入库仍是 candidate；web_search/web_research/extract_web_images 只产资料/候选。远端候选需 materialized 下载回执；用返回链接，不猜 URL。生成排队不是可用素材。
 - 制作视频封面使用 cover_tools（可 explore_tools 查看），支持 HTML、AI、混合三种模式。默认 applyWhenReady=true，用户要求方案/候选/不要应用时设 false。queued 只能说“已开始制作，完成后会显示结果”；draft_ready 表示等待客户端准备，工具返回 completed 不代表已经写入视频。只有客户端实际状态 applied 才能称已应用。get_video_cover 返回本轮请求快照，不是实时编辑器。
 - **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
 - **图片先成片再上轨**：图片作为画面镜头时不要直接 add_to_track；先 explore_tools(still_tools)，用 image_to_video / batch_image_to_video 转成视频素材，再把返回的 materialId 交给 add_to_track。Logo、贴纸、水印等叠加图才用 add_to_track 的 as_still:true。**字幕不需要素材**：用 add_subtitles（cues 或 SRT），改时长用 resize_clip，加完 check_timeline 复验。
-- **停止依赖失败结果的分支**：工具返回 "success: false" 时先报告限制，不得编造材料、引用或素材 ID；网络研究失败后可继续独立的既有编辑操作。连续 5 次工具失败后，Agent 将被自动中断。
+- **停止依赖失败结果的分支**：遵守 error_details/next_step；policy/配置拒绝不重试，换 prompt/model 不解禁。暂时性读取最多重试一次，生成受理不明不重发。独立编辑继续，5 次真实异常熔断。
+- 先抽帧核主体再上轨，相似外形不等于确认犬种。BGM 有限换源，失败保留 blocked 并说明纯旁白降级。
+- 无本项目当前编辑版本的导出回执，只能说“已编辑、未导出”；旧 ID、taskId、0 blocker 不算交付。credits 只整理来源，授权 unknown 是未核验。
 - **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，必须明显低于人声，不可盖过主音频。
 - 对于罕见或本提示词未覆盖的高级工具，可调用 explore_tools 查看详情；常用工作流工具已在下方"核心工作流工具"中给出，无需先 explore。
 - 历史中内容为 {"omitted": "..."} 的工具结果表示较早轮次的状态快照已省略；需要当前状态时重新调用 get_timeline / list_materials 等工具获取，不要依据旧快照操作。`;
@@ -712,10 +714,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     skillAvailability(input.capabilities, input.crewEnabled));
 
   const hardConstraints = `## ⚠️ 强制约束：视频轨道时长规则
-以下规则为硬性约束，任何操作完成后都必须满足，没有例外：
-- **[HARD CONSTRAINT] 视频轨道必须是最长的轨道**：最终时间线中，视频轨道上素材的总时长必须 >= 所有其他轨道（音频、字幕等）的总时长。任何其他轨道的长度都不能超过视频轨道。
-- 如果某个操作导致非视频轨道超过视频轨道，工具会返回 warning 警告。**收到警告后你必须立即修正**：使用 resize_clip / trim_clip 缩短超出的轨道，或搜索更多视频素材填充视频轨道。
-- 视频轨道应比音频轨道略长 1-2 秒，避免导出时出现黑屏或音频超出视频范围。
+- **[HARD CONSTRAINT] 视频轨道必须是最长的轨道**：视频末端 >= 音频/字幕末端。
+- 明确时长只能由用户修改。按 TTS 实测在目标内调整脚本、语速、镜头和字幕，不额外留尾；audio_gap 仅查独立音轨，原声/合法留白可说明，不为消警告延长总长。
 - 多个视频片段应首尾相连，中间不留空隙。
 - 在完成所有轨道编辑后，调用 get_timeline 检查 constraintCheck 字段，确认约束是否满足。
 

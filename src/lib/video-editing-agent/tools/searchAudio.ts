@@ -3,6 +3,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { MaterialItem } from '@/types';
 import { toolFetch, parseToolResponse } from './apiHelper';
+import { CANDIDATE_NEXT_STEP } from './stillClip';
 
 const parameters = Type.Object({
   query: Type.String({ description: 'Search keywords (English or Chinese — Chinese auto-translated)' }),
@@ -61,6 +62,8 @@ function mapAudioToMaterial(audio: AudioSearchResult, query: string): MaterialIt
     tags: [...(audio.tags || []).slice(0, 5), query, 'freesound', '在线素材'],
     description: audio.username ? `来自Freesound的音频素材，作者：${audio.username}` : undefined,
     metadata: {
+      candidate: true,
+      materialized: false,
       source: 'freesound',
       sourceId: String(audio.id),
     },
@@ -72,7 +75,9 @@ export function createSearchAudioTool(context: ToolContext): AgentTool<typeof pa
     name: 'search_audio',
     label: 'Search Audio',
     description:
-      'Search the Freesound audio library. Returns matching audio clips and automatically adds them to the material library. Use add_to_track to place them on the timeline.',
+      'Search the Freesound audio library and add metadata-only candidates to the library. '
+      + 'Search does not download audio: use the returned URL with download_url, '
+      + 'then place the downloaded material on the timeline.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -127,6 +132,7 @@ export function createSearchAudioTool(context: ToolContext): AgentTool<typeof pa
             success: true,
             materials: [],
             total_found: 0,
+            materialized: false,
             message: `No audio found for '${searchQuery}'`,
             searchQuery,
           };
@@ -143,10 +149,14 @@ export function createSearchAudioTool(context: ToolContext): AgentTool<typeof pa
 
         const result = {
           success: true,
-          materials: materials.map(m => ({ id: m.id, name: m.name, type: m.type, duration: m.duration })),
+          materials: materials.map(m => ({ id: m.id, name: m.name,
+            type: m.type, duration: m.duration, url: m.url,
+            availability: 'candidate', materialized: false })),
           total_found: materials.length,
+          materialized: false,
           message: `Found ${materials.length} audio clip(s) for '${searchQuery}'`,
           searchQuery,
+          next_step: CANDIDATE_NEXT_STEP,
         };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
 

@@ -56,6 +56,11 @@ function decide(
 }
 
 describe('planHasOpenSteps', () => {
+  it('只有 blocked 时不空转续跑', () => {
+    expect(planHasOpenSteps({ ...OPEN_PLAN,
+      steps: [{ index: 0, title: '待手动导出', status: 'blocked' }],
+    })).toBe(false);
+  });
   it('is false for a missing or empty plan and true with a pending step', () => {
     expect(planHasOpenSteps(null)).toBe(false);
     expect(planHasOpenSteps(DONE_PLAN)).toBe(false);

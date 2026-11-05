@@ -143,7 +143,10 @@ function toImageRef(
   if (typeof ref.at_seconds === 'number') image.at_seconds = ref.at_seconds;
   // 只有 frame / export 需要 composition_id；其余来源带上会让服务端困惑。
   if (ref.source === 'frame' || ref.source === 'export') {
-    const compositionId = resolveCompositionId(context, ref.composition_id);
+    const hasMaterialFrame = ref.source === 'frame'
+      && (ref.material_id || ref.storage_key);
+    const compositionId = hasMaterialFrame ? ref.composition_id
+      : resolveCompositionId(context, ref.composition_id);
     if (compositionId) image.composition_id = compositionId;
   }
   return image;

@@ -34,7 +34,7 @@ export interface ShouldAutoContinueInput {
 /** 计划里还有没有未完成的步骤（C4 的客观依据）。 */
 export function planHasOpenSteps(plan: AgentPlan | null): boolean {
   if (!plan || plan.steps.length === 0) return false;
-  return plan.steps.some(step => step.status !== 'completed');
+  return plan.steps.some(step => step.status === 'pending' || step.status === 'in_progress');
 }
 
 /**

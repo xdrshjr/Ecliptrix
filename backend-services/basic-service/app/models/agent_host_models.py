@@ -75,8 +75,8 @@ FAILURE_CLASS_BY_CODE = {
 
 
 def failure_class_for(code):
-    """逐码分组；未登记码落在 policy（不重试、可封禁，同既有约定）。"""
-    return FAILURE_CLASS_BY_CODE.get(code, "policy")
+    """逐码分组；未知异常不能冒充策略拒绝而绕过异常熔断。"""
+    return FAILURE_CLASS_BY_CODE.get(code, "internal")
 
 
 class AgentHostError(Exception):

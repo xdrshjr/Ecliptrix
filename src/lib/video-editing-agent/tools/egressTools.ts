@@ -78,7 +78,7 @@ function httpRequestTool(context: ToolContext): AgentTool {
       })),
       allow_robots: Type.Optional(Type.Boolean()),
     }),
-    execute: async (id: string, params: unknown) => {
+    execute: async (id: string, params: unknown, signal?: AbortSignal) => {
       const input = params as Record<string, unknown>;
       const method = String(input.method ?? 'GET').toUpperCase();
       if (method !== 'GET' && method !== 'HEAD') {
@@ -87,7 +87,7 @@ function httpRequestTool(context: ToolContext): AgentTool {
         });
       }
       return executeHostTool(context, id, {
-        path: '/egress/request',
+        path: '/egress/request', signal,
         egress: true,
         timeout: EGRESS_REQUEST_TIMEOUT_MS,
         body: withProjectId(context, { ...input, method }),
@@ -109,10 +109,10 @@ function downloadTool(context: ToolContext): AgentTool {
       source_page_url: Type.Optional(url),
       import_to_library: Type.Optional(Type.Boolean()),
     }),
-    execute: async (id: string, params: unknown) => {
+    execute: async (id: string, params: unknown, signal?: AbortSignal) => {
       const input = params as Record<string, unknown>;
       return executeHostTool(context, id, {
-        path: '/egress/download',
+        path: '/egress/download', signal,
         egress: true,
         timeout: EGRESS_DOWNLOAD_TIMEOUT_MS,
         // `import_to_library:false` 只取回描述：不发布入库操作。
@@ -134,9 +134,9 @@ function diagnoseTool(context: ToolContext): AgentTool {
       resolve: Type.Optional(Type.Boolean()),
       check_robots: Type.Optional(Type.Boolean()),
     }),
-    execute: async (id: string, params: unknown) => executeHostTool(
+    execute: async (id: string, params: unknown, signal?: AbortSignal) => executeHostTool(
       context, id, {
-      path: '/egress/diagnose',
+      path: '/egress/diagnose', signal,
       egress: true,
       timeout: EGRESS_DIAGNOSE_TIMEOUT_MS,
       body: withProjectId(context, params as Record<string, unknown>),

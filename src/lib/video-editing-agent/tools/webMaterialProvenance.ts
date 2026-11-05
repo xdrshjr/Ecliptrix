@@ -31,7 +31,7 @@ function provenanceOf(
   return { isWeb: metadata?.source === 'web' || provenance !== null, provenance };
 }
 
-/** `declared` 才算授权已声明；其余（含缺失登记）都属「未声明」。 */
+/** `declared` 表示记录了授权声明；其余仅表示证据尚未核验或记录。 */
 export function isLicenseDeclared(provenance: WebMaterialProvenance | null): boolean {
   return provenance?.license_status === 'declared';
 }

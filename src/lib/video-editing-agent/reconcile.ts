@@ -20,6 +20,7 @@
 
 import type { TimelineState, Track, TimelineItem, AgentTimelineOperation } from '@/types';
 import type { TimelineOperation } from './types';
+import { computeTimelineEnd } from './trackPatch';
 
 const DEFAULT_EPSILON = 1e-6;
 
@@ -45,21 +46,6 @@ export function isReorganisable(track: Track): boolean {
   if (track.isLocked) return false;
   if (track.type !== 'video' && track.type !== 'audio') return false;
   return true;
-}
-
-/**
- * Compute the maximum end-time across all items on all tracks. Used to keep
- * `totalDuration` in sync after a reorganise.
- */
-function computeTotalDuration(state: TimelineState): number {
-  let maxEnd = 0;
-  for (const track of state.tracks) {
-    for (const item of track.items) {
-      const end = item.startTime + item.duration;
-      if (end > maxEnd) maxEnd = end;
-    }
-  }
-  return maxEnd;
 }
 
 /**
@@ -245,9 +231,8 @@ export function reconcileOverlapsAfterAgentOp(
     }
   }
 
-  if (changed.length > 0) {
-    state.totalDuration = Math.max(computeTotalDuration(state), state.totalDuration ?? 0);
-  }
+  // 即使没有片段移动，新增/裁短/删除也会改变内容末端。
+  state.totalDuration = computeTimelineEnd(state);
 
   return { changedTrackIds: changed, operations: ops };
 }
@@ -288,7 +273,7 @@ export function packOverlappingTracks(
   }
 
   if (fixedTrackIds.length > 0) {
-    state.totalDuration = Math.max(computeTotalDuration(state), state.totalDuration ?? 0);
+    state.totalDuration = computeTimelineEnd(state);
   }
 
   return { state, fixedTrackIds, operations };

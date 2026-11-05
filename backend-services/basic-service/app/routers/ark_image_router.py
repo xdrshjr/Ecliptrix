@@ -5,7 +5,7 @@ Router for Ark Seedream image generation endpoints.
 from fastapi import APIRouter, HTTPException
 
 from app.logger import get_logger
-from app.services.credential_errors import require_configured
+from app.services.credential_errors import require_configured, generation_error_response
 from app.models.ark_image_models import (
     ArkImageGenerateRequest,
     ArkImageGenerateResponse,
@@ -40,4 +40,5 @@ async def generate_images(request: ArkImageGenerateRequest) -> ArkImageGenerateR
         )
     except Exception as e:
         logger.error(f"Failed to generate Ark images: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate images: {str(e)}")
+        return generation_error_response(
+            e, f"ark:images/generations:{ark_image_service.ARK_IMAGE_MODEL}")

@@ -99,6 +99,11 @@ export interface TimelineLintIssue {
 }
 
 export interface TimelineLintReport {
+  content_end?: number;
+  render_end?: number;
+  cached_duration?: number;
+  target_duration?: number;
+  output_fps?: number;
   ok: boolean;
   blockers: number;
   warnings: number;

@@ -32,10 +32,13 @@ import { convertToAgentMessages } from './messageConverter';
 import { HISTORY_CHAR_BUDGET, compactHistoryForModel } from './historyBudget';
 import { createToolRegistry, buildAllAgentTools } from './tools';
 import type { ToolRegistry } from './registry';
-import { scanExploredCategories } from './historyScan';
-import { scanLatestPlan } from './planScan';
+import { extractAgentToolCalls, scanExploredCategories } from './historyScan';
+import { readExplicitRecoveryRetry, resolveEditingGoal, resolveTaskMessageId, scanLatestPlan } from './planScan';
+import { GENERATION_CAPABILITIES, restoreCapabilityFailures } from './tools/apiHelper';
+import { restoreEgressFailures } from './tools/hostToolAdapter';
 import { reconcileOverlapsAfterAgentOp } from './reconcile';
-import { validateOperationTargets } from './operationGuards';
+import { computeTimelineEnd } from './trackPatch';
+import { findLockedTrackId, validateOperationTargets } from './operationGuards';
 import { getTtsFailure } from '@/lib/ttsErrors';
 import type { TtsFailure } from '@/lib/ttsErrors';
 import { isStillGuardRejection } from './tools/stillGuard';
@@ -83,6 +86,10 @@ contextWindow: config.contextWindowTokens ?? 128000,
 
   // 2. Deep-clone timelineState so tool mutations don't affect caller
   const localTimelineState: TimelineState = JSON.parse(JSON.stringify(config.timelineState));
+  localTimelineState.totalDuration = computeTimelineEnd(localTimelineState);
+  const editingGoal = resolveEditingGoal(config.conversationHistory, {
+    projectId: config.projectId, conversationId: config.conversationId,
+  });
 
   // 3. Create shared tool context
   const toolContext: ToolContext = {
@@ -115,7 +122,13 @@ contextWindow: config.contextWindowTokens ?? 128000,
     },
     // Fresh per request: `ask_user`'s one-per-turn rule and the live plan must
     // never leak across an SSE retry (spec §3.5.2 / R-15).
-    turnState: {},
+    turnState: {
+      plan: scanLatestPlan(config.conversationHistory, editingGoal) ?? undefined,
+      editingGoal,
+    },
+    conversationId: config.conversationId,
+    generationConfigRevision: config.generationConfigRevision,
+    recoveryReset: config.recoveryReset,
     callBudget: { used: 0 },
     crewRuntime: {
       settings: config.crewSettings ?? DEFAULT_CREW_SETTINGS,
@@ -134,6 +147,26 @@ contextWindow: config.contextWindowTokens ?? 128000,
     // 读这一份快照；缺席时工具按缺省限值工作，旧构造点不需要改动。
     hostCapabilities: config.hostCapabilities ?? undefined,
   };
+
+  const goal = toolContext.turnState.editingGoal;
+  toolContext.recoveryScope = config.recoveryScope ?? JSON.stringify([
+    config.projectId ?? '', config.conversationId ?? '',
+    goal?.taskId ?? resolveTaskMessageId(config.conversationHistory) ?? '',
+  ]);
+  const explicitRetry = readExplicitRecoveryRetry(config.conversationHistory);
+  const recoveryFacts = config.conversationHistory.flatMap(message => extractAgentToolCalls(message)
+      .filter(call => call.status === 'completed' || call.status === 'error')
+      .map(call => call.result)).map(value => {
+    if (!value || typeof value !== 'object') return value;
+    const fact = { ...value } as Record<string, unknown>;
+    const capability = (fact.capability_failure as { capability?: string } | undefined)?.capability;
+    if ((explicitRetry.video && capability === GENERATION_CAPABILITIES.video)
+      || (explicitRetry.image && capability === GENERATION_CAPABILITIES.image)) delete fact.capability_failure;
+    if (explicitRetry.egress) delete fact.egress_failure;
+    return fact;
+  });
+  restoreCapabilityFailures(toolContext, recoveryFacts);
+  restoreEgressFailures(toolContext, recoveryFacts);
 
   // 4. Create ToolRegistry and build tools
   const registry = createToolRegistry(toolContext);
@@ -169,13 +202,13 @@ contextWindow: config.contextWindowTokens ?? 128000,
   //      parameter schemas for the Core Workflow Toolkit (Layer A).
   const exploredCategories = scanExploredCategories(config.conversationHistory);
   const systemPrompt = buildSystemPrompt({
-    timelineState: config.timelineState,
+    timelineState: localTimelineState,
     materials: config.materials,
     registry,
     exploredCategories: [],
     capabilities: config.webCapabilities,
     hostCapabilities: config.hostCapabilities,
-    plan: scanLatestPlan(config.conversationHistory),
+    plan: toolContext.turnState.plan ?? null,
     memoryDigest: config.memoryDigest ?? null,
     skillIndex: config.skillIndex,
     crewEnabled: config.crewSettings?.enabled,
@@ -184,7 +217,9 @@ contextWindow: config.contextWindowTokens ?? 128000,
     ? '\n## 已加载的高级工具（历史提示）\n' +
       exploredCategories.slice(-2).join(', ') +
       '：仅供回顾。历史不恢复工具授权；非核心工具须先 explore_tools 再在下一响应调用。'
-    : '');
+    : '') + (goal ? `\n## 本任务验收目标\n用户消息 ${goal.sourceMessageId}：` +
+      `${goal.targetDurationSeconds} 秒；${goal.fps}fps，容差一帧。` +
+      `承诺：${goal.commitments.join(', ')}。仅用户新要求可修改，未兑现项保留 blocked。` : '');
 
   // Observability: log the prompt size and explored categories on every
   // agent creation so we can verify the persistence fix is active and spot
@@ -529,8 +564,10 @@ export function subscribeAgentEvents(
           details !== null &&
           'success' in details &&
           (details as { success: unknown }).success === false;
-        const expectedResearchFailure = isResearchTool(event.toolName) &&
-          ['configuration', 'blocked', 'cancelled', 'policy', 'validation'].includes(details?.error_details?.failure_class);
+        const expectedClassifiedFailure = softFailure && event.isError !== true &&
+          details?.error_code !== 'subtitle_apply_refused' &&
+          ['configuration', 'blocked', 'cancelled', 'policy', 'validation', 'user_input']
+            .includes(details?.error_details?.failure_class);
         // A still-image refusal is a one-step self-correction, not a failing
         // tool: it neither counts toward the breaker nor resets it. Subtitle
         // validation refusals are the same shape (agent-subtitles spec D-8):
@@ -538,13 +575,13 @@ export function subscribeAgentEvents(
         const expectedGuardRejection = softFailure
           && (isStillGuardRejection(details) || isSubtitleGuardRejection(details));
         const failed = (event.isError === true || softFailure)
-          && !expectedResearchFailure && !expectedGuardRejection;
+          && !expectedClassifiedFailure && !expectedGuardRejection;
 
         if (failed) {
           consecutiveFailures++;
           latestTtsFailure = ['generate_tts', 'batch_generate_tts']
             .includes(event.toolName) ? getTtsFailure(details) : undefined;
-        } else if (!expectedResearchFailure && !expectedGuardRejection) {
+        } else if (!expectedClassifiedFailure && !expectedGuardRejection) {
           consecutiveFailures = 0;
           latestTtsFailure = undefined;
         }
@@ -655,6 +692,10 @@ function applyOperationLocally(
       clipId: validation.clipId,
     });
     return { applied: false, reason: validation.reason };
+  }
+
+  if (findLockedTrackId(state, operation) !== null) {
+    return { applied: false, reason: 'locked-track' };
   }
 
   switch (operation.type) {

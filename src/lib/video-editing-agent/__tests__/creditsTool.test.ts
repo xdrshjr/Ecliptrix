@@ -55,11 +55,21 @@ describe('credits table', () => {
       materialId: 'w1', name: 'clip', provenance: PROVENANCE,
       usages: [{ trackId: 'v1', start: 0, end: 5 }],
     });
-    expect(row.license).toContain('未声明');
+    expect(row.license).toContain('未核验');
     expect(row.author).toBe('Ann \\| \\`x\\` newline');
     const markdown = renderCreditsMarkdown([row]);
     expect(markdown).toContain('不构成法律意见');
+    expect(markdown).toContain('不验证授权');
     expect(markdown.split('\n').filter(line => line.startsWith('| clip')).length).toBe(1);
+  });
+
+  it('保留来源页面是否核验，生成清单不更改授权证据', () => {
+    const provenance = { ...PROVENANCE, source_page_verified: false };
+    const row = toCreditRow({ materialId: 'w1', name: 'clip',
+      provenance, usages: [] });
+    expect(row).toMatchObject({ source_page_verified: false, unlicensed: true });
+    renderCreditsMarkdown([row]);
+    expect(provenance.license_status).toBe('unknown');
   });
 });
 

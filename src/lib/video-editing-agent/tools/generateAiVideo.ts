@@ -2,7 +2,9 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
-import { toolFetch, parseToolResponse } from './apiHelper';
+import { toolFetch, parseToolResponse, GENERATION_CAPABILITIES,
+  acquireGeneration, finishGeneration, generationFailure,
+  parseGenerationFailure } from './apiHelper';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -25,7 +27,7 @@ const parameters = Type.Object({
       { description: 'Video aspect ratio (default: "16:9")' },
     ),
   ),
-  model: Type.Optional(Type.String({ description: 'Model version override (optional)' })),
+  model: Type.Optional(Type.String({ description: '兼容字段；服务端固定模型，此值不改变生成能力或重试预算。' })),
   autoAddToTimeline: Type.Optional(
     Type.Boolean({ description: 'Whether to automatically add the result to the timeline when done. Decide based on user intent.' }),
   ),
@@ -46,7 +48,7 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
       'Generation takes 1-5 minutes. Results are automatically added to the material library when complete.',
     parameters,
 
-    execute: async (toolCallId, params: Params) => {
+    execute: async (toolCallId, params: Params, signal) => {
       // --- Validate prompt ---
       const prompt = params.prompt?.trim();
       if (!prompt) {
@@ -59,9 +61,15 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
       const aspectRatio = params.aspect_ratio ?? '16:9';
 
       // --- Call the ARK video generation API ---
+      const capability = GENERATION_CAPABILITIES.video;
+      const blocked = signal?.aborted ? generationFailure('cancelled', 'cancelled')
+        : acquireGeneration(context, capability);
+      if (blocked) return { content: [{ type: 'text', text: JSON.stringify(blocked) }], details: blocked };
       try {
         const response = await toolFetch(context, '/api/ark-video/generate', {
           method: 'POST',
+          retry: false,
+          signal,
           timeout: 120_000,
           body: JSON.stringify({
             prompt,
@@ -71,27 +79,16 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
           }),
         });
 
-        if (!response.ok) {
-          let detail = '';
-          try { detail = await response.text(); } catch { /* ignore read errors */ }
-          const err = {
-            success: false,
-            error: `Video generation request failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
-          };
-          return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
-        }
-
         const data = await parseToolResponse<{
           success: boolean;
           message?: string;
           ark_task_id?: string;
         }>(response);
 
-        if (!data.success || !('ark_task_id' in data) || !data.ark_task_id) {
-          const err = {
-            success: false,
-            error: ('message' in data && data.message) || 'Video generation task creation failed',
-          };
+        if (context.abortSignal?.aborted || signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+        if (!response.ok || !data.success || !('ark_task_id' in data) || !data.ark_task_id) {
+          const err = finishGeneration(context, capability,
+            parseGenerationFailure(response.status, data));
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
@@ -118,6 +115,7 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
         context.recordOperation(toolCallId, { type: 'start_async_task', task });
 
         const result = {
+          ...finishGeneration(context, capability),
           success: true,
           taskId,
           arkTaskId,
@@ -129,13 +127,11 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
           details: result,
         };
       } catch (error) {
-        const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
-        const err = {
-          success: false,
-          error: isTimeout
-            ? 'Video generation request timed out after 120s'
-            : `Video generation request failed: ${error instanceof Error ? error.message : String(error)}`,
-        };
+        const cancelled = context.abortSignal?.aborted || signal?.aborted ||
+          (error instanceof Error && error.name === 'AbortError');
+        const err = finishGeneration(context, capability, generationFailure(
+          cancelled ? 'cancelled' : 'generation_submission_unknown',
+          cancelled ? 'cancelled' : 'transient'));
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
     },

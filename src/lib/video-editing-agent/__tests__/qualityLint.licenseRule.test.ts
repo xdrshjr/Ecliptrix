@@ -69,7 +69,9 @@ describe('rule 16: web_material_license_unknown', () => {
     const issues = report.issues.filter(issue => issue.code === CODE);
     expect(issues).toHaveLength(1);
     expect(issues[0].severity).toBe('warning');
-    expect(issues[0].suggested_tool).toBe('build_credits');
+    expect(issues[0].suggested_tool).toBeNull();
+    expect(issues[0].message).toContain('explore_tools');
+    expect(issues[0].message).toContain('does not verify permission');
     expect(issues[0].message).toContain('2 web material');
     expect(report.ok).toBe(true);
     expect(report.checked_rules).toContain(CODE);

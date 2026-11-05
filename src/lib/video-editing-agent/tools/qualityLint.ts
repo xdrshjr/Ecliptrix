@@ -22,6 +22,8 @@ import {
   SUBTITLE_MARGIN_PX, maxSubtitleChars, outputSizeForAspect, wrapSubtitleText,
 } from '@/components/video/lib/subtitleLayout';
 import { ItemPlacementService } from '@/components/video/timeline/domain/services/ItemPlacementService';
+import { planVideoExport } from '@/components/video/hooks/videoExportItems';
+import { computeTimelineEnd } from '../trackPatch';
 import {
   collectTimelineWebMaterials, isLicenseDeclared,
 } from './webMaterialProvenance';
@@ -111,7 +113,7 @@ interface PlacedItem {
 
 function push(
   scope: LintScope,
-  code: LintRuleCode,
+  code: string,
   severity: VisionSeverity,
   message: string,
   target?: TimelineLintTarget,
@@ -336,7 +338,7 @@ function lintAudioGaps(scope: LintScope): void {
   if (audioTracks.length > 0 && placedItems(audioTracks, 'audio').length > 0
     && audio.length === 0) {
     push(scope, 'audio_gap', 'warning',
-      'every audio clip on the timeline has volume 0, so the video plays silent.',
+      'every standalone audio clip has volume 0; check embedded video audio or intentional silence.',
       undefined, 'generate_tts');
     return;
   }
@@ -344,9 +346,9 @@ function lintAudioGaps(scope: LintScope): void {
   const audioEnd = Math.max(0, ...audioTracks.map(getTrackEndTime));
   for (const gap of uncoveredSpans(audio.map(({ item }) => item), videoEnd)) {
     push(scope, 'audio_gap', 'warning',
-      `no audio between ${seconds(gap.start)} and ${seconds(gap.end)} `
+      `no standalone audio between ${seconds(gap.start)} and ${seconds(gap.end)} `
         + `(${seconds(gap.end - gap.start)} uncovered) of the ${seconds(videoEnd)} `
-        + `video; audio tracks end at ${seconds(audioEnd)}.`,
+        + `video; audio tracks end at ${seconds(audioEnd)}. Check embedded audio or intentional silence; do not extend the duration target.`,
       { at_seconds: Number(gap.start.toFixed(2)) }, 'generate_tts');
   }
 }
@@ -454,23 +456,23 @@ function lintWebMaterialLicense(scope: LintScope): void {
   const names = unlicensed.slice(0, LICENSE_RULE_NAME_LIMIT).map(entry => entry.name);
   const rest = unlicensed.length - names.length;
   push(scope, 'web_material_license_unknown', 'warning',
-    `${unlicensed.length} web material(s) on the timeline have no declared licence: `
-      + `${names.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}. The source page `
-      + 'stated no licence, which is not permission to use it commercially; tell '
-      + 'the user, and run build_credits for a source list.',
-    undefined, 'build_credits');
+    `${unlicensed.length} web material(s) have unverified or unrecorded licence evidence: `
+      + `${names.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}. `
+      + 'Do not infer what the source page says. build_credits only organizes sources; '
+      + 'it does not verify permission. Load it with explore_tools(category="material_tools", '
+      + 'tool_names=["build_credits"]), then call it on the next response for investigation.',
+    undefined, null);
 }
 
 // --- 规则 14：duration_mismatch -----------------------------------------
 
 function lintDurationMismatch(scope: LintScope): void {
-  const videoEnd = getVideoTrackMaxDuration(scope.state);
-  if (!(videoEnd > 0)) return;
+  const videoEnd = computeTimelineEnd(scope.state);
   const total = scope.state.totalDuration;
   const drift = Math.abs(total - videoEnd);
   if (drift <= LINT_DEFAULTS.durationTolerance) return;
   push(scope, 'duration_mismatch', 'warning',
-    `totalDuration is ${seconds(total)} but the video tracks end at `
+    `totalDuration is ${seconds(total)} but all content tracks end at `
       + `${seconds(videoEnd)}, a ${seconds(drift)} difference (tolerance `
       + `${LINT_DEFAULTS.durationTolerance}s).`,
     { at_seconds: Number(Math.min(total, videoEnd).toFixed(2)) });
@@ -523,7 +525,7 @@ function nextStep(
     return `Fix the ${counts.blocker} blocker(s) before exporting.${handle}`;
   }
   if (counts.warning > 0) {
-    return `Fix the ${counts.warning} warning(s), then run check_timeline again.${handle}`;
+    return `Review the ${counts.warning} warning(s); explain intentional gaps or unavailable evidence without extending a fixed duration.${handle}`;
   }
   if (counts.note > 0 && !includeNotes) {
     return `Nothing blocks the export; call check_timeline with include_notes=true `
@@ -572,6 +574,8 @@ export function lintTimeline(input: {
   targetWidth: number;
   targetHeight: number;
   includeNotes?: boolean;
+  targetDurationSeconds?: number;
+  fps?: number;
 }): TimelineLintReport {
   const scope: LintScope = {
     state: input.timelineState,
@@ -599,5 +603,29 @@ export function lintTimeline(input: {
   lintCover(scope);
   lintDurationMismatch(scope);
   lintWebMaterialLicense(scope);
-  return assembleReport(scope.issues, input.includeNotes === true);
+  const renderPlan = planVideoExport(scope.state.tracks,
+    new Map(scope.materials.map(material => [material.id, material])));
+  const renderEnd = renderPlan.status === 'ready' ? renderPlan.renderEnd : 0;
+  const target = input.targetDurationSeconds;
+  const fps = input.fps ?? 30; // useVideoExport 的实际输出帧率。
+  if (renderPlan.status === 'ready'
+    && renderPlan.blackTailSeconds > 1 / fps + 1e-6) {
+    push(scope, 'visual_coverage_mismatch', target === undefined ? 'warning' : 'blocker',
+      `Rendered non-video content extends ${seconds(renderPlan.blackTailSeconds)} beyond the last picture. Cover the audio/subtitles inside the duration target.`);
+  }
+  if (target !== undefined) {
+    if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(fps) || fps <= 0) {
+      push(scope, 'invalid_duration_target', 'blocker', 'Target duration and output fps must be finite positive numbers.');
+    } else if (Math.abs(renderEnd - target) > 1 / fps + 1e-6) {
+      push(scope, 'target_duration_mismatch', 'blocker',
+        `Rendered duration ${seconds(renderEnd)} differs from the user target ${seconds(target)} by more than one frame (${fps}fps). Keep narration, pictures and subtitles inside the target.`);
+    }
+  }
+  const report = assembleReport(scope.issues, input.includeNotes === true);
+  return { ...report,
+    content_end: computeTimelineEnd(scope.state), render_end: renderEnd,
+    cached_duration: scope.state.totalDuration,
+    ...(target !== undefined ? { target_duration: target, output_fps: fps,
+      checked_rules: [...report.checked_rules, 'target_duration_mismatch'] } : {}),
+  };
 }

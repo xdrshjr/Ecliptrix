@@ -127,6 +127,18 @@ describe('view_image', () => {
     });
   });
 
+  it('复核素材原帧时不被历史导出 ID 替换', async () => {
+    const { createViewImageTool } = await import('../tools/visionTools');
+    fetchMock.mockResolvedValue(jsonResponse({ success: true,
+      data: { ok: true, verdict: 'pass', summary: 'ok' } }));
+    await createViewImageTool(makeContext({ lastCompositionId: 'old-export' }))
+      .execute('raw-frame', { images: [{ source: 'frame',
+        material_id: 'm_12', at_seconds: 3 }], question: '复核源画面文字' });
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body.images[0]).toEqual({ source: 'frame',
+      material_id: 'm_12', at_seconds: 3 });
+  });
+
   it('refuses an empty image list without calling the backend', async () => {
     const { createViewImageTool } = await import('../tools/visionTools');
     const result = await createViewImageTool(makeContext()).execute('call-10', {
@@ -296,6 +308,13 @@ describe('inspect_export', () => {
     expect(body.check_audio).toBe(true);
     expect(body.visual_spot_check).toBe(true);
     expect(String(result.details.next_step)).toContain('export');
+    context.turnState.editingGoal = {
+      taskId: 'task', sourceMessageId: 'request', targetDurationSeconds: 30,
+      fps: 30, commitments: ['editing'],
+    };
+    await createInspectExportTool(context).execute('target-check', {});
+    const targetBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(targetBody.timeline_duration).toBe(30);
   });
 
   it('forwards an explicit composition id', async () => {

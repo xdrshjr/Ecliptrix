@@ -78,6 +78,29 @@ def _draw_label(draw: ImageDraw.ImageDraw, font, x: int, y: int,
     draw.text((x, y), text, font=font, fill=WHITE)
 
 
+def annotation_metadata(frames: list[tuple[float, bytes]]) -> dict:
+    """与绘图使用相同坐标；归一化区域在 JPEG 缩放后仍有效。"""
+    columns, rows = grid_shape(len(frames))
+    width = columns * CELL_WIDTH + GUTTER * (columns + 1)
+    height = rows * CELL_HEIGHT + GUTTER * (rows + 1)
+    font = _load_font()
+    labels = []
+    for index, (moment, body) in enumerate(frames):
+        if _decode(body) is None:
+            continue
+        slot = len(labels)
+        x = GUTTER + (slot % columns) * (CELL_WIDTH + GUTTER) + 4
+        y = GUTTER + (slot // columns) * (CELL_HEIGHT + GUTTER) + 4
+        text = f"#{index + 1}  {format_timecode(moment)}"
+        left, top, right, bottom = font.getbbox(text)
+        labels.append({"text": text, "region": [
+            round((x + left) / width, 5), round((y + top) / height, 5),
+            round((x + right + 1) / width, 5),
+            round((y + bottom + 1) / height, 5)]})
+    return {"version": "contact-sheet-labels-v1",
+            "coordinate_space": "normalized", "labels": labels}
+
+
 def _compose(frames: list[tuple[float, bytes]], columns: int, rows: int):
     cell = (CELL_WIDTH, CELL_HEIGHT)
     sheet = Image.new(

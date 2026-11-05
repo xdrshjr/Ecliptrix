@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Agent, AgentEvent } from '@mariozechner/pi-agent-core';
 import { subscribeAgentEvents } from '../agent';
+import { materialNotMaterializedFailure } from '../tools/stillClip';
 import type { SSEEvent, ToolContext } from '../types';
 
 const REFUSAL = { success: false, error_code: 'still_needs_conversion', error: 'convert first' };
@@ -32,6 +33,23 @@ function runAgent() {
 }
 
 describe('circuit breaker and the still-image guard', () => {
+  it('does not count or reset on undownloaded material refusals', () => {
+    const run = runAgent();
+    const refusal = materialNotMaterializedFailure({
+      id: 'candidate', name: 'Video candidate', size: 0,
+    });
+    for (let index = 0; index < 6; index++) run.result(refusal);
+    expect(run.abort).not.toHaveBeenCalled();
+
+    for (let index = 0; index < 4; index++) {
+      run.result(FAILURE);
+      run.result(refusal);
+    }
+    expect(run.abort).not.toHaveBeenCalled();
+    run.result(FAILURE);
+    expect(run.abort).toHaveBeenCalledOnce();
+  });
+
   it('does not trip on six consecutive refusals', () => {
     const run = runAgent();
     for (let index = 0; index < 6; index++) run.result(REFUSAL);

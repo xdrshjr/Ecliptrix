@@ -72,6 +72,8 @@ function mapImageToMaterial(image: ImageSearchResult, query: string): MaterialIt
     tags: [query, 'unsplash', '在线素材'],
     description: image.user_name ? `来自Unsplash的图片素材，作者：${image.user_name}` : undefined,
     metadata: {
+      candidate: true,
+      materialized: false,
       source: 'unsplash',
       sourceId: image.id,
     },
@@ -83,11 +85,6 @@ function mapImageToMaterial(image: ImageSearchResult, query: string): MaterialIt
  * Unsplash hit has `size: 0` and a remote URL, so it is a candidate
  * (root cause C-6, spec v2 §4.6).
  */
-function isMaterializedMaterial(material: MaterialItem): boolean {
-  const localUrl = material.cacheUrl ?? material.url ?? '';
-  return material.size > 0 && localUrl.startsWith('/api/storage/files/');
-}
-
 export function createSearchImageTool(context: ToolContext): AgentTool<typeof parameters> {
   return {
     name: 'search_image',
@@ -150,6 +147,7 @@ export function createSearchImageTool(context: ToolContext): AgentTool<typeof pa
             success: true,
             materials: [],
             total_found: 0,
+            materialized: false,
             message: `No images found for '${searchQuery}'`,
             searchQuery,
           };
@@ -166,10 +164,12 @@ export function createSearchImageTool(context: ToolContext): AgentTool<typeof pa
 
         const result = {
           success: true,
-          materials: materials.map(m => ({ id: m.id, name: m.name, type: m.type, width: m.width, height: m.height })),
+          materials: materials.map(m => ({ id: m.id, name: m.name, type: m.type,
+            width: m.width, height: m.height, url: m.url,
+            availability: 'candidate', materialized: false })),
           total_found: materials.length,
           // False means at least one hit still has no bytes on disk.
-          materialized: materials.every(isMaterializedMaterial),
+          materialized: false,
           message: `Found ${materials.length} image(s) for '${searchQuery}'`,
           searchQuery,
           next_step: CANDIDATE_NEXT_STEP,

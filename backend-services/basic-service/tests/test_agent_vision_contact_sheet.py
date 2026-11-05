@@ -82,3 +82,14 @@ def test_timecode_format():
     assert format_timecode(0) == "00:00.0"
     assert format_timecode(65.4) == "01:05.4"
     assert format_timecode(125.25) == "02:05.2"
+
+
+def test_annotation_metadata_identifies_only_generated_labels():
+    annotations = contact_sheet.annotation_metadata(frames(2))
+    assert annotations["version"] == "contact-sheet-labels-v1"
+    assert annotations["coordinate_space"] == "normalized"
+    labels = annotations["labels"]
+    assert [label["text"] for label in labels] == ["#1  00:00.5", "#2  00:02.0"]
+    assert 0 <= labels[0]["region"][0] < labels[0]["region"][2] < 0.3
+    assert labels[1]["region"][0] > 0.5
+    assert labels[0]["region"][3] < 0.15

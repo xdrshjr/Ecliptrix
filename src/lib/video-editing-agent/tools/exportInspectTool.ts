@@ -68,7 +68,8 @@ export function createInspectExportTool(
     parameters,
     execute: async (toolCallId: string, params: InspectParams) => {
       const compositionId = resolveCompositionId(context, params.composition_id);
-      const timelineDuration = getVideoTrackMaxDuration(context.timelineState);
+      const timelineDuration = context.turnState?.editingGoal?.targetDurationSeconds
+        ?? getVideoTrackMaxDuration(context.timelineState);
       const expected = expectedSize(params.expected);
       return executeVisionTool(context, toolCallId, {
         path: '/export-inspect',

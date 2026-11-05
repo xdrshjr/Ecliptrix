@@ -34,8 +34,8 @@ import type { AgentOperation, MaterialOperation, ScriptOperation, StoryboardOper
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import { useVideoEditingStore } from '@/stores';
 import { packOverlappingTracks, reconcileOverlapsAfterAgentOp } from './reconcile';
-import { diffTimelineTracks, revertTrackPatches } from './trackPatch';
-import { validateOperationTargets, type OperationValidation } from './operationGuards';
+import { computeTimelineEnd, diffTimelineTracks, revertTrackPatches } from './trackPatch';
+import { findLockedTrackId, touchedTrackIds, validateOperationTargets, type OperationValidation } from './operationGuards';
 import { createDefaultAgentTimelineState } from './defaultTimeline';
 import { applySubtitleClipsToState } from './subtitleClips';
 
@@ -240,7 +240,7 @@ export class OperationApplier {
         : { status: 'noop', reason: 'no-change' };
     }
 
-    state.totalDuration = Math.max(computeTimelineEnd(state), state.totalDuration);
+    state.totalDuration = computeTimelineEnd(state);
     this.config.setTimelineState(state);
     operations.forEach(operation => this.config.onTriggerAnimation?.(operation));
     // One record, so undoing the tool call reverts the whole re-pack.
@@ -572,7 +572,7 @@ export class OperationApplier {
     // alone, and subtitle / locked tracks are skipped inside reconcile.
     reconcileOverlapsAfterAgentOp(state, operation);
 
-    state.totalDuration = Math.max(computeTimelineEnd(state), state.totalDuration);
+    state.totalDuration = computeTimelineEnd(state);
     this.config.setTimelineState(state);
   }
 }
@@ -739,53 +739,9 @@ function findClipInState(
   return undefined;
 }
 
-/** First locked track the operation would change, or null. */
-function findLockedTrackId(
-  state: TimelineState,
-  operation: AgentTimelineOperation,
-): string | null {
-  const lockedIds = new Set(state.tracks.filter(t => t.isLocked).map(t => t.id));
-  return touchedTrackIds(state, operation).find(id => lockedIds.has(id)) ?? null;
-}
-
-function touchedTrackIds(
-  state: TimelineState,
-  operation: AgentTimelineOperation,
-): string[] {
-  switch (operation.type) {
-    case 'add_clip':
-      return [operation.clip.trackId];
-    case 'delete_clip':
-      return [operation.trackId];
-    case 'move_clip':
-      return [operation.fromTrackId, operation.toTrackId];
-    case 'trim_clip':
-    case 'resize_clip': {
-      const track = state.tracks.find(t =>
-        t.items.some(i => i.id === operation.clipId),
-      );
-      return track ? [track.id] : [];
-    }
-    case 'add_subtitle_clips':
-      return [operation.trackId];
-    default:
-      return [];
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
-
-function computeTimelineEnd(state: TimelineState): number {
-  let maxEnd = 0;
-  for (const track of state.tracks) {
-    for (const item of track.items) {
-      maxEnd = Math.max(maxEnd, item.startTime + item.duration);
-    }
-  }
-  return maxEnd;
-}
 
 function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));

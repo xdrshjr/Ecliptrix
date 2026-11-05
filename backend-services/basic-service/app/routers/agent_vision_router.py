@@ -15,6 +15,7 @@
 """
 import asyncio
 import hashlib
+import json
 import re
 from uuid import uuid4
 
@@ -451,11 +452,13 @@ async def _frames_observation(body, call_id, sheet, frames, times, skipped,
                               reference, start, end) -> dict:
     """联系表 → 视觉调用 → 观察（与 `/describe` 共用缓存与计数口径）。"""
     model = await vision_client.resolve_vision_model()
-    template = observation_store.question_template(body.question, [])
+    annotations = contact_sheet.annotation_metadata(frames)
+    template = observation_store.question_template(body.question, []) + "\n" + json.dumps(
+        annotations, ensure_ascii=False, sort_keys=True)
     key = observation_store.cache_key(
         sheet.sha256, mode=body.mode, template=template,
         model_name=model["model"])
-    sheet_info = {"frame_count": len(frames),
+    sheet_info = {"frame_count": len(frames), "annotations": annotations,
                   "start": round(start, 3), "end": round(end, 3)}
     cached = await observation_store.find_cached(key)
     if cached is not None:
@@ -474,7 +477,7 @@ async def _frames_observation(body, call_id, sheet, frames, times, skipped,
     try:
         result = await vision_client.describe_images(
             [sheet], body.question, mode=body.mode, checklist=None,
-            project_id=body.project_id)
+            project_id=body.project_id, annotations=annotations)
     except AgentVisionError as error:
         await _record_failure(
             body.project_id, call_id, error, source_kind="frames",
@@ -638,7 +641,8 @@ async def _spot_check_observation(body, settings, path, reference, call_id,
     result = await vision_client.describe_images(
         [sheet], _SPOT_QUESTION, mode="scan",
         checklist=["watermark", "text_legible", "safe_area", "quality"],
-        project_id=body.project_id)
+        project_id=body.project_id,
+        annotations=contact_sheet.annotation_metadata(frames))
     written = await observation_store.write_observation(_record(
         result, project_id=body.project_id, call_id=call_id,
         source_kind="export_probe", source_ref=reference, cache_key="",

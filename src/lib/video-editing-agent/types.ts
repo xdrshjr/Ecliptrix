@@ -37,6 +37,10 @@ export interface ToolContext {
    * a structured error rather than fall back to a global call.
    */
   projectId?: string;
+  conversationId?: string;
+  recoveryScope?: string;
+  generationConfigRevision?: string;
+  recoveryReset?: boolean;
   /**
    * 最近一次成功导出的 composition id（agent-visual-review spec §4.4 / P1-1）。
    *
@@ -362,6 +366,8 @@ export type SkillSkipReason = 'not_found' | 'disabled' | 'invalid' | 'unavailabl
 // --- API Route Request ---
 
 export interface AgentChatRequest {
+  conversationId?: string;
+  generationConfigRevision?: string;
   messages: ChatMessage[];
   timelineState: TimelineState;
   materials: MaterialItem[];
@@ -431,6 +437,10 @@ export const DEFAULT_CREW_SETTINGS: CrewSettings = {
 // --- Agent Factory Config ---
 
 export interface VideoEditingAgentConfig {
+  conversationId?: string;
+  recoveryScope?: string;
+  generationConfigRevision?: string;
+  recoveryReset?: boolean;
   researchRun?: ResearchRunClient;
   contextWindowTokens?: number;
   /** Network capability snapshot, rendered into the on-demand catalog (§13). */

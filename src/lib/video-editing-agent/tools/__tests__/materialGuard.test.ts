@@ -13,6 +13,10 @@ import type { MaterialItem, Track } from '@/types';
 import type { ToolContext } from '../../types';
 import { createAddToTrackTool } from '../addToTrack';
 import { createImageToVideoTool } from '../imageToVideo';
+import { createSearchAudioTool } from '../searchAudio';
+import { createSearchVideoTool } from '../searchVideo';
+import { createSearchImageTool } from '../searchImage';
+import { createGenerateAiImageTool } from '../generateAiImage';
 import {
   buildStillClipRequest,
   isMetadataOnlyMaterial,
@@ -67,6 +71,42 @@ function makeContext(tracks: Track[], materials: MaterialItem[]) {
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe('检索返回的是候选，搜索成功不等于下载完成', () => {
+  it.each([
+    ['音频', createSearchAudioTool, 'audios', { id: 1, name: 'bgm', duration: 5,
+      preview_url: 'https://example.com/bgm.mp3' }],
+    ['视频', createSearchVideoTool, 'videos', { id: 1, title: 'dog', duration: 5,
+      video_url: 'https://example.com/dog.mp4' }],
+    ['图片', createSearchImageTool, 'images', { id: '1',
+      regular_url: 'https://example.com/dog.jpg' }],
+  ] as const)('%s 明示候选和真实链接', async (_label, factory, key, item) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      success: true, [key]: [item],
+    }))));
+    const { context } = makeContext([], []);
+    const result = await factory(context).execute('search', { query: 'dog' });
+    expect(result.details).toMatchObject({ materialized: false,
+      materials: [expect.objectContaining({ availability: 'candidate',
+        materialized: false, url: expect.stringContaining('https://example.com/') })],
+    });
+    expect(context.materials[0].metadata).toMatchObject({
+      candidate: true, materialized: false,
+    });
+  });
+
+  it.each([['音频', createSearchAudioTool], ['视频', createSearchVideoTool],
+    ['图片', createSearchImageTool]] as const)(
+    '%s 零结果不报告已下载', async (_label, factory) => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+        success: true, audios: [], videos: [], images: [],
+      }))));
+      const { context, recordOperation } = makeContext([], []);
+      const result = await factory(context).execute('empty', { query: 'missing' });
+      expect(result.details).toMatchObject({ total_found: 0, materialized: false });
+      expect(recordOperation).not.toHaveBeenCalled();
+    });
+});
+
 describe('isMetadataOnlyMaterial', () => {
   it.each([
     ['a search candidate with size 0', candidate(), true],
@@ -99,6 +139,24 @@ describe('material_not_materialized failure shape', () => {
 });
 
 describe('image_to_video guard', () => {
+  it('accepts a generated local image receipt without invented file size', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      success: true,
+      images: [{ local_url: '/api/storage/files/ark/generated.png',
+        image_url: 'https://example.com/generated.png', width: 1024,
+        height: 1024 }],
+    }))));
+    const { context } = makeContext([], []);
+    const generated = await createGenerateAiImageTool(context).execute(
+      'generate', { prompt: 'Yorkshire terrier' },
+    );
+    expect(generated.details).toMatchObject({ materialized: true });
+    const image = context.materials[0];
+    expect(image.size).toBe(0);
+    expect(buildStillClipRequest(image, { material_id: image.id }))
+      .toMatchObject({ body: { storage_key: 'ark/generated.png' } });
+  });
+
   it('refuses a size-0 candidate without calling the backend', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -143,6 +201,39 @@ describe('image_to_video guard', () => {
 });
 
 describe('add_to_track guard', () => {
+  it.each(['video', 'audio'] as const)('编辑任务拒绝未下载的明确%s候选', async type => {
+    const { context, updateTimeline } = makeContext([], [image({
+      id: 'candidate', type, size: 0, url: 'https://example.com/media',
+      metadata: { candidate: true, materialized: false },
+    })]);
+    context.turnState.editingGoal = { taskId: 'task', sourceMessageId: 'user',
+      targetDurationSeconds: 30, fps: 30, commitments: ['editing'] };
+    const result = await createAddToTrackTool(context).execute('candidate', {
+      materialId: 'candidate',
+    });
+    expect(result.details).toMatchObject({ success: false,
+      error_code: 'material_not_materialized' });
+    expect(updateTimeline).not.toHaveBeenCalled();
+    expect(context.timelineState.tracks).toEqual([]);
+  });
+
+  it.each([
+    ['旧远端素材', {}],
+    ['实际下载回执', { candidate: false, materialized: true }],
+  ])('编辑任务保留%s兼容性', async (_label, metadata) => {
+    const { context, updateTimeline } = makeContext([videoTrack()], [image({
+      id: 'video', type: 'video', size: 0, duration: 30,
+      url: 'https://example.com/video.mp4', metadata,
+    })]);
+    context.turnState.editingGoal = { taskId: 'task', sourceMessageId: 'user',
+      targetDurationSeconds: 30, fps: 30, commitments: ['editing'] };
+    const result = await createAddToTrackTool(context).execute('old', {
+      materialId: 'video',
+    });
+    expect(result.details).toMatchObject({ success: true });
+    expect(updateTimeline).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses a size-0 image before the still guard runs', async () => {
     const { context, updateTimeline, recordOperation } = makeContext([videoTrack()], [candidate()]);
 

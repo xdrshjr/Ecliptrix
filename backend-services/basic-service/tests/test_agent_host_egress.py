@@ -230,3 +230,104 @@ async def test_downloads_need_no_research_run(host_settings, stub_client,
     _policy, request = stub_client["calls"][0]
     assert request.headers is None
     assert result["status"] == "ready"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status, expected_class, retryable", [
+    (404, "user_input", False), (403, "policy", False),
+    (429, "transient", True), (503, "transient", True),
+])
+async def test_download_preserves_upstream_status(
+        host_settings, stub_client, status, expected_class, retryable):
+    stub_client["result"] = HttpResult("https://example.com/a.mp4", status,
+                                       {"retry-after": "12"}, b"untrusted")
+    with pytest.raises(AgentHostError) as caught:
+        await egress.download("https://example.com/a.mp4", kind="media")
+    assert caught.value.failure_class == expected_class
+    assert caught.value.details["upstream_status"] == status
+    assert caught.value.details["retryable"] == retryable
+    if retryable:
+        assert caught.value.details["retry_after_seconds"] == 12
+
+
+def test_generation_error_envelope_is_safe_and_classified():
+    import json
+    import httpx
+    from app.services.credential_errors import generation_error_response
+
+    request = httpx.Request("POST", "https://ark.invalid/generate?signature=secret")
+    response = httpx.Response(400, request=request, headers={"x-request-id": "ark-123"},
+        json={"error": {"message": "The request targeted an endpoint that is currently closed or temporarily unavailable. secret"}})
+    error = httpx.HTTPStatusError("unsafe", request=request, response=response)
+    result = generation_error_response(error, "ark:video:model")
+    body = json.loads(result.body)
+    assert result.status_code == 502
+    assert body["error_code"] == "provider_unavailable"
+    assert body["error_details"]["upstream_status"] == 400
+    assert body["error_details"]["provider_request_id"] == "ark-123"
+    assert body["error_details"]["failure_class"] == "configuration"
+    assert "secret" not in result.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_http_request_error_is_not_success_and_honors_retry_date(host_settings, stub_client):
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    wait = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=60))
+    stub_client["result"] = HttpResult("https://example.com/a", 429,
+                                       {"retry-after": wait}, b"<html>unsafe</html>")
+    with pytest.raises(AgentHostError) as caught:
+        await egress.http_request("GET", "https://example.com/a")
+    assert caught.value.details["upstream_status"] == 429
+    assert 58 <= caught.value.details["retry_after_seconds"] <= 61
+    assert "unsafe" not in caught.value.message
+
+
+@pytest.mark.parametrize("status, category, code", [
+    (400, "validation", "provider_validation"),
+    (401, "configuration", "provider_authentication"),
+    (429, "transient", "provider_rate_limited"),
+    (503, "transient", "provider_error"),
+])
+def test_generation_status_does_not_hide_upstream(status, category, code):
+    import json
+    import httpx
+    from app.services.credential_errors import generation_error_response
+    request = httpx.Request("POST", "https://ark.invalid/generate")
+    response = httpx.Response(status, request=request, text="<html>unsafe</html>")
+    error = httpx.HTTPStatusError("unsafe", request=request, response=response)
+    result = json.loads(generation_error_response(error, "ark:model").body)
+    assert result["error_code"] == code
+    assert result["error_details"]["failure_class"] == category
+    assert result["error_details"]["upstream_status"] == status
+    assert result["error_details"]["retryable"] is False
+
+
+def test_generation_error_preserves_retry_after_http_date():
+    import json
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    import httpx
+    from app.services.credential_errors import generation_error_response
+
+    request = httpx.Request("POST", "https://ark.invalid/generate")
+    retry_at = format_datetime(
+        datetime.now(timezone.utc) + timedelta(hours=1))
+    response = httpx.Response(429, request=request,
+                              headers={"retry-after": retry_at})
+    error = httpx.HTTPStatusError("rate limited", request=request,
+                                  response=response)
+    body = json.loads(generation_error_response(error, "ark:model").body)
+    assert 3598 <= body["error_details"]["retry_after_seconds"] <= 3601
+
+
+def test_missing_generation_receipt_is_not_safe_parameter_retry():
+    import json
+    from app.services.credential_errors import generation_error_response
+    response = generation_error_response(
+        ValueError("Ark API response missing task ID: untrusted"), "ark:model")
+    body = json.loads(response.body)
+    assert response.status_code == 502
+    assert body["error_code"] == "generation_submission_unknown"
+    assert body["error_details"]["failure_class"] == "internal"
+    assert body["error_details"]["retryable"] is False

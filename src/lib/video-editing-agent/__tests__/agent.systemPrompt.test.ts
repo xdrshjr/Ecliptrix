@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { createVideoEditingAgent } from '../agent';
 import type { TimelineState, ChatMessage } from '@/types';
+import { acquireGeneration, finishGeneration, generationFailure, GENERATION_CAPABILITIES } from '../tools/apiHelper';
 
 function emptyTimeline(): TimelineState {
   return {
@@ -31,6 +32,33 @@ function emptyTimeline(): TimelineState {
 }
 
 describe('createVideoEditingAgent — explored-categories appendix is reflected in initial system prompt', () => {
+  it('仅最新用户明确重试指定能力时解禁一次，继续仍保留失败事实', () => {
+    const start: ChatMessage = { id: 'u1', role: 'user', content: '制作30秒视频', timestamp: new Date() };
+    const create = (history: ChatMessage[]) => createVideoEditingAgent({
+      llmApiUrl: 'http://localhost:9999', llmApiKey: 'test', llmModel: 'test',
+      timelineState: emptyTimeline(), materials: [], conversationHistory: history,
+      apiBaseUrl: 'http://localhost:3088',
+    }).toolContext;
+    const original = create([start]);
+    const failure = (context: typeof original, key: string) => finishGeneration(context, key,
+      generationFailure('provider_unavailable', 'configuration'));
+    const record = (id: string, result: unknown): ChatMessage => ({
+      id, role: 'assistant', content: '', timestamp: new Date(), isAgentMessage: true,
+      agentToolCalls: [{ id, name: 'generate_ai_video', status: 'error', params: {}, result }],
+    });
+    const first = record('fail-video', failure(original, GENERATION_CAPABILITIES.video));
+    const image = record('fail-image', failure(original, GENERATION_CAPABILITIES.image));
+    const retry: ChatMessage = { ...start, id: 'retry', content: '重试生成视频' };
+    const retried = create([start, first, image, retry]);
+    expect(acquireGeneration(retried, GENERATION_CAPABILITIES.video)).toBeNull();
+    expect(acquireGeneration(retried, GENERATION_CAPABILITIES.image)).not.toBeNull();
+    const failedAgain = record('again', failure(retried, GENERATION_CAPABILITIES.video));
+    const continued = create([start, first, retry, failedAgain,
+      { ...start, id: 'continue', content: '继续' }]);
+    expect(acquireGeneration(continued, GENERATION_CAPABILITIES.video)).not.toBeNull();
+    const refused = create([start, first, { ...retry, content: '不要重试生成视频' }]);
+    expect(acquireGeneration(refused, GENERATION_CAPABILITIES.video)).not.toBeNull();
+  });
   it('replays a turn-1 explore_tools(script_tools) call into the system prompt', () => {
     const history: ChatMessage[] = [
       { id: 'u1', role: 'user', content: '帮我做一个解说视频', timestamp: new Date() },

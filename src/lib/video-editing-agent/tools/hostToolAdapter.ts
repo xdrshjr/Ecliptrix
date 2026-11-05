@@ -39,6 +39,7 @@ export const EGRESS_DOWNLOAD_TIMEOUT_MS = 190_000;
 export interface HostCall {
   /** 形如 `/shell/run`、`/fs/read`、`/egress/download`。 */
   path: string;
+  signal?: AbortSignal;
   body?: unknown;
   /** 前端超时（ms）。 */
   timeout?: number;
@@ -103,7 +104,8 @@ const DEFAULT_NEXT_STEP =
 
 /** 失败信封里原样透出的键（AC-G21 / REV-P1-12）。 */
 const VERBATIM_DETAIL_KEYS =
-  ['reason', 'layer', 'sticky', 'remediation'] as const;
+  ['reason', 'layer', 'sticky', 'remediation', 'upstream_status',
+    'local_status', 'request_id', 'provider_request_id', 'retry_after_seconds'] as const;
 
 /**
  * 组装失败结果：`failure_class` 与 `retryable` 恒有，`reason` / `layer` /
@@ -120,19 +122,36 @@ export function hostFailure(
   nextStep?: string,
 ) {
   const errorDetails: Record<string, unknown> = {
-    failure_class: details.failure_class ?? 'transient',
+    failure_class: ['policy', 'configuration', 'validation', 'user_input',
+      'cancelled', 'transient', 'internal', 'blocked'].includes(String(details.failure_class))
+      ? details.failure_class : 'internal',
     retryable: details.retryable === true,
   };
   for (const key of VERBATIM_DETAIL_KEYS) {
-    if (details[key] !== undefined) errorDetails[key] = details[key];
+    if (['string', 'number', 'boolean'].includes(typeof details[key])) {
+      errorDetails[key] = typeof details[key] === 'string'
+        ? safeFailureText(details[key] as string) : details[key];
+    }
   }
   return toolResult({
     success: false,
-    error_code: errorCode,
-    next_step: nextStep ?? NEXT_STEPS[errorCode] ?? DEFAULT_NEXT_STEP,
+    error_code: /^[a-z][a-z0-9_]{0,79}$/.test(errorCode) ? errorCode : 'internal_error',
+    next_step: nextStep ? safeFailureText(nextStep) : NEXT_STEPS[errorCode] ?? (details.retryable === true
+      ? 'Retry once after the retry window; then use another source or report the limitation.'
+      : DEFAULT_NEXT_STEP),
     error_details: errorDetails,
     failureClass: errorDetails.failure_class,
   });
+}
+
+function safeFailureText(value: string): string {
+  return value.replace(/<[^>]*>/g, '')
+    .replace(/(?:authorization|api[_-]?key|token|secret)\s*[:=]\s*\S+/gi, '[redacted]')
+    .replace(/Bearer\s+\S+/gi, '[redacted]')
+    .replace(/https?:\/\/[^\s<>]+/gi, raw => {
+      try { const url = new URL(raw); return `${url.origin}${url.pathname}`; }
+      catch { return '[redacted URL]'; }
+    }).slice(0, 500);
 }
 
 /**
@@ -243,6 +262,7 @@ function importDownloadedMaterial(
       failure_class: 'policy', retryable: true,
     });
   }
+  material.metadata = { ...material.metadata, candidate: false, materialized: true };
   const exists = context.materials.some(item => item.id === material.id);
   if (!exists && !context.abortSignal?.aborted) {
     context.recordOperation(callId,
@@ -251,11 +271,147 @@ function importDownloadedMaterial(
   }
   return toolResult({
     ...data,
+    materialized: true,
+    availability: 'materialized',
     already_in_library: exists,
     project_id: context.projectId ?? null,
     success: true,
     ...call.successFields,
   });
+}
+
+interface EgressBranch {
+  key: string;
+  attempts: number;
+  nextAttemptAt: number;
+  failure?: ReturnType<typeof hostFailure>;
+  active: boolean;
+  record?: EgressFailureRecord;
+  requestVariant?: string;
+}
+const egressBranches = new WeakMap<object, Map<string, EgressBranch>>();
+
+interface EgressFailureRecord {
+  branchId: string;
+  scope: string;
+  revision: string;
+  expiresAt: number;
+  attempts: number;
+  nextAttemptAt: number;
+  failure: Record<string, unknown>;
+  requestVariant?: string;
+}
+
+export function restoreEgressFailures(context: ToolContext, values: unknown[]) {
+  if (!context.recoveryScope || context.recoveryReset) return;
+  const branches = new Map<string, EgressBranch>();
+  for (const value of values) {
+    if (!value || typeof value !== 'object') continue;
+    const item = value as Record<string, unknown>;
+    const record = item.egress_failure as EgressFailureRecord | undefined;
+    if (record?.scope === context.recoveryScope &&
+        record.revision === (context.generationConfigRevision ?? '') &&
+        record.expiresAt > Date.now() && typeof record.branchId === 'string' && record.branchId.startsWith('/egress/') &&
+        record.failure?.success === false) {
+      branches.set(record.branchId, { key: record.branchId, attempts: record.attempts,
+        nextAttemptAt: record.nextAttemptAt, failure: toolResult(record.failure),
+        active: false, record, requestVariant: record.requestVariant });
+    }
+    const cleared = item.egress_recovery as Record<string, unknown> | undefined;
+    if (cleared?.scope === context.recoveryScope &&
+        cleared.revision === (context.generationConfigRevision ?? '')) branches.delete(String(cleared.branchId));
+  }
+  egressBranches.set(context.turnState, branches);
+}
+
+/** 去除片段/签名参数，规范化主机及默认端口，避免拼写重置预算。 */
+function branchFor(context: ToolContext, call: HostCall): EgressBranch | undefined {
+  if (!call.egress || call.path === '/egress/diagnose') return undefined;
+  const body = call.body as { url?: string } | undefined;
+  try {
+    const url = new URL(body?.url ?? '');
+    const path = url.pathname.replace(/%[0-9a-f]{2}/gi, encoded => {
+      const decoded = String.fromCharCode(parseInt(encoded.slice(1), 16));
+      return /^[a-z0-9._~-]$/i.test(decoded) ? decoded : encoded.toUpperCase();
+    });
+    const key = `${call.path}:${url.origin}${path}`;
+    const branches = egressBranches.get(context.turnState) ?? new Map();
+    const branch = branches.get(key) ?? { key, attempts: 0, nextAttemptAt: 0, active: false };
+    if (branch.record && branch.record.expiresAt <= Date.now() && !branch.active) {
+      branch.attempts = 0;
+      branch.failure = undefined;
+      branch.record = undefined;
+    }
+    branches.set(key, branch);
+    egressBranches.set(context.turnState, branches);
+    return branch;
+  } catch { return undefined; }
+}
+
+function readRequestVariant(call: HostCall): string | undefined {
+  const body = call.body as { kind?: string; method?: string } | undefined;
+  if (call.path === '/egress/download' &&
+      (body?.kind === 'image' || body?.kind === 'media')) {
+    return `kind:${body.kind}`;
+  }
+  if (call.path === '/egress/request' &&
+      (body?.method === 'HEAD' || body?.method === 'GET')) {
+    return `method:${body.method}`;
+  }
+  return undefined;
+}
+
+/** Keep the URL-wide budget; only these rejected arguments admit one correction. */
+function getCorrectiveVariant(branch: EgressBranch): string | undefined {
+  if (branch.attempts >= 2) return undefined;
+  const failure = branch.failure?.details;
+  const details = failure?.error_details as Record<string, unknown> | undefined;
+  if (details?.failure_class !== 'user_input') return undefined;
+  if (failure?.error_code === 'unsupported_media_type') {
+    if (branch.requestVariant === 'kind:image') return 'kind:media';
+    if (branch.requestVariant === 'kind:media') return 'kind:image';
+  }
+  if (details.upstream_status === 405 && branch.requestVariant === 'method:HEAD') {
+    return 'method:GET';
+  }
+  return undefined;
+}
+
+function readRetryAfterSeconds(value: unknown): number {
+  const text = typeof value === 'string' ? value.trim() : '';
+  const seconds = typeof value === 'number' ? value
+    : /^\d+$/.test(text) ? Number(text)
+      : Math.ceil((Date.parse(text) - Date.now()) / 1000);
+  return Number.isFinite(seconds) ? Math.min(86400, Math.max(0, seconds)) : 0;
+}
+
+function rememberEgressFailure(context: ToolContext, branch: EgressBranch | undefined,
+  result: ReturnType<typeof hostFailure>) {
+  if (!branch) return result;
+  const details = result.details.error_details as Record<string, unknown>;
+  if (details.failure_class === 'cancelled') return result;
+  branch.failure = result;
+  branch.nextAttemptAt = Date.now()
+    + readRetryAfterSeconds(details.retry_after_seconds) * 1000;
+  if (details.retryable !== true || branch.attempts >= 2) {
+    const correction = getCorrectiveVariant(branch);
+    const nextStep = correction?.startsWith('kind:')
+      ? `Correct kind to ${correction.slice(5)} once; otherwise use another source.`
+      : correction === 'method:GET'
+        ? 'Use GET once instead of HEAD; otherwise use another source.'
+        : DEFAULT_NEXT_STEP;
+    branch.failure = hostFailure(result.details.error_code as string,
+      { ...details, retryable: false }, nextStep);
+  }
+  const record: EgressFailureRecord = {
+    branchId: branch.key, scope: context.recoveryScope ?? '',
+    revision: context.generationConfigRevision ?? '',
+    expiresAt: Math.max(Date.now() + 10 * 60_000, branch.nextAttemptAt),
+    attempts: branch.attempts, nextAttemptAt: branch.nextAttemptAt,
+    failure: branch.failure.details, requestVariant: branch.requestVariant,
+  };
+  branch.record = record;
+  return toolResult({ ...branch.failure.details, egress_failure: record });
 }
 
 /**
@@ -273,34 +429,62 @@ export async function executeHostTool(
   callId: string,
   call: HostCall,
 ) {
-  if (context.abortSignal?.aborted) {
+  if (context.abortSignal?.aborted || call.signal?.aborted) {
     return hostFailure('cancelled', { failure_class: 'cancelled' });
   }
   const budget = call.egress ? takeEgressBudget(context) : null;
   if (budget) return budget;
+  const branch = branchFor(context, call);
+  if (branch?.active) return hostFailure('branch_probe_pending', {
+    failure_class: 'blocked', retryable: false,
+  });
+  if (branch?.failure) {
+    const details = branch.failure.details.error_details as Record<string, unknown>;
+    const correction = getCorrectiveVariant(branch);
+    const canCorrect = correction !== undefined
+      && correction === readRequestVariant(call);
+    if (branch.attempts >= 2 || Date.now() < branch.nextAttemptAt
+      || (details.retryable !== true && !canCorrect)) {
+      return toolResult({ ...branch.failure.details, egress_failure: branch.record });
+    }
+  }
+  if (branch) {
+    branch.active = true;
+    branch.attempts++;
+    branch.requestVariant = readRequestVariant(call);
+  }
   try {
     const response = await toolFetch(context, `/api/agent-host${call.path}`, {
       method: 'POST',
       retry: false,
       timeout: call.timeout ?? HOST_CALL_TIMEOUT_MS,
-      signal: context.abortSignal,
+      signal: call.signal,
       // 写请求必须自带并转发 Origin：BFF 与后端都按它判定「同源 UI 发起」。
       headers: { 'x-tool-call-id': callId, origin: context.apiBaseUrl },
       ...(call.body === undefined ? {} : { body: JSON.stringify(call.body) }),
     });
     const envelope = await readEnvelope(response);
-    if (context.abortSignal?.aborted) {
+    if (context.abortSignal?.aborted || call.signal?.aborted) {
       return hostFailure('cancelled', { failure_class: 'cancelled' });
     }
     if (!response.ok || envelope.success === false) {
-      return hostFailure(
+      return rememberEgressFailure(context, branch, hostFailure(
         envelope.error_code ?? 'internal_error',
-        envelope.error_details ?? {},
+        { ...envelope.error_details, local_status: response.status },
         nextStepOf(envelope),
-      );
+      ));
     }
     const data = (envelope.data ?? {}) as Record<string, unknown>;
-    return call.importMaterial
+    if (call.egress && typeof data.status === 'number' && data.status >= 400) {
+      const retryable = data.status === 429 || data.status === 408 || data.status >= 500;
+      const headers = (data.headers ?? {}) as Record<string, unknown>;
+      return rememberEgressFailure(context, branch, hostFailure('upstream_error', {
+        upstream_status: data.status, local_status: response.status,
+        failure_class: retryable ? 'transient' : 'user_input', retryable,
+        retry_after_seconds: readRetryAfterSeconds(headers['retry-after']),
+      }));
+    }
+    const result = call.importMaterial
       ? importDownloadedMaterial(context, callId, data, call)
       : toolResult({
         ...(call.path === '/shell/run' ? limitShellStreams(data) : data),
@@ -308,13 +492,25 @@ export async function executeHostTool(
         success: true,
         ...call.successFields,
       });
+    if (result.details.success === false) {
+      return rememberEgressFailure(context, branch, result);
+    }
+    if (!branch) return result;
+    branch.attempts = 0;
+    branch.failure = undefined;
+    return toolResult({ ...result.details, egress_recovery: {
+      branchId: branch.key, scope: context.recoveryScope ?? '',
+      revision: context.generationConfigRevision ?? '',
+    } });
   } catch (error) {
     const name = error instanceof Error ? error.name : '';
-    const code = context.abortSignal?.aborted ? 'cancelled'
+    const code = context.abortSignal?.aborted || call.signal?.aborted ? 'cancelled'
       : name === 'TimeoutError' ? 'timeout' : 'network_error';
-    return hostFailure(code, {
+    return rememberEgressFailure(context, branch, hostFailure(code, {
       failure_class: code === 'cancelled' ? 'cancelled' : 'transient',
       retryable: code !== 'cancelled',
-    });
+    }));
+  } finally {
+    if (branch) branch.active = false;
   }
 }

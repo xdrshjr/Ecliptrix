@@ -20,7 +20,7 @@ export const CREDITS_FILE_NAME = 'credits.md';
 const RESULT_ROW_LIMIT = 10;
 /** 来源字段是不可信外部文本，每个单元格截到这个码点数。 */
 const CELL_MAX_CHARS = 200;
-const DISCLAIMER = '授权状态来自来源页面的公开声明，不构成法律意见。';
+const DISCLAIMER = '本清单仅整理已记录的来源证据，不验证授权；未核验不等于来源未声明授权，不构成法律意见。';
 
 const parameters = Type.Object({
   scope: Type.Optional(Type.Union([Type.Literal('used'), Type.Literal('all')],
@@ -39,6 +39,7 @@ export interface CreditRow {
   retrieved_at: string;
   usage: string;
   unlicensed: boolean;
+  source_page_verified?: boolean;
 }
 
 /** 转义单元格：折叠换行、转义 `|` 与反引号、截断码点，防止注入表格或指令。 */
@@ -60,7 +61,7 @@ export function toCreditRow(entry: WebMaterialEntry): CreditRow {
   const declared = isLicenseDeclared(provenance);
   const license = declared
     ? `已声明（${escapeCell(provenance?.license_url) || '见来源页'}）`
-    : '**未声明，商用前请确认**';
+    : '**未核验或未记录，使用前请确认**';
   return {
     name: escapeCell(entry.name),
     source: escapeCell(provenance?.source_page_url ?? provenance?.final_url),
@@ -69,6 +70,7 @@ export function toCreditRow(entry: WebMaterialEntry): CreditRow {
     retrieved_at: escapeCell(provenance?.retrieved_at),
     usage: escapeCell(formatUsage(entry)),
     unlicensed: !declared,
+    source_page_verified: provenance?.source_page_verified,
   };
 }
 
@@ -105,7 +107,8 @@ export function createBuildCreditsTool(
     description:
       'List the web materials used on the timeline with their source page, author and '
       + 'declared licence, and save it as credits.md in the workspace. A licence of '
-      + '"unknown" means the source page declared none; tell the user before export.',
+      + '"unknown" means licence evidence has not been verified or recorded. '
+      + 'This list does not verify licensing or change the provenance facts.',
     parameters,
     execute: async (toolCallId: string, params: Params) => {
       const collect = params.scope === 'all'
@@ -128,7 +131,7 @@ export function createBuildCreditsTool(
         ...(wantsWrite && !written
           ? { note: '工作区未启用，已仅返回前 10 行 (workspace unavailable; first 10 rows only).' }
           : {}),
-        next_step: 'Tell the user which materials have no declared licence.',
+        next_step: '说明哪些素材缺少已核验的授权证据；来源清单不是授权验证。',
       });
     },
   };

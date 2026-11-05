@@ -51,9 +51,8 @@ export function createCheckTimelineTool(
     name: 'check_timeline',
     label: 'Check Timeline',
     description:
-      'Free local static check of the timeline: 16 rules, no network, no model '
-      + 'call. Run it before export and after edits; fix blockers first. Each '
-      + 'issue names the tool that fixes it.',
+      'Check timeline and saved duration target, no network. Run after edits and '
+      + 'before export. Fix blockers; warning suggestions may only aid investigation.',
     parameters,
 
     execute: async (_toolCallId: string, params: Params) => {
@@ -64,6 +63,8 @@ export function createCheckTimelineTool(
         targetWidth: target.width,
         targetHeight: target.height,
         includeNotes: params.include_notes === true,
+        targetDurationSeconds: context.turnState?.editingGoal?.targetDurationSeconds,
+        fps: context.turnState?.editingGoal?.fps,
       });
       return toolkitResult({ success: true, ...report });
     },

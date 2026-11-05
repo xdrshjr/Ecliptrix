@@ -123,10 +123,18 @@ def _image_url(item) -> str:
     return data_url(item)
 
 
-def build_user_text(question: str, mode: str, checklist) -> str:
+def build_user_text(question: str, mode: str, checklist,
+                    annotations=None) -> str:
     lines = ["Review the image(s) below and answer in the JSON schema."]
     if question:
         lines.append(f"Question: {question.strip()[:300]}")
+    if annotations:
+        lines.append("联系表工具添加的标签（坐标为整图归一化矩形）："
+                     + json.dumps(annotations, ensure_ascii=False))
+        lines.append("仅这些区域内与所列标签完全匹配的文字由工具添加，"
+                     "不属于源视频。其余文字、时间码和真实水印仍须检查；"
+                     "无法区分时标为疑虑，并用 view_image 的 frame 来源"
+                     "在对应 at_seconds 复核无标签原帧。")
     if mode == "scan":
         lines.append("Mode: scan — look for defects, text problems and "
                      "watermarks; be specific about where they are.")
@@ -140,12 +148,13 @@ def build_user_text(question: str, mode: str, checklist) -> str:
     return "\n".join(lines)
 
 
-def build_messages(images, question: str, mode: str, checklist) -> list[dict]:
+def build_messages(images, question: str, mode: str, checklist,
+                   annotations=None) -> list[dict]:
     """图在前、问题在后（§4.6 的消息形状）。"""
     parts = [{"type": "image_url", "image_url": {"url": _image_url(item)}}
              for item in images]
     parts.append({"type": "text",
-                  "text": build_user_text(question, mode, checklist)})
+                  "text": build_user_text(question, mode, checklist, annotations)})
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": parts},
@@ -326,7 +335,7 @@ def normalise_payload(payload: dict, raw_text: str, parse_error: bool) -> dict:
 
 
 async def describe_images(images, question, *, mode="look", checklist=None,
-                          project_id=None) -> dict:
+                          project_id=None, annotations=None) -> dict:
     """跑一次视觉审阅；返回 §4.6 的观察字典（含 `untrusted: True`）。"""
     if not images:
         raise AgentVisionError("invalid_argument",
@@ -338,7 +347,8 @@ async def describe_images(images, question, *, mode="look", checklist=None,
         "model": config.model_name,
         "temperature": getattr(config, "temperature", DEFAULT_TEMPERATURE),
         "max_tokens": getattr(config, "max_tokens", DEFAULT_MAX_TOKENS),
-        "messages": build_messages(images, question or "", mode, checklist),
+        "messages": build_messages(images, question or "", mode, checklist,
+                                   annotations),
     }
     response = await _post(config, payload, _timeout_seconds())
     raw_text = extract_text(response)

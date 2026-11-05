@@ -324,7 +324,7 @@ function upsertSubtitleItem(
  * 把 `add_subtitle_clips` 落到一份时间线状态上（§6.3，唯一实现）。
  *
  * 顺序：找/建轨 → `replace` 先清空 → 逐条 upsert → 按 startTime 稳定排序 →
- * 提升 `totalDuration`。`totalDuration` 放在这里（而不是各调用方）是 P0-2 的
+ * 重算 `totalDuration`。`totalDuration` 放在这里（而不是各调用方）是 P0-2 的
  * 第二条机制：浏览器侧一直有这一步，服务端副本以前漏了，同回合后续的
  * `get_timeline` 因此看到两份不同的时长。
  */
@@ -338,6 +338,5 @@ export function applySubtitleClipsToState(
     upsertSubtitleItem(track, operation, clip);
   }
   track.items.sort((left, right) => left.startTime - right.startTime);
-  state.totalDuration = Math.max(
-    computeTimelineEnd(state), state.totalDuration ?? 0);
+  state.totalDuration = computeTimelineEnd(state);
 }

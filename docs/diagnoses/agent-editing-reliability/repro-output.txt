@@ -1,0 +1,75 @@
+node node_modules/vitest/vitest.mjs run --config docs/diagnoses/agent-editing-reliability/repro.config.ts --reporter verbose --no-color --cache=false
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R2：Agent 裁短及删除最后片段后重算总时长
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R3：首次上轨无须重排时，两端总时长同为 10
+[VideoEditingAgent] systemPrompt tokens≈8650 chars=17299 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 旧快照在首次读取前归一化，不改调用者快照
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 字幕替换可缩短末端，两端保持一致并可撤销
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R1：浏览器裁短到 30 秒同步内容总时长 15ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R2：Agent 裁短及删除最后片段后重算总时长 23ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R3：首次上轨无须重排时，两端总时长同为 10 9ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R4：同样的策略拒绝不因工具名称误触全局熔断 3ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 旧快照在首次读取前归一化，不改调用者快照 5ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 字幕替换可缩短末端，两端保持一致并可撤销 10ms
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 锁轨、取消和无效操作不改变 Agent 状态
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+stderr | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 锁轨、取消和无效操作不改变 Agent 状态
+[VideoEditingAgent] refused invalid timeline operation {
+  type: 'resize_clip',
+  reason: 'invalid-time',
+  trackId: undefined,
+  clipId: 'clip'
+}
+
+stderr | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 预期拒绝既不累加也不清零真实异常，成功清零
+[VideoEditingAgent] Circuit breaker tripped after 5 consecutive tool failures — aborting agent.
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R5：同一不可用生成能力只请求一次并保留错误分类
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 真实 Agent 初始化从失败历史恢复能力限制，继续不重发，新任务允许探测
+[VideoEditingAgent] systemPrompt tokens≈8689 chars=17377 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 真实 Agent 初始化从失败历史恢复能力限制，继续不重发，新任务允许探测
+[VideoEditingAgent] systemPrompt tokens≈8689 chars=17377 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 真实 Agent 初始化从失败历史恢复能力限制，继续不重发，新任务允许探测
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R7：明确编辑目标下空时间线及无导出回执不能全部完成
+[VideoEditingAgent] systemPrompt tokens≈8690 chars=17380 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R7对照：没有编辑目标的一般文字计划可在空时间线完成
+[VideoEditingAgent] systemPrompt tokens≈8650 chars=17299 exploredCategories=[]
+
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R8：远端音频候选明确未下载
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 真实 Store 接收裁短和删除，保持播放头、撤销与重做边界 71ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 锁轨、取消和无效操作不改变 Agent 状态 9ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 预期拒绝既不累加也不清零真实异常，成功清零 2ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R5：同一不可用生成能力只请求一次并保留错误分类 14ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R6：暂时性下载失败给出一致且有预算的重试提示 1ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > 真实 Agent 初始化从失败历史恢复能力限制，继续不重发，新任务允许探测 21ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R7：明确编辑目标下空时间线及无导出回执不能全部完成 10ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R7对照：没有编辑目标的一般文字计划可在空时间线完成 5ms
+stdout | docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R9：字幕重叠属于正确拒绝，错误返回后不会部分写入
+[VideoEditingAgent] systemPrompt tokens≈8651 chars=17301 exploredCategories=[]
+
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R8：远端音频候选明确未下载 7ms
+ ✓ docs/diagnoses/agent-editing-reliability/repro.test.ts > 剪辑可靠性离线回归 > R9：字幕重叠属于正确拒绝，错误返回后不会部分写入 7ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  06:18:19
+   Duration  6.90s (transform 1.95s, setup 231ms, import 3.60s, tests 218ms, environment 2.26s)

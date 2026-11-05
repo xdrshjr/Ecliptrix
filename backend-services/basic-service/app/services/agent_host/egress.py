@@ -224,6 +224,8 @@ async def http_request(method, url, headers=None, max_bytes=None,
         audit.record_egress(project_id, url, None, error.error_code)
         raise _web_error(error) from None
     audit.record_egress(project_id, url, result.status)
+    if result.status >= 400:
+        raise _http_failure(result, "upstream_error")
     subset = {key: value for key, value in result.headers.items()
               if key in HEADER_SUBSET}
     payload = {"status": result.status, "headers": subset, "truncated": False,
@@ -288,8 +290,7 @@ async def download(url, kind="image", name=None, source_page_url=None,
         audit.record_egress(project_id, url, None, error.error_code)
         raise _web_error(error) from None
     if response.status != 200:
-        raise AgentHostError("download_failed",
-                             message=f"upstream returned {response.status}")
+        raise _http_failure(response, "download_failed")
     if kind == "media" and not media_signature(response.body):
         raise AgentHostError(
             "unsupported_media_type",
@@ -297,6 +298,32 @@ async def download(url, kind="image", name=None, source_page_url=None,
             remediation="HTML 页面不能当媒体入库；请给出直链或改用 http_request。")
     return await _commit_download(url, kind, name, source_page_url,
                                   response.body, project_id)
+
+
+def _http_failure(response, code):
+    """确定性 4xx 停止原 URL；暂时性读取错误只允许有限重试。"""
+    status = response.status
+    retryable = status in {408, 425, 429} or status >= 500
+    category = "transient" if retryable else (
+        "policy" if status in {401, 403} else "user_input")
+    details = {"upstream_status": status, "retryable": retryable,
+               "sticky": not retryable}
+    retry_after = str(response.headers.get("retry-after", ""))
+    if retry_after.isdigit():
+        details["retry_after_seconds"] = min(int(retry_after), 86400)
+    elif retry_after:
+        from datetime import datetime, timezone
+        from email.utils import parsedate_to_datetime
+        try:
+            wait = (parsedate_to_datetime(retry_after) - datetime.now(timezone.utc)).total_seconds()
+            details["retry_after_seconds"] = min(max(0, int(wait) + 1), 86400)
+        except (ValueError, TypeError, OverflowError):
+            pass
+    return AgentHostError(code, message=f"upstream returned {status}",
+                          failure_class=category, details=details,
+                          next_step=("Retry once after the retry window; then use another source."
+                                     if retryable else
+                                     "Stop this URL; use another source or report the limitation."))
 
 
 async def _commit_download(url, kind, name, source_page_url, body,

@@ -1,0 +1,9 @@
+COMMAND: node node_modules/vitest/vitest.mjs run src/lib/video-editing-agent/__tests__/voiceDefaults.test.ts src/lib/video-editing-agent/__tests__/ttsTools.defaultVoice.test.ts src/lib/video-editing-agent/__tests__/ttsTools.errorPropagation.test.ts src/lib/video-editing-agent/__tests__/qualityLint.test.ts src/lib/video-editing-agent/__tests__/agent.reconcile.test.ts src/lib/video-editing-agent/__tests__/operationApplier.overlap.test.ts src/lib/video-editing-agent/__tests__/agent.circuitBreaker.subtitles.test.ts src/lib/video-editing-agent/__tests__/toolActivation.test.ts src/lib/video-editing-agent/__tests__/addSubtitles.test.ts src/lib/video-editing-agent/tools/__tests__/egressTools.test.ts src/components/video/hooks/__tests__/useVideoExport.duration.test.ts --maxWorkers 2 --no-color
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  11 passed (11)
+      Tests  169 passed (169)
+   Start at  05:29:55
+   Duration  20.33s (transform 2.38s, setup 2.06s, import 14.70s, tests 623ms, environment 18.73s)

@@ -330,6 +330,20 @@ export function toAgentClipMaterial(material: MaterialItem): AgentMaterialData {
  * Material as the model sees it. Inline `data:` / `blob:` thumbnails are left
  * out: one would bloat every tool result and every replayed turn.
  */
+export function materialAvailability(m: MaterialItem) {
+  if (m.metadata?.materialized === true) {
+    return { materialized: true, availability: 'materialized' };
+  }
+  if (m.metadata?.candidate === true) {
+    return { materialized: false, availability: 'candidate' };
+  }
+  const urls = [m.cacheUrl, m.serverUrl, m.url];
+  const materialized = !!m.storageKey || urls.some(url =>
+    !!url && /^(?:\/api\/(?:storage\/files|audio\/generated)\/|blob:|data:)/.test(url));
+  return { materialized, availability: materialized ? 'materialized'
+    : 'unverified' };
+}
+
 export function serializeMaterial(m: MaterialItem) {
   return {
     id: m.id,
@@ -340,6 +354,7 @@ export function serializeMaterial(m: MaterialItem) {
     width: m.width,
     height: m.height,
     size: m.size,
+    ...materialAvailability(m),
     description: m.description,
     tags: m.tags,
     ...(isInlineMediaUrl(m.thumbnailUrl) ? {} : { thumbnailUrl: m.thumbnailUrl }),

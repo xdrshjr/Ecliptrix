@@ -65,6 +65,7 @@ export interface ResearchSource {
 }
 
 export interface WebMaterialProvenance {
+  source_page_verified?: boolean;
   source_page_url: string;
   final_url: string;
   title: string;

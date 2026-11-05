@@ -27,6 +27,33 @@ describe('agent material payloads', () => {
     expect(serialized.thumbnailUrl).toBe('/api/storage/files/images/clip.jpg');
   });
 
+  it('区分远端候选与没有 size 的旧本地素材', () => {
+    expect(serializeMaterial(material({ size: 0,
+      url: 'https://example.com/video.mp4',
+      metadata: { source: 'pexels', candidate: true, materialized: false },
+    }))).toMatchObject({ availability: 'candidate', materialized: false });
+    expect(serializeMaterial(material({ size: undefined as unknown as number })))
+      .toMatchObject({ availability: 'materialized', materialized: true });
+  });
+
+  it('明确候选与下载回执优先于缓存路径推断', () => {
+    const cachedCandidate = material({
+      cacheUrl: '/api/storage/files/cache/video.mp4',
+      metadata: { candidate: true, materialized: false },
+    });
+    expect(serializeMaterial(cachedCandidate))
+      .toMatchObject({ availability: 'candidate', materialized: false });
+    expect(serializeMaterial({ ...cachedCandidate,
+      metadata: { candidate: true, materialized: true },
+    })).toMatchObject({ availability: 'materialized', materialized: true });
+  });
+
+  it('没有明确标记的旧远端素材保持未核验', () => {
+    expect(serializeMaterial(material({ url: 'https://example.com/old.mp4',
+      metadata: { source: 'pexels' },
+    }))).toMatchObject({ availability: 'unverified', materialized: false });
+  });
+
   it('toAgentClipMaterial snapshots playback fields without inline thumbnails', () => {
     const snapshot = toAgentClipMaterial(material({
       thumbnailUrl: 'blob:http://localhost/1',

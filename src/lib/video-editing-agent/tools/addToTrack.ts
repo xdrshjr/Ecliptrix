@@ -90,7 +90,10 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
       // A search candidate has no bytes yet (size 0): refuse it before the
       // still guard, otherwise the model is told to convert an image that
       // cannot be read at all (root cause C-6, spec v2 §4.6, AC-G05).
-      if (material.type === 'image' && isMetadataOnlyMaterial(material)) {
+      const editingCandidate = !!context.turnState.editingGoal
+        && material.metadata?.candidate === true
+        && material.metadata?.materialized !== true;
+      if (editingCandidate || (material.type === 'image' && isMetadataOnlyMaterial(material))) {
         const failure = materialNotMaterializedFailure(material);
         return { content: [{ type: 'text', text: JSON.stringify(failure) }],
           details: failure };

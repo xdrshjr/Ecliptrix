@@ -195,3 +195,37 @@ export function validateOperationTargets(
       return VALID;
   }
 }
+
+/** First locked track the operation would change, or null. */
+export function findLockedTrackId(
+  state: TimelineState,
+  operation: GuardedOperation,
+): string | null {
+  const lockedIds = new Set(state.tracks.filter(t => t.isLocked).map(t => t.id));
+  return touchedTrackIds(state, operation).find(id => lockedIds.has(id)) ?? null;
+}
+
+export function touchedTrackIds(
+  state: TimelineState,
+  operation: GuardedOperation,
+): string[] {
+  switch (operation.type) {
+    case 'add_clip':
+      return [operation.clip.trackId];
+    case 'delete_clip':
+      return [operation.trackId];
+    case 'move_clip':
+      return [operation.fromTrackId, operation.toTrackId];
+    case 'trim_clip':
+    case 'resize_clip': {
+      const track = state.tracks.find(t =>
+        t.items.some(i => i.id === operation.clipId),
+      );
+      return track ? [track.id] : [];
+    }
+    case 'add_subtitle_clips':
+      return [operation.trackId];
+    default:
+      return [];
+  }
+}

@@ -99,6 +99,8 @@ interface RunOptions {
   includeNotes?: boolean;
   width?: number;
   height?: number;
+  targetDurationSeconds?: number;
+  fps?: number;
 }
 
 function run(options: RunOptions = {}): TimelineLintReport {
@@ -110,6 +112,8 @@ function run(options: RunOptions = {}): TimelineLintReport {
     targetWidth: options.width ?? 1920,
     targetHeight: options.height ?? 1080,
     includeNotes: options.includeNotes ?? true,
+    targetDurationSeconds: options.targetDurationSeconds,
+    fps: options.fps,
   });
 }
 
@@ -648,6 +652,30 @@ describe('rule 13 — cover_not_applied', () => {
 // --- 规则 14：duration_mismatch ------------------------------------------
 
 describe('rule 14 — duration_mismatch', () => {
+  it('音轨比视频长时不误报缓存漂移', () => {
+    const base = fixture();
+    base.tracks[1].items[0].duration = 6;
+    expect(codes(run({ tracks: base.tracks, totalDuration: 6 })))
+      .not.toContain('duration_mismatch');
+    const withTarget = run({ tracks: base.tracks, totalDuration: 6, targetDurationSeconds: 6 });
+    expect(withTarget.ok).toBe(false);
+    expect(codes(withTarget)).toContain('visual_coverage_mismatch');
+  });
+  it('目标30秒拒绝30.6秒，按一帧容差校验实际渲染末端', () => {
+    const base = fixture();
+    base.tracks[0].items[0].duration = 30.6;
+    expect(run({ tracks: base.tracks, targetDurationSeconds: 30, fps: 30 }))
+      .toMatchObject({ ok: false });
+    base.tracks[0].items[0].duration = 30 + 1 / 30;
+    expect(codes(run({ tracks: base.tracks, targetDurationSeconds: 30, fps: 30 })))
+      .not.toContain('target_duration_mismatch');
+  });
+  it('拒绝无效目标且无目标旧任务不增加 blocker', () => {
+    for (const target of [0, -1, Infinity, NaN]) {
+      expect(codes(run({ targetDurationSeconds: target }))).toContain('invalid_duration_target');
+    }
+    expect(run().ok).toBe(true);
+  });
   it('warns when totalDuration is off by more than 0.05s', () => {
     const report = run({ totalDuration: 9 });
     const [issue] = only('duration_mismatch', report);

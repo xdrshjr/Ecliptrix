@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useRef, useEffect, useState } from 'react';
+import { readSetupConfigRevision } from '@/lib/setupEvents';
 import {
   describeServerErrorText,
   describeStreamErrorText,
@@ -594,6 +595,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
             aspectRatioId: coverAspectRatioRef.current ?? '16:9' },
           materials: stripInlineMediaForAgent(materialsRef.current),
           projectId,
+          conversationId: convId,
+          generationConfigRevision: readSetupConfigRevision(),
           // Locator only (spec §4.4 P1-1): the export hook recorded it and
           // `inspect_export` falls back to it when the model omits the id.
           lastCompositionId: readLastCompositionId(projectId),

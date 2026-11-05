@@ -46,6 +46,11 @@ export interface StillClipFailure {
   sourceMaterialId?: string;
   /** v2 error contract (spec §7.3): the web tools’ vocabulary. */
   failure_class?: 'policy' | 'configuration' | 'user_input' | 'transient';
+  error_details?: {
+    failure_class: 'policy';
+    retryable: false;
+    sticky: false;
+  };
   sticky?: boolean;
   http_status?: number;
   next_step?: string;
@@ -163,12 +168,15 @@ export const CANDIDATE_NEXT_STEP =
  * Handing one to the backend only produces a vague "Image could not be
  * resolved", so both frontend entry points refuse it up front.
  *
- * `size === 0` is the deciding signal; the second clause covers a bare metadata
- * record that has no byte address at all.
+ * A generated image can have a local-file receipt without a reported size.
+ * Otherwise `size === 0` marks a candidate; an address is always required.
  */
 export function isMetadataOnlyMaterial(
-  material: Pick<MaterialItem, 'size' | 'cacheUrl' | 'storageKey' | 'url'>,
+  material: Pick<MaterialItem,
+    'size' | 'cacheUrl' | 'storageKey' | 'url' | 'metadata'>,
 ): boolean {
+  if (material.metadata?.materialized === true
+    && storageKeyForMaterial(material)) return false;
   if (material.size === 0) return true;
   return !material.cacheUrl && !material.storageKey && !material.url;
 }
@@ -194,6 +202,10 @@ export function materialNotMaterializedFailure(
     hint: MATERIAL_NOT_MATERIALIZED_NEXT_STEP,
     next_step: MATERIAL_NOT_MATERIALIZED_NEXT_STEP,
     failure_class: 'policy',
+    // The event subscriber reads the shared envelope for expected refusals.
+    error_details: {
+      failure_class: 'policy', retryable: false, sticky: false,
+    },
     sticky: false,
     http_status: 422,
     sourceMaterialId: source.id,

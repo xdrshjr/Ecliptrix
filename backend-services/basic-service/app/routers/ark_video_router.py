@@ -5,7 +5,7 @@ Router for Ark Seedance video generation endpoints.
 from fastapi import APIRouter, HTTPException
 
 from app.logger import get_logger
-from app.services.credential_errors import require_configured
+from app.services.credential_errors import require_configured, generation_error_response
 from app.models.ark_video_models import (
     ArkVideoGenerateRequest,
     ArkVideoGenerateResponse,
@@ -35,10 +35,12 @@ async def generate_video(request: ArkVideoGenerateRequest) -> ArkVideoGenerateRe
         )
     except ValueError as e:
         logger.warning(f"Ark video task validation failed: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        return generation_error_response(
+            e, f"ark:contents/generations/tasks:{ark_video_service.ARK_MODEL}")
     except Exception as e:
         logger.error(f"Failed to create Ark video task: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create video task: {str(e)}")
+        return generation_error_response(
+            e, f"ark:contents/generations/tasks:{ark_video_service.ARK_MODEL}")
 
 
 @router.get("/status/{ark_task_id}", response_model=ArkVideoStatusResponse)

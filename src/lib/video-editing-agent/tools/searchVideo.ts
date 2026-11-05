@@ -76,6 +76,8 @@ function mapVideoToMaterial(video: VideoSearchResult, query: string): MaterialIt
     tags: [query, 'pexels', '在线素材'],
     description: video.author ? `来自PEXELS的视频素材，作者：${video.author}` : undefined,
     metadata: {
+      candidate: true,
+      materialized: false,
       source: 'pexels',
       sourceId: String(video.id),
     },
@@ -87,11 +89,6 @@ function mapVideoToMaterial(video: VideoSearchResult, query: string): MaterialIt
  * Pexels hit has `size: 0` and a remote URL, so it is a candidate
  * (root cause C-6, spec v2 §4.6).
  */
-function isMaterializedMaterial(material: MaterialItem): boolean {
-  const localUrl = material.cacheUrl ?? material.url ?? '';
-  return material.size > 0 && localUrl.startsWith('/api/storage/files/');
-}
-
 export function createSearchVideoTool(context: ToolContext): AgentTool<typeof parameters> {
   return {
     name: 'search_video',
@@ -165,6 +162,7 @@ export function createSearchVideoTool(context: ToolContext): AgentTool<typeof pa
             success: true,
             materials: [],
             total_found: 0,
+            materialized: false,
             message: `No videos found for '${searchQuery}'`,
             searchQuery,
           };
@@ -183,10 +181,12 @@ export function createSearchVideoTool(context: ToolContext): AgentTool<typeof pa
 
         const result = {
           success: true,
-          materials: materials.map(m => ({ id: m.id, name: m.name, type: m.type, duration: m.duration, width: m.width, height: m.height })),
+          materials: materials.map(m => ({ id: m.id, name: m.name, type: m.type,
+            duration: m.duration, width: m.width, height: m.height, url: m.url,
+            availability: 'candidate', materialized: false })),
           total_found: materials.length,
           // False means at least one hit still has no bytes on disk.
-          materialized: materials.every(isMaterializedMaterial),
+          materialized: false,
           message: `Found ${materials.length} video(s) for '${searchQuery}'`,
           searchQuery,
           next_step: CANDIDATE_NEXT_STEP,

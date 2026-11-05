@@ -8,11 +8,25 @@
  */
 
 export type PlanStepStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
+export type EditingDeliverable = 'editing' | 'bgm' | 'export' | 'inspection';
+
+/** 来自用户消息的目标；只通过实际执行的工具结果跨轮恢复。 */
+export interface EditingGoal {
+  taskId: string;
+  projectId?: string;
+  conversationId?: string;
+  sourceMessageId: string;
+  targetDurationSeconds: number;
+  fps: number;
+  commitments: EditingDeliverable[];
+}
 
 export interface PlanStep {
   index: number;
   title: string;
   status: PlanStepStatus;
+  deliverable?: EditingDeliverable;
+  materialIds?: string[];
 }
 
 export interface AgentPlan {
@@ -22,6 +36,7 @@ export interface AgentPlan {
   doneCount: number;
   total: number;
   note?: string;
+  editingGoal?: EditingGoal;
 }
 
 export interface AskUserOption {
@@ -131,6 +146,7 @@ export interface AgentToolkitUsage {
 /** `ToolContext.turnState` —— 本轮状态，每个请求新建，绝不跨轮复用。 */
 export interface ToolkitTurnState {
   plan?: AgentPlan;
+  editingGoal?: EditingGoal;
   askedQuestionId?: string;
   /** Research-crew budget used this turn (`delegate_research`). */
   crew?: { crewCalls: number; crewToolCalls: number; crewModelCalls: number };

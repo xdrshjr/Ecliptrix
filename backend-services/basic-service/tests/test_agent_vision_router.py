@@ -49,11 +49,12 @@ def reset_call_cache():
 @pytest.fixture
 def fake_vision(monkeypatch):
     """假视觉客户端：不联网，返回固定契约。"""
-    calls = {"describe": 0}
+    calls = {"describe": 0, "annotations": []}
 
     async def fake_describe(images, question, *, mode="look", checklist=None,
-                            project_id=None):
+                            project_id=None, annotations=None):
         calls["describe"] += 1
+        calls["annotations"].append(annotations)
         return dict(GOOD_RESULT)
 
     async def fake_model():
@@ -420,10 +421,27 @@ async def test_frames_builds_a_contact_sheet(fake_vision, vision_storage,
                          start_seconds=0.0, end_seconds=8.0, count=2)
     response = await router_module.review_frames(body, write_request())
     data = response.data
-    assert data["sheet"] == {"frame_count": 2, "start": 0.0, "end": 8.0}
+    assert data["sheet"]["frame_count"] == 2
+    assert data["sheet"]["start"] == 0.0
+    assert data["sheet"]["end"] == 8.0
+    assert data["sheet"]["annotations"]["version"] == "contact-sheet-labels-v1"
+    assert fake_vision["annotations"][0] == data["sheet"]["annotations"]
+    assert fake_vision["annotations"][0]["labels"][0]["text"] == '#1  00:01.0'
     assert data["images"] == 2
     assert data["details"]["ui"]["thumbs"][0].startswith("data:image/jpeg")
     assert data["details"]["ui"]["skipped"] == []
+
+    # 标签来源信息进入缓存键；改变版本不能复用旧的误判。
+    original = router_module.contact_sheet.annotation_metadata
+
+    def revised(frames):
+        return {**original(frames), "version": "contact-sheet-labels-v2"}
+
+    monkeypatch.setattr(router_module.contact_sheet, "annotation_metadata", revised)
+    response = await router_module.review_frames(
+        body, write_request(**{"x-tool-call-id": "call-2"}))
+    assert response.data["cached"] is False
+    assert fake_vision["describe"] == 2
 
 
 @pytest.mark.asyncio
