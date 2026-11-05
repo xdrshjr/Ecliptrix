@@ -28,7 +28,7 @@ function context(materials: MaterialItem[], usedIds: string[]): ToolContext {
   };
   return {
     timelineState: state, materials, apiBaseUrl: 'http://127.0.0.1:3000', projectId: 'p1',
-    operations: new Map(), updateTimeline: () => undefined, recordOperation: () => undefined,
+    operations: new Map(), updateTimeline: () => ({ applied: true as const }), recordOperation: () => undefined,
     turnState: {}, callBudget: { used: 0 },
   };
 }

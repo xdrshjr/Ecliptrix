@@ -26,7 +26,7 @@ function makeContext(overrides?: Partial<TimelineState>): ToolContext {
     materials: [],
     apiBaseUrl: 'http://localhost',
     operations: new Map<string, AgentOperation>(),
-    updateTimeline: () => undefined,
+    updateTimeline: () => ({ applied: true as const }),
     recordOperation: () => undefined,
     turnState: {}, callBudget: { used: 0 },
   };

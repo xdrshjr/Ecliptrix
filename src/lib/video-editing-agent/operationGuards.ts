@@ -13,12 +13,14 @@
  */
 
 import type {
+  AddSubtitleClipsOperation,
   AgentTimelineOperation,
   OperationRejectReason,
   TimelineState,
   Track,
 } from '@/types';
 import type { TimelineOperation } from './types';
+import { subtitleStyleProblem } from './subtitleClips';
 
 export type { OperationRejectReason } from '@/types';
 
@@ -33,6 +35,15 @@ type TrimClip = Extract<GuardedOperation, { type: 'trim_clip' }>;
 type ResizeClip = Extract<GuardedOperation, { type: 'resize_clip' }>;
 
 const VALID: OperationValidation = { ok: true };
+
+/**
+ * 字幕批内重叠判定精度：与 `tools/index.ts` 的 `POSITION_EPSILON` 同值。
+ *
+ * 刻意不 import 那个常量：`tools/index` 会把**每一个工具**拉进模块图，而本模块
+ * 运行在浏览器里（`OperationApplier` 的守卫）。与 `qualityLint.LINT_DEFAULTS`
+ * 里 `overlapEpsilon` 的处理方式一致。
+ */
+const OVERLAP_EPSILON = 1e-6;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -117,6 +128,52 @@ function validateResize(state: TimelineState, operation: ResizeClip): OperationV
   return isPositiveDuration(operation.newDuration) && clipEndValid ? VALID : invalidTime(clipId);
 }
 
+/**
+ * 字幕批量载荷的边界防御（spec §6.4）。
+ *
+ * **必须显式加 case**：`validateOperationTargets` 的 `default` 分支返回 VALID，
+ * 漏掉它就等于对字幕载荷完全放行——负时间会一路走到 `TimePosition.create`，
+ * 在 `TimelinePanel` 的 React effect 里抛异常（那里没有 error boundary）。
+ *
+ * 拒绝原因复用既有枚举（`'invalid-time'` / `'target-track-missing'`），不新增
+ * `OperationRejectReason`：UI 文案表 `ToolStep.REJECT_REASON_KEYS` 因此不需要
+ * 任何改动。校验只做「结构、目标轨与时间」——行字数、重叠告警都是工具的
+ * V10/V11 职责，不是拒绝条件。
+ */
+function validateAddSubtitleClips(
+  state: TimelineState,
+  operation: AddSubtitleClipsOperation,
+): OperationValidation {
+  const { trackId, clips } = operation;
+  if (!trackId) {
+    return { ok: false, reason: 'target-track-missing', trackId };
+  }
+  // 显式 id 命中了视频/音频轨：整批拒绝，绝不把字幕写进素材轨——那会同时污染
+  // 预览（按 item.type 过滤）与导出（按 track.type 过滤）。
+  const target = state.tracks.find(track => track.id === trackId);
+  if (target && target.type !== 'subtitle') {
+    return { ok: false, reason: 'target-track-missing', trackId };
+  }
+  if (!Array.isArray(clips) || clips.length === 0) {
+    return { ok: false, reason: 'invalid-time', trackId };
+  }
+  if (subtitleStyleProblem(operation.style) !== null) {
+    return { ok: false, reason: 'invalid-time', trackId };
+  }
+  const ordered = [...clips].sort((left, right) => left.startTime - right.startTime);
+  let previousEnd = -Infinity;
+  for (const clip of ordered) {
+    if (!isNonNegativeTime(clip.startTime) || !isPositiveDuration(clip.duration)) {
+      return { ok: false, reason: 'invalid-time', trackId, clipId: clip.id };
+    }
+    if (clip.startTime < previousEnd - OVERLAP_EPSILON) {
+      return { ok: false, reason: 'invalid-time', trackId, clipId: clip.id };
+    }
+    previousEnd = Math.max(previousEnd, clip.startTime + clip.duration);
+  }
+  return VALID;
+}
+
 export function validateOperationTargets(
   state: TimelineState,
   operation: GuardedOperation,
@@ -132,6 +189,8 @@ export function validateOperationTargets(
       return validateTrim(state, operation);
     case 'resize_clip':
       return validateResize(state, operation);
+    case 'add_subtitle_clips':
+      return validateAddSubtitleClips(state, operation);
     default:
       return VALID;
   }

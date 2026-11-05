@@ -155,7 +155,7 @@ export function createDefaultCategories(): ToolCategory[] {
     {
       id: CATEGORY_IDS.EDITING_TOOLS,
       name: '编辑工具',
-      description: 'Timeline editing operations: add, trim, delete, move, resize clips (add_to_track, trim_clip, delete_clip, move_clip, resize_clip)',
+      description: 'Timeline editing operations: add, trim, delete, move, resize clips, and write subtitles from text (add_to_track, add_subtitles, trim_clip, delete_clip, move_clip, resize_clip)',
       alwaysAvailable: true,
       tools: [], // Populated by tools/index.ts with existing editing tools
     },

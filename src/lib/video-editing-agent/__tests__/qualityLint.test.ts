@@ -699,7 +699,7 @@ function toolContext(overrides: Partial<TimelineState> = {}): ToolContext {
     materials: base.materials,
     apiBaseUrl: 'http://127.0.0.1:3000',
     operations: new Map<string, AgentOperation>(),
-    updateTimeline: () => undefined,
+    updateTimeline: () => ({ applied: true as const }),
     recordOperation: () => undefined,
     turnState: {}, callBudget: { used: 0 },
   };

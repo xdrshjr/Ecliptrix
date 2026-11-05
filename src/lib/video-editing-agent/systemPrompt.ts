@@ -34,18 +34,22 @@ const TRACK_TYPE_LABELS: Record<string, string> = {
 /**
  * Always-available tools: one-line descriptions shown in L0 system prompt.
  * These are the 8 baseline tools that the agent can call without explore_tools.
+ *
+ * 长度就是产品预算（agent-subtitles spec D-18）：满技能索引时 L0 只剩几十个
+ * 字符的余量，所以新增一条工具行必须靠压缩旧的描述腾位，不能直接追加。
  */
 const ALWAYS_AVAILABLE_TOOLS: { name: string; desc: string }[] = [
-  { name: 'get_timeline', desc: '获取完整时间线状态（含 constraintCheck 和 overlapCheck）' },
-  { name: 'list_materials', desc: '列出素材库中的所有素材' },
-  { name: 'search_materials', desc: '搜索素材库中的素材（名称/描述/字幕匹配）' },
-  { name: 'add_to_track', desc: '将素材添加到时间线轨道（图片需先转成视频）' },
+  { name: 'get_timeline', desc: '获取完整时间线（含 constraintCheck/overlapCheck）' },
+  { name: 'list_materials', desc: '列出素材库全部素材' },
+  { name: 'search_materials', desc: '按名称/描述/字幕搜索素材库' },
+  { name: 'add_to_track', desc: '素材上轨（图片需先转成视频）' },
+  { name: 'add_subtitles', desc: '加字幕（文本/SRT，不需素材）' },
   { name: 'trim_clip', desc: '修剪片段的源入出点' },
-  { name: 'delete_clip', desc: '删除时间线上的片段' },
-  { name: 'move_clip', desc: '移动片段到新位置或不同轨道' },
-  { name: 'resize_clip', desc: '调整片段在时间线上的显示时长' },
-  { name: 'check_timeline_overlaps', desc: '扫描整个时间线，列出所有同轨重叠片段（valid + overlaps[]）' },
-  { name: 'auto_fix_overlaps', desc: '一键 pack-flush 视频/音频轨道，消除同轨重叠（subtitle/locked 轨跳过）' },
+  { name: 'delete_clip', desc: '删除片段' },
+  { name: 'move_clip', desc: '移动片段到新时间/轨道' },
+  { name: 'resize_clip', desc: '调整片段显示时长' },
+  { name: 'check_timeline_overlaps', desc: '列出所有同轨重叠（valid + overlaps[]）' },
+  { name: 'auto_fix_overlaps', desc: '一键 pack-flush 视频/音频轨消除重叠（subtitle/locked 跳过）' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -595,7 +599,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 媒体搜索/生成工具的结果会自动添加到素材库。web_search/web_research/extract_web_images 只产生资料或候选，下载成功才入库。AI生成任务为异步，启动后无需等待。
 - 制作视频封面使用 cover_tools（可 explore_tools 查看），支持 HTML、AI、混合三种模式。默认 applyWhenReady=true，用户要求方案/候选/不要应用时设 false。queued 只能说“已开始制作，完成后会显示结果”；draft_ready 表示等待客户端准备，工具返回 completed 不代表已经写入视频。只有客户端实际状态 applied 才能称已应用。get_video_cover 返回本轮请求快照，不是实时编辑器。
 - **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
-- **图片先成片再上轨**：图片作为画面镜头时不要直接 add_to_track；先 explore_tools(still_tools)，用 image_to_video / batch_image_to_video 转成视频素材，再把返回的 materialId 交给 add_to_track。Logo、贴纸、水印等叠加图才用 add_to_track 的 as_still:true。
+- **图片先成片再上轨**：图片作为画面镜头时不要直接 add_to_track；先 explore_tools(still_tools)，用 image_to_video / batch_image_to_video 转成视频素材，再把返回的 materialId 交给 add_to_track。Logo、贴纸、水印等叠加图才用 add_to_track 的 as_still:true。**字幕不需要素材**：用 add_subtitles（cues 或 SRT），改时长用 resize_clip，加完 check_timeline 复验。
 - **停止依赖失败结果的分支**：工具返回 "success: false" 时先报告限制，不得编造材料、引用或素材 ID；网络研究失败后可继续独立的既有编辑操作。连续 5 次工具失败后，Agent 将被自动中断。
 - **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，必须明显低于人声，不可盖过主音频。
 - 对于罕见或本提示词未覆盖的高级工具，可调用 explore_tools 查看详情；常用工作流工具已在下方"核心工作流工具"中给出，无需先 explore。
@@ -610,11 +614,6 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const workflowRecipes = formatWorkflowRecipes();
   const skillSection = formatSkillIndex(input.skillIndex,
     skillAvailability(input.capabilities, input.crewEnabled));
-
-  const smartHandling = `## 智能结果处理
-- 用户明确要求"添加到时间线"/"放到视频里"/"用在视频中" → 生成后自动调用 add_to_track
-- 用户只说"找一些"/"生成一个"/"搜索" → 仅添加到素材库，不自动上轨
-- 不确定时 → 只入库，让用户自行决定`;
 
   const hardConstraints = `## ⚠️ 强制约束：视频轨道时长规则
 以下规则为硬性约束，任何操作完成后都必须满足，没有例外：
@@ -648,7 +647,6 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     projectStatus,
     workflowRecipes,
     ...(skillSection ? [skillSection] : []),
-    smartHandling,
     hardConstraints,
     (isYolo ? YOLO_TOOLKIT_GUIDANCE : AGENT_TOOLKIT_GUIDANCE).trim(),
     // Web 研究引导与工具集引导同属**确定性**前缀：放在这里而不是由调用方

@@ -37,6 +37,7 @@ import { packOverlappingTracks, reconcileOverlapsAfterAgentOp } from './reconcil
 import { diffTimelineTracks, revertTrackPatches } from './trackPatch';
 import { validateOperationTargets, type OperationValidation } from './operationGuards';
 import { createDefaultAgentTimelineState } from './defaultTimeline';
+import { applySubtitleClipsToState } from './subtitleClips';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -616,6 +617,10 @@ function applyOperationToState(
       }
       break;
     }
+    case 'add_subtitle_clips':
+      // 字幕的唯一实现（含建轨、upsert、totalDuration），不在这里再写一份。
+      applySubtitleClipsToState(state, operation);
+      break;
   }
 }
 
@@ -761,6 +766,8 @@ function touchedTrackIds(
       );
       return track ? [track.id] : [];
     }
+    case 'add_subtitle_clips':
+      return [operation.trackId];
     default:
       return [];
   }

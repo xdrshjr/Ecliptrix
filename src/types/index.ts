@@ -195,6 +195,45 @@ export interface AgentMaterialData {
   >;
 }
 
+/**
+ * 一条 agent 字幕（docs/plans/agent-subtitles/spec.md §7.1）。
+ *
+ * 字幕**没有素材**：文本 + 起止时间就是全部输入，所以它既不是
+ * `AgentClipData`（那套字段全是素材语义：materialId/clipStart/clipEnd）
+ * 也不是素材库条目。
+ */
+export interface AgentSubtitleCue {
+  text: string;
+  /** 秒，≥ 0。 */
+  startTime: number;
+  /** 秒，> 0。 */
+  duration: number;
+}
+
+/** 时间线条目形态的 cue：`id` 确定性（§D-10），`name` 供轨上显示。 */
+export interface AgentSubtitleClipData extends AgentSubtitleCue {
+  id: string;
+  name: string;
+}
+
+/**
+ * 批量写字幕的时间线操作（spec §6.2）。
+ *
+ * 一次工具调用 = 一个操作 = 一个撤销步骤（D-2），`mode:'replace'` 只能由模型
+ * 显式给出（D-6）。`style` 必填且已由工具规范化（D-3）。
+ */
+export interface AddSubtitleClipsOperation {
+  type: 'add_subtitle_clips';
+  /** 目标字幕轨；不存在时由应用层按这些字段创建（两端同一份纯函数）。 */
+  trackId: string;
+  /** 建轨时的显示名；缺省 '' 交给 `trackDisplayName` 本地化推导。 */
+  trackName?: string;
+  mode: 'append' | 'replace';
+  style: SubtitleStyle;
+  /** 1..120 条，按 startTime 升序；按 `id` upsert（D-15）。 */
+  clips: AgentSubtitleClipData[];
+}
+
 /** Why the client could not apply an agent timeline operation. */
 export type OperationRejectReason =
   | 'clip-not-found'
@@ -217,7 +256,8 @@ export type AgentTimelineOperation =
   | { type: 'trim_clip'; clipId: string; clipStart: number; clipEnd: number; duration: number }
   | { type: 'delete_clip'; clipId: string; trackId: string }
   | { type: 'move_clip'; clipId: string; fromTrackId: string; toTrackId: string; newStartTime: number }
-  | { type: 'resize_clip'; clipId: string; newDuration: number; clipEnd?: number };
+  | { type: 'resize_clip'; clipId: string; newDuration: number; clipEnd?: number }
+  | AddSubtitleClipsOperation;
 
 export interface Conversation {
   id: string;

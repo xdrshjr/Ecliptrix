@@ -33,6 +33,15 @@ export function createTrimClipTool(context: ToolContext): AgentTool<typeof param
       if (lockError) return toolErrorResponse(lockError);
 
       const { item: clip } = found;
+      // 字幕没有源素材：trim 会写出毫无意义的 clipStart/clipEnd，并与文本窗口
+      // 脱钩（spec D-12）。改字幕显示时长用 resize_clip。
+      if (clip.type === 'subtitle') {
+        return toolErrorResponse({
+          success: false,
+          error: 'Subtitles have no source range; use resize_clip to change how long '
+            + 'the subtitle stays on screen',
+        });
+      }
       if (isStillClip(clip, context.materials)) {
         return toolErrorResponse({
           success: false,

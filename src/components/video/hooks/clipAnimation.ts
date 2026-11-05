@@ -11,11 +11,20 @@ const ANIMATION_CLASS: Record<AgentTimelineOperation['type'], string> = {
   delete_clip: 'agent-clip-deleting',
   move_clip: 'agent-clip-moving',
   resize_clip: 'agent-clip-resized',
+  // 字幕一次落一批条目：逐条闪一下没有信息量，反而会盖住刚写上去的文字。
+  add_subtitle_clips: '',
 };
 const ANIMATION_MS = 700;
 
 function targetClipId(operation: AgentTimelineOperation): string {
-  return operation.type === 'add_clip' ? operation.clip.id : operation.clipId;
+  switch (operation.type) {
+    case 'add_clip':
+      return operation.clip.id;
+    case 'add_subtitle_clips':
+      return '';
+    default:
+      return operation.clipId;
+  }
 }
 
 export function triggerClipAnimation(operation: AgentTimelineOperation): void {

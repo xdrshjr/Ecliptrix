@@ -39,7 +39,7 @@ function context(overrides: Partial<ToolContext> = {}): ToolContext {
     apiBaseUrl: 'http://127.0.0.1:3088',
     projectId: 'proj-1',
     operations: new Map(),
-    updateTimeline: () => {},
+    updateTimeline: () => ({ applied: true as const }),
     recordOperation: () => {},
     turnState: {}, callBudget: { used: 0 },
     ...overrides,

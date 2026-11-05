@@ -177,11 +177,15 @@ export const TTS_VOICE_TABLE_MD = `常用音色（voice_type, Volcano TTS 2.0 / 
  *
  * Written as "when X, prefer Y" not "you MUST always Y" — keeps the model's
  * judgement intact while still anchoring the canonical decision.
+ *
+ * 字幕那条**替换**了原来的「不确定 → 只入库」而不是追加：这段文本逐字进 L0，
+ * 而满技能索引时 L0 只剩几十字符余量（agent-subtitles spec D-18 / P1-6）。
+ * 「不确定」的语义已由前两行覆盖。
  */
 export const WORKFLOW_RECIPES_MD = `### 配方：仅入库 vs 上轨
 - 用户说"添加到时间线"/"放到视频里"/"用在视频中" → 生成/搜索后立即 \`add_to_track\`。
 - 用户只说"找一些"/"生成一个"/"搜索一下" → 仅入库，不自动上轨。
-- 不确定 → 只入库，让用户决定。`;
+- 要字幕 → 读 \`get_timeline\` 的配音起止 → \`add_subtitles\`（cues 或 SRT）→ \`check_timeline\` 复验。`;
 
 /**
  * Per-category usage-hint strings. Used both by `explore_tools` (when the LLM

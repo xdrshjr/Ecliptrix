@@ -170,6 +170,12 @@ function affectedTrackIds(
       return new Set([operation.trackId]);
     case 'move_clip':
       return new Set([operation.fromTrackId, operation.toTrackId]);
+    // 字幕轨显式入列（spec §D-5 / RK-1）：下面 `return null` 会让调用方走
+    // `packAlways`，把所有视频/音频轨重新紧凑排列——加个字幕就悄悄挪动用户的
+    // 视频片段。`isReorganisable('subtitle') === false` 使这条轨随后被跳过，
+    // 其余轨也不在集合里，因此什么都不会动。
+    case 'add_subtitle_clips':
+      return new Set([operation.trackId]);
   }
   return null;
 }

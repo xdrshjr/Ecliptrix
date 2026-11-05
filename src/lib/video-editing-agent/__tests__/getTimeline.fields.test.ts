@@ -31,7 +31,7 @@ async function readTimeline(tracks: Track[]) {
     materials: [],
     apiBaseUrl: 'http://127.0.0.1:3000',
     operations: new Map(),
-    updateTimeline: () => undefined,
+    updateTimeline: () => ({ applied: true as const }),
     recordOperation: () => undefined,
     turnState: {}, callBudget: { used: 0 },
   };

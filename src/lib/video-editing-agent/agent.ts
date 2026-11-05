@@ -13,6 +13,7 @@ import type { MaterialType, TimelineState } from '@/types';
 import type {
   ToolContext,
   TimelineOperation,
+  TimelineApplyReceipt,
   AgentOperation,
   AgentStreamErrorCode,
   SSEEvent,
@@ -35,6 +36,8 @@ import { validateOperationTargets } from './operationGuards';
 import { getTtsFailure } from '@/lib/ttsErrors';
 import type { TtsFailure } from '@/lib/ttsErrors';
 import { isStillGuardRejection } from './tools/stillGuard';
+import { isSubtitleGuardRejection } from './tools/subtitleGuard';
+import { applySubtitleClipsToState } from './subtitleClips';
 
 export type { AgentStreamErrorCode } from './types';
 
@@ -90,11 +93,18 @@ contextWindow: config.contextWindowTokens ?? 128000,
     defaultVoiceId: config.defaultVoiceId,
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
-      if (toolContext.abortSignal?.aborted) return;
+      if (toolContext.abortSignal?.aborted) {
+        return { applied: false as const, reason: 'cancelled' };
+      }
       // An operation the local copy refuses is never forwarded: the client
-      // would refuse it too, after the tool already reported success.
-      if (!applyOperationLocally(toolContext.timelineState, operation)) return;
+      // would refuse it too, after the tool already reported success. The
+      // receipt (agent-subtitles spec D-4 / P0-2) is how the tool learns that —
+      // a `void` return used to make "silently dropped" indistinguishable from
+      // "written", which is the F-AIEDIT-RV02 failure shape.
+      const local = applyOperationLocally(toolContext.timelineState, operation);
+      if (!local.applied) return local;
       toolContext.operations.set(toolCallId, operation);
+      return { applied: true as const };
     },
     recordOperation: (toolCallId: string, operation: AgentOperation) => {
       if (toolContext.abortSignal?.aborted) return;
@@ -511,8 +521,11 @@ export function subscribeAgentEvents(
         const expectedResearchFailure = isResearchTool(event.toolName) &&
           ['configuration', 'blocked', 'cancelled', 'policy', 'validation'].includes(details?.error_details?.failure_class);
         // A still-image refusal is a one-step self-correction, not a failing
-        // tool: it neither counts toward the breaker nor resets it.
-        const expectedGuardRejection = softFailure && isStillGuardRejection(details);
+        // tool: it neither counts toward the breaker nor resets it. Subtitle
+        // validation refusals are the same shape (agent-subtitles spec D-8):
+        // two wrong cues in a row must not abort the whole run.
+        const expectedGuardRejection = softFailure
+          && (isStillGuardRejection(details) || isSubtitleGuardRejection(details));
         const failed = (event.isError === true || softFailure)
           && !expectedResearchFailure && !expectedGuardRejection;
 
@@ -614,10 +627,14 @@ function moveClipLocally(state: TimelineState, operation: MoveClipOperation): vo
 
 /**
  * Apply an operation to the local timeline state copy so subsequent tools
- * see consistent state. Returns false, changing nothing, when the operation
- * fails the same validation the client applies.
+ * see consistent state. Returns the same receipt the browser applier would
+ * produce (`{ applied: false, reason }` when the operation fails the shared
+ * validation), so a tool can tell "written" from "silently dropped".
  */
-function applyOperationLocally(state: TimelineState, operation: TimelineOperation): boolean {
+function applyOperationLocally(
+  state: TimelineState,
+  operation: TimelineOperation,
+): TimelineApplyReceipt {
   const validation = validateOperationTargets(state, operation);
   if (!validation.ok) {
     console.warn('[VideoEditingAgent] refused invalid timeline operation', {
@@ -626,7 +643,7 @@ function applyOperationLocally(state: TimelineState, operation: TimelineOperatio
       trackId: validation.trackId,
       clipId: validation.clipId,
     });
-    return false;
+    return { applied: false, reason: validation.reason };
   }
 
   switch (operation.type) {
@@ -670,11 +687,17 @@ function applyOperationLocally(state: TimelineState, operation: TimelineOperatio
       }
       break;
     }
+
+    case 'add_subtitle_clips':
+      // 与浏览器 OperationApplier 同一份纯函数（含建轨、upsert、
+      // totalDuration），见 spec §6.3 / D-4。
+      applySubtitleClipsToState(state, operation);
+      break;
   }
 
   // Mirror the frontend OperationApplier reconcile so the next tool
   // (e.g. check_timeline_overlaps, get_timeline) sees the same packed
   // layout the UI will end up with. Pure function — safe on the server.
   reconcileOverlapsAfterAgentOp(state, operation);
-  return true;
+  return { applied: true };
 }

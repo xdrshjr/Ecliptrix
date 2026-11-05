@@ -21,7 +21,7 @@ function makeContext(): ToolContext {
       playbackRate: 1, isPlaying: false, snapToGrid: false, gridSize: 0.1, scrollLeft: 0,
     },
     materials: [], apiBaseUrl: 'http://127.0.0.1:3000', operations: new Map(),
-    updateTimeline: () => undefined, recordOperation: () => undefined,
+    updateTimeline: () => ({ applied: true as const }), recordOperation: () => undefined,
     turnState: {}, callBudget: { used: 0 },
   };
 }

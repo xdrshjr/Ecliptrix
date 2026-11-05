@@ -53,6 +53,7 @@ import { createDocumentTools } from './documentTool';
 import { createAnalysisTools } from './analysisTool';
 import { createMemoryTools } from './memoryTools';
 import { createAutoFixOverlapsTool } from './autoFixOverlaps';
+import { createAddSubtitlesTool } from './addSubtitles';
 import { ItemPlacementService, type OverlapReport } from '@/components/video/timeline/domain/services/ItemPlacementService';
 import { TrackTypeUtils } from '@/components/video/timeline/domain/value-objects/TrackType';
 import { isReorganisable } from '../reconcile';
@@ -389,6 +390,9 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
   // Populate editing_tools category
   registry.registerToolsForCategory(CATEGORY_IDS.EDITING_TOOLS, [
     createAddToTrackTool(context),
+    // 字幕与 resize_clip 同级高频，且 explore_tools 会白费一整个回合（D-1）：
+    // 用户日志里 Agent 正是因为「工具面上没有字幕入口」才只能写 SRT 让用户手动导入。
+    createAddSubtitlesTool(context),
     createTrimClipTool(context),
     createDeleteClipTool(context),
     createMoveClipTool(context),

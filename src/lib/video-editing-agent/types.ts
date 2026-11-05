@@ -1,4 +1,4 @@
-import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage, AgentMaterialData } from '@/types';
+import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage, AgentMaterialData, AgentSubtitleClipData, SubtitleStyle } from '@/types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import type { TtsFailure } from '@/lib/ttsErrors';
@@ -57,7 +57,10 @@ export interface ToolContext {
   /** Map of toolCallId → operation produced by that tool call */
   operations: Map<string, AgentOperation>;
   /** Called by tools to record an operation and update local state */
-  updateTimeline: (toolCallId: string, operation: TimelineOperation) => void;
+  updateTimeline: (
+    toolCallId: string,
+    operation: TimelineOperation,
+  ) => TimelineApplyReceipt;
   /** Called by tools to record any agent operation (material, script, storyboard, async task) */
   recordOperation: (toolCallId: string, operation: AgentOperation) => void;
   /**
@@ -109,6 +112,18 @@ export interface ToolContext {
 
 // --- Timeline Operations (produced by tools, applied by frontend) ---
 
+/**
+ * 本地副本的应用回执（docs/plans/agent-subtitles/spec.md §D-4 / P0-2）。
+ *
+ * `applyOperationLocally` 拒绝一个操作时**必须**把「没写进去」告诉工具：旧签名
+ * 返回 `void`，工具无法区分「已写进本地副本」与「被静默丢弃」，于是一边回
+ * `success:true` 一边什么都没落地——正是历史事故 F-AIEDIT-RV02 的形态。
+ * 现有工具忽略返回值即可（它们校验通过后不会再被拒）。
+ */
+export type TimelineApplyReceipt =
+  | { applied: true }
+  | { applied: false; reason: string };
+
 export type TimelineOperation =
   | {
       type: 'add_clip';
@@ -152,6 +167,16 @@ export type TimelineOperation =
       newDuration: number;
       /** New out-point (clipStart + newDuration). Omitted for images. */
       clipEnd?: number;
+    }
+  | {
+      /** 批量写字幕（spec §6.2）：一个 toolCallId = 一条撤销记录（D-2）。 */
+      type: 'add_subtitle_clips';
+      trackId: string;
+      trackName?: string;
+      mode: 'append' | 'replace';
+      /** 已由工具规范化，必填（D-3）。 */
+      style: SubtitleStyle;
+      clips: AgentSubtitleClipData[];
     };
 
 // --- Material Operations ---

@@ -454,7 +454,12 @@ export class AgentEventRouter {
   // -------------------------------------------------------------------------
 
   private isTimelineOperation(op: AgentOperation): op is import('./types').TimelineOperation {
-    return ['add_clip', 'trim_clip', 'delete_clip', 'move_clip', 'resize_clip'].includes(op.type);
+    // 运行期字符串数组：漏加一个类型不会报 TS 错，只会让操作被静默忽略
+    // （字幕就是 `add_subtitle_clips`，spec §4.2 第 5 步 / RK-13）。
+    return [
+      'add_clip', 'trim_clip', 'delete_clip', 'move_clip', 'resize_clip',
+      'add_subtitle_clips',
+    ].includes(op.type);
   }
 
   private isMaterialOperation(op: AgentOperation): op is MaterialOperation {

@@ -59,6 +59,8 @@ const NEXT_STEPS: Record<string, string> = {
   memory_limit_reached: 'Forget an old memory first.',
   policy_blocked: 'Store the decision without the credential.',
   invalid_workspace_name: 'Use a short relative name such as script/outline.md.',
+  invalid_offset: 'Continue from the next_offset the previous page returned; never compute offset yourself.',
+  invalid_page_size: 'Use max_bytes between 1 and 8000.',
   invalid_argument: 'Check the parameters and try once more.',
   skill_not_found: 'Pick an id from the 可用技能 list, or continue without a skill.',
   invalid_skill: 'Tell the user the skill file is invalid; continue without it.',
@@ -173,6 +175,23 @@ function timeoutFor(call: ToolkitCall): number {
 }
 
 /**
+ * 请求头。`x-tool-call-id` 是后端的幂等键（读操作后端也要这个头存在），
+ * 写方法再声明 `Origin`：BFF 与后端都以它判定「同源 UI 发起的写」。服务端
+ * 工具没有浏览器上下文，只能自己声明 —— 用 `apiBaseUrl`，它正是打包时注入的
+ * `RESEARCH_RENDERER_ORIGIN`（desktop/main/frontendService.js:29）。
+ */
+function toolkitHeaders(
+  context: ToolContext,
+  callId: string,
+  method: string,
+): Record<string, string> {
+  return {
+    'x-tool-call-id': callId,
+    ...(method === 'GET' ? {} : { origin: context.apiBaseUrl }),
+  };
+}
+
+/**
  * 执行一次工具调用。`callId` 同时是 `x-tool-call-id` 与后端幂等键，
  * SSE 重试时同一 `callId` 不会重放写盘（§3.8）。
  */
@@ -186,16 +205,7 @@ export async function executeToolkitTool(
     return toolkitFailure('cancelled', {}, 'The turn was cancelled; do nothing.');
   }
   const method = call.method ?? (call.body === undefined ? 'GET' : 'POST');
-  /**
-   * 写方法必须带 `Origin`：BFF 与后端都以它判定「同源 UI 发起的写」。
-   * 服务端工具没有浏览器上下文，只能自己声明 —— 用 `apiBaseUrl`，它正是
-   * 打包时注入的 `RESEARCH_RENDERER_ORIGIN`（desktop/main/frontendService.js:29），
-   * 与 `chat/route.ts` 取记忆摘要时的做法一致。
-   */
-  const headers: Record<string, string> = {
-    'x-tool-call-id': callId,
-    ...(method === 'GET' ? {} : { origin: context.apiBaseUrl }),
-  };
+  const headers = toolkitHeaders(context, callId, method);
   try {
     const response = await toolFetch(
       context,
@@ -255,4 +265,79 @@ export function resolveProjectId(
 ): string | undefined {
   if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
   return context.projectId;
+}
+
+/** `executeToolkitRaw` 的返回：成功给**未裁剪**的 `data`，失败给稳定错误码。 */
+export type ToolkitRawResult =
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; code: string; nextStep?: string };
+
+interface ToolkitEnvelope {
+  success?: boolean;
+  data?: unknown;
+  error_code?: string;
+  message?: string;
+  error_details?: Record<string, unknown>;
+}
+
+/**
+ * 不裁剪的读取通道（docs/plans/agent-subtitles/spec.md §6.5 / P0-1）。
+ *
+ * **为什么必须另开一条**：`executeToolkitTool` 的返回值一律经 `toolkitResult`，
+ * 序列化后一旦超过 `RESULT_BYTE_CAP`（12 KiB），`shrinkOversizedValues` 会把
+ * 任何 > 1200 字符的字符串字段截成 1200 字符 + `…`。于是哪怕只读 4000 字节一页
+ * 的工作区 SRT，`content` 也会被砍掉一半：cue 数与时间全错，工具却照样回
+ * `success:true` —— 静默错字幕。
+ *
+ * 因此这条通道**只在工具内部**把 `content` 拼成完整文件时使用：它不裁剪、
+ * 不抛异常（失败回稳定错误码），调用方也**不得**把 `content` 原样放回工具结果
+ * （只回解析后的统计）。其余工具继续走 `executeToolkitTool`。
+ */
+export async function executeToolkitRaw(
+  context: ToolContext,
+  callId: string,
+  call: ToolkitCall,
+): Promise<ToolkitRawResult> {
+  if (context.abortSignal?.aborted) {
+    return { ok: false, code: 'cancelled', nextStep: 'The turn was cancelled; do nothing.' };
+  }
+  const method = call.method ?? (call.body === undefined ? 'GET' : 'POST');
+  try {
+    const response = await toolFetch(
+      context,
+      `${call.basePath ?? DEFAULT_BASE_PATH}${call.path}${buildQuery(call.query)}`,
+      {
+        method,
+        headers: toolkitHeaders(context, callId, method),
+        retry: false,
+        timeout: timeoutFor(call),
+        signal: context.abortSignal,
+        ...(call.body === undefined ? {} : { body: JSON.stringify(call.body) }),
+      },
+    );
+    const envelope = await response.json() as ToolkitEnvelope;
+    if (!response.ok || !envelope.success) {
+      return rawFailure(
+        envelope.error_code ?? 'internal_error',
+        call.nextStep ?? (envelope.error_details?.next_step as string | undefined),
+      );
+    }
+    return { ok: true, data: (envelope.data ?? {}) as Record<string, unknown> };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : '';
+    const code = context.abortSignal?.aborted ? 'cancelled'
+      : name === 'TimeoutError' ? 'upstream_timeout'
+        : 'network_error';
+    return rawFailure(code, undefined);
+  }
+}
+
+/** 失败信封：错误码原样透传，`next_step` 取调用方或通用建议。 */
+function rawFailure(code: string, nextStep?: string): ToolkitRawResult {
+  return {
+    ok: false,
+    code,
+    nextStep: nextStep ?? NEXT_STEPS[code]
+      ?? 'Report the limitation to the user; do not retry the same call.',
+  };
 }

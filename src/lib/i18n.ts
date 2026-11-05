@@ -1650,6 +1650,7 @@ export interface Translations {
     errorPrefix: string;
     toolNames: {
       add_material_to_library: string;
+      add_subtitles: string;
       add_to_track: string;
       acquire_web_materials: string;
       delegate_research: string;
@@ -5359,6 +5360,7 @@ export const translations: Record<string, Translations> = {
       errorPrefix: 'Agent error: {message}',
       toolNames: {
         add_material_to_library: 'Add to library',
+        add_subtitles: 'Add subtitles',
         add_to_track: 'Add to track',
         acquire_web_materials: 'Acquire web materials',
         delegate_research: 'Research crew',
@@ -9441,6 +9443,7 @@ export const translations: Record<string, Translations> = {
       errorPrefix: 'Agent 出错：{message}',
       toolNames: {
         add_material_to_library: '添加到素材库',
+        add_subtitles: '添加字幕',
         add_to_track: '添加到轨道',
         acquire_web_materials: '批量采购素材',
         delegate_research: '研究小队',

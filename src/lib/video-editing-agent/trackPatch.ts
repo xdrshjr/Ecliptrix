@@ -317,7 +317,13 @@ function reattachThumbnails(
   return restored;
 }
 
-function computeTimelineEnd(state: TimelineState): number {
+/**
+ * 时间线末端（秒）：所有轨道条目 `startTime + duration` 的最大值。
+ *
+ * 导出给 `subtitleClips` 复用：字幕的 `totalDuration` 提升必须与撤销时重算的
+ * 末端完全同源，否则「加字幕后的一步撤销」会把时长判成「没有变化」。
+ */
+export function computeTimelineEnd(state: TimelineState): number {
   let maxEnd = 0;
   for (const track of state.tracks) {
     for (const item of track.items) {
