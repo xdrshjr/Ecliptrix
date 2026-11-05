@@ -20,6 +20,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useLocale } from '@/contexts/LocaleContext';
+import { researchReasonText, toolFailureFields } from '@/lib/webResearchStatus';
 import type { AgentClientApplyError, OperationRejectReason } from '@/types';
 import type { Translations } from '@/lib/i18n';
 import {
@@ -363,6 +364,11 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
     tts.failures.length || tts.isPartial ? '' : step.summary
   );
   const errorText = applyErrorText ?? resultText;
+  // A refused egress or local call carries `error_details.reason`: show the
+  // local sentence for that code, so the user reads "the proxy address is
+  // invalid" instead of a generic failure (spec §4.1 / §7.3).
+  const failure = toolFailureFields(step.result);
+  const reasonText = researchReasonText(t.webResearch.reason, failure.reason);
   const isUndone = step.status === 'undone';
   const isExecuting = step.status === 'executing';
   const isError = step.status === 'error';
@@ -520,9 +526,13 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
                   variants={reduced ? undefined : errorSlideInVariants}
                   initial={reduced ? false : 'initial'}
                   animate="animate"
-                  className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/15 rounded px-2 py-1.5"
+                  className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/15 rounded px-2 py-1.5 space-y-1"
                 >
-                  {errorText}
+                  {reasonText && <p className="font-medium">{reasonText}</p>}
+                  <p>{errorText}</p>
+                  {failure.remediation && (
+                    <p className="opacity-80">{failure.remediation}</p>
+                  )}
                 </motion.div>
               )}
             </div>
@@ -539,7 +549,7 @@ const ToolStep: React.FC<ToolStepProps> = ({ step, isLast = false }) => {
           className="px-3 pb-2 relative z-[1]"
         >
           <div className="text-xs text-red-500 dark:text-red-400 truncate">
-            {errorText}
+            {reasonText ? `${reasonText} · ${errorText}` : errorText}
           </div>
         </motion.div>
       )}

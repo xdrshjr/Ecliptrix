@@ -33,6 +33,7 @@ export interface StillClipParams {
 
 export type StillClipErrorCode =
   | 'material_not_found' | 'not_an_image' | 'image_not_local'
+  | 'material_not_materialized'
   | 'image_unreadable' | 'image_too_large' | 'ffmpeg_unavailable'
   | 'queue_timeout' | 'conversion_failed' | 'request_failed';
 
@@ -43,6 +44,11 @@ export interface StillClipFailure {
   retryable: boolean;
   hint: string;
   sourceMaterialId?: string;
+  /** v2 error contract (spec §7.3): the web tools’ vocabulary. */
+  failure_class?: 'policy' | 'configuration' | 'user_input' | 'transient';
+  sticky?: boolean;
+  http_status?: number;
+  next_step?: string;
 }
 
 export interface StillClipSuccess {
@@ -144,6 +150,56 @@ function isInlineUrl(url: string | undefined): boolean {
   return !!url && /^(blob|data):/i.test(url);
 }
 
+/** Error code of the metadata-only guard (spec v2 §4.6, AC-G05). */
+export const MATERIAL_NOT_MATERIALIZED = 'material_not_materialized';
+
+/** Point-of-use instruction for a search result that has no bytes yet. */
+export const CANDIDATE_NEXT_STEP =
+  'Use download_url to write the bytes, then add_to_track.';
+
+/**
+ * A search hit is a *candidate*, not a material: Unsplash/Pexels results carry
+ * a remote URL, dimensions and `size: 0`, and no local file (root cause C-6).
+ * Handing one to the backend only produces a vague "Image could not be
+ * resolved", so both frontend entry points refuse it up front.
+ *
+ * `size === 0` is the deciding signal; the second clause covers a bare metadata
+ * record that has no byte address at all.
+ */
+export function isMetadataOnlyMaterial(
+  material: Pick<MaterialItem, 'size' | 'cacheUrl' | 'storageKey' | 'url'>,
+): boolean {
+  if (material.size === 0) return true;
+  return !material.cacheUrl && !material.storageKey && !material.url;
+}
+
+/** Point-of-use instruction attached to the refusal. */
+export const MATERIAL_NOT_MATERIALIZED_NEXT_STEP =
+  'Use download_url to write the bytes for this candidate first, then retry with the '
+  + 'returned material id. Never tell the user the material is ready while size is 0.';
+
+/**
+ * Refusal of a metadata-only candidate: HTTP 422 semantics, `policy` class and
+ * explicitly non-sticky, so a later `download_url` retry is never blocked.
+ */
+export function materialNotMaterializedFailure(
+  source: Pick<MaterialItem, 'id' | 'name' | 'size'>,
+): StillClipFailure {
+  return {
+    success: false,
+    error: `"${source.name}" has no local bytes (size ${source.size}): `
+      + 'it is a search candidate, not a usable material.',
+    error_code: MATERIAL_NOT_MATERIALIZED,
+    retryable: false,
+    hint: MATERIAL_NOT_MATERIALIZED_NEXT_STEP,
+    next_step: MATERIAL_NOT_MATERIALIZED_NEXT_STEP,
+    failure_class: 'policy',
+    sticky: false,
+    http_status: 422,
+    sourceMaterialId: source.id,
+  };
+}
+
 /** Direction belonging to the chosen effect, plus a note when one is dropped. */
 function resolveDirection(
   effect: StillEffect, direction: StillDirection | undefined, notes: string[],
@@ -170,6 +226,9 @@ export interface StillClipRequest {
 export function buildStillClipRequest(
   source: MaterialItem, params: StillClipParams,
 ): StillClipRequest | StillClipFailure {
+  // Metadata-only candidates fail here, before the vaguer "not local"
+  // branch: the model must download the bytes, not re-import a URL.
+  if (isMetadataOnlyMaterial(source)) return materialNotMaterializedFailure(source);
   const storageKey = storageKeyForMaterial(source);
   if (!storageKey && (!source.url || isInlineUrl(source.url))) {
     return stillFailure({

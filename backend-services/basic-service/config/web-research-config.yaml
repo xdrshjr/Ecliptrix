@@ -13,6 +13,10 @@ web_research:
   max_sources: 4
   # auto：设置代理 > 进程代理 env > 系统代理（Electron 注入）> 直连；
   # direct：全量 IP 校验；custom：仅 custom_proxy_url。
+  # 出口档位（strict|balanced|open）、允许/拒绝主机与端口**不在**本文件：
+  # 它们在 agent_host 分类里（config/agent-host-config.yaml 的 egress_mode 等），
+  # 因为 tier-1 研究与 tier-2 通用出口共用同一份 egress_policy。
+  # respect_robots 的语义不变：两条出口都读它。
   proxy_mode: auto
   custom_proxy_url: ''
   artifact_retention_days: 7

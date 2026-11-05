@@ -1,6 +1,7 @@
 import type { MaterialItem } from '@/types';
 import type { ResearchMaterial } from '@/types/webResearch';
 import type { ToolContext } from '../types';
+import { SETUP_CONFIG_UPDATED_EVENT } from '@/lib/setupEvents';
 import { sanitizeResearchValue } from '../researchEventSanitizer';
 import { compactResearchReference, utf8Slice } from '../modelContextBudget';
 import { toolFetch } from './apiHelper';
@@ -27,17 +28,111 @@ interface WebCall {
   /** `'collect'` only: receives the normalised material and whether it already existed. */
   onMaterial?: (material: MaterialItem, alreadyInLibrary: boolean) => void;
 }
+
+/**
+ * Per-context memory of calls that already failed and must not be replayed.
+ * Keying a `WeakMap` by the context keeps the GC behaviour: a finished turn's
+ * context is collected together with its set, never pinned by this module.
+ */
 const blockedCalls = new WeakMap<ToolContext, Set<string>>();
+const MAX_BLOCKED_CALLS = 80;
+
+/**
+ * Contexts a settings save may clear. Deliberately bounded and only
+ * populated where a window exists: the reset listener is the single
+ * consumer, and the server path (where a context is per-request) must
+ * retain nothing. `blockedCalls` itself stays a WeakMap, so this list is
+ * the only strong reference and it is capped (`MAX_LIVE_CONTEXTS`).
+ */
+const liveContexts = new Set<ToolContext>();
+const MAX_LIVE_CONTEXTS = 32;
+
+/** Shape of a v2 `error_details` block (spec §7.3). */
+interface ResearchErrorDetails {
+  failure_class?: string;
+  reason?: string;
+  layer?: string;
+  remediation?: string;
+  sticky?: boolean;
+  retryable?: boolean;
+}
+
+/** `error_details` of a failure envelope, or the object itself when flat. */
+function errorDetailsOf(value: unknown): ResearchErrorDetails {
+  if (!value || typeof value !== 'object') return {};
+  const record = value as Record<string, unknown>;
+  const nested = record.error_details;
+  if (nested && typeof nested === 'object') return nested as ResearchErrorDetails;
+  return record as ResearchErrorDetails;
+}
+
+/**
+ * Whether a failure may be memoised as `blocked_repeat` (spec v2 §4.7, C-4).
+ *
+ * `sticky === false` and `configuration` failures exempt the call: the user is
+ * expected to fix a setting and retry the very same call, and remembering it
+ * would make that retry impossible. `policy` failures stay memoised unless the
+ * backend also marks them non-sticky (e.g. `robots_disallowed`).
+ *
+ * Pure on purpose: `hostToolAdapter` shares it.
+ */
+export function shouldRememberFailure(error: unknown): boolean {
+  const details = errorDetailsOf(error);
+  if (details.sticky === false) return false;
+  return details.failure_class !== 'configuration';
+}
+
+/** Forget every memoised failure of one context (settings were saved). */
+export function clearBlockedCalls(context: ToolContext): void {
+  blockedCalls.delete(context);
+}
+
+let resetListenerInstalled = false;
+
+/**
+ * Clear every live context's blocked set on a settings save, so "fix the
+ * proxy, try again" really retries (spec v2 §4.7, AC-G04).
+ *
+ * Idempotent and SSR-safe: a no-op without a window, and a second call never
+ * adds a second listener.
+ */
+export function installBlockedCallResetListener(): void {
+  if (resetListenerInstalled || typeof window === 'undefined') return;
+  resetListenerInstalled = true;
+  window.addEventListener(SETUP_CONFIG_UPDATED_EVENT, () => {
+    liveContexts.forEach(context => clearBlockedCalls(context));
+  });
+}
+
+/** Remember the context for the reset sweep, bounded to the newest ones. */
+function trackLiveContext(context: ToolContext): void {
+  if (typeof window === 'undefined' || liveContexts.has(context)) return;
+  if (liveContexts.size >= MAX_LIVE_CONTEXTS) {
+    // Oldest first: a finished turn only ever needs to be reachable by the
+    // listener until the next few turns have started.
+    const oldest = liveContexts.values().next().value;
+    if (oldest) liveContexts.delete(oldest);
+  }
+  liveContexts.add(context);
+}
+
+/** Failure fields copied from `error_details` into the visible envelope. */
+const SURFACED_ERROR_FIELDS = ['reason', 'layer', 'remediation', 'sticky'] as const;
 
 function rememberFailure(context: ToolContext, key: string, result: Record<string, unknown>) {
-  const details = result.error_details as { failure_class?: string } | undefined;
-  const failureClass = details?.failure_class;
-  if (failureClass === 'configuration' || failureClass === 'policy') {
+  const details = errorDetailsOf(result);
+  if (shouldRememberFailure(result)) {
     const blocked = blockedCalls.get(context) ?? new Set<string>();
-    if (blocked.size < 80) blocked.add(key);
+    if (blocked.size < MAX_BLOCKED_CALLS) blocked.add(key);
     blockedCalls.set(context, blocked);
   }
-  return toolResult({ ...result, failureClass });
+  // `failureClass` stays for backward compatibility; the v2 fields tell the
+  // model (and the card) why it failed and what to do next.
+  const surfaced: Record<string, unknown> = { failureClass: details.failure_class };
+  for (const field of SURFACED_ERROR_FIELDS) {
+    if (details[field] !== undefined) surfaced[field] = details[field];
+  }
+  return toolResult({ ...result, ...surfaced });
 }
 
 /** Bounded, sanitised tool result; shared with `delegate_research`. */
@@ -77,6 +172,10 @@ export function localMaterial(input: ResearchMaterial): MaterialItem {
 
 /** One non-replayed HTTP call, one possible editor operation, no late publish. */
 export async function executeWebTool(context: ToolContext, callId: string, call: WebCall) {
+  // Wired here so no caller has to remember it; both steps are no-ops after
+  // the first call and on the server (no window).
+  installBlockedCallResetListener();
+  trackLiveContext(context);
   const key = JSON.stringify([call.path, call.body]);
   if (blockedCalls.get(context)?.has(key)) return toolResult({ success: false,
     error_code: 'blocked_repeat', failureClass: 'policy',

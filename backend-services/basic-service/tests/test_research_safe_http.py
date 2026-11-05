@@ -304,3 +304,88 @@ async def test_robots_unavailable_is_fail_closed_and_cached():
     with pytest.raises(WebResearchError, match='robots_unavailable'):
         await client.fetch(FetchPolicy(), RequestSpec('https://site.example/b'))
     assert len(calls) == before
+
+def test_invalid_env_proxy_degrades_to_direct_in_auto_mode(monkeypatch):
+    """C-1 回归：非法 env 代理不得让整站 403，auto 降级直连并留痕。"""
+    from app.services.web_research import safe_http_client as mod
+    import app.services.system_settings_service as settings_service
+
+    monkeypatch.setattr(settings_service, "research_settings",
+                        lambda: {"proxy_mode": "auto", "custom_proxy_url": ""})
+    monkeypatch.setattr(settings_service, "agent_host_settings",
+                        lambda: {"egress_mode": "balanced"})
+    for key in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy",
+                "WEB_RESEARCH_SYSTEM_PROXY"):
+        monkeypatch.delenv(key, raising=False)
+    # 缺端口 = 真错（带路径不会复现 C-1，REV-P1-5）。
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1")
+    resolved = mod.default_proxy_settings()
+    assert resolved["proxy_url"] == ""
+    assert resolved["resolved_from"] == "direct"
+    assert resolved["invalid_source"] == "env"
+    assert resolved["proxy_error"] == ""
+
+
+@pytest.mark.asyncio
+async def test_invalid_custom_proxy_is_a_precise_non_sticky_403():
+    """C-1 的另一半：custom 模式必须报精确码，且 sticky=false。"""
+    from app.services.web_research.safe_http_client import (
+        SafeHttpClient, FetchPolicy, RequestSpec)
+    from app.models.web_research_models import WebResearchError
+
+    async def unreachable(policy, request):
+        raise AssertionError("request must not leave the client")
+
+    # 刻意**不**注入 transport：非法 custom 代理必须在 `_request()` 里、
+    # 任何 socket 建立之前就抛出，这才证明"配置错误不再变成全站 403"。
+    del unreachable
+    client = SafeHttpClient(proxy_settings={
+        "mode": "custom", "proxy_url": "", "proxy_error": "proxy_config_invalid",
+        "respect_robots": False, "concurrency": 3})
+    with pytest.raises(WebResearchError) as caught:
+        await client.fetch(FetchPolicy(respect_robots=False),
+                           RequestSpec("https://example.com/"))
+    assert caught.value.error_code == "proxy_config_invalid"
+    assert caught.value.status_code == 403
+    assert caught.value.reason == "proxy_config_invalid"
+    assert caught.value.sticky_failure() is False
+
+
+@pytest.mark.asyncio
+async def test_balanced_pins_the_first_answer_and_reuses_it(monkeypatch):
+    """AC-G02：balanced 放行 Fake-IP 答复，且第二次命中 resolver 缓存。"""
+    from app.services.web_research.safe_http_client import GuardedResolver
+    from app.services.web_research.egress_policy import EgressPolicy
+
+    calls = []
+
+    def fake_getaddrinfo(host, port, family, socktype):
+        calls.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                 ("198.18.0.7", port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    resolver = GuardedResolver(EgressPolicy(mode="balanced"))
+    first = await resolver.resolve("upload.example", 443)
+    second = await resolver.resolve("upload.example", 443)
+    assert len(calls) == 1
+    assert first[0]["host"] == second[0]["host"] == "198.18.0.7"
+
+
+@pytest.mark.asyncio
+async def test_strict_and_balanced_disagree_on_the_same_answer(monkeypatch):
+    """AC-G02 的另一半：同一答复 strict 拒绝、balanced 放行。"""
+    from app.services.web_research.safe_http_client import GuardedResolver
+    from app.services.web_research.egress_policy import EgressPolicy
+    from app.models.web_research_models import WebResearchError
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.7", 443))])
+    strict = GuardedResolver(EgressPolicy(mode="strict"))
+    with pytest.raises(WebResearchError) as caught:
+        await strict.resolve("upload.example", 443)
+    assert caught.value.error_code == "dns_answer_non_global"
+    assert caught.value.sticky_failure() is False
+    balanced = GuardedResolver(EgressPolicy(mode="balanced"))
+    assert (await balanced.resolve("upload.example", 443))[0]["host"] == \
+        "198.18.0.7"

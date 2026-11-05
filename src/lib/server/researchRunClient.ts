@@ -3,6 +3,12 @@ import { backendConfig } from '@/lib/config/backend';
 import type { WebResearchCapabilities } from '@/types/webResearch';
 
 interface RunCredentials { run_id: string; run_token: string }
+
+/**
+ * Statuses that prove the run itself no longer exists, so cancelling one call
+ * must retire the client (spec v2 §4.8). Anything else is inconclusive.
+ */
+const RUN_GONE_STATUSES: ReadonlySet<number> = new Set([401, 403, 404, 410]);
 interface RunOptions {
   projectId?: string; signal?: AbortSignal; remainingMs?: number;
   /** UI locale (Accept-Language) so the research brief matches the product. */
@@ -70,6 +76,15 @@ export class ResearchRunClient {
     return this.lost ? this.lostCode : null;
   }
 
+  /**
+   * Turn-scoped degradation, **not** run death (spec v2 §4.8).
+   *
+   * Later *research* (tier-1) calls in the same turn see `lostReason` and stop
+   * sending HTTP, but the run itself stays alive: the 15 s lease keeps renewing
+   * until the backend expires it naturally, and the tier-2 egress tools
+   * (`http_request` / `download_url` / `diagnose_url`) never read this flag
+   * because they need no run at all.
+   */
   markLost(code = 'run_closed'): void {
     this.lost = true;
     this.lostCode = code;
@@ -85,16 +100,33 @@ export class ResearchRunClient {
       ...(this.options.locale ? { 'Accept-Language': this.options.locale } : {}) };
   }
 
+  /**
+   * Best-effort cancellation of one backend call id — non-fatal by design
+   * (spec v2 §4.8, fixes root cause C-3).
+   *
+   * Only an answer that proves the run is gone (`401/403/404/410`) closes the
+   * client. Any other non-2xx status (e.g. `research_busy` close to the call
+   * quota) or a network error merely calls `markLost('cancel_unconfirmed')`:
+   * the run keeps renewing its lease and expires naturally, so one failed
+   * cleanup can no longer tear down every later research call of the turn.
+   */
   async cancelCall(toolCallId: string): Promise<void> {
     if (!this.credentials) return;
+    let response: Response;
     try {
-      const response = await this.request(`/runs/${this.credentials.run_id}/calls/${encodeURIComponent(toolCallId)}`,
+      response = await this.request(
+        `/runs/${this.credentials.run_id}/calls/${encodeURIComponent(toolCallId)}`,
         'DELETE', undefined, 2000);
-      if (!response.ok) await this.close();
     } catch {
-      // A timed-out action must not survive just because its run keeps renewing.
-      await this.close();
+      this.markLost('cancel_unconfirmed');
+      return;
     }
+    if (response.ok) return;
+    if (RUN_GONE_STATUSES.has(response.status)) {
+      await this.close();
+      return;
+    }
+    this.markLost('cancel_unconfirmed');
   }
 
   close(): Promise<void> {

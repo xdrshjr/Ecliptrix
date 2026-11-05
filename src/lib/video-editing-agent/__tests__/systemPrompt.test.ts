@@ -21,6 +21,7 @@ it('makes web, browser and artifact categories discoverable without embedding th
 import { ToolRegistry, CATEGORY_IDS, createDefaultCategories, type CategoryId } from '../registry';
 import { categoryAvailability } from '../systemPrompt';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
+import type { HostCapabilitySnapshot } from '@/types/agentHost';
 import { WEB_RESEARCH_GUIDANCE } from '../promptParts';
 
 it('网络候选不自动入库且失败仅停止依赖分支', () => {
@@ -244,5 +245,51 @@ describe('formatWorkflowRecipes', () => {
     expect(out).toContain('仅入库 vs 上轨');
     expect(out).not.toContain('配方 1');
     expect(out.length).toBeGreaterThan(100);
+  });
+});
+
+/**
+ * 通用能力层的自证（agent-general-assistant spec §4.7 / AC-G20）。
+ *
+ * host_tools 跟随 shell 开关，egress_tools 恒可用——这正是与现状的可见差异。
+ */
+const HOST_SNAPSHOT: HostCapabilitySnapshot = {
+  enabled: true,
+  shell: { enabled: true, scope: 'workspace', timeoutSeconds: 60, maxOutputKb: 64 },
+  fs: { enabled: true, maxBytes: 4_096, readRoots: [], writeRoots: [] },
+  egress: { enabled: true, mode: 'balanced',
+    proxy: { mode: 'auto', resolvedFrom: 'direct', target: '' },
+    maxBytes: 8 * 1024 * 1024, maxPerTurn: 60, maxPerMinute: 120 },
+};
+
+describe('general category availability (AC-G20)', () => {
+  it('marks host_tools unavailable when shell is switched off', () => {
+    const availability = categoryAvailability(null, {
+      ...HOST_SNAPSHOT, shell: { ...HOST_SNAPSHOT.shell, enabled: false },
+    });
+    expect(availability.host_tools)
+      .toEqual({ available: false, reason: 'shell_disabled' });
+    // tier-2 出口不需要 run，所以 shell 关掉也不影响它。
+    expect(availability.egress_tools).toEqual({ available: true });
+  });
+
+  it('renders the reason on the host_tools catalog line only', () => {
+    const prompt = buildSystemPrompt({
+      timelineState: emptyTimeline(), materials: [],
+      registry: buildFullStubRegistry(), exploredCategories: [],
+      hostCapabilities: { ...HOST_SNAPSHOT,
+        shell: { ...HOST_SNAPSHOT.shell, enabled: false } },
+    });
+    expect(prompt).toContain('host_tools');
+    expect(prompt).toContain('unavailable: shell_disabled');
+    const egressLine = prompt.split('\n')
+      .find(line => line.includes('- egress_tools:'));
+    expect(egressLine).toBeTruthy();
+    expect(egressLine).not.toContain('unavailable');
+  });
+
+  it('claims nothing when no host snapshot exists (old call sites)', () => {
+    expect(categoryAvailability(null)).toEqual({});
+    expect(categoryAvailability(null, null)).toEqual({});
   });
 });

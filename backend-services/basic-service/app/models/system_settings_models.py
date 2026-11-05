@@ -236,6 +236,93 @@ def _validate_agent_vision_setting(key: str, value: Any) -> None:
     raise ValueError("unknown_vision_setting")
 
 
+AGENT_HOST_BOOLEANS = frozenset({"enabled", "shell_enabled", "fs_enabled",
+                                "egress_enabled"})
+AGENT_HOST_INT_RANGES = {
+    "shell_timeout_s": (1, 600),
+    "shell_max_output_kb": (8, 512),
+    "fs_max_bytes": (1024, 1048576),
+    "egress_max_bytes": (65536, 67108864),
+    "egress_max_per_turn": (1, 200),
+    "egress_max_per_minute": (1, 600),
+    "audit_log_retention_days": (1, 365),
+}
+AGENT_HOST_ENUMS = {
+    "shell_scope": {"workspace", "host"},
+    "egress_mode": {"strict", "balanced", "open"},
+}
+AGENT_HOST_PATTERN_LISTS = {"egress_allow_hosts": 50, "egress_deny_hosts": 50}
+AGENT_HOST_ROOT_LISTS = {"host_read_roots": 10, "host_write_roots": 10}
+
+
+def _validate_agent_host_setting(key: str, value: Any) -> None:
+    """本机能力设置的逐键校验（agent-general-assistant §4.9）。
+
+    四个数组键在既有校验器里没有同类先例（只有 bool / int-range / float /
+    enum / proxy-url / dict-of-ranges），因此这里从零写四个校验器：不校验就会
+    出现"存进去的路径永远匹配不上"的静默故障。
+    """
+    from pydantic import StrictBool, StrictInt, TypeAdapter
+
+    if key in AGENT_HOST_BOOLEANS:
+        TypeAdapter(StrictBool).validate_python(value)
+        return
+    if key in AGENT_HOST_INT_RANGES:
+        low, high = AGENT_HOST_INT_RANGES[key]
+        _check_range(value, low, high, TypeAdapter(StrictInt))
+        return
+    if key in AGENT_HOST_ENUMS:
+        if value not in AGENT_HOST_ENUMS[key]:
+            raise ValueError("setting_out_of_range")
+        return
+    if key in AGENT_HOST_PATTERN_LISTS:
+        _validate_patterns(value, AGENT_HOST_PATTERN_LISTS[key])
+        return
+    if key == "egress_allow_ports":
+        _validate_ports(value)
+        return
+    if key in AGENT_HOST_ROOT_LISTS:
+        _validate_absolute_paths(value, AGENT_HOST_ROOT_LISTS[key])
+        return
+    raise ValueError("unknown_host_setting")
+
+
+def _validate_patterns(value, maximum):
+    """fnmatch 主机模式：非空字符串、≤253 字符、无空白/控制字符、条数上限。"""
+    import re
+
+    if not isinstance(value, list) or len(value) > maximum:
+        raise ValueError("setting_out_of_range")
+    allowed = re.compile(r"^[A-Za-z0-9.*?\[\]_:/-]{1,253}$")
+    for item in value:
+        if not isinstance(item, str) or not allowed.match(item):
+            raise ValueError("setting_out_of_range")
+
+
+def _validate_ports(value):
+    """端口数组：整数 1-65535、去重后 ≤20 条（去重由调用方存取语义保证）。"""
+    if not isinstance(value, list) or len(value) > 20:
+        raise ValueError("setting_out_of_range")
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise ValueError("setting_out_of_range")
+        if not 1 <= item <= 65535:
+            raise ValueError("setting_out_of_range")
+
+
+def _validate_absolute_paths(value, maximum):
+    """路径根：必须绝对路径且 ≤10 条；相对路径存进去只会永远匹配不上。"""
+    from pathlib import Path
+
+    if not isinstance(value, list) or len(value) > maximum:
+        raise ValueError("setting_out_of_range")
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("setting_out_of_range")
+        if not Path(item).expanduser().is_absolute():
+            raise ValueError("setting_out_of_range")
+
+
 def validate_setting_payload(
     category: str, key: str, value: Any,
 ) -> None:
@@ -284,6 +371,11 @@ def validate_setting_payload(
                 raise ValueError("setting_out_of_range")
         else:
             raise ValueError("unknown_toolkit_setting")
+        return
+    if category == "agent_host":
+        # 与 agent_toolkit / web_research 分支同构：布尔 StrictBool、区间
+        # StrictInt、枚举、四个数组校验器；未知键 unknown_host_setting。
+        _validate_agent_host_setting(key, value)
         return
     if category == "web_research":
         from pydantic import TypeAdapter, StrictBool, StrictInt

@@ -3,7 +3,10 @@ import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model } from '@mariozechner/pi-ai';
 import { streamSimple } from '@mariozechner/pi-ai';
 import { ToolActivationState } from './registry/ToolActivationState';
-import { CORE_TOOLKIT_TOOL_NAMES } from './promptParts';
+import {
+  CORE_TOOLKIT_TOOL_NAMES,
+  GENERAL_RESIDENT_TOOL_NAMES,
+} from './promptParts';
 import {
   budgetModelContext, compactResult, localErrorStream, retryOnContextOverflow,
   tokensToBytes,
@@ -127,6 +130,9 @@ contextWindow: config.contextWindowTokens ?? 128000,
     // 请求即快照：本回合的自主模式不会中途改变（D-08）。缺省 undefined =
     // 互动模式，工具与提示词两处都按旧行为渲染。
     autonomy: config.autonomy,
+    // 与 webCapabilities 同源注入（spec §7.2）：可用性自证与每回合出口预算都
+    // 读这一份快照；缺席时工具按缺省限值工作，旧构造点不需要改动。
+    hostCapabilities: config.hostCapabilities ?? undefined,
   };
 
   // 4. Create ToolRegistry and build tools
@@ -137,6 +143,10 @@ contextWindow: config.contextWindowTokens ?? 128000,
   const activation = new ToolActivationState(registry, [
     ...registry.getAlwaysAvailableTools().map(tool => tool.name),
     ...CORE_TOOLKIT_TOOL_NAMES.filter(name => !isYolo || name !== 'ask_user'),
+    // 通用层常驻工具（spec §4.7）：与上一行同构——常驻即授予执行权。它们的
+    // schema 只走单行清单预算，不进 formatCoreToolkit 的富格式块。这份名单里
+    // 没有 `ask_user`，所以不需要再按自主模式过滤一次。
+    ...GENERAL_RESIDENT_TOOL_NAMES,
     'explore_tools',
   ]);
   // `use_skill` preloads the tools a skill names through this narrow window;
@@ -164,6 +174,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     registry,
     exploredCategories: [],
     capabilities: config.webCapabilities,
+    hostCapabilities: config.hostCapabilities,
     plan: scanLatestPlan(config.conversationHistory),
     memoryDigest: config.memoryDigest ?? null,
     skillIndex: config.skillIndex,

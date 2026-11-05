@@ -86,6 +86,31 @@ The frontend has 70+ Next.js API routes in `src/app/api/` that follow **two patt
 - **Pattern**: Router → Service → (LLM/DB/External API). Each feature has a router in `app/routers/`, a service in `app/services/`, and models in `app/models/`
 - **Queue system**: `QueueManager` provides async semaphore-based concurrency limiting; `@with_simple_queue` decorator for simpler cases
 
+### Agent host layer (general-purpose capabilities)
+
+The video-editing agent is a **general assistant plus editing expertise**. Two extra
+tool categories back that claim, both served by `app/services/agent_host/` through
+`/api/agent-host/*` (BFF: `src/app/api/agent-host/[...path]/route.ts`):
+
+- `host_tools` — `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`,
+  `grep` (`shell_runner.py`, `fs_tools.py`). `bash` is **full-permission local code
+  execution, not a sandbox**; `shell_scope` only decides the default cwd, and
+  `host_read_roots` / `host_write_roots` default to the project workspace + storage
+  root (never `~`).
+- `egress_tools` — `http_request` (GET/HEAD only), `download_url` (image/media; writes
+  real bytes and refuses `size = 0`), `diagnose_url` (explains a refusal layer by
+  layer). Tier-2 has **no research run**, so `run_closed` cannot happen; the frontend
+  adapter (`tools/hostToolAdapter.ts`) never touches `context.researchRun`.
+
+Egress decisions live in exactly one place:
+`app/services/web_research/egress_policy.py` (pure functions — modes
+`strict | balanced | open`, precise `reason` codes, `sticky` semantics);
+`safe_http_client.py` only delegates to it. Settings are the `agent_host` category
+(18 keys, `config/agent-host-config.yaml`), registered in five places — the
+`system_settings_router.CATEGORY_METADATA` entry is the one that, if forgotten, makes
+the settings panel silently 404. Blueprint:
+`docs/plans/agent-general-assistant/spec.md`.
+
 ### Multi-LLM Configuration
 
 The backend uses multiple independent LLM configurations, all using OpenAI-compatible API format:

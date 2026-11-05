@@ -151,3 +151,43 @@ async def test_disconnect_of_cancel_request_does_not_cancel_run_cleanup():
     release.set()
     await asyncio.wait_for(registry.cancel(run.run_id), 1)
     assert run.state == 'closed'
+
+
+@pytest.mark.asyncio
+async def test_non_sticky_policy_failure_does_not_block_the_same_call():
+    """C-4 回归：DNS/代理类失败不是永久的，改完设置必须能重试成功。"""
+    from app.services.web_research.run_registry import RunRegistry
+    from app.models.web_research_models import WebResearchError
+
+    registry = RunRegistry()
+    run, _ = await registry.register(None)
+
+    async def failing():
+        raise WebResearchError("dns_answer_non_global", sticky=False,
+                               reason="dns_answer_non_global", layer="dns")
+
+    params = {"url": "https://upload.wikimedia.org/x.jpg"}
+    with pytest.raises(WebResearchError, match="dns_answer_non_global"):
+        await registry.execute(run, "call-1", "download", params, failing, 1)
+    # 同一 (action, digest) 换一个 call id 重试：不得 blocked_repeat。
+    with pytest.raises(WebResearchError, match="dns_answer_non_global"):
+        await registry.execute(run, "call-2", "download", params, failing, 1)
+
+
+@pytest.mark.asyncio
+async def test_sticky_policy_failure_still_blocks_the_same_call():
+    """反向断言：robots 类策略失败仍然永久拒绝同一调用（既有行为不变）。"""
+    from app.services.web_research.run_registry import RunRegistry
+    from app.models.web_research_models import WebResearchError
+
+    registry = RunRegistry()
+    run, _ = await registry.register(None)
+
+    async def failing():
+        raise WebResearchError("robots_disallowed")
+
+    params = {"url": "https://site.example/a"}
+    with pytest.raises(WebResearchError, match="robots_disallowed"):
+        await registry.execute(run, "call-1", "fetch", params, failing, 1)
+    with pytest.raises(WebResearchError, match="blocked_repeat"):
+        await registry.execute(run, "call-2", "fetch", params, failing, 1)

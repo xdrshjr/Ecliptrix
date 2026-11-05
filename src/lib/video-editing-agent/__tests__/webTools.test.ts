@@ -1,5 +1,5 @@
 import { expect, it, vi, afterEach } from 'vitest';
-import { executeWebTool } from '../tools/webToolAdapter';
+import { clearBlockedCalls, executeWebTool, shouldRememberFailure } from '../tools/webToolAdapter';
 import type { ToolContext } from '../types';
 import { budgetModelContext } from '../modelContextBudget';
 import { createWebTools } from '../tools/webTools';
@@ -80,15 +80,20 @@ function researchRun() {
 const download = { success: true, data: { status: 'ready', reused: false,
   material: { id: 'm', name: 'Image', type: 'image', format: 'png', size: 30,
     created_at: '2026-10-06', local_url: '/api/storage/files/cached_materials/web/a.png' } } };
+// AC-G04: only a *sticky* failure is memoised. `sticky: false` is what a v2
+// backend sends for a fixable refusal, and `configuration` never sticks —
+// otherwise "fix the setting, try again" would answer `blocked_repeat`.
 it.each([
-  ['provider_rate_limited', 429, 'transient', 2],
-  ['provider_quota_exceeded', 503, 'configuration', 1],
-  ['provider_rejected', 503, 'configuration', 1],
-  ['provider_response_invalid', 502, 'internal', 2],
-] as const)('preserves actual HTTP %s without automatic retries', async (code, status, category, count) => {
+  ['provider_rate_limited', 429, 'transient', false, 2],
+  ['provider_quota_exceeded', 503, 'configuration', undefined, 2],
+  ['provider_rejected', 503, 'configuration', undefined, 2],
+  ['provider_response_invalid', 502, 'internal', undefined, 1],
+] as const)('preserves actual HTTP %s without automatic retries',
+  async (code, status, category, sticky, count) => {
   const fetcher = vi.fn().mockImplementation(async () => Response.json({
     success: false, message: code, error_code: code,
-    error_details: { failure_class: category, retryable: category === 'transient' },
+    error_details: { failure_class: category, retryable: category === 'transient',
+      ...(sticky === false ? { sticky: false } : {}) },
   }, { status }));
   vi.stubGlobal('fetch', fetcher);
   const ctx = context();
@@ -135,6 +140,57 @@ it('does not repeat blocked network calls and retains the failure category', asy
   expect(first.details.failureClass).toBe('policy');
   expect(second.details.error_code).toBe('blocked_repeat');
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('memoises only a sticky failure a settings change cannot fix (AC-G04)', () => {
+  expect(shouldRememberFailure({ error_details: { failure_class: 'policy', sticky: false } }))
+    .toBe(false);
+  expect(shouldRememberFailure({ error_details: { failure_class: 'configuration', sticky: true } }))
+    .toBe(false);
+  expect(shouldRememberFailure({ error_details: { failure_class: 'configuration' } })).toBe(false);
+  expect(shouldRememberFailure({ error_details: { failure_class: 'policy' } })).toBe(true);
+  expect(shouldRememberFailure({ error_details: { failure_class: 'user_input', sticky: true } }))
+    .toBe(true);
+  expect(shouldRememberFailure(undefined)).toBe(true);
+});
+
+it('surfaces reason, layer, remediation and sticky next to failureClass', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+    success: false, error_code: 'proxy_config_invalid',
+    error_details: { failure_class: 'configuration', sticky: false,
+      reason: 'proxy_config_invalid', layer: 'proxy',
+      remediation: 'Fix the proxy URL in Settings → Web research.' },
+  }, { status: 403 })));
+
+  const result = await executeWebTool(context(), 'call',
+    { path: '/fetch', body: { url: 'https://example.com' } });
+
+  expect(result.details).toMatchObject({
+    success: false, failureClass: 'configuration',
+    reason: 'proxy_config_invalid', layer: 'proxy', sticky: false,
+    remediation: expect.stringContaining('proxy URL'),
+  });
+});
+
+it('a settings save clears the memoised failures of the context (AC-G04)', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => Response.json({
+    success: false, error_code: 'robots_disallowed',
+    error_details: { failure_class: 'policy', sticky: true },
+  }, { status: 403 }));
+  vi.stubGlobal('fetch', fetcher);
+  const ctx = context();
+  const call = { path: '/fetch', body: { url: 'https://example.com/private' } };
+
+  await executeWebTool(ctx, 'first', call);
+  const blocked = await executeWebTool(ctx, 'second', call);
+  expect(blocked.details.error_code).toBe('blocked_repeat');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+
+  clearBlockedCalls(ctx);
+
+  const retried = await executeWebTool(ctx, 'third', call);
+  expect(retried.details.error_code).toBe('robots_disallowed');
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it('keeps browser continuation references inside the serialized result limit', async () => {

@@ -1,0 +1,27 @@
+# 本机能力层（通用 Agent 能力）的出厂值。
+# 设计基线：docs/plans/agent-general-assistant/spec.md §4.9（18 个键）。
+#
+# 两条必须遵守的立场：
+# 1. `shell_enabled: true` 是真的全权限本机执行，**不是沙箱**。收窄默认值
+#    （cwd 限定工作区、host_read_roots 不含 ~）只减少暴露面，不构成隔离。
+# 2. `egress_mode: balanced` 修掉「Fake-IP / 运营商 DNS 导致全站不可达」，
+#    同时保留字面私网/metadata 拒绝与 DNS 钉住（防 rebinding）。
+agent_host:
+  enabled: true
+  shell_enabled: true
+  shell_scope: workspace        # workspace | host（host 需二次确认）
+  shell_timeout_s: 120          # 1-600
+  shell_max_output_kb: 64       # 8-512（每路）
+  fs_enabled: true
+  fs_max_bytes: 32768           # 1024-1048576（单次读取页）
+  egress_enabled: true
+  egress_mode: balanced         # strict | balanced | open
+  egress_allow_hosts: []        # fnmatch，≤50 条
+  egress_deny_hosts: []         # fnmatch，≤50 条（deny wins）
+  egress_allow_ports: []        # int 1-65535，≤20 条
+  egress_max_bytes: 8388608     # 64 KiB - 64 MiB
+  egress_max_per_turn: 60       # 前端 callBudget 记账
+  egress_max_per_minute: 120    # 后端每进程每分钟
+  host_read_roots: []           # 空 = 项目工作区 + 素材根（不含 ~）
+  host_write_roots: []          # 同上
+  audit_log_retention_days: 30  # 历史日志保留，不是环形缓冲大小

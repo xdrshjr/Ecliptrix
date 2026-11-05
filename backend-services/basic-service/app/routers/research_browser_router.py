@@ -6,7 +6,8 @@ from app.models.web_research_models import (
     BrowserOpenRequest, BrowserReadRequest, BrowserActRequest,
     WebResearchError)
 from app.services.system_settings_service import research_settings
-from app.services.web_research.safe_http_client import public_proxy_target
+from app.services.web_research.safe_http_client import (
+    egress_summary, public_proxy_target)
 from .research_run_router import tool_action, validate_ui_origin
 
 router = APIRouter(prefix="/web-research", tags=["Research Browser"])
@@ -52,6 +53,10 @@ async def capabilities(request: Request):
                       "downloads_disabled"},
         "research_model": research,
         "proxy": resolved_proxy_summary(),
+        # tier-2 出口摘要（agent-general-assistant §4.9 / AC-G17）：档位与
+        # tier2 是否可用必须在这里可见，否则用户不知道"为什么同一个地址在
+        # 别的工具里能下、在这里不能"。
+        "egress": egress_summary(),
         "limits": _public_limits(config)})
 
 

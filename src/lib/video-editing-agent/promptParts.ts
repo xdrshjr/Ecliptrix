@@ -108,6 +108,23 @@ function replaceAskUserLine(guidance: string): string {
 export const YOLO_TOOLKIT_GUIDANCE = replaceAskUserLine(AGENT_TOOLKIT_GUIDANCE);
 
 /**
+ * 通用能力层（本机命令 / 文件 / tier-2 出口）的常驻引导。
+ *
+ * 设计基线：docs/plans/agent-general-assistant/spec.md §4.7。L0 净增预算只有
+ * "引导段 ≤400 + 常驻清单 ≤400"（AC-G14），所以这里只留四条**不写就会出事**
+ * 的纪律：本机全权限、被拒必须报 reason/remediation、size=0 不是素材、
+ * 代理/DNS/端口类 reason 先用 diagnose_url 自证再重试一次。
+ */
+export const GENERAL_AGENT_GUIDANCE = `
+你可以在用户本机执行命令、读写授权目录、访问任意公开 URL；这是真实本机，
+不是沙箱，命令以用户本人权限运行。
+被拒时不得笼统说「网站策略拒绝」：报出 error_details.reason 与 remediation。
+download_url 的 material.size = 0 表示没写进字节，按失败上报。
+reason 为 proxy_config_invalid / dns_answer_non_global / port_not_allowed 时
+先用 diagnose_url 自证、说清该改哪个设置，再重试一次。
+`;
+
+/**
  * Wrapper for a user note that arrives while the agent is already running
  * (docs/plans/agent-steering-and-skills/spec.md §3.2.2). It is replayed into
  * later turns by `messageConverter`, so live delivery and history use ONE text.
@@ -151,6 +168,30 @@ export const CORE_TOOLKIT_TOOL_NAMES: readonly string[] = [
   // material_tools (one entry — the most common manual op)
   'add_material_to_library',
 ];
+
+/**
+ * 常驻的通用层工具名（与 `CORE_TOOLKIT_TOOL_NAMES` **并列而非合并**）。
+ *
+ * 为什么另立一份：`formatCoreToolkit()` 对每个名字渲染完整 description 与参数
+ * 块，把 6 个富参数工具塞进去必然击穿 `≤18 500` 的 L0 断言（REV-P0-1）。
+ * 这里只授予**执行权**（`ToolActivationState` 的 coreNames），清单本身由
+ * `systemPrompt.formatGeneralResident()` 以单行紧凑格式渲染，总量 ≤400 字符。
+ *
+ * `list_dir` / `glob` / `grep` 故意不在此列：它们要么先 explore_tools
+ * 装载，要么本来就该走类别装载（AC-G16）。
+ */
+export const GENERAL_RESIDENT_TOOL_NAMES: readonly string[] = [
+  // 兜底出口：专用工具被策略挡住时，这三条是唯一还能走的路（§1.2）
+  'bash',
+  'read_file',
+  'write_file',
+  'http_request',
+  'download_url',
+  'diagnose_url',
+];
+
+/** `formatGeneralResident()`（6 行紧凑清单）的字符上限（AC-G14a）。 */
+export const GENERAL_RESIDENT_CHAR_CEILING = 400;
 
 /**
  * Voice-type table lifted from the TTS usage hints. Embedded directly in
@@ -256,6 +297,21 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
     'Memory is durable across turns and projects (project bucket + global bucket). ' +
     'memory_write deduplicates identical text; memory_search returns at most 5 entries and ' +
     'bumps their hit count; memory_forget deletes one entry. Never store credentials.',
+  [CATEGORY_IDS.HOST_TOOLS]:
+    'bash runs ONE command per call on this machine: Windows uses cmd.exe, so avoid ' +
+    '&& chains, single quotes and -y; a non-zero exit code is a normal result, not an ' +
+    'error. read_file/write_file/edit_file/list_dir/glob/grep stay inside the allowed ' +
+    'folders and page by bytes. When one is refused (path_forbidden, shell_disabled, ' +
+    'edit_not_unique), report error_details.reason and remediation instead of retrying ' +
+    'blindly.',
+  [CATEGORY_IDS.EGRESS_TOOLS]:
+    'These three tools do not need a research run: http_request is GET/HEAD only (no ' +
+    'request body), download_url imports one image or media file into the library, ' +
+    'diagnose_url explains a refusal without downloading. material.size = 0 means no ' +
+    'bytes were written, so report a failure and never claim the material exists. ' +
+    'Every call counts against this turn egress budget; on refusal quote ' +
+    'error_details.reason and remediation, then retry once after the user fixes the ' +
+    'setting.',
   [CATEGORY_IDS.REVIEW_TOOLS]:
     'view_image and review_frames need an explore_tools load of review_tools ' +
     'first; both answer with text observations, never with the image itself. ' +

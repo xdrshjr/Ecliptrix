@@ -1,14 +1,14 @@
 import type { ToolCategory } from './ToolRegistry';
 
 /**
- * Every tool category definition for the video editing agent (19 today:
- * 3 always-available + 16 on-demand).
+ * Every tool category definition for the video editing agent (21 today:
+ * 3 always-available + 18 on-demand).
  *
  * Categories are split into two groups:
  * - Always available: workflow_tools, query_tools and editing_tools — their
  *   tools are populated by createToolRegistry() in tools/index.ts at agent
  *   creation time.
- * - On-demand: the other 16 categories start with an empty tools array and are
+ * - On-demand: the other 18 categories start with an empty tools array and are
  *   populated via registry.registerToolsForCategory().
  *
  * The category IDs here are the canonical identifiers used by explore_tools
@@ -27,6 +27,10 @@ export const CATEGORY_IDS = {
   WEB_TOOLS: 'web_tools',
   BROWSER_TOOLS: 'browser_tools',
   RESEARCH_TOOLS: 'research_tools',
+  /** 按需：本机命令与文件操作（7 个，与 aragon 宿主工具同名同义）。 */
+  HOST_TOOLS: 'host_tools',
+  /** 按需：tier-2 通用出口（不认识 research run，不可能 run_closed）。 */
+  EGRESS_TOOLS: 'egress_tools',
   /** 按需：视觉审阅（view_image / review_frames / inspect_export）。 */
   REVIEW_TOOLS: 'review_tools',
   QUERY_TOOLS: 'query_tools',
@@ -56,6 +60,8 @@ export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
   CATEGORY_IDS.WEB_TOOLS,
   CATEGORY_IDS.BROWSER_TOOLS,
   CATEGORY_IDS.RESEARCH_TOOLS,
+  CATEGORY_IDS.HOST_TOOLS,
+  CATEGORY_IDS.EGRESS_TOOLS,
   CATEGORY_IDS.REVIEW_TOOLS,
   CATEGORY_IDS.SEARCH_TOOLS,
   CATEGORY_IDS.AI_GEN_TOOLS,
@@ -74,12 +80,14 @@ export const WORKSPACE_TOOLS = CATEGORY_IDS.WORKSPACE_TOOLS;
 export const DOCUMENT_TOOLS = CATEGORY_IDS.DOCUMENT_TOOLS;
 export const ANALYSIS_TOOLS = CATEGORY_IDS.ANALYSIS_TOOLS;
 export const MEMORY_TOOLS = CATEGORY_IDS.MEMORY_TOOLS;
+export const HOST_TOOLS = CATEGORY_IDS.HOST_TOOLS;
+export const EGRESS_TOOLS = CATEGORY_IDS.EGRESS_TOOLS;
 export const REVIEW_TOOLS = CATEGORY_IDS.REVIEW_TOOLS;
 
 // --- Category definitions (metadata only; tools[] populated later) ---
 
 /**
- * Returns all 19 category definitions with empty tools arrays.
+ * Returns all 21 category definitions with empty tools arrays.
  * Call this to seed the ToolRegistry, then populate tools via
  * registry.registerToolsForCategory() or by passing tools directly.
  */
@@ -120,6 +128,25 @@ export function createDefaultCategories(): ToolCategory[] {
       description: 'Store and retrieve durable notes for this project.',
       alwaysAvailable: false,
       tools: [],
+    },
+    {
+      id: CATEGORY_IDS.HOST_TOOLS,
+      name: '本机工具',
+      // 描述 ≤160 字节（§4.7）：一行即可读，具体语义靠 explore_tools。
+      // 比 §4.7 原文少了 " on this machine"：加上 `[unavailable: shell_disabled]`
+      // 后缀会撞上目录行的 160 字节截断，AC-G20 就看不见原因了。
+      description: 'Run shell commands and read/write/search files: '
+        + 'bash, read_file, write_file, edit_file, list_dir, glob, grep.',
+      alwaysAvailable: false,
+      tools: [], // tools/index.ts: createHostTools
+    },
+    {
+      id: CATEGORY_IDS.EGRESS_TOOLS,
+      name: '通用联网',
+      description: 'Any public URL without a research run: http_request, '
+        + 'download_url (imports material), diagnose_url (explains a refusal).',
+      alwaysAvailable: false,
+      tools: [], // tools/index.ts: createEgressTools
     },
     { id: CATEGORY_IDS.WEB_TOOLS, name: '网络检索',
       description: 'Search, read, research public sources; download local media. Requires Network & Research settings.',

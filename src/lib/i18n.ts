@@ -129,6 +129,11 @@ export interface Translations {
     partial: string;
     sourceList: string;
     localPreview: string;
+    /**
+     * 出口 reason 码文案（spec §4.1 / §7.3）。键是后端给的 reason 字符串，
+     * 缺键时调用方回落原文，因此是 `Record`。
+     */
+    reason: Record<string, string>;
     tools: Record<string, string>;
   };
   // BEGIN agentCollab
@@ -493,6 +498,84 @@ export interface Translations {
     errors: Record<string, string>;
     lint: Record<string, string>;
   };
+  // BEGIN agentHost
+  /**
+   * 本机与网络出口设置（docs/plans/agent-general-assistant/spec.md §4.9）。
+   *
+   * 标签与提示按后端 `agent_host` 分类的 18 个键一一对应；`errors` 的键是
+   * §7.3 的错误码闭集（含跨域复用的码），面板取不到键时回落 `saveFailed`，
+   * 因此它是 `Record` 而不是逐个字面量。
+   */
+  agentHost: {
+    title: string;
+    description: string;
+    sectionCapabilities: string;
+    sectionShell: string;
+    sectionEgress: string;
+    sectionHostAccess: string;
+    sectionAudit: string;
+    enabled: string;
+    enabledHint: string;
+    shellEnabled: string;
+    shellEnabledHint: string;
+    shellScope: string;
+    shellScopeWorkspace: string;
+    shellScopeHost: string;
+    shellScopeHint: string;
+    shellTimeoutS: string;
+    shellTimeoutSHint: string;
+    shellMaxOutputKb: string;
+    shellMaxOutputKbHint: string;
+    fsEnabled: string;
+    fsEnabledHint: string;
+    fsMaxBytes: string;
+    fsMaxBytesHint: string;
+    egressEnabled: string;
+    egressEnabledHint: string;
+    egressMode: string;
+    egressModeStrict: string;
+    egressModeBalanced: string;
+    egressModeOpen: string;
+    egressModeHint: string;
+    egressAllowHosts: string;
+    egressAllowHostsHint: string;
+    egressDenyHosts: string;
+    egressDenyHostsHint: string;
+    egressAllowPorts: string;
+    egressAllowPortsHint: string;
+    egressMaxBytes: string;
+    egressMaxBytesHint: string;
+    egressMaxPerTurn: string;
+    egressMaxPerTurnHint: string;
+    egressMaxPerMinute: string;
+    egressMaxPerMinuteHint: string;
+    hostReadRoots: string;
+    hostReadRootsHint: string;
+    hostWriteRoots: string;
+    hostWriteRootsHint: string;
+    auditLogRetentionDays: string;
+    auditLogRetentionDaysHint: string;
+    openWarningTitle: string;
+    openWarning: string;
+    openConfirm: string;
+    hostConfirm: string;
+    notSandbox: string;
+    saveBlockedConfirm: string;
+    invalidSetting: string;
+    rangeHint: string;
+    listTooLong: string;
+    invalidPath: string;
+    invalidPort: string;
+    emptyListHint: string;
+    loading: string;
+    saving: string;
+    saved: string;
+    saveFailed: string;
+    loadFailed: string;
+    retry: string;
+    errors: Record<string, string>;
+  };
+  // END agentHost
   /** Import labels shared with the cover timeline. */
   coverStudio: {
     previewCheck: string;
@@ -4169,6 +4252,104 @@ export const translations: Record<string, Translations> = {
         memory_forget: 'Forget',
       },
     },
+    // BEGIN agentHost
+    agentHost: {
+      title: 'Local machine & network access',
+      description: 'Let the agent run commands, touch files and reach the network without a research session.',
+      sectionCapabilities: 'Capabilities and files',
+      sectionShell: 'Local commands',
+      sectionEgress: 'Network egress',
+      sectionHostAccess: 'Host file scope',
+      sectionAudit: 'Audit log',
+      enabled: 'Enable local machine access',
+      enabledHint: 'When off, all ten tools of this category leave the schema instead of failing one by one.',
+      shellEnabled: 'Allow local commands',
+      shellEnabledHint: 'Runs commands with this app’s own user permissions. Output is capped, credentials are stripped and every run is audited.',
+      shellScope: 'Default working directory',
+      shellScopeWorkspace: 'Project workspace',
+      shellScopeHost: 'Whole machine',
+      shellScopeHint: 'Scope only picks the starting folder. It is not a sandbox: a command still reaches every path this user can.',
+      shellTimeoutS: 'Command timeout (s)',
+      shellTimeoutSHint: 'Wall-clock limit per command. When it expires the whole process tree is killed.',
+      shellMaxOutputKb: 'Output limit per stream (KB)',
+      shellMaxOutputKbHint: 'stdout and stderr are capped separately; the rest is cut and marked as truncated.',
+      fsEnabled: 'Allow file tools',
+      fsEnabledHint: 'Read, write, edit, list, glob and grep. Every path is resolved against the scope below before any I/O.',
+      fsMaxBytes: 'Bytes per read page',
+      fsMaxBytesHint: 'Larger files come back page by page; continue from the returned offset.',
+      egressEnabled: 'Allow direct network access',
+      egressEnabledHint: 'The three web tools then work without a research run: no session budget, no run lifetime.',
+      egressMode: 'Egress mode',
+      egressModeStrict: 'Strict',
+      egressModeBalanced: 'Balanced',
+      egressModeOpen: 'Open',
+      egressModeHint: 'Strict validates every DNS answer. Balanced accepts non-global answers but still refuses literal private, loopback and link-local addresses. Open refuses nothing except literal private addresses.',
+      egressAllowHosts: 'Trusted hosts (fnmatch)',
+      egressAllowHostsHint: 'One pattern per line, up to 50, e.g. upload.wikimedia.org or *.wikipedia.org.',
+      egressDenyHosts: 'Blocked hosts (fnmatch)',
+      egressDenyHostsHint: 'One pattern per line, up to 50. A match here always wins over the trusted list.',
+      egressAllowPorts: 'Extra allowed ports',
+      egressAllowPortsHint: 'Comma separated, 1-65535, up to 20. Balanced tier only; 80 and 443 are always open.',
+      egressMaxBytes: 'Response body limit (bytes)',
+      egressMaxBytesHint: '64 KiB to 64 MiB per response. A larger body is cut and reported as truncated.',
+      egressMaxPerTurn: 'Calls per turn',
+      egressMaxPerTurnHint: 'Counted in this window. Editing tools are not affected.',
+      egressMaxPerMinute: 'Calls per minute (backend)',
+      egressMaxPerMinuteHint: 'Counted by the local backend; above it every call answers 429 with Retry-After.',
+      hostReadRoots: 'Readable host roots',
+      hostReadRootsHint: 'Absolute paths, one per line, up to 10. Host scope only. Leave out ~ — it would open ~/.ssh and every .env.',
+      hostWriteRoots: 'Writable host roots',
+      hostWriteRootsHint: 'Absolute paths, one per line, up to 10. Host scope only.',
+      auditLogRetentionDays: 'Audit log retention (days)',
+      auditLogRetentionDaysHint: 'Commands are recorded as a hash plus timings; the command text itself never reaches the log.',
+      openWarningTitle: 'The open tier is not a sandbox',
+      openWarning: 'In the open tier the agent may reach any public address without asking. Literal private, loopback, link-local and cloud metadata addresses stay blocked — nothing else does.',
+      openConfirm: 'I understand the open tier is not a sandbox and want to use it',
+      hostConfirm: 'I understand host scope is not a sandbox and may touch any file this user can',
+      notSandbox: 'Local commands run with your own user permissions. No setting on this page makes them safe on data you would not run a script on yourself.',
+      saveBlockedConfirm: 'Tick the confirmation box before saving this tier.',
+      invalidSetting: 'That value is out of range.',
+      rangeHint: 'Allowed range: {min}-{max}.',
+      listTooLong: 'Too many entries (max {max}).',
+      invalidPath: 'Use absolute paths only (max {max}).',
+      invalidPort: 'Ports must be whole numbers between 1 and 65535 (max {max}).',
+      emptyListHint: 'Empty — the factory list applies.',
+      loading: 'Loading…',
+      saving: 'Saving…',
+      saved: 'Saved.',
+      saveFailed: 'Could not save. Check the highlighted fields.',
+      loadFailed: 'Could not load local machine settings.',
+      retry: 'Retry',
+      errors: {
+        shell_disabled: 'Local commands are turned off. Enable them in Settings › Local machine & network access.',
+        shell_busy: 'Another command is still running. Wait a moment and try again.',
+        shell_spawn_failed: 'The command could not be started. A security policy may be blocking the interpreter.',
+        path_forbidden: 'That path is outside the folders this tool may use.',
+        edit_not_unique: 'The text to replace appears more than once. Make it unique, or allow replacing all.',
+        host_file_too_large: 'That file is larger than the host write limit.',
+        egress_disabled: 'Direct network access is turned off in Settings.',
+        egress_budget_exceeded: 'This turn used its whole network budget. Keep editing, or send a new message.',
+        egress_rate_limited: 'Too many network requests this minute. Retry shortly.',
+        http_write_unsupported: 'Only GET and HEAD requests are supported.',
+        proxy_config_invalid: 'The saved proxy address is invalid. Fix it under Network & research.',
+        dns_answer_non_global: 'The address behind that host is not public, so the strict tier refused it.',
+        dns_no_answer: 'That host did not resolve to any address.',
+        port_not_allowed: 'That port is not in the allowed set.',
+        invalid_url: 'That address could not be parsed; give the full http(s) URL.',
+        invalid_argument: 'That request was malformed; check the parameters.',
+        not_found: 'That file or folder does not exist.',
+        fs_disabled: 'File tools are turned off in Settings.',
+        material_not_ready: 'The download did not finish; no material was written.',
+        download_failed: 'The download failed upstream (status or network).',
+        binary_file: 'That file is binary, not text.',
+        workspace_file_too_large: 'That file exceeds the workspace file limit.',
+        workspace_quota_exceeded: 'The workspace quota is full. Delete a file first.',
+        material_not_materialized: 'That material has no local file yet. Import it before using it.',
+        unsupported_media_type: 'That media type is not accepted here.',
+        url_forbidden: 'Policy blocked network access to that URL.',
+      },
+    },
+    // END agentHost
     agentVision: {
       title: 'Visual review',
       description: 'Frame review, timeline self-check, export inspection',
@@ -4416,6 +4597,21 @@ export const translations: Record<string, Translations> = {
   "partial": "Research is incomplete; available sources are retained.",
   "sourceList": "Sources",
   "localPreview": "Local material preview",
+  "reason": {
+    "proxy_config_invalid": "The proxy address is invalid, so the request had no usable egress",
+    "url_too_long": "The URL is too long",
+    "url_control_char": "The URL contains control characters",
+    "invalid_url": "The URL could not be parsed; give the full http(s) address",
+    "scheme_not_allowed": "Only http and https URLs are allowed",
+    "userinfo_not_allowed": "URLs carrying a username or password are refused",
+    "port_not_allowed": "That port is not in the allowed set",
+    "host_denied": "The host is on the blocked list",
+    "host_literal_non_global": "The host is written as a private, loopback or link-local address",
+    "dns_no_answer": "The host did not resolve to any address",
+    "dns_answer_non_global": "The host resolves to a non-public address",
+    "robots_disallowed": "robots.txt of this site disallows the request",
+    "robots_unavailable": "robots.txt could not be read, so the request was skipped"
+  },
   "tools": {
     "web_search": "Search the web",
     "web_fetch": "Read web page",
@@ -8253,6 +8449,104 @@ export const translations: Record<string, Translations> = {
         memory_forget: '遗忘',
       },
     },
+    // BEGIN agentHost
+    agentHost: {
+      title: '本机与网络访问',
+      description: '允许 Agent 执行本机命令、读写文件，并在没有研究会话的情况下直接联网。',
+      sectionCapabilities: '能力与文件',
+      sectionShell: '本机命令',
+      sectionEgress: '网络出口',
+      sectionHostAccess: '本机文件范围',
+      sectionAudit: '审计日志',
+      enabled: '启用本机能力',
+      enabledHint: '关掉后这一类 10 个工具直接从 schema 里消失，而不是逐个报错。',
+      shellEnabled: '允许本机命令',
+      shellEnabledHint: '以本应用自身的用户权限执行命令。输出限幅、凭据脱敏、每次执行都记审计。',
+      shellScope: '默认工作目录',
+      shellScopeWorkspace: '项目工作区',
+      shellScopeHost: '整台机器',
+      shellScopeHint: '作用域只决定起始目录，不是沙箱：命令仍然能到达这个用户能到达的任何路径。',
+      shellTimeoutS: '命令超时（秒）',
+      shellTimeoutSHint: '每条命令的墙钟上限，到点连整棵进程树一起杀掉。',
+      shellMaxOutputKb: '单路输出上限（KB）',
+      shellMaxOutputKbHint: 'stdout 与 stderr 各自限幅，超出部分截断并标记为 truncated。',
+      fsEnabled: '允许文件工具',
+      fsEnabledHint: '读取、写入、编辑、列目录、glob 与 grep。任何 I/O 之前都先按下面的作用域解析路径。',
+      fsMaxBytes: '单次读取页字节数',
+      fsMaxBytesHint: '更大的文件按页返回，用返回的 offset 继续读。',
+      egressEnabled: '允许直接联网',
+      egressEnabledHint: '这三个联网工具不再依赖研究会话：没有会话预算，也不受 run 生命周期影响。',
+      egressMode: '出口档位',
+      egressModeStrict: '严格',
+      egressModeBalanced: '平衡',
+      egressModeOpen: '开放',
+      egressModeHint: '严格校验每一个 DNS 答复；平衡接受非全局答复，但仍拒绝字面私网/回环/链路本地地址；开放只拒绝字面私网地址。',
+      egressAllowHosts: '信任主机（fnmatch）',
+      egressAllowHostsHint: '每行一个模式，最多 50 条，例如 upload.wikimedia.org 或 *.wikipedia.org。',
+      egressDenyHosts: '拒绝主机（fnmatch）',
+      egressDenyHostsHint: '每行一个模式，最多 50 条。命中这里的模式优先于信任列表。',
+      egressAllowPorts: '额外允许端口',
+      egressAllowPortsHint: '逗号分隔，1-65535，最多 20 个。仅“平衡”档生效；80 与 443 恒开。',
+      egressMaxBytes: '响应体上限（字节）',
+      egressMaxBytesHint: '单次响应 64 KiB 到 64 MiB；超出部分截断并标记为 truncated。',
+      egressMaxPerTurn: '每回合调用上限',
+      egressMaxPerTurnHint: '在前端记账。剪辑类工具不受此限。',
+      egressMaxPerMinute: '每分钟调用上限（后端）',
+      egressMaxPerMinuteHint: '由本机后端限流，超出返回 429 并带 Retry-After。',
+      hostReadRoots: '可读本机根目录',
+      hostReadRootsHint: '绝对路径，每行一个，最多 10 条，仅“整台机器”作用域生效。默认不要加 ~——那等于开放 ~/.ssh 与各种 .env。',
+      hostWriteRoots: '可写本机根目录',
+      hostWriteRootsHint: '绝对路径，每行一个，最多 10 条，仅“整台机器”作用域生效。',
+      auditLogRetentionDays: '审计日志保留（天）',
+      auditLogRetentionDaysHint: '命令只记哈希与耗时，命令原文不会写进日志。',
+      openWarningTitle: '“开放”档不是沙箱',
+      openWarning: '开放档下 Agent 无需确认即可访问任何公网地址。字面私网、回环、链路本地与云元数据地址仍被拒绝，除此之外不再拦截。',
+      openConfirm: '我知道“开放”档不是沙箱，仍然使用',
+      hostConfirm: '我知道“整台机器”作用域不是沙箱，可能触及这个用户能访问的任何文件',
+      notSandbox: '本机命令以你自己的用户权限运行。这个页面上的任何设置都不能让它们在你不会亲自跑脚本的数据上变得安全。',
+      saveBlockedConfirm: '请先勾选确认框再保存这个危险档位。',
+      invalidSetting: '该值超出允许范围。',
+      rangeHint: '允许范围：{min}-{max}。',
+      listTooLong: '条目过多（最多 {max} 条）。',
+      invalidPath: '只接受绝对路径（最多 {max} 条）。',
+      invalidPort: '端口必须是 1 到 65535 之间的整数（最多 {max} 个）。',
+      emptyListHint: '空——沿用出厂列表。',
+      loading: '正在加载…',
+      saving: '正在保存…',
+      saved: '已保存。',
+      saveFailed: '保存失败，请检查标红的字段。',
+      loadFailed: '无法加载本机能力设置。',
+      retry: '重试',
+      errors: {
+        shell_disabled: '本机命令已关闭，请在“设置 › 本机与网络访问”中开启。',
+        shell_busy: '还有一条命令正在运行，请稍后再试。',
+        shell_spawn_failed: '命令无法启动，可能被杀毒软件或安全策略拦截了解释器。',
+        path_forbidden: '该路径不在这个工具可用的目录内。',
+        edit_not_unique: '待替换文本出现了多次，请改得更精确，或允许全部替换。',
+        host_file_too_large: '该文件超过本机写入上限。',
+        egress_disabled: '直接联网已在设置中关闭。',
+        egress_budget_exceeded: '本回合的联网额度已用完。可以继续剪辑，或发送新消息。',
+        egress_rate_limited: '这一分钟的网络请求过多，请稍后重试。',
+        http_write_unsupported: '只支持 GET 与 HEAD 请求。',
+        proxy_config_invalid: '已保存的代理地址非法，请在“网络与研究”里修正。',
+        dns_answer_non_global: '该主机解析到的地址不是公网地址，被“严格”档拒绝。',
+        dns_no_answer: '该主机没有解析出任何地址。',
+        port_not_allowed: '该端口不在允许集合内。',
+        invalid_url: '地址无法解析，请给出完整的 http(s) 地址。',
+        invalid_argument: '请求参数不合法，请核对参数。',
+        not_found: '该文件或目录不存在。',
+        fs_disabled: '文件工具已在设置里关闭。',
+        material_not_ready: '下载没有完成，未写入任何素材。',
+        download_failed: '上游下载失败（状态码或网络问题）。',
+        binary_file: '该文件是二进制，不是文本。',
+        workspace_file_too_large: '该文件超过工作区单文件上限。',
+        workspace_quota_exceeded: '工作区配额已满，请先删除文件。',
+        material_not_materialized: '该素材还没有本地文件，请先导入再使用。',
+        unsupported_media_type: '这里不接受该媒体类型。',
+        url_forbidden: '策略禁止了该 URL 的网络访问。',
+      },
+    },
+    // END agentHost
     agentVision: {
       title: '视觉审阅',
       description: '画面审阅、时间线自检、成品探测',
@@ -8499,6 +8793,21 @@ export const translations: Record<string, Translations> = {
   "partial": "研究尚未完成，已保留可用来源。",
   "sourceList": "来源",
   "localPreview": "本地素材预览",
+  "reason": {
+    "proxy_config_invalid": "代理地址非法，本次请求没有可用的出口",
+    "url_too_long": "URL 过长",
+    "url_control_char": "URL 含控制字符",
+    "invalid_url": "URL 无法解析，请给出完整的 http(s) 地址",
+    "scheme_not_allowed": "只允许 http 与 https 地址",
+    "userinfo_not_allowed": "带用户名或口令的 URL 一律拒绝",
+    "port_not_allowed": "该端口不在允许集合内",
+    "host_denied": "该主机在拒绝列表里",
+    "host_literal_non_global": "该主机写成了私网、回环或链路本地地址",
+    "dns_no_answer": "该主机没有解析出任何地址",
+    "dns_answer_non_global": "该主机解析到的不是公网地址",
+    "robots_disallowed": "该站点的 robots.txt 不允许本次请求",
+    "robots_unavailable": "读不到 robots.txt，本次请求被跳过"
+  },
   "tools": {
     "web_search": "搜索网络",
     "web_fetch": "阅读网页",

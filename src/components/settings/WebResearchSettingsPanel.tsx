@@ -11,6 +11,7 @@ import {
 } from '@/lib/api/webResearch';
 import type { WebResearchCapabilities, WebResearchSettings }
   from '@/types/webResearch';
+import { getCategorySettings } from '@/lib/api/systemSettings';
 import SettingsSectionCard from './components/SettingsSectionCard';
 import { SwitchField } from './components/SettingsFieldHelpers';
 import { useSettingsPanel } from './components/useSettingsPanel';
@@ -33,6 +34,15 @@ const EGRESS_KEYS = {
   settings: 'egressSettings', env: 'egressEnv', system: 'egressSystem',
   direct: 'egressDirect', invalid: 'egressInvalid',
 } as const;
+const PROXY_MODE_LABELS = {
+  auto: 'proxy_auto', direct: 'proxy_direct', custom: 'proxy_custom',
+} as const;
+const EGRESS_MODE_LABELS = {
+  strict: 'egressModeStrict', balanced: 'egressModeBalanced',
+  open: 'egressModeOpen',
+} as const;
+type AgentHostEgressMode = keyof typeof EGRESS_MODE_LABELS;
+type AgentHostEgressModeValue = AgentHostEgressMode | null;
 const BUTTON = 'rounded-md border border-border px-3 py-2 text-sm ' +
   'hover:bg-accent focus-visible:outline focus-visible:outline-2 ' +
   'focus-visible:outline-primary disabled:opacity-50';
@@ -93,6 +103,8 @@ export default function WebResearchSettingsPanel({ onOpenModels }: {
   const [keyError, setKeyError] = useState(false);
   const [testCooldown, setTestCooldown] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [hostEgressMode, setHostEgressMode] =
+    useState<AgentHostEgressModeValue>(null);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const values = settingsValues(panel.settings);
   // 代理地址仅 http(s)://host:port，可含认证 userinfo（本地保存，不回显）。
@@ -116,8 +128,23 @@ export default function WebResearchSettingsPanel({ onOpenModels }: {
     }
   }, []);
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await getCategorySettings('agent_host');
+        const item = result.settings?.find(
+          (entry) => entry.key === 'egress_mode');
+        const mode = item?.value as AgentHostEgressMode;
+        if (!cancelled) {
+          setHostEgressMode(mode in EGRESS_MODE_LABELS ? mode : null);
+        }
+      } catch {
+        if (!cancelled) setHostEgressMode(null);
+      }
+    })();
     void refreshCapabilities();
     return () => {
+      cancelled = true;
       if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
     };
   }, [refreshCapabilities]);
@@ -343,6 +370,14 @@ export default function WebResearchSettingsPanel({ onOpenModels }: {
               </button>)}
           </div>
           <p className="text-xs text-muted-foreground">{copy.proxyHelp}</p>
+          <p id="research-egress-mode" className="text-xs text-muted-foreground">
+            {t.agentHost.egressMode}:{' '}
+            {hostEgressMode
+              ? `${t.agentHost[EGRESS_MODE_LABELS[hostEgressMode]]}`
+                + ` · ${copy.proxyMode}: `
+                + `${copy[PROXY_MODE_LABELS[values.proxy_mode]]}`
+              : copy.unavailable}
+          </p>
           {values.proxy_mode !== 'direct' && <div className="space-y-1">
             <label htmlFor="research-custom-proxy" className="text-sm">
               {copy.customProxyUrl}

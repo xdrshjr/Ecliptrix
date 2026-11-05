@@ -8,6 +8,9 @@ import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defau
 import { loadSkillIndex } from '@/lib/video-editing-agent/skillContext';
 import { loadCrewSettings } from '@/lib/video-editing-agent/crewSettingsLoader';
 import { registerRun, unregisterRun } from '@/lib/server/agentRunRegistry';
+// 本机能力快照（agent-general-assistant §7.2）：1.5 s 上限，失败即 null，
+// 宿主不可用绝不能拖垮一次编辑请求。
+import { agentHostSnapshot } from '@/lib/server/agentHostSnapshot';
 import { createRunHandle, type RunHandle } from './runLifecycle';
 import { resolveTurnPrompt } from './turnPrompt';
 import { AGENT_IDLE_TIMEOUT_MS } from '@/lib/video-editing-agent/timeouts';
@@ -554,15 +557,18 @@ export async function POST(request: NextRequest) {
           // Long-term memory digest: <=5 entries, <=800 chars, 1.5s timeout,
           // 60s in-process cache per project. A failure yields an empty digest
           // and must never block or fail the turn (§3.6).
-          const [memoryDigest, skillIndex, crewSettings] = await Promise.all([
-            loadMemoryDigest(apiBaseUrl, projectId),
-            loadSkillIndex(apiBaseUrl, projectId),
-            loadCrewSettings(apiBaseUrl),
-          ]);
+          const [memoryDigest, skillIndex, crewSettings, hostCapabilities] =
+            await Promise.all([
+              loadMemoryDigest(apiBaseUrl, projectId),
+              loadSkillIndex(apiBaseUrl, projectId),
+              loadCrewSettings(apiBaseUrl),
+              agentHostSnapshot(),
+            ]);
           const { agent, toolContext } = createVideoEditingAgent({
             researchRun,
             contextWindowTokens,
             webCapabilities: snapshot.capabilities,
+            hostCapabilities,
             memoryDigest,
             skillIndex,
             crewSettings,

@@ -165,6 +165,65 @@ def agent_vision_settings():
     return values
 
 
+# 本机能力层（通用 Agent 能力）出厂值：docs/plans/agent-general-assistant
+# spec.md §4.9。`shell_enabled` 是本机全权限执行，**不是沙箱**；收窄默认根只
+# 减少暴露面，不构成隔离（R-G01）。
+AGENT_HOST_DEFAULTS = {
+    "enabled": True,
+    "shell_enabled": True,
+    "shell_scope": "workspace",
+    "shell_timeout_s": 120,
+    "shell_max_output_kb": 64,
+    "fs_enabled": True,
+    "fs_max_bytes": 32768,
+    "egress_enabled": True,
+    "egress_mode": "balanced",
+    "egress_allow_hosts": [],
+    "egress_deny_hosts": [],
+    "egress_allow_ports": [],
+    "egress_max_bytes": 8388608,
+    "egress_max_per_turn": 60,
+    "egress_max_per_minute": 120,
+    # 空数组 = 由 agent_host_settings() 填入项目工作区 + 素材根（不含 ~）。
+    "host_read_roots": [],
+    "host_write_roots": [],
+    "audit_log_retention_days": 30,
+}
+
+AGENT_HOST_CLAMPS = {
+    "shell_timeout_s": (1, 600),
+    "shell_max_output_kb": (8, 512),
+    "fs_max_bytes": (1024, 1048576),
+    "egress_max_bytes": (65536, 67108864),
+    "egress_max_per_turn": (1, 200),
+    "egress_max_per_minute": (1, 600),
+    "audit_log_retention_days": (1, 365),
+}
+
+
+def agent_host_settings():
+    """未保存键使用出厂值；路径根为空时由 `agent_host.settings` 补动态默认。"""
+    from app.services.agent_host.settings import agent_host_settings as load
+
+    return load()
+
+
+def _clamped(values, defaults, clamps):
+    """读取时把库里残留的越界值夹回区间（写入由校验器拒绝）。"""
+    for key, (low, high) in clamps.items():
+        try:
+            number = float(values[key])
+        except (TypeError, ValueError):
+            values[key] = defaults[key]
+            continue
+        clamped = min(max(number, low), high)
+        if clamped != number:
+            logger.warning("agent_host setting %s=%r out of range, clamped",
+                           key, values[key])
+        values[key] = type(defaults[key])(clamped)
+    return values
+
+
 YAML_TO_DB_MAPPING: List[Dict[str, Any]] = [
     # 视觉审阅：除 `probe` 块外都是标量；`probe` 是唯一嵌套对象（§6.4）。
     {"file": "agent-vision-config.yaml", "root_key": "agent_vision",
@@ -182,6 +241,11 @@ YAML_TO_DB_MAPPING: List[Dict[str, Any]] = [
                    "db_key": key, "is_nested": True, "scalar": True,
                    "value_type": "scalar", "description": key}
                   for key in AGENT_TOOLKIT_DEFAULTS]},
+    {"file": "agent-host-config.yaml", "root_key": "agent_host",
+     "mappings": [{"yaml_keys": [key], "category": "agent_host",
+                   "db_key": key, "is_nested": True, "scalar": True,
+                   "value_type": "scalar", "description": key}
+                  for key in AGENT_HOST_DEFAULTS]},
     {"file": "web-research-config.yaml", "root_key": "web_research",
      "mappings": [{"yaml_keys": [key], "category": "web_research",
                    "db_key": key, "is_nested": True, "scalar": True,

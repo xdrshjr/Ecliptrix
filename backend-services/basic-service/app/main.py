@@ -235,6 +235,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             exc_info=True,
         )
     logger.info("Application startup completed")
+    # 审计历史保留（agent-general-assistant §7.1）：与 toolkit 同形态，失败不阻塞。
+    try:
+        from app.services.agent_host import purge_expired as host_purge
+
+        asyncio.create_task(host_purge())
+    except Exception as host_error:  # optional capability: never block boot
+        logger.warning("agent_host startup purge failed: %s", host_error)
 
     yield
 
@@ -731,6 +738,19 @@ app.include_router(agent_toolkit_router.router, prefix="/api")
 @app.exception_handler(AgentToolkitError)
 async def agent_toolkit_error_handler(request: Request, exc: AgentToolkitError):
     return agent_toolkit_router.error_response(exc)
+
+
+# Agent 本机能力层（shell / fs / tier-2 egress）—
+# docs/plans/agent-general-assistant/spec.md §5.1.
+from app.routers import agent_host_router
+from app.models.agent_host_models import AgentHostError
+
+app.include_router(agent_host_router.router, prefix="/api")
+
+
+@app.exception_handler(AgentHostError)
+async def agent_host_error_handler(request: Request, exc: AgentHostError):
+    return agent_host_router.error_response(exc)
 
 
 # Agent 视觉审阅与成品自检 — docs/plans/agent-visual-review/spec.md §5.1.

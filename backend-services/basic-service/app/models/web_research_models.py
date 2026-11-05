@@ -18,6 +18,10 @@ STATUS = {
     "url_forbidden": 403, "robots_disallowed": 403,
     "robots_unavailable": 503, "browser_action_blocked": 403,
     "origin_forbidden": 403, "blocked_repeat": 403,
+    # 出口策略的精确原因（agent-general-assistant §7.3）：四个都是 403，但
+    # sticky=false —— 用户改完代理/档位后同一调用可以重试成功（C-1/C-2/C-4）。
+    "proxy_config_invalid": 403, "dns_no_answer": 403,
+    "dns_answer_non_global": 403, "port_not_allowed": 403,
     "research_disabled": 403, "browser_disabled": 403,
     "downloads_disabled": 403, "network_disabled": 403,
     # 生命周期
@@ -63,6 +67,7 @@ FAILURE_CLASS = {
         "provider_rejected", "provider_quota_exceeded",
         "research_model_rejected", "research_disabled",
         "browser_disabled", "downloads_disabled", "network_disabled",
+        "proxy_config_invalid",
     }),
     "policy": frozenset({
         "url_forbidden", "robots_disallowed", "robots_unavailable",
@@ -76,6 +81,8 @@ FAILURE_CLASS = {
         "browser_budget_exceeded", "context_budget_exceeded",
         "redirect_unsupported", "stale_element", "idempotency_conflict",
         "screenshot_unavailable",
+        # DNS 答复被档位拒绝 / 端口未放行：策略失败，但**不**永久封禁（sticky=false）。
+        "dns_no_answer", "dns_answer_non_global", "port_not_allowed",
     }),
     "transient": frozenset({
         "provider_rate_limited", "research_model_rate_limited",
@@ -115,13 +122,22 @@ MODEL_ERRORS = frozenset(
 
 class WebResearchError(Exception):
     def __init__(self, error_code, message=None, status_code=None,
-                 failure_class=None):
+                 failure_class=None, reason=None, layer=None, sticky=True,
+                 remediation=None):
         self.error_code = error_code
         self.message = message or error_code
         self.status_code = status_code or STATUS.get(error_code, 422)
         self.failure_class = (failure_class or
                               failure_class_for(error_code, self.status_code))
+        self.sticky = bool(sticky)
+        self.reason = reason
+        self.layer = layer
+        self.remediation = remediation
         super().__init__(self.message)
+
+    def sticky_failure(self):
+        """是否值得写进 `run.blocked`（永久拒绝同一调用）。"""
+        return self.sticky
 
 
 class StrictRequest(BaseModel):

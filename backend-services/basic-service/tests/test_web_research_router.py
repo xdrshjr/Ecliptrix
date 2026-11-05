@@ -253,10 +253,18 @@ def test_proxy_egress_without_userinfo(monkeypatch):
     assert http_module.public_proxy_target(
         'http://user:pass@proxy.local:3128') == 'http://proxy.local:3128'
     assert http_module.public_proxy_target('') == ''
-    monkeypatch.setattr(http_module, '_resolve_proxy',
-                        lambda mode, settings: ('http://127.0.0.1:7890', 'env'))
+    # v2（agent-general-assistant §4.2 / REV-P1-2）：代理解析整体迁入
+    # `egress_policy.resolve_proxy`，`_resolve_proxy` 不再存在，因此补丁打到
+    # 新的唯一入口上（返回值也从 tuple 变成 ProxyResolution）。
+    from app.services.web_research import egress_policy
+
+    monkeypatch.setattr(egress_policy, 'resolve_proxy',
+                        lambda settings, env: egress_policy.ProxyResolution(
+                            mode='auto',
+                            proxy_url='http://127.0.0.1:7890',
+                            resolved_from='env'))
     summary = http_module.resolved_proxy_summary()
-    assert summary == {'mode': summary['mode'], 'resolved_from': 'env',
+    assert summary == {'mode': 'auto', 'resolved_from': 'env',
                        'target': 'http://127.0.0.1:7890'}
 
 

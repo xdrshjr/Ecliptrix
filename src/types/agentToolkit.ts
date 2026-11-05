@@ -142,6 +142,12 @@ export interface ToolkitTurnState {
    * add_to_track forever (tools/stillGuard.ts).
    */
   stillRejections?: Record<string, number>;
+  /**
+   * tier-2 出口调用次数（agent-general-assistant spec AC-G22a）：前端记账，
+   * 第 `egress_max_per_turn + 1` 次直接失败，纯剪辑工具不受影响。
+   * 与本接口其它字段一样，每个请求新建，跨轮与 SSE 重试都不残留。
+   */
+  egressCalls?: number;
 }
 
 /** 计划/提问卡片与工具结果共用的工具名谓词集合。 */

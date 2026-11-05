@@ -50,6 +50,11 @@ CATEGORY_METADATA: list[SettingsCategoryInfo] = [
         label="Agent 能力",
         description="工作区、文档、计算分析、长期记忆",
     ),
+    SettingsCategoryInfo(
+        name="agent_host",
+        label="本机能力",
+        description="本机命令、文件工具与通用联网出口（不是沙箱）",
+    ),
     SettingsCategoryInfo(name="web_research", label="网络与研究", description="搜索、浏览、下载与资料整理"),
     SettingsCategoryInfo(
         name="tts",

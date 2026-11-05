@@ -3,10 +3,14 @@ import type { CategorySummary, ToolInfo } from './registry/ToolRegistry';
 import { ToolRegistry, type CategoryId } from './registry';
 import { utf8Slice } from './modelContextBudget';
 import type { AgentAutonomy, WebCapabilitySnapshot } from './types';
+import type { HostCapabilitySnapshot } from '@/types/agentHost';
 import type { AgentPlan } from '@/types/agentToolkit';
 import type { SkillIndexEntry } from '@/types/agentSkills';
 import {
   AGENT_TOOLKIT_GUIDANCE,
+  GENERAL_AGENT_GUIDANCE,
+  GENERAL_RESIDENT_CHAR_CEILING,
+  GENERAL_RESIDENT_TOOL_NAMES,
   YOLO_DIRECTIVE,
   YOLO_TOOLKIT_GUIDANCE,
 } from './promptParts';
@@ -103,25 +107,45 @@ function availabilitySuffix(state?: CategoryAvailability): string {
   return ` [unavailable${state.reason ? `: ${state.reason}` : ''}]`;
 }
 
-/** Maps the capability snapshot onto the categories that need the network. */
+/**
+ * Maps the capability snapshots onto the categories that can be closed.
+ *
+ * @param snapshot - Network (`/capabilities`) snapshot; omitted means "do not
+ *   claim anything", which is why the older single-argument call sites keep
+ *   returning exactly what they returned before.
+ * @param hostCapabilities - `/api/agent-host/capabilities` snapshot (§4.7). Only
+ *   when it is present do the two general tiers speak: `host_tools` follows the
+ *   shell switch (AC-G20) and `egress_tools` is always available, because
+ *   tier-2 needs no research run — that difference is the point of the whole
+ *   design (§1.2).
+ */
 export function categoryAvailability(
   snapshot?: WebCapabilitySnapshot | null,
+  hostCapabilities?: HostCapabilitySnapshot | null,
 ): Record<string, CategoryAvailability> {
-  if (!snapshot) return {};
-  return {
-    web_tools: {
+  const availability: Record<string, CategoryAvailability> = {};
+  if (snapshot) {
+    availability.web_tools = {
       available: snapshot.search.available && snapshot.downloads.available,
       reason: snapshot.search.error_code ?? snapshot.downloads.error_code,
-    },
-    browser_tools: {
+    };
+    availability.browser_tools = {
       available: snapshot.browser.available && snapshot.browser.enabled !== false,
       reason: snapshot.browser.error_code,
-    },
-    research_tools: {
+    };
+    availability.research_tools = {
       available: snapshot.search.available,
       reason: snapshot.search.error_code,
-    },
-  };
+    };
+  }
+  if (hostCapabilities) {
+    const shellEnabled = hostCapabilities.shell?.enabled !== false;
+    availability.host_tools = shellEnabled
+      ? { available: true }
+      : { available: false, reason: 'shell_disabled' };
+    availability.egress_tools = { available: true };
+  }
+  return availability;
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +370,73 @@ export function formatCoreToolkit(
 }
 
 // ---------------------------------------------------------------------------
+// General resident list — formatGeneralResident
+// ---------------------------------------------------------------------------
+
+/**
+ * 每一行的一句话说明。参数名从注册表**实时**取，说明本身是静态的：常驻清单
+ * 只有 400 字符预算，容不下 description，但不许因此与工具名漂移。
+ */
+const GENERAL_RESIDENT_SUMMARY: Record<string, string> = {
+  bash: 'run a command (cmd.exe)',
+  read_file: 'read a file page',
+  write_file: 'write a text file',
+  http_request: 'GET/HEAD a public URL',
+  download_url: 'download into the library',
+  diagnose_url: 'explain a refusal',
+};
+
+/** 每行最多列几个**必填**参数名；其余用 "…" 收尾，行才留得住 400 字符预算。 */
+const GENERAL_RESIDENT_PARAM_LIMIT = 2;
+
+/**
+ * 一行参数提示：只列必填参数（顺序照 schema），有可选参数时以 "…" 收尾。
+ *
+ * 只列必填是预算与可读性的折中：常驻清单是索引，完整签名在 `explore_tools`
+ * 的类别块里；模型真正需要知道的是"这个工具至少要我给什么"。
+ */
+function compactParamNames(parametersSchema: unknown): string {
+  if (!parametersSchema || typeof parametersSchema !== 'object') return '';
+  const schema = parametersSchema as {
+    properties?: Record<string, unknown>; required?: string[];
+  };
+  const names = Object.keys(schema.properties ?? {});
+  if (names.length === 0) return '';
+  const required = (schema.required ?? []).filter(name => names.includes(name));
+  const shown = required.slice(0, GENERAL_RESIDENT_PARAM_LIMIT);
+  return shown.length < names.length
+    ? [...shown, '…'].join(', ')
+    : shown.join(', ');
+}
+
+/**
+ * 常驻通用工具的紧凑清单（AC-G14a）：每个名字一行
+ * `- name(args…) — 一句话`，**不展开** description 与参数块。
+ *
+ * 为什么另立一格：`formatCoreToolkit()` 的行格式会击穿 L0 的 18 500 断言
+ * （REV-P0-1），所以这 6 个名字只走这条 ≤400 字符的单行通道；名字来源是
+ * `GENERAL_RESIDENT_TOOL_NAMES`，注册表缺某个工具时仍保留一行（模型据此知道
+ * 它本该存在，而不是去猜另一个工具）。
+ *
+ * @param registry - 已注册全部类别的工具注册表（只读取参数名）。
+ * @returns 六行以内、总长 ≤ `GENERAL_RESIDENT_CHAR_CEILING` 的文本。
+ */
+export function formatGeneralResident(registry: ToolRegistry): string {
+  const byName = new Map<string, { parameters?: unknown }>();
+  for (const tool of registry.getAllTools()) byName.set(tool.name, tool);
+  const lines = GENERAL_RESIDENT_TOOL_NAMES.map(name => {
+    const args = compactParamNames(byName.get(name)?.parameters);
+    const purpose = GENERAL_RESIDENT_SUMMARY[name] ?? 'resident general tool';
+    return `- ${name}(${args}) — ${purpose}`;
+  });
+  const block = lines.join('\n');
+  // 预算由单元测试钉死；这里只做兜底，宁可少一行也不越过 L0 的硬上限。
+  return block.length <= GENERAL_RESIDENT_CHAR_CEILING
+    ? block
+    : lines.slice(0, -1).join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Layer C — formatWorkflowRecipes
 // ---------------------------------------------------------------------------
 
@@ -498,6 +589,11 @@ export interface BuildSystemPromptInput {
   exploredCategories: CategoryId[];
   /** Network capability snapshot; omitted means "do not claim anything". */
   capabilities?: WebCapabilitySnapshot | null;
+  /**
+   * 本机能力快照（`/api/agent-host/capabilities`）。缺席时 `host_tools` 与
+   * `egress_tools` 不加任何可用性标注，旧调用点逐字节不变。
+   */
+  hostCapabilities?: HostCapabilitySnapshot | null;
   /** Latest effective plan (this turn or scanned from history). */
   plan?: AgentPlan | null;
   /** Long-term memory digest (<=5 entries, <=800 chars). */
@@ -606,7 +702,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 历史中内容为 {"omitted": "..."} 的工具结果表示较早轮次的状态快照已省略；需要当前状态时重新调用 get_timeline / list_materials 等工具获取，不要依据旧快照操作。`;
 
   const overview = formatToolOverview(categorySummaries,
-    categoryAvailability(input.capabilities));
+    categoryAvailability(input.capabilities, input.hostCapabilities));
   // YOLO 下 `ask_user` 不进工具集（§4.4），提示词也不许自曝它「currently
   // unavailable」——那是诱导模型去猜一个它拿不到的工具。
   const coreToolkit = formatCoreToolkit(registry, isYolo ? ['ask_user'] : []);
@@ -649,6 +745,10 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     ...(skillSection ? [skillSection] : []),
     hardConstraints,
     (isYolo ? YOLO_TOOLKIT_GUIDANCE : AGENT_TOOLKIT_GUIDANCE).trim(),
+    // 通用层引导 + 常驻清单（§4.7）：确定性前缀的一部分，因此必须在
+    // `buildSystemPrompt` 内渲染，才被 `L0_PROMPT_CHAR_CEILING` 真正约束。
+    GENERAL_AGENT_GUIDANCE.trim(),
+    `## 常驻通用工具\n${formatGeneralResident(registry)}`,
     // Web 研究引导与工具集引导同属**确定性**前缀：放在这里而不是由调用方
     // 事后拼接，才能被 `L0_PROMPT_CHAR_CEILING` 真正约束（D-04 的同一条理由）。
     WEB_RESEARCH_GUIDANCE.trim(),

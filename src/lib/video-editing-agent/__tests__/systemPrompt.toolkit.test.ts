@@ -4,6 +4,7 @@ import {
   MEMORY_DIGEST_CHAR_CEILING,
   PLAN_DIGEST_CHAR_CEILING,
   buildSystemPrompt,
+  formatGeneralResident,
   formatMemoryDigest,
   formatPlanDigest,
 } from '../systemPrompt';
@@ -11,8 +12,12 @@ import { createToolRegistry } from '../tools/index';
 import {
   CORE_TOOLKIT_TOOL_NAMES,
   AGENT_TOOLKIT_GUIDANCE,
+  GENERAL_AGENT_GUIDANCE,
+  GENERAL_RESIDENT_CHAR_CEILING,
+  GENERAL_RESIDENT_TOOL_NAMES,
   WEB_RESEARCH_GUIDANCE,
 } from '../promptParts';
+import { CATEGORY_IDS, ON_DEMAND_CATEGORY_IDS } from '../registry/categories';
 import type { ToolContext } from '../types';
 import type { AgentPlan } from '@/types/agentToolkit';
 import type { TimelineState } from '@/types';
@@ -124,13 +129,19 @@ describe('L0 prompt budget', () => {
 });
 
 /**
- * AC-B8 (spec 评审 R-05): measured, not estimated. `L0_BASE` is the worst-case
- * prompt (full plan + memory) measured BEFORE the skill library landed.
- * Skills replaced recipes 1-3 in the prompt, so the net increase with a full
- * 10-entry index must stay ≤ 400 chars, and the existing 18 500 / 18 900
- * ceilings above are NOT relaxed.
+ * AC-B8 (spec 评审 R-05) / AC-G14：实测，不估算。
+ *
+ * `L0_BASE` = 技能库落地前的最坏提示词（满长计划 + 记忆）17 075；技能替换了
+ * 配方 1-3，所以 10 条满长索引的净增必须 ≤400，18 500 / 18 900 两条上限
+ * 一个字都没有放宽。
+ *
+ * agent-general-assistant（§4.7）的通用层常驻文本有自己的预算（AC-G14a：
+ * 引导 ≤400 + 常驻清单 ≤400），实测净增 992 字符，所以这里先把它从基线里
+ * 扣掉，再验技能索引仍 ≤400；绝对上限仍然是 18 500。
  */
 const L0_BASE = 17_075;
+/** 通用层（引导 270 + 常驻清单 290 + 目录两行）实测净增。 */
+const GENERAL_LAYER_CHARS = 992;
 const MAX_INDEX = Array.from({ length: 10 }, (_, index): SkillIndexEntry => ({
   id: `skill-${index}-${'x'.repeat(30)}`.slice(0, 40),
   name: 'n',
@@ -142,7 +153,9 @@ const MAX_INDEX = Array.from({ length: 10 }, (_, index): SkillIndexEntry => ({
 describe('skill index budget (AC-B8)', () => {
   it('adds at most 400 chars over the pre-skills baseline with a full index', () => {
     const withIndex = prompt(MAX_INDEX);
-    expect(withIndex.length - L0_BASE).toBeLessThanOrEqual(400);
+    expect(withIndex.length - L0_BASE - GENERAL_LAYER_CHARS)
+      .toBeLessThanOrEqual(400);
+    // 通用层落地后的最坏提示词：实测 18 467，只比 18 500 宽 33 字符。
     expect(withIndex.length).toBeLessThanOrEqual(18_500);
   });
 
@@ -266,3 +279,61 @@ describe('registry wiring', () => {
       .toEqual(['view_image', 'review_frames', 'inspect_export']);
   });
 });
+
+/**
+ * 通用能力层（docs/plans/agent-general-assistant/spec.md §4.7 / AC-G14 / AC-G16）。
+ *
+ * 三条互不重叠的断言：常驻清单本身 ≤400 字符且含 6 个名字、两个新类别在目录里
+ * 可发现且没有内联 schema、两条既有的 L0 上限**没有**被放宽。
+ */
+describe('general resident toolkit (AC-G14 / AC-G16)', () => {
+  it('renders six compact one-line entries within 400 chars (AC-G14a)', () => {
+    const registry = createToolRegistry(makeContext());
+    const block = formatGeneralResident(registry);
+    expect(GENERAL_RESIDENT_CHAR_CEILING).toBe(400);
+    expect(block.length).toBeLessThanOrEqual(GENERAL_RESIDENT_CHAR_CEILING);
+    expect(block.split('\n')).toHaveLength(GENERAL_RESIDENT_TOOL_NAMES.length);
+    for (const name of GENERAL_RESIDENT_TOOL_NAMES) {
+      expect(block).toContain(`- ${name}(`);
+    }
+    // 单行紧凑格式：不展开 description、参数块与 markdown 小节。
+    expect(block).not.toContain('###');
+    expect(block).not.toContain('参数：');
+  });
+
+  it('keeps the names in a separate list, never inside CORE_TOOLKIT', () => {
+    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(18);
+    for (const name of GENERAL_RESIDENT_TOOL_NAMES) {
+      expect(CORE_TOOLKIT_TOOL_NAMES).not.toContain(name);
+    }
+  });
+
+  it('renders the guidance and the resident list in the L0 prompt', () => {
+    const text = prompt();
+    expect(GENERAL_AGENT_GUIDANCE.trim().length).toBeLessThanOrEqual(400);
+    expect(text).toContain(GENERAL_AGENT_GUIDANCE.trim().slice(0, 24));
+    expect(text).toContain('## 常驻通用工具');
+    expect(text).toContain(
+      formatGeneralResident(createToolRegistry(makeContext())));
+    // 常驻清单只是索引：bash 的 schema 不进 L0。
+    expect(text).not.toContain('### bash');
+  });
+
+  it('catalogs host_tools and egress_tools without inlining their schemas', () => {
+    const text = prompt();
+    expect(text).toContain('host_tools');
+    expect(text).toContain('egress_tools');
+    for (const id of [CATEGORY_IDS.HOST_TOOLS, CATEGORY_IDS.EGRESS_TOOLS]) {
+      expect(ON_DEMAND_CATEGORY_IDS).toContain(id);
+    }
+    expect(text).not.toContain('### list_dir');
+    expect(text).not.toContain('### download_url');
+  });
+
+  it('keeps the two existing L0 ceilings untouched after the +800 budget', () => {
+    const text = prompt();
+    expect(text.length).toBeLessThanOrEqual(18_500);
+    expect(L0_PROMPT_CHAR_CEILING).toBe(18_900);
+  });
+});
+

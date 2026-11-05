@@ -45,7 +45,12 @@ from app.services.local_media_resolver import (
     ResolvedMediaPath,
     resolve_media_reference,
 )
+
 from app.services.storage_service import storage_service
+
+# 元数据素材（size=0 / 无本地字节）的独立判据（agent-general-assistant C-6）：
+# 它属于生成域的失败码，前端 `stillClip`/`addToTrack` 用的是同一个名字。
+MATERIAL_NOT_MATERIALIZED = "MATERIAL_NOT_MATERIALIZED"
 
 logger = get_logger(__name__)
 
@@ -105,6 +110,12 @@ def _decode_base64_image(image_data: str) -> bytes:
 
 def _read_local_file(path: Path) -> bytes:
     try:
+        if path.stat().st_size == 0:
+            # 「素材存在但没有任何字节」= 元数据素材冒充素材（C-6）。含糊的
+            # IMAGE_NOT_FOUND 会让模型以为地址写错了，于是换地址而不是去下载。
+            raise ImageToVideoFailure(
+                MATERIAL_NOT_MATERIALIZED,
+                "Material has no local bytes (size 0); download it first")
         if path.stat().st_size > MAX_IMAGE_BYTES:
             raise ImageToVideoFailure(
                 "IMAGE_TOO_LARGE",

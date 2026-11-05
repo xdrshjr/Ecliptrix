@@ -1,125 +1,126 @@
-"""代理感知的安全传输：直连全量 IP 校验 / 代理模式字面私网拒绝。
+"""代理感知的安全传输：出口判定全部委托 `egress_policy`（tier-1 / tier-2 共用）。
 
-一切研究来源的 GET/HEAD、robots、页面图片、媒体与浏览器子资源都经它出口
-（spec §3.4）。双模式解决历史门禁 1（Fake-IP 环境直连误判）：
-- direct：GuardedResolver 全量公网 IP 校验（历史行为保留）。
-- custom/auto：目标 URL 仅做字面校验（禁私网/链路本地/metadata 字面量），
-  主机名解析交给代理——这是用户配置代理的本意。
-robots 检查同样经当前模式出口；5xx/超时的 robots 为 fail-closed 并在缓存
-有效期内对同 origin 同样拒绝（v2 R-V2-07）。
+设计基线：docs/plans/agent-general-assistant/spec.md §4.2（v2）。
+
+与 v1 时代的行为差异，逐条对应现场根因：
+
+- C-1：`default_proxy_settings()` **永不抛错**。auto 模式下非法 env/系统代理
+  降级直连并留 `invalid_source` 痕迹；只有 `proxy_mode=custom` 才把
+  `proxy_config_invalid` 报成 403（由 `_request()` 决定，见 `_proxy_or_error`）。
+- C-2：DNS 校验分档（`strict|balanced|open`），且 resolver 内部缓存答复把
+  "钉子"钉住（`use_dns_cache=False` 保持不变，两者互不冲突）。
+- C-4：policy 类失败带 `sticky`，`run_registry` 只封禁 sticky 失败。
 """
 import asyncio
-import ipaddress
 import os
 import socket
 import time
-import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
+import threading
 
 import aiohttp
 
 from app.logger import get_logger
 from app.models.web_research_models import WebResearchError
+from app.services.web_research import egress_policy
+from app.services.web_research.egress_policy import (  # noqa: F401 - re-export
+    EgressPolicy, EgressViolation)
 
 logger = get_logger(__name__)
 USER_AGENT = "Ecliptrix/1.0 (public research)"
 _DNS_POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="research-dns")
 _DNS_SLOTS = threading.BoundedSemaphore(3)
-_PROXY_ENV_KEYS = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY",
-                   "https_proxy", "http_proxy", "all_proxy")
+_PROXY_ENV_KEYS = egress_policy.PROXY_ENV_KEYS
 ROBOTS_TTL = 3600
+# 「钉住」缓存：host -> (IP 元组, 取答复时刻)。TTL 300 s、上限 256 条、FIFO。
+RESOLVER_CACHE_TTL = 300
+RESOLVER_CACHE_LIMIT = 256
 
 
-def public_ip(value):
-    address = ipaddress.ip_address(value)
-    mapped = getattr(address, "ipv4_mapped", None)
-    if (not address.is_global or address.is_multicast or address.is_reserved
-            or (mapped and (not mapped.is_global or mapped.is_multicast))):
-        raise WebResearchError("url_forbidden")
+def _violation_error(violation):
+    """把纯策略模块的否决翻译成本域错误（旧码 url_forbidden + 精确 reason）。"""
+    details = egress_policy.reason_details(violation.reason)
+    return WebResearchError(
+        violation.error_code, reason=violation.reason,
+        layer=violation.layer, sticky=details["sticky"],
+        remediation=details.get("remediation"))
+
+
+def public_ip(value, policy=None):
+    """单地址公网校验；`policy` 缺省按 strict（= 历史行为）。"""
+    policy = policy or EgressPolicy(mode="strict")
+    address = egress_policy._parse_address(value)
+    if address is None:
+        raise WebResearchError("url_forbidden", reason="invalid_url",
+                               layer="url")
+    try:
+        egress_policy.check_answers("literal.invalid", [str(address)], policy)
+    except EgressViolation as violation:
+        raise _violation_error(violation) from None
     return str(address)
 
 
-def literal_target_forbidden(host):
-    """字面量目标拒绝：私网/链路本地/回环/metadata 与 DNS 无关（两模式共用）。"""
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    mapped = getattr(address, "ipv4_mapped", None)
-    if mapped is not None:
-        address = mapped
-    if (address.is_private or address.is_loopback or address.is_link_local
-            or address.is_multicast or address.is_reserved
-            or address.is_unspecified):
-        return True
-    text = str(address)
-    return text.startswith("169.254.") or text == "metadata.google.internal"
-
-
 def normalize_url(url):
-    if len(url) > 4096 or any(ord(c) < 33 or ord(c) == 127 for c in url):
-        raise WebResearchError("url_forbidden")
+    """薄委托：`egress_policy.normalize_url_value`（严格档，不含放宽）。
+
+    保留本名字是因为 `tests/test_research_safe_http.py` 直接调它；放宽只发生在
+    `SafeHttpClient` 用真实设置构造 policy 的路径上。
+    """
     try:
-        parts = urlsplit(url)
-        host = (parts.hostname or "").lower().rstrip(".")
-        port = parts.port
-    except ValueError:
-        raise WebResearchError("url_forbidden") from None
-    if (parts.scheme.lower() not in {"http", "https"} or not host
-            or parts.username is not None or parts.password is not None
-            or port not in {None, 80, 443}):
-        raise WebResearchError("url_forbidden")
-    if host in {"localhost", "metadata.google.internal", "metadata"}:
-        raise WebResearchError("url_forbidden")
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
-        try:
-            host = host.encode("idna").decode("ascii")
-        except UnicodeError:
-            raise WebResearchError("url_forbidden") from None
-    else:
-        # 字面 IP 目标在两种模式下都必须是公网地址。
-        public_ip(host)
-    authority = f"[{host}]" if ":" in host else host
-    default = 443 if parts.scheme.lower() == "https" else 80
-    if port is not None and port != default:
-        authority += f":{port}"
-    return urlunsplit((parts.scheme.lower(), authority,
-                       parts.path or "/", parts.query, ""))
+        return egress_policy.normalize_url_value(url)[0]
+    except EgressViolation as violation:
+        raise _violation_error(violation) from None
 
 
 def normalize_proxy_url(url):
-    """代理地址：http(s)://host:port，可含认证 userinfo；不做公网校验。"""
-    if not url or len(url) > 512 or any(ord(c) < 33 for c in url):
-        raise WebResearchError("url_forbidden")
+    """薄委托：代理地址规范化；非法即 `proxy_config_invalid`（sticky=false）。"""
     try:
-        parts = urlsplit(url)
-        host = (parts.hostname or "").lower().rstrip(".")
-        port = parts.port
-    except ValueError:
-        raise WebResearchError("url_forbidden") from None
-    if (parts.scheme.lower() not in {"http", "https"} or not host
-            or not port or parts.query or parts.fragment):
-        raise WebResearchError("url_forbidden")
-    authority = f"[{host}]" if ":" in host else host
-    userinfo = ""
-    if parts.username is not None:
-        userinfo = parts.username
-        if parts.password is not None:
-            userinfo += f":{parts.password}"
-        userinfo += "@"
-    return urlunsplit((parts.scheme.lower(), f"{userinfo}{authority}:{port}",
-                       "", "", ""))
+        return egress_policy.normalize_proxy_url_value(url)
+    except EgressViolation as violation:
+        raise _violation_error(violation) from None
 
 
 class GuardedResolver(aiohttp.abc.AbstractResolver):
+    """直连出口的 DNS 守卫：分档校验 + 进程内「钉住」缓存。
+
+    `policy` 由 `SafeHttpClient` 在直连请求前写入（单进程、模式极少变化，
+    因此不需要为每次请求新建 resolver）。缓存让同一 host 的第二次请求不再
+    解析，同时把首次答复钉死，保留 DNS-rebinding 防护（R-G02）。
+    """
+
+    def __init__(self, policy=None):
+        self.policy = policy or EgressPolicy(mode="strict")
+        self.cache = OrderedDict()
+
+    def set_policy(self, policy):
+        if policy is not None:
+            self.policy = policy
+
+    def _cached(self, host):
+        entry = self.cache.get(host)
+        if not entry:
+            return None
+        answers, stamp = entry
+        if time.monotonic() - stamp > RESOLVER_CACHE_TTL:
+            self.cache.pop(host, None)
+            return None
+        self.cache.move_to_end(host)
+        return answers
+
+    def _remember(self, host, answers):
+        self.cache[host] = (answers, time.monotonic())
+        while len(self.cache) > RESOLVER_CACHE_LIMIT:
+            self.cache.popitem(last=False)
+
     async def resolve(self, host, port=0, family=socket.AF_UNSPEC):
+        pinned = self._cached(host)
+        if pinned is not None:
+            return self._records(host, port, family, pinned)
         loop = asyncio.get_running_loop()
         if not _DNS_SLOTS.acquire(blocking=False):
             raise WebResearchError("research_busy")
@@ -130,15 +131,31 @@ class GuardedResolver(aiohttp.abc.AbstractResolver):
                 _DNS_SLOTS.release()
         # shield 让取消只丢弃迟到结果；线程结束后才归还真实 DNS 容量。
         answers = await asyncio.shield(loop.run_in_executor(_DNS_POOL, lookup))
-        results = []
-        for address_family, _, protocol, _, address in answers:
-            validated = public_ip(address[0])
-            results.append({"hostname": host, "host": validated,
-                            "port": port, "family": address_family,
-                            "proto": protocol, "flags": socket.AI_NUMERICHOST})
-        if not results:
-            raise WebResearchError("url_forbidden")
-        return results
+        raw = [address[4][0] for address in answers]
+        try:
+            pinned = egress_policy.check_answers(host, raw, self.policy)
+        except EgressViolation as violation:
+            raise _violation_error(violation) from None
+        self._remember(host, pinned)
+        return self._records(host, port, family, pinned)
+
+    @staticmethod
+    def _records(host, port, family, pinned):
+        protocols = {socket.AF_INET: socket.AF_INET, socket.AF_INET6: socket.AF_INET6}
+        wanted = protocols.get(family, socket.AF_INET)
+        records = []
+        for address in pinned:
+            numeric = 6 if ":" in address else 4
+            address_family = socket.AF_INET6 if numeric == 6 else socket.AF_INET
+            if family in protocols and address_family != wanted:
+                continue
+            records.append({"hostname": host, "host": address, "port": port,
+                            "family": address_family, "proto": socket.IPPROTO_TCP,
+                            "flags": socket.AI_NUMERICHOST})
+        if not records:
+            raise WebResearchError("url_forbidden", reason="dns_no_answer",
+                                   layer="dns", sticky=False)
+        return records
 
     async def close(self):
         pass
@@ -167,44 +184,49 @@ class CapacityLimiter:
             self.condition.notify_all()
 
 
-def default_proxy_settings():
-    """读取设置快照；仅研究传输读取代理 env（trust_env 语义限定本 client）。"""
+def egress_settings():
+    """出口档位相关的设置快照；缺设置时用出厂值（balanced）。"""
+    values = {}
+    try:
+        from app.services.system_settings_service import agent_host_settings
+        host = agent_host_settings()
+        values.update({key: host.get(key) for key in
+                       ("egress_mode", "egress_allow_hosts",
+                        "egress_deny_hosts", "egress_allow_ports")})
+    except Exception as error:  # noqa: BLE001 - 出口不得因设置层故障而全站 403
+        logger.warning("agent_host settings unavailable, using egress defaults: "
+                       f"{type(error).__name__}: {error}")
     try:
         from app.services.system_settings_service import research_settings
-        settings = research_settings()
-    except Exception as error:  # noqa: BLE001 - degrade, but never silently
-        # 落到 env/系统代理探测；必须留痕，否则“出口为何变了”无从排查。
-        logger.warning(
-            "research_settings unavailable, falling back to env proxy detection: "
-            f"{type(error).__name__}: {error}"
-        )
-        settings = {}
-    mode = settings.get("proxy_mode", "auto")
-    if mode not in {"auto", "direct", "custom"}:
-        mode = "auto"
-    proxy_url, resolved_from = _resolve_proxy(mode, settings)
-    return {"mode": mode,
-            "proxy_url": normalize_proxy_url(proxy_url) if proxy_url else "",
-            "resolved_from": resolved_from if proxy_url else "direct",
+        values.update(research_settings())
+    except Exception as error:  # noqa: BLE001
+        logger.warning("research_settings unavailable: "
+                       f"{type(error).__name__}: {error}")
+    return values
+
+
+def default_proxy_settings():
+    """读取设置快照；**永不抛错**（C-1 的修法）。
+
+    `resolved_from` 取值 settings/env/system/direct；非法的来源记在
+    `invalid_source` 里，`/capabilities` 因此能自证"为什么走了直连"。
+    """
+    settings = egress_settings()
+    resolution = egress_policy.resolve_proxy(settings, os.environ)
+    for warning in resolution.warnings:
+        logger.warning("research proxy ignored: %s", warning)
+    return {"mode": resolution.mode,
+            "proxy_url": resolution.proxy_url,
+            "resolved_from": resolution.resolved_from,
+            "invalid_source": resolution.invalid_source,
+            "proxy_error": resolution.proxy_error,
             "respect_robots": settings.get("respect_robots", True),
-            "concurrency": settings.get("global_concurrency", 3)}
-
-
-def _resolve_proxy(mode, settings):
-    """返回 (proxy_url, resolved_from)；来源取值 settings/env/system/direct。"""
-    custom = settings.get("custom_proxy_url") or ""
-    if mode == "custom":
-        return custom, "settings"
-    if mode != "auto":
-        return "", "direct"
-    if custom:
-        return custom, "settings"
-    environment = next((os.environ.get(key) for key in _PROXY_ENV_KEYS
-                        if os.environ.get(key)), "")
-    if environment:
-        return environment, "env"
-    # Electron 主进程检测的系统代理经 env 注入（§3.6/§7）。
-    return os.environ.get("WEB_RESEARCH_SYSTEM_PROXY", ""), "system"
+            "concurrency": settings.get("global_concurrency", 3),
+            "egress_mode": settings.get("egress_mode") or
+            egress_policy.DEFAULT_MODE,
+            "egress_allow_hosts": settings.get("egress_allow_hosts") or (),
+            "egress_deny_hosts": settings.get("egress_deny_hosts") or (),
+            "egress_allow_ports": settings.get("egress_allow_ports") or ()}
 
 
 def public_proxy_target(proxy_url):
@@ -224,15 +246,24 @@ def public_proxy_target(proxy_url):
 
 
 def resolved_proxy_summary():
-    """设置/环境/系统三条来源中实际生效的那条出口（AC-33）。"""
-    try:
-        settings = default_proxy_settings()
-    except WebResearchError:
-        # 保存期校验（D-17）之后仍可能出现手改 env；能力面板必须可自证。
-        return {"mode": "auto", "resolved_from": "invalid", "target": ""}
-    return {"mode": settings["mode"],
-            "resolved_from": settings["resolved_from"],
-            "target": public_proxy_target(settings["proxy_url"])}
+    """设置/环境/系统三条来源中实际生效的那条出口（AC-33 / AC-G17）。"""
+    settings = default_proxy_settings()
+    # 用 `.get`：调用方（含测试夹具）可以只给部分键，缺键不得变成 KeyError。
+    summary = {"mode": settings.get("mode", "auto"),
+               "resolved_from": settings.get("resolved_from", "direct"),
+               "target": public_proxy_target(settings["proxy_url"])}
+    if settings.get("invalid_source"):
+        # 非法来源必须可见：否则"为什么走了直连"永远查不出来（C-1）。
+        summary["invalid_source"] = settings["invalid_source"]
+    return summary
+
+
+def egress_summary():
+    """`/capabilities` 的出口摘要：档位 + 代理 + tier-2 是否可用。"""
+    settings = default_proxy_settings()
+    return {"mode": settings.get("egress_mode") or egress_policy.DEFAULT_MODE,
+            "proxy": resolved_proxy_summary(),
+            "tier2": True}
 
 
 @dataclass
@@ -273,8 +304,32 @@ class SafeHttpClient:
             snapshot = dict(self.static_proxy_settings)
             snapshot.setdefault("respect_robots", True)
             snapshot.setdefault("concurrency", 3)
+            snapshot.setdefault("egress_mode", egress_policy.DEFAULT_MODE)
             return snapshot
         return default_proxy_settings()
+
+    def egress_policy(self):
+        """当前出口策略；两个 tier 共用这一份（改一次设置两条路同时生效）。"""
+        return EgressPolicy.from_settings(self.proxy_settings())
+
+    def _classify(self, url):
+        try:
+            return egress_policy.normalize_url_value(url, self.egress_policy())
+        except EgressViolation as violation:
+            raise _violation_error(violation) from None
+
+    def _proxy_target(self, proxy):
+        """代理地址；custom 模式下没有可用地址即 403（auto 已降级直连）。"""
+        proxy_url = proxy.get("proxy_url") or ""
+        if proxy_url or not proxy.get("proxy_error"):
+            return proxy_url
+        if proxy.get("mode") == "custom":
+            details = egress_policy.reason_details("proxy_config_invalid")
+            raise WebResearchError(
+                "proxy_config_invalid", reason="proxy_config_invalid",
+                layer="proxy", sticky=details["sticky"],
+                remediation=details.get("remediation"))
+        return ""
 
     @asynccontextmanager
     async def _capacity(self, url):
@@ -296,7 +351,7 @@ class SafeHttpClient:
     async def fetch(self, policy, request):
         try:
             async with asyncio.timeout(policy.timeout):
-                url = normalize_url(request.url)
+                url, _ = self._classify(request.url)
                 for hop in range(6):
                     result = await self.fetch_one_hop(policy, RequestSpec(
                         url, request.method, request.headers))
@@ -304,14 +359,16 @@ class SafeHttpClient:
                         return result
                     if hop == 5 or not result.headers.get("location"):
                         raise WebResearchError("redirect_unsupported")
-                    url = normalize_url(urljoin(url, result.headers["location"]))
+                    # 跨 host 跳转重新过整条判定（字面私网跳转不得放行）。
+                    url, _ = self._classify(
+                        urljoin(url, result.headers["location"]))
         except TimeoutError:
             raise WebResearchError("upstream_timeout") from None
 
     async def fetch_one_hop(self, policy, request):
         try:
             async with asyncio.timeout(policy.timeout):
-                url = normalize_url(request.url)
+                url, _ = self._classify(request.url)
                 if request.method not in {"GET", "HEAD"}:
                     raise WebResearchError("browser_action_blocked")
                 if policy.respect_robots and policy.document:
@@ -324,8 +381,8 @@ class SafeHttpClient:
                 if result.status in {301, 302, 303, 307, 308}:
                     location = result.headers.get("location")
                     if location:
-                        result.headers["location"] = normalize_url(
-                            urljoin(url, location))
+                        result.headers["location"] = self._classify(
+                            urljoin(url, location))[0]
                 return result
         except TimeoutError:
             raise WebResearchError("upstream_timeout") from None
@@ -338,11 +395,16 @@ class SafeHttpClient:
         proxy = self.proxy_settings()
         if proxy.get("concurrency"):
             await self.limiter.update(proxy["concurrency"])
-        proxy_url = proxy.get("proxy_url") or ""
+        proxy_url = self._proxy_target(proxy)
         if proxy_url:
-            # 代理模式：目标主机名交给代理解析；不做本地 DNS 校验。
+            # 代理模式：目标主机名交给代理解析；不做本地 DNS 校验（REV-P1-3）。
             connector = aiohttp.TCPConnector(limit=3)
         else:
+            # 注入的 resolver 可能是测试夹具（无 set_policy）：只有本模块的
+            # GuardedResolver 需要吃到当前档位，其余按鸭子类型跳过。
+            apply_policy = getattr(self.resolver, "set_policy", None)
+            if apply_policy is not None:
+                apply_policy(self.egress_policy())
             connector = aiohttp.TCPConnector(
                 resolver=self.resolver, use_dns_cache=False,
                 family=socket.AF_UNSPEC, limit=3)
@@ -386,7 +448,9 @@ class SafeHttpClient:
             try:
                 result = await self.fetch(policy, RequestSpec(origin + "/robots.txt"))
             except WebResearchError as error:
-                if error.error_code == "url_forbidden":
+                if error.error_code in {"url_forbidden", "proxy_config_invalid",
+                                        "dns_no_answer", "dns_answer_non_global",
+                                        "port_not_allowed"}:
                     raise
                 self._remember_robot(origin, "unavailable", None)
                 raise WebResearchError(

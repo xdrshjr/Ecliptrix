@@ -4,6 +4,7 @@ import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import type { TtsFailure } from '@/lib/ttsErrors';
 import type { ResearchRunClient } from '@/lib/server/researchRunClient';
 import type { ToolkitTurnState } from '@/types/agentToolkit';
+import type { HostCapabilitySnapshot } from '@/types/agentHost';
 import type { SkillIndexEntry } from '@/types/agentSkills';
 
 // --- Tool Context ---
@@ -101,6 +102,14 @@ export interface ToolContext {
   skillAvailability?: Partial<Record<string, boolean>>;
   /** 本请求的自主模式快照；缺省 `'interactive'`。YOLO 下 `ask_user` 不注册。 */
   autonomy?: AgentAutonomy;
+  /**
+   * 本机能力快照（`/api/agent-host/capabilities`，spec §7.2）。
+   *
+   * 与 `webCapabilities` 同源注入：`host_tools` / `egress_tools` 据此自证可用性，
+   * 出口预算取 `egress.maxPerTurn`。可选且缺省 undefined——所有既有构造点
+   * （单元测试、旧调用方）不需要任何改动。
+   */
+  hostCapabilities?: HostCapabilitySnapshot;
   /**
    * 工程「全片默认音色」快照（界面左侧「全片默认音色」底栏的值，持久化在
    * `content.defaultVoiceId`，由前端请求体透传）。TTS 工具的缺省音色取它：
@@ -426,6 +435,12 @@ export interface VideoEditingAgentConfig {
   contextWindowTokens?: number;
   /** Network capability snapshot, rendered into the on-demand catalog (§13). */
   webCapabilities?: WebCapabilitySnapshot | null;
+  /**
+   * 本机能力快照（`GET /api/agent-host/capabilities` 的归一化结果）。
+   * 原样注入 `ToolContext.hostCapabilities` 并传给 `buildSystemPrompt`；
+   * 缺省 undefined = 不声明任何本机能力（旧调用方行为不变）。
+   */
+  hostCapabilities?: HostCapabilitySnapshot | null;
   llmApiUrl: string;
   llmApiKey: string;
   llmModel: string;
@@ -534,3 +549,5 @@ export interface LastAgentTurnEnd {
 
 // Re-export from central types for convenience
 export type { AgentToolCallRecord } from '@/types';
+/** 本机能力快照：`@/types/agentHost` 是唯一定义处，这里只转出去。 */
+export type { HostCapabilitySnapshot } from '@/types/agentHost';

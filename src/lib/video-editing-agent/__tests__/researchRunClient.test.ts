@@ -34,7 +34,13 @@ it('cleans up registration that finishes after cancellation', async () => {
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
-it('stops renewing the entire network run if call cancellation is unconfirmed', async () => {
+/**
+ * AC-G03 (spec v2 §4.8) — an unconfirmed call cancellation only degrades the
+ * rest of *this turn*. The assertion inverted here used to require the exact
+ * C-3 behaviour: one failed cleanup closing the whole run.
+ */
+it('keeps the run alive when call cancellation is unconfirmed', async () => {
+  const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
   const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ success: true,
     data: { run_id: '00000000-0000-4000-8000-000000000001', run_token: 'secret' } }))
     .mockRejectedValue(new TypeError('offline'));
@@ -42,6 +48,37 @@ it('stops renewing the entire network run if call cancellation is unconfirmed', 
   const client = new ResearchRunClient({});
   await client.headers('call');
   await client.cancelCall('call');
-  expect(client.controller.signal.aborted).toBe(true);
+  expect(client.controller.signal.aborted).toBe(false);
+  expect(client.lostReason).toBe('cancel_unconfirmed');
+  // The 15 s lease is untouched, so the backend expiry stays the only deadline.
+  expect(clearIntervalSpy).not.toHaveBeenCalled();
+  // Not closed: new headers are still issued for the same run.
+  await expect(client.headers('next')).resolves.toMatchObject({ 'X-Research-Token': 'secret' });
+  clearIntervalSpy.mockRestore();
   await client.close();
+});
+
+it('keeps the run alive when the cancellation is rejected with 500', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ success: true,
+    data: { run_id: '00000000-0000-4000-8000-000000000003', run_token: 'secret' } }))
+    .mockResolvedValue(new Response('{}', { status: 500 }));
+  vi.stubGlobal('fetch', fetcher);
+  const client = new ResearchRunClient({});
+  await client.headers('call');
+  await client.cancelCall('call');
+  expect(client.controller.signal.aborted).toBe(false);
+  expect(client.lostReason).toBe('cancel_unconfirmed');
+  await client.close();
+});
+
+it('closes the run when the backend says the run is gone (404)', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ success: true,
+    data: { run_id: '00000000-0000-4000-8000-000000000004', run_token: 'secret' } }))
+    .mockResolvedValue(new Response('{}', { status: 404 }));
+  vi.stubGlobal('fetch', fetcher);
+  const client = new ResearchRunClient({});
+  await client.headers('call');
+  await client.cancelCall('call');
+  expect(client.controller.signal.aborted).toBe(true);
+  expect(client.lostReason).toBeNull();
 });

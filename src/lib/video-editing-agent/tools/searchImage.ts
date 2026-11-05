@@ -4,6 +4,7 @@ import type { ToolContext } from '../types';
 import type { MaterialItem } from '@/types';
 import { toolFetch, parseToolResponse } from './apiHelper';
 import { STILL_IMAGE_NEXT_STEP } from './stillGuard';
+import { CANDIDATE_NEXT_STEP } from './stillClip';
 
 const parameters = Type.Object({
   query: Type.String({ description: 'Search keywords (English or Chinese — Chinese auto-translated)' }),
@@ -77,12 +78,24 @@ function mapImageToMaterial(image: ImageSearchResult, query: string): MaterialIt
   };
 }
 
+/**
+ * A candidate is materialised only once its bytes are on this machine: an
+ * Unsplash hit has `size: 0` and a remote URL, so it is a candidate
+ * (root cause C-6, spec v2 §4.6).
+ */
+function isMaterializedMaterial(material: MaterialItem): boolean {
+  const localUrl = material.cacheUrl ?? material.url ?? '';
+  return material.size > 0 && localUrl.startsWith('/api/storage/files/');
+}
+
 export function createSearchImageTool(context: ToolContext): AgentTool<typeof parameters> {
   return {
     name: 'search_image',
     label: 'Search Image',
     description:
-      'Search the Unsplash image library. Returns matching images and automatically adds them to the material library. Use add_to_track to place them on the timeline.',
+      'Search the Unsplash image library. Returns matching images and automatically adds them to the material library. ' +
+      'Results are metadata-only candidates (size 0, no local bytes) until download_url writes them: check `materialized` before use. ' +
+      'Use add_to_track to place them on the timeline.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
@@ -155,9 +168,12 @@ export function createSearchImageTool(context: ToolContext): AgentTool<typeof pa
           success: true,
           materials: materials.map(m => ({ id: m.id, name: m.name, type: m.type, width: m.width, height: m.height })),
           total_found: materials.length,
+          // False means at least one hit still has no bytes on disk.
+          materialized: materials.every(isMaterializedMaterial),
           message: `Found ${materials.length} image(s) for '${searchQuery}'`,
           searchQuery,
-          next_step: STILL_IMAGE_NEXT_STEP,
+          next_step: CANDIDATE_NEXT_STEP,
+          still_next_step: STILL_IMAGE_NEXT_STEP,
         };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
 

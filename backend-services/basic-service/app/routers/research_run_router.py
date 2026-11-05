@@ -38,6 +38,13 @@ def error_details(error):
     details = {"failure_class": error.failure_class,
                "retryable": error.failure_class == "transient",
                "request_id": str(uuid4())}
+    # 出口判定的可解释性（§4.1 / AC-G01）：四个字段缺一不可——前端据此决定
+    # 是否写入 blockedCalls、模型据此说明"被哪条规则拦住"而不是笼统"网站拒绝"。
+    for attribute in ("reason", "layer", "remediation"):
+        value = getattr(error, attribute, None)
+        if value is not None:
+            details[attribute] = value
+    details["sticky"] = bool(getattr(error, "sticky", True))
     hint = SETTINGS_HINTS.get(error.error_code)
     if hint:
         details.update(settings_path="web_research", settings_hint=hint)

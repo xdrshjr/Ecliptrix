@@ -130,7 +130,10 @@ class RunRegistry:
             run.cancelled_calls.add(call_id)
             raise WebResearchError("upstream_timeout") from None
         except WebResearchError as error:
-            if error.failure_class in {"configuration", "policy"}:
+            # 只有「配置/策略 + sticky」的失败才永久封禁同一调用：代理地址非法、
+            # DNS 答复被档位拒绝这类原因，改好设置后必须能重试成功（C-4）。
+            if (error.failure_class in {"configuration", "policy"}
+                    and error.sticky_failure()):
                 run.blocked.add(signature)
             raise
         finally:

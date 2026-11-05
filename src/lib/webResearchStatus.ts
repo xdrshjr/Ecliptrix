@@ -1,7 +1,8 @@
 import type { Translations } from '@/lib/i18n';
 import type { ResearchFailureClass } from '@/types/webResearch';
 
-type CopyKey = Exclude<keyof Translations['webResearch'], 'tools'>;
+// `reason` 是嵌套的码表，不是可渲染的文案键，与 `tools` 一样排除。
+type CopyKey = Exclude<keyof Translations['webResearch'], 'tools' | 'reason'>;
 interface ResearchStatusInput {
   error_code?: string;
   failure_class?: ResearchFailureClass | string;
@@ -27,6 +28,49 @@ const CODES: Record<string, CopyKey> = {
   // 后端重启导致的 run 丢失与用户主动停止是两件事（AC-41）。
   run_closed: 'runLost',
 };
+
+/** Failure fields a v2 egress refusal carries (spec §4.1 / §7.3). */
+export interface ToolFailureFields {
+  reason?: string;
+  remediation?: string;
+}
+
+/**
+ * Read `reason` / `remediation` from a tool result, flat or nested under
+ * `error_details` (both shapes exist in history).
+ *
+ * @param result - tool result payload of any era
+ * @returns the two fields when they are non-empty strings, otherwise `{}`
+ */
+export function toolFailureFields(result: unknown): ToolFailureFields {
+  if (!result || typeof result !== 'object') return {};
+  const record = result as Record<string, unknown>;
+  const nested = record.error_details && typeof record.error_details === 'object'
+    ? record.error_details as Record<string, unknown> : {};
+  const pick = (key: keyof ToolFailureFields) => {
+    const value = record[key] ?? nested[key];
+    return typeof value === 'string' && value ? value : undefined;
+  };
+  return { reason: pick('reason'), remediation: pick('remediation') };
+}
+
+/**
+ * Egress reason code -> local sentence.
+ *
+ * Codes come from the backend table `egress_policy._REASONS`; an unknown code is
+ * echoed verbatim rather than hidden, because a raw code still names the rule
+ * that refused the request, while an empty string tells the user nothing.
+ *
+ * @param reasons - `t.webResearch.reason` of the active locale
+ * @param code - `error_details.reason`
+ * @returns the sentence, the raw code, or '' when there is no reason
+ */
+export function researchReasonText(
+  reasons: Record<string, string>, code?: string | null,
+): string {
+  if (!code) return '';
+  return reasons[code] ?? code;
+}
 
 /** 只返回本地白名单键，供应商文本永远不参与展示。 */
 export function resolveResearchStatus(input: ResearchStatusInput): {

@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getTranslations, type SupportedLocale } from '@/lib/i18n';
 import * as ttsErrors from '@/lib/ttsErrors';
+import * as webResearchStatus from '@/lib/webResearchStatus';
 // @ts-expect-error Vitest raw source loader for JSX-preserving projects.
 import source from '../ToolStep.tsx?raw';
 import * as animations from '../animations';
@@ -24,6 +25,7 @@ const ToolStep = compileComponent<{ step: ToolStepData }>(source, {
   ...reactModules(), ...localeContextModule(() => locale),
   '@/components/integrations/ConfigureCta': { __esModule: true, default: ConfigureCta },
   'framer-motion': motion, '@/lib/ttsErrors': ttsErrors,
+  '@/lib/webResearchStatus': webResearchStatus,
   './utils': utils, './animations': animations,
 });
 afterEach(() => { cleanup(); locale = 'zh-CN'; });

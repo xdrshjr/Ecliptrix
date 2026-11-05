@@ -6,6 +6,7 @@ import GeneralSettingsPanel from './GeneralSettingsPanel';
 import ModelSettingsPanel from './ModelSettingsPanel';
 import WebResearchSettingsPanel from './WebResearchSettingsPanel';
 import AgentToolkitSettingsPanel from './AgentToolkitSettingsPanel';
+import AgentHostSettingsPanel from './AgentHostSettingsPanel';
 import AgentSkillsSettingsPanel from './AgentSkillsSettingsPanel';
 import AgentVisionSettingsPanel from './AgentVisionSettingsPanel';
 import TTSSettingsPanel from './TTSSettingsPanel';
@@ -66,6 +67,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         return <WebResearchSettingsPanel onOpenModels={() => setActiveItem('model')} />;
       case 'agentToolkit':
         return <AgentToolkitSettingsPanel onOpenModels={() => setActiveItem('model')} />;
+      case 'agentHost':
+        return <AgentHostSettingsPanel />;
       case 'agentSkills':
         return <AgentSkillsSettingsPanel />;
       case 'agentVision':

@@ -382,7 +382,36 @@ Where it lives and what it does not promise:
   analysis / memory); unloaded schemas are never sent, and long documents and
   big tables are always paged, so the context cannot blow up.
 
-### Visual review and pre-delivery self-check
+### Agent host layer (commands / files / general egress)
+
+The toolkit above covers *editing*. This layer covers being a **general agent**: when a
+specialised tool is blocked by policy, quota or a domain, the agent still has a way
+through. Everything is switchable and rate-limited under **Settings › Host capabilities**.
+
+| Capability | What it does | Default |
+|---|---|---|
+| Local commands `bash` | Runs foreground commands on your machine (ffmpeg / ffprobe / bundled python) with timeouts, process-tree kill, output caps and credential redaction | on |
+| File tools | `read_file` / `write_file` / `edit_file` / `list_dir` / `glob` / `grep` inside the workspace or explicitly trusted roots | on |
+| General egress `egress_tools` | `http_request` (GET/HEAD), `download_url` (commits real bytes; `size=0` is a failure), `diagnose_url` (explains which rule refused you, layer by layer) | on |
+
+Boundaries — deliberately **not** dressed up as safety:
+
+- `bash` is **full-permission local code execution, not a sandbox**. `shell_scope` only
+  picks the default cwd; the environment is allowlisted (no `*KEY*` / `*TOKEN*` /
+  `*SECRET*` variables) and output is redacted before it reaches the model.
+- Trusted roots default to the **project workspace + storage root** and deliberately
+  **exclude `~`** — `~` would expose `~/.ssh`, `~/.aws` and every `.env`.
+- The second egress tier has **no research run**: no 80-call quota and no
+  `run_closed`. One failure fails one call.
+- Egress modes `strict | balanced | open`: `balanced` (default) fixes "carrier DNS /
+  Fake-IP makes every host unreachable" while keeping literal private/metadata targets
+  blocked and DNS pinned; `open` is the real "stop blocking me" switch, behind a red
+  warning and an explicit confirmation.
+- A refusal must be reported with its `reason` and `remediation` ("the proxy address
+  has no port", not "the site refused you"); `diagnose_url` exists for that step.
+- Design and implementation record:
+  [agent-general-assistant](docs/plans/agent-general-assistant/spec.md).
+
 
 The agent used to work blind: it could search, download and export, but it never
 looked at what it produced. Two capabilities close that gap, both under the same

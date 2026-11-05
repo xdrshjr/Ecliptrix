@@ -70,7 +70,11 @@ it('AC-A1 六件成功合并为一次 add_materials', async () => {
 it('AC-A2 transient 失败带 retryable 且可同回合重试', async () => {
   const { run, stats } = setup(body => body.candidate_id === uuid(2)
     ? Response.json({ success: false, error_code: 'network_error',
-      error_details: { failure_class: 'transient' } }, { status: 503 }) : ok(body, 0));
+      // v2 sends `sticky: false` for transient failures, which is what keeps
+      // the same call retryable in the same turn (webToolAdapter
+      // `shouldRememberFailure`, spec §4.7).
+      error_details: { failure_class: 'transient', sticky: false } },
+      { status: 503 }) : ok(body, 0));
   const first = await run([item(1), item(2)]);
   expect(first).toMatchObject({ ready: 1, failed: 1, success: true });
   expect(first.items[1]).toMatchObject({ status: 'failed', error_code: 'network_error', retryable: true });

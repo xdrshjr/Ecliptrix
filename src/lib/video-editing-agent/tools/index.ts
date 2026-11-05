@@ -52,6 +52,8 @@ import { createWorkspaceTools } from './workspaceTools';
 import { createDocumentTools } from './documentTool';
 import { createAnalysisTools } from './analysisTool';
 import { createMemoryTools } from './memoryTools';
+import { createHostTools } from './hostTools';
+import { createEgressTools } from './egressTools';
 import { createAutoFixOverlapsTool } from './autoFixOverlaps';
 import { createAddSubtitlesTool } from './addSubtitles';
 import { ItemPlacementService, type OverlapReport } from '@/components/video/timeline/domain/services/ItemPlacementService';
@@ -476,6 +478,13 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     CATEGORY_IDS.ANALYSIS_TOOLS, createAnalysisTools(context));
   registry.registerToolsForCategory(
     CATEGORY_IDS.MEMORY_TOOLS, createMemoryTools(context));
+
+  // 通用层（agent-general-assistant spec §4.7）：本机命令/文件 7 个，tier-2
+  // 通用出口 3 个。顺序固定（MEMORY 之后、REVIEW 之前），便于快照测试。
+  registry.registerToolsForCategory(
+    CATEGORY_IDS.HOST_TOOLS, createHostTools(context));
+  registry.registerToolsForCategory(
+    CATEGORY_IDS.EGRESS_TOOLS, createEgressTools(context));
 
   // Visual review (agent-visual-review §4.2): one on-demand category with the
   // three tools that need explore_tools first — view_image, review_frames and

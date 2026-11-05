@@ -5,6 +5,7 @@ import type { AgentToolCallRecord } from '@/types';
 import { COVER_CARD_ACTION_EVENT, type CoverCardActionDetail,
   type CoverOperationStatus } from '@/lib/video-editing-agent/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import { researchReasonText, toolFailureFields } from '@/lib/webResearchStatus';
 import WebResearchToolCard, { isWebResearchTool } from './WebResearchToolCard';
 import ToolkitToolCard, { isToolkitTool } from './ToolkitToolCard';
 
@@ -88,19 +89,53 @@ function formatParamValue(value: unknown): string {
 function formatResult(result: unknown): string {
   if (!result) return '';
   if (typeof result === 'string') return result;
-  if (typeof result === 'object') {
-    const obj = result as Record<string, unknown>;
-    // Show success/message if available
-    if ('success' in obj && 'message' in obj) {
-      return String(obj.message);
-    }
-    if ('success' in obj && 'error' in obj) {
-      return String(obj.error);
-    }
-    if ('content' in obj) return String(obj.content);
-    return JSON.stringify(result, null, 2);
+  if (typeof result !== 'object') return String(result);
+  const obj = result as Record<string, unknown>;
+  // Show success/message if available
+  if ('success' in obj && 'message' in obj) {
+    return String(obj.message);
   }
-  return String(result);
+  if ('success' in obj && 'error' in obj) {
+    return String(obj.error);
+  }
+  // bash / read_file / grep style payloads: the text IS the result.
+  if (typeof obj.stdout === 'string') {
+    return typeof obj.stderr === 'string' && obj.stderr ? `${obj.stdout}\n${obj.stderr}` : obj.stdout;
+  }
+  const content = obj.content;
+  if (Array.isArray(content)) {
+    const joined = content.map(part => {
+      const text = (part as { text?: unknown } | null)?.text;
+      return typeof text === 'string' ? text : '';
+    }).join('\n');
+    if (joined) return joined;
+  }
+  if (typeof content === 'string') return content;
+  return JSON.stringify(result, null, 2);
+}
+
+/** Long tool output is clipped instead of growing the bubble without bound. */
+const MAX_OUTPUT_LINES = 20;
+
+function firstLines(value: string, max: number): string {
+  return value.split(/\r?\n/).slice(0, max).join('\n');
+}
+
+/** Monospace, newline-preserving, horizontally scrollable output block. */
+function ToolOutputBlock({ text }: { text: string }) {
+  const lineCount = text.split(/\r?\n/).length;
+  return (
+    <div>
+      <pre className="bg-background rounded px-2 py-1.5 text-xs font-mono text-foreground whitespace-pre overflow-x-auto max-h-40 overflow-y-auto">
+        {firstLines(text, MAX_OUTPUT_LINES)}
+      </pre>
+      {lineCount > MAX_OUTPUT_LINES && (
+        <div className="mt-1 text-xs text-muted-foreground">
+          {`+${lineCount - MAX_OUTPUT_LINES} lines`}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** @deprecated Use timeline/AgentExecutionNode instead. */
@@ -108,6 +143,7 @@ const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({
   toolCall, answeredQuestionIds, unresolvedQuestionIds,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { t } = useLocale();
   if (isToolkitTool(toolCall.name)) {
     return <ToolkitToolCard toolCall={toolCall}
       answeredQuestionIds={answeredQuestionIds as Set<string> | undefined}
@@ -118,6 +154,11 @@ const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({
   }
   const displayName = TOOL_DISPLAY_NAMES[toolCall.name] || toolCall.name;
   const resultText = toolCall.result ? formatResult(toolCall.result) : '';
+  // A v2 refusal explains itself: the localised reason is the headline, the
+  // raw message is only the fallback (spec §4.6 / §7.3).
+  const failure = toolFailureFields(toolCall.result);
+  const reasonText = researchReasonText(t.webResearch.reason, failure.reason);
+  const summaryText = reasonText || resultText;
 
   return (
     <div className="border border-border rounded-md overflow-hidden bg-muted/50 text-sm">
@@ -154,9 +195,9 @@ const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({
         <span className="font-medium text-foreground">{displayName}</span>
 
         {/* Brief result (collapsed) */}
-        {!isExpanded && resultText && (
+        {!isExpanded && !!summaryText && (
           <span className="text-muted-foreground truncate flex-1 text-xs">
-            {resultText.slice(0, 60)}{resultText.length > 60 ? '...' : ''}
+            {summaryText.slice(0, 60)}{summaryText.length > 60 ? '...' : ''}
           </span>
         )}
 
@@ -196,9 +237,17 @@ const AgentToolCallCard: React.FC<AgentToolCallCardProps> = ({
           {toolCall.result != null && (
             <div>
               <div className="text-xs text-muted-foreground mb-1">Result</div>
-              <div className="bg-background rounded px-2 py-1.5 text-xs font-mono text-foreground break-all whitespace-pre-wrap max-h-32 overflow-y-auto">
-                {resultText}
-              </div>
+              <ToolOutputBlock text={resultText || reasonText} />
+              {reasonText && (
+                <div className="mt-1 text-xs text-red-500 break-words">
+                  reason: {reasonText}
+                </div>
+              )}
+              {failure.remediation && (
+                <div className="mt-1 text-xs text-muted-foreground break-all">
+                  remediation: {failure.remediation}
+                </div>
+              )}
             </div>
           )}
         </div>

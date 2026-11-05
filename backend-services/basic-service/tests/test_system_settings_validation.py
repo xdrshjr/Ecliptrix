@@ -169,3 +169,109 @@ class TestValidatorRegistry:
         assert tts is not None
         for key in ("concurrency", "retry", "limits", "logging"):
             assert key in tts, f"missing validator for tts.{key}"
+
+
+# ── agent_host（本机能力层，agent-general-assistant §4.9 / AC-G23） ──────
+
+
+class TestAgentHostCategory:
+    """新设置分类必须**可寻址**：漏登记 CATEGORY_METADATA 会让面板恒 404。"""
+
+    def test_category_is_registered_for_routing(self) -> None:
+        from app.routers.system_settings_router import _VALID_CATEGORIES
+
+        assert "agent_host" in _VALID_CATEGORIES
+
+    def test_defaults_cover_every_documented_key(self) -> None:
+        from app.services.system_settings_service import AGENT_HOST_DEFAULTS
+
+        assert len(AGENT_HOST_DEFAULTS) == 18
+
+    def test_settings_loader_exposes_effective_roots(self) -> None:
+        from app.services.agent_host.settings import agent_host_settings
+
+        values = agent_host_settings()
+        # 空数组 → 动态默认根（项目工作区 + 素材根），且**不含** ~ 展开的家目录。
+        assert values["host_read_roots"]
+        assert values["host_write_roots"]
+        assert values["egress_mode"] in {"strict", "balanced", "open"}
+
+    def test_stored_out_of_range_values_are_clamped_on_read(
+            self, monkeypatch) -> None:
+        """库里的越界值必须在读取时夹回（写入由校验器拒绝）。
+
+        面板与所有闸门都读这一份快照：一条手改过的 `shell_timeout_s=99999`
+        若原样漏到执行层，超时等于不存在。
+        """
+        from app.services import system_settings_service as module
+        from app.services.agent_host.settings import agent_host_settings
+
+        monkeypatch.setattr(module.system_settings_service, "get_category",
+                            lambda category: {"shell_timeout_s": 99_999})
+        assert agent_host_settings()["shell_timeout_s"] == 600
+
+
+class TestAgentHostValidator:
+    @pytest.mark.parametrize("key,value", [
+        ("shell_timeout_s", 0),
+        ("shell_timeout_s", 601),
+        ("shell_max_output_kb", 4),
+        ("fs_max_bytes", 512),
+        ("egress_max_bytes", 1024),
+        ("egress_max_per_turn", 0),
+        ("egress_max_per_minute", 1200),
+        ("audit_log_retention_days", 0),
+    ])
+    def test_out_of_range_ints_are_rejected(self, key, value) -> None:
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", key, value)
+
+    def test_booleans_must_be_strict(self) -> None:
+        validate_setting_payload("agent_host", "shell_enabled", True)
+        with pytest.raises(ValidationError):
+            validate_setting_payload("agent_host", "shell_enabled", "true")
+
+    @pytest.mark.parametrize("mode", ["strict", "balanced", "open"])
+    def test_egress_mode_accepts_the_three_tiers(self, mode) -> None:
+        validate_setting_payload("agent_host", "egress_mode", mode)
+
+    def test_unknown_egress_mode_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", "egress_mode", "yolo")
+
+    def test_shell_scope_is_an_enum(self) -> None:
+        validate_setting_payload("agent_host", "shell_scope", "host")
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", "shell_scope", "root")
+
+    def test_ports_out_of_range_are_rejected(self) -> None:
+        validate_setting_payload("agent_host", "egress_allow_ports", [8080])
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", "egress_allow_ports", [0])
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", "egress_allow_ports", [70000])
+
+    def test_port_list_length_is_capped(self) -> None:
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", "egress_allow_ports",
+                                     list(range(1, 23)))
+
+    def test_invalid_fnmatch_pattern_is_rejected(self) -> None:
+        validate_setting_payload("agent_host", "egress_allow_hosts",
+                                 ["*.wikimedia.org"])
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", "egress_allow_hosts",
+                                     ["bad host with spaces"])
+
+    def test_host_roots_must_be_absolute(self) -> None:
+        from pathlib import Path as _Path
+
+        validate_setting_payload("agent_host", "host_read_roots",
+                                 [str(_Path.cwd())])
+        with pytest.raises(ValueError, match="setting_out_of_range"):
+            validate_setting_payload("agent_host", "host_read_roots",
+                                     ["relative/path"])
+
+    def test_unknown_key_is_reported(self) -> None:
+        with pytest.raises(ValueError, match="unknown_host_setting"):
+            validate_setting_payload("agent_host", "sudo_mode", True)

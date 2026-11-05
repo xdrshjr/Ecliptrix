@@ -2,6 +2,7 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import { checkStillGuard } from './stillGuard';
+import { isMetadataOnlyMaterial, materialNotMaterializedFailure } from './stillClip';
 import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning, collectClipStarts, diffClipStarts, findClip, toAgentClipMaterial, POSITION_EPSILON } from './index';
 
 const parameters = Type.Object({
@@ -84,6 +85,15 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
           error: `Material not found: ${params.materialId}. If you have not yet called a search or generate tool in this session, do that first — add_to_track can only use materials that already exist in the library. Call list_materials to see what is available.`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+      }
+
+      // A search candidate has no bytes yet (size 0): refuse it before the
+      // still guard, otherwise the model is told to convert an image that
+      // cannot be read at all (root cause C-6, spec v2 §4.6, AC-G05).
+      if (material.type === 'image' && isMetadataOnlyMaterial(material)) {
+        const failure = materialNotMaterializedFailure(material);
+        return { content: [{ type: 'text', text: JSON.stringify(failure) }],
+          details: failure };
       }
 
       // Before any track is auto-created, so a refusal leaves no empty track.
