@@ -283,7 +283,12 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
     'Workspace files are project-scoped and quota-limited. workspace_write saves text only ' +
     '(max 2 MiB per file, no media extensions). workspace_read pages by bytes and refuses ' +
     'binary files: use read_document for documents and workspace_import_material for media. ' +
-    'workspace_list returns files[] plus a separate documents[] array with document_id.',
+    'workspace_list returns files[] plus a separate documents[] array with document_id. ' +
+    'All workspace names are relative to files/, without that prefix. For shell_scope="workspace", ' +
+    'bash defaults to the project root: ensure files/ exists and write files/bgm.mp3, ' +
+    'or use cwd="files" and output bgm.mp3; import with name="bgm.mp3". ' +
+    'This relative cwd example does not apply to shell_scope="host". ' +
+    'Load workspace_list with explore_tools before calling it on the next response.',
   [CATEGORY_IDS.DOCUMENT_TOOLS]:
     'read_document returns ONE page at a time with next_page, and next_offset when a single ' +
     'page is longer than the requested max_chars. Never summarise a document you have not ' +
@@ -291,8 +296,9 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
   [CATEGORY_IDS.ANALYSIS_TOOLS]:
     'run_analysis executes Python in an isolated process with an AST allow-list. It is off by ' +
     'default: if it returns analysis_disabled, tell the user where to enable it and stop. ' +
-    'Files it writes land in out/<call_id>/ and must be imported with ' +
-    'workspace_import_material before they can go on the timeline.',
+    'Files it writes land in out/<call_id>/. Use shell to copy media into files/ ' +
+    'before workspace_import_material; its name is relative to files/. ' +
+    'Only imported media can go on the timeline.',
   [CATEGORY_IDS.MEMORY_TOOLS]:
     'Memory is durable across turns and projects (project bucket + global bucket). ' +
     'memory_write deduplicates identical text; memory_search returns at most 5 entries and ' +

@@ -104,6 +104,9 @@ export function getDefaultTrackForType(
 
 /** Structured failure returned by an editing tool. */
 export interface ToolErrorResult {
+  error_code?: string;
+  failureClass?: string;
+  next_step?: unknown;
   success: false;
   error: string;
 }
@@ -532,6 +535,8 @@ export function buildAllAgentTools(registry: ToolRegistry, activation?: ToolActi
     execute: async (...args: Parameters<typeof tool.execute>) => {
       if (activation && !activation.canExecute(tool.name)) {
         return toolErrorResponse({ success: false,
+          error_code: 'tool_not_loaded', failureClass: 'user_input',
+          next_step: `Load ${tool.name} with explore_tools, then call it on the next response.`,
           error: 'tool_not_loaded: load with explore_tools, then call on the next response.' });
       }
       if (++calls > 80) return toolErrorResponse({ success: false, error: 'tool_call_limit' });

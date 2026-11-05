@@ -22,6 +22,25 @@ function record(
 const stdout = Array.from({ length: 25 }, (_, index) => `line ${index + 1}`).join('\n');
 
 describe('WorkspaceFileCard', () => {
+  it.each(['en', 'zh-CN'])('旧版未加载错误在 %s 显示加载提示，不显示空态', language => {
+    locale = language;
+    const t = translations[language].agentToolkit;
+    render(<WorkspaceFileCard toolCall={record('workspace_list', {
+      success: false, error: 'tool_not_loaded: load with explore_tools',
+    }, 'error')} />);
+    expect(screen.getByRole('status')).toHaveTextContent(t.toolNotLoaded);
+    expect(screen.queryByText(t.emptyFiles)).toBeNull();
+    expect(screen.queryByText(t.emptyDocuments)).toBeNull();
+    expect(screen.queryByText(new RegExp(t.used))).toBeNull();
+  });
+
+  it.each(['executing', 'cancelled', 'error', 'completed'] as const)(
+    '列表处于 %s 时不显示虚构的零用量和空态', status => {
+      render(<WorkspaceFileCard toolCall={record('workspace_list', {}, status)} />);
+      expect(screen.queryByText(copy.emptyFiles)).toBeNull();
+      expect(screen.queryByText(copy.emptyDocuments)).toBeNull();
+      expect(screen.queryByText(new RegExp(copy.used))).toBeNull();
+    });
   it('分析结果只展示 stdout 前 20 行与产物文件', () => {
     const { container } = render(<WorkspaceFileCard toolCall={record('run_analysis', {
       success: true, status: 'ok', stdout, stderr: '', exit_code: 0,

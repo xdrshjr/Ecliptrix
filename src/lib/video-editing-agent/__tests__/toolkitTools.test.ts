@@ -203,3 +203,102 @@ describe('the 12 toolkit tools', () => {
     }
   });
 });
+
+describe('工作区 BGM 导入', () => {
+  const audio = {
+    id: 'bgm-local', name: 'bgm.wav', type: 'audio', format: 'wav',
+    size: 960044, width: 0, height: 0, duration: 60,
+    local_url: '/api/storage/files/cached_materials/workspace/bgm.wav',
+  };
+
+  it('真实 Agent 上轨后保持视频和旁白位置，并通过 60 秒时间线检查', async () => {
+    const { createVideoEditingAgent } = await import('../agent');
+    const { createDefaultAgentTimelineState } = await import('../defaultTimeline');
+    const { createWorkspaceImportTool } = await import('../tools/workspaceTools');
+    const { createAddToTrackTool } = await import('../tools/addToTrack');
+    const { lintTimeline } = await import('../tools/qualityLint');
+    const state = createDefaultAgentTimelineState();
+    const materials = (['video', 'audio'] as const).map(type => ({
+      id: type, name: type, type, duration: 60, width: 1280, height: 720,
+      size: 100, format: type === 'video' ? 'mp4' : 'wav', createdAt: new Date(0),
+      url: `/api/storage/files/${type}`, serverUrl: `/api/storage/files/${type}`,
+    }));
+    materials.forEach((material, index) => {
+      const track = state.tracks[index === 0 ? 0 : 2];
+      track.items.push({ id: material.id, materialId: material.id, trackId: track.id,
+        name: material.name, type: material.type, startTime: 0, duration: 60,
+        clipStart: 0, clipEnd: 60, originalDuration: 60, color: '#000',
+        url: material.url, volume: 1 });
+    });
+    const { toolContext } = createVideoEditingAgent({
+      llmApiUrl: 'http://127.0.0.1:1', llmApiKey: 'test-only', llmModel: 'test-only',
+      apiBaseUrl: 'http://127.0.0.1:1', timelineState: state, materials,
+      conversationHistory: [],
+    });
+    const before = structuredClone([toolContext.timelineState.tracks[0], toolContext.timelineState.tracks[2]]);
+    fetchMock.mockResolvedValue(jsonResponse({ success: true, data: audio }));
+    await createWorkspaceImportTool(toolContext).execute('import', { name: 'bgm.wav' });
+    await createAddToTrackTool(toolContext).execute('add', {
+      materialId: audio.id, trackId: 'audio-track-2', startTime: 0,
+    });
+    expect(toolContext.timelineState.tracks[3].items).toEqual([
+      expect.objectContaining({ startTime: 0, duration: 60, originalDuration: 60 }),
+    ]);
+    expect([toolContext.timelineState.tracks[0], toolContext.timelineState.tracks[2]]).toEqual(before);
+    expect(lintTimeline({ timelineState: toolContext.timelineState, materials: toolContext.materials,
+      targetWidth: 1280, targetHeight: 720, targetDurationSeconds: 60 })).toMatchObject({
+      blockers: 0, content_end: 60, render_end: 60, cached_duration: 60,
+    });
+  });
+
+  it('首次导入去重，并把真实 60 秒时长传给独立 BGM 轨', async () => {
+    const { createWorkspaceImportTool } = await import('../tools/workspaceTools');
+    const { createAddToTrackTool } = await import('../tools/addToTrack');
+    const context = makeContext();
+    const bgm = { id: 'bgm', type: 'audio', items: [], isLocked: false };
+    context.timelineState.tracks = [
+      { id: 'narration', type: 'audio', items: [{ id: 'voice', startTime: 0, duration: 60 }] },
+      { id: 'video', type: 'video', items: [{ id: 'shot', startTime: 0, duration: 60 }] },
+      bgm,
+    ] as typeof context.timelineState.tracks;
+    const before = structuredClone(context.timelineState.tracks.slice(0, 2));
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ success: true, data: audio })));
+    const tool = createWorkspaceImportTool(context);
+    await tool.execute('import-1', { name: 'bgm.wav' });
+    await tool.execute('import-2', { name: 'bgm.wav' });
+    expect(context.materials).toHaveLength(1);
+    expect(context.recordOperation).toHaveBeenCalledTimes(1);
+    await createAddToTrackTool(context).execute('track', { materialId: audio.id, trackId: 'bgm', startTime: 0 });
+    expect(context.updateTimeline).toHaveBeenCalledWith('track', expect.objectContaining({
+      type: 'add_clip', clip: expect.objectContaining({ duration: 60, originalDuration: 60, trackId: 'bgm' }),
+    }));
+    expect(context.timelineState.tracks.slice(0, 2)).toEqual(before);
+  });
+
+  it('再次导入补齐历史零时长并发布局部更新，保留用户名称', async () => {
+    const { createWorkspaceImportTool } = await import('../tools/workspaceTools');
+    const context = makeContext();
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ success: true, data: audio })));
+    const tool = createWorkspaceImportTool(context);
+    await tool.execute('first', { name: 'bgm.wav' });
+    context.materials[0].duration = 0;
+    context.materials[0].name = '我的配乐';
+    vi.mocked(context.recordOperation).mockClear();
+    await tool.execute('repair', { name: 'bgm.wav' });
+    expect(context.materials).toHaveLength(1);
+    expect(context.materials[0]).toMatchObject({ duration: 60, name: '我的配乐' });
+    expect(context.recordOperation).toHaveBeenCalledWith('repair', expect.objectContaining({
+      type: 'update_material', materialId: audio.id, patch: expect.objectContaining({ duration: 60 }),
+    }));
+  });
+
+  it.each([0, -1, null])('拒绝无效媒体时长 %s，不发布素材操作', async duration => {
+    const { createWorkspaceImportTool } = await import('../tools/workspaceTools');
+    const context = makeContext();
+    fetchMock.mockResolvedValue(jsonResponse({ success: true, data: { ...audio, duration } }));
+    const result = await createWorkspaceImportTool(context).execute('bad', { name: 'bgm.wav' });
+    expect(result.details).toMatchObject({ success: false, error_code: 'media_probe_failed' });
+    expect(context.recordOperation).not.toHaveBeenCalled();
+    expect(context.materials).toHaveLength(0);
+  });
+});

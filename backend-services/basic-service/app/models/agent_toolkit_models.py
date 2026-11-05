@@ -5,6 +5,7 @@
 未登记的码一律按 `invalid_argument`(400) 处理属于开放映射，因此本表**必须**
 覆盖实现里出现的每一个 `error_code`（AC-35 / AC-19 逐码断言）。
 """
+import errno
 import re
 from typing import Literal
 
@@ -49,6 +50,10 @@ STATUS = {
     "document_parse_failed": 422,
     # 可用性
     "storage_unavailable": 503,
+    "storage_full": 507,
+    "media_probe_unavailable": 503,
+    "media_probe_timeout": 504,
+    "media_probe_failed": 422,
     "documents_unavailable": 503,
     "upstream_timeout": 504,
     "analysis_timeout": 504,
@@ -69,17 +74,20 @@ FAILURE_CLASS = {
         "workspace_not_found", "memory_not_found", "document_not_found",
         "not_found", "workspace_file_too_large", "document_too_large",
         "binary_file", "document_unsupported_format", "document_parse_failed",
-        "unsupported_media_type",
+        "unsupported_media_type", "media_probe_failed",
     }),
     "policy": frozenset({
         "policy_blocked", "memory_limit_reached", "workspace_quota_exceeded",
+        "storage_full",
     }),
     "configuration": frozenset({
         "toolkit_disabled", "workspace_disabled", "documents_disabled",
         "analysis_disabled", "memory_disabled", "documents_unavailable",
+        "media_probe_unavailable",
     }),
     "transient": frozenset({
         "storage_unavailable", "upstream_timeout", "analysis_timeout",
+        "media_probe_timeout",
     }),
     "internal": frozenset({"cache_commit_failed", "cache_integrity_error"}),
 }
@@ -104,6 +112,15 @@ class AgentToolkitError(Exception):
         self.failure_class = (failure_class
                               or failure_class_for(error_code))
         super().__init__(self.message)
+
+
+def workspace_io_error(error: OSError) -> AgentToolkitError:
+    """工作区导入边界的 I/O 分类，不泄漏用户路径。"""
+    if isinstance(error, FileNotFoundError):
+        return AgentToolkitError("workspace_not_found")
+    if error.errno in {errno.ENOSPC, errno.EDQUOT}:
+        return AgentToolkitError("storage_full")
+    return AgentToolkitError("storage_unavailable")
 
 
 # ── 项目 id ────────────────────────────────────────────────────────────────

@@ -476,13 +476,17 @@ class MaterialDownloadService:
             Path(path), digest, extension, url))
 
     async def store_workspace_file_async(self, path, digest, extension):
-        """Agent 工作区文件 → 素材库（source='workspace'，无来源 url）。
+        """Agent 工作区文件 → 素材库（source='workspace'，站内来源引用）。
 
         spec §3.3.3 R-13：不得复用 `store_research_download_async`——它的扩展名
         白名单只有 7 项且 `_commit_research` 硬编码 `source="web"`。
         """
-        return await self._dispatch(self._store_workspace_file(
-            Path(path), digest, extension))
+        from app.models.agent_toolkit_models import workspace_io_error
+        try:
+            return await self._dispatch(self._store_workspace_file(
+                Path(path), digest, extension))
+        except OSError as error:
+            raise workspace_io_error(error) from None
 
     async def recover_research_cache_async(self):
         """仅启动时回收本服务私有 web 缓存的未提交文件。"""
@@ -566,10 +570,15 @@ class MaterialDownloadService:
         """提交缓存记录。默认参数复刻既有 web 行为（既有用例必须原样通过）。
 
         `allowed_extensions`/`source_id` 供工作区导入路径参数化使用（R-13）。
+        事务、取消和文件补偿保留在同一个 try/finally 中，避免拆分后误删已提交文件。
         """
         import hashlib
         import uuid
         from app.models.web_research_models import WebResearchError
+        from app.models.agent_toolkit_models import (
+            AgentToolkitError, workspace_io_error,
+        )
+        from app.services.composition.media_probe import probe_workspace_media
         if allowed_extensions is not None and extension not in allowed_extensions:
             raise WebResearchError("unsupported_media_type")
         identifier = source_id or ("web-" + digest[:24])
@@ -578,21 +587,50 @@ class MaterialDownloadService:
         final = directory / (identifier + "." + extension)
         temporary = directory / (str(uuid.uuid4()) + ".part")
         created, committed = False, False
+        metadata = {}
         try:
             async with self._session_factory() as session:
                 row = (await session.execute(select(CachedMaterial).where(
                     CachedMaterial.source == source,
                     CachedMaterial.source_id == identifier))).scalar_one_or_none()
+                # 工作区按内容去重；扩展名别名与缺失缓存修复均保留原路径。
+                if source == "workspace" and row and row.local_path:
+                    existing = Path(row.local_path)
+                    cached_extension = existing.suffix.lstrip(".")
+                    if (existing.resolve().parent != directory.resolve()
+                            or cached_extension not in WORKSPACE_MEDIA_EXTENSIONS):
+                        raise WebResearchError("cache_integrity_error")
+                    # Content IDs cannot change format/type on reimport.
+                    # Only JPEG's two spelling variants share a format.
+                    if (cached_extension != extension
+                            and {cached_extension, extension} != {"jpg", "jpeg"}):
+                        raise WebResearchError("unsupported_media_type")
+                    final = existing
                 reused = bool(row and row.status == "ready" and final.is_file()
                               and hashlib.sha256(final.read_bytes()).hexdigest() == digest)
+                if source == "workspace" and reused:
+                    metadata = await probe_workspace_media(final, extension)
+                    local_source = ("/api/storage/files/cached_materials/"
+                                    "workspace/" + final.name)
+                    if row.source_url != local_source:
+                        row.source_url = local_source
+                        if await self._settle_research_commit(session):
+                            raise asyncio.CancelledError
                 if not reused:
                     shutil.copyfile(path, temporary)
+                    if source == "workspace":
+                        if hashlib.sha256(temporary.read_bytes()).hexdigest() != digest:
+                            raise WebResearchError("cache_integrity_error")
+                        metadata = await probe_workspace_media(temporary, extension)
                     temporary.replace(final)
                     created = True
                     if row is None:
                         row = CachedMaterial(source=source, source_id=identifier,
                                              source_url=url, ref_count=1)
                         session.add(row)
+                    if source == "workspace":
+                        row.source_url = ("/api/storage/files/cached_materials/"
+                                          "workspace/" + final.name)
                     row.local_path, row.file_size = str(final), final.stat().st_size
                     row.status = "ready"
                     cancelled = await self._settle_research_commit(session)
@@ -603,12 +641,20 @@ class MaterialDownloadService:
                 return {"record_id": str(row.id), "size": row.file_size,
                         "local_url": ("/api/storage/files/cached_materials/"
                                       + source + "/" + final.name),
-                        "created_at": row.created_at.isoformat(), "reused": reused}
+                        "created_at": row.created_at.isoformat(), "reused": reused,
+                        **metadata}
         except asyncio.CancelledError:
             raise
-        except Exception:
-            raise WebResearchError("cache_commit_failed",
-                                   failure_class="internal") from None
+        except (WebResearchError, AgentToolkitError):
+            raise
+        except Exception as error:
+            if source == "workspace" and isinstance(error, OSError):
+                raise workspace_io_error(error) from None
+            failure = WebResearchError("cache_commit_failed", failure_class="internal")
+            failure.request_id = str(uuid.uuid4())
+            logger.error("cache_commit_failed request_id=%s source=%s id=%s exception=%s",
+                         failure.request_id, source, identifier, type(error).__name__)
+            raise failure from None
         finally:
             temporary.unlink(missing_ok=True)
             if created and not committed:

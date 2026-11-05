@@ -49,7 +49,9 @@ const deleteParameters = Type.Object({
 
 const importParameters = Type.Object({
   name: Type.String({ description:
-    'Relative path of an existing workspace file with a media extension ' +
+    'Path relative to the project files/ directory, without the files/ prefix. ' +
+    'With shell_scope="workspace", write files/bgm.mp3 from the default project root ' +
+    'or use cwd="files" and output bgm.mp3; import with name="bgm.mp3". Media extensions: ' +
     '(.mp4 .mov .webm .mkv .mp3 .wav .m4a .aac .png .jpg .jpeg .webp .gif .svg).' }),
   material_name: Type.Optional(Type.String({
     description: 'Display name in the material library (default: file name).' })),
@@ -195,21 +197,40 @@ export function createWorkspaceImportTool(context: ToolContext): AgentTool<typeo
         success: boolean; error_code?: string;
       };
       if (!details.success) return result;
+      if (details.type !== 'image'
+        && (!Number.isFinite(details.duration) || details.duration <= 0)) {
+        return toolkitFailure('media_probe_failed');
+      }
       const material = toMaterialItem(details);
       if (!material) {
         return toolkitFailure('invalid_argument', {
           message: 'the imported material has no same-origin local_url',
         }, 'Report the problem; do not call add_to_track with this material.');
       }
-      const exists = context.materials.some(item => item.id === material.id);
-      if (!exists && !context.abortSignal?.aborted) {
+      if (context.abortSignal?.aborted) return toolkitFailure('cancelled');
+      const existing = context.materials.find(item => item.id === material.id);
+      if (!existing) {
         context.recordOperation(toolCallId, {
           type: 'add_materials', materials: [material] });
         context.materials.push(material);
+      } else {
+        // 仅补齐探测字段，保留用户名称和已编辑片段，重复导入不重复发布。
+        const patch: Partial<MaterialItem> = {};
+        for (const key of ['duration', 'width', 'height'] as const) {
+          const value = material[key];
+          if (typeof value === 'number' && value > 0 && value !== existing[key]) {
+            patch[key] = value;
+          }
+        }
+        if (Object.keys(patch).length) {
+          context.recordOperation(toolCallId, {
+            type: 'update_material', materialId: material.id, patch });
+          Object.assign(existing, patch);
+        }
       }
       // 再过一次 `toolkitResult`：`content` 与 `details` 必须是**同一份**有界
       // 载荷（`webToolAdapter` 的约定），否则模型看到的和界面存下的会不一致。
-      return toolkitResult({ ...details, already_in_library: exists });
+      return toolkitResult({ ...details, already_in_library: !!existing });
     },
   };
 }

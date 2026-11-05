@@ -233,10 +233,13 @@ export default function WorkspaceFileCard({ toolCall }: WorkspaceFileCardProps) 
   const { t } = useLocale();
   const details = detailsOf(toolCall);
   const busy = toolCall.status === 'executing';
+  const legacyCode = /^tool_not_loaded(?::|$)/.test(text(details.error))
+    ? 'tool_not_loaded' : '';
   const failure = resolveAgentToolkitStatus({
-    error_code: text(details.error_code) || text(details.code),
+    error_code: text(details.error_code) || text(details.code) || legacyCode,
     failure_class: text(details.failure_class) || text(details.failureClass),
-    status: toolCall.status === 'cancelled' ? 'cancelled' : undefined,
+    status: toolCall.status === 'cancelled' ? 'cancelled'
+      : toolCall.status === 'error' || text(details.error) ? 'error' : undefined,
     success: details.success === false ? false : undefined,
   });
   const label = t.agentToolkit.tools[toolCall.name] ?? toolCall.name;
@@ -257,7 +260,9 @@ export default function WorkspaceFileCard({ toolCall }: WorkspaceFileCardProps) 
       {!failure && busy && (
         <p role="status" className="mt-1 text-muted-foreground">{t.agentToolkit.loading}</p>
       )}
-      {detailFor(toolCall, details)}
+      {(toolCall.name !== 'workspace_list' || (!failure && !busy
+        && toolCall.status === 'completed' && details.success === true))
+        && detailFor(toolCall, details)}
     </section>
   );
 }

@@ -348,6 +348,17 @@ export class OperationApplier {
         });
         break;
       }
+      case 'update_material': {
+        const existing = store.materials.find(m => m.id === operation.materialId);
+        this.nonTimelineRecords.push({
+          toolCallId, operation, undoable: !!existing,
+          undoData: { previous: existing ? Object.fromEntries(
+            (Object.keys(operation.patch) as Array<keyof typeof operation.patch>)
+              .map(key => [key, existing[key]]),
+          ) : null },
+        });
+        break;
+      }
       case 'remove_material': {
         const op = operation as MaterialOperation & { type: 'remove_material' };
         const existing = store.materials.find(m => m.id === op.materialId);
@@ -450,6 +461,9 @@ export class OperationApplier {
     const data = record.undoData as Record<string, unknown>;
 
     switch (record.operation.type) {
+      case 'update_material':
+        store.updateMaterial(record.operation.materialId, data.previous as Partial<MaterialItem>);
+        break;
       case 'add_material':
         store.removeMaterial(data.materialId as string);
         break;

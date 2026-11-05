@@ -197,6 +197,7 @@ export type TimelineOperation =
 export type MaterialOperation =
   | { type: 'add_material'; material: MaterialItem }
   | { type: 'add_materials'; materials: MaterialItem[] }
+  | { type: 'update_material'; materialId: string; patch: Partial<Pick<MaterialItem, 'duration' | 'width' | 'height'>> }
   | { type: 'remove_material'; materialId: string };
 
 // --- Script Operations ---

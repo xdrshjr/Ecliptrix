@@ -1,0 +1,1206 @@
+当前代码的故障复现记录（通过表示故障被确认，未修复产品）
+
+命令：python docs/diagnoses/workspace-media-import-failure/repro_backend.py
+退出码：0
+复现一：根目录产物未被导入 {"error_code": "workspace_not_found", "status": 404, "root_file_exists": true}
+对照一：存储层列表正常 {"names": ["bgm.wav"]}
+复现二：真实数据库拒绝提交 {"error_code": "cache_commit_failed", "status": 507, "failure_class": "internal", "sqlite_error": "NOT NULL constraint failed: cached_materials.source_url"}
+回滚检查 {"rows": 0, "cached_files": 0, "workspace_source_preserved": true}
+对照二：仅替换来源值后提交成功 {"local_url": "/api/storage/files/cached_materials/workspace/workspace-e9a21532f6f9019cb9f59a69.wav"}
+附带确认：复用可成功但返回时长为零 {"actual_duration": 1.5, "returned_duration": 0, "reused": true}
+诊断完成 {"production_code_modified": false}
+
+命令：node node_modules/vitest/vitest.mjs run --config docs/diagnoses/workspace-media-import-failure/repro.config.ts
+退出码：0
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  07:08:22
+   Duration  4.09s (transform 1.44s, setup 136ms, import 2.49s, tests 199ms, environment 1.07s)
+
+
+
+
+
+## 实施验证：HEAD 基线素材路由测试
+仅在本进程加载 HEAD 的素材服务，磁盘产品源码不变。
+.FF.FFF..                                                                [100%]
+================================== FAILURES ===================================
+______________ test_ingest_ready_short_circuit_returns_local_url ______________
+tests\test_material_router.py:119: in test_ingest_ready_short_circuit_returns_local_url
+    ???
+E   AssertionError: assert 'error' == 'ready'
+E     - ready
+E     + error
+---------------------------- Captured stdout call -----------------------------
+2026-11-05 07:42:18 - [31mapp.routers.material_router[0m - [31mERROR[0m - Failed to enqueue material source=pexels id=12345: 4 validation errors for MaterialIngestResultEntry
+
+proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659028442960'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659031216656'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_profile
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031243664'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_local_url
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659029860752'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+Traceback (most recent call last):
+
+  File "M:\takoAI\Ecliptrix\backend-services\basic-service\app\routers\material_router.py", line 104, in ingest_materials
+
+    MaterialIngestResultEntry(
+
+  File "C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\pydantic\main.py", line 280, in __init__
+
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+pydantic_core._pydantic_core.ValidationError: 4 validation errors for MaterialIngestResultEntry
+
+proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659028442960'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659031216656'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_profile
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031243664'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_local_url
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659029860752'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+------------------------------ Captured log call ------------------------------
+ERROR    [31mapp.routers.material_router[0m:material_router.py:116 Failed to enqueue material source=pexels id=12345: 4 validation errors for MaterialIngestResultEntry
+proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659028442960'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659031216656'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_profile
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031243664'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_local_url
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659029860752'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+Traceback (most recent call last):
+  File "M:\takoAI\Ecliptrix\backend-services\basic-service\app\routers\material_router.py", line 104, in ingest_materials
+    MaterialIngestResultEntry(
+  File "C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\pydantic\main.py", line 280, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 4 validation errors for MaterialIngestResultEntry
+proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659028442960'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659031216656'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_profile
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031243664'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_local_url
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659029860752'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+__________________ test_ingest_failed_surfaces_error_message __________________
+tests\test_material_router.py:142: in test_ingest_failed_surfaces_error_message
+    assert item["status"] == "failed"
+E   AssertionError: assert 'error' == 'failed'
+E     - failed
+E     + error
+---------------------------- Captured stdout call -----------------------------
+2026-11-05 07:42:19 - [31mapp.routers.material_router[0m - [31mERROR[0m - Failed to enqueue material source=pexels id=12345: 4 validation errors for MaterialIngestResultEntry
+
+proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659031111504'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659029275856'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_profile
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031062608'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_local_url
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659031058064'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+Traceback (most recent call last):
+
+  File "M:\takoAI\Ecliptrix\backend-services\basic-service\app\routers\material_router.py", line 104, in ingest_materials
+
+    MaterialIngestResultEntry(
+
+  File "C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\pydantic\main.py", line 280, in __init__
+
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+pydantic_core._pydantic_core.ValidationError: 4 validation errors for MaterialIngestResultEntry
+
+proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659031111504'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_status
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659029275856'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_profile
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031062608'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+preview_proxy_local_url
+
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659031058064'>, input_type=MagicMock]
+
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+
+------------------------------ Captured log call ------------------------------
+ERROR    [31mapp.routers.material_router[0m:material_router.py:116 Failed to enqueue material source=pexels id=12345: 4 validation errors for MaterialIngestResultEntry
+proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659031111504'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659029275856'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_profile
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031062608'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_local_url
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659031058064'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+Traceback (most recent call last):
+  File "M:\takoAI\Ecliptrix\backend-services\basic-service\app\routers\material_router.py", line 104, in ingest_materials
+    MaterialIngestResultEntry(
+  File "C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\pydantic\main.py", line 280, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 4 validation errors for MaterialIngestResultEntry
+proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659031111504'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_status
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659029275856'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_profile
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659031062608'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+preview_proxy_local_url
+  Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659031058064'>, input_type=MagicMock]
+    For further information visit https://errors.pydantic.dev/2.14/v/string_type
+________________________ test_lookup_by_composite_key _________________________
+tests\test_material_router.py:157: in test_lookup_by_composite_key
+    res = client.get(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:473: in get
+    return super().get(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:1053: in get
+    return self.request(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:445: in request
+    return super().request(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:914: in send
+    response = self._send_handling_auth(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:348: in handle_request
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:345: in handle_request
+    portal.call(self.app, scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\anyio\from_thread.py:334: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\anyio\from_thread.py:259: in _call_func
+    retval = await retval_or_awaitable
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\applications.py:1159: in __call__
+    await super().__call__(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\applications.py:90: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:660: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:680: in app
+    await route.handle(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:276: in handle
+    await self.app(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:134: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:120: in app
+    response = await f(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:674: in app
+    raw_response = await run_endpoint_function(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:328: in run_endpoint_function
+    return await dependant.call(**values)
+app\routers\material_router.py:164: in lookup_material
+    return MaterialIngestResultEntry(
+E   pydantic_core._pydantic_core.ValidationError: 4 validation errors for MaterialIngestResultEntry
+E   proxy_status
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659032792144'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_status
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659032589328'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_profile
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659032731024'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_local_url
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659032736528'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+____________________ test_lookup_by_url_legacy_single_arg _____________________
+tests\test_material_router.py:174: in test_lookup_by_url_legacy_single_arg
+    res = client.get(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:473: in get
+    return super().get(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:1053: in get
+    return self.request(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:445: in request
+    return super().request(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:914: in send
+    response = self._send_handling_auth(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:348: in handle_request
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:345: in handle_request
+    portal.call(self.app, scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\anyio\from_thread.py:334: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\anyio\from_thread.py:259: in _call_func
+    retval = await retval_or_awaitable
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\applications.py:1159: in __call__
+    await super().__call__(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\applications.py:90: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:660: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:680: in app
+    await route.handle(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:276: in handle
+    await self.app(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:134: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:120: in app
+    response = await f(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:674: in app
+    raw_response = await run_endpoint_function(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:328: in run_endpoint_function
+    return await dependant.call(**values)
+app\routers\material_router.py:164: in lookup_material
+    return MaterialIngestResultEntry(
+E   pydantic_core._pydantic_core.ValidationError: 4 validation errors for MaterialIngestResultEntry
+E   proxy_status
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659031267472'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_status
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2658965374928'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_profile
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659040369936'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_local_url
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2658966885776'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+__________________ test_lookup_url_drift_still_hits_by_keys ___________________
+tests\test_material_router.py:194: in test_lookup_url_drift_still_hits_by_keys
+    res = client.get(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:473: in get
+    return super().get(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:1053: in get
+    return self.request(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:445: in request
+    return super().request(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:914: in send
+    response = self._send_handling_auth(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\httpx\_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:348: in handle_request
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\testclient.py:345: in handle_request
+    portal.call(self.app, scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\anyio\from_thread.py:334: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:449: in result
+    return self.__get_result()
+D:\ProgramData\anaconda3\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\anyio\from_thread.py:259: in _call_func
+    retval = await retval_or_awaitable
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\applications.py:1159: in __call__
+    await super().__call__(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\applications.py:90: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:660: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:680: in app
+    await route.handle(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\routing.py:276: in handle
+    await self.app(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:134: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:120: in app
+    response = await f(request)
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:674: in app
+    raw_response = await run_endpoint_function(
+C:\Users\jdqqj\AppData\Roaming\Python\Python311\site-packages\fastapi\routing.py:328: in run_endpoint_function
+    return await dependant.call(**values)
+app\routers\material_router.py:164: in lookup_material
+    return MaterialIngestResultEntry(
+E   pydantic_core._pydantic_core.ValidationError: 4 validation errors for MaterialIngestResultEntry
+E   proxy_status
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pro...tus' id='2659039304976'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_status
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...tus' id='2659039292816'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_profile
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...ile' id='2659039287440'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+E   preview_proxy_local_url
+E     Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.pre...url' id='2659039186640'>, input_type=MagicMock]
+E       For further information visit https://errors.pydantic.dev/2.14/v/string_type
+=========================== short test summary info ===========================
+FAILED tests/test_material_router.py::test_ingest_ready_short_circuit_returns_local_url
+FAILED tests/test_material_router.py::test_ingest_failed_surfaces_error_message
+FAILED tests/test_material_router.py::test_lookup_by_composite_key - pydantic...
+FAILED tests/test_material_router.py::test_lookup_by_url_legacy_single_arg - ...
+FAILED tests/test_material_router.py::test_lookup_url_drift_still_hits_by_keys
+5 failed, 4 passed, 3 warnings in 23.61s
+
+退出码：1
+
+
+## 实施验证：前端工具链回归（首次默认并发）
+node node_modules/vitest/vitest.mjs run src/lib/video-editing-agent src/components/video/components/VideoChatWindow/__tests__/WorkspaceFileCard.test.tsx src/lib/__tests__/agentToolkitStatus.test.ts src/lib/__tests__/agentToolkitClient.test.ts src/app/api/agent-toolkit/__tests__/route.test.ts --cache=false
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts (14 tests | 12 failed) 5140ms
+     × posts to /api/agent-vision/describe with the tool-call id and origin 5023ms
+     × keeps composition_id out of the payload when neither source has one 7ms
+     × uses lastCompositionId for frame/export sources 2ms
+     × 复核素材原帧时不被历史导出 ID 替换 1ms
+     × refuses an empty image list without calling the backend 1ms
+     × never puts a data: URL into the model-visible text 3ms
+     × shrinks an oversized observation under the result byte cap 2ms
+     × turns a transport failure into a soft, retryable failure 1ms
+     × maps a vision timeout to model_timeout 4ms
+     × samples a window into a contact sheet request 2ms
+     × rejects an inverted window before spending a vision call 1ms
+     × keeps every description inside the 180-byte explore_tools budget 77ms
+
+ Test Files  1 failed | 99 passed (100)
+      Tests  12 failed | 1041 passed (1053)
+   Start at  07:41:52
+   Duration  56.79s (transform 69.37s, setup 56.62s, import 284.97s, tests 30.02s, environment 414.91s)
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > posts to /api/agent-vision/describe with the tool-call id and origin
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:64:3
+     62|
+     63| describe('view_image', () => {
+     64|   it('posts to /api/agent-vision/describe with the tool-call id and or…
+       |   ^
+     65|     const { createViewImageTool } = await import('../tools/visionTools…
+     66|     fetchMock.mockResolvedValue(jsonResponse({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > keeps composition_id out of the payload when neither source has one
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:101:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > uses lastCompositionId for frame/export sources
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:117:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > 复核素材原帧时不被历史导出 ID 替换
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:134:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > refuses an empty image list without calling the backend
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:144:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > never puts a data: URL into the model-visible text
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:170:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > shrinks an oversized observation under the result byte cap
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:195:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > turns a transport failure into a soft, retryable failure
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:207:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > view_image > maps a vision timeout to model_timeout
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:220:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > review_frames > samples a window into a contact sheet request
+ReferenceError: Cannot access 'reviewFramesParameters' before initialization
+ ❯ createReviewFramesTool src/lib/video-editing-agent/tools/visionTools.ts:215:17
+    213|       + 'observation (never the image). kind="composition" needs no id…
+    214|       + 'after an export.',
+    215|     parameters: reviewFramesParameters,
+       |                 ^
+    216|     execute: async (toolCallId: string, params: ReviewFramesParams) =>…
+    217|       const start = params.start_seconds;
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:235:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > review_frames > rejects an inverted window before spending a vision call
+ReferenceError: Cannot access 'reviewFramesParameters' before initialization
+ ❯ createReviewFramesTool src/lib/video-editing-agent/tools/visionTools.ts:215:17
+    213|       + 'observation (never the image). kind="composition" needs no id…
+    214|       + 'after an export.',
+    215|     parameters: reviewFramesParameters,
+       |                 ^
+    216|     execute: async (toolCallId: string, params: ReviewFramesParams) =>…
+    217|       const start = params.start_seconds;
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:254:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/12]⎯
+
+ FAIL  src/lib/video-editing-agent/__tests__/visionTools.test.ts > tool schemas > keeps every description inside the 180-byte explore_tools budget
+ReferenceError: Cannot access 'viewImageParameters' before initialization
+ ❯ createViewImageTool src/lib/video-editing-agent/tools/visionTools.ts:181:17
+    179|       + 'Copy storage_key verbatim from list_materials/get_timeline; n…
+    180|       + 'invent one.',
+    181|     parameters: viewImageParameters,
+       |                 ^
+    182|     execute: async (toolCallId: string, params: ViewImageParams) => {
+    183|       if (!params.images?.length) {
+ ❯ src/lib/video-editing-agent/__tests__/visionTools.test.ts:271:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/12]⎯
+
+
+退出码：1
+
+
+## 实施验证：后端相关回归
+python -m pytest tests/test_research_cache_commit.py tests/test_agent_toolkit_router.py tests/test_media_probe.py tests/test_material_download_service.py tests/test_agent_workspace_store.py tests/test_local_media_resolver.py -q --disable-warnings --tb=short --basetemp M:/takoAI/Ecliptrix/.pytest-workspace-import
+........................................................................ [ 70%]
+.............s................                                           [100%]
+101 passed, 1 skipped, 26 warnings in 15.97s
+
+退出码：0
+
+
+## 实施验证：原始复现转回归
+python docs/diagnoses/workspace-media-import-failure/repro_backend.py
+复现一：根目录产物未被导入 {"error_code": "workspace_not_found", "status": 404, "root_file_exists": true}
+对照一：存储层列表正常 {"names": ["bgm.wav"]}
+首次导入成功 {"duration": 1.5, "local_url": "/api/storage/files/cached_materials/workspace/workspace-e9a21532f6f9019cb9f59a69.wav", "sqlite_errors": [], "source_preserved": true}
+重复导入稳定复用且保留真实时长 {"actual_duration": 1.5, "returned_duration": 1.5, "reused": true}
+修复回归完成 {"live_project_modified": false}
+
+退出码：0
+
+
+## 实施验证：原始复现转回归
+node node_modules/vitest/vitest.mjs run --config docs/diagnoses/workspace-media-import-failure/repro.config.ts --cache=false
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  07:44:32
+   Duration  8.79s (transform 2.76s, setup 284ms, import 5.20s, tests 351ms, environment 2.52s)
+
+
+退出码：0
+
+
+## 实施验证：限制四个工作进程重跑前端回归
+node node_modules/vitest/vitest.mjs run src/lib/video-editing-agent src/components/video/components/VideoChatWindow/__tests__/WorkspaceFileCard.test.tsx src/lib/__tests__/agentToolkitStatus.test.ts src/lib/__tests__/agentToolkitClient.test.ts src/app/api/agent-toolkit/__tests__/route.test.ts --cache=false --maxWorkers=4
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  100 passed (100)
+      Tests  1054 passed (1054)
+   Start at  07:44:18
+   Duration  101.55s (transform 8.46s, setup 21.79s, import 120.21s, tests 11.45s, environment 206.68s)
+
+
+退出码：0
+
+
+## 实施验证：生产构建
+node node_modules/next/dist/bin/next build
+   ▲ Next.js 15.4.5
+   - Environments: .env
+   - Experiments (use with caution):
+     · serverActions
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 44s
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/89) ...
+   Generating static pages (22/89)
+   Generating static pages (44/89)
+   Generating static pages (66/89)
+ ✓ Generating static pages (89/89)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                             Size  First Load JS
+┌ ○ /                                                                 920 kB        1.14 MB
+├ ○ /_not-found                                                        422 B         101 kB
+├ ƒ /api/agent-host/[...path]                                          422 B         101 kB
+├ ƒ /api/agent-skills                                                  422 B         101 kB
+├ ƒ /api/agent-skills/[...path]                                        422 B         101 kB
+├ ƒ /api/agent-toolkit/[...path]                                       422 B         101 kB
+├ ƒ /api/agent-vision/[...path]                                        422 B         101 kB
+├ ƒ /api/ai-mixed-editing                                              422 B         101 kB
+├ ƒ /api/ai-video-script-expand                                        422 B         101 kB
+├ ƒ /api/ai-video-script-generation                                    422 B         101 kB
+├ ƒ /api/ark-image/generate                                            422 B         101 kB
+├ ƒ /api/ark-video/generate                                            422 B         101 kB
+├ ƒ /api/ark-video/status/[taskId]                                     422 B         101 kB
+├ ƒ /api/audio-search                                                  422 B         101 kB
+├ ƒ /api/audio/batch-transcribe                                        422 B         101 kB
+├ ƒ /api/audio/generated/[filename]                                    422 B         101 kB
+├ ƒ /api/audio/transcribe                                              422 B         101 kB
+├ ƒ /api/audio/transcribe-local                                        422 B         101 kB
+├ ƒ /api/chat                                                          422 B         101 kB
+├ ƒ /api/config                                                        422 B         101 kB
+├ ƒ /api/config/capability-status                                      422 B         101 kB
+├ ƒ /api/config/llm-status                                             422 B         101 kB
+├ ƒ /api/content-polish                                                422 B         101 kB
+├ ƒ /api/content-polish-multiple                                       422 B         101 kB
+├ ƒ /api/convert-to-script                                             422 B         101 kB
+├ ƒ /api/creative-brainstorming                                        422 B         101 kB
+├ ƒ /api/frame-pack/[packId]                                           422 B         101 kB
+├ ƒ /api/frame-pack/create                                             422 B         101 kB
+├ ƒ /api/frame-pack/list                                               422 B         101 kB
+├ ƒ /api/image-pack/[type]/[packId]                                    422 B         101 kB
+├ ƒ /api/image-pack/[type]/list                                        422 B         101 kB
+├ ƒ /api/image-search                                                  422 B         101 kB
+├ ƒ /api/integrations                                                  422 B         101 kB
+├ ƒ /api/integrations/[id]                                             422 B         101 kB
+├ ƒ /api/integrations/[id]/test                                        422 B         101 kB
+├ ƒ /api/llm/models                                                    422 B         101 kB
+├ ƒ /api/material/ingest                                               422 B         101 kB
+├ ƒ /api/material/lookup                                               422 B         101 kB
+├ ƒ /api/model-settings/assignments                                    422 B         101 kB
+├ ƒ /api/model-settings/assignments/[functionType]                     422 B         101 kB
+├ ƒ /api/model-settings/fetch-models                                   422 B         101 kB
+├ ƒ /api/model-settings/providers                                      422 B         101 kB
+├ ƒ /api/model-settings/providers/[providerId]                         422 B         101 kB
+├ ƒ /api/model-settings/providers/[providerId]/fetch-models            422 B         101 kB
+├ ƒ /api/model-settings/providers/saved                                422 B         101 kB
+├ ƒ /api/model-settings/resolve/[functionType]                         422 B         101 kB
+├ ƒ /api/model-settings/test-connection                                422 B         101 kB
+├ ƒ /api/narration-video-script                                        422 B         101 kB
+├ ƒ /api/polish-config                                                 422 B         101 kB
+├ ƒ /api/prompt-polish                                                 422 B         101 kB
+├ ƒ /api/script-keywords-generation                                    422 B         101 kB
+├ ƒ /api/silence/detect                                                422 B         101 kB
+├ ƒ /api/silence/remove                                                422 B         101 kB
+├ ƒ /api/silence/status/[taskId]                                       422 B         101 kB
+├ ƒ /api/storage/files/[...path]                                       422 B         101 kB
+├ ƒ /api/storage/material/[material_id]                                422 B         101 kB
+├ ƒ /api/storage/reclaim-orphans                                       422 B         101 kB
+├ ƒ /api/storage/thumbnail-frame                                       422 B         101 kB
+├ ƒ /api/storage/thumbnails/[material_id]                              422 B         101 kB
+├ ƒ /api/storage/upload-file                                           422 B         101 kB
+├ ƒ /api/storage/upload-video                                          422 B         101 kB
+├ ƒ /api/storage/user-materials                                        422 B         101 kB
+├ ƒ /api/storage/waveform/[material_id]                                422 B         101 kB
+├ ƒ /api/storage/waveform/generate                                     422 B         101 kB
+├ ƒ /api/storyboard/batch-video                                        422 B         101 kB
+├ ƒ /api/storyboard/batch-video/status/[packId]                        422 B         101 kB
+├ ƒ /api/storyboard/compose                                            422 B         101 kB
+├ ƒ /api/storyboard/describe                                           422 B         101 kB
+├ ƒ /api/storyboard/generate                                           422 B         101 kB
+├ ƒ /api/storyboard/generate-script                                    422 B         101 kB
+├ ƒ /api/storyboard/packs                                              422 B         101 kB
+├ ƒ /api/storyboard/packs/[packId]                                     422 B         101 kB
+├ ƒ /api/storyboard/packs/create-from-shots                            422 B         101 kB
+├ ƒ /api/storyboard/revise-script                                      422 B         101 kB
+├ ƒ /api/system-settings/[category]                                    422 B         101 kB
+├ ƒ /api/system-settings/[category]/[key]                              422 B         101 kB
+├ ƒ /api/system-settings/[category]/reset                              422 B         101 kB
+├ ƒ /api/system-settings/audit-log                                     422 B         101 kB
+├ ƒ /api/system-settings/categories                                    422 B         101 kB
+├ ƒ /api/system-settings/reset-all                                     422 B         101 kB
+├ ƒ /api/timeline-import                                               422 B         101 kB
+├ ƒ /api/translate-search-query                                        422 B         101 kB
+├ ƒ /api/tts/ai-audio-synthesize                                       422 B         101 kB
+├ ƒ /api/tts/batch-convert                                             422 B         101 kB
+├ ƒ /api/tts/convert                                                   422 B         101 kB
+├ ƒ /api/tts/convert-sentences                                         422 B         101 kB
+├ ƒ /api/tts/voice-types                                               422 B         101 kB
+├ ƒ /api/video-ai-match                                                422 B         101 kB
+├ ƒ /api/video-compose                                                 422 B         101 kB
+├ ƒ /api/video-compose/[compositionId]/cancel                          422 B         101 kB
+├ ƒ /api/video-compose/[compositionId]/download                        422 B         101 kB
+├ ƒ /api/video-compose/[compositionId]/status                          422 B         101 kB
+├ ƒ /api/video-compose/health                                          422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]                                    422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/assets                             422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/import-revision                    422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs                               422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs/[jobId]                       422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs/[jobId]/cancel                422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs/cancel-by-request             422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/legacy-import                      422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/revisions                          422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/revisions/[revisionId]             422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/revisions/[revisionId]/download    422 B         101 kB
+├ ƒ /api/video-cover/[projectId]                                       422 B         101 kB
+├ ƒ /api/video-cover/[projectId]/png-cache                             422 B         101 kB
+├ ƒ /api/video-cut                                                     422 B         101 kB
+├ ƒ /api/video-editing-agent/chat                                      422 B         101 kB
+├ ƒ /api/video-editing-agent/compact                                   422 B         101 kB
+├ ƒ /api/video-editing-agent/steer                                     422 B         101 kB
+├ ƒ /api/video-editing-chat                                            422 B         101 kB
+├ ƒ /api/video-projects                                                422 B         101 kB
+├ ƒ /api/video-projects/[projectId]                                    422 B         101 kB
+├ ƒ /api/video-projects/categories                                     422 B         101 kB
+├ ƒ /api/video-projects/categories/[categoryId]                        422 B         101 kB
+├ ƒ /api/video-proxy                                                   422 B         101 kB
+├ ƒ /api/video-script-generation                                       422 B         101 kB
+├ ƒ /api/video-search                                                  422 B         101 kB
+├ ƒ /api/video-understanding-script                                    422 B         101 kB
+├ ƒ /api/video/analysis-queue-status                                   422 B         101 kB
+├ ƒ /api/video/analyze                                                 422 B         101 kB
+├ ƒ /api/video/batch-analyze                                           422 B         101 kB
+├ ƒ /api/video/image-to-video                                          422 B         101 kB
+├ ƒ /api/video/watermark-removal                                       422 B         101 kB
+├ ƒ /api/web-research/[...path]                                        422 B         101 kB
+├ ƒ /api/youtube/download                                              422 B         101 kB
+├ ƒ /api/youtube/download-and-upload                                   422 B         101 kB
+├ ƒ /api/youtube/preview-stream                                        422 B         101 kB
+├ ƒ /api/youtube/search                                                422 B         101 kB
+└ ○ /icon.png                                                            0 B            0 B
++ First Load JS shared by all                                         101 kB
+  ├ chunks/4bd1b696-cc729d47eba2cee4.js                              54.1 kB
+  ├ chunks/5964-40978821a2ce41e4.js                                  43.9 kB
+  └ other shared chunks (total)                                      2.58 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+Browserslist: browsers data (caniuse-lite) is 16 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+退出码：0
+
+
+## 实施验证：补充真实 Agent 上轨
+node node_modules/vitest/vitest.mjs run src/lib/video-editing-agent/__tests__/toolkitTools.test.ts --cache=false --maxWorkers=1
+07:49:24 执行，1 文件、17 项通过，退出码 0。新增真实 Agent 测试验证独立 BGM 轨、原始时长 60 秒、既有视频/旁白不移位，lintTimeline blockers=0、content_end=render_end=cached_duration=60。
+后端最终语法检查：4/4 通过。
+
+
+## 实施验证：最终类型检查
+node node_modules/typescript/bin/tsc --noEmit
+src/lib/video-editing-agent/__tests__/toolkitTools.test.ts(226,37): error TS2802: Type 'ArrayIterator<[number, { id: "audio" | "video"; name: "audio" | "video"; type: "audio" | "video"; duration: number; width: number; height: number; size: number; format: string; createdAt: Date; url: string; serverUrl: string; }]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+
+退出码：2
+
+
+## 实施验证：修正测试夹具遍历语法后的类型检查
+node node_modules/typescript/bin/tsc --noEmit
+
+退出码：0
+
+
+## 实施验证：最终补充测试
+node node_modules/vitest/vitest.mjs run src/lib/video-editing-agent/__tests__/toolkitTools.test.ts --cache=false --maxWorkers=1
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  07:52:34
+   Duration  3.85s (transform 1.30s, setup 146ms, import 40ms, tests 2.32s, environment 1.12s)
+
+
+退出码：0
+
+
+## 交付检查
+诊断文件 UTF-8 校验通过；diagnosis-* 已自动清理。
+git diff --check 退出码：0
+测试临时目录 .pytest-workspace-import/、.pytest-workspace-alias/ 的批量和显式逐个递归删除均被自动审批拒绝（blocked by policy），暂时保留，未暂存。
+
+
+=== Final code review validation: 2026-11-05 ===
+
+Targeted regression: tests/test_research_cache_commit.py and tests/test_agent_toolkit_router.py, filtered to aliases or real_background_loop.
+Before fix: test_workspace_aliases_keep_one_real_sqlite_record failed: DID NOT RAISE WebResearchError; 1 failed, 2 passed, 37 deselected; exit 1.
+After fix: 3 passed, 37 deselected; exit 0. Temporary paths were .agentmesh/review-workspace-red and .agentmesh/review-workspace-green.
+The source files changed only after observing the expected failing assertion.
+
+--- backend ---
+Command: D:\ProgramData\anaconda3\python.exe -X utf8 -m pytest tests/test_research_cache_commit.py tests/test_agent_toolkit_router.py tests/test_media_probe.py tests/test_material_download_service.py tests/test_agent_workspace_store.py tests/test_local_media_resolver.py tests/test_web_research_router.py tests/test_web_research_service.py -q --disable-warnings --tb=short --basetemp M:\takoAI\Ecliptrix\.agentmesh\review-workspace-backend
+Working directory: M:\takoAI\Ecliptrix\backend-services\basic-service
+
+........................................................................ [ 43%]
+..............s......................................................... [ 86%]
+......................                                                   [100%]
+165 passed, 1 skipped, 27 warnings in 26.22s
+
+Exit code: 0
+
+
+--- frontend ---
+Command: node node_modules/vitest/vitest.mjs run src/lib/video-editing-agent src/components/video/components/VideoChatWindow/__tests__/WorkspaceFileCard.test.tsx src/lib/__tests__/agentToolkitStatus.test.ts src/lib/__tests__/agentToolkitClient.test.ts src/app/api/agent-toolkit/__tests__/route.test.ts --cache=false --maxWorkers=4
+Working directory: M:\takoAI\Ecliptrix
+
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  100 passed (100)
+      Tests  1055 passed (1055)
+   Start at  08:00:56
+   Duration  90.50s (transform 7.83s, setup 19.10s, import 104.15s, tests 9.89s, environment 187.42s)
+
+
+Exit code: 0
+
+
+--- repro-backend ---
+Command: D:\ProgramData\anaconda3\python.exe -X utf8 docs/diagnoses/workspace-media-import-failure/repro_backend.py
+Working directory: M:\takoAI\Ecliptrix
+
+复现一：根目录产物未被导入 {"error_code": "workspace_not_found", "status": 404, "root_file_exists": true}
+对照一：存储层列表正常 {"names": ["bgm.wav"]}
+首次导入成功 {"duration": 1.5, "local_url": "/api/storage/files/cached_materials/workspace/workspace-e9a21532f6f9019cb9f59a69.wav", "sqlite_errors": [], "source_preserved": true}
+重复导入稳定复用且保留真实时长 {"actual_duration": 1.5, "returned_duration": 1.5, "reused": true}
+修复回归完成 {"live_project_modified": false}
+
+Exit code: 0
+
+
+--- repro-frontend ---
+Command: node node_modules/vitest/vitest.mjs run --config docs/diagnoses/workspace-media-import-failure/repro.config.ts --cache=false --maxWorkers=1
+Working directory: M:\takoAI\Ecliptrix
+
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  08:01:20
+   Duration  8.11s (transform 2.56s, setup 236ms, import 4.62s, tests 446ms, environment 2.45s)
+
+
+Exit code: 0
+
+
+--- previous-round ---
+Command: node node_modules/vitest/vitest.mjs run --config docs/diagnoses/agent-editing-reliability/repro.config.ts --cache=false --maxWorkers=1
+Working directory: M:\takoAI\Ecliptrix
+
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  08:01:21
+   Duration  7.74s (transform 2.71s, setup 229ms, import 4.56s, tests 268ms, environment 2.23s)
+
+
+Exit code: 0
+
+
+--- types ---
+Command: node node_modules/typescript/bin/tsc --noEmit
+Working directory: M:\takoAI\Ecliptrix
+
+
+Exit code: 0
+
+
+--- build ---
+Command: node node_modules/next/dist/bin/next build
+Working directory: M:\takoAI\Ecliptrix
+
+   ▲ Next.js 15.4.5
+   - Environments: .env
+   - Experiments (use with caution):
+     · serverActions
+
+   Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 16 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ Compiled successfully in 22.0s
+   Skipping linting
+   Checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/89) ...
+   Generating static pages (22/89)
+   Generating static pages (44/89)
+   Generating static pages (66/89)
+ ✓ Generating static pages (89/89)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                             Size  First Load JS
+┌ ○ /                                                                 920 kB        1.14 MB
+├ ○ /_not-found                                                        422 B         101 kB
+├ ƒ /api/agent-host/[...path]                                          422 B         101 kB
+├ ƒ /api/agent-skills                                                  422 B         101 kB
+├ ƒ /api/agent-skills/[...path]                                        422 B         101 kB
+├ ƒ /api/agent-toolkit/[...path]                                       422 B         101 kB
+├ ƒ /api/agent-vision/[...path]                                        422 B         101 kB
+├ ƒ /api/ai-mixed-editing                                              422 B         101 kB
+├ ƒ /api/ai-video-script-expand                                        422 B         101 kB
+├ ƒ /api/ai-video-script-generation                                    422 B         101 kB
+├ ƒ /api/ark-image/generate                                            422 B         101 kB
+├ ƒ /api/ark-video/generate                                            422 B         101 kB
+├ ƒ /api/ark-video/status/[taskId]                                     422 B         101 kB
+├ ƒ /api/audio-search                                                  422 B         101 kB
+├ ƒ /api/audio/batch-transcribe                                        422 B         101 kB
+├ ƒ /api/audio/generated/[filename]                                    422 B         101 kB
+├ ƒ /api/audio/transcribe                                              422 B         101 kB
+├ ƒ /api/audio/transcribe-local                                        422 B         101 kB
+├ ƒ /api/chat                                                          422 B         101 kB
+├ ƒ /api/config                                                        422 B         101 kB
+├ ƒ /api/config/capability-status                                      422 B         101 kB
+├ ƒ /api/config/llm-status                                             422 B         101 kB
+├ ƒ /api/content-polish                                                422 B         101 kB
+├ ƒ /api/content-polish-multiple                                       422 B         101 kB
+├ ƒ /api/convert-to-script                                             422 B         101 kB
+├ ƒ /api/creative-brainstorming                                        422 B         101 kB
+├ ƒ /api/frame-pack/[packId]                                           422 B         101 kB
+├ ƒ /api/frame-pack/create                                             422 B         101 kB
+├ ƒ /api/frame-pack/list                                               422 B         101 kB
+├ ƒ /api/image-pack/[type]/[packId]                                    422 B         101 kB
+├ ƒ /api/image-pack/[type]/list                                        422 B         101 kB
+├ ƒ /api/image-search                                                  422 B         101 kB
+├ ƒ /api/integrations                                                  422 B         101 kB
+├ ƒ /api/integrations/[id]                                             422 B         101 kB
+├ ƒ /api/integrations/[id]/test                                        422 B         101 kB
+├ ƒ /api/llm/models                                                    422 B         101 kB
+├ ƒ /api/material/ingest                                               422 B         101 kB
+├ ƒ /api/material/lookup                                               422 B         101 kB
+├ ƒ /api/model-settings/assignments                                    422 B         101 kB
+├ ƒ /api/model-settings/assignments/[functionType]                     422 B         101 kB
+├ ƒ /api/model-settings/fetch-models                                   422 B         101 kB
+├ ƒ /api/model-settings/providers                                      422 B         101 kB
+├ ƒ /api/model-settings/providers/[providerId]                         422 B         101 kB
+├ ƒ /api/model-settings/providers/[providerId]/fetch-models            422 B         101 kB
+├ ƒ /api/model-settings/providers/saved                                422 B         101 kB
+├ ƒ /api/model-settings/resolve/[functionType]                         422 B         101 kB
+├ ƒ /api/model-settings/test-connection                                422 B         101 kB
+├ ƒ /api/narration-video-script                                        422 B         101 kB
+├ ƒ /api/polish-config                                                 422 B         101 kB
+├ ƒ /api/prompt-polish                                                 422 B         101 kB
+├ ƒ /api/script-keywords-generation                                    422 B         101 kB
+├ ƒ /api/silence/detect                                                422 B         101 kB
+├ ƒ /api/silence/remove                                                422 B         101 kB
+├ ƒ /api/silence/status/[taskId]                                       422 B         101 kB
+├ ƒ /api/storage/files/[...path]                                       422 B         101 kB
+├ ƒ /api/storage/material/[material_id]                                422 B         101 kB
+├ ƒ /api/storage/reclaim-orphans                                       422 B         101 kB
+├ ƒ /api/storage/thumbnail-frame                                       422 B         101 kB
+├ ƒ /api/storage/thumbnails/[material_id]                              422 B         101 kB
+├ ƒ /api/storage/upload-file                                           422 B         101 kB
+├ ƒ /api/storage/upload-video                                          422 B         101 kB
+├ ƒ /api/storage/user-materials                                        422 B         101 kB
+├ ƒ /api/storage/waveform/[material_id]                                422 B         101 kB
+├ ƒ /api/storage/waveform/generate                                     422 B         101 kB
+├ ƒ /api/storyboard/batch-video                                        422 B         101 kB
+├ ƒ /api/storyboard/batch-video/status/[packId]                        422 B         101 kB
+├ ƒ /api/storyboard/compose                                            422 B         101 kB
+├ ƒ /api/storyboard/describe                                           422 B         101 kB
+├ ƒ /api/storyboard/generate                                           422 B         101 kB
+├ ƒ /api/storyboard/generate-script                                    422 B         101 kB
+├ ƒ /api/storyboard/packs                                              422 B         101 kB
+├ ƒ /api/storyboard/packs/[packId]                                     422 B         101 kB
+├ ƒ /api/storyboard/packs/create-from-shots                            422 B         101 kB
+├ ƒ /api/storyboard/revise-script                                      422 B         101 kB
+├ ƒ /api/system-settings/[category]                                    422 B         101 kB
+├ ƒ /api/system-settings/[category]/[key]                              422 B         101 kB
+├ ƒ /api/system-settings/[category]/reset                              422 B         101 kB
+├ ƒ /api/system-settings/audit-log                                     422 B         101 kB
+├ ƒ /api/system-settings/categories                                    422 B         101 kB
+├ ƒ /api/system-settings/reset-all                                     422 B         101 kB
+├ ƒ /api/timeline-import                                               422 B         101 kB
+├ ƒ /api/translate-search-query                                        422 B         101 kB
+├ ƒ /api/tts/ai-audio-synthesize                                       422 B         101 kB
+├ ƒ /api/tts/batch-convert                                             422 B         101 kB
+├ ƒ /api/tts/convert                                                   422 B         101 kB
+├ ƒ /api/tts/convert-sentences                                         422 B         101 kB
+├ ƒ /api/tts/voice-types                                               422 B         101 kB
+├ ƒ /api/video-ai-match                                                422 B         101 kB
+├ ƒ /api/video-compose                                                 422 B         101 kB
+├ ƒ /api/video-compose/[compositionId]/cancel                          422 B         101 kB
+├ ƒ /api/video-compose/[compositionId]/download                        422 B         101 kB
+├ ƒ /api/video-compose/[compositionId]/status                          422 B         101 kB
+├ ƒ /api/video-compose/health                                          422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]                                    422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/assets                             422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/import-revision                    422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs                               422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs/[jobId]                       422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs/[jobId]/cancel                422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/jobs/cancel-by-request             422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/legacy-import                      422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/revisions                          422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/revisions/[revisionId]             422 B         101 kB
+├ ƒ /api/video-cover-v2/[projectId]/revisions/[revisionId]/download    422 B         101 kB
+├ ƒ /api/video-cover/[projectId]                                       422 B         101 kB
+├ ƒ /api/video-cover/[projectId]/png-cache                             422 B         101 kB
+├ ƒ /api/video-cut                                                     422 B         101 kB
+├ ƒ /api/video-editing-agent/chat                                      422 B         101 kB
+├ ƒ /api/video-editing-agent/compact                                   422 B         101 kB
+├ ƒ /api/video-editing-agent/steer                                     422 B         101 kB
+├ ƒ /api/video-editing-chat                                            422 B         101 kB
+├ ƒ /api/video-projects                                                422 B         101 kB
+├ ƒ /api/video-projects/[projectId]                                    422 B         101 kB
+├ ƒ /api/video-projects/categories                                     422 B         101 kB
+├ ƒ /api/video-projects/categories/[categoryId]                        422 B         101 kB
+├ ƒ /api/video-proxy                                                   422 B         101 kB
+├ ƒ /api/video-script-generation                                       422 B         101 kB
+├ ƒ /api/video-search                                                  422 B         101 kB
+├ ƒ /api/video-understanding-script                                    422 B         101 kB
+├ ƒ /api/video/analysis-queue-status                                   422 B         101 kB
+├ ƒ /api/video/analyze                                                 422 B         101 kB
+├ ƒ /api/video/batch-analyze                                           422 B         101 kB
+├ ƒ /api/video/image-to-video                                          422 B         101 kB
+├ ƒ /api/video/watermark-removal                                       422 B         101 kB
+├ ƒ /api/web-research/[...path]                                        422 B         101 kB
+├ ƒ /api/youtube/download                                              422 B         101 kB
+├ ƒ /api/youtube/download-and-upload                                   422 B         101 kB
+├ ƒ /api/youtube/preview-stream                                        422 B         101 kB
+├ ƒ /api/youtube/search                                                422 B         101 kB
+└ ○ /icon.png                                                            0 B            0 B
++ First Load JS shared by all                                         101 kB
+  ├ chunks/4bd1b696-cc729d47eba2cee4.js                              54.1 kB
+  ├ chunks/5964-40978821a2ce41e4.js                                  43.9 kB
+  └ other shared chunks (total)                                      2.58 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+Exit code: 0
+
+
+--- Staged-file credential scan ---
+Command: D:\ProgramData\anaconda3\python.exe -X utf8 scripts/scan-secrets.py
+Working directory: M:\takoAI\Ecliptrix
+
+[scan] tracked files: 2565
+
+[scan] OK: no credential-shaped literal found
+
+Exit code: 0
+
+Static validation: all four modified Python production files parsed successfully.
+Build progress trailing spaces were normalized in this transcript; test results are unchanged.

@@ -5,7 +5,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AgentEventRouter } from '../AgentEventRouter';
 import { AgentStateManager } from '../AgentStateManager';
-import type { ApplyOutcome, OperationApplier } from '../OperationApplier';
+import { OperationApplier, type ApplyOutcome } from '../OperationApplier';
+import { useVideoEditingStore } from '@/stores';
+import type { MaterialItem } from '@/types';
+import { createDefaultAgentTimelineState } from '../defaultTimeline';
 import type { SSEEvent } from '../types';
 
 const REJECTED: ApplyOutcome = { status: 'rejected', reason: 'clip-not-found', trackId: 'v1', clipId: 'gone' };
@@ -33,6 +36,29 @@ const DELETE_RESULT: SSEEvent = {
 };
 
 describe('AgentEventRouter — client apply outcome', () => {
+  it('工作区重导入的元数据更新到真实 Store，撤销保留素材和用户名称', async () => {
+    const original = useVideoEditingStore.getState().materials;
+    const material = { id: 'bgm', name: '我的配乐', type: 'audio', duration: 0,
+      width: 0, height: 0 } as MaterialItem;
+    useVideoEditingStore.setState({ materials: [material] });
+    let timeline = createDefaultAgentTimelineState();
+    const applier = new OperationApplier({ getTimelineState: () => timeline,
+      setTimelineState: value => { timeline = value; } });
+    const stateManager = new AgentStateManager('import');
+    const router = new AgentEventRouter({ stateManager, operationApplier: applier });
+    try {
+      await router.handleEvent({ type: 'tool_result', toolCallId: 'refresh',
+        toolName: 'workspace_import_material', result: { success: true },
+        operation: { type: 'update_material', materialId: 'bgm', patch: { duration: 60 } } });
+      expect(useVideoEditingStore.getState().materials).toEqual([{ ...material, duration: 60 }]);
+      useVideoEditingStore.getState().updateMaterial('bgm', { name: '重命名', width: 10 });
+      expect(applier.undoNonTimelineOperation('refresh')).toBe(true);
+      expect(useVideoEditingStore.getState().materials).toEqual([{ ...material, name: '重命名', width: 10 }]);
+      expect(timeline.tracks).toEqual(createDefaultAgentTimelineState().tracks);
+    } finally {
+      useVideoEditingStore.setState({ materials: original });
+    }
+  });
   it('the tool card turns error when the client could not apply', async () => {
     const { stateManager, router, onOperationApplied } = setup(REJECTED);
 

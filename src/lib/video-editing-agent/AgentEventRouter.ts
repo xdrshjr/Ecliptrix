@@ -402,6 +402,9 @@ export class AgentEventRouter {
       case 'add_materials':
         store.addMaterials(op.materials);
         break;
+      case 'update_material':
+        store.updateMaterial(op.materialId, op.patch);
+        break;
       case 'remove_material':
         store.removeMaterial(op.materialId);
         break;
@@ -463,7 +466,7 @@ export class AgentEventRouter {
   }
 
   private isMaterialOperation(op: AgentOperation): op is MaterialOperation {
-    return ['add_material', 'add_materials', 'remove_material'].includes(op.type);
+    return ['add_material', 'add_materials', 'update_material', 'remove_material'].includes(op.type);
   }
 
   private isScriptOperation(op: AgentOperation): op is ScriptOperation {

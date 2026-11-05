@@ -403,6 +403,13 @@ export interface Translations {
     unsupportedFormat: string;
     parseFailed: string;
     storageUnavailable: string;
+    storageFull: string;
+    cacheCommitFailed: string;
+    cacheIntegrityError: string;
+    mediaProbeUnavailable: string;
+    mediaProbeTimeout: string;
+    mediaProbeFailed: string;
+    toolNotLoaded: string;
     documentsUnavailable: string;
     timeout: string;
     policyBlocked: string;
@@ -4233,6 +4240,13 @@ export const translations: Record<string, Translations> = {
       unsupportedFormat: 'That format is not supported.',
       parseFailed: 'The document could not be parsed.',
       storageUnavailable: 'The workspace is unavailable right now.',
+      storageFull: 'The disk is full. Free space before importing again.',
+      cacheCommitFailed: 'The material record could not be saved. The workspace source is preserved.',
+      cacheIntegrityError: 'The file changed during import. Wait for it to finish writing, then retry.',
+      mediaProbeUnavailable: 'The media probe is unavailable. Check the bundled ffprobe program.',
+      mediaProbeTimeout: 'Reading media information timed out. The material was not added.',
+      mediaProbeFailed: 'Could not read a valid media duration. Check or regenerate the file.',
+      toolNotLoaded: 'This tool must be loaded before it can run.',
       documentsUnavailable: 'Document parsing is unavailable in this build.',
       timeout: 'That took too long and was stopped.',
       policyBlocked: 'Blocked: that text looks like a credential.',
@@ -8430,6 +8444,13 @@ export const translations: Record<string, Translations> = {
       unsupportedFormat: '不支持该格式。',
       parseFailed: '文档解析失败。',
       storageUnavailable: '工作区暂时不可用。',
+      storageFull: '磁盘空间不足，请释放空间后重新导入。',
+      cacheCommitFailed: '素材记录保存失败，工作区源文件仍保留。',
+      cacheIntegrityError: '导入时文件内容发生变化，请等待写入结束后重试。',
+      mediaProbeUnavailable: '媒体探测程序不可用，请检查应用附带的 ffprobe。',
+      mediaProbeTimeout: '读取媒体信息超时，本次未添加素材。',
+      mediaProbeFailed: '无法读取有效媒体时长，请检查或重新生成文件。',
+      toolNotLoaded: '此工具尚未加载，加载后才能执行。',
       documentsUnavailable: '当前版本缺少文档解析依赖。',
       timeout: '执行超时已被终止。',
       policyBlocked: '已阻止：该文本疑似凭据。',

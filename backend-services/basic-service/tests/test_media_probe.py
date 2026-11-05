@@ -79,3 +79,58 @@ def test_a_probe_that_cannot_run_returns_none(tmp_path):
 def test_ffprobe_is_looked_up_next_to_ffmpeg():
     assert ffprobe_path_for("ffmpeg") == "ffprobe"
     assert ffprobe_path_for(os.path.join("tools", "ffmpeg")) == os.path.join("tools", "ffprobe")
+
+
+@pytest.mark.asyncio
+async def test_workspace_probe_missing_program(monkeypatch, tmp_path):
+    from app.services.composition import media_probe
+    from app.models.agent_toolkit_models import AgentToolkitError
+    monkeypatch.setattr(media_probe.shutil, 'which', lambda _: None)
+    with pytest.raises(AgentToolkitError, match='media_probe_unavailable'):
+        await media_probe.probe_workspace_media(tmp_path / 'bgm.wav', 'wav')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('duration', ['0', '-1', 'NaN', 'Infinity', None])
+async def test_workspace_probe_rejects_invalid_duration(monkeypatch, duration):
+    import json
+    from unittest.mock import AsyncMock
+    from app.services.composition import media_probe
+    from app.models.agent_toolkit_models import AgentToolkitError
+    process = AsyncMock()
+    process.returncode = 0
+    process.communicate.return_value = (json.dumps({
+        'streams': [{'duration': duration}], 'format': {},
+    }).encode(), None)
+    monkeypatch.setattr(media_probe.shutil, 'which', lambda _: 'ffprobe')
+    create = AsyncMock(return_value=process)
+    monkeypatch.setattr(media_probe.asyncio, 'create_subprocess_exec', create)
+    with pytest.raises(AgentToolkitError, match='media_probe_failed'):
+        await media_probe.probe_workspace_media('bgm.wav', 'wav')
+    assert 'a:0' in create.call_args.args
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cancel', [False, True])
+async def test_workspace_probe_timeout_and_cancel_reap_child(monkeypatch, cancel):
+    import asyncio
+    from unittest.mock import AsyncMock, Mock
+    from app.services.composition import media_probe
+    from app.models.agent_toolkit_models import AgentToolkitError
+    entered = asyncio.Event()
+
+    async def communicate():
+        entered.set()
+        await asyncio.Event().wait()
+
+    process = Mock(returncode=None, communicate=communicate, wait=AsyncMock())
+    monkeypatch.setattr(media_probe.shutil, 'which', lambda _: 'ffprobe')
+    monkeypatch.setattr(media_probe.asyncio, 'create_subprocess_exec', AsyncMock(return_value=process))
+    task = asyncio.create_task(media_probe.probe_workspace_media('bgm.wav', 'wav', timeout=0.02))
+    await entered.wait()
+    if cancel:
+        task.cancel()
+    with pytest.raises(asyncio.CancelledError if cancel else AgentToolkitError):
+        await task
+    process.kill.assert_called_once()
+    process.wait.assert_awaited_once()

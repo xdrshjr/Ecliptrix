@@ -16,9 +16,11 @@ OpenCV (development boxes without ffprobe).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -152,3 +154,51 @@ def probe_video_stream(
         logger.warning(f"ffprobe returned no stream description for {path}")
         return None
     return parse_probe_payload(payload)
+
+
+async def probe_workspace_media(
+    path: str | os.PathLike[str], extension: str, timeout: float = 15.0,
+) -> dict[str, float | int]:
+    """只探测待发布快照；音频选择 a:0，视频选择 v:0，失败不发布素材。"""
+    from app.models.agent_toolkit_models import AgentToolkitError
+
+    audio = extension in {"mp3", "wav", "m4a", "aac"}
+    if not audio and extension not in {"mp4", "mov", "webm", "mkv"}:
+        return {}
+    binary = shutil.which("ffprobe")
+    if not binary:
+        raise AgentToolkitError("media_probe_unavailable")
+    try:
+        process = await asyncio.create_subprocess_exec(
+            binary, "-v", "error", "-select_streams",
+            "a:0" if audio else "v:0", "-show_entries", _PROBE_ENTRIES,
+            "-of", "json", str(path), stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            **({"creationflags": subprocess.CREATE_NO_WINDOW}
+               if os.name == "nt" else {}))
+    except OSError:
+        raise AgentToolkitError("media_probe_unavailable") from None
+    try:
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout)
+    except (asyncio.TimeoutError, asyncio.CancelledError) as error:
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass  # 已退出的子进程仍须 wait 回收。
+        await process.wait()
+        if isinstance(error, asyncio.CancelledError):
+            raise
+        raise AgentToolkitError("media_probe_timeout") from None
+    try:
+        payload = json.loads(stdout)
+        streams = payload.get("streams") or []
+        duration = (_positive_float(streams[0].get("duration"))
+                    or _positive_float(payload.get("format", {}).get("duration")))
+        video = None if audio else parse_probe_payload(payload)
+        if process.returncode or not duration or (not audio and not video):
+            raise ValueError
+    except (ValueError, IndexError, TypeError, AttributeError, KeyError):
+        raise AgentToolkitError("media_probe_failed") from None
+    return {"duration": duration, "width": video.width if video else 0,
+            "height": video.height if video else 0}

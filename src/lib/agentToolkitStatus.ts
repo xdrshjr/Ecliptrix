@@ -59,16 +59,21 @@ const CODES: Record<string, CopyKey> = {
   document_parse_failed: 'parseFailed',
   // 可用性
   storage_unavailable: 'storageUnavailable',
+  storage_full: 'storageFull',
+  media_probe_unavailable: 'mediaProbeUnavailable',
+  media_probe_timeout: 'mediaProbeTimeout',
+  media_probe_failed: 'mediaProbeFailed',
   documents_unavailable: 'documentsUnavailable',
   upstream_timeout: 'timeout',
   analysis_timeout: 'timeout',
   // 复用既有码
-  cache_commit_failed: 'storageUnavailable',
-  cache_integrity_error: 'storageUnavailable',
+  cache_commit_failed: 'cacheCommitFailed',
+  cache_integrity_error: 'cacheIntegrityError',
   unsupported_media_type: 'unsupportedFormat',
   // 客户端合成码
   network_error: 'storageUnavailable',
   timeout: 'timeout',
+  tool_not_loaded: 'toolNotLoaded',
 };
 
 /**
@@ -118,7 +123,7 @@ export function resolveAgentToolkitStatus(input: AgentToolkitStatusInput): {
   const key = agentToolkitCopyKey(code);
   return {
     key,
-    role: input.failure_class === 'user_input' ? 'status' : 'alert',
+    role: input.failure_class === 'user_input' || code === 'tool_not_loaded' ? 'status' : 'alert',
     hint: agentToolkitSettingsHint(code),
   };
 }

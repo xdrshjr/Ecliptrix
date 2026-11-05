@@ -24,6 +24,7 @@ from app.models.agent_toolkit_models import (
     MemoryWriteRequest,
     WorkspaceImportRequest,
     WorkspaceWriteRequest,
+    workspace_io_error,
 )
 from app.models.base_models import BaseResponse, ErrorResponse
 from app.services.agent_toolkit import (
@@ -129,7 +130,7 @@ def error_details(error):
     details = {
         "failure_class": error.failure_class,
         "retryable": error.failure_class == "transient",
-        "request_id": str(uuid4()),
+        "request_id": getattr(error, "request_id", None) or str(uuid4()),
     }
     hint = SETTINGS_HINTS.get(error.error_code)
     if hint:
@@ -159,8 +160,13 @@ def _ok(data, message="ok"):
 
 def _web_error_to_toolkit(error):
     """素材提交路径抛 WebResearchError；码已在本域闭集内，转换后统一信封。"""
-    return AgentToolkitError(str(error.error_code), message=error.message,
-                             status_code=error.status_code)
+    status = (None if error.error_code in {
+        "cache_commit_failed", "cache_integrity_error",
+    } else error.status_code)
+    converted = AgentToolkitError(str(error.error_code), message=error.message,
+                                  status_code=status)
+    converted.request_id = getattr(error, "request_id", None)
+    return converted
 
 
 # ── 能力 / 用量 ───────────────────────────────────────────────────────────
@@ -316,13 +322,14 @@ async def _import_material(body):
         error.supported = sorted(
             item.lstrip(".") for item in workspace_store.MEDIA_EXTENSIONS)
         raise error
-    data = path.read_bytes()
-    digest = hashlib.sha256(data).hexdigest()
     try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
         committed = (await get_material_download_service()
                      .store_workspace_file_async(path, digest, extension))
     except WebResearchError as error:
         raise _web_error_to_toolkit(error) from None
+    except OSError as error:
+        raise workspace_io_error(error) from None
     material = _material_payload(
         committed, relative, extension, body.material_name, path)
     return material
@@ -340,9 +347,9 @@ def _material_payload(committed, relative, extension, material_name, path=None):
         "type": kind,
         "format": extension,
         "size": committed["size"],
-        "width": width,
-        "height": height,
-        "duration": 0,
+        "width": committed.get("width", width),
+        "height": committed.get("height", height),
+        "duration": committed.get("duration", 0),
         "local_url": committed["local_url"],
         "url": committed["local_url"],
         "cacheUrl": committed["local_url"],

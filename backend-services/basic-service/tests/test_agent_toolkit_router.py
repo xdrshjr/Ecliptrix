@@ -45,6 +45,294 @@ def tool_request(**extra):
     }))
 
 
+@pytest.fixture
+def workspace_downloads(monkeypatch, toolkit_engine, tmp_path):
+    import asyncio
+    from app.services import material_download_service as downloads
+    service = downloads.MaterialDownloadService.__new__(downloads.MaterialDownloadService)
+    service.cache_dir = tmp_path / 'cache'
+    service._session_factory = toolkit_engine
+    service._research_locks = {}
+    service._ensure_loop = asyncio.get_running_loop
+    monkeypatch.setattr(downloads, 'get_material_download_service', lambda: service)
+    return service
+
+
+@pytest.mark.asyncio
+async def test_real_workspace_audio_import_keeps_duration_and_cache_url(
+        toolkit_workspace, workspace_downloads):
+    import wave
+    from pathlib import Path
+    from sqlalchemy import select
+    from app.models.db_models import CachedMaterial
+    target = workspace_store.project_directory('audio-test') / 'files/bgm.wav'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(target), 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(8000)
+        wav.writeframes(b'\x00\x00' * 480000)
+    body = router_module.WorkspaceImportRequest(project_id='audio-test', name='bgm.wav')
+    first = await router_module.import_workspace(
+        body, tool_request(**{'x-tool-call-id': 'audio-first'}))
+    second = await router_module.import_workspace(
+        body, tool_request(**{'x-tool-call-id': 'audio-second'}))
+    assert first.data['duration'] == pytest.approx(60)
+    assert second.data['duration'] == pytest.approx(60)
+    assert second.data['id'] == first.data['id']
+    assert second.data['metadata']['reused'] is True
+    async with workspace_downloads._session_factory() as session:
+        row = (await session.execute(select(CachedMaterial))).scalar_one()
+        assert row.source_url == first.data['local_url']
+        assert Path(row.local_path).read_bytes() == target.read_bytes()
+
+
+@pytest.mark.asyncio
+async def test_damaged_audio_is_not_cached(toolkit_workspace, workspace_downloads):
+    from sqlalchemy import select
+    from app.models.db_models import CachedMaterial
+    target = workspace_store.project_directory('bad-audio') / 'files/bad.wav'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b'not audio')
+    with pytest.raises(AgentToolkitError) as caught:
+        await router_module._import_material(router_module.WorkspaceImportRequest(
+            project_id='bad-audio', name='bad.wav'))
+    assert caught.value.error_code == 'media_probe_failed'
+    async with workspace_downloads._session_factory() as session:
+        assert not list((await session.execute(select(CachedMaterial))).scalars())
+    assert not list(workspace_downloads.cache_dir.rglob('*.part'))
+    assert target.read_bytes() == b'not audio'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('extension', ['mp3', 'mp4', 'svg'])
+async def test_real_import_http_entry(toolkit_workspace, workspace_downloads, extension):
+    import asyncio
+    import shutil
+    import subprocess
+    import httpx
+    from fastapi import FastAPI
+    target = workspace_store.project_directory('http-import') / ('files/media.' + extension)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if extension == 'svg':
+        target.write_text('<svg width="640" height="360"></svg>', encoding='utf-8')
+    else:
+        media = ('anullsrc=r=8000:cl=mono' if extension == 'mp3'
+                 else 'color=c=red:s=64x36:r=10')
+        subprocess.run([shutil.which('ffmpeg'), '-v', 'error', '-f', 'lavfi',
+                        '-i', media, '-t', '1.5', str(target)],
+                       capture_output=True, check=True, timeout=10)
+    app = FastAPI()
+    app.include_router(router_module.router, prefix='/api')
+
+    @app.exception_handler(AgentToolkitError)
+    async def handle_error(request, error):
+        return router_module.error_response(error)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://localhost:3000') as client:
+        async def invoke(call_id, name):
+            return await client.post('/api/agent-toolkit/workspace/import',
+                                     headers={'origin': 'http://localhost:3000', 'x-tool-call-id': call_id},
+                                     json={'project_id': 'http-import', 'name': name})
+        a, b = await asyncio.gather(invoke(extension + '-a', target.name),
+                                    invoke(extension + '-b', target.name))
+        assert a.status_code == b.status_code == 200
+        first, second = a.json()['data'], b.json()['data']
+        assert first['id'] == second['id']
+        assert first['local_url'] == second['local_url']
+        if extension == 'svg':
+            assert (first['width'], first['height'], first['duration']) == (640, 360, 0)
+        else:
+            assert first['duration'] == pytest.approx(1.5, abs=0.2)
+            if extension == 'mp4':
+                assert (first['width'], first['height']) == (64, 36)
+        missing = await invoke(extension + '-missing', 'missing.wav')
+        assert missing.status_code == 404
+        assert missing.json()['error_code'] == 'workspace_not_found'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['database', 'permission', 'disk_full', 'changed', 'disappeared'])
+async def test_import_failures_preserve_source_and_clean_cache(
+        toolkit_workspace, workspace_downloads, monkeypatch, caplog, failure):
+    import errno
+    from pathlib import Path
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    from app.models.db_models import CachedMaterial
+    from app.services import material_download_service as downloads
+    target = workspace_store.project_directory('failure') / 'files/image.png'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b'image-content')
+    original_copy = downloads.shutil.copyfile
+
+    class FailedCommit(AsyncSession):
+        async def commit(self):
+            raise RuntimeError('private SQL and secret parameter')
+
+    def copy(source, destination):
+        if failure == 'permission':
+            raise PermissionError(errno.EACCES, 'private path')
+        if failure == 'disk_full':
+            raise OSError(errno.ENOSPC, 'private path')
+        if failure == 'disappeared':
+            raise FileNotFoundError(errno.ENOENT, 'private path')
+        if failure == 'changed':
+            Path(destination).write_bytes(b'different content')
+            return
+        return original_copy(source, destination)
+
+    monkeypatch.setattr(downloads.shutil, 'copyfile', copy)
+    if failure == 'database':
+        workspace_downloads._session_factory = async_sessionmaker(
+            workspace_downloads._session_factory.kw['bind'], class_=FailedCommit,
+            expire_on_commit=False)
+    with pytest.raises(AgentToolkitError) as caught:
+        await router_module._import_material(router_module.WorkspaceImportRequest(
+            project_id='failure', name=target.name))
+    expected = {'database': ('cache_commit_failed', 500),
+                'permission': ('storage_unavailable', 503),
+                'disk_full': ('storage_full', 507),
+                'changed': ('cache_integrity_error', 500),
+                'disappeared': ('workspace_not_found', 404)}[failure]
+    assert (caught.value.error_code, caught.value.status_code) == expected
+    envelope = envelope_of(caught.value)
+    assert envelope['success'] is False
+    assert 'private' not in str(envelope) + caplog.text
+    if failure == 'database':
+        assert envelope['error_details']['request_id'] in caplog.text
+        assert 'RuntimeError' in caplog.text
+    async with workspace_downloads._session_factory() as session:
+        assert not list((await session.execute(select(CachedMaterial))).scalars())
+    assert not list(workspace_downloads.cache_dir.rglob('*.*'))
+    assert target.read_bytes() == b'image-content'
+
+
+@pytest.mark.asyncio
+async def test_probe_uses_copied_bytes_even_if_source_changes(
+        toolkit_workspace, workspace_downloads, monkeypatch):
+    import wave
+    from pathlib import Path
+    from sqlalchemy import select
+    from app.models.db_models import CachedMaterial
+    from app.services.composition import media_probe
+    target = workspace_store.project_directory('snapshot') / 'files/bgm.wav'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(target), 'wb') as wav:
+        wav.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
+        wav.writeframes(b'\x00\x00' * 12000)
+    original = target.read_bytes()
+    probe = media_probe.probe_workspace_media
+
+    async def mutate_source(path, extension):
+        target.write_bytes(b'new source contents')
+        return await probe(path, extension)
+
+    monkeypatch.setattr(media_probe, 'probe_workspace_media', mutate_source)
+    result = await router_module._import_material(router_module.WorkspaceImportRequest(
+        project_id='snapshot', name='bgm.wav'))
+    assert result['duration'] == pytest.approx(1.5)
+    async with workspace_downloads._session_factory() as session:
+        row = (await session.execute(select(CachedMaterial))).scalar_one()
+        assert Path(row.local_path).read_bytes() == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('extension', ['svg', 'wav'])
+async def test_import_uses_real_background_loop(
+        tmp_path, monkeypatch, toolkit_workspace, extension):
+    import asyncio
+    import threading
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.models.db_models import CachedMaterial
+    from app.services import material_download_service as downloads
+    service = downloads.MaterialDownloadService.__new__(downloads.MaterialDownloadService)
+    service.cache_dir = tmp_path / 'cache'
+    service._research_locks = {}
+    service._loop_lock = threading.Lock()
+    service._loop = None
+
+    async def init():
+        service._engine = create_async_engine('sqlite+aiosqlite:///' + str(tmp_path / 'background.db'))
+        async with service._engine.begin() as conn:
+            await conn.run_sync(CachedMaterial.__table__.create)
+        service._session_factory = async_sessionmaker(service._engine, expire_on_commit=False)
+
+    service._init_runtime = init
+    monkeypatch.setattr(downloads, 'get_material_download_service', lambda: service)
+    target = (workspace_store.project_directory('background')
+              / ('files/test.' + extension))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if extension == 'svg':
+        target.write_text('<svg width="2" height="2"/>', encoding='utf-8')
+    else:
+        import wave
+        with wave.open(str(target), 'wb') as wav:
+            wav.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
+            wav.writeframes(b'\x00\x00' * 12000)
+    try:
+        result = await router_module._import_material(router_module.WorkspaceImportRequest(
+            project_id='background', name=target.name))
+        assert result['duration'] == (0 if extension == 'svg' else 1.5)
+        assert service._loop is not asyncio.get_running_loop()
+        assert service._research_locks == {}
+
+        async def check_row():
+            async with service._session_factory() as session:
+                row = (await session.execute(select(CachedMaterial))).scalar_one()
+                assert row.source_url == result['local_url']
+        await service._dispatch(check_row())
+    finally:
+        if service._loop:
+            await service._dispatch(service._engine.dispose())
+            service._loop.call_soon_threadsafe(service._loop.stop)
+            service._loop_thread.join(timeout=3)
+            service._loop.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['before_commit', 'after_commit', 'reuse'])
+async def test_failed_or_cancelled_import_preserves_committed_files(
+        toolkit_workspace, workspace_downloads, monkeypatch, phase):
+    import asyncio
+    from pathlib import Path
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    from app.models.db_models import CachedMaterial
+    from app.services.composition import media_probe
+    target = workspace_store.project_directory('cancel-import') / 'files/test.svg'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('<svg width="2" height="2"/>', encoding='utf-8')
+    body = router_module.WorkspaceImportRequest(project_id='cancel-import', name=target.name)
+    if phase == 'reuse':
+        await router_module._import_material(body)
+
+    async def cancelled_probe(*args):
+        raise asyncio.CancelledError
+
+    class FailedRefresh(AsyncSession):
+        async def refresh(self, *args, **kwargs):
+            raise RuntimeError('response failed after commit')
+
+    if phase == 'after_commit':
+        workspace_downloads._session_factory = async_sessionmaker(
+            workspace_downloads._session_factory.kw['bind'], class_=FailedRefresh,
+            expire_on_commit=False)
+    else:
+        monkeypatch.setattr(media_probe, 'probe_workspace_media', cancelled_probe)
+    with pytest.raises(AgentToolkitError if phase == 'after_commit' else asyncio.CancelledError):
+        await router_module._import_material(body)
+    async with workspace_downloads._session_factory() as session:
+        rows = list((await session.execute(select(CachedMaterial))).scalars())
+        assert len(rows) == (0 if phase == 'before_commit' else 1)
+        for row in rows:
+            assert Path(row.local_path).read_bytes() == target.read_bytes()
+    assert target.is_file()
+    assert workspace_downloads._research_locks == {}
+    assert not list(workspace_downloads.cache_dir.rglob('*.part'))
+
+
 # ── 能力 / 用量 ──────────────────────────────────────────────────────────
 
 
