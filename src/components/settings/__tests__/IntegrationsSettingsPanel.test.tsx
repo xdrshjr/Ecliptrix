@@ -44,11 +44,36 @@ beforeEach(() => {
 });
 
 describe('IntegrationsSettingsPanel', () => {
-  it('lists all seven integrations under their three groups', async () => {
+  it('persists a video model change independently of its saved key and image card', async () => {
+    let video = wireIntegration('ark_video', { usable: true, source: 'database', fields: {
+      api_key: { configured: true, source: 'database' },
+    } });
+    api.get.mockImplementation(async () => listBody(cleanInstall().map((item) => item.id === 'ark_video' ? video : item)));
+    api.put.mockImplementation(async (_url, payload) => {
+      video = wireIntegration('ark_video', { usable: true, source: 'database', fields: {
+        api_key: { configured: true, source: 'database' },
+        default_model: { value: payload.fields.default_model, source: 'database' },
+      } });
+      return { success: true, data: video };
+    });
+    api.post.mockResolvedValue({ success: true, data: { outcome: 'ok', verify_level: 'free' } });
+    const rendered = render(<IntegrationsSettingsPanel />);
+    const model = await screen.findByLabelText(text.field.defaultModel);
+    fireEvent.change(model, { target: { value: 'doubao-seedance-2-0-fast-260128' } });
+    fireEvent.submit(model.closest('form')!);
+    await screen.findByText(text.test.okArk);
+    expect(api.put.mock.calls[0][0]).toBe('/api/integrations/ark_video');
+    expect(api.put.mock.calls[0][1]).toEqual({ fields: { default_model: 'doubao-seedance-2-0-fast-260128' } });
+    rendered.unmount();
+    render(<IntegrationsSettingsPanel />);
+    expect(await screen.findByLabelText(text.field.defaultModel)).toHaveValue('doubao-seedance-2-0-fast-260128');
+    expect(document.getElementById('integration-ark_image-api_key')).toHaveValue('');
+  });
+  it('lists all eight integrations under their three groups', async () => {
     render(<IntegrationsSettingsPanel />);
     for (const name of [
       text.volcano_tts.name, text.volcano_asr.name, text.volcano_voice_clone.name,
-      text.ark.name, text.pexels.name, text.unsplash.name, text.freesound.name,
+      text.ark_image.name, text.ark_video.name, text.pexels.name, text.unsplash.name, text.freesound.name,
     ]) {
       expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
     }
@@ -91,8 +116,10 @@ describe('IntegrationsSettingsPanel', () => {
   it('tells the owner a service was declined and lets them turn reminders back on', async () => {
     window.localStorage.setItem(OPTOUT_KEY, '["ai_image","ai_video"]');
     render(<IntegrationsSettingsPanel />);
-    await screen.findByRole('heading', { name: text.ark.name });
+    await screen.findByRole('heading', { name: text.ark_image.name });
 
+    fireEvent.click(screen.getAllByRole('button', { name: text.action.reenable })[0]);
+    await waitFor(() => expect(window.localStorage.getItem(OPTOUT_KEY)).toBe('["ai_video"]'));
     fireEvent.click(screen.getByRole('button', { name: text.action.reenable }));
     await waitFor(() => expect(window.localStorage.getItem(OPTOUT_KEY)).toBe('[]'));
     expect(screen.queryByRole('button', { name: text.action.reenable })).toBeNull();
@@ -101,7 +128,7 @@ describe('IntegrationsSettingsPanel', () => {
   it('points to the Web search panel for Tavily instead of duplicating it', async () => {
     const onOpenWebResearch = vi.fn();
     render(<IntegrationsSettingsPanel onOpenWebResearch={onOpenWebResearch} />);
-    await screen.findByRole('heading', { name: text.ark.name });
+    await screen.findByRole('heading', { name: text.ark_image.name });
     fireEvent.click(screen.getByRole('button', { name: text.panel.openWebSearch }));
     expect(onOpenWebResearch).toHaveBeenCalledTimes(1);
   });
@@ -112,6 +139,6 @@ describe('IntegrationsSettingsPanel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(text.panel.loadFailed);
     installList();
     fireEvent.click(screen.getByRole('button', { name: text.panel.retry }));
-    expect(await screen.findByRole('heading', { name: text.ark.name })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: text.ark_image.name })).toBeInTheDocument();
   });
 });

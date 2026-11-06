@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.services.ark_video_profiles import DEFAULT_VIDEO_MODEL, VIDEO_MODEL_IDS, CUSTOM_PROFILES
+
 FIELD_KINDS = ("secret", "secret_list", "text", "choice")
 VERIFY_LEVELS = ("free", "handshake", "billed_minimal", "none")
 
@@ -129,15 +131,32 @@ REGISTRY: Tuple[IntegrationSpec, ...] = (
         verify_level="none",
     ),
     IntegrationSpec(
-        id="ark",
-        name="Volcano Ark (Seedream / Seedance)",
+        id="ark_image",
+        name="AI 图片生成（Seedream）",
         fields=(
             FieldSpec(
                 "api_key", "secret", required=True,
-                baseline=BaselineRef("ark_api_key", "ARK_API_KEY"),
+                baseline=BaselineRef("ark_image_api_key", "ARK_IMAGE_API_KEY"),
             ),
         ),
-        capabilities=("ai_image", "ai_video"),
+        capabilities=("ai_image",),
+        verify_level="free",
+    ),
+    IntegrationSpec(
+        id="ark_video",
+        name="AI 视频生成（Seedance）",
+        fields=(
+            FieldSpec("api_key", "secret", required=True,
+                      baseline=BaselineRef("ark_video_api_key", "ARK_VIDEO_API_KEY")),
+            FieldSpec("default_model", "choice", default=DEFAULT_VIDEO_MODEL,
+                      choices=(*VIDEO_MODEL_IDS, "custom"),
+                      baseline=BaselineRef("ark_video_model", "ARK_VIDEO_MODEL")),
+            FieldSpec("custom_model", "text",
+                      baseline=BaselineRef("ark_video_custom_model", "ARK_VIDEO_CUSTOM_MODEL")),
+            FieldSpec("custom_profile", "choice", default="text_only", choices=CUSTOM_PROFILES,
+                      baseline=BaselineRef("ark_video_custom_profile", "ARK_VIDEO_CUSTOM_PROFILE")),
+        ),
+        capabilities=("ai_video",),
         verify_level="free",
     ),
     IntegrationSpec(
@@ -189,6 +208,8 @@ INTEGRATION_CAPABILITIES: Tuple[str, ...] = tuple(
 #: them; the direct-read guard test treats them as allowed.
 NON_CREDENTIAL_SETTINGS = ("volcano_voice_clone_speaker_id_prefix",)
 
+LEGACY_CREDENTIAL_BASELINES = (BaselineRef("ark_api_key", "ARK_API_KEY"),)
+
 
 def get_spec(integration_id: str) -> Optional[IntegrationSpec]:
     """Return the spec for ``integration_id`` or ``None`` when unknown."""
@@ -206,6 +227,11 @@ def capability_integration(capability_id: str) -> Optional[IntegrationSpec]:
 def baseline_patterns() -> List[str]:
     """Source snippets the guard test forbids outside the resolver."""
     patterns: List[str] = []
+    for ref in LEGACY_CREDENTIAL_BASELINES:
+        if ref.settings_attr:
+            patterns.append(f"settings.{ref.settings_attr}")
+        if ref.env_var:
+            patterns.append(ref.env_var)
     for spec in REGISTRY:
         for field in spec.fields:
             ref = field.baseline

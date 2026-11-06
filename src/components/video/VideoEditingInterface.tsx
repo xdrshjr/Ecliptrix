@@ -1223,7 +1223,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
       return true;
     };
 
-    void materialManagement.handleAiVideoGenerate(params, {
+    return materialManagement.handleAiVideoGenerate(params, {
       metadataExtras: {
         source: 'narration-ai-video',
         linkedSegmentId: segmentId,

@@ -1,1175 +1,354 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StoryboardScriptSegment, StoryboardPack, StoryboardVideoCandidate, MaterialItem } from '@/types';
-import {
-  listPacks,
-  getPack,
-  describeFrames,
-  batchGenerateVideos,
-  composeVideo,
-} from '@/lib/api/storyboard';
-import { getArkVideoStatus } from '@/lib/api/arkVideo';
-import {
-  PLACEHOLDER_VIDEO_THUMBNAIL,
-  resolveStoryboardThumbnail,
-} from '../utils/storyboardThumbnail';
+import type { StoryboardScriptSegment, StoryboardPack, StoryboardVideoCandidate, MaterialItem } from '@/types';
+import { useLocale } from '@/contexts/LocaleContext';
+import { reportCredentialMissing } from '@/lib/credentialMissing';
+import { ApiError } from '@/lib/api/http-client';
+import { listPacks, getPack, describeFrames, batchGenerateVideos, composeVideo } from '@/lib/api/storyboard';
+import { arkVideoMaterialId, arkVideoPollDelay, getArkVideoStatus, isArkVideoReady } from '@/lib/api/arkVideo';
 
 const POLL_INTERVAL = 5000;
+const WAIT_LIMIT = 10 * 60 * 1000;
+const pendingStatus = (status: string) => status === 'queued' || status === 'generating';
+interface Scope { projectKey?: string }
+interface Submission { scope: Scope; controller: AbortController }
+interface PollRequest extends Submission {
+  segmentId: string;
+  candidateId?: string;
+  taskId: string;
+  timer?: ReturnType<typeof setTimeout>;
+  deadline?: ReturnType<typeof setTimeout>;
+}
 
 export interface UseStoryboardScriptGenerationProps {
   segments: StoryboardScriptSegment[];
   onUpdateSegments: (segments: StoryboardScriptSegment[]) => void;
   onAddMaterial?: (material: MaterialItem) => void;
   taskId?: string;
-  /** Owning project id — required for ``listPacks``. Without it the
-   *  available-packs list stays empty rather than 400-ing the backend. */
   projectId?: string;
 }
-
 export interface UseStoryboardScriptGenerationReturn {
-  // Pack management
   availablePacks: StoryboardPack[];
   loadPack: (packId: string) => Promise<void>;
   refreshPacks: () => Promise<void>;
   isLoadingPacks: boolean;
   isLoadingPack: boolean;
   selectedPackId: string | null;
-
-  // Description generation
   isDescribing: boolean;
   generateAllDescriptions: () => Promise<void>;
   regenerateDescription: (segmentId: string) => Promise<void>;
-
-  // Video generation
   generateVideo: (segmentId: string) => void;
   generateMultipleVideos: (segmentId: string, count: number) => void;
   batchGenerateAllVideos: (repeat?: number) => void;
   cancelGeneration: (segmentId: string) => void;
   selectCandidate: (segmentId: string, candidateId: string) => void;
-
-  // Composition
   composeAllVideos: () => Promise<void>;
   isComposing: boolean;
   compositionError: string | null;
-
-  // Computed state
   overallProgress: { completed: number; total: number };
   totalDuration: number;
 }
 
-/**
- * Hook for managing storyboard script generation workflow.
- * Modeled after useAIVideoScriptGeneration with additions for:
- * - Pack loading and description generation via VL_LLM
- * - Batch video generation with polling
- * - Multi-video candidate generation and selection
- * - Video composition
- */
-export function useStoryboardScriptGeneration({
-  segments,
-  onUpdateSegments,
-  onAddMaterial,
-  taskId,
-  projectId,
-}: UseStoryboardScriptGenerationProps): UseStoryboardScriptGenerationReturn {
+function selectedFields(candidate: StoryboardVideoCandidate): Partial<StoryboardScriptSegment> {
+  return { selectedCandidateId: candidate.id, generatedVideoUrl: candidate.videoUrl,
+    generatedVideoThumbnailUrl: candidate.thumbnailUrl, generatedVideoDuration: candidate.duration,
+    generatedVideoWidth: candidate.width, generatedVideoHeight: candidate.height, generatedVideoModel: candidate.model };
+}
+
+export function useStoryboardScriptGeneration({ segments, onUpdateSegments, onAddMaterial, taskId, projectId }: UseStoryboardScriptGenerationProps): UseStoryboardScriptGenerationReturn {
+  const copy = useLocale().t.integrations.videoGeneration;
+  const projectKey = projectId ?? taskId;
+  const scope = useMemo<Scope>(() => ({ projectKey }), [projectKey]);
   const [availablePacks, setAvailablePacks] = useState<StoryboardPack[]>([]);
   const [isLoadingPacks, setIsLoadingPacks] = useState(false);
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
-  const [isDescribing, setIsDescribing] = useState(false);
-
-  useEffect(() => {
-    if (!selectedPackId && segments.length > 0) {
-      const derived = segments[0].packId;
-      if (derived) {
-        setSelectedPackId(derived);
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [isLoadingPack, setIsLoadingPack] = useState(false);
+  const [selectedPackId, setSelectedPackId] = useState<string | null>(segments[0]?.packId ?? null);
+  const [isDescribing, setIsDescribing] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [compositionError, setCompositionError] = useState<string | null>(null);
+  const requests = useRef(new Map<string, PollRequest>());
+  const submissions = useRef(new Map<string, Submission>());
+  const sequence = useRef(0);
+  const mounted = useRef(true);
+  const current = useRef({ segments, onUpdateSegments, onAddMaterial, scope, selectedPackId, copy });
+  current.current = { segments, onUpdateSegments, onAddMaterial, scope, selectedPackId, copy };
 
-  // Key can be segmentId (single video) or candidateId (multi-video)
-  const pollTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const segmentsRef = useRef(segments);
-  segmentsRef.current = segments;
-
-  // ── Segment updater (uses ref to avoid stale closures) ──
-
-  const updateSegment = useCallback(
-    (segmentId: string, updates: Partial<StoryboardScriptSegment>) => {
-      const current = segmentsRef.current;
-      const updated = current.map((seg) =>
-        seg.id === segmentId ? { ...seg, ...updates } : seg,
-      );
-      onUpdateSegments(updated);
-    },
-    [onUpdateSegments],
-  );
-
-  // ── Polling helpers ──
-
-  const stopPolling = useCallback((key: string) => {
-    const timer = pollTimers.current.get(key);
-    if (timer) {
-      clearInterval(timer);
-      pollTimers.current.delete(key);
-    }
+  const replaceSegments = useCallback((next: StoryboardScriptSegment[]) => {
+    current.current.segments = next;
+    current.current.onUpdateSegments(next);
   }, []);
+  const update = useCallback((id: string, patch: Partial<StoryboardScriptSegment>) => {
+    replaceSegments(current.current.segments.map(segment => segment.id === id ? { ...segment, ...patch } : segment));
+  }, [replaceSegments]);
+  const stop = useCallback((key: string) => {
+    const request = requests.current.get(key);
+    if (request?.timer) clearTimeout(request.timer);
+    if (request?.deadline) clearTimeout(request.deadline);
+    request?.controller.abort();
+    requests.current.delete(key);
+  }, []);
+  const isCurrentScope = useCallback((captured: Scope) => mounted.current && current.current.scope === captured, []);
+  const active = useCallback((key: string, request: PollRequest) => {
+    if (!isCurrentScope(request.scope) || requests.current.get(key) !== request || request.controller.signal.aborted) return false;
+    const segment = current.current.segments.find(item => item.id === request.segmentId);
+    if (!segment) return false;
+    const target = request.candidateId ? segment.videoCandidates?.find(item => item.id === request.candidateId) : undefined;
+    return target ? pendingStatus(target.status) && target.arkTaskId === request.taskId
+      : !request.candidateId && pendingStatus(segment.generationStatus) && segment.arkTaskId === request.taskId;
+  }, [isCurrentScope]);
+  const updateCandidate = useCallback((segmentId: string, candidateId: string, patch: Partial<StoryboardVideoCandidate>) => {
+    const segment = current.current.segments.find(item => item.id === segmentId);
+    if (!segment?.videoCandidates) return;
+    const candidates = segment.videoCandidates.map(candidate => candidate.id === candidateId ? { ...candidate, ...patch } : candidate);
+    const waiting = candidates.some(candidate => pendingStatus(candidate.status));
+    const selected = candidates.find(candidate => candidate.id === segment.selectedCandidateId && candidate.status === 'succeeded')
+      ?? candidates.find(candidate => candidate.status === 'succeeded');
+    update(segmentId, { videoCandidates: candidates,
+      generationStatus: waiting ? (candidates.every(candidate => candidate.status === 'queued') ? 'queued' : 'generating')
+        : selected ? 'succeeded' : candidates.every(candidate => candidate.status === 'timeout') ? 'timeout' : 'failed',
+      generationProgress: waiting ? Math.round(candidates.reduce((sum, candidate) => sum + candidate.progress, 0) / candidates.length) : selected ? 100 : 0,
+      generationError: waiting || selected ? undefined : patch.error,
+      ...(selected ? selectedFields(selected) : {}),
+    });
+  }, [update]);
 
-  const startPolling = useCallback(
-    (segmentId: string, arkTaskId: string) => {
-      stopPolling(segmentId);
-
-      let simulatedProgress = 10;
-      let videoSucceeded = false;
-      let ossWaitRetries = 0;
-      const MAX_OSS_WAIT_RETRIES = 20;
-      const materialId = `storyboard-video-${segmentId}`;
-
-      const timer = setInterval(async () => {
-        try {
-          const statusResult = await getArkVideoStatus(arkTaskId);
-
-          if (statusResult.status === 'queued') {
-            updateSegment(segmentId, {
-              generationStatus: 'queued',
-              generationProgress: 0,
-              queuePosition: statusResult.position_in_queue,
-            });
-            return;
-          }
-
-          if (statusResult.status === 'timeout') {
-            stopPolling(segmentId);
-            updateSegment(segmentId, {
-              generationStatus: 'timeout',
-              generationProgress: 0,
-              queuePosition: undefined,
-              generationError: statusResult.error || '生成超时',
-            });
-            return;
-          }
-
-          // Normalize: once we see any non-queued state, flip to generating for progress UI.
-          if (statusResult.status === 'running') {
-            updateSegment(segmentId, {
-              generationStatus: 'generating',
-              queuePosition: undefined,
-            });
-          }
-
-          if (statusResult.status === 'succeeded' && statusResult.video_url) {
-            if (statusResult.thumbnail_url) {
-              stopPolling(segmentId);
-              updateSegment(segmentId, {
-                generationStatus: 'succeeded',
-                generationProgress: 100,
-                generatedVideoUrl: statusResult.video_url,
-                generatedVideoThumbnailUrl: statusResult.thumbnail_url,
-                generationError: undefined,
-              });
-
-              if (onAddMaterial) {
-                const seg = segmentsRef.current.find((s) => s.id === segmentId);
-                const material: MaterialItem = {
-                  id: materialId,
-                  name: seg ? `分镜 #${seg.frameIndex + 1}` : 'Storyboard Video',
-                  type: 'video',
-                  format: 'mp4',
-                  size: 0,
-                  url: statusResult.video_url,
-                  serverUrl: statusResult.video_url,
-                  thumbnailUrl: statusResult.thumbnail_url,
-                  duration: statusResult.duration || seg?.duration || 5,
-                  createdAt: new Date(),
-                  metadata: { source: 'storyboard-script' },
-                };
-                onAddMaterial(material);
-              }
-            } else {
-              if (!videoSucceeded) {
-                videoSucceeded = true;
-                updateSegment(segmentId, { generationProgress: 95 });
-                if (onAddMaterial) {
-                  const seg = segmentsRef.current.find((s) => s.id === segmentId);
-                  const material: MaterialItem = {
-                    id: materialId,
-                    name: seg ? `分镜 #${seg.frameIndex + 1}` : 'Storyboard Video',
-                    type: 'video',
-                    format: 'mp4',
-                    size: 0,
-                    url: statusResult.video_url,
-                    serverUrl: statusResult.video_url,
-                    thumbnailUrl: PLACEHOLDER_VIDEO_THUMBNAIL,
-                    duration: statusResult.duration || seg?.duration || 5,
-                    createdAt: new Date(),
-                    metadata: { source: 'storyboard-script' },
-                  };
-                  onAddMaterial(material);
-                }
-              }
-
-              ossWaitRetries++;
-              if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
-                stopPolling(segmentId);
-                updateSegment(segmentId, {
-                  generationStatus: 'succeeded',
-                  generationProgress: 100,
-                  generatedVideoUrl: statusResult.video_url,
-                  generatedVideoThumbnailUrl: PLACEHOLDER_VIDEO_THUMBNAIL,
-                  generationError: undefined,
-                });
-
-                const segAtMax = segmentsRef.current.find((s) => s.id === segmentId);
-                resolveStoryboardThumbnail(
-                  statusResult.video_url,
-                  segAtMax?.frameThumbnailUrl || segAtMax?.frameUrl,
-                ).then((finalThumb) => {
-                  updateSegment(segmentId, {
-                    generatedVideoThumbnailUrl: finalThumb,
-                  });
-                  if (onAddMaterial) {
-                    const seg = segmentsRef.current.find((s) => s.id === segmentId);
-                    onAddMaterial({
-                      id: materialId,
-                      name: seg ? `分镜 #${seg.frameIndex + 1}` : 'Storyboard Video',
-                      type: 'video',
-                      format: 'mp4',
-                      size: 0,
-                      url: statusResult.video_url!,
-                      serverUrl: statusResult.video_url,
-                      thumbnailUrl: finalThumb,
-                      duration: statusResult.duration || seg?.duration || 5,
-                      createdAt: new Date(),
-                      metadata: { source: 'storyboard-script' },
-                    });
-                  }
-                });
-              }
-            }
-          } else if (statusResult.status === 'failed') {
-            stopPolling(segmentId);
-            updateSegment(segmentId, {
-              generationStatus: 'failed',
-              generationProgress: 0,
-              generationError: statusResult.error || '视频生成失败',
-            });
-          } else {
-            simulatedProgress = Math.min(simulatedProgress + Math.random() * 8, 90);
-            updateSegment(segmentId, {
-              generationProgress: Math.round(simulatedProgress),
-            });
-          }
-        } catch (error) {
-          stopPolling(segmentId);
-          updateSegment(segmentId, {
-            generationStatus: 'failed',
-            generationProgress: 0,
-            generationError: error instanceof Error ? error.message : '轮询状态失败',
-          });
+  const startPolling = useCallback((segmentId: string, taskId: string, candidateId?: string) => {
+    const key = candidateId ?? segmentId;
+    if (requests.current.has(key)) return;
+    const request: PollRequest = { scope: current.current.scope, controller: new AbortController(), segmentId, candidateId, taskId };
+    requests.current.set(key, request);
+    let failures = 0;
+    const fail = (message: string, timeout = false) => {
+      if (!active(key, request)) return;
+      if (candidateId) updateCandidate(segmentId, candidateId, { status: timeout ? 'timeout' : 'failed', progress: 0, error: message, queuePosition: undefined });
+      else update(segmentId, { generationStatus: timeout ? 'timeout' : 'failed', generationProgress: 0, generationError: message, queuePosition: undefined });
+      stop(key);
+    };
+    const tick = async () => {
+      if (!active(key, request)) {
+        if (requests.current.get(key) === request) stop(key);
+        return;
+      }
+      let delay = POLL_INTERVAL;
+      try {
+        const result = await getArkVideoStatus(taskId, { signal: request.controller.signal });
+        if (!active(key, request)) return;
+        failures = 0;
+        if (isArkVideoReady(result)) {
+          const materialId = arkVideoMaterialId(result, taskId);
+          const segment = current.current.segments.find(item => item.id === segmentId)!;
+          if (candidateId) updateCandidate(segmentId, candidateId, { status: 'succeeded', progress: 100,
+            videoUrl: result.video_url, thumbnailUrl: result.thumbnail_url, duration: result.duration,
+            width: result.width, height: result.height, model: result.model, error: undefined, queuePosition: undefined });
+          else update(segmentId, { generationStatus: 'succeeded', generationProgress: 100,
+            generatedVideoUrl: result.video_url, generatedVideoThumbnailUrl: result.thumbnail_url,
+            generatedVideoDuration: result.duration, generatedVideoWidth: result.width, generatedVideoHeight: result.height,
+            generatedVideoModel: result.model, generationError: undefined, queuePosition: undefined });
+          stop(key);
+          current.current.onAddMaterial?.({ id: materialId, name: `分镜 ${segment.frameIndex + 1}`,
+            type: 'video', format: 'mp4', size: 0, url: result.video_url!, serverUrl: result.video_url,
+            cacheUrl: result.video_url, thumbnailUrl: result.thumbnail_url, duration: result.duration,
+            width: result.width, height: result.height, createdAt: new Date(),
+            metadata: { source: 'storyboard-script', model: result.model, arkTaskId: result.ark_task_id, frameIndex: segment.frameIndex } });
+          return;
         }
-      }, POLL_INTERVAL);
+        if (result.status === 'timeout') return fail(current.current.copy.waitTimeout, true);
+        if (result.status === 'failed') return fail(result.error || result.error_code || current.current.copy.unsupported);
+        const status = result.status === 'queued' ? 'queued' : 'generating';
+        const progress = status === 'queued' ? 0 : result.phase === 'downloading' || result.phase === 'validating' ? 95 : 30;
+        if (candidateId) updateCandidate(segmentId, candidateId, { status, progress, queuePosition: result.position_in_queue });
+        else update(segmentId, { generationStatus: status, generationProgress: progress, queuePosition: result.position_in_queue });
+      } catch (error) {
+        if (!active(key, request)) return;
+        const retry = arkVideoPollDelay(error, ++failures);
+        if (retry === null) return fail(error instanceof ApiError ? error.message : current.current.copy.loadFailed);
+        delay = retry;
+      }
+      if (active(key, request)) request.timer = setTimeout(tick, delay);
+    };
+    const timeoutSeconds = current.current.segments.find(item => item.id === segmentId)?.generationTimeoutSeconds;
+    const waitLimit = timeoutSeconds && Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds * 1000 : WAIT_LIMIT;
+    request.deadline = setTimeout(() => fail(current.current.copy.waitTimeout, true), waitLimit);
+    request.timer = setTimeout(tick, POLL_INTERVAL);
+  }, [active, stop, update, updateCandidate]);
 
-      pollTimers.current.set(segmentId, timer);
-    },
-    [stopPolling, updateSegment, onAddMaterial],
-  );
-
-  /** Start polling for a candidate video within a multi-video segment */
-  const startCandidatePolling = useCallback(
-    (segmentId: string, candidateId: string, arkTaskId: string) => {
-      stopPolling(candidateId);
-
-      let simulatedProgress = 10;
-      let ossWaitRetries = 0;
-      const MAX_OSS_WAIT_RETRIES = 20;
-      const materialId = `storyboard-video-${candidateId}`;
-
-      const timer = setInterval(async () => {
-        try {
-          const statusResult = await getArkVideoStatus(arkTaskId);
-
-          const segment = segmentsRef.current.find(s => s.id === segmentId);
-          if (!segment?.videoCandidates) {
-            stopPolling(candidateId);
-            return;
-          }
-
-          if (statusResult.status === 'queued') {
-            const updatedCandidates = segment.videoCandidates.map(c =>
-              c.id === candidateId
-                ? { ...c, status: 'queued' as const, progress: 0, queuePosition: statusResult.position_in_queue }
-                : c,
-            );
-            updateSegment(segmentId, { videoCandidates: updatedCandidates });
-            return;
-          }
-
-          if (statusResult.status === 'timeout') {
-            stopPolling(candidateId);
-            const updatedCandidates = segment.videoCandidates.map(c =>
-              c.id === candidateId
-                ? { ...c, status: 'timeout' as const, progress: 0, error: statusResult.error || '生成超时' }
-                : c,
-            );
-            const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed' || c.status === 'timeout');
-            const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
-            const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
-            const segmentUpdates: Partial<StoryboardScriptSegment> = { videoCandidates: updatedCandidates };
-            if (allDone) {
-              segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
-              if (anySucceeded && !segment.selectedCandidateId) {
-                segmentUpdates.selectedCandidateId = firstSucceeded!.id;
-                segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
-                segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
-              }
-            }
-            updateSegment(segmentId, segmentUpdates);
-            return;
-          }
-
-          if (statusResult.status === 'running') {
-            const updatedCandidates = segment.videoCandidates.map(c =>
-              c.id === candidateId && c.status !== 'succeeded' && c.status !== 'failed'
-                ? { ...c, status: 'generating' as const, queuePosition: undefined }
-                : c,
-            );
-            updateSegment(segmentId, { videoCandidates: updatedCandidates });
-          }
-
-          if (statusResult.status === 'succeeded' && statusResult.video_url && statusResult.thumbnail_url) {
-            stopPolling(candidateId);
-
-            const updatedCandidates = segment.videoCandidates.map(c => {
-              if (c.id !== candidateId) return c;
-              return { ...c, status: 'succeeded' as const, progress: 100, videoUrl: statusResult.video_url, thumbnailUrl: statusResult.thumbnail_url };
-            });
-
-            const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed' || c.status === 'timeout');
-            const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
-            const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
-
-            const segmentUpdates: Partial<StoryboardScriptSegment> = {
-              videoCandidates: updatedCandidates,
-            };
-
-            if (allDone) {
-              segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
-              segmentUpdates.generationProgress = 100;
-              if (anySucceeded && !segment.selectedCandidateId) {
-                segmentUpdates.selectedCandidateId = firstSucceeded!.id;
-                segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
-                segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
-              }
-            } else {
-              const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
-              segmentUpdates.generationProgress = Math.round(avgProgress);
-            }
-
-            updateSegment(segmentId, segmentUpdates);
-
-            if (onAddMaterial) {
-              const material: MaterialItem = {
-                id: materialId,
-                name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
-                type: 'video',
-                format: 'mp4',
-                size: 0,
-                url: statusResult.video_url,
-                serverUrl: statusResult.video_url,
-                thumbnailUrl: statusResult.thumbnail_url,
-                duration: statusResult.duration || segment?.duration || 5,
-                createdAt: new Date(),
-                metadata: { source: 'storyboard-script', candidateId },
-              };
-              onAddMaterial(material);
-            }
-          } else if (statusResult.status === 'succeeded' && statusResult.video_url) {
-            ossWaitRetries++;
-
-            if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
-              stopPolling(candidateId);
-
-              const updatedCandidates = segment.videoCandidates.map(c => {
-                if (c.id !== candidateId) return c;
-                return { ...c, status: 'succeeded' as const, progress: 100, videoUrl: statusResult.video_url, thumbnailUrl: PLACEHOLDER_VIDEO_THUMBNAIL };
-              });
-
-              const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed' || c.status === 'timeout');
-              const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
-              const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
-
-              const segmentUpdates: Partial<StoryboardScriptSegment> = {
-                videoCandidates: updatedCandidates,
-              };
-
-              if (allDone) {
-                segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
-                segmentUpdates.generationProgress = 100;
-                if (anySucceeded && !segment.selectedCandidateId) {
-                  segmentUpdates.selectedCandidateId = firstSucceeded!.id;
-                  segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
-                  segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
-                }
-              }
-
-              updateSegment(segmentId, segmentUpdates);
-
-              if (onAddMaterial) {
-                const material: MaterialItem = {
-                  id: materialId,
-                  name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
-                  type: 'video',
-                  format: 'mp4',
-                  size: 0,
-                  url: statusResult.video_url,
-                  serverUrl: statusResult.video_url,
-                  thumbnailUrl: PLACEHOLDER_VIDEO_THUMBNAIL,
-                  duration: statusResult.duration || segment?.duration || 5,
-                  createdAt: new Date(),
-                  metadata: { source: 'storyboard-script', candidateId },
-                };
-                onAddMaterial(material);
-              }
-
-              resolveStoryboardThumbnail(
-                statusResult.video_url,
-                segment?.frameThumbnailUrl || segment?.frameUrl,
-              ).then(finalThumb => {
-                if (onAddMaterial) {
-                  onAddMaterial({
-                    id: materialId,
-                    name: segment ? `分镜 #${segment.frameIndex + 1} 候选` : 'Storyboard Video',
-                    type: 'video',
-                    format: 'mp4',
-                    size: 0,
-                    url: statusResult.video_url!,
-                    serverUrl: statusResult.video_url,
-                    thumbnailUrl: finalThumb,
-                    duration: statusResult.duration || segment?.duration || 5,
-                    createdAt: new Date(),
-                    metadata: { source: 'storyboard-script', candidateId },
-                  });
-                }
-              });
-            } else {
-              const updatedCandidates = segment.videoCandidates.map(c => {
-                if (c.id !== candidateId) return c;
-                return { ...c, progress: 95, videoUrl: statusResult.video_url };
-              });
-              const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
-              updateSegment(segmentId, {
-                videoCandidates: updatedCandidates,
-                generationProgress: Math.round(avgProgress),
-              });
-            }
-          } else if (statusResult.status === 'failed') {
-            stopPolling(candidateId);
-            const updatedCandidates = segment.videoCandidates.map(c =>
-              c.id === candidateId ? { ...c, status: 'failed' as const, progress: 0, error: statusResult.error || '视频生成失败' } : c,
-            );
-            const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed' || c.status === 'timeout');
-            const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
-            const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
-
-            const segmentUpdates: Partial<StoryboardScriptSegment> = { videoCandidates: updatedCandidates };
-            if (allDone) {
-              segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
-              if (anySucceeded && !segment.selectedCandidateId) {
-                segmentUpdates.selectedCandidateId = firstSucceeded!.id;
-                segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
-                segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
-              }
-            }
-            updateSegment(segmentId, segmentUpdates);
-          } else {
-            simulatedProgress = Math.min(simulatedProgress + Math.random() * 8, 90);
-            const updatedCandidates = segment.videoCandidates.map(c => {
-              if (c.id !== candidateId) return c;
-              return { ...c, progress: Math.round(simulatedProgress) };
-            });
-            const avgProgress = updatedCandidates.reduce((sum, c) => sum + c.progress, 0) / updatedCandidates.length;
-            updateSegment(segmentId, {
-              videoCandidates: updatedCandidates,
-              generationProgress: Math.round(avgProgress),
-            });
-          }
-        } catch (error) {
-          stopPolling(candidateId);
-          const segment = segmentsRef.current.find(s => s.id === segmentId);
-          if (segment?.videoCandidates) {
-            const updatedCandidates = segment.videoCandidates.map(c =>
-              c.id === candidateId ? { ...c, status: 'failed' as const, progress: 0, error: error instanceof Error ? error.message : '轮询状态失败' } : c,
-            );
-            const allDone = updatedCandidates.every(c => c.status === 'succeeded' || c.status === 'failed' || c.status === 'timeout');
-            const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
-            const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
-
-            const segmentUpdates: Partial<StoryboardScriptSegment> = { videoCandidates: updatedCandidates };
-            if (allDone) {
-              segmentUpdates.generationStatus = anySucceeded ? 'succeeded' : 'failed';
-              if (anySucceeded && !segment.selectedCandidateId) {
-                segmentUpdates.selectedCandidateId = firstSucceeded!.id;
-                segmentUpdates.generatedVideoUrl = firstSucceeded!.videoUrl;
-                segmentUpdates.generatedVideoThumbnailUrl = firstSucceeded!.thumbnailUrl;
-              }
-            }
-            updateSegment(segmentId, segmentUpdates);
-          }
+  const submit = useCallback(async (ids: string[], count: number) => {
+    const packId = current.current.selectedPackId;
+    if (!packId || !Number.isInteger(count) || count < 1) return;
+    const eligible = current.current.segments.filter(segment => ids.includes(segment.id) && segment.description.trim()
+      && !pendingStatus(segment.generationStatus) && !submissions.current.has(segment.id));
+    if (!eligible.length) return;
+    const submission: Submission = { scope: current.current.scope, controller: new AbortController() };
+    const live = (id: string) => isCurrentScope(submission.scope) && submissions.current.get(id) === submission
+      && !submission.controller.signal.aborted && current.current.segments.some(segment => segment.id === id && pendingStatus(segment.generationStatus));
+    for (const segment of eligible) {
+      submissions.current.set(segment.id, submission);
+      update(segment.id, { generationStatus: 'queued', generationProgress: 0, generationError: undefined,
+        arkTaskId: undefined, generatedVideoUrl: undefined, generatedVideoThumbnailUrl: undefined,
+        generatedVideoDuration: undefined, generatedVideoWidth: undefined, generatedVideoHeight: undefined, generatedVideoModel: undefined,
+        selectedCandidateId: undefined, queuePosition: undefined,
+        videoCandidates: count > 1 ? Array.from({ length: count }, () => ({ id: `candidate-${segment.id}-${++sequence.current}`,
+          arkTaskId: '', status: 'queued', progress: 0 })) : undefined });
+    }
+    try {
+      const result = await batchGenerateVideos(packId, eligible.map(segment => ({ frameIndex: segment.frameIndex,
+        description: segment.description, duration: segment.duration, repeat: count })), { signal: submission.controller.signal });
+      for (const segment of eligible) {
+        if (!live(segment.id)) continue;
+        const taskIds = result.taskGroups.find(group => group.frameIndex === segment.frameIndex)?.taskIds ?? [];
+        update(segment.id, { generationTimeoutSeconds: result.timeoutSeconds });
+        if (!taskIds.length) {
+          update(segment.id, { generationStatus: 'failed', generationError: current.current.copy.submissionUnknown, videoCandidates: undefined });
+        } else if (count > 1) {
+          const candidates = current.current.segments.find(item => item.id === segment.id)!.videoCandidates!.map((candidate, index) =>
+            taskIds[index] ? { ...candidate, arkTaskId: taskIds[index] }
+              : { ...candidate, status: 'failed' as const, error: current.current.copy.submissionUnknown });
+          update(segment.id, { arkTaskId: taskIds[0], videoCandidates: candidates });
+          for (const candidate of candidates) if (candidate.arkTaskId) startPolling(segment.id, candidate.arkTaskId, candidate.id);
+        } else {
+          update(segment.id, { arkTaskId: taskIds[0] });
+          startPolling(segment.id, taskIds[0]);
         }
-      }, POLL_INTERVAL);
-
-      pollTimers.current.set(candidateId, timer);
-    },
-    [stopPolling, updateSegment, onAddMaterial],
-  );
-
-  // ── Pack management ──
+        submissions.current.delete(segment.id);
+      }
+    } catch (error) {
+      if (isCurrentScope(submission.scope)) reportCredentialMissing(error);
+      for (const segment of eligible) {
+        if (!live(segment.id)) continue;
+        update(segment.id, { generationStatus: 'failed', generationProgress: 0, videoCandidates: undefined,
+          generationError: error instanceof ApiError && error.code === 'video_configuration_changed' ? current.current.copy.configurationChanged
+            : error instanceof ApiError && error.code === 'generation_submission_unknown'
+            ? current.current.copy.submissionUnknown : error instanceof Error ? error.message : current.current.copy.submissionUnknown });
+        submissions.current.delete(segment.id);
+      }
+    }
+  }, [isCurrentScope, startPolling, update]);
+  const generateVideo = useCallback((id: string) => submit([id], 1), [submit]);
+  const generateMultipleVideos = useCallback((id: string, count: number) => submit([id], count), [submit]);
+  const batchGenerateAllVideos = useCallback((count = 1) => submit(current.current.segments.filter(segment =>
+    ['idle', 'failed', 'timeout'].includes(segment.generationStatus)).map(segment => segment.id), count), [submit]);
+  const cancelGeneration = useCallback((id: string) => {
+    for (const [key, request] of Array.from(requests.current.entries())) if (request.segmentId === id) stop(key);
+    const submission = submissions.current.get(id);
+    submissions.current.delete(id);
+    if (submission && !Array.from(submissions.current.values()).includes(submission)) submission.controller.abort();
+    const segment = current.current.segments.find(item => item.id === id);
+    const candidates = segment?.videoCandidates?.map(candidate => pendingStatus(candidate.status)
+      ? { ...candidate, status: 'failed' as const, progress: 0, error: current.current.copy.waitTimeout } : candidate);
+    const selected = candidates?.find(candidate => candidate.id === segment?.selectedCandidateId && candidate.status === 'succeeded')
+      ?? candidates?.find(candidate => candidate.status === 'succeeded');
+    update(id, { generationStatus: selected ? 'succeeded' : 'idle', generationProgress: selected ? 100 : 0,
+      generationError: selected ? undefined : current.current.copy.waitTimeout, arkTaskId: undefined,
+      queuePosition: undefined, videoCandidates: candidates, ...(selected ? selectedFields(selected) : {}) });
+  }, [stop, update]);
+  const selectCandidate = useCallback((id: string, candidateId: string) => {
+    const candidate = current.current.segments.find(segment => segment.id === id)?.videoCandidates?.find(item => item.id === candidateId);
+    if (candidate?.status === 'succeeded' && candidate.videoUrl) update(id, selectedFields(candidate));
+  }, [update]);
 
   const refreshPacks = useCallback(async () => {
-    if (!projectId) {
-      setAvailablePacks([]);
-      return;
-    }
+    if (!projectId) { setAvailablePacks([]); return; }
     setIsLoadingPacks(true);
+    try { const packs = await listPacks(projectId); if (isCurrentScope(scope)) setAvailablePacks(packs); }
+    catch { if (isCurrentScope(scope)) setAvailablePacks([]); }
+    finally { if (isCurrentScope(scope)) setIsLoadingPacks(false); }
+  }, [isCurrentScope, projectId, scope]);
+  const loadPack = useCallback(async (packId: string) => {
+    if (!projectId) return;
+    current.current.segments.forEach(segment => { if (pendingStatus(segment.generationStatus)) cancelGeneration(segment.id); });
+    setSelectedPackId(packId); current.current.selectedPackId = packId;
+    setCompositionError(null); setIsLoadingPack(true);
     try {
-      const packs = await listPacks(projectId);
-      setAvailablePacks(packs);
-    } catch (error) {
-      console.error('[useStoryboardScriptGeneration] Failed to load packs:', error);
-    } finally {
-      setIsLoadingPacks(false);
-    }
-  }, [projectId]);
-
-  const loadPack = useCallback(
-    async (packId: string) => {
-      setSelectedPackId(packId);
-      setCompositionError(null);
-      setIsLoadingPack(true);
-
-      if (!projectId) {
-        console.warn('[useStoryboardScriptGeneration] loadPack called without projectId; skipping fetch');
-        setIsLoadingPack(false);
-        return;
-      }
-      try {
-        // 1. Fetch pack data
-        const pack = await getPack(projectId, packId);
-
-        // 2. Pack-level binding decision: if every frame has a non-empty script,
-        //    treat the whole pack as script-bound — inject scripts into segment
-        //    descriptions and flag boundFromPack so downstream skips VL_LLM.
-        //    Otherwise fall back to existing description or empty string and
-        //    let the VL describe path handle it.
-        const packIsScripted =
-          pack.frames.length > 0 &&
-          pack.frames.every((f) => (f.script || '').trim().length > 0);
-
-        const newSegments: StoryboardScriptSegment[] = pack.frames.map(
-          (frame) => {
-            const boundScript = (frame.script || '').trim();
-            const description = packIsScripted
-              ? boundScript
-              : (frame.description || '');
-            return {
-              id: `storyboard-seg-${packId}-${frame.index}-${Date.now()}`,
-              packId,
-              frameIndex: frame.index,
-              frameUrl: frame.url,
-              frameThumbnailUrl: frame.url,
-              description,
-              duration: 5,
-              generationStatus: 'idle' as const,
-              generationProgress: 0,
-              boundFromPack: packIsScripted,
-            };
-          },
-        );
-
-        onUpdateSegments(newSegments);
-      } catch (error) {
-        console.error(
-          '[useStoryboardScriptGeneration] Failed to load pack:',
-          error,
-        );
-      } finally {
-        setIsLoadingPack(false);
-      }
-    },
-    [onUpdateSegments, projectId],
-  );
-
-  // ── Description generation ──
-
-  const generateAllDescriptions = useCallback(async () => {
-    if (!selectedPackId) return;
+      const pack = await getPack(projectId, packId);
+      if (!isCurrentScope(scope) || current.current.selectedPackId !== packId) return;
+      const scripted = pack.frames.length > 0 && pack.frames.every(frame => frame.script?.trim());
+      replaceSegments(pack.frames.map(frame => ({ id: `storyboard-seg-${packId}-${frame.index}-${++sequence.current}`, packId,
+        frameIndex: frame.index, frameUrl: frame.url, frameThumbnailUrl: frame.url,
+        description: scripted ? frame.script!.trim() : frame.description || '', duration: 5,
+        generationStatus: 'idle', generationProgress: 0, boundFromPack: scripted })));
+    } catch (error) { if (isCurrentScope(scope)) reportCredentialMissing(error); }
+    finally { if (isCurrentScope(scope)) setIsLoadingPack(false); }
+  }, [cancelGeneration, isCurrentScope, projectId, replaceSegments, scope]);
+  const describe = useCallback(async (id?: string) => {
+    const packId = current.current.selectedPackId;
+    const segment = current.current.segments.find(item => item.id === id);
+    if (!packId || (id && !segment)) return;
+    const captured = current.current.scope;
     setIsDescribing(true);
     try {
-      const descriptions = await describeFrames(selectedPackId);
-      const current = segmentsRef.current;
-      const updated = current.map((seg) => {
-        const desc = descriptions.find((d) => d.index === seg.frameIndex);
-        return desc ? { ...seg, description: desc.description } : seg;
-      });
-      onUpdateSegments(updated);
-    } catch (error) {
-      console.error(
-        '[useStoryboardScriptGeneration] Failed to generate descriptions:',
-        error,
-      );
-    } finally {
-      setIsDescribing(false);
-    }
-  }, [selectedPackId, onUpdateSegments]);
-
-  const regenerateDescription = useCallback(
-    async (segmentId: string) => {
-      const segment = segmentsRef.current.find(
-        (s) => s.id === segmentId,
-      );
-      if (!segment || !selectedPackId) return;
-
-      setIsDescribing(true);
-      try {
-        const descriptions = await describeFrames(selectedPackId, [
-          segment.frameIndex,
-        ]);
-        if (descriptions.length > 0) {
-          updateSegment(segmentId, {
-            description: descriptions[0].description,
-          });
-        }
-      } catch (error) {
-        console.error(
-          '[useStoryboardScriptGeneration] Failed to regenerate description:',
-          error,
-        );
-      } finally {
-        setIsDescribing(false);
-      }
-    },
-    [selectedPackId, updateSegment],
-  );
-
-  // ── Single video generation ──
-
-  const generateVideo = useCallback(
-    async (segmentId: string) => {
-      const segment = segmentsRef.current.find(
-        (s) => s.id === segmentId,
-      );
-      if (!segment || !segment.description.trim() || !selectedPackId)
-        return;
-
-      updateSegment(segmentId, {
-        generationStatus: 'queued',
-        generationProgress: 0,
-        generationError: undefined,
-        generatedVideoUrl: undefined,
-        generatedVideoThumbnailUrl: undefined,
-        videoCandidates: undefined,
-        selectedCandidateId: undefined,
-        queuePosition: undefined,
-      });
-
-      try {
-        const result = await batchGenerateVideos(selectedPackId, [
-          {
-            frameIndex: segment.frameIndex,
-            description: segment.description,
-            duration: segment.duration,
-          },
-        ]);
-
-        const group = result.taskGroups.find(g => g.frameIndex === segment.frameIndex);
-        if (group && group.taskIds.length > 0) {
-          updateSegment(segmentId, {
-            arkTaskId: group.taskIds[0],
-          });
-          startPolling(segmentId, group.taskIds[0]);
-        } else {
-          updateSegment(segmentId, {
-            generationStatus: 'failed',
-            generationProgress: 0,
-            generationError: '未获取到任务ID',
-          });
-        }
-      } catch (error) {
-        updateSegment(segmentId, {
-          generationStatus: 'failed',
-          generationProgress: 0,
-          generationError:
-            error instanceof Error
-              ? error.message
-              : '创建视频任务失败',
-        });
-      }
-    },
-    [selectedPackId, updateSegment, startPolling],
-  );
-
-  // ── Multi-video generation ──
-
-  const generateMultipleVideos = useCallback(
-    async (segmentId: string, count: number) => {
-      const segment = segmentsRef.current.find(
-        (s) => s.id === segmentId,
-      );
-      if (!segment || !segment.description.trim() || !selectedPackId)
-        return;
-
-      // Initialize candidates
-      const candidates: StoryboardVideoCandidate[] = Array.from({ length: count }, (_, i) => ({
-        id: `candidate-${segmentId}-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        arkTaskId: '',
-        status: 'queued' as const,
-        progress: 0,
+      const descriptions = await describeFrames(packId, segment ? [segment.frameIndex] : undefined);
+      if (!isCurrentScope(captured) || current.current.selectedPackId !== packId) return;
+      replaceSegments(current.current.segments.map(item => {
+        const description = descriptions.find(entry => entry.index === item.frameIndex);
+        return description ? { ...item, description: description.description } : item;
       }));
-
-      updateSegment(segmentId, {
-        generationStatus: 'queued',
-        generationProgress: 0,
-        generationError: undefined,
-        generatedVideoUrl: undefined,
-        generatedVideoThumbnailUrl: undefined,
-        videoCandidates: candidates,
-        selectedCandidateId: undefined,
-      });
-
-      try {
-        const result = await batchGenerateVideos(selectedPackId, [
-          {
-            frameIndex: segment.frameIndex,
-            description: segment.description,
-            duration: segment.duration,
-            repeat: count,
-          },
-        ]);
-
-        const group = result.taskGroups.find(g => g.frameIndex === segment.frameIndex);
-        if (group && group.taskIds.length > 0) {
-          // Assign task IDs to candidates (still queued until first poll).
-          const updatedCandidates = candidates.map((c, i) => {
-            if (i < group.taskIds.length) {
-              return { ...c, arkTaskId: group.taskIds[i], progress: 0, status: 'queued' as const };
-            }
-            return { ...c, status: 'failed' as const, error: '未获取到任务ID' };
-          });
-
-          updateSegment(segmentId, {
-            arkTaskId: group.taskIds[0],
-            generationProgress: 0,
-            videoCandidates: updatedCandidates,
-          });
-
-          // Start independent polling for each candidate
-          updatedCandidates.forEach((c, i) => {
-            if (c.arkTaskId) {
-              setTimeout(() => {
-                startCandidatePolling(segmentId, c.id, c.arkTaskId);
-              }, i * 1000);
-            }
-          });
-        } else {
-          updateSegment(segmentId, {
-            generationStatus: 'failed',
-            generationProgress: 0,
-            generationError: '未获取到任务ID',
-            videoCandidates: undefined,
-          });
-        }
-      } catch (error) {
-        updateSegment(segmentId, {
-          generationStatus: 'failed',
-          generationProgress: 0,
-          generationError:
-            error instanceof Error
-              ? error.message
-              : '创建多视频任务失败',
-          videoCandidates: undefined,
-        });
-      }
-    },
-    [selectedPackId, updateSegment, startCandidatePolling],
-  );
-
-  // ── Batch video generation ──
-
-  const batchGenerateAllVideos = useCallback(async (repeat: number = 1) => {
-    if (!selectedPackId) return;
-
-    const idleSegments = segmentsRef.current.filter(
-      (s) =>
-        (s.generationStatus === 'idle' || s.generationStatus === 'failed') &&
-        s.description.trim().length > 0,
-    );
-
-    if (idleSegments.length === 0) return;
-
-    // Mark eligible segments as generating
-    const idleSegmentIds = new Set(idleSegments.map((s) => s.id));
-
-    if (repeat > 1) {
-      // Multi-video batch: initialize candidates for each segment
-      const updated = segmentsRef.current.map((seg) => {
-        if (!idleSegmentIds.has(seg.id)) return seg;
-        const candidates: StoryboardVideoCandidate[] = Array.from({ length: repeat }, (_, i) => ({
-          id: `candidate-${seg.id}-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-          arkTaskId: '',
-          status: 'generating' as const,
-          progress: 0,
-        }));
-        return {
-          ...seg,
-          generationStatus: 'generating' as const,
-          generationProgress: 5,
-          generationError: undefined,
-          generatedVideoUrl: undefined,
-          generatedVideoThumbnailUrl: undefined,
-          videoCandidates: candidates,
-          selectedCandidateId: undefined,
-        };
-      });
-      onUpdateSegments(updated);
-
-      try {
-        const batchPayload = idleSegments.map((seg) => ({
-          frameIndex: seg.frameIndex,
-          description: seg.description,
-          duration: seg.duration,
-          repeat,
-        }));
-
-        const result = await batchGenerateVideos(selectedPackId, batchPayload);
-
-        // Get the updated segments with candidates
-        const currentSegs = segmentsRef.current;
-
-        idleSegments.forEach((seg, segIdx) => {
-          const group = result.taskGroups.find(g => g.frameIndex === seg.frameIndex);
-          const currentSeg = currentSegs.find(s => s.id === seg.id);
-          if (!group || !group.taskIds.length || !currentSeg?.videoCandidates) {
-            updateSegment(seg.id, {
-              generationStatus: 'failed',
-              generationProgress: 0,
-              generationError: '批量生成未返回任务ID',
-              videoCandidates: undefined,
-            });
-            return;
-          }
-
-          const updatedCandidates = currentSeg.videoCandidates.map((c, i) => {
-            if (i < group.taskIds.length) {
-              return { ...c, arkTaskId: group.taskIds[i], progress: 10 };
-            }
-            return { ...c, status: 'failed' as const, error: '未获取到任务ID' };
-          });
-
-          updateSegment(seg.id, {
-            arkTaskId: group.taskIds[0],
-            generationProgress: 10,
-            videoCandidates: updatedCandidates,
-          });
-
-          // Start polling for each candidate, staggered
-          updatedCandidates.forEach((c, i) => {
-            if (c.arkTaskId) {
-              setTimeout(() => {
-                startCandidatePolling(seg.id, c.id, c.arkTaskId);
-              }, (segIdx * repeat + i) * 1000);
-            }
-          });
-        });
-      } catch (error) {
-        idleSegments.forEach((seg) => {
-          updateSegment(seg.id, {
-            generationStatus: 'failed',
-            generationProgress: 0,
-            generationError:
-              error instanceof Error
-                ? error.message
-                : '批量生成请求失败',
-            videoCandidates: undefined,
-          });
-        });
-      }
-    } else {
-      // Single video batch (original behavior)
-      const updated = segmentsRef.current.map((seg) => {
-        if (idleSegmentIds.has(seg.id)) {
-          return {
-            ...seg,
-            generationStatus: 'generating' as const,
-            generationProgress: 5,
-            generationError: undefined,
-            generatedVideoUrl: undefined,
-            generatedVideoThumbnailUrl: undefined,
-            videoCandidates: undefined,
-            selectedCandidateId: undefined,
-          };
-        }
-        return seg;
-      });
-      onUpdateSegments(updated);
-
-      try {
-        const batchPayload = idleSegments.map((seg) => ({
-          frameIndex: seg.frameIndex,
-          description: seg.description,
-          duration: seg.duration,
-        }));
-
-        const result = await batchGenerateVideos(
-          selectedPackId,
-          batchPayload,
-        );
-
-        // Update task IDs and start polling for each, staggered
-        idleSegments.forEach((seg, i) => {
-          const group = result.taskGroups.find(g => g.frameIndex === seg.frameIndex);
-          if (group && group.taskIds.length > 0) {
-            updateSegment(seg.id, {
-              arkTaskId: group.taskIds[0],
-              generationProgress: 10,
-            });
-            setTimeout(() => {
-              startPolling(seg.id, group.taskIds[0]);
-            }, i * 1000);
-          } else {
-            updateSegment(seg.id, {
-              generationStatus: 'failed',
-              generationProgress: 0,
-              generationError: '批量生成未返回任务ID',
-            });
-          }
-        });
-      } catch (error) {
-        idleSegments.forEach((seg) => {
-          updateSegment(seg.id, {
-            generationStatus: 'failed',
-            generationProgress: 0,
-            generationError:
-              error instanceof Error
-                ? error.message
-                : '批量生成请求失败',
-          });
-        });
-      }
-    }
-  }, [selectedPackId, onUpdateSegments, updateSegment, startPolling, startCandidatePolling]);
-
-  // ── Cancel generation ──
-
-  const cancelGeneration = useCallback(
-    (segmentId: string) => {
-      const segment = segmentsRef.current.find(s => s.id === segmentId);
-
-      if (segment?.videoCandidates && segment.videoCandidates.length > 0) {
-        // Multi-video: stop all candidate polling, preserve succeeded candidates
-        for (const c of segment.videoCandidates) {
-          stopPolling(c.id);
-        }
-        const updatedCandidates = segment.videoCandidates.map(c =>
-          c.status === 'generating' ? { ...c, status: 'failed' as const, progress: 0, error: '已取消' } : c,
-        );
-        const anySucceeded = updatedCandidates.some(c => c.status === 'succeeded');
-        const firstSucceeded = updatedCandidates.find(c => c.status === 'succeeded');
-
-        updateSegment(segmentId, {
-          videoCandidates: updatedCandidates,
-          generationStatus: anySucceeded ? 'succeeded' : 'idle',
-          generationProgress: anySucceeded ? 100 : 0,
-          ...(anySucceeded && firstSucceeded && !segment.selectedCandidateId
-            ? {
-                selectedCandidateId: firstSucceeded.id,
-                generatedVideoUrl: firstSucceeded.videoUrl,
-                generatedVideoThumbnailUrl: firstSucceeded.thumbnailUrl,
-              }
-            : {}),
-        });
-      } else {
-        // Single video: original behavior
-        stopPolling(segmentId);
-        updateSegment(segmentId, {
-          generationStatus: 'idle',
-          generationProgress: 0,
-          arkTaskId: undefined,
-        });
-      }
-    },
-    [stopPolling, updateSegment],
-  );
-
-  // ── Select candidate ──
-
-  const selectCandidate = useCallback(
-    (segmentId: string, candidateId: string) => {
-      const segment = segmentsRef.current.find(s => s.id === segmentId);
-      if (!segment?.videoCandidates) return;
-
-      const candidate = segment.videoCandidates.find(c => c.id === candidateId);
-      if (!candidate || candidate.status !== 'succeeded' || !candidate.videoUrl) return;
-
-      updateSegment(segmentId, {
-        selectedCandidateId: candidateId,
-        generatedVideoUrl: candidate.videoUrl,
-        generatedVideoThumbnailUrl: candidate.thumbnailUrl,
-      });
-    },
-    [updateSegment],
-  );
-
-  // ── Video composition ──
-
+    } catch (error) { if (isCurrentScope(captured)) reportCredentialMissing(error); }
+    finally { if (isCurrentScope(captured)) setIsDescribing(false); }
+  }, [isCurrentScope, replaceSegments]);
+  const generateAllDescriptions = useCallback(() => describe(), [describe]);
+  const regenerateDescription = useCallback((id: string) => describe(id), [describe]);
   const composeAllVideos = useCallback(async () => {
-    if (!selectedPackId) return;
-
-    // Check readiness: each segment must have at least one succeeded video
-    const allReady = segmentsRef.current.every((s) => {
-      if (s.videoCandidates && s.videoCandidates.length > 0) {
-        return s.videoCandidates.some(c => c.status === 'succeeded' && c.videoUrl);
-      }
-      return s.generationStatus === 'succeeded' && s.generatedVideoUrl;
-    });
-    if (!allReady) return;
-
-    setIsComposing(true);
-    setCompositionError(null);
-
+    const packId = current.current.selectedPackId;
+    const sorted = [...current.current.segments].sort((a, b) => a.frameIndex - b.frameIndex);
+    if (!packId || !sorted.length || sorted.some(segment => !segment.generatedVideoUrl || segment.generationStatus !== 'succeeded')) return;
+    const captured = current.current.scope;
+    setIsComposing(true); setCompositionError(null);
     try {
-      // Collect video URLs in frame order, using selected candidate or first succeeded
-      const sortedSegments = [...segmentsRef.current].sort(
-        (a, b) => a.frameIndex - b.frameIndex,
-      );
-      const videoUrls = sortedSegments
-        .map((s) => {
-          if (s.videoCandidates && s.videoCandidates.length > 0) {
-            // Use selected candidate, or first succeeded
-            const selected = s.selectedCandidateId
-              ? s.videoCandidates.find(c => c.id === s.selectedCandidateId)
-              : null;
-            if (selected?.videoUrl) return selected.videoUrl;
-            const firstSucceeded = s.videoCandidates.find(c => c.status === 'succeeded' && c.videoUrl);
-            return firstSucceeded?.videoUrl;
-          }
-          return s.generatedVideoUrl;
-        })
-        .filter((url): url is string => Boolean(url));
-
-      const result = await composeVideo(selectedPackId, videoUrls);
-
-      // Add composed video to materials
-      if (onAddMaterial && result.videoUrl) {
-        const totalDur = sortedSegments.reduce(
-          (sum, s) => sum + s.duration,
-          0,
-        );
-        const material: MaterialItem = {
-          id: `storyboard-composed-${selectedPackId}-${Date.now()}`,
-          name: `分镜合成视频`,
-          type: 'video',
-          format: 'mp4',
-          size: 0,
-          url: result.videoUrl,
-          serverUrl: result.videoUrl,
-          thumbnailUrl: result.videoUrl,
-          duration: totalDur,
-          createdAt: new Date(),
-          metadata: { source: 'storyboard-compose' },
-        };
-        onAddMaterial(material);
-      }
-    } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : '视频合成失败';
-      setCompositionError(msg);
-      console.error(
-        '[useStoryboardScriptGeneration] Composition failed:',
-        error,
-      );
-    } finally {
-      setIsComposing(false);
-    }
-  }, [selectedPackId, onAddMaterial]);
-
-  // ── Computed state ──
-
-  const overallProgress = useMemo(
-    () => ({
-      completed: segments.filter(
-        (s) => s.generationStatus === 'succeeded',
-      ).length,
-      total: segments.length,
-    }),
-    [segments],
-  );
-
-  const totalDuration = useMemo(
-    () => segments.reduce((sum, s) => sum + (s.duration || 5), 0),
-    [segments],
-  );
-
-  // ── Resume polling on mount for generating segments ──
+      const result = await composeVideo(packId, sorted.map(segment => segment.generatedVideoUrl!));
+      if (!isCurrentScope(captured) || current.current.selectedPackId !== packId || !result.videoUrl) return;
+      current.current.onAddMaterial?.({ id: `storyboard-composed-${packId}-${Date.now()}`, name: '分镜合成视频',
+        type: 'video', format: 'mp4', size: 0, url: result.videoUrl, serverUrl: result.videoUrl, cacheUrl: result.videoUrl,
+        duration: sorted.reduce((sum, segment) => sum + (segment.generatedVideoDuration ?? segment.duration), 0),
+        createdAt: new Date(), metadata: { source: 'storyboard-compose' } });
+    } catch (error) { if (isCurrentScope(captured)) setCompositionError(error instanceof Error ? error.message : current.current.copy.loadFailed); }
+    finally { if (isCurrentScope(captured)) setIsComposing(false); }
+  }, [isCurrentScope]);
 
   useEffect(() => {
-    if (!selectedPackId) return;
-    for (const segment of segments) {
-      if (segment.generationStatus === 'generating') {
-        if (segment.videoCandidates && segment.videoCandidates.length > 0) {
-          // Resume candidate polling
-          for (const c of segment.videoCandidates) {
-            if (c.status === 'generating' && c.arkTaskId && !pollTimers.current.has(c.id)) {
-              startCandidatePolling(segment.id, c.id, c.arkTaskId);
-            }
-          }
-        } else if (segment.arkTaskId && !pollTimers.current.has(segment.id)) {
-          startPolling(segment.id, segment.arkTaskId);
-        }
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Fetch packs on mount ──
-
-  useEffect(() => {
-    refreshPacks();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Cleanup timers on unmount ──
-
-  useEffect(() => {
+    mounted.current = true;
+    setSelectedPackId(current.current.segments[0]?.packId ?? null);
+    setIsDescribing(false); setIsLoadingPack(false); setIsComposing(false);
+    void refreshPacks();
     return () => {
-      pollTimers.current.forEach((timer) => clearInterval(timer));
-      pollTimers.current.clear();
+      mounted.current = false;
+      for (const [key, request] of Array.from(requests.current.entries())) if (request.scope === scope) stop(key);
+      for (const [id, submission] of Array.from(submissions.current.entries())) if (submission.scope === scope) {
+        submission.controller.abort(); submissions.current.delete(id);
+      }
     };
-  }, []);
+  }, [refreshPacks, scope, stop]);
+  useEffect(() => {
+    if (!current.current.selectedPackId && segments[0]?.packId) {
+      current.current.selectedPackId = segments[0].packId;
+      setSelectedPackId(segments[0].packId);
+    }
+    for (const [key, request] of Array.from(requests.current.entries())) if (!active(key, request)) stop(key);
+    for (const [id, submission] of Array.from(submissions.current.entries())) {
+      if (current.current.segments.some(segment => segment.id === id && pendingStatus(segment.generationStatus))) continue;
+      submissions.current.delete(id);
+      if (!Array.from(submissions.current.values()).includes(submission)) submission.controller.abort();
+    }
+    for (const segment of segments) {
+      if (submissions.current.has(segment.id)) continue;
+      if (segment.videoCandidates?.length) {
+        for (const candidate of segment.videoCandidates) {
+          if (!pendingStatus(candidate.status) || requests.current.has(candidate.id)) continue;
+          if (candidate.arkTaskId) startPolling(segment.id, candidate.arkTaskId, candidate.id);
+          else updateCandidate(segment.id, candidate.id, { status: 'failed', progress: 0,
+            queuePosition: undefined, error: current.current.copy.submissionUnknown });
+        }
+      } else if (pendingStatus(segment.generationStatus) && !requests.current.has(segment.id)) {
+        if (segment.arkTaskId) startPolling(segment.id, segment.arkTaskId);
+        else update(segment.id, { generationStatus: 'failed', generationProgress: 0,
+          queuePosition: undefined, generationError: current.current.copy.submissionUnknown });
+      }
+    }
+  }, [segments, scope, active, startPolling, stop, update, updateCandidate]);
 
-  return {
-    availablePacks,
-    loadPack,
-    refreshPacks,
-    isLoadingPacks,
-    isLoadingPack,
-    selectedPackId,
-
-    isDescribing,
-    generateAllDescriptions,
-    regenerateDescription,
-
-    generateVideo,
-    generateMultipleVideos,
-    batchGenerateAllVideos,
-    cancelGeneration,
-    selectCandidate,
-
-    composeAllVideos,
-    isComposing,
-    compositionError,
-
-    overallProgress,
-    totalDuration,
-  };
+  return { availablePacks, loadPack, refreshPacks, isLoadingPacks, isLoadingPack, selectedPackId,
+    isDescribing, generateAllDescriptions, regenerateDescription, generateVideo, generateMultipleVideos,
+    batchGenerateAllVideos, cancelGeneration, selectCandidate, composeAllVideos, isComposing, compositionError,
+    overallProgress: { completed: segments.filter(segment => segment.generationStatus === 'succeeded').length, total: segments.length },
+    totalDuration: segments.reduce((sum, segment) => sum + (segment.generatedVideoDuration ?? segment.duration), 0) };
 }

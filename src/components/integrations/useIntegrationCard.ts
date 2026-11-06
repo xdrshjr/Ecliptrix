@@ -86,7 +86,7 @@ export function useIntegrationCard({
       // 409 credential_not_configured: the backend sees nothing usable saved.
       if (notConfiguredIntegration(failure)) return setError({ kind: 'required' });
       const classified = classifyIntegrationError(failure);
-      if (classified.kind === 'originForbidden') setError(classified);
+      if (['originForbidden', 'loadFailed', 'invalidModel', 'replaced'].includes(classified.kind)) setError(classified);
       else setOutcome('upstream_error');
     }
   }, [integration.id, integration.verifyLevel]);

@@ -24,7 +24,7 @@ async def generate_images(request: ArkImageGenerateRequest) -> ArkImageGenerateR
 
     Returns a list of generated image URLs.
     """
-    require_configured("ark")
+    require_configured("ark_image")
     try:
         images, pack = await ark_image_service.generate_images_with_pack(request)
         message = (

@@ -26,18 +26,21 @@ export interface WireIntegration {
   usable: boolean;
   source: string;
   fields: WireField[];
+  configuration_warning?: string;
 }
 
 const DEFAULT_CHOICE: Record<string, string> = {
   'volcano_tts.resource_id': 'seed-tts-2.0',
   'volcano_asr.resource_id': 'volc.bigasr.sauc.duration',
   'volcano_voice_clone.tts_resource_id': 'seed-icl-1.0',
+  'ark_video.default_model': 'doubao-seedance-2-0-260128',
+  'ark_video.custom_profile': 'text_only',
 };
 
 /** One integration as the backend would return it; everything unconfigured unless overridden. */
 export function wireIntegration(
   id: string,
-  options: { usable?: boolean; source?: string; fields?: Overrides } = {},
+  options: { usable?: boolean; source?: string; fields?: Overrides; configurationWarning?: string } = {},
 ): WireIntegration {
   const spec = schema.integrations.find((item) => item.id === id);
   if (!spec) throw new Error(`unknown integration ${id}`);
@@ -66,6 +69,7 @@ export function wireIntegration(
     usable: options.usable ?? false,
     source: options.source ?? 'none',
     fields,
+    configuration_warning: options.configurationWarning,
   };
 }
 

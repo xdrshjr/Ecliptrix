@@ -54,6 +54,71 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('field rendering', () => {
+  it('shows an invalid saved model instead of silently selecting the first preset', () => {
+    renderCard({
+      ...status('ark_video', { fields: {
+        default_model: { value: 'unsupported-environment-model' },
+      } }),
+      configurationWarning: 'invalid_model_configuration',
+    });
+    const select = screen.getByLabelText(copy.field.defaultModel);
+    expect(select).toHaveValue('unsupported-environment-model');
+    expect(select).toHaveAttribute('aria-invalid', 'true');
+    type(copy.field.defaultModel, 'doubao-seedance-2-0-260128');
+    expect(select).toHaveValue('doubao-seedance-2-0-260128');
+  });
+
+  it('allows clearing a custom ID while switching to a preset, without touching the key', async () => {
+    api.put.mockResolvedValue({ success: true, data: wireIntegration('ark_video', { usable: true }) });
+    api.post.mockResolvedValue({ success: true, data: { outcome: 'ok', verify_level: 'free' } });
+    renderCard(status('ark_video', { usable: true, fields: {
+      api_key: { configured: true }, default_model: { value: 'custom' },
+      custom_model: { value: 'ep-saved-model' },
+    } }));
+    type(copy.field.customModel, '');
+    type(copy.field.defaultModel, 'doubao-seedance-2-0-fast-260128');
+    expect(screen.queryByLabelText(copy.field.customModel)).toBeNull();
+    submit(copy.action.saveTest);
+    await screen.findByRole('status');
+    expect(api.put.mock.calls[0][1]).toEqual({ fields: {
+      default_model: 'doubao-seedance-2-0-fast-260128', custom_model: '',
+    } });
+  });
+
+  it('disables media writes after failed credential loading', () => {
+    renderCard({ ...status('ark_video'), configurationWarning: 'integration_load_failed' });
+    expect(screen.getByRole('alert')).toHaveTextContent(copy.warning.integration_load_failed);
+    expect(screen.getByLabelText(copy.field.apiKey)).toBeDisabled();
+    expect(screen.getByRole('button', { name: copy.action.saveTest })).toBeDisabled();
+  });
+
+  it('explains the legacy image environment without implying video is ready', () => {
+    renderCard({ ...status('ark_image'), configurationWarning: 'legacy_image_environment' });
+    expect(screen.getByRole('status')).toHaveTextContent(copy.warning.legacy_image_environment);
+  });
+  it('shows custom video fields only for custom and keeps the stored key when changing models', async () => {
+    api.put.mockResolvedValue({ success: true, data: wireIntegration('ark_video', { usable: true }) });
+    api.post.mockResolvedValue({ success: true, data: { outcome: 'ok', verify_level: 'free' } });
+    renderCard(status('ark_video', { usable: true, fields: { api_key: { configured: true, source: 'database' } } }));
+    expect(screen.queryByLabelText(copy.field.customModel)).toBeNull();
+    type(copy.field.defaultModel, 'custom');
+    type(copy.field.customModel, 'ep-valid.model-123');
+    type(copy.field.customProfile, 'seedance_2');
+    submit(copy.action.saveTest);
+    await screen.findByRole('status');
+    expect(api.put).toHaveBeenCalledWith('/api/integrations/ark_video', {
+      fields: { default_model: 'custom', custom_model: 'ep-valid.model-123', custom_profile: 'seedance_2' },
+    }, expect.any(Object));
+  });
+
+  it('rejects incomplete custom configuration without submitting', async () => {
+    renderCard(status('ark_video', { usable: true, fields: { api_key: { configured: true } } }));
+    type(copy.field.defaultModel, 'custom');
+    submit(copy.action.saveTest);
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.err.invalidModel);
+    expect(screen.getByLabelText(copy.field.customModel)).toHaveAttribute('aria-invalid', 'true');
+    expect(api.put).not.toHaveBeenCalled();
+  });
   it('draws each field from the schema: text, secret and a choice select', () => {
     renderCard(status('volcano_asr'));
     expect(screen.getByLabelText(copy.field.appId)).not.toHaveAttribute('type', 'password');
@@ -118,13 +183,13 @@ describe('save and test', () => {
 
   it('un-mutes the reminders of what it just configured', async () => {
     window.localStorage.setItem('ecliptrix-setup-optouts', '["ai_image","ai_video","tts"]');
-    api.put.mockResolvedValue({ success: true, data: wireIntegration('ark', { usable: true }) });
+    api.put.mockResolvedValue({ success: true, data: wireIntegration('ark_video', { usable: true }) });
     api.post.mockResolvedValue({ success: true, data: { outcome: 'ok', verify_level: 'free' } });
-    renderCard(status('ark'));
+    renderCard(status('ark_video'));
     type(copy.field.apiKey, SECRET);
     submit(copy.action.saveTest);
     await screen.findByRole('status');
-    expect(window.localStorage.getItem('ecliptrix-setup-optouts')).toBe('["tts"]');
+    expect(window.localStorage.getItem('ecliptrix-setup-optouts')).toBe('["ai_image","tts"]');
   });
 
   it('does not test a service that cannot be verified for free', async () => {
@@ -162,7 +227,7 @@ describe('save and test', () => {
 
 describe('local validation', () => {
   it('rejects a template placeholder before any request', async () => {
-    renderCard(status('ark'));
+    renderCard(status('ark_video'));
     type(copy.field.apiKey, 'your_ark_api_key_here');
     submit(copy.action.saveTest);
     expect(await screen.findAllByText(copy.err.placeholder)).not.toHaveLength(0);
@@ -212,12 +277,21 @@ describe('local validation', () => {
 });
 
 describe('test outcomes', () => {
+  it('explains that saved image permissions have not been billed or verified', async () => {
+    api.put.mockResolvedValue({ success: true, data: wireIntegration('ark_image', { usable: true }) });
+    api.post.mockResolvedValue({ success: true, data: { outcome: 'unverifiable', verify_level: 'free' } });
+    renderCard(status('ark_image'));
+    type(copy.field.apiKey, SECRET);
+    submit(copy.action.saveTest);
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.test.imageSaved);
+    expect(api.post.mock.calls[0][0]).toBe('/api/integrations/ark_image/test');
+  });
   async function failTest(outcome: string, id = 'freesound') {
     api.put.mockResolvedValue({ success: true, data: wireIntegration(id, { usable: true }) });
     api.post.mockResolvedValue({ success: true, data: { outcome, verify_level: 'free' } });
     const onContinueAnyway = vi.fn();
     renderCard(status(id), { onContinueAnyway });
-    type(id === 'ark' ? copy.field.apiKey : copy.field.apiKey, SECRET);
+    type(id === 'ark_video' ? copy.field.apiKey : copy.field.apiKey, SECRET);
     submit(copy.action.saveTest);
     return onContinueAnyway;
   }
@@ -237,7 +311,7 @@ describe('test outcomes', () => {
   });
 
   it('says "Key is valid" for Ark, never "connected", and keeps the activation link', async () => {
-    await failTest('ok', 'ark');
+    await failTest('ok', 'ark_video');
     expect(await screen.findByRole('status')).toHaveTextContent(copy.test.okArk);
     expect(screen.getByRole('link', { name: new RegExp(copy.link.activate) })).toHaveAttribute(
       'href',
@@ -308,9 +382,9 @@ describe('list fields (Pexels / Unsplash)', () => {
 
 describe('clearing (settings)', () => {
   it('DELETEs with a JSON content type so the origin check accepts it', async () => {
-    api.del.mockResolvedValue({ success: true, data: wireIntegration('ark') });
+    api.del.mockResolvedValue({ success: true, data: wireIntegration('ark_video') });
     const { onChanged } = renderCard(
-      status('ark', {
+      status('ark_video', {
         usable: true,
         source: 'database',
         fields: { api_key: { configured: true, source: 'database' } },
@@ -320,13 +394,13 @@ describe('clearing (settings)', () => {
     submit(copy.action.clear);
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(api.del).toHaveBeenCalledWith(
-      '/api/integrations/ark',
+      '/api/integrations/ark_video',
       expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
     );
   });
 
   it('offers no clear button when nothing is stored in the app', () => {
-    renderCard(status('ark'), { allowClear: true });
+    renderCard(status('ark_video'), { allowClear: true });
     expect(screen.queryByRole('button', { name: copy.action.clear })).toBeNull();
   });
 });
@@ -340,6 +414,9 @@ describe('error classification', () => {
     ['unknown_field', 'unknownField'],
     ['origin_forbidden', 'originForbidden'],
     ['integration_save_failed', 'saveFailed'],
+    ['invalid_model_configuration', 'invalidModel'],
+    ['integration_load_failed', 'loadFailed'],
+    ['integration_replaced', 'replaced'],
   ])('maps %s → %s and keeps the field name', (code, kind) => {
     const error = new ApiError(422, code, 'x', { field: 'api_key' });
     expect(classifyIntegrationError(error)).toEqual({ kind, field: 'api_key' });

@@ -818,7 +818,8 @@ class MaterialDownloadService:
         ext = self._guess_extension(url)
         sub_dir = self.cache_dir / source
         sub_dir.mkdir(parents=True, exist_ok=True)
-        safe_id = "".join(c for c in source_id if c.isalnum() or c in ("-", "_"))[:64] or "asset"
+        limit = 128 if source == "ark" else 64
+        safe_id = "".join(c for c in source_id if c.isalnum() or c in ("-", "_"))[:limit] or "asset"
         return str(sub_dir / f"{safe_id}{ext}")
 
     def _guess_extension(self, url: str) -> str:

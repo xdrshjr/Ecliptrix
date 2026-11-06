@@ -53,7 +53,7 @@ def mock_storyboard_env(monkeypatch, tmp_path):
         return real_async_client(*args, **kwargs)
 
     monkeypatch.setattr(storyboard_service.httpx, "AsyncClient", patched_client)
-    monkeypatch.setattr(storyboard_service.settings, "ark_api_key", "test-key")
+    monkeypatch.setattr(storyboard_service.settings, "ark_image_api_key", "test-key")
     monkeypatch.setattr(storyboard_service, "_storyboard_base_dir", lambda: str(tmp_path))
 
     return captured

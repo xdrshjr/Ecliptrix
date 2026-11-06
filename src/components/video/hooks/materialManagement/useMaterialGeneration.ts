@@ -2,16 +2,18 @@ import { Dispatch, MutableRefObject, SetStateAction, useCallback, useEffect, use
 import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { MaterialItem, StoryboardGenerateParams, StoryboardPack } from '@/types';
 import { VideoEditingLogger } from '../../utils';
-import { extractVideoThumbnail } from '../../utils/extractVideoThumbnail';
-import { createArkVideoTask, getArkVideoStatus, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
+import { useVideoEditingStore } from '@/stores/videoEditingStore';
+import { createArkVideoTask, getArkVideoStatus, arkVideoPollDelay, isArkVideoReady, arkVideoMaterialId, ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { generateArkImagesWithPack, ArkImageGenerateParams, ArkImagePack } from '@/lib/api/arkImage';
 import { generateStoryboard } from '@/lib/api/storyboard';
 import { generateUUID } from './materialDeleteHelpers';
+import { ApiError } from '@/lib/api/http-client';
 
 interface UseMaterialGenerationParams {
   logger: VideoEditingLogger;
   isMountedRef: MutableRefObject<boolean>;
   setMaterials: Dispatch<SetStateAction<MaterialItem[]>>;
+  materialsRef: MutableRefObject<MaterialItem[]>;
   addOrReplaceMaterial: (material: MaterialItem) => boolean;
 }
 
@@ -33,23 +35,41 @@ export interface UseMaterialGenerationReturn {
  * Owns the AI-generation flows (ARK video / ARK image / storyboard) plus the
  * polling-timer registry and its unmount cleanup. Placeholder cards and final
  * materials are pushed through the shared `setMaterials` / `addOrReplaceMaterial`
- * sinks so the material list stays single-source. Lifted verbatim from
- * useMaterialManagement; behaviour is unchanged.
+ * sinks so the material list stays single-source. Task ownership uses the
+ * panel's local material snapshot; the shared store only receives Agent assets.
  */
 export function useMaterialGeneration(params: UseMaterialGenerationParams): UseMaterialGenerationReturn {
-  const { logger, isMountedRef, setMaterials, addOrReplaceMaterial } = params;
+  const { logger, isMountedRef, setMaterials, materialsRef, addOrReplaceMaterial } = params;
 
   // AI视频生成轮询任务 ref: tempId -> current setTimeout handle
   const pendingAiTasks = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingAiControllers = useRef(new Map<string, AbortController>());
 
   // Clear all polling timers on unmount to prevent state updates on dead components
   useEffect(() => {
     const tasks = pendingAiTasks.current;
+    const controllers = pendingAiControllers.current;
+    // A restored placeholder has no live owner in this hook instance. Its
+    // remote task may still run, so remove the spinner without submitting again.
+    setMaterials(previous => previous.filter(material =>
+      material.downloadStatus !== 'generating' ||
+      (material.metadata?.generationOwner !== 'material-generation' &&
+        !['ark-ai-video', 'narration-ai-video'].includes(String(material.metadata?.source)))));
     return () => {
       tasks.forEach(id => clearTimeout(id));
+      for (const [placeholderId, controller] of Array.from(controllers)) {
+        controller.abort();
+        const store = useVideoEditingStore.getState();
+        const task = store.getTask(`manual-ai-video-${placeholderId}`);
+        if (task && ['pending', 'processing'].includes(task.status)) {
+          store.updateTask(task.taskId, { status: 'failed',
+            error: task.metadata.arkTaskId ? 'video_wait_timeout' : 'generation_submission_unknown' });
+        }
+      }
       tasks.clear();
+      controllers.clear();
     };
-  }, []);
+  }, [setMaterials]);
 
   // AI视频生成
   const handleAiVideoGenerate = useCallback(async (
@@ -88,141 +108,111 @@ export function useMaterialGeneration(params: UseMaterialGenerationParams): UseM
       createdAt,
       downloadStatus: 'generating',
       downloadProgress: 0,
-      metadata: { ...baseMetadata },
+      metadata: { ...baseMetadata, generationOwner: 'material-generation' },
     };
+    materialsRef.current = [placeholder, ...materialsRef.current];
     setMaterials(prev => [placeholder, ...prev]);
 
+    const requestToken = setTimeout(() => {}, 0);
+    pendingAiTasks.current.set(tempId, requestToken);
+    const controller = new AbortController();
+    pendingAiControllers.current.set(tempId, controller);
+    const release = () => {
+      clearTimeout(pendingAiTasks.current.get(tempId));
+      pendingAiTasks.current.delete(tempId);
+      pendingAiControllers.current.delete(tempId);
+      controller.abort();
+    };
+    const taskId = `manual-ai-video-${tempId}`;
+    const taskCreatedAt = createdAt.getTime();
+    useVideoEditingStore.getState().addTask({ taskId, createdAt: taskCreatedAt, type: 'ai_video',
+      status: 'pending', progress: 0, result: null, error: null,
+      metadata: { managedBy: 'material-generation', placeholderId: tempId } });
+    const current = () => {
+      const state = useVideoEditingStore.getState();
+      const task = state.getTask(taskId);
+      return isMountedRef.current && pendingAiTasks.current.has(tempId) && task?.createdAt === taskCreatedAt &&
+        (task.status === 'pending' || task.status === 'processing') && materialsRef.current.some(m => m.id === tempId);
+    };
+    const abandon = () => {
+      release();
+      const store = useVideoEditingStore.getState();
+      const task = store.getTask(taskId);
+      if (task?.createdAt === taskCreatedAt && ['pending', 'processing'].includes(task.status)) store.removeTask(taskId);
+    };
     let arkTaskId: string;
     try {
       const result = await createArkVideoTask(params);
+      if (!current()) { abandon(); return; }
       arkTaskId = result.ark_task_id;
     } catch (error) {
+      if (!current()) { abandon(); return; }
       reportCredentialMissing(error);
       logger.error('创建Ark视频任务失败', error as Error);
       setMaterials(prev => prev.filter(m => m.id !== tempId));
-      notifyFailed((error as Error)?.message || 'createArkVideoTask failed');
+      release();
+      useVideoEditingStore.getState().updateTask(taskId, { status: 'failed', error: (error as Error)?.message || 'generation_submission_unknown' });
+      notifyFailed((error as Error)?.message || '受理状态未知，供应商可能仍在生成');
+      if (error instanceof ApiError && error.status === 409) throw error;
       return;
     }
 
-    // Polling with simulated progress crawl and error retry cap
-    let estimatedProgress = 0;
+    useVideoEditingStore.getState().updateTask(taskId, {
+      metadata: { arkTaskId, managedBy: 'material-generation', placeholderId: tempId, prompt: params.prompt } });
     let errorRetries = 0;
-    const MAX_ERROR_RETRIES = 10;
-    // After video generation succeeds, keep polling for OSS URL + thumbnail (max ~60s)
-    let ossWaitRetries = 0;
-    const MAX_OSS_WAIT_RETRIES = 20;
-
+    let inFlight = false;
+    const fail = (reason: string) => {
+      release();
+      useVideoEditingStore.getState().updateTask(taskId, { status: 'failed', error: reason });
+      setMaterials(prev => prev.filter(m => m.id !== tempId));
+      notifyFailed(reason);
+    };
+    const schedule = (delay: number) => {
+      if (current()) pendingAiTasks.current.set(tempId, setTimeout(poll, delay));
+    };
     const poll = async () => {
-      // Slow progress crawl up to 90%
-      estimatedProgress = Math.min(estimatedProgress + Math.random() * 3 + 1, 90);
-      setMaterials(prev => prev.map(m =>
-        m.id === tempId ? { ...m, downloadProgress: estimatedProgress } : m
-      ));
-
+      if (!current()) { abandon(); return; }
+      if (inFlight) return;
+      if (Date.now() - taskCreatedAt >= 600000) { fail('本地等待超时，供应商任务可能仍在生成'); return; }
+      inFlight = true;
       try {
-        const status = await getArkVideoStatus(arkTaskId);
-        errorRetries = 0; // reset on success
-
-        if (status.status === 'succeeded' && status.video_url) {
-          // OSS upload complete: backend returns thumbnail_url once video+thumbnail are on OSS
-          if (status.thumbnail_url) {
-            const finalMaterial: MaterialItem = {
-              id: tempId,
-              name: materialName,
-              type: 'video',
-              format: 'mp4',
-              size: 0,
-              url: status.video_url,
-              serverUrl: status.video_url,
-              thumbnailUrl: status.thumbnail_url,
-              duration: status.duration,
-              width: status.width,
-              height: status.height,
-              createdAt,
-              downloadStatus: undefined,
-              downloadProgress: undefined,
-              metadata: { ...baseMetadata },
-            };
-            addOrReplaceMaterial(finalMaterial);
-            pendingAiTasks.current.delete(tempId);
-            notifySucceeded(finalMaterial);
-            return;
-          }
-
-          // OSS upload still in progress: set CDN URL for instant playback, keep polling
-          ossWaitRetries++;
-          const cdnMaterial: MaterialItem = {
-            id: tempId,
-            name: materialName,
-            type: 'video',
-            format: 'mp4',
-            size: 0,
-            url: status.video_url,
-            serverUrl: status.video_url,
-            thumbnailUrl: undefined,
-            duration: status.duration,
-            width: status.width,
-            height: status.height,
-            createdAt,
-            downloadStatus: 'generating',
-            downloadProgress: 95,
-            metadata: { ...baseMetadata },
+        const status = await getArkVideoStatus(arkTaskId, { signal: controller.signal });
+        if (!current()) { abandon(); return; }
+        errorRetries = 0;
+        if (isArkVideoReady(status)) {
+          const materialId = arkVideoMaterialId(status, arkTaskId);
+          const finalMaterial: MaterialItem = {
+            id: materialId, name: materialName, type: 'video', format: 'mp4', size: 0,
+            url: status.video_url!, serverUrl: status.video_url, cacheUrl: status.video_url,
+            thumbnailUrl: status.thumbnail_url, duration: status.duration, width: status.width,
+            height: status.height, createdAt,
+            metadata: { ...baseMetadata, model: status.model, arkTaskId: status.ark_task_id ?? arkTaskId },
           };
-          addOrReplaceMaterial(cdnMaterial);
-
-          if (ossWaitRetries >= MAX_OSS_WAIT_RETRIES) {
-            // OSS upload timed out — finalise with CDN URL, extract thumbnail client-side
-            logger.warn(`Ark视频OSS上传等待超时，使用CDN URL`, { arkTaskId, ossWaitRetries });
-            const finalisedCdn: MaterialItem = { ...cdnMaterial, downloadStatus: undefined, downloadProgress: undefined };
-            addOrReplaceMaterial(finalisedCdn);
-            pendingAiTasks.current.delete(tempId);
-            notifySucceeded(finalisedCdn);
-            extractVideoThumbnail(status.video_url).then(dataUrl => {
-              if (dataUrl && isMountedRef.current) {
-                setMaterials(prev => prev.map(m =>
-                  m.id === tempId ? { ...m, thumbnailUrl: dataUrl } : m
-                ));
-              }
-            });
-            return;
-          }
-
-          // Continue polling every 3s while waiting for OSS
-          const timeoutId = setTimeout(poll, 3000);
-          pendingAiTasks.current.set(tempId, timeoutId);
+          if (!useVideoEditingStore.getState().claimTaskCompletion(taskId, taskCreatedAt, { ...status, materialId })) return;
+          setMaterials(prev => {
+            if (!prev.some(m => m.id === tempId)) return prev;
+            return [finalMaterial, ...prev.filter(m => m.id !== tempId && m.id !== materialId)];
+          });
+          release();
+          notifySucceeded(finalMaterial);
           return;
         }
-
-        if (status.status === 'failed') {
-          setMaterials(prev => prev.filter(m => m.id !== tempId));
-          pendingAiTasks.current.delete(tempId);
-          notifyFailed('ARK task status=failed');
-          return;
+        if (status.status === 'failed' || status.status === 'timeout') {
+          fail(status.error_code || status.error || '视频生成失败'); return;
         }
-
-        // Still running — schedule next poll
-        const timeoutId = setTimeout(poll, 5000);
-        pendingAiTasks.current.set(tempId, timeoutId);
+        setMaterials(prev => prev.map(m => m.id === tempId ? { ...m, downloadProgress: status.phase === 'downloading' || status.phase === 'validating' ? 95 : Math.min(90, (Date.now() - taskCreatedAt) / 2000) } : m));
+        schedule(5000);
       } catch (error) {
-        errorRetries++;
-        logger.error(`轮询Ark视频状态失败 (retry ${errorRetries}/${MAX_ERROR_RETRIES})`, error as Error);
-
-        if (errorRetries >= MAX_ERROR_RETRIES) {
-          logger.error(`Ark视频轮询达到最大重试次数，放弃任务`, { arkTaskId, retries: errorRetries });
-          setMaterials(prev => prev.filter(m => m.id !== tempId));
-          pendingAiTasks.current.delete(tempId);
-          notifyFailed(`polling exceeded max retries (${MAX_ERROR_RETRIES})`);
-          return;
-        }
-
-        const timeoutId = setTimeout(poll, 5000);
-        pendingAiTasks.current.set(tempId, timeoutId);
+        if (!current()) { abandon(); return; }
+        const delay = arkVideoPollDelay(error, ++errorRetries);
+        if (delay === null || Date.now() + delay - taskCreatedAt >= 600000) fail(error instanceof Error ? error.message : '视频状态读取失败');
+        else schedule(delay);
+      } finally {
+        inFlight = false;
       }
     };
-
-    const initialTimeout = setTimeout(poll, 5000);
-    pendingAiTasks.current.set(tempId, initialTimeout);
-  }, [logger, isMountedRef, setMaterials, addOrReplaceMaterial]);
+    pendingAiTasks.current.set(tempId, setTimeout(poll, 5000));
+  }, [logger, isMountedRef, setMaterials, materialsRef, addOrReplaceMaterial]);
 
   // AI图像生成
   const handleAiImageGenerate = useCallback(async (params: ArkImageGenerateParams) => {

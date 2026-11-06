@@ -71,7 +71,7 @@ async def generate_storyboard(
     """Generate a chained 2x2 storyboard pack. On partial failure returns
     HTTP 200 with ``data.partial = true`` and whatever frames completed.
     """
-    require_configured("ark")
+    require_configured("ark_image")
     user_id = LOCAL_OWNER_ID
     project_id = _require_project_id(request.project_id, where="storyboard generation")
     request.project_id = project_id
@@ -369,7 +369,7 @@ async def batch_generate_videos(
     db: AsyncSession = Depends(get_db_session),
 ) -> StoryboardBatchVideoResponse:
     """Submit batch video generation tasks for storyboard frames."""
-    require_configured("ark")
+    require_configured("ark_video")
     user_id = LOCAL_OWNER_ID
     await storyboard_service._assert_pack_owned(
         db=db, pack_id=request.pack_id, user_id=user_id
@@ -377,18 +377,20 @@ async def batch_generate_videos(
     try:
         tasks = await storyboard_service.batch_generate_videos(request)
         successful = sum(1 for t in tasks if t.get("ark_task_id"))
+        from app.config import settings
         return StoryboardBatchVideoResponse(
             success=True,
             message=f"Submitted {successful}/{len(tasks)} video generation tasks",
             tasks=tasks,
+            timeout_seconds=settings.storyboard.video_generation.timeout_seconds,
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Storyboard pack not found: {request.pack_id}")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to submit batch video tasks for pack {request.pack_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to submit video tasks: {str(e)}")
+        from app.services.credential_errors import generation_error_response
+        return generation_error_response(e, "ark_video:contents/generations/tasks")
 
 
 @router.get("/queue/status")

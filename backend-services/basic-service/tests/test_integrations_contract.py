@@ -57,6 +57,8 @@ def test_every_extended_capability_belongs_to_exactly_one_integration():
     owners = [c for spec in REGISTRY for c in spec.capabilities]
     assert sorted(owners) == sorted(INTEGRATION_CAPABILITIES)
     assert len(set(owners)) == len(owners) == 8
+    assert next(spec for spec in REGISTRY if "ai_image" in spec.capabilities).id == "ark_image"
+    assert next(spec for spec in REGISTRY if "ai_video" in spec.capabilities).id == "ark_video"
 
 
 def test_secret_fields_are_never_marked_with_a_default():

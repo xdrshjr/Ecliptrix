@@ -74,7 +74,7 @@ describe('i18n coverage of the backend registry', () => {
 
     it('keeps the key pitfalls the spec insists on', () => {
       expect(copy.volcano_asr.pitfall).toMatch(locale === 'en' ? /different app/i : /另一个应用/);
-      expect(copy.ark.pitfall).toMatch(locale === 'en' ? /Activation management/ : /开通管理/);
+      expect(copy.ark_video.pitfall).toMatch(locale === 'en' ? /Activation management/ : /开通管理/);
       expect(copy.volcano_voice_clone.pitfall).toMatch(/speaker_id/);
       expect(copy.pexels.pitfall).toMatch(/5/);
       expect(copy.unsplash.pitfall).toMatch(/5/);
@@ -112,7 +112,8 @@ describe('links, groups and capabilities line up with the registry', () => {
       volcano_tts: 'billed_minimal',
       volcano_asr: 'handshake',
       volcano_voice_clone: 'none',
-      ark: 'free',
+      ark_image: 'free',
+      ark_video: 'free',
       pexels: 'free',
       unsplash: 'free',
       freesound: 'free',

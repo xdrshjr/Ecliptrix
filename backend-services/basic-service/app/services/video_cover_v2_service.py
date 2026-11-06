@@ -22,7 +22,7 @@ from app.models.video_cover_v2_models import (
     SaveCoverRequest,
     ImportCoverRequest,
 )
-from app.services.integration_credentials_service import ark_api_key
+from app.services.integration_credentials_service import integration_credentials
 from app.services import video_cover_asset_service as assets
 
 
@@ -248,7 +248,7 @@ async def load_state(db: AsyncSession, project_id: str) -> dict:
     return {
         **draft_data(draft),
         "revisions": readable,
-        "generation_configured": bool(ark_api_key()),
+        "generation_configured": integration_credentials.is_usable("ark_image"),
         "assets": [
             assets.asset_data(row)
             for row in background_assets

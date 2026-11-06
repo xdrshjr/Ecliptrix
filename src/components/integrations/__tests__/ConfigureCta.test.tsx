@@ -45,7 +45,9 @@ describe('ConfigureCta', () => {
 
 describe('notConfiguredIntegration', () => {
   it('reads the 409 envelope', () => {
-    expect(notConfiguredIntegration(missing('ark'))).toBe('ark');
+    expect(notConfiguredIntegration(missing('ark_video'))).toBe('ark_video');
+    expect(notConfiguredIntegration(missing('ark_image'))).toBe('ark_image');
+    expect(notConfiguredIntegration(missing('ark'))).toBeNull();
   });
 
   it('treats the legacy TTS and ASR codes as their integrations', () => {
@@ -84,8 +86,8 @@ describe('reportCredentialMissing + listener', () => {
   it('does not stack the same prompt on a retry loop, but still prompts for another service', () => {
     render(<CredentialMissingListener />);
     act(() => {
-      reportCredentialMissing(missing('ark'));
-      reportCredentialMissing(missing('ark'));
+      reportCredentialMissing(missing('ark_video'));
+      reportCredentialMissing(missing('ark_video'));
       reportCredentialMissing(missing('unsplash'));
     });
     expect(showConfirm).toHaveBeenCalledTimes(2);

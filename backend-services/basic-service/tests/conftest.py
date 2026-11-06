@@ -183,7 +183,13 @@ def _isolate_integration_credentials(monkeypatch):
     from app.services.integration_credentials_service import (
         integration_credentials,
     )
-    from app.services.integration_registry import REGISTRY
+    from app.services.integration_registry import REGISTRY, LEGACY_CREDENTIAL_BASELINES
+
+    for ref in LEGACY_CREDENTIAL_BASELINES:
+        if ref.settings_attr and hasattr(config_module.settings, ref.settings_attr):
+            monkeypatch.setattr(config_module.settings, ref.settings_attr, "")
+        if ref.env_var:
+            monkeypatch.delenv(ref.env_var, raising=False)
 
     for spec in REGISTRY:
         for spec_field in spec.fields:

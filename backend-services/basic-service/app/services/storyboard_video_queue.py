@@ -1,273 +1,249 @@
-"""
-Storyboard video-generation job queue.
-
-Wraps ARK video generation with a concurrency-limited queue plus per-job
-timeout so that the UI always observes a single in-flight slot budget
-regardless of which entry point triggered the work.
-
-Public surface:
-    - QUEUE_NAME: constant queue name registered with QueueManager
-    - JobState: data class describing a single job's state snapshot
-    - initialize(): register the queue + start TTL cleanup (call at startup)
-    - enqueue(...): schedule a new ARK generation job, returns job_id
-    - get_job(job_id): look up a job's state snapshot
-    - list_jobs(job_ids): batch lookup
-    - get_queue_info(): wrap QueueManager.get_queue_status
-
-Design notes:
-    - Each ARK video generation (a single "repeat") gets one job_id / slot.
-    - Slot is released only after success/failed/timeout — in contrast to
-      prior Semaphore-around-create_task behaviour which released after
-      the ARK submit HTTP call (seconds), not after the ~minute render.
-    - The ARK task continues running remotely after local timeout; we do
-      not call ARK cancel (the SDK currently provides no cancel method).
-"""
-
+"""分镜视频队列：排队冻结配置，直到本地 ready 才释放执行名额。"""
 from __future__ import annotations
 
 import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
 
 from app.config import settings
-from app.logger import get_logger
-from app.models.ark_video_models import ArkVideoGenerateRequest
+from app.models.ark_video_models import (
+    ArkVideoGenerateRequest, ArkVideoStatusResponse,
+)
 from app.services import ark_video_service
+from app.services.ark_video_config import resolve_video_config
+from app.services.ark_video_payload import build_payload
+from app.services.ark_video_task_context import video_task_contexts
+from app.services.credential_errors import VideoError
 from app.services.queue_manager import queue_manager
 
-logger = get_logger(__name__)
-
 QUEUE_NAME = "storyboard_video_generation"
-
-JobStatus = str  # "queued" | "generating" | "success" | "failed" | "timeout"
 
 
 @dataclass
 class JobState:
-    """Snapshot of a single storyboard video generation job."""
-
     job_id: str
     pack_id: str
     frame_index: int
     repeat_index: int
-    status: JobStatus = "queued"
-    ark_task_id: Optional[str] = None
-    video_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    duration: Optional[int] = None
-    error: Optional[str] = None
+    status: str = "queued"
+    phase: str | None = "queued"
+    model: str | None = None
+    ark_task_id: str | None = None
+    video_url: str | None = None
+    thumbnail_url: str | None = None
+    duration: float | None = None
+    width: int | None = None
+    height: int | None = None
+    error: str | None = None
+    error_code: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class _StoryboardVideoQueue:
     def __init__(self) -> None:
-        self._jobs: Dict[str, JobState] = {}
+        self._jobs: dict[str, JobState] = {}
+        self._handles: dict[str, str] = {}
+        self._workers: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: asyncio.Task | None = None
         self._initialized = False
 
-    # ---- lifecycle ----------------------------------------------------
-
     async def initialize(self) -> None:
-        """Create the underlying queue and start the TTL cleanup loop."""
         if self._initialized:
             return
-        cfg = settings.storyboard.video_generation
-        await queue_manager.create_queue(QUEUE_NAME, max_concurrent=cfg.max_concurrent)
-        logger.info(
-            f"Storyboard video queue initialized: max_concurrent={cfg.max_concurrent}, "
-            f"timeout_seconds={cfg.timeout_seconds}, poll_interval={cfg.poll_interval_seconds}s, "
-            f"retention={cfg.job_retention_seconds}s"
-        )
-        # Kick off background cleanup loop (one per process).
-        if self._cleanup_task is None or self._cleanup_task.done():
-            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        await queue_manager.create_queue(QUEUE_NAME, max_concurrent=settings.storyboard.video_generation.max_concurrent)
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         self._initialized = True
 
     async def _cleanup_loop(self) -> None:
-        """Periodically evict terminal jobs whose finished_at is older than retention."""
+        while True:
+            await asyncio.sleep(60)
+            cutoff = datetime.utcnow() - timedelta(seconds=settings.storyboard.video_generation.job_retention_seconds)
+            for job_id in list(self._jobs):
+                job = self._jobs.get(job_id)
+                if job and job.status == "queued":
+                    job = await self.get_job(job_id)
+                if job and job.finished_at and job.finished_at < cutoff:
+                    self._jobs.pop(job_id, None)
+
+    async def close(self) -> None:
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            await asyncio.gather(self._cleanup_task, return_exceptions=True)
+            self._cleanup_task = None
+        for job_id in list(self._handles):
+            await self.cancel(job_id)
+        self._initialized = False
+
+    async def cancel(self, job_id: str) -> None:
+        await queue_manager.cancel_task(job_id)
+        worker = self._workers.get(job_id)
+        if worker and worker is not asyncio.current_task():
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+        handle = self._handles.pop(job_id, None)
+        if handle:
+            await video_task_contexts.release(handle)
+        job = self._jobs.get(job_id)
+        if job and job.finished_at is None:
+            self._fail(job, "video_wait_cancelled")
+
+    async def enqueue(self, *, pack_id: str, frame_index: int, repeat_index: int,
+                      description: str, duration: int, frame_data_uri: str,
+                      context_handle: str | None = None) -> str:
+        request = ArkVideoGenerateRequest(prompt=description, duration=duration, image_urls=[frame_data_uri])
+        if context_handle is None:
+            config = resolve_video_config()
+            await build_payload(request, config)
+            context_handle = (await video_task_contexts.reserve(config))[0]
+        try:
+            await self.initialize()
+            ctx = video_task_contexts.context(context_handle)
+            job_id = f"sbv-{uuid.uuid4().hex}"
+            self._jobs[job_id] = JobState(job_id, pack_id, frame_index, repeat_index, model=ctx.model)
+            self._handles[job_id] = context_handle
+            await queue_manager.enqueue_task(
+                QUEUE_NAME, self._run_job,
+                task_args=(job_id, request, context_handle), task_id=job_id,
+                metadata={"pack_id": pack_id, "frame_index": frame_index, "repeat_index": repeat_index},
+            )
+            return job_id
+        except BaseException:
+            await video_task_contexts.release(context_handle)
+            if "job_id" in locals():
+                self._handles.pop(job_id, None)
+                self._jobs.pop(job_id, None)
+            raise
+
+    @staticmethod
+    def _fail(job: JobState, code: str, status: str = "failed") -> None:
+        job.status, job.error, job.error_code = status, code, code
+        job.finished_at = datetime.utcnow()
+
+    async def _run_job(self, job_id: str, request: ArkVideoGenerateRequest, context_handle: str) -> None:
+        job = self._jobs.get(job_id)
+        if job is None:
+            await video_task_contexts.release(context_handle)
+            return
+        self._workers[job_id] = asyncio.current_task()
+        job.status, job.started_at = "generating", datetime.utcnow()
+        cfg = settings.storyboard.video_generation
+        try:
+            async with asyncio.timeout(cfg.timeout_seconds):
+                submission = await ark_video_service.create_task(request, context_handle=context_handle)
+                job.ark_task_id, job.model = submission.task_id, submission.model_id
+                await self._poll(job, cfg.poll_interval_seconds)
+        except TimeoutError:
+            if job.ark_task_id:
+                self._fail(job, "video_wait_timeout", "timeout")
+            else:
+                self._fail(job, "generation_submission_unknown")
+        except asyncio.CancelledError:
+            self._fail(job, "video_wait_cancelled")
+            raise
+        except Exception as error:
+            code = error.code if isinstance(error, VideoError) else "video_generation_failed"
+            self._fail(job, code, "timeout" if code == "video_task_expired" else "failed")
+        finally:
+            ctx = video_task_contexts.by_task(job.ark_task_id)
+            # 保留已脱敏的终态，普通查询不能重新触发失败产物下载。
+            if ctx is None or ctx.finished_at is None:
+                await video_task_contexts.release(context_handle)
+            self._handles.pop(job_id, None)
+            self._workers.pop(job_id, None)
+
+    def _apply_status(
+        self, job: JobState, status: ArkVideoStatusResponse,
+    ) -> bool:
+        job.phase, job.model = status.phase, status.model
+        ready = (
+            status.status == "succeeded" and status.phase == "ready"
+            and bool(status.video_url)
+        )
+        for key in ("video_url", "thumbnail_url", "duration", "width", "height"):
+            setattr(job, key, getattr(status, key) if ready else None)
+        if ready:
+            job.status = "success"
+            job.error = job.error_code = None
+            job.finished_at = job.finished_at or datetime.utcnow()
+            return True
+        if status.status in ("failed", "timeout"):
+            self._fail(
+                job, status.error_code or "video_generation_failed",
+                status.status,
+            )
+            return True
+        job.status = "generating"
+        job.error = job.error_code = None
+        return False
+
+    async def retry_artifact(self, job: JobState) -> ArkVideoStatusResponse:
+        """显式重收同一任务，并让后续分镜查询跟随其本地状态。"""
+        status = await ark_video_service.get_status(
+            job.ark_task_id, retry_artifact=True,
+        )
+        if not self._apply_status(job, status):
+            job.finished_at = None
+        return status
+
+    async def _poll(self, job: JobState, interval: float) -> None:
+        failures = 0
         while True:
             try:
-                await asyncio.sleep(300)  # every 5 minutes
-                retention = settings.storyboard.video_generation.job_retention_seconds
-                cutoff = datetime.utcnow() - timedelta(seconds=retention)
-                async with self._lock:
-                    to_delete = [
-                        jid
-                        for jid, job in self._jobs.items()
-                        if job.finished_at is not None and job.finished_at < cutoff
-                    ]
-                    for jid in to_delete:
-                        self._jobs.pop(jid, None)
-                if to_delete:
-                    logger.info(
-                        f"Storyboard video queue cleanup: removed {len(to_delete)} job(s)"
-                    )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001 - best-effort cleanup
-                logger.error(f"Storyboard video queue cleanup error: {exc}", exc_info=True)
-
-    # ---- enqueue / run ------------------------------------------------
-
-    async def enqueue(
-        self,
-        *,
-        pack_id: str,
-        frame_index: int,
-        repeat_index: int,
-        description: str,
-        duration: int,
-        frame_data_uri: str,
-    ) -> str:
-        """Schedule an ARK video generation for one frame × one repeat.
-
-        Returns the job_id immediately; the job status is "queued" until a
-        slot frees up, then transitions through "generating" to a terminal
-        state.
-        """
-        await self.initialize()
-
-        job_id = f"sbv-{uuid.uuid4().hex}"
-        async with self._lock:
-            self._jobs[job_id] = JobState(
-                job_id=job_id,
-                pack_id=pack_id,
-                frame_index=frame_index,
-                repeat_index=repeat_index,
-            )
-
-        await queue_manager.enqueue_task(
-            QUEUE_NAME,
-            self._run_job,
-            task_args=(job_id, description, duration, frame_data_uri),
-            task_id=job_id,
-            metadata={
-                "pack_id": pack_id,
-                "frame_index": frame_index,
-                "repeat_index": repeat_index,
-            },
-        )
-        return job_id
-
-    async def _run_job(
-        self,
-        job_id: str,
-        description: str,
-        duration: int,
-        frame_data_uri: str,
-    ) -> None:
-        """Worker coroutine — runs inside QueueManager's semaphore slot."""
-        cfg = settings.storyboard.video_generation
-        job = await self._get_mutable(job_id)
-        if job is None:
-            logger.warning(f"Storyboard video job {job_id} missing from jobs table at worker start")
-            return
-
-        job.status = "generating"
-        job.started_at = datetime.utcnow()
-
-        try:
-            await asyncio.wait_for(
-                self._submit_and_poll(job, description, duration, frame_data_uri, cfg),
-                timeout=cfg.timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            job.status = "timeout"
-            job.error = f"Video generation exceeded timeout of {cfg.timeout_seconds}s"
-            job.finished_at = datetime.utcnow()
-            logger.warning(
-                f"Storyboard video job {job_id} (frame {job.frame_index} repeat {job.repeat_index}) "
-                f"timed out after {cfg.timeout_seconds}s"
-            )
-        except asyncio.CancelledError:
-            # Propagate after marking terminal so cleanup TTL can evict
-            # the job and the UI doesn't see a permanent "generating".
-            job.status = "failed"
-            job.error = "Job cancelled (server shutdown or explicit cancel)"
-            job.finished_at = datetime.utcnow()
-            logger.info(f"Storyboard video job {job_id} cancelled")
-            raise
-        except Exception as exc:  # noqa: BLE001
-            job.status = "failed"
-            job.error = str(exc)
-            job.finished_at = datetime.utcnow()
-            logger.error(
-                f"Storyboard video job {job_id} failed: {exc}", exc_info=True
-            )
-
-    async def _submit_and_poll(
-        self,
-        job: JobState,
-        description: str,
-        duration: int,
-        frame_data_uri: str,
-        cfg,
-    ) -> None:
-        """Submit the ARK task then poll until terminal."""
-        ark_request = ArkVideoGenerateRequest(
-            prompt=description,
-            mode="description",
-            image_urls=[frame_data_uri],
-            duration=duration,
-        )
-        ark_task_id = await ark_video_service.create_task(ark_request)
-        job.ark_task_id = ark_task_id
-        logger.info(
-            f"Storyboard video job {job.job_id}: ARK task created {ark_task_id} "
-            f"(frame {job.frame_index} repeat {job.repeat_index})"
-        )
-
-        while True:
-            status = await ark_video_service.get_status(ark_task_id)
-            st = (status.status or "").lower()
-            if st == "succeeded":
-                job.status = "success"
-                job.video_url = status.video_url
-                job.thumbnail_url = status.thumbnail_url
-                job.duration = status.duration
-                job.finished_at = datetime.utcnow()
+                status = await ark_video_service.get_status(job.ark_task_id)
+            except VideoError as error:
+                failures += 1
+                if not error.details.get("retryable") or failures > 3:
+                    raise
+                delay = error.details.get("retry_after_seconds", (5, 10, 20)[failures - 1])
+                if delay > 60:
+                    raise
+                await asyncio.sleep(delay)
+                continue
+            failures = 0
+            if self._apply_status(job, status):
                 return
-            if st == "failed":
-                job.status = "failed"
-                job.error = status.error or status.message or "ARK reported failure"
-                job.finished_at = datetime.utcnow()
-                return
-            # Still running — wait before next poll.
-            await asyncio.sleep(cfg.poll_interval_seconds)
+            await asyncio.sleep(interval)
 
-    # ---- read-only accessors -----------------------------------------
+    async def get_job(self, job_id: str) -> JobState | None:
+        job = self._jobs.get(job_id)
+        if job and job.ark_task_id and (
+            job.status == "success"
+            or (job.status == "generating" and job_id not in self._workers)
+        ):
+            # 缓存删改或上下文淘汰后，分镜也必须重新验证本地 ready。
+            status = await ark_video_service.get_status(job.ark_task_id)
+            self._apply_status(job, status)
+        if job and job.status == "queued":
+            task = await queue_manager.get_task_status(job_id)
+            handle = self._handles.get(job_id)
+            if task and getattr(task.status, "value", task.status) == "cancelled":
+                await self.cancel(job_id)
+            elif handle:
+                try:
+                    ctx = video_task_contexts.context(handle)
+                    expired = ctx.finished_at is not None
+                except VideoError:
+                    expired = True
+                if expired:
+                    await self.cancel(job_id)
+                    self._fail(job, "video_task_expired", "timeout")
+        return job
 
-    async def _get_mutable(self, job_id: str) -> Optional[JobState]:
-        async with self._lock:
-            return self._jobs.get(job_id)
+    async def list_jobs(self, job_ids: list[str]) -> list[JobState | None]:
+        return [await self.get_job(job_id) for job_id in job_ids]
 
-    async def get_job(self, job_id: str) -> Optional[JobState]:
-        return await self._get_mutable(job_id)
-
-    async def list_jobs(self, job_ids: List[str]) -> List[Optional[JobState]]:
-        async with self._lock:
-            return [self._jobs.get(jid) for jid in job_ids]
-
-    async def position_in_queue(self, job_id: str) -> Optional[int]:
-        """Return 1-based queue position if still queued, else None."""
+    async def position_in_queue(self, job_id: str) -> int | None:
         task = await queue_manager.get_task_status(job_id)
-        if task is None:
-            return None
-        # TaskStatus is a string enum — use value check.
-        status_val = getattr(task.status, "value", task.status)
-        if status_val == "queued":
+        if task and getattr(task.status, "value", task.status) == "queued":
             return task.position_in_queue
         return None
 
-    def jobs_snapshot(self) -> Dict[str, JobState]:
-        """Non-locking snapshot for observability (tests / diagnostics)."""
+    def jobs_snapshot(self) -> dict[str, JobState]:
         return dict(self._jobs)
 
 
-# Module-level singleton
 storyboard_video_queue = _StoryboardVideoQueue()

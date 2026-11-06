@@ -12,6 +12,7 @@ from app.models.db_models import ProjectCoverJob
 from app.models.ark_image_models import ArkImageGenerateRequest
 from app.models.video_cover_v2_models import CoverError, CoverJobRequest
 from app.services import video_cover_asset_service as assets
+from app.services.credential_errors import require_configured
 from app.services.video_cover_v2_service import (
     document_hash,
     get_document,
@@ -114,6 +115,7 @@ class CoverJobService:
             if existing:
                 return await self._replay(db, existing, payload)
             await self._validate_input(db, project_id, payload)
+            require_configured("ark_image")
             queued = (
                 (
                     await db.execute(

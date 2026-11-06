@@ -45,7 +45,7 @@ def _patch_storage(tmp_path, monkeypatch):
     """Redirect all storyboard I/O to a temporary directory and ensure
     ARK_API_KEY is set so the generator does not early-exit."""
     monkeypatch.setattr(settings.storage, "root", str(tmp_path))
-    monkeypatch.setattr(settings, "ark_api_key", "test-key")
+    monkeypatch.setattr(settings, "ark_image_api_key", "test-key")
     yield
 
 

@@ -19,6 +19,11 @@ from types import SimpleNamespace
 from typing import Dict
 
 import pytest
+import pytest_asyncio
+from app.config import settings as real_settings
+from app.models.ark_video_models import ArkVideoStatusResponse
+from app.services.ark_video_service import VideoSubmission
+from app.services.ark_video_task_context import video_task_contexts
 
 from app.services import storyboard_video_queue as svq_module
 from app.services.queue_manager import QueueManager
@@ -56,13 +61,16 @@ def _patch_settings(monkeypatch, max_concurrent=3, timeout_seconds=600, poll_int
     monkeypatch.setattr(svq_module, "settings", fake, raising=True)
 
 
-@pytest.fixture
-def fresh_queue(monkeypatch):
+@pytest_asyncio.fixture
+async def fresh_queue(monkeypatch):
     """Provide a fresh queue + fresh QueueManager for each test."""
+    monkeypatch.setattr(real_settings, "ark_video_api_key", "fake-video-key")
     qm = QueueManager()
     monkeypatch.setattr(svq_module, "queue_manager", qm, raising=True)
     q = _StoryboardVideoQueue()
-    return q
+    yield q
+    await q.close()
+    await video_task_contexts.close()
 
 
 async def test_concurrency_limit_enforces_queueing(fresh_queue, monkeypatch):
@@ -72,21 +80,21 @@ async def test_concurrency_limit_enforces_queueing(fresh_queue, monkeypatch):
     release_events: Dict[str, asyncio.Event] = {}
     created_ids = []
 
-    async def fake_create_task(request):
+    async def fake_create_task(request, context_handle=None):
         # Allocate a fake ark id per submission.
         aid = f"ark-{len(created_ids) + 1}"
         created_ids.append(aid)
         release_events[aid] = asyncio.Event()
-        return aid
+        return VideoSubmission(aid, "model", "revision")
 
     async def fake_get_status(ark_task_id):
         # Remain "running" until the test releases the event.
         if not release_events[ark_task_id].is_set():
-            return SimpleNamespace(
+            return ArkVideoStatusResponse(success=True,
                 status="running", video_url=None, thumbnail_url=None, duration=None, error=None, message=""
             )
-        return SimpleNamespace(
-            status="succeeded",
+        return ArkVideoStatusResponse(success=True,
+            status="succeeded", phase="ready", width=64, height=96,
             video_url=f"http://videos/{ark_task_id}.mp4",
             thumbnail_url=None,
             duration=5,
@@ -107,7 +115,7 @@ async def test_concurrency_limit_enforces_queueing(fresh_queue, monkeypatch):
             repeat_index=0,
             description="test",
             duration=5,
-            frame_data_uri="data:image/png;base64,AA==",
+            frame_data_uri="https://example.com/frame.png",
         )
         job_ids.append(jid)
 
@@ -142,20 +150,20 @@ async def test_timeout_marks_job_timeout_and_releases_slot(fresh_queue, monkeypa
 
     calls = {"n": 0}
 
-    async def fake_create_task(request):
+    async def fake_create_task(request, context_handle=None):
         calls["n"] += 1
-        return f"ark-{calls['n']}"
+        return VideoSubmission(f"ark-{calls['n']}", "model", "revision")
 
     async def fake_get_status(ark_task_id):
         # ark-1 hangs forever (always running) → triggers timeout.
         # ark-2 (and later) succeed immediately, proving the slot was freed.
         if ark_task_id == "ark-1":
-            return SimpleNamespace(
+            return ArkVideoStatusResponse(success=True,
                 status="running", video_url=None, thumbnail_url=None,
                 duration=None, error=None, message="",
             )
-        return SimpleNamespace(
-            status="succeeded", video_url="http://ok.mp4", thumbnail_url=None,
+        return ArkVideoStatusResponse(success=True,
+            status="succeeded", phase="ready", width=64, height=96, video_url="http://ok.mp4", thumbnail_url=None,
             duration=5, error=None, message="",
         )
 
@@ -166,11 +174,11 @@ async def test_timeout_marks_job_timeout_and_releases_slot(fresh_queue, monkeypa
 
     j1 = await fresh_queue.enqueue(
         pack_id="pack-T", frame_index=0, repeat_index=0, description="a",
-        duration=5, frame_data_uri="data:image/png;base64,AA==",
+        duration=5, frame_data_uri="https://example.com/frame.png",
     )
     j2 = await fresh_queue.enqueue(
         pack_id="pack-T", frame_index=0, repeat_index=1, description="a",
-        duration=5, frame_data_uri="data:image/png;base64,AA==",
+        duration=5, frame_data_uri="https://example.com/frame.png",
     )
 
     await _wait_until(lambda: fresh_queue.jobs_snapshot()[j1].status == "timeout", timeout=5.0)
@@ -182,11 +190,11 @@ async def test_failed_ark_response_marks_failed(fresh_queue, monkeypatch):
     """ARK returning status=failed should mark the job failed with the ARK error."""
     _patch_settings(monkeypatch, max_concurrent=1, timeout_seconds=60, poll_interval=0.02)
 
-    async def fake_create_task(request):
-        return "ark-bad"
+    async def fake_create_task(request, context_handle=None):
+        return VideoSubmission("ark-bad", "model", "revision")
 
     async def fake_get_status(ark_task_id):
-        return SimpleNamespace(status="failed", video_url=None, thumbnail_url=None, duration=None, error="render crashed", message="")
+        return ArkVideoStatusResponse(success=True, status="failed", video_url=None, thumbnail_url=None, duration=None, error="video_generation_failed", error_code="video_generation_failed", message="")
 
     monkeypatch.setattr(svq_module.ark_video_service, "create_task", fake_create_task, raising=True)
     monkeypatch.setattr(svq_module.ark_video_service, "get_status", fake_get_status, raising=True)
@@ -194,10 +202,10 @@ async def test_failed_ark_response_marks_failed(fresh_queue, monkeypatch):
     await fresh_queue.initialize()
     jid = await fresh_queue.enqueue(
         pack_id="p", frame_index=0, repeat_index=0, description="x",
-        duration=5, frame_data_uri="data:image/png;base64,AA==",
+        duration=5, frame_data_uri="https://example.com/frame.png",
     )
     await _wait_until(lambda: fresh_queue.jobs_snapshot()[jid].status == "failed")
-    assert fresh_queue.jobs_snapshot()[jid].error == "render crashed"
+    assert fresh_queue.jobs_snapshot()[jid].error == "video_generation_failed"
 
 
 async def test_repeat_each_repeat_index_takes_own_slot(fresh_queue, monkeypatch):
@@ -206,13 +214,13 @@ async def test_repeat_each_repeat_index_takes_own_slot(fresh_queue, monkeypatch)
 
     gate = asyncio.Event()
 
-    async def fake_create_task(request):
-        return f"ark-{id(request)}"
+    async def fake_create_task(request, context_handle=None):
+        return VideoSubmission(f"ark-{id(request)}", "model", "revision")
 
     async def fake_get_status(ark_task_id):
         if not gate.is_set():
-            return SimpleNamespace(status="running", video_url=None, thumbnail_url=None, duration=None, error=None, message="")
-        return SimpleNamespace(status="succeeded", video_url="http://x.mp4", thumbnail_url=None, duration=5, error=None, message="")
+            return ArkVideoStatusResponse(success=True, status="running", video_url=None, thumbnail_url=None, duration=None, error=None, message="")
+        return ArkVideoStatusResponse(success=True, status="succeeded", phase="ready", width=64, height=96, video_url="http://x.mp4", thumbnail_url=None, duration=5, error=None, message="")
 
     monkeypatch.setattr(svq_module.ark_video_service, "create_task", fake_create_task, raising=True)
     monkeypatch.setattr(svq_module.ark_video_service, "get_status", fake_get_status, raising=True)
@@ -222,7 +230,7 @@ async def test_repeat_each_repeat_index_takes_own_slot(fresh_queue, monkeypatch)
     for ri in range(4):
         jid = await fresh_queue.enqueue(
             pack_id="p", frame_index=0, repeat_index=ri, description="d",
-            duration=5, frame_data_uri="data:image/png;base64,AA==",
+            duration=5, frame_data_uri="https://example.com/frame.png",
         )
         job_ids.append(jid)
 

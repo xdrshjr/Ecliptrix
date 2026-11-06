@@ -51,7 +51,7 @@ def mock_env(monkeypatch, tmp_path):
         return real_async(*args, **kwargs)
 
     monkeypatch.setattr(ark_image_service.httpx, "AsyncClient", patched)
-    monkeypatch.setattr(ark_image_service.settings, "ark_api_key", "test-key")
+    monkeypatch.setattr(ark_image_service.settings, "ark_image_api_key", "test-key")
     monkeypatch.setattr(ark_image_service.settings.storage, "root", str(tmp_path))
     monkeypatch.setattr(grid_pack_service.settings.storage, "root", str(tmp_path))
     return {"captured": captured, "root": str(tmp_path)}

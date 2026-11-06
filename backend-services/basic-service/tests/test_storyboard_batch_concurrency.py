@@ -17,6 +17,11 @@ from types import SimpleNamespace
 from typing import Dict
 
 import pytest
+import pytest_asyncio
+from app.config import settings as real_settings
+from app.models.ark_video_models import ArkVideoStatusResponse
+from app.services.ark_video_service import VideoSubmission
+from app.services.ark_video_task_context import video_task_contexts
 
 from app.models.storyboard_models import (
     StoryboardBatchVideoRequest,
@@ -63,11 +68,8 @@ def _write_pack(tmp_path, frame_count: int) -> str:
     frames = []
     for i in range(frame_count):
         fname = f"frame_{i:03d}.png"
-        # 1x1 PNG bytes
-        png = bytes.fromhex(
-            "89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D4944415478DA6300010000000005000150000000FF000000000049454E44AE426082"
-        )
-        (pack_dir / fname).write_bytes(png)
+        from PIL import Image
+        Image.new("RGB", (300, 300), "red").save(pack_dir / fname)
         frames.append({"index": i, "filename": fname, "url": f"local://{fname}", "row": 0, "col": i})
 
     (pack_dir / "metadata.json").write_text(
@@ -76,14 +78,17 @@ def _write_pack(tmp_path, frame_count: int) -> str:
     return pack_id
 
 
-@pytest.fixture
-def fresh_queue(monkeypatch):
+@pytest_asyncio.fixture
+async def fresh_queue(monkeypatch):
     """Fresh queue with isolated QueueManager."""
+    monkeypatch.setattr(real_settings, "ark_video_api_key", "fake-video-key")
     qm = QueueManager()
     monkeypatch.setattr(svq_module, "queue_manager", qm, raising=True)
     q = _StoryboardVideoQueue()
     monkeypatch.setattr(svq_module, "storyboard_video_queue", q, raising=True)
-    return q
+    yield q
+    await q.close()
+    await video_task_contexts.close()
 
 
 async def test_batch_ten_segments_max_concurrent_three(fresh_queue, monkeypatch, tmp_path):
@@ -96,14 +101,14 @@ async def test_batch_ten_segments_max_concurrent_three(fresh_queue, monkeypatch,
     release = asyncio.Event()
     created = {"n": 0}
 
-    async def fake_create_task(request):
+    async def fake_create_task(request, context_handle=None):
         created["n"] += 1
-        return f"ark-{created['n']}"
+        return VideoSubmission(f"ark-{created['n']}", "model", "revision")
 
     async def fake_get_status(ark_task_id):
         if not release.is_set():
-            return SimpleNamespace(status="running", video_url=None, thumbnail_url=None, duration=None, error=None, message="")
-        return SimpleNamespace(status="succeeded", video_url="http://x.mp4", thumbnail_url=None, duration=5, error=None, message="")
+            return ArkVideoStatusResponse(success=True, status="running", video_url=None, thumbnail_url=None, duration=None, error=None, message="")
+        return ArkVideoStatusResponse(success=True, status="succeeded", phase="ready", width=64, height=96, video_url="http://x.mp4", thumbnail_url=None, duration=5, error=None, message="")
 
     monkeypatch.setattr(svq_module.ark_video_service, "create_task", fake_create_task, raising=True)
     monkeypatch.setattr(svq_module.ark_video_service, "get_status", fake_get_status, raising=True)
@@ -163,14 +168,14 @@ async def test_repeat_four_on_single_segment_produces_four_independent_slots(
     gate = asyncio.Event()
     counter = {"n": 0}
 
-    async def fake_create_task(request):
+    async def fake_create_task(request, context_handle=None):
         counter["n"] += 1
-        return f"ark-R-{counter['n']}"
+        return VideoSubmission(f"ark-R-{counter['n']}", "model", "revision")
 
     async def fake_get_status(ark_task_id):
         if not gate.is_set():
-            return SimpleNamespace(status="running", video_url=None, thumbnail_url=None, duration=None, error=None, message="")
-        return SimpleNamespace(status="succeeded", video_url="http://x.mp4", thumbnail_url=None, duration=5, error=None, message="")
+            return ArkVideoStatusResponse(success=True, status="running", video_url=None, thumbnail_url=None, duration=None, error=None, message="")
+        return ArkVideoStatusResponse(success=True, status="succeeded", phase="ready", width=64, height=96, video_url="http://x.mp4", thumbnail_url=None, duration=5, error=None, message="")
 
     monkeypatch.setattr(svq_module.ark_video_service, "create_task", fake_create_task, raising=True)
     monkeypatch.setattr(svq_module.ark_video_service, "get_status", fake_get_status, raising=True)

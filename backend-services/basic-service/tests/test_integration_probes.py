@@ -57,7 +57,7 @@ HTTP_CASES = [
     ("pexels", {"api_keys": [KEY]}),
     ("unsplash", {"access_keys": [KEY]}),
     ("freesound", {"api_key": KEY}),
-    ("ark", {"api_key": KEY}),
+    ("ark_video", {"api_key": KEY}),
 ]
 
 
@@ -81,10 +81,22 @@ async def test_http_status_classification(
 
 @pytest.mark.asyncio
 async def test_ark_403_means_a_valid_key_without_access(store, monkeypatch):
-    await _save(store, "ark", {"api_key": KEY})
+    await _save(store, "ark_video", {"api_key": KEY})
     _install_transport(monkeypatch, lambda request: httpx.Response(403))
 
-    assert (await probes.run_probe("ark")).outcome == "not_entitled"
+    assert (await probes.run_probe("ark_video")).outcome == "not_entitled"
+
+
+@pytest.mark.asyncio
+async def test_image_probe_never_queries_video_and_uses_separate_cooldown(store, monkeypatch):
+    await store.save("ark_image", {"api_key": "separate-image-secret"})
+    await store.save("ark_video", {"api_key": KEY})
+    seen = _install_transport(monkeypatch, lambda request: httpx.Response(200))
+    assert (await probes.run_probe("ark_image")).outcome == "unverifiable"
+    assert seen == []
+    assert (await probes.run_probe("ark_video")).outcome == "ok"
+    assert len(seen) == 1
+    assert seen[0].headers["authorization"] == f"Bearer {KEY}"
 
 
 @pytest.mark.asyncio
@@ -154,7 +166,7 @@ async def test_a_second_probe_within_five_seconds_is_rate_limited(store, monkeyp
 @pytest.mark.asyncio
 async def test_a_probe_while_another_runs_is_rate_limited(store, monkeypatch):
     await _save(store, "freesound", {"api_key": KEY})
-    await _save(store, "ark", {"api_key": KEY})
+    await _save(store, "ark_video", {"api_key": KEY})
     gate = asyncio.Event()
 
     async def slow_probe():
@@ -164,7 +176,7 @@ async def test_a_probe_while_another_runs_is_rate_limited(store, monkeypatch):
     monkeypatch.setitem(probes.PROBES, "freesound", slow_probe)
     running = asyncio.create_task(probes.run_probe("freesound"))
     await asyncio.sleep(0)
-    other = await probes.run_probe("ark")
+    other = await probes.run_probe("ark_video")
     gate.set()
 
     assert other.outcome == "rate_limited"
@@ -176,9 +188,9 @@ async def test_an_unexpected_probe_error_becomes_a_safe_outcome(store, monkeypat
     async def broken():
         raise RuntimeError(f"explodes with {KEY}")
 
-    monkeypatch.setitem(probes.PROBES, "ark", broken)
+    monkeypatch.setitem(probes.PROBES, "ark_video", broken)
     with caplog.at_level(logging.DEBUG):
-        report = await probes.run_probe("ark")
+        report = await probes.run_probe("ark_video")
 
     assert report.outcome == "upstream_error"
     assert KEY not in caplog.text

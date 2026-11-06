@@ -38,6 +38,7 @@ function draftValue(
     return keys.length > 0 ? keys : undefined;
   }
   const trimmed = raw.trim();
+  if (field.name === 'custom_model') return trimmed === field.value ? undefined : trimmed;
   return trimmed === '' ? undefined : trimmed;
 }
 
@@ -50,6 +51,12 @@ function validateField(
   value: string | string[],
 ): IntegrationSaveError | null {
   if (field.kind === 'choice') return null;
+  if (field.name === 'custom_model') {
+    if (typeof value !== 'string' || (value && !/^(?:doubao-seedance-|ep-)[A-Za-z0-9._-]+$/.test(value)) || value.length > 128) {
+      return { kind: 'invalidModel', field: field.name };
+    }
+    return null;
+  }
   if (placeholderIn(value)) return { kind: 'placeholder', field: field.name };
   if (Array.isArray(value) && value.length > secretListMax(field)) {
     return { kind: 'tooMany', field: field.name };
@@ -88,6 +95,12 @@ export function buildPatch(
   if (missing && !integration.usable) {
     return { patch, error: { kind: 'required', field: missing.name } };
   }
+  if (integration.id === 'ark_video') {
+    const effective = (name: string) => patch[name] ?? integration.fields.find((field) => field.name === name)?.value;
+    if (effective('default_model') === 'custom' && !effective('custom_model')) {
+      return { patch, error: { kind: 'invalidModel', field: 'custom_model' } };
+    }
+  }
   return { patch, error: null };
 }
 
@@ -98,6 +111,6 @@ export function hasUnsubmittedInput(
 ): boolean {
   return integration.fields.some(
     (field) =>
-      field.kind !== 'choice' && (drafts[field.name] ?? '').trim() !== '',
+      drafts[field.name] !== undefined && draftValue(field, drafts[field.name]) !== undefined,
   );
 }

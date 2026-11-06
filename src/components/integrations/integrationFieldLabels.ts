@@ -9,6 +9,9 @@ export const FIELD_LABEL_KEY = {
   tts_resource_id: 'ttsResourceId',
   api_keys: 'apiKeys',
   access_keys: 'accessKeys',
+  default_model: 'defaultModel',
+  custom_model: 'customModel',
+  custom_profile: 'customProfile',
 } as const;
 
 export type FieldLabelKey = (typeof FIELD_LABEL_KEY)[keyof typeof FIELD_LABEL_KEY];

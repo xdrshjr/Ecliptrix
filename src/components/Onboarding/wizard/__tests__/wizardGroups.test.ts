@@ -57,7 +57,7 @@ describe('group tables', () => {
     for (const capability of ['chat', 'fast', 'video_cut', 'vision', 'research', 'web_search'] as const) {
       expect(groupOfCapability(capability)).toBeNull();
     }
-    expect(groupOfIntegration('ark')).toBe('generation');
+    expect(groupOfIntegration('ark_video')).toBe('generation');
   });
 
   it('lay the overview out as models / voice / generation / media / search', () => {

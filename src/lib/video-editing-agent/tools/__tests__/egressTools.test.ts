@@ -26,13 +26,28 @@ const MATERIAL = {
   provenance: { license_status: 'unknown' },
 };
 
+const VIDEO_MODELS = ['doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-mini-260615'];
+const videoConfiguration = (revision = 'video-v1') => ({ success: true, data: {
+  configured: true, default_model: VIDEO_MODELS[0], config_revision: revision,
+  models: VIDEO_MODELS.map(id => ({ id, duration_min: 4, duration_max: 12 })),
+} });
+const isModelRead = (url: string) => url.endsWith('/api/ark-video/models');
+const businessRequests = (urls: string[]) => urls.filter(url => !isModelRead(url));
+const videoPosts = () => vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/api/ark-video/generate') && init?.method === 'POST');
+function mockVideoFetch(submit: () => Promise<Response> | Response) {
+  const mocked = vi.fn((url: string) => isModelRead(url) ? Promise.resolve(Response.json(videoConfiguration())) : submit());
+  vi.stubGlobal('fetch', mocked);
+  return mocked;
+}
+
 function setup(envelope: unknown, options: { status?: number;
-  hostCapabilities?: HostCapabilitySnapshot } = {}) {
+  hostCapabilities?: HostCapabilitySnapshot; videoRevision?: string } = {}) {
   const urls: string[] = [];
   const bodies: Array<Record<string, unknown>> = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
     urls.push(url);
     bodies.push(JSON.parse(String(init.body ?? '{}')));
+    if (isModelRead(url)) return Response.json(videoConfiguration(options.videoRevision));
     return Response.json(envelope, { status: options.status ?? 200 });
   }));
   const operations = new Map<string, AgentOperation>();
@@ -140,17 +155,19 @@ describe('失败分支的有界恢复', () => {
       const failure = await execute(first);
       now += 11 * 60_000;
       await execute(first);
-      expect(first.urls).toHaveLength(1);
+      expect(businessRequests(first.urls)).toHaveLength(1);
+      if (kind === 'generation') expect(first.urls.filter(isModelRead)).toHaveLength(2);
 
       const next = setup(envelope, { status: 502 });
       next.context.recoveryScope = 'same-task';
       if (kind === 'download') restoreEgressFailures(next.context, [failure]);
       else restoreCapabilityFailures(next.context, [failure]);
       await execute(next);
-      expect(next.urls).toHaveLength(0);
+      expect(businessRequests(next.urls)).toHaveLength(0);
       now += 50 * 60_000;
       await execute(next);
-      expect(next.urls).toHaveLength(1);
+      expect(businessRequests(next.urls)).toHaveLength(1);
+      if (kind === 'generation') expect(next.urls.filter(isModelRead)).toHaveLength(2);
     },
   );
 
@@ -167,21 +184,26 @@ describe('失败分支的有界恢复', () => {
     }, { status: 500 });
     const video = createGenerateAiVideoTool(context);
     for (let i = 0; i < 3; i++) {
-      const result = await video.execute(`v${i}`, { prompt: `镜头 ${i}`, model: `${i}` });
+      const result = await video.execute(`v${i}`, { prompt: `镜头 ${i}`, model: VIDEO_MODELS[i] });
       expect(result.details).toMatchObject({ error_code: 'provider_unavailable',
         error_details: { upstream_status: 400, retryable: false } });
     }
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(videoPosts()).toHaveLength(1);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => isModelRead(String(url)))).toHaveLength(3);
+    expect(JSON.parse(String(videoPosts()[0][1]?.body))).toMatchObject({ expected_config_revision: 'video-v1' });
     await createGenerateAiImageTool(context).execute('image', { prompt: '犬' });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(videoPosts()).toHaveLength(1);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/api/ark-image/generate'))).toHaveLength(1);
   });
 
   it('生成提交断线不重发，也不写入任务', async () => {
     const { context, recordOperation } = setup({});
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('断线')));
+    mockVideoFetch(() => Promise.reject(new TypeError('断线')));
     const tool = createGenerateAiVideoTool(context);
-    await tool.execute('video', { prompt: '犬' });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    const result = await tool.execute('video', { prompt: '犬' });
+    expect(result.details).toMatchObject({ error_code: 'generation_submission_unknown' });
+    expect(videoPosts()).toHaveLength(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(recordOperation).not.toHaveBeenCalled();
   });
 
@@ -190,16 +212,35 @@ describe('失败分支的有界恢复', () => {
     const controller = new AbortController();
     context.abortSignal = controller.signal;
     let finish!: (response: Response) => void;
-    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+    mockVideoFetch(() => new Promise<Response>(resolve => { finish = resolve; }));
     const tool = createGenerateAiVideoTool(context);
     const first = tool.execute('first', { prompt: '第一镜' });
+    await vi.waitFor(() => expect(videoPosts()).toHaveLength(1));
     const second = await tool.execute('second', { prompt: '第二镜' });
     expect(second.details).toMatchObject({ success: false, error_code: 'capability_probe_pending' });
     controller.abort();
     finish(Response.json({ success: true, ark_task_id: 'late' }));
-    expect((await first).details).toMatchObject({ error_code: 'cancelled' });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect((await first).details).toMatchObject({ error_code: 'generation_submission_unknown', error_details: { cancelled: true } });
+    expect(videoPosts()).toHaveLength(1);
     expect(recordOperation).not.toHaveBeenCalled();
+  });
+
+  it.each(['sdk', 'context'] as const)('%s 在模型读取时取消不发 POST、不占生成名额', async kind => {
+    const { context, recordOperation } = setup({});
+    const controller = new AbortController();
+    if (kind === 'context') context.abortSignal = controller.signal;
+    let reject!: (reason: Error) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((_, fail) => { reject = fail; })));
+    const result = createGenerateAiVideoTool(context).execute('cancel', { prompt: '犬' }, kind === 'sdk' ? controller.signal : undefined);
+    controller.abort();
+    reject(new DOMException('Cancelled', 'AbortError'));
+    expect((await result).details).toMatchObject({ error_code: 'cancelled' });
+    expect(videoPosts()).toHaveLength(0);
+    expect(recordOperation).not.toHaveBeenCalled();
+    context.abortSignal = undefined;
+    mockVideoFetch(() => Response.json({ success: true, ark_task_id: 'next' }));
+    expect((await createGenerateAiVideoTool(context).execute('next', { prompt: '犬' })).details).toMatchObject({ success: true });
+    expect(videoPosts()).toHaveLength(1);
   });
 
   it('确定性的下载失败禁止同 URL 再次请求，暂时性最多重试一次', async () => {
@@ -216,23 +257,24 @@ describe('失败分支的有界恢复', () => {
     const envelope = { success: false, error_code: 'provider_unavailable',
       error_details: { failure_class: 'configuration', retryable: false } };
     const first = setup(envelope, { status: 502 });
-    Object.assign(first.context, { recoveryScope: 'project/session/task', generationConfigRevision: 'v1' });
+    Object.assign(first.context, { recoveryScope: 'project/session/task', generationConfigRevision: 'global-v1' });
     const failure = (await createGenerateAiVideoTool(first.context).execute('a', { prompt: '犬' })).details;
     for (const [scope, revision, reset, expired, calls] of [
-      ['project/session/task', 'v1', false, false, 0],
-      ['project/session/task2', 'v1', false, false, 1],
-      ['project/session/task', 'v2', false, false, 1],
-      ['project/session/task', 'v1', true, false, 1],
-      ['project/session/task', 'v1', false, true, 1],
+      ['project/session/task', 'video-v1', false, false, 0],
+      ['project/session/task2', 'video-v1', false, false, 1],
+      ['project/session/task', 'video-v2', false, false, 1],
+      ['project/session/task', 'video-v1', true, false, 1],
+      ['project/session/task', 'video-v1', false, true, 1],
     ] as const) {
-      const next = setup(envelope, { status: 502 });
+      const next = setup(envelope, { status: 502, videoRevision: revision });
       Object.assign(next.context, { recoveryScope: scope,
-        generationConfigRevision: revision, recoveryReset: reset });
+        generationConfigRevision: 'unrelated-global-v2', recoveryReset: reset });
       const value = structuredClone(failure) as Record<string, any>;
       if (expired) value.capability_failure.expiresAt = 0;
       restoreCapabilityFailures(next.context, [value]);
       await createGenerateAiVideoTool(next.context).execute('b', { prompt: '不同镜头' });
-      expect(fetch).toHaveBeenCalledTimes(calls);
+      expect(videoPosts()).toHaveLength(calls);
+      expect(fetch).toHaveBeenCalledTimes(calls + 1);
     }
   });
 
@@ -241,9 +283,10 @@ describe('失败分支的有界恢复', () => {
     const tool = createGenerateAiVideoTool(context);
     await tool.execute('a', { prompt: '第一镜' });
     await tool.execute('b', { prompt: '第二镜' });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(videoPosts()).toHaveLength(2);
+    expect(fetch).toHaveBeenCalledTimes(4);
     expect(recordOperation).toHaveBeenCalledTimes(2);
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>secret</html>', { status: 503 })));
+    mockVideoFetch(() => new Response('<html>secret</html>', { status: 503 }));
     const result = await tool.execute('c', { prompt: '第三镜' });
     expect(result.details).toMatchObject({ error_code: 'provider_error', error_details: { local_status: 503 } });
     expect(JSON.stringify(result.details)).not.toContain('secret');
@@ -297,14 +340,17 @@ describe('失败分支的有界恢复', () => {
       const { context, byName, recordOperation } = setup({});
       const controller = new AbortController();
       let finish!: (response: Response) => void;
-      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+      mockVideoFetch(() => new Promise<Response>(resolve => { finish = resolve; }));
       const result = kind === 'generation'
         ? createGenerateAiVideoTool(context).execute('cancel', { prompt: '犬' }, controller.signal)
         : byName.get('download_url')!.execute('cancel', { url: 'https://e.com/a.jpg', kind: 'image' }, controller.signal);
+      await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
       controller.abort();
       finish(Response.json(kind === 'generation' ? { success: true, ark_task_id: 'late' }
         : { success: true, data: { status: 'ready', material: MATERIAL } }));
-      expect((await result).details).toMatchObject({ error_code: 'cancelled' });
+      expect((await result).details).toMatchObject(kind === 'generation'
+        ? { error_code: 'generation_submission_unknown', error_details: { cancelled: true } } : { error_code: 'cancelled' });
+      if (kind === 'generation') expect(videoPosts()).toHaveLength(1);
       expect(recordOperation).not.toHaveBeenCalled();
     }
   });

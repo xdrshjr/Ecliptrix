@@ -483,9 +483,16 @@ Agent、视觉模型做抽帧复核。
 | Pexels | `PEXELS_API_KEY` | 视频搜索 |
 | Unsplash | `UNSPLASH_ACCESS_KEYS` | 图片搜索 |
 | Tavily | `TAVILY_API_KEYS` | 资料整合用的网页搜索 |
-| 字节 ARK | `ARK_API_KEY` | AI 视频生成 + Seedream 图像生成 |
+| Seedream 图片生成 | `ARK_IMAGE_API_KEY` | 普通图片、角色／场景图、分镜图和 AI 封面 |
+| Seedance 视频生成 | `ARK_VIDEO_API_KEY`、`ARK_VIDEO_MODEL` | 视频生成，独立于图片凭证 |
 | 火山 TTS | `VOLCANO_TTS_*` | 语音合成（100+ 音色） |
 | Freesound | `FREESOUND_API_KEY` | 音频搜索 |
+
+图片和视频在“设置 → 服务与素材库 → AI 图片与视频”中分别配置，保存、清除和首次引导跳过状态彼此独立。允许主动填写相同 Key，但系统不会复制图片 Key 给视频。旧数据库中的 `ark.api_key` 只执行一次事务迁移到图片配置；已有图片数据库配置或有效 `ARK_IMAGE_API_KEY` 不被覆盖。旧环境变量 `ARK_API_KEY` 仅作为图片兼容来源，优先级低于 `ARK_IMAGE_API_KEY`，视频始终需要 `ARK_VIDEO_API_KEY` 或独立的视频数据库配置。
+
+默认视频模型为 `doubao-seedance-2-0-260128`。应用预置白名单还包含 `doubao-seedance-2-0-fast-260128` 和 `doubao-seedance-2-0-mini-260615`；这表示应用支持，不代表账户已经开通。“Seedance 2.0 lite”未确认对应 ID，不会自动映射为 Fast、Mini 或文本模型。
+
+使用其他视频模型或接入点时，将 `ARK_VIDEO_MODEL=custom`，填写 `ARK_VIDEO_CUSTOM_MODEL`（以 `doubao-seedance-` 或 `ep-` 开头），并通过 `ARK_VIDEO_CUSTOM_PROFILE` 选择 `text_only`、`first_frame` 或 `seedance_2`。设置卡片也提供同样字段；`text_only` 不支持需要首帧的分镜视频。模型配置在提交时冻结，后续改设置不改变已受理任务。连接测试只读取视频任务列表，不创建收费任务，也不证明该模型已开通；首次真实生成验证模型权限。
 
 这些都是可选项：没有对应密钥时只有那个工具不可用，剪辑主路径照常工作。YouTube 下载/
 上传使用 `yt-dlp`，不需要 API 密钥。

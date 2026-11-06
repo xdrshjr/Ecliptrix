@@ -6,7 +6,7 @@ populated for ``text`` and ``choice`` fields (identifiers and option names).
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 FieldKind = Literal["secret", "secret_list", "text", "choice"]
 FieldSource = Literal["database", "environment", "default", "none"]
@@ -37,6 +37,7 @@ class IntegrationPublic(BaseModel):
     usable: bool
     source: IntegrationSource
     fields: List[IntegrationFieldPublic]
+    configuration_warning: Optional[str] = None
 
 
 class IntegrationListData(BaseModel):
@@ -57,6 +58,7 @@ class IntegrationResponse(BaseModel):
 class IntegrationSaveRequest(BaseModel):
     """``fields``: omitted = unchanged, ``""``/``null`` = clear that field."""
 
+    model_config = ConfigDict(extra="forbid")
     fields: Dict[str, Any]
 
 

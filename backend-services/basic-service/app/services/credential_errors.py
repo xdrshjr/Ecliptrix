@@ -11,6 +11,8 @@ frontend can offer a "go configure it" button instead of parsing English text.
 from __future__ import annotations
 
 from app.services.integration_credentials_service import integration_credentials
+from app.services.integration_credentials_service import IntegrationLoadFailed
+from app.services.ark_video_profiles import InvalidModelConfiguration, validate_model_configuration
 
 CREDENTIAL_NOT_CONFIGURED = "credential_not_configured"
 NOT_CONFIGURED_STATUS = 409
@@ -19,7 +21,8 @@ _MESSAGES = {
     "volcano_tts": "Speech synthesis is not configured.",
     "volcano_asr": "Speech recognition (subtitles) is not configured.",
     "volcano_voice_clone": "Voice cloning is not configured.",
-    "ark": "AI image/video generation (Volcano Ark) is not configured.",
+    "ark_image": "AI 图片生成（Seedream）尚未配置。",
+    "ark_video": "AI 视频生成（Seedance）尚未配置。",
     "pexels": "The Pexels video library is not configured.",
     "unsplash": "The Unsplash image library is not configured.",
     "freesound": "The Freesound sound library is not configured.",
@@ -45,17 +48,57 @@ def require_configured(integration_id: str) -> None:
         CredentialNotConfigured: a required field has no usable value.
         UnknownIntegrationError: ``integration_id`` is not in the registry.
     """
+    integration_credentials.require_loaded(integration_id)
+    if integration_id == "ark_video":
+        resolved = integration_credentials.resolve(integration_id)
+        if not resolved.field("api_key").configured:
+            raise CredentialNotConfigured(integration_id)
+        validate_model_configuration({item.name: item.value for item in resolved.fields})
+        return
     if not integration_credentials.is_usable(integration_id):
         raise CredentialNotConfigured(integration_id)
 
 
+class VideoError(Exception):
+    """视频链路的受控错误；details 必须由调用方构造白名单字段。"""
+
+    def __init__(self, code: str, status_code: int = 422, **details) -> None:
+        self.code = code
+        self.status_code = status_code
+        self.details = details
+        super().__init__(code)
+
+
+def video_error_response(error: VideoError):
+    """不输出异常文本或供应商原始正文。"""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=error.status_code, content={
+        "success": False, "message": error.code, "error_code": error.code,
+        "error_details": {"retryable": False, **error.details},
+    })
+
+
 def generation_error_response(error, capability):
     """生成提交的受控错误信封；供应商正文及签名地址不返回模型。"""
+    return video_error_response(classify_generation_error(error, capability))
+
+
+def classify_generation_error(error: Exception, capability: str) -> VideoError:
+    """统一路由和后台任务的提交错误分类，仅保留受控公开字段。"""
     import re
     from json import JSONDecodeError
     from uuid import uuid4
     import httpx
-    from fastapi.responses import JSONResponse
+
+    if isinstance(error, VideoError):
+        return error
+    if isinstance(error, IntegrationLoadFailed):
+        return VideoError("integration_load_failed", 503,
+                          integration_id=error.integration_id)
+    if isinstance(error, InvalidModelConfiguration):
+        return VideoError("invalid_model_configuration", 422,
+                          field=error.field_name, integration_id="ark_video")
 
     upstream = error.response if isinstance(error, httpx.HTTPStatusError) else None
     status = upstream.status_code if upstream is not None else None
@@ -73,12 +116,14 @@ def generation_error_response(error, capability):
         if ("endpoint" in message and
                 ("currently closed" in message or "temporarily unavailable" in message)):
             code, category = "provider_unavailable", "configuration"
-        elif provider_code in {"endpointnotfound", "endpointdisabled"}:
+        elif provider_code in {"endpointnotfound", "endpointdisabled", "modelnotfound", "modelnotopen", "modelnotenabled"}:
             code, category = "provider_unavailable", "configuration"
         elif status in {401, 403}:
             code, category = "provider_authentication", "configuration"
         elif status == 429:
             code = "provider_rate_limited"
+        elif "model" in message and any(term in message for term in ("not found", "not open", "not enabled", "not available", "not exist")):
+            code, category = "provider_unavailable", "configuration"
         elif status in {400, 404, 422}:
             code, category = "provider_validation", "validation"
         else:
@@ -113,7 +158,4 @@ def generation_error_response(error, capability):
                     max(0, int(wait) + 1), 86400)
             except (ValueError, TypeError, OverflowError):
                 pass
-    return JSONResponse(status_code=local_status, content={
-        "success": False, "message": code, "error_code": code,
-        "error_details": details,
-    })
+    return VideoError(code, status_code=local_status, **details)

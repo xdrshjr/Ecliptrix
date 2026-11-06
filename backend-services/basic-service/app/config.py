@@ -505,10 +505,15 @@ class Settings(BaseModel):
         description="Volcano voice clone X-Api-Resource-Id for TTS synthesis (seed-icl-1.0 | seed-icl-1.0-concurr)",
     )
 
-    # Ark API Configuration (Seedance video generation)
+    # 图片的旧共享变量仅作为兼容来源；视频必须独立配置。
     ark_api_key: str = Field(
-        default="", description="ARK API key for Seedance video generation"
+        default="", description="Legacy image-only Ark API key"
     )
+    ark_image_api_key: str = Field(default="", description="Seedream image API key")
+    ark_video_api_key: str = Field(default="", description="Seedance video API key")
+    ark_video_model: str = Field(default="", description="Default video model ID or custom")
+    ark_video_custom_model: str = Field(default="", description="Custom video model or endpoint ID")
+    ark_video_custom_profile: str = Field(default="", description="Custom video capability profile")
 
     # YouTube Proxy Configuration
     youtube_proxy: str = Field(
@@ -935,6 +940,11 @@ def get_settings() -> Settings:
             "VOLCANO_VOICE_CLONE_TTS_RESOURCE_ID", "seed-icl-1.0"
         ),
         ark_api_key=os.getenv("ARK_API_KEY", ""),
+        ark_image_api_key=os.getenv("ARK_IMAGE_API_KEY", ""),
+        ark_video_api_key=os.getenv("ARK_VIDEO_API_KEY", ""),
+        ark_video_model=os.getenv("ARK_VIDEO_MODEL", ""),
+        ark_video_custom_model=os.getenv("ARK_VIDEO_CUSTOM_MODEL", ""),
+        ark_video_custom_profile=os.getenv("ARK_VIDEO_CUSTOM_PROFILE", ""),
         youtube_proxy=os.getenv("YOUTUBE_PROXY", ""),
         database=database_config,
         batch_tts=batch_tts_config,

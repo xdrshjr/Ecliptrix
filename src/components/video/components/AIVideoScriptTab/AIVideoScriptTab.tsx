@@ -26,6 +26,7 @@ interface AIVideoScriptTabProps {
   onAddMaterial?: (material: MaterialItem) => void;
   materials?: MaterialItem[];
   taskId?: string;
+  projectKey?: string;
 }
 
 const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
@@ -34,10 +35,11 @@ const AIVideoScriptTab: React.FC<AIVideoScriptTabProps> = ({
   onAddMaterial,
   materials = [],
   taskId,
+  projectKey,
 }) => {
   const { t } = useLocale();
   const { showWarning } = useNotification();
-  const { generateVideo, cancelGeneration } = useAIVideoScriptGeneration(segments, onUpdateSegments, onAddMaterial);
+  const { generateVideo, cancelGeneration } = useAIVideoScriptGeneration(segments, onUpdateSegments, onAddMaterial, projectKey);
   const [expandingSegmentId, setExpandingSegmentId] = useState<string | null>(null);
   const [expandDialogSegmentId, setExpandDialogSegmentId] = useState<string | null>(null);
   const [expandGoal, setExpandGoal] = useState('');

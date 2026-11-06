@@ -137,13 +137,14 @@ describe('footer wording and opt-outs', () => {
     expect(screen.queryByRole('button', { name: text.action.skipGroup })).toBeNull();
   });
 
-  it('"Not using" on Ark mutes both AI image and AI video (AC2-7)', async () => {
+  it('"Not using" on images preserves video reminders', async () => {
     renderWizard({ capabilities: upgradedCapabilities(['tts', 'asr', 'voice_clone']) });
     click(START);
     await screen.findByRole('heading', { name: copy.group.generation.title });
-    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`${text.action.skip} ${text.ark.name}`) }));
-    expect(optOuts().sort()).toEqual(['ai_image', 'ai_video']);
-    expect(screen.getByText(copy.state.optedOut)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: `${text.action.skip} ${text.ark_image.name}` }));
+    expect(optOuts()).toEqual(['ai_image']);
+    expect(screen.getByRole('button', { name: `${text.action.skip} ${text.ark_video.name}` })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: `${text.action.skip} ${text.ark_image.name}` })).toBeNull();
   });
 
   it('lets an opted-out item be turned back on', async () => {
@@ -185,6 +186,22 @@ describe('"only set up models, the rest later" (E9)', () => {
 });
 
 describe('runtime "go configure" entry', () => {
+  it.each(['ark_image', 'ark_video'] as const)('focuses exactly the requested %s card', async (id) => {
+    renderWizard({ mode: 'manual', focus: id });
+    await screen.findByRole('heading', { name: copy.group.generation.title });
+    await waitFor(() => expect(rowToggle(text[id].name)).toHaveAttribute('aria-expanded', 'true'));
+    const other = id === 'ark_image' ? 'ark_video' : 'ark_image';
+    expect(rowToggle(text[other].name)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('keeps the video gap when images are configured', async () => {
+    installBackend(cleanInstall().map((item) => item.id === 'ark_image'
+      ? wireIntegration('ark_image', { usable: true, source: 'database' }) : item));
+    renderWizard({ capabilities: upgradedCapabilities(['tts', 'asr', 'voice_clone', 'ai_image']) });
+    click(START);
+    await screen.findByRole('heading', { name: copy.group.generation.title });
+    await waitFor(() => expect(rowToggle(text.ark_video.name)).toHaveAttribute('aria-expanded', 'true'));
+  });
   it('opens a manual wizard on the requested integration with its card expanded', async () => {
     renderWizard({
       mode: 'manual',

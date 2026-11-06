@@ -1,16 +1,11 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
+import type { VideoModelConfiguration } from '@/lib/api/arkVideo';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import { toolFetch, parseToolResponse, GENERATION_CAPABILITIES,
   acquireGeneration, finishGeneration, generationFailure,
   parseGenerationFailure } from './apiHelper';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const MAX_CONCURRENT_AI_TASKS = 3;
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -27,7 +22,7 @@ const parameters = Type.Object({
       { description: 'Video aspect ratio (default: "16:9")' },
     ),
   ),
-  model: Type.Optional(Type.String({ description: '兼容字段；服务端固定模型，此值不改变生成能力或重试预算。' })),
+  model: Type.Optional(Type.String({ description: '可选：目录或已保存自定义模型 ID；省略时使用默认视频模型。' })),
   autoAddToTimeline: Type.Optional(
     Type.Boolean({ description: 'Whether to automatically add the result to the timeline when done. Decide based on user intent.' }),
   ),
@@ -51,19 +46,50 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
     execute: async (toolCallId, params: Params, signal) => {
       // --- Validate prompt ---
       const prompt = params.prompt?.trim();
-      if (!prompt) {
+      if (!prompt || prompt.length > 2000) {
         const err = { success: false, error: 'Prompt must not be empty' };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
 
       // --- Validate & default optional params ---
-      const duration = clamp(params.duration ?? 5, 4, 12);
+      const duration = params.duration ?? 5;
       const aspectRatio = params.aspect_ratio ?? '16:9';
 
       // --- Call the ARK video generation API ---
       const capability = GENERATION_CAPABILITIES.video;
+      let configuration: VideoModelConfiguration;
+      try {
+        const response = await toolFetch(context, '/api/ark-video/models', { method: 'GET', retry: false, timeout: 5000, signal });
+        const data = await parseToolResponse<{ success: boolean; data?: VideoModelConfiguration }>(response);
+        if (!response.ok || !data.success || !('data' in data) || !data.data) {
+          const failure = parseGenerationFailure(response.status, data);
+          return { content: [{ type: 'text', text: JSON.stringify(failure) }], details: failure };
+        }
+        configuration = data.data;
+      } catch {
+        const cancelled = context.abortSignal?.aborted || signal?.aborted;
+        const failure = generationFailure(cancelled ? 'cancelled' : 'video_configuration_unavailable', cancelled ? 'cancelled' : 'validation');
+        return { content: [{ type: 'text', text: JSON.stringify(failure) }], details: failure };
+      }
+      if (context.abortSignal?.aborted || signal?.aborted) {
+        const failure = generationFailure('cancelled', 'cancelled');
+        return { content: [{ type: 'text', text: JSON.stringify(failure) }], details: failure };
+      }
+      const revision = configuration.config_revision;
+      const modelId = params.model?.trim() || configuration.default_model;
+      const model = configuration.models.find(item => item.id === modelId);
+      if (!configuration.configured) {
+        const warning = configuration.configuration_warning;
+        const code = warning === 'integration_load_failed' || warning === 'invalid_model_configuration' ? warning : 'credential_not_configured';
+        const failure = generationFailure(code, 'configuration');
+        return { content: [{ type: 'text', text: JSON.stringify(failure) }], details: failure };
+      }
+      if (!model || !Number.isInteger(duration) || duration < model.duration_min || duration > model.duration_max) {
+        const failure = generationFailure('video_parameters_unsupported', 'validation');
+        return { content: [{ type: 'text', text: JSON.stringify(failure) }], details: failure };
+      }
       const blocked = signal?.aborted ? generationFailure('cancelled', 'cancelled')
-        : acquireGeneration(context, capability);
+        : acquireGeneration(context, capability, revision);
       if (blocked) return { content: [{ type: 'text', text: JSON.stringify(blocked) }], details: blocked };
       try {
         const response = await toolFetch(context, '/api/ark-video/generate', {
@@ -75,6 +101,7 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
             prompt,
             duration,
             aspect_ratio: aspectRatio,
+            expected_config_revision: revision,
             ...(params.model ? { model: params.model } : {}),
           }),
         });
@@ -83,12 +110,18 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
           success: boolean;
           message?: string;
           ark_task_id?: string;
+          model?: string;
+          config_revision?: string;
         }>(response);
 
         if (context.abortSignal?.aborted || signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
         if (!response.ok || !data.success || !('ark_task_id' in data) || !data.ark_task_id) {
+          if (response.status === 409) {
+            // 只更新目录；必须等用户下一次明确生成，不能重放收费请求。
+            try { await toolFetch(context, '/api/ark-video/models', { method: 'GET', retry: false, timeout: 5000, signal }); } catch { /* 保留原始配置竞争提示 */ }
+          }
           const err = finishGeneration(context, capability,
-            parseGenerationFailure(response.status, data));
+            parseGenerationFailure(response.status, data), revision);
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
@@ -106,6 +139,8 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
           createdAt: Date.now(),
           metadata: {
             arkTaskId,
+            model: data.model,
+            configRevision: data.config_revision,
             prompt,
             duration,
             aspectRatio,
@@ -115,7 +150,9 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
         context.recordOperation(toolCallId, { type: 'start_async_task', task });
 
         const result = {
-          ...finishGeneration(context, capability),
+          ...finishGeneration(context, capability, undefined, revision),
+          model: data.model,
+          config_revision: data.config_revision,
           success: true,
           taskId,
           arkTaskId,
@@ -130,18 +167,9 @@ export function createGenerateAiVideoTool(context: ToolContext): AgentTool<typeo
         const cancelled = context.abortSignal?.aborted || signal?.aborted ||
           (error instanceof Error && error.name === 'AbortError');
         const err = finishGeneration(context, capability, generationFailure(
-          cancelled ? 'cancelled' : 'generation_submission_unknown',
-          cancelled ? 'cancelled' : 'transient'));
+          'generation_submission_unknown', 'transient', { cancelled: Boolean(cancelled) }), revision);
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
       }
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }

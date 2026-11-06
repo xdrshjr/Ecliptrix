@@ -10,7 +10,7 @@ export type IntegrationGroupId = 'voice' | 'generation' | 'media';
 
 export const INTEGRATION_GROUPS: Record<IntegrationGroupId, readonly IntegrationId[]> = {
   voice: ['volcano_tts', 'volcano_asr', 'volcano_voice_clone'],
-  generation: ['ark'],
+  generation: ['ark_image', 'ark_video'],
   media: ['pexels', 'unsplash', 'freesound'],
 };
 
@@ -21,12 +21,13 @@ export const INTEGRATION_GROUP_ORDER: readonly IntegrationGroupId[] = [
   'media',
 ];
 
-/** Capabilities an integration unlocks. `ark` serves two of them (E5). */
+/** 图片与视频各自归属一个独立集成。 */
 export const INTEGRATION_CAPABILITIES: Record<IntegrationId, readonly CapabilityId[]> = {
   volcano_tts: ['tts'],
   volcano_asr: ['asr'],
   volcano_voice_clone: ['voice_clone'],
-  ark: ['ai_image', 'ai_video'],
+  ark_image: ['ai_image'],
+  ark_video: ['ai_video'],
   pexels: ['video_library'],
   unsplash: ['image_library'],
   freesound: ['audio_library'],

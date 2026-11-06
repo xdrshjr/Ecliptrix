@@ -495,7 +495,8 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
     handleAiVideoGenerate,
     handleAiImageGenerate,
     handleStoryboardGenerate,
-  } = useMaterialGeneration({ logger, isMountedRef, setMaterials, addOrReplaceMaterial });
+  } = useMaterialGeneration({ logger, isMountedRef, setMaterials,
+    materialsRef: materialsSnapshotRef, addOrReplaceMaterial });
 
   /**
    * DS3-03: clearing the library goes through the same usage plan as a

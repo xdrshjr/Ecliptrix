@@ -83,9 +83,22 @@
       ]
     },
     {
-      "id": "ark",
+      "id": "ark_image",
       "capabilities": [
-        "ai_image",
+        "ai_image"
+      ],
+      "verifyLevel": "free",
+      "fields": [
+        {
+          "name": "api_key",
+          "kind": "secret",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "ark_video",
+      "capabilities": [
         "ai_video"
       ],
       "verifyLevel": "free",
@@ -94,6 +107,32 @@
           "name": "api_key",
           "kind": "secret",
           "required": true
+        },
+        {
+          "name": "default_model",
+          "kind": "choice",
+          "required": false,
+          "choices": [
+            "doubao-seedance-2-0-260128",
+            "doubao-seedance-2-0-fast-260128",
+            "doubao-seedance-2-0-mini-260615",
+            "custom"
+          ]
+        },
+        {
+          "name": "custom_model",
+          "kind": "text",
+          "required": false
+        },
+        {
+          "name": "custom_profile",
+          "kind": "choice",
+          "required": false,
+          "choices": [
+            "text_only",
+            "first_frame",
+            "seedance_2"
+          ]
         }
       ]
     },

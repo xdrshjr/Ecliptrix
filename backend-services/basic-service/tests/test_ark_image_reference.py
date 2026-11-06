@@ -47,7 +47,7 @@ def mock_ark_image_env(monkeypatch, tmp_path):
         return real_async_client(*args, **kwargs)
 
     monkeypatch.setattr(ark_image_service.httpx, "AsyncClient", patched_client)
-    monkeypatch.setattr(ark_image_service.settings, "ark_api_key", "test-key")
+    monkeypatch.setattr(ark_image_service.settings, "ark_image_api_key", "test-key")
 
     # Reroute on-disk writes inside generate_images() to tmp_path so we don't
     # pollute the real static/uploads directory. We omit raising=False so that

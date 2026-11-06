@@ -243,10 +243,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as host_error:  # optional capability: never block boot
         logger.warning("agent_host startup purge failed: %s", host_error)
 
+    from app.services.ark_video_task_context import video_task_contexts
+    await video_task_contexts.start()
     yield
 
     # Shutdown
     logger.info("Shutting down application")
+    from app.services.storyboard_video_queue import storyboard_video_queue
+    await storyboard_video_queue.close()
+    await video_task_contexts.close()
     if research_reaper is not None:
         research_reaper.cancel()
         await asyncio.gather(research_reaper, return_exceptions=True)
@@ -503,6 +508,27 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Returns:
         JSON error response
     """
+    path = request.url.path
+    protected = ("/api/integrations", "/api/ark-video", "/api/storyboard/batch-video")
+    if any(path == prefix or path.startswith(prefix + "/") for prefix in protected):
+        known = {
+            "body", "query", "path", "fields", "api_key", "default_model", "custom_model", "custom_profile",
+            "prompt", "model", "mode", "duration", "resolution", "aspect_ratio", "camera_fixed", "watermark",
+            "image_url", "image_urls", "first_frame_url", "last_frame_url", "expected_config_revision",
+            "pack_id", "segments", "frame_index", "description", "repeat", "ark_task_id", "retry_artifact",
+        }
+        known_types = {"missing", "extra_forbidden", "json_invalid", "string_type", "dict_type", "list_type",
+                       "int_type", "int_parsing", "literal_error", "string_too_long", "string_too_short",
+                       "greater_than_equal", "less_than_equal", "finite_number", "uuid_parsing", "value_error"}
+        errors = [{
+            "loc": [part if isinstance(part, int) or part in known else "unknown_field" for part in error.get("loc", ())],
+            "type": error.get("type") if error.get("type") in known_types else "invalid_value",
+            "msg": "请求字段无效",
+        } for error in exc.errors()]
+        return JSONResponse(status_code=422, content={
+            "success": False, "message": "请求参数无效", "error_code": "VALIDATION_ERROR",
+            "error_details": {"errors": errors, "retryable": False},
+        })
     if request.url.path.startswith("/api/web-research"):
         from app.routers.research_run_router import error_response
         from app.models.web_research_models import WebResearchError
@@ -787,6 +813,18 @@ async def cover_error_handler(request: Request, exc: CoverError):
         success=False, message=str(exc), error_code=exc.code,
         error_details=exc.details,
     ).model_dump(mode="json"))
+
+
+from app.services.integration_credentials_service import IntegrationLoadFailed
+from app.services.ark_video_profiles import InvalidModelConfiguration
+from app.services.credential_errors import VideoError, generation_error_response
+
+
+@app.exception_handler(IntegrationLoadFailed)
+@app.exception_handler(InvalidModelConfiguration)
+@app.exception_handler(VideoError)
+async def media_configuration_error_handler(request: Request, exc: Exception):
+    return generation_error_response(exc, "ark_video:contents/generations/tasks")
 
 # Generated audio + subtitles live under the persistent, writable STORAGE_ROOT
 # (Bug B / B1). The write side (tts_service / sentence_tts_service) and the

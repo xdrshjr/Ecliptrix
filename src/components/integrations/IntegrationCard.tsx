@@ -49,6 +49,12 @@ function errorText(copy: IntegrationCopy, error: IntegrationSaveError): string {
       return copy.err.originForbidden;
     case 'required':
       return copy.err.required;
+    case 'invalidModel':
+      return copy.err.invalidModel;
+    case 'loadFailed':
+      return copy.err.loadFailed;
+    case 'replaced':
+      return copy.err.replaced;
     default:
       return copy.err.saveFailed;
   }
@@ -59,7 +65,8 @@ function outcomeText(
   integrationId: string,
   outcome: ProbeOutcome,
 ): string {
-  if (outcome === 'ok' && integrationId === 'ark') return copy.test.okArk;
+  if (outcome === 'ok' && integrationId === 'ark_video') return copy.test.okArk;
+  if (outcome === 'unverifiable' && integrationId === 'ark_image') return copy.test.imageSaved;
   return copy.test[outcome];
 }
 
@@ -88,10 +95,14 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
   const outcomeId = `integration-${integration.id}-outcome`;
   const info = copy[integration.id];
   const hasStored = integration.fields.some((field) => field.source === 'database');
+  const loadFailed = integration.configurationWarning === 'integration_load_failed';
+  const model = card.drafts.default_model ?? integration.fields.find((field) => field.name === 'default_model')?.value;
+  const visibleFields = integration.fields.filter((field) => integration.id !== 'ark_video'
+    || model === 'custom' || !['custom_model', 'custom_profile'].includes(field.name));
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!card.busy) void card.saveAndTest();
+    if (!card.busy && !loadFailed) void card.saveAndTest();
   };
 
   const reenter = () => {
@@ -119,15 +130,21 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
 
       <GetCredentialLink id={integration.id} />
 
+      {integration.configurationWarning && (
+        <p role={loadFailed ? 'alert' : 'status'} className="text-sm text-amber-700 dark:text-amber-400">
+          {copy.warning[integration.configurationWarning]}
+        </p>
+      )}
+
       <div className="space-y-4">
-        {integration.fields.map((field, index) => (
+        {visibleFields.map((field, index) => (
           <IntegrationField
             key={field.name}
             integrationId={integration.id}
             field={field}
             draft={card.drafts[field.name]}
             onChange={(value) => card.edit(field.name, value)}
-            disabled={card.busy}
+            disabled={card.busy || loadFailed}
             autoFocus={autoFocus && index === 0}
             invalid={card.error?.field === field.name}
             describedBy={card.error ? errorId : undefined}
@@ -167,7 +184,7 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
             <button
               type="button"
               onClick={() => void card.clear()}
-              disabled={card.busy}
+              disabled={card.busy || loadFailed}
               className={BUTTON_GHOST}
             >
               {copy.action.clear}
@@ -187,7 +204,7 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
               )}
             </>
           )}
-          <button type="submit" disabled={card.busy} className={BUTTON_PRIMARY}>
+          <button type="submit" disabled={card.busy || loadFailed} className={BUTTON_PRIMARY}>
             {card.busy && <Spinner />}
             {submitLabel(copy, integration, card.phase)}
           </button>

@@ -8,6 +8,7 @@ import {
   deletePack,
   describeFrames,
   batchGenerateVideos,
+  getBatchVideoStatus,
   composeVideo,
   createPackFromShots,
 } from '../storyboard';
@@ -96,8 +97,13 @@ describe('storyboard API client', () => {
   });
 
   it('batchGenerateVideos groups tasks by frame_index', async () => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({ success: true, data: {
+      configured: true, default_model: 'video-model', config_revision: 'revision-1',
+      models: [{ id: 'video-model', modes: ['keyframe'], resolutions: ['720p'], duration_min: 4, duration_max: 12 }],
+    } } as never);
     vi.spyOn(httpModule.http, 'post').mockResolvedValue({
       success: true,
+      timeout_seconds: 45,
       tasks: [
         { ark_task_id: 't1', frame_index: 0 },
         { ark_task_id: 't2', frame_index: 0 },
@@ -111,8 +117,71 @@ describe('storyboard API client', () => {
     ]);
 
     expect(result.taskGroups).toHaveLength(2);
+    expect(result.timeoutSeconds).toBe(45);
     const group0 = result.taskGroups.find(g => g.frameIndex === 0);
     expect(group0?.taskIds).toEqual(['t1', 't2']);
+    expect(httpModule.http.post).toHaveBeenCalledWith('/api/storyboard/batch-video',
+      expect.objectContaining({ expected_config_revision: 'revision-1' }), expect.objectContaining({ retries: 0 }));
+  });
+
+  it('normalizes batch vocabulary and preserves actual media metadata', async () => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({ success: true, statuses: [{
+      frame_index: 0, status: 'success', phase: 'ready', ark_task_id: 'native-1', job_id: 'sbv-1',
+      video_url: '/api/storage/files/cached_materials/ark/native-1.mp4', duration: 5.08,
+      width: 720, height: 1280, model: 'video-model',
+    }] } as never);
+    const result = await getBatchVideoStatus('pack-1');
+    expect(result.status).toBe('completed');
+    expect(result.segments[0]).toMatchObject({ status: 'succeeded', phase: 'ready',
+      arkTaskId: 'native-1', jobId: 'sbv-1', duration: 5.08, width: 720, height: 1280, model: 'video-model' });
+  });
+
+  it('unknown batch provider states stop with a permanent error', async () => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({ success: true, statuses: [{ frame_index: 0, status: 'surprise' }] } as never);
+    await expect(getBatchVideoStatus('pack-1')).rejects.toMatchObject({ code: 'invalid_provider_response', details: { retryable: false } });
+  });
+
+  it('rejects text-only storyboard models before creating a billed task', async () => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({ success: true, data: {
+      configured: true, default_model: 'ep-only-text', config_revision: 'revision-1',
+      models: [{ id: 'ep-only-text', modes: ['description'], resolutions: ['720p'], duration_min: 4, duration_max: 12 }],
+    } } as never);
+    const post = vi.spyOn(httpModule.http, 'post');
+    await expect(batchGenerateVideos('pack-1', [{ frameIndex: 0, description: 'paper boat', duration: 5 }])).rejects.toMatchObject({ code: 'video_parameters_unsupported' });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('classifies a broken POST connection as submission unknown without repeating it', async () => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({ success: true, data: {
+      configured: true, default_model: 'model', config_revision: 'revision-1',
+      models: [{ id: 'model', modes: ['keyframe'], resolutions: ['720p'], duration_min: 4, duration_max: 12 }],
+    } } as never);
+    const post = vi.spyOn(httpModule.http, 'post').mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'network'));
+    await expect(batchGenerateVideos('pack', [{ frameIndex: 0, description: 'paper boat', duration: 5 }]))
+      .rejects.toMatchObject({ code: 'generation_submission_unknown' });
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('configuration conflict refreshes the catalog without replaying the batch', async () => {
+    const get = vi.spyOn(httpModule.http, 'get').mockResolvedValue({ success: true, data: {
+      configured: true, default_model: 'model', config_revision: 'revision-1',
+      models: [{ id: 'model', modes: ['keyframe'], resolutions: ['720p'], duration_min: 4, duration_max: 12 }],
+    } } as never);
+    const post = vi.spyOn(httpModule.http, 'post').mockRejectedValue(new ApiError(409, 'video_configuration_changed', 'changed'));
+    await expect(batchGenerateVideos('pack', [{ frameIndex: 0, description: 'paper boat', duration: 5 }]))
+      .rejects.toMatchObject({ code: 'video_configuration_changed' });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['integration_load_failed', 'invalid_model_configuration'])('configuration failure %s is not missing credentials', async warning => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({ success: true, data: {
+      configured: false, default_model: null, config_revision: 'revision-1', configuration_warning: warning, models: [],
+    } } as never);
+    const post = vi.spyOn(httpModule.http, 'post');
+    await expect(batchGenerateVideos('pack', [{ frameIndex: 0, description: 'paper boat', duration: 5 }]))
+      .rejects.toMatchObject({ code: warning });
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('composeVideo returns the top-level video_url', async () => {

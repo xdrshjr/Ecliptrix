@@ -160,7 +160,7 @@ export async function parseToolResponse<T = Record<string, unknown>>(
 
 /** 固定的服务端能力；未生效的模型参数不得创建新的探测名额。 */
 export const GENERATION_CAPABILITIES = {
-  video: 'ark:contents/generations/tasks:doubao-seedance-1-5-pro-251215',
+  video: 'ark_video:contents/generations/tasks',
   image: 'ark:images/generations:doubao-seedream-5-0-260128',
 } as const;
 
@@ -196,6 +196,8 @@ const GENERATION_ERROR_CODES = new Set([
   'provider_unavailable', 'credential_not_configured', 'provider_authentication',
   'provider_rate_limited', 'provider_validation', 'provider_error',
   'generation_submission_unknown', 'invalid_response', 'cancelled',
+  'video_configuration_changed', 'invalid_model_configuration', 'video_parameters_unsupported',
+  'integration_load_failed', 'video_task_capacity',
 ]);
 
 /** 只接受同任务、同配置且未过期的已执行工具事实，不重放操作。 */
@@ -209,13 +211,13 @@ export function restoreCapabilityFailures(
     const item = value as Record<string, unknown>;
     const record = item.capability_failure as CapabilityFailureRecord | undefined;
     if (record?.scope === context.recoveryScope &&
-        record.revision === (context.generationConfigRevision ?? '') &&
+        (record.capability === GENERATION_CAPABILITIES.video || record.revision === (context.generationConfigRevision ?? '')) &&
         record.expiresAt > Date.now() &&
         Object.values(GENERATION_CAPABILITIES).includes(record.capability as never) &&
         record.failure?.success === false) records.set(record.capability, record);
     const cleared = item.capability_recovery as Record<string, unknown> | undefined;
     if (cleared?.scope === context.recoveryScope &&
-        cleared.revision === (context.generationConfigRevision ?? '')) {
+        cleared.revision === records.get(String(cleared.capability))?.revision) {
       records.delete(String(cleared.capability));
     }
   }
@@ -237,11 +239,11 @@ export function generationFailure(
 }
 
 /** 首次探测在任何 await 前占位；成功后的不同镜头仍可逐次提交。 */
-export function acquireGeneration(context: RecoveryContext, key: string) {
+export function acquireGeneration(context: RecoveryContext, key: string, revision = context.generationConfigRevision ?? '') {
   if (context.abortSignal?.aborted) return generationFailure('cancelled', 'cancelled');
   const record = failures.get(context)?.get(key);
   if (record && record.expiresAt > Date.now() &&
-      record.revision === (context.generationConfigRevision ?? '')) {
+      record.revision === revision) {
     return { ...record.failure, capability_failure: record };
   }
   const active = pending.get(context) ?? new Set<string>();
@@ -252,13 +254,13 @@ export function acquireGeneration(context: RecoveryContext, key: string) {
 }
 
 export function finishGeneration(
-  context: RecoveryContext, key: string, failure?: GenerationFailure,
+  context: RecoveryContext, key: string, failure?: GenerationFailure, revision = context.generationConfigRevision ?? '',
 ) {
   pending.get(context)?.delete(key);
   if (!failure) {
     failures.get(context)?.delete(key);
     return { capability_recovery: { capability: key, scope: context.recoveryScope ?? '',
-      revision: context.generationConfigRevision ?? '' } };
+      revision } };
   }
   if (['validation', 'user_input', 'cancelled'].includes(failure.failureClass)) return failure;
   const retryAfter = Number(failure.error_details.retry_after_seconds ?? 0);
@@ -266,7 +268,7 @@ export function finishGeneration(
     ? Math.max(0, retryAfter) * 1000 : 0;
   const record: CapabilityFailureRecord = {
     capability: key, scope: context.recoveryScope ?? '',
-    revision: context.generationConfigRevision ?? '',
+    revision,
     // A cache expiry must not shorten the provider's requested wait.
     expiresAt: Date.now() + Math.max(FAILURE_TTL_MS, retryDelayMs), failure,
   };
@@ -286,8 +288,8 @@ export function parseGenerationFailure(status: number, value: unknown): Generati
     : status === 429 ? 'provider_rate_limited'
       : status === 401 || status === 403 ? 'provider_authentication'
         : status === 400 || status === 422 ? 'provider_validation' : 'provider_error';
-  const inferred = code === 'provider_validation' ? 'validation'
-    : ['provider_unavailable', 'provider_authentication', 'credential_not_configured'].includes(code)
+  const inferred = ['provider_validation', 'video_configuration_changed', 'video_parameters_unsupported'].includes(code) ? 'validation'
+    : ['provider_unavailable', 'provider_authentication', 'credential_not_configured', 'invalid_model_configuration', 'integration_load_failed'].includes(code)
       ? 'configuration' : 'transient';
   const failureClass = FAILURE_CLASSES.has(String(raw.failure_class))
     ? String(raw.failure_class) : inferred;

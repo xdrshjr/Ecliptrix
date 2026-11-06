@@ -399,13 +399,14 @@ async def test_asr_with_only_an_app_id_is_invalid_then_ready_when_complete(
 
 
 @pytest.mark.asyncio
-async def test_one_ark_key_makes_image_and_video_ready_together(env, client, integration_db):
+async def test_image_key_does_not_make_video_ready(env, client, integration_db):
     from app.services.integration_credentials_service import integration_credentials
 
-    await integration_credentials.save("ark", {"api_key": "ark-key-12345678"})
+    await integration_credentials.save("ark_image", {"api_key": "ark-key-12345678"})
 
     states = _states(client)
-    assert states["ai_image"] == states["ai_video"] == "ready"
+    assert states["ai_image"] == "ready"
+    assert states["ai_video"] == "missing"
 
 
 @pytest.mark.asyncio

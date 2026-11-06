@@ -55,6 +55,7 @@ export interface AsyncTaskSlice {
   addTask: (task: AsyncTask) => void;
   updateTask: (taskId: string, patch: Partial<AsyncTask>) => void;
   removeTask: (taskId: string) => void;
+  claimTaskCompletion: (taskId: string, createdAt: number, result: Record<string, unknown>) => boolean;
 
   // Derived helpers (computed from state, but exposed as actions for
   // convenient use from non-React code via getState())
@@ -121,6 +122,17 @@ export const createAsyncTaskSlice: StateCreator<
       const { [taskId]: _, ...remaining } = state.tasks;
       return { tasks: remaining };
     }),
+
+  claimTaskCompletion: (taskId, createdAt, result) => {
+    let claimed = false;
+    set((state) => {
+      const task = state.tasks[taskId];
+      if (!task || task.createdAt !== createdAt || !['pending', 'processing'].includes(task.status)) return state;
+      claimed = true;
+      return { tasks: { ...state.tasks, [taskId]: { ...task, status: 'completed', progress: 100, result, error: null } } };
+    });
+    return claimed;
+  },
 
   // Derived helpers — read from current state snapshot
   getActiveTasks: () => {

@@ -42,11 +42,11 @@ describe('credential link registry shape', () => {
   });
 
   it('keeps the Ark model-activation step and no other integration needs one', () => {
-    expect(INTEGRATION_LINKS.ark.activationUrl).toBeTruthy();
+    expect(INTEGRATION_LINKS.ark_video.activationUrl).toBeTruthy();
     const withActivation = Object.entries(INTEGRATION_LINKS)
       .filter(([, link]) => link.activationUrl)
       .map(([id]) => id);
-    expect(withActivation).toEqual(['ark']);
+    expect(withActivation.sort()).toEqual(['ark_image', 'ark_video']);
   });
 
   it('uses no host that is not actually referenced (the allow-list stays tight)', () => {
@@ -77,7 +77,7 @@ describe('safeExternalUrl', () => {
 
 describe('findCredentialLink', () => {
   it('finds integrations and providers and nothing else', () => {
-    expect(findCredentialLink('ark')).toBe(INTEGRATION_LINKS.ark);
+    expect(findCredentialLink('ark_video')).toBe(INTEGRATION_LINKS.ark_video);
     expect(findCredentialLink('zhipu')).toBe(PROVIDER_LINKS.zhipu);
     expect(findCredentialLink('custom')).toBeNull();
     expect(findCredentialLink('toString')).toBeNull();

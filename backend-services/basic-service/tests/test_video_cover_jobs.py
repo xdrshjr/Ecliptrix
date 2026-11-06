@@ -18,6 +18,25 @@ from tests.test_video_cover_v2 import project, draft
 from tests.test_video_cover_v2 import png
 
 
+@pytest.fixture(autouse=True)
+def independent_image_credential(monkeypatch):
+    monkeypatch.setattr(ark_image_service.settings, "ark_image_api_key", "cover-image-fixture")
+
+
+@pytest.mark.asyncio
+async def test_new_cover_generation_requires_image_not_video_key(db_session, monkeypatch, tmp_path):
+    from app.services.credential_errors import CredentialNotConfigured
+
+    identifier = await project(db_session, monkeypatch, tmp_path)
+    await draft(db_session, identifier, mode="ai", aspect_ratio="21:9",
+                generation={"prompt": "森林", "count": 1})
+    monkeypatch.setattr(ark_image_service.settings, "ark_image_api_key", "")
+    monkeypatch.setattr(ark_image_service.settings, "ark_video_api_key", "only-video-fixture")
+    with pytest.raises(CredentialNotConfigured) as error:
+        await CoverJobService().submit(db_session, identifier, request())
+    assert error.value.integration_id == "ark_image"
+
+
 @pytest.mark.asyncio
 async def test_submit_during_dispatch_shutdown_does_not_lose_wakeup(
     db_session, monkeypatch, tmp_path
@@ -168,7 +187,7 @@ async def test_ark_defer_download_returns_urls_without_downloading(
 ):
     import httpx
 
-    monkeypatch.setattr(ark_image_service.settings, "ark_api_key", "fixture")
+    monkeypatch.setattr(ark_image_service.settings, "ark_image_api_key", "fixture")
     monkeypatch.setattr(
         ark_image_service,
         "_resolve_multi_references",
@@ -294,7 +313,7 @@ async def test_ark_default_keeps_legacy_download_behavior(
 ):
     import httpx
 
-    monkeypatch.setattr(ark_image_service.settings, "ark_api_key", "fixture")
+    monkeypatch.setattr(ark_image_service.settings, "ark_image_api_key", "fixture")
     monkeypatch.setattr(
         ark_image_service.settings.storage, "root", str(tmp_path)
     )

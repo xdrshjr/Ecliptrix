@@ -4,7 +4,8 @@ batch video generation, and video composition.
 """
 
 from typing import Dict, List, Literal, Optional
-from pydantic import BaseModel, Field, field_validator, model_validator
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.base_models import BaseResponse
 
@@ -189,12 +190,13 @@ class StoryboardDescribeRequest(BaseModel):
 class StoryboardVideoSegment(BaseModel):
     """Parameters for a single frame's video generation."""
 
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     frame_index: int = Field(
         ..., description="Index of the frame in the storyboard pack"
     )
-    description: str = Field(..., description="Scene description for video generation")
+    description: str = Field(..., min_length=1, max_length=2000, description="Scene description for video generation")
     duration: int = Field(
-        default=5, ge=4, le=12, description="Video duration in seconds"
+        default=5, ge=4, le=12, strict=True, description="Video duration in seconds"
     )
     repeat: int = Field(
         default=1,
@@ -207,9 +209,11 @@ class StoryboardVideoSegment(BaseModel):
 class StoryboardBatchVideoRequest(BaseModel):
     """Request to batch-submit video generation tasks for storyboard frames."""
 
+    model_config = ConfigDict(extra="forbid")
+    expected_config_revision: UUID | None = None
     pack_id: str = Field(..., description="Storyboard pack ID")
     segments: List[StoryboardVideoSegment] = Field(
-        ..., description="List of frame segments to generate videos for"
+        ..., max_length=200, min_length=1, description="List of frame segments to generate videos for"
     )
 
 
@@ -399,6 +403,7 @@ class StoryboardDescribeResponse(BaseResponse):
 class StoryboardBatchVideoResponse(BaseResponse):
     """Response for batch video generation task submission."""
 
+    timeout_seconds: int = Field(default=600, ge=10, description="已配置的单任务等待上限")
     tasks: List[dict] = Field(
         default_factory=list,
         description="List of {frame_index, ark_task_id} dicts",

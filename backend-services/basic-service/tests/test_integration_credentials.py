@@ -95,7 +95,7 @@ async def test_placeholder_env_values_fall_through_every_layer(store, monkeypatc
 
     assert store.value("volcano_tts", "api_key") == ""
     assert not store.is_usable("volcano_tts")
-    assert not store.is_usable("ark")
+    assert not store.is_usable("ark_image")
     assert store.values("pexels", "api_keys") == []
 
 
@@ -141,7 +141,7 @@ async def test_baseline_reader_tolerates_stub_settings_without_attributes(
 
     monkeypatch.setattr(config_module, "settings", SimpleNamespace())
 
-    assert store.value("ark", "api_key") == ""
+    assert store.value("ark_image", "api_key") == ""
     assert store.values("pexels", "api_keys") == []
 
 
@@ -174,19 +174,19 @@ SIX_TOO_MANY = [f"key-number-{index:04d}" for index in range(6)]
 @pytest.mark.parametrize(
     "integration_id, patch, code, field",
     [
-        ("ark", {"api_key": "your_ark_api_key_here"}, "credential_placeholder", "api_key"),
+        ("ark_image", {"api_key": "your_ark_api_key_here"}, "credential_placeholder", "api_key"),
         (
             "volcano_tts",
             {"api_key": "your_volcano_tts_api_key"},
             "credential_placeholder",
             "api_key",
         ),
-        ("ark", {"api_key": "short"}, "credential_malformed", "api_key"),
-        ("ark", {"api_key": "has a space inside key"}, "credential_malformed", "api_key"),
-        ("ark", {"api_key": "line\nbreak-key-123456"}, "credential_malformed", "api_key"),
-        ("ark", {"api_key": "k" * 513}, "credential_malformed", "api_key"),
-        ("ark", {"api_key": 12345678}, "credential_malformed", "api_key"),
-        ("ark", {"nope": "value"}, "unknown_field", "nope"),
+        ("ark_image", {"api_key": "short"}, "credential_malformed", "api_key"),
+        ("ark_image", {"api_key": "has a space inside key"}, "credential_malformed", "api_key"),
+        ("ark_image", {"api_key": "line\nbreak-key-123456"}, "credential_malformed", "api_key"),
+        ("ark_image", {"api_key": "k" * 513}, "credential_malformed", "api_key"),
+        ("ark_image", {"api_key": 12345678}, "credential_malformed", "api_key"),
+        ("ark_image", {"nope": "value"}, "unknown_field", "unknown_field"),
         ("volcano_asr", {"appid": "bad appid!"}, "credential_malformed", "appid"),
         ("volcano_asr", {"appid": "your_appid_here"}, "credential_placeholder", "appid"),
         ("volcano_tts", {"resource_id": "seed-tts-9.9"}, "invalid_choice", "resource_id"),
@@ -201,7 +201,7 @@ def test_validation_matrix_rejects_with_a_stable_code(
 
 def test_validation_never_echoes_the_rejected_value():
     with pytest.raises(CredentialValidationError) as raised:
-        validate_patch(get_spec("ark"), {"api_key": CANARY + " x"})
+        validate_patch(get_spec("ark_image"), {"api_key": CANARY + " x"})
     assert CANARY not in str(raised.value)
 
 
@@ -210,7 +210,7 @@ def test_validation_trims_dedupes_and_marks_clears():
         get_spec("pexels"), {"api_keys": [" key-aaaa-1111 ", "key-aaaa-1111", ""]}
     )
     assert cleaned == {"api_keys": ["key-aaaa-1111"]}
-    assert validate_patch(get_spec("ark"), {"api_key": ""}) == {"api_key": None}
+    assert validate_patch(get_spec("ark_image"), {"api_key": ""}) == {"api_key": None}
     assert validate_patch(get_spec("pexels"), {"api_keys": []}) == {"api_keys": None}
 
 
@@ -249,13 +249,13 @@ async def test_patch_omitted_unchanged_empty_clears_and_last_clear_deletes_row(
 @pytest.mark.asyncio
 async def test_clear_falls_back_to_the_environment(store, monkeypatch):
     _use_settings(monkeypatch, ark_api_key="env-ark-key-1234")
-    await store.save("ark", {"api_key": "db-ark-key-12345"})
-    assert store.value("ark", "api_key") == "db-ark-key-12345"
+    await store.save("ark_image", {"api_key": "db-ark-key-12345"})
+    assert store.value("ark_image", "api_key") == "db-ark-key-12345"
 
-    await store.clear("ark")
+    await store.clear("ark_image")
 
-    assert store.value("ark", "api_key") == "env-ark-key-1234"
-    assert store.resolve("ark").source == "environment"
+    assert store.value("ark_image", "api_key") == "env-ark-key-1234"
+    assert store.resolve("ark_image").source == "environment"
 
 
 @pytest.mark.asyncio
@@ -286,7 +286,7 @@ async def test_load_failure_sets_the_flag_instead_of_raising(store, monkeypatch)
 async def test_failed_write_leaves_the_cache_unchanged_and_hides_the_error(
     store, monkeypatch, caplog
 ):
-    await store.save("ark", {"api_key": "first-ark-key-111"})
+    await store.save("ark_image", {"api_key": "first-ark-key-111"})
 
     def broken():
         raise RuntimeError(f"disk full {CANARY}")
@@ -294,9 +294,9 @@ async def test_failed_write_leaves_the_cache_unchanged_and_hides_the_error(
     monkeypatch.setattr(service_module, "async_session_factory", broken)
     with caplog.at_level(logging.DEBUG):
         with pytest.raises(IntegrationSaveFailed):
-            await store.save("ark", {"api_key": CANARY})
+            await store.save("ark_image", {"api_key": CANARY})
 
-    assert store.value("ark", "api_key") == "first-ark-key-111"
+    assert store.value("ark_image", "api_key") == "first-ark-key-111"
     assert CANARY not in caplog.text
 
 
@@ -319,14 +319,14 @@ async def test_concurrent_saves_never_produce_a_half_entry(store):
 
 @pytest.mark.asyncio
 async def test_audit_rows_record_the_action_but_never_the_value(store, integration_db):
-    await store.save("ark", {"api_key": CANARY})
-    await store.save("ark", {"api_key": CANARY2})
-    await store.clear("ark")
+    await store.save("ark_image", {"api_key": CANARY})
+    await store.save("ark_image", {"api_key": CANARY2})
+    await store.clear("ark_image")
 
     async with integration_db() as session:
         rows = (await session.execute(select(SettingsAuditLog))).scalars().all()
     assert sorted(row.action for row in rows) == ["create", "delete", "update"]
-    assert {row.key for row in rows} == {"ark"}
+    assert {row.key for row in rows} == {"ark_image"}
     dump = " ".join(str(vars(row)) for row in rows)
     assert CANARY not in dump and CANARY2 not in dump
 
@@ -340,7 +340,7 @@ def test_get_lists_every_integration_without_secrets(client):
     ids = [item["id"] for item in body["data"]["integrations"]]
     assert ids == [
         "volcano_tts", "volcano_asr", "volcano_voice_clone",
-        "ark", "pexels", "unsplash", "freesound",
+        "ark_image", "ark_video", "pexels", "unsplash", "freesound",
     ]
     assert body["data"]["load_failed"] is False
     asr = next(i for i in body["data"]["integrations"] if i["id"] == "volcano_asr")
@@ -381,7 +381,7 @@ def test_put_reports_the_count_for_secret_lists_without_the_keys(client):
 
 def test_put_validation_error_is_422_with_a_code_and_no_value(client):
     response = client.put(
-        "/api/integrations/ark",
+        "/api/integrations/ark_image",
         json={"fields": {"api_key": "your_ark_api_key_here"}},
         headers=ORIGIN,
     )
@@ -404,50 +404,50 @@ def test_put_unknown_integration_is_404(client):
 def test_writes_without_an_origin_are_forbidden(client):
     calls = (
         lambda: client.put(
-            "/api/integrations/ark", json={"fields": {"api_key": CANARY}}
+            "/api/integrations/ark_image", json={"fields": {"api_key": CANARY}}
         ),
-        lambda: client.delete("/api/integrations/ark"),
-        lambda: client.post("/api/integrations/ark/test", json={}),
+        lambda: client.delete("/api/integrations/ark_image"),
+        lambda: client.post("/api/integrations/ark_image/test", json={}),
     )
     for call in calls:
         response = call()
         assert response.status_code == 403
         assert response.json()["error_code"] == "origin_forbidden"
-    assert not creds.is_usable("ark")
+    assert not creds.is_usable("ark_image")
 
 
 def test_delete_without_a_json_content_type_is_rejected(client):
-    response = client.delete("/api/integrations/ark", headers=ORIGIN)
+    response = client.delete("/api/integrations/ark_image", headers=ORIGIN)
     assert response.status_code == 415
 
 
 def test_a_foreign_origin_is_forbidden(client):
     response = client.delete(
-        "/api/integrations/ark", headers={"Origin": "https://evil.example"}
+        "/api/integrations/ark_image", headers={"Origin": "https://evil.example"}
     )
     assert response.status_code == 403
 
 
 def test_delete_clears_and_returns_the_fallback_state(client):
     client.put(
-        "/api/integrations/ark", json={"fields": {"api_key": CANARY}}, headers=ORIGIN
+        "/api/integrations/ark_image", json={"fields": {"api_key": CANARY}}, headers=ORIGIN
     )
-    assert creds.is_usable("ark")
+    assert creds.is_usable("ark_image")
 
-    response = client.delete("/api/integrations/ark", headers=JSON_ORIGIN)
+    response = client.delete("/api/integrations/ark_image", headers=JSON_ORIGIN)
 
     assert response.status_code == 200
     assert response.json()["data"]["usable"] is False
-    assert not creds.is_usable("ark")
+    assert not creds.is_usable("ark_image")
 
 
 def test_test_endpoint_refuses_an_unconfigured_integration(client):
-    response = client.post("/api/integrations/ark/test", json={}, headers=ORIGIN)
+    response = client.post("/api/integrations/ark_image/test", json={}, headers=ORIGIN)
 
     assert response.status_code == NOT_CONFIGURED_STATUS
     body = response.json()
     assert body["error_code"] == "credential_not_configured"
-    assert body["error_details"] == {"integration_id": "ark"}
+    assert body["error_details"] == {"integration_id": "ark_image"}
 
 
 # --------------------------------------------------------- not-configured API
@@ -463,3 +463,45 @@ def test_require_configured_raises_while_unconfigured(store):
 async def test_require_configured_passes_once_saved(store):
     await store.save("freesound", {"api_key": "freesound-key-1234"})
     require_configured("freesound")
+
+
+@pytest.mark.parametrize("method,path,payload", [
+    ("put", "/api/integrations/ark", {"fields": {"api_key": CANARY}}),
+    ("delete", "/api/integrations/ark", None),
+    ("post", "/api/integrations/ark/test", {}),
+])
+def test_legacy_ark_writes_are_gone_and_do_not_copy_credentials(client, method, path, payload):
+    response = client.request(method, path, json=payload, headers=JSON_ORIGIN)
+    assert response.status_code == 410
+    assert response.json()["error_code"] == "integration_replaced"
+    assert not creds.is_usable("ark_image") and not creds.is_usable("ark_video")
+
+
+@pytest.mark.parametrize("integration_id", ["ark_image", "ark_video"])
+@pytest.mark.parametrize("method,suffix,payload", [
+    ("put", "", {"fields": {"api_key": CANARY}}),
+    ("delete", "", None),
+    ("post", "/test", {}),
+])
+def test_failed_load_refuses_all_media_writes(client, integration_id, method, suffix, payload):
+    creds.load_failed = True
+    response = client.request(method, f"/api/integrations/{integration_id}{suffix}",
+                              json=payload, headers=JSON_ORIGIN)
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "integration_load_failed"
+    assert CANARY not in response.text
+
+
+def test_custom_validation_returns_safe_field_only(client):
+    response = client.put("/api/integrations/ark_video",
+                          json={"fields": {"default_model": "custom"}}, headers=ORIGIN)
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "invalid_model_configuration"
+    assert response.json()["error_details"]["field"] == "custom_model"
+
+
+def test_unknown_field_name_is_never_echoed(client):
+    response = client.put("/api/integrations/ark_video",
+                          json={"fields": {CANARY: CANARY2}}, headers=ORIGIN)
+    assert response.status_code == 422
+    assert CANARY not in response.text and CANARY2 not in response.text

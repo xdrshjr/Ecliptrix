@@ -1,382 +1,207 @@
 'use client';
 
-/**
- * AsyncTaskPoller — Background React component that polls the status of
- * active async AI generation tasks and updates the store when they
- * complete or fail.
- *
- * Mount this once inside the VideoEditingInterface. It renders nothing
- * visible; it only drives side effects (polling + store updates).
- *
- * Supported task types:
- *   - ai_video   → polls GET /api/ark-video/status/:arkTaskId
- *   - ai_image   → handled synchronously in generateAiImage.ts (no polling needed)
- *   - image_to_video → synchronous in the agent tool (no polling); the type stays
- *     in the union only so tasks persisted by older versions still load
- */
-
-import { useEffect, useRef, useCallback } from 'react';
-import { useShallow } from 'zustand/react/shallow';
+import { useEffect, useRef, useState } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
 import { useVideoEditingStore } from '@/stores/videoEditingStore';
-import type { AsyncTask, AsyncTaskType } from '@/stores/slices/asyncTaskSlice';
-import { http, ApiError } from '@/lib/api/http-client';
+import { useTimelineStore } from '../timeline/store/useTimelineStore';
+import { addItemAction } from '../timeline/store/actions/addItem';
+import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
+import type { MaterialItem } from '@/types';
+import { http } from '@/lib/api/http-client';
+import { arkVideoPollDelay, arkVideoMaterialId, getArkVideoStatus, isArkVideoReady, type ArkVideoStatusResult } from '@/lib/api/arkVideo';
 
-// ---------------------------------------------------------------------------
-// Polling interval per task type (ms)
-// ---------------------------------------------------------------------------
+interface BatchScene extends Omit<ArkVideoStatusResult, 'status'> {
+  frame_index: number;
+  repeat_index?: number;
+  status: 'queued' | 'generating' | 'success' | 'failed' | 'timeout';
+}
 
-const POLL_INTERVALS: Partial<Record<AsyncTaskType, number>> = {
-  ai_video: 5_000,
-  ai_image: 3_000,
-  tts: 3_000,
-  batch_tts: 5_000,
-  storyboard_video: 5_000,
-};
+function currentTask(task: AsyncTask): AsyncTask | undefined {
+  const current = useVideoEditingStore.getState().getTask(task.taskId);
+  return current?.createdAt === task.createdAt && ['pending', 'processing'].includes(current.status) ? current : undefined;
+}
 
-/** Tasks older than this are automatically marked as failed (10 minutes). */
-const TASK_TIMEOUT_MS = 10 * 60 * 1000;
+function videoMaterial(status: ArkVideoStatusResult, nativeId: string, name: string): MaterialItem {
+  return {
+    id: arkVideoMaterialId(status, nativeId), name, type: 'video', format: 'mp4', size: 0,
+    url: status.video_url!, serverUrl: status.video_url, cacheUrl: status.video_url,
+    thumbnailUrl: status.thumbnail_url, duration: status.duration, width: status.width,
+    height: status.height, createdAt: new Date(), tags: ['ai-generated', 'ark-video'],
+    metadata: { model: status.model, arkTaskId: status.ark_task_id ?? nativeId },
+  };
+}
 
-/** Cleanup interval for expired tasks (5 minutes). */
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+function consumeTimeline(task: AsyncTask): void {
+  const result = task.result as { materialId?: string; timelineConsumed?: boolean } | null;
+  if (task.status !== 'completed' || !task.metadata.autoAddToTimeline || !result?.materialId || result.timelineConsumed) return;
+  const store = useVideoEditingStore.getState();
+  const material = store.materials.find(item => item.id === result.materialId);
+  if (!material) return;
+  const item = addItemAction(useTimelineStore.getState, '', material);
+  if (item) store.updateTask(task.taskId, { result: { ...result, timelineConsumed: true } });
+}
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+async function pollVideo(task: AsyncTask, signal: AbortSignal): Promise<void> {
+  const nativeId = String(task.metadata.arkTaskId ?? '');
+  if (!nativeId) throw new Error('video_task_not_found');
+  const status = await getArkVideoStatus(nativeId, { signal });
+  if (signal.aborted || !currentTask(task)) return;
+  const store = useVideoEditingStore.getState();
+  if (isArkVideoReady(status)) {
+    const material = videoMaterial(status, nativeId, String(task.metadata.prompt || 'AI Video').slice(0, 40));
+    if (!store.claimTaskCompletion(task.taskId, task.createdAt, { ...status, materialId: material.id, timelineConsumed: false })) return;
+    store.addMaterial(material);
+    consumeTimeline(store.getTask(task.taskId)!);
+  } else if (status.status === 'failed' || status.status === 'timeout') {
+    store.updateTask(task.taskId, { status: 'failed', error: status.error_code || status.error || 'video_generation_failed', result: status });
+  } else {
+    store.updateTask(task.taskId, { status: 'processing', progress: status.phase === 'downloading' || status.phase === 'validating' ? 95 : Math.min(90, (Date.now() - task.createdAt) / 2000) });
+  }
+}
 
+async function pollStoryboard(task: AsyncTask, signal: AbortSignal): Promise<void> {
+  const packId = String(task.metadata.packId ?? '');
+  if (!packId) throw new Error('storyboard_job_not_found');
+  const data = await http.get<{ success: boolean; statuses: BatchScene[] }>(
+    `/api/storyboard/batch-video/status/${encodeURIComponent(packId)}`, { retries: 0, timeoutMs: 25000, signal },
+  );
+  if (signal.aborted || !currentTask(task)) return;
+  if (!data.success || !Array.isArray(data.statuses)) throw new Error('invalid_provider_response');
+  const store = useVideoEditingStore.getState();
+  const scenes = data.statuses;
+  const ready = scenes.filter(scene => scene.status === 'success' && scene.phase === 'ready' && scene.video_url?.startsWith('/api/storage/files/') && scene.ark_task_id);
+  const failed = scenes.filter(scene => scene.status === 'failed' || scene.status === 'timeout');
+  const previous = (task.result as { consumed?: string[] } | null)?.consumed ?? [];
+  const consumed = new Set(previous);
+  for (const scene of ready) {
+    const material = videoMaterial({ ...scene, status: 'succeeded' }, scene.ark_task_id!, `Storyboard ${scene.frame_index + 1}`);
+    if (consumed.has(material.id)) continue;
+    store.addMaterial(material);
+    consumed.add(material.id);
+    store.updateStoryboard(`${packId}-frame-${scene.frame_index}`, {
+      videoUrl: scene.video_url, metadata: { packId, frameIndex: scene.frame_index, videoMaterialId: material.id },
+    });
+  }
+  const finished = scenes.length > 0 && ready.length + failed.length === scenes.length;
+  store.updateTask(task.taskId, {
+    status: finished ? (ready.length ? 'completed' : 'failed') : 'processing',
+    progress: scenes.length ? Math.floor(100 * (ready.length + failed.length) / scenes.length) : 0,
+    error: finished && !ready.length ? 'video_generation_failed' : null,
+    result: { statuses: scenes, consumed: Array.from(consumed) },
+  });
+}
+
+/** 每个任务只允许一个请求；跨挂载的完成判重由 store 终态负责。 */
 export function AsyncTaskPoller() {
-  const timersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
-
-  // Subscribe to the tasks record — we only need keys/statuses to decide
-  // which polls to start/stop.
-  const tasks = useVideoEditingStore(useShallow((s) => s.tasks));
-
-  // ---------------------------------------------------------------------------
-  // Poll handler for a single task
-  // ---------------------------------------------------------------------------
-
-  const pollTask = useCallback(async (task: AsyncTask) => {
-    const store = useVideoEditingStore.getState();
-
-    // Check timeout
-    if (Date.now() - task.createdAt > TASK_TIMEOUT_MS) {
-      store.updateTask(task.taskId, {
-        status: 'failed',
-        error: 'Task timed out (exceeded 10 minutes). Please try again.',
-      });
-      return;
-    }
-
+  const { t } = useLocale();
+  const labels = t.integrations.videoGeneration;
+  const tasks = useVideoEditingStore(state => state.tasks);
+  const recoveryRequests = useRef(new Map<string, AbortController>());
+  const [recovering, setRecovering] = useState<string[]>([]);
+  const failedVideos = Object.values(tasks).filter(task => task.type === 'ai_video' && task.status === 'failed').slice(-3);
+  const recover = async (task: AsyncTask) => {
+    if (recoveryRequests.current.has(task.taskId)) return;
+    const controller = new AbortController();
+    recoveryRequests.current.set(task.taskId, controller);
+    setRecovering(ids => [...ids, task.taskId]);
     try {
-      switch (task.type) {
-        case 'ai_video':
-          await pollAiVideoTask(task);
-          break;
-        // ai_image tasks are handled synchronously in the tool handler
-        // — no polling needed. If somehow one ends up pending, just skip.
-        case 'ai_image':
-          break;
-        case 'storyboard_video':
-          await pollStoryboardVideoTask(task);
-          break;
-        // Other task types (tts, batch_tts) are handled
-        // by their own systems. We skip them here.
-        default:
-          break;
+      const status = await getArkVideoStatus(String(task.metadata.arkTaskId), { retryArtifact: true, signal: controller.signal });
+      const latest = useVideoEditingStore.getState().getTask(task.taskId);
+      if (controller.signal.aborted || latest?.createdAt !== task.createdAt || latest.status !== 'failed') return;
+      if (status.status === 'failed' || status.status === 'timeout') {
+        useVideoEditingStore.getState().updateTask(task.taskId, { error: status.error_code || status.error || 'video_generation_failed' });
+      } else {
+        useVideoEditingStore.getState().updateTask(task.taskId, { status: 'pending', error: null, createdAt: Date.now(),
+          metadata: { ...task.metadata, managedBy: undefined } });
       }
     } catch (error) {
-      console.error(`[AsyncTaskPoller] Error polling task ${task.taskId}:`, error);
-    }
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Manage polling timers based on task state changes
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    const activeTimers = timersRef.current;
-
-    // Determine which tasks need polling
-    const taskEntries = Object.values(tasks);
-    const activeTaskIds = new Set<string>();
-
-    for (const task of taskEntries) {
-      const isActive = task.status === 'pending' || task.status === 'processing';
-      // Only poll types that have async status endpoints
-      const needsPolling = task.type === 'ai_video' || task.type === 'storyboard_video';
-
-      if (isActive && needsPolling) {
-        activeTaskIds.add(task.taskId);
-
-        // Start a timer if one doesn't exist
-        if (!activeTimers.has(task.taskId)) {
-          const interval = POLL_INTERVALS[task.type] ?? 5_000;
-          const timer = setInterval(() => {
-            // Re-read the task from the store to get latest status
-            const currentTask = useVideoEditingStore.getState().getTask(task.taskId);
-            if (!currentTask || currentTask.status === 'completed' || currentTask.status === 'failed') {
-              // Stop polling for terminal tasks
-              const t = activeTimers.get(task.taskId);
-              if (t) {
-                clearInterval(t);
-                activeTimers.delete(task.taskId);
-              }
-              return;
-            }
-            pollTask(currentTask);
-          }, interval);
-
-          activeTimers.set(task.taskId, timer);
-
-          // Also do an immediate first poll
-          pollTask(task);
-        }
+      const latest = useVideoEditingStore.getState().getTask(task.taskId);
+      if (!controller.signal.aborted && latest?.createdAt === task.createdAt) {
+        useVideoEditingStore.getState().updateTask(task.taskId, { result: { recoveryError: error instanceof Error ? error.message : labels.retryFailed } });
       }
+    } finally {
+      recoveryRequests.current.delete(task.taskId);
+      if (!controller.signal.aborted) setRecovering(ids => ids.filter(id => id !== task.taskId));
     }
-
-    // Stop timers for tasks that are no longer active
-    for (const [taskId, timer] of Array.from(activeTimers.entries())) {
-      if (!activeTaskIds.has(taskId)) {
-        clearInterval(timer);
-        activeTimers.delete(taskId);
-      }
-    }
-  }, [tasks, pollTask]);
-
-  // ---------------------------------------------------------------------------
-  // Periodic cleanup of expired tasks
-  // ---------------------------------------------------------------------------
-
+  };
   useEffect(() => {
-    const cleanup = setInterval(() => {
-      useVideoEditingStore.getState().cleanupExpiredTasks();
-    }, CLEANUP_INTERVAL_MS);
-
-    return () => clearInterval(cleanup);
+    const requests = recoveryRequests.current;
+    return () => { requests.forEach(controller => controller.abort()); requests.clear(); };
   }, []);
-
-  // ---------------------------------------------------------------------------
-  // Cleanup on unmount
-  // ---------------------------------------------------------------------------
-
   useEffect(() => {
+    const active = new Map<string, AbortController>();
+    const nextAt = new Map<string, number>();
+    const failures = new Map<string, number>();
+    let disposed = false;
+    const poll = async (task: AsyncTask) => {
+      if (disposed) return;
+      const store = useVideoEditingStore.getState();
+      if (Date.now() - task.createdAt >= 600000) {
+        active.get(task.taskId)?.abort();
+        store.updateTask(task.taskId, { status: 'failed', error: 'video_wait_timeout' });
+        return;
+      }
+      if (active.has(task.taskId) || Date.now() < (nextAt.get(task.taskId) ?? 0)) return;
+      const controller = new AbortController();
+      active.set(task.taskId, controller);
+      try {
+        await (task.type === 'ai_video' ? pollVideo(task, controller.signal) : pollStoryboard(task, controller.signal));
+        failures.delete(task.taskId);
+        nextAt.set(task.taskId, Date.now() + 5000);
+      } catch (error) {
+        if (disposed || controller.signal.aborted || !currentTask(task)) return;
+        const count = (failures.get(task.taskId) ?? 0) + 1;
+        failures.set(task.taskId, count);
+        const delay = arkVideoPollDelay(error, count);
+        if (delay === null || Date.now() + delay - task.createdAt >= 600000) {
+          store.updateTask(task.taskId, { status: 'failed', error: error instanceof Error ? error.message : 'video_status_unavailable' });
+        } else nextAt.set(task.taskId, Date.now() + delay);
+      } finally {
+        active.delete(task.taskId);
+      }
+    };
+    const tick = () => {
+      const tasks = useVideoEditingStore.getState().tasks;
+      for (const [id, controller] of Array.from(active.entries())) if (!tasks[id] || !['pending', 'processing'].includes(tasks[id].status)) controller.abort();
+      for (const task of Object.values(tasks)) {
+        if (task.status === 'completed') consumeTimeline(task);
+        if (['pending', 'processing'].includes(task.status) && ['ai_video', 'storyboard_video'].includes(task.type) && task.metadata.managedBy !== 'material-generation') void poll(task);
+      }
+      for (const id of Array.from(nextAt.keys())) if (!tasks[id] || ['failed', 'completed'].includes(tasks[id].status)) {
+        nextAt.delete(id); failures.delete(id);
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    const cleanup = setInterval(() => useVideoEditingStore.getState().cleanupExpiredTasks(), 300000);
     return () => {
-      const activeTimers = timersRef.current;
-      for (const timer of Array.from(activeTimers.values())) {
-        clearInterval(timer);
-      }
-      activeTimers.clear();
+      disposed = true;
+      clearInterval(timer); clearInterval(cleanup);
+      for (const controller of Array.from(active.values())) controller.abort();
     };
   }, []);
-
-  // This component renders nothing
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// AI Video polling
-// ---------------------------------------------------------------------------
-
-async function pollAiVideoTask(task: AsyncTask): Promise<void> {
-  const store = useVideoEditingStore.getState();
-  const arkTaskId = task.metadata.arkTaskId as string | undefined;
-
-  if (!arkTaskId) {
-    store.updateTask(task.taskId, {
-      status: 'failed',
-      error: 'Missing arkTaskId in task metadata',
-    });
-    return;
-  }
-
-  let data: any;
-  try {
-    data = await http.get<any>(`/api/ark-video/status/${arkTaskId}`);
-  } catch (httpError) {
-    // Transient error — don't fail the task, just log and retry next interval
-    if (httpError instanceof ApiError) {
-      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}: HTTP ${httpError.status}`);
-    } else {
-      console.warn(`[AsyncTaskPoller] Status check failed for ${task.taskId}:`, httpError);
-    }
-    return;
-  }
-
-  if (data.status === 'succeeded' && data.video_url) {
-    // --- Task completed successfully ---
-    store.updateTask(task.taskId, {
-      status: 'completed',
-      progress: 100,
-      result: data,
-    });
-
-    // Create a material from the generated video
-    const prompt = (task.metadata.prompt as string) || 'AI Video';
-    const materialId = `ai-vid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const displayName =
-      prompt.length > 25
-        ? `AI Video: ${prompt.slice(0, 22)}...`
-        : `AI Video: ${prompt}`;
-
-    store.addMaterial({
-      id: materialId,
-      name: displayName,
-      type: 'video',
-      format: 'mp4',
-      size: 0,
-      duration: data.duration || (task.metadata.duration as number) || 5,
-      width: data.width,
-      height: data.height,
-      url: data.video_url,
-      thumbnailUrl: data.thumbnail_url,
-      createdAt: new Date(),
-      tags: ['ai-generated', 'ark-video'],
-      description: `AI generated video: "${prompt.slice(0, 100)}"`,
-    });
-
-    console.log(`[AsyncTaskPoller] AI video task ${task.taskId} completed. Material added: ${materialId}`);
-  } else if (data.status === 'failed') {
-    // --- Task failed ---
-    store.updateTask(task.taskId, {
-      status: 'failed',
-      error: data.error || 'Video generation failed',
-    });
-    console.warn(`[AsyncTaskPoller] AI video task ${task.taskId} failed: ${data.error}`);
-  } else {
-    // Still running — update progress estimate
-    const elapsed = Date.now() - task.createdAt;
-    const estimatedProgress = Math.min(90, Math.floor((elapsed / (3 * 60 * 1000)) * 100));
-    store.updateTask(task.taskId, {
-      status: 'processing',
-      progress: Math.max(task.progress, estimatedProgress),
-    });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Storyboard video polling
-// ---------------------------------------------------------------------------
-
-async function pollStoryboardVideoTask(task: AsyncTask): Promise<void> {
-  const store = useVideoEditingStore.getState();
-  const packId = task.metadata.packId as string | undefined;
-
-  if (!packId) {
-    store.updateTask(task.taskId, {
-      status: 'failed',
-      error: 'Missing packId in task metadata',
-    });
-    return;
-  }
-
-  let data: any;
-  try {
-    data = await http.get<any>(`/api/storyboard/batch-video/status/${packId}`);
-  } catch (httpError) {
-    if (httpError instanceof ApiError) {
-      console.warn(`[AsyncTaskPoller] Storyboard video status check failed for ${task.taskId}: HTTP ${httpError.status}`);
-    } else {
-      console.warn(`[AsyncTaskPoller] Storyboard video status check failed for ${task.taskId}:`, httpError);
-    }
-    return;
-  }
-
-  if (!data.success) {
-    console.warn(`[AsyncTaskPoller] Storyboard video status error: ${data.message}`);
-    return;
-  }
-
-  const statuses: Array<{
-    frame_index: number;
-    status: string;
-    video_url?: string;
-    thumbnail_url?: string;
-    duration?: number;
-    error?: string;
-  }> = data.statuses || [];
-
-  if (statuses.length === 0) return;
-
-  // Count completed and failed
-  const completed = statuses.filter((s) => s.status === 'succeeded');
-  const failed = statuses.filter((s) => s.status === 'failed');
-  const total = statuses.length;
-  const allDone = completed.length + failed.length === total;
-
-  // Update progress estimate
-  const progress = Math.floor(((completed.length + failed.length) / total) * 100);
-
-  // --- Process completed scenes: add materials and update storyboard ---
-  for (const scene of completed) {
-    if (!scene.video_url) continue;
-
-    const materialId = `sb-vid-${packId}-f${scene.frame_index}-${Math.random().toString(36).slice(2, 6)}`;
-    const existingMaterial = store.materials.find(
-      (m) => m.url === scene.video_url && m.tags?.includes(`storyboard-${packId}`),
-    );
-
-    if (!existingMaterial) {
-      store.addMaterial({
-        id: materialId,
-        name: `Storyboard Scene ${scene.frame_index + 1}`,
-        type: 'video',
-        format: 'mp4',
-        size: 0,
-        duration: scene.duration || 5,
-        url: scene.video_url,
-        thumbnailUrl: scene.thumbnail_url,
-        createdAt: new Date(),
-        tags: ['ai-generated', 'storyboard-video', `storyboard-${packId}`],
-        description: `Storyboard scene ${scene.frame_index + 1} from pack ${packId}`,
-      });
-
-      // Update the corresponding StoryboardItem with video info
-      const itemId = `${packId}-frame-${scene.frame_index}`;
-      store.updateStoryboard(itemId, {
-        videoUrl: scene.video_url,
-        metadata: {
-          packId,
-          frameIndex: scene.frame_index,
-          videoMaterialId: materialId,
-        },
-      });
-
-      console.log(
-        `[AsyncTaskPoller] Storyboard video scene ${scene.frame_index} completed. Material added: ${materialId}`,
-      );
-    }
-  }
-
-  if (allDone) {
-    if (failed.length === total) {
-      // All failed
-      store.updateTask(task.taskId, {
-        status: 'failed',
-        progress: 100,
-        error: `All ${total} scene video generations failed.`,
-        result: { statuses },
-      });
-    } else {
-      // At least some succeeded
-      store.updateTask(task.taskId, {
-        status: 'completed',
-        progress: 100,
-        result: {
-          statuses,
-          completedScenes: completed.length,
-          failedScenes: failed.length,
-          totalScenes: total,
-        },
-      });
-    }
-    console.log(
-      `[AsyncTaskPoller] Storyboard video task ${task.taskId} finished: ${completed.length} succeeded, ${failed.length} failed out of ${total}.`,
-    );
-  } else {
-    store.updateTask(task.taskId, {
-      status: 'processing',
-      progress: Math.max(task.progress, progress),
-    });
-  }
+  const messages: Record<string, string> = {
+    video_download_failed: labels.downloadFailed,
+    invalid_video_artifact: labels.invalidArtifact,
+    video_cache_failed: labels.cacheFailed,
+    generation_submission_unknown: labels.submissionUnknown,
+    video_wait_timeout: labels.waitTimeout,
+    video_configuration_changed: labels.configurationChanged,
+    provider_authentication: labels.authenticationFailed,
+  };
+  if (!failedVideos.length) return null;
+  return <aside className="fixed bottom-4 right-4 z-[10000] flex max-w-sm flex-col gap-2" aria-label={labels.statusLabel}>
+    {failedVideos.map(task => <div key={task.taskId} role="alert" className="rounded-lg border border-border bg-background p-3 text-sm text-foreground shadow-lg">
+      <p>{messages[task.error ?? ''] ?? task.error ?? labels.generationFailed}</p>
+      {task.metadata.arkTaskId ? <p className="mt-1 break-all text-xs text-muted-foreground">{labels.taskLabel}：{String(task.metadata.arkTaskId)}</p> : null}
+      {(task.result as { recoveryError?: string } | null)?.recoveryError && <p className="mt-1 text-red-400">{String((task.result as { recoveryError: string }).recoveryError)}</p>}
+      <div className="mt-2 flex gap-3">
+        {task.metadata.arkTaskId && ['video_download_failed', 'invalid_video_artifact', 'video_cache_failed', 'video_wait_timeout'].includes(task.error ?? '') ?
+          <button type="button" disabled={recovering.includes(task.taskId)} onClick={() => void recover(task)} className="text-primary disabled:opacity-50">{labels.artifactRetry}</button> : null}
+        <button type="button" onClick={() => useVideoEditingStore.getState().removeTask(task.taskId)} className="text-muted-foreground">{labels.dismiss}</button>
+      </div>
+    </div>)}
+  </aside>;
 }
 
 export default AsyncTaskPoller;

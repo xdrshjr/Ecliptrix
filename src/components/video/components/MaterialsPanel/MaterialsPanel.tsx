@@ -2299,8 +2299,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
       <AiVideoModal
         isOpen={isAiVideoModalOpen}
         onClose={() => { setIsAiVideoModalOpen(false); setAiVideoInitialImage(null); }}
-        onConfirm={(params) => {
-          handleAiVideoGenerate(params);
+        onConfirm={async (params) => {
+          await handleAiVideoGenerate(params);
           setIsAiVideoModalOpen(false);
           setAiVideoInitialImage(null);
         }}

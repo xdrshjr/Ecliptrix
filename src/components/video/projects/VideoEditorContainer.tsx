@@ -21,6 +21,7 @@ import {
   type HydrationResult,
 } from './hydrateTimeline';
 import { repairDerivedMaterialIdentity, repairInheritedSegmentMembership } from '../lib/derivedMaterial';
+import { recoverSentenceVideoGeneration } from './recoverSentenceVideoGeneration';
 
 /** Convert a value that was persisted as JSON back into a `Date`. Returns
  *  `undefined` for unparseable input so callers can fall back. */
@@ -160,7 +161,8 @@ const VideoEditorContainer: React.FC<VideoEditorContainerProps> = ({
         // importing persisted tracks here, the default-init branch only
         // fires for fresh projects.
         const hydration = hydrateTimelineFromProjectData(persisted);
-        const data = repairProjectMaterials(withTimelineRecoveryBackup(persisted, hydration));
+        const data = recoverSentenceVideoGeneration(
+          repairProjectMaterials(withTimelineRecoveryBackup(persisted, hydration)));
         // Re-hydrate the lastModified date if it was persisted as ISO string.
         // Spread first so explicit overrides (Date object, default markdown)
         // win over the persisted string form.

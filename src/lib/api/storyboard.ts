@@ -1,4 +1,5 @@
-import { http } from '@/lib/api/http-client';
+import { ApiError, http, TimeoutError } from '@/lib/api/http-client';
+import { getVideoModelConfiguration, type ArkVideoStatusResult } from './arkVideo';
 import {
   BatchInfo,
   ScriptMessage,
@@ -369,6 +370,7 @@ export async function describeFrames(
 interface BatchVideoEnvelope {
   success?: boolean;
   message?: string;
+  timeout_seconds?: number;
   tasks?: {
     ark_task_id?: string;
     job_id?: string;
@@ -386,11 +388,25 @@ interface BatchVideoEnvelope {
 export async function batchGenerateVideos(
   packId: string,
   segments: { frameIndex: number; description: string; duration: number; repeat?: number }[],
-): Promise<{ taskGroups: { frameIndex: number; taskIds: string[] }[] }> {
+  options: { signal?: AbortSignal } = {},
+): Promise<{ taskGroups: { frameIndex: number; taskIds: string[] }[]; timeoutSeconds?: number }> {
+  const configuration = await getVideoModelConfiguration(options.signal);
+  if (!configuration.configured) {
+    const warning = configuration.configuration_warning;
+    throw new ApiError(warning === 'integration_load_failed' ? 503 : warning === 'invalid_model_configuration' ? 422 : 409,
+      warning === 'integration_load_failed' || warning === 'invalid_model_configuration' ? warning : 'credential_not_configured',
+      warning || 'AI 视频生成尚未配置', { integration_id: 'ark_video' });
+  }
+  const model = configuration.models.find(item => item.id === configuration.default_model);
+  if (!model?.modes.includes('keyframe') || !model.resolutions.includes('720p')
+    || segments.some(segment => !Number.isInteger(segment.duration) || segment.duration < model.duration_min || segment.duration > model.duration_max)) {
+    throw new ApiError(422, 'video_parameters_unsupported', '当前模型不支持这些分镜参数', { integration_id: 'ark_video' });
+  }
   const data = await http.post<BatchVideoEnvelope>(
     '/api/storyboard/batch-video',
     {
       pack_id: packId,
+      expected_config_revision: configuration.config_revision,
       segments: segments.map(s => ({
         frame_index: s.frameIndex,
         description: s.description,
@@ -398,8 +414,16 @@ export async function batchGenerateVideos(
         repeat: s.repeat || 1,
       })),
     },
-    { timeoutMs: 180_000 },
-  );
+    { timeoutMs: 180_000, retries: 0, signal: options.signal },
+  ).catch(async (error: unknown) => {
+    if (error instanceof ApiError && error.code === 'video_configuration_changed') {
+      try { await getVideoModelConfiguration(options.signal); } catch { /* 原竞争错误由调用方显示，不自动重提。 */ }
+    }
+    if (error instanceof TimeoutError || error instanceof TypeError || (error instanceof ApiError && error.status === 0)) {
+      throw new ApiError(504, 'generation_submission_unknown', '受理状态未知，供应商可能仍在生成；请勿自动重复提交。');
+    }
+    throw error;
+  });
 
   if (!data.success) {
     throw new Error(data.message || '批量视频生成失败');
@@ -409,13 +433,15 @@ export async function batchGenerateVideos(
   const tasks = data.tasks || [];
   const groupMap = new Map<number, string[]>();
   for (const t of tasks) {
-    if (t.ark_task_id) {
+    const pollingId = t.job_id || t.ark_task_id;
+    if (pollingId) {
       const list = groupMap.get(t.frame_index) || [];
-      list.push(t.ark_task_id);
+      list.push(pollingId);
       groupMap.set(t.frame_index, list);
     }
   }
   return {
+    timeoutSeconds: data.timeout_seconds,
     taskGroups: Array.from(groupMap.entries()).map(([frameIndex, taskIds]) => ({
       frameIndex,
       taskIds,
@@ -426,7 +452,24 @@ export async function batchGenerateVideos(
 interface BatchVideoStatusEnvelope {
   success?: boolean;
   message?: string;
-  statuses?: { frame_index: number; status: string; video_url?: string; error?: string }[];
+  statuses?: (Omit<ArkVideoStatusResult, 'status'> & { frame_index: number; repeat_index?: number; job_id?: string; status: string })[];
+}
+
+export interface StoryboardVideoStatus {
+  frameIndex: number;
+  repeatIndex?: number;
+  jobId?: string;
+  arkTaskId?: string;
+  status: ArkVideoStatusResult['status'];
+  phase?: ArkVideoStatusResult['phase'];
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  model?: string | null;
+  error?: string;
+  errorCode?: string;
 }
 
 /**
@@ -436,10 +479,11 @@ export async function getBatchVideoStatus(
   packId: string,
 ): Promise<{
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  segments: { frameIndex: number; status: string; videoUrl?: string; error?: string }[];
+  segments: StoryboardVideoStatus[];
 }> {
   const data = await http.get<BatchVideoStatusEnvelope>(
     `/api/storyboard/batch-video/status/${packId}`,
+    { retries: 0, timeoutMs: 25000 },
   );
 
   if (!data.success) {
@@ -448,14 +492,34 @@ export async function getBatchVideoStatus(
 
   // Backend returns statuses in top-level `statuses` field, not `data`
   const statuses = data.statuses || [];
-  return {
-    status: 'processing' as const,
-    segments: statuses.map(s => ({
+  const segments: StoryboardVideoStatus[] = statuses.map(s => {
+    const status = s.status === 'success' ? 'succeeded' : s.status;
+    const ready = status === 'succeeded' && s.phase === 'ready' && s.video_url?.startsWith('/api/storage/files/');
+    if (!['queued', 'generating', 'running', 'succeeded', 'failed', 'timeout'].includes(status) || (status === 'succeeded' && !ready)) {
+      throw new ApiError(502, 'invalid_provider_response', 'invalid_provider_response', { retryable: false });
+    }
+    return {
       frameIndex: s.frame_index,
-      status: s.status,
+      repeatIndex: s.repeat_index,
+      jobId: s.job_id,
+      arkTaskId: s.ark_task_id,
+      status: ready ? 'succeeded' : status === 'queued' || status === 'failed' || status === 'timeout' ? status : 'running',
+      phase: s.phase,
       videoUrl: s.video_url,
+      thumbnailUrl: s.thumbnail_url,
+      duration: s.duration,
+      width: s.width,
+      height: s.height,
+      model: s.model,
       error: s.error,
-    })),
+      errorCode: s.error_code,
+    };
+  });
+  return {
+    status: !segments.length || segments.every(s => s.status === 'queued') ? 'pending'
+      : segments.every(s => s.status === 'succeeded') ? 'completed'
+      : segments.every(s => ['succeeded', 'failed', 'timeout'].includes(s.status)) ? 'failed' : 'processing',
+    segments,
   };
 }
 

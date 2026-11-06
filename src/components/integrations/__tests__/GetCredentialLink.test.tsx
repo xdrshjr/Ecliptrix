@@ -21,11 +21,11 @@ describe('GetCredentialLink', () => {
   });
 
   it('adds the docs link, and the activation link only where one exists', () => {
-    const { unmount } = render(<GetCredentialLink id="ark" />);
+    const { unmount } = render(<GetCredentialLink id="ark_video" />);
     expect(screen.getByRole('link', { name: new RegExp(copy.docs) })).toHaveAttribute(
-      'href', INTEGRATION_LINKS.ark.docsUrl);
+      'href', INTEGRATION_LINKS.ark_video.docsUrl);
     expect(screen.getByRole('link', { name: new RegExp(copy.activate) })).toHaveAttribute(
-      'href', INTEGRATION_LINKS.ark.activationUrl);
+      'href', INTEGRATION_LINKS.ark_video.activationUrl);
     unmount();
     render(<GetCredentialLink id="freesound" />);
     expect(screen.queryByRole('link', { name: new RegExp(copy.activate) })).toBeNull();

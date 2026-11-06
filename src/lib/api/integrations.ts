@@ -13,7 +13,8 @@ export type IntegrationId =
   | 'volcano_tts'
   | 'volcano_asr'
   | 'volcano_voice_clone'
-  | 'ark'
+  | 'ark_image'
+  | 'ark_video'
   | 'pexels'
   | 'unsplash'
   | 'freesound';
@@ -52,6 +53,7 @@ export interface IntegrationStatus {
   usable: boolean;
   source: FieldSource;
   fields: IntegrationFieldStatus[];
+  configurationWarning?: 'legacy_image_environment' | 'invalid_model_configuration' | 'integration_load_failed';
 }
 
 export interface IntegrationList {
@@ -73,8 +75,9 @@ interface WireField extends Omit<IntegrationFieldStatus, 'maxItems'> {
 }
 
 interface WireIntegration
-  extends Omit<IntegrationStatus, 'verifyLevel' | 'fields'> {
+  extends Omit<IntegrationStatus, 'verifyLevel' | 'fields' | 'configurationWarning'> {
   verify_level: VerifyLevel;
+  configuration_warning?: IntegrationStatus['configurationWarning'] | null;
   fields: WireField[];
 }
 
@@ -91,8 +94,8 @@ function fieldFromWire(field: WireField): IntegrationFieldStatus {
 }
 
 function fromWire(item: WireIntegration): IntegrationStatus {
-  const { verify_level: verifyLevel, fields, ...rest } = item;
-  return { ...rest, verifyLevel, fields: (fields ?? []).map(fieldFromWire) };
+  const { verify_level: verifyLevel, configuration_warning: configurationWarning, fields, ...rest } = item;
+  return { ...rest, verifyLevel, configurationWarning: configurationWarning ?? undefined, fields: (fields ?? []).map(fieldFromWire) };
 }
 
 function requireData<T>(body: Envelope<T> | null): T {
@@ -160,6 +163,9 @@ export type IntegrationSaveErrorKind =
   | 'unknownField'
   | 'originForbidden'
   | 'required'
+  | 'invalidModel'
+  | 'loadFailed'
+  | 'replaced'
   | 'saveFailed';
 
 export interface IntegrationSaveError {
@@ -174,6 +180,9 @@ const SAVE_ERROR_CODES: Record<string, IntegrationSaveErrorKind> = {
   invalid_choice: 'invalidChoice',
   unknown_field: 'unknownField',
   origin_forbidden: 'originForbidden',
+  invalid_model_configuration: 'invalidModel',
+  integration_load_failed: 'loadFailed',
+  integration_replaced: 'replaced',
 };
 
 /** Map a rejected write to a locale-free kind (the UI owns the wording). */
@@ -201,7 +210,8 @@ const INTEGRATION_IDS: readonly string[] = [
   'volcano_tts',
   'volcano_asr',
   'volcano_voice_clone',
-  'ark',
+  'ark_image',
+  'ark_video',
   'pexels',
   'unsplash',
   'freesound',

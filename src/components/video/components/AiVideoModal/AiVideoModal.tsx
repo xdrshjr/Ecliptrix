@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { ArkVideoGenerateParams } from '@/lib/api/arkVideo';
 import { MaterialItem } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
+import ConfigureCta from '@/components/integrations/ConfigureCta';
+import { useVideoModelConfig } from './useVideoModelConfig';
+import { ApiError } from '@/lib/api/http-client';
 import ImagePickerSlot from '../AIVideoScriptTab/ImagePickerSlot';
 import { ARK_DURATION_BUCKETS, ArkDurationBucket, isArkDurationBucket, mapSentenceDurationToArkBucket } from '../../utils/arkVideoDuration';
 
@@ -12,7 +15,7 @@ type GenerationMode = 'description' | 'keyframe' | 'reference';
 interface AiVideoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (params: ArkVideoGenerateParams) => void;
+  onConfirm: (params: ArkVideoGenerateParams) => void | Promise<void>;
   initialImageUrl?: string;
   initialImageName?: string;
   materials?: MaterialItem[];
@@ -50,6 +53,10 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
   projectId,
 }) => {
   const { t } = useLocale();
+  const videoConfig = useVideoModelConfig(isOpen);
+  const model = videoConfig.model;
+  const [submitting, setSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
   const [mode, setMode] = useState<GenerationMode>('description');
   const [prompt, setPrompt] = useState('');
   const [aiPromptGenerating, setAiPromptGenerating] = useState(false);
@@ -61,15 +68,15 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [resolution, setResolution] = useState<'480p' | '720p' | '1080p'>('720p');
 
-  // Mode A (description) state — up to 4 reference images
-  const [descImageUrls, setDescImageUrls] = useState<string[]>(['', '', '', '']);
-  const [descImageNames, setDescImageNames] = useState<string[]>(['', '', '', '']);
+  // 旧描述入口兼容首帧／尾帧；真正参考图使用 reference 模式。
+  const [descImageUrls, setDescImageUrls] = useState<string[]>(['', '']);
+  const [descImageNames, setDescImageNames] = useState<string[]>(['', '']);
 
-  // Mode B (keyframe) state — first frame required + up to 3 additional reference images
+  // 首帧必填，尾帧按当前模型能力提供。
   const [firstFrameUrl, setFirstFrameUrl] = useState('');
   const [firstFrameName, setFirstFrameName] = useState('');
-  const [keyframeRefUrls, setKeyframeRefUrls] = useState<string[]>(['', '', '']);
-  const [keyframeRefNames, setKeyframeRefNames] = useState<string[]>(['', '', '']);
+  const [keyframeRefUrls, setKeyframeRefUrls] = useState<string[]>(['']);
+  const [keyframeRefNames, setKeyframeRefNames] = useState<string[]>(['']);
 
   // Mode C (reference) state — up to 4 reference images
   const [refImageUrls, setRefImageUrls] = useState<string[]>(['', '', '', '']);
@@ -112,8 +119,8 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
   }, [isOpen, initialPrompt, initialDuration, initialMode, initialImageUrl]);
 
   const descLabels = [
-    t.scriptPanel.aiVideoScript.characterImage,
-    t.scriptPanel.aiVideoScript.sceneImage,
+    t.scriptPanel.aiVideoScript.firstFrameImage,
+    t.scriptPanel.aiVideoScript.lastFrameImage,
     t.scriptPanel.aiVideoScript.referenceImage3,
     t.scriptPanel.aiVideoScript.referenceImage4,
   ];
@@ -146,12 +153,12 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
     setShowAdvanced(false);
     setAspectRatio('16:9');
     setResolution('720p');
-    setDescImageUrls(['', '', '', '']);
-    setDescImageNames(['', '', '', '']);
+    setDescImageUrls(['', '']);
+    setDescImageNames(['', '']);
     setFirstFrameUrl('');
     setFirstFrameName('');
-    setKeyframeRefUrls(['', '', '']);
-    setKeyframeRefNames(['', '', '']);
+    setKeyframeRefUrls(['']);
+    setKeyframeRefNames(['']);
     setRefImageUrls(['', '', '', '']);
     setRefImageNames(['', '', '', '']);
   };
@@ -164,25 +171,28 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
   const handleModeSwitch = (newMode: GenerationMode) => {
     if (newMode === mode) return;
     setMode(newMode);
-    setDescImageUrls(['', '', '', '']);
-    setDescImageNames(['', '', '', '']);
+    setDescImageUrls(['', '']);
+    setDescImageNames(['', '']);
     setFirstFrameUrl('');
     setFirstFrameName('');
-    setKeyframeRefUrls(['', '', '']);
-    setKeyframeRefNames(['', '', '']);
+    setKeyframeRefUrls(['']);
+    setKeyframeRefNames(['']);
     setRefImageUrls(['', '', '', '']);
     setRefImageNames(['', '', '', '']);
   };
 
-  const handleSubmit = () => {
-    if (!prompt.trim()) return;
-
+  const handleSubmit = async () => {
+    if (isSubmitDisabled) return;
+    setSubmitting(true);
+    setSubmissionError('');
+    try {
     if (mode === 'keyframe') {
       if (!firstFrameUrl.trim()) return;
 
       const imageUrls = [firstFrameUrl.trim(), ...keyframeRefUrls.map(u => u.trim()).filter(Boolean)];
-      onConfirm({
+      await onConfirm({
         prompt: prompt.trim(),
+        expected_config_revision: videoConfig.config?.config_revision,
         mode: 'keyframe',
         first_frame_url: firstFrameUrl.trim(),
         last_frame_url: keyframeRefUrls[0].trim() || undefined,
@@ -196,8 +206,9 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
       const imageUrls = refImageUrls.map(u => u.trim()).filter(Boolean);
       if (imageUrls.length === 0) return;
 
-      onConfirm({
+      await onConfirm({
         prompt: prompt.trim(),
+        expected_config_revision: videoConfig.config?.config_revision,
         mode: 'reference',
         image_urls: imageUrls,
         duration,
@@ -209,8 +220,9 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
     } else {
       const imageUrls = descImageUrls.map(u => u.trim()).filter(Boolean);
 
-      onConfirm({
+      await onConfirm({
         prompt: prompt.trim(),
+        expected_config_revision: videoConfig.config?.config_revision,
         mode: 'description',
         image_urls: imageUrls.length > 0 ? imageUrls : undefined,
         duration,
@@ -220,11 +232,22 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
         watermark,
       });
     }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setSubmissionError(t.integrations.videoGeneration.configurationChanged);
+        await videoConfig.refresh();
+      } else setSubmissionError(error instanceof Error ? error.message : t.integrations.videoGeneration.submissionUnknown);
+    } finally { setSubmitting(false); }
   };
 
   const isKeyframeMissingFirstFrame = mode === 'keyframe' && !firstFrameUrl.trim();
   const isReferenceMissingImage = mode === 'reference' && refImageUrls.every(u => !u.trim());
-  const isSubmitDisabled = !prompt.trim() || isKeyframeMissingFirstFrame || isReferenceMissingImage;
+  const effectiveMode = mode === 'description' && descImageUrls.some(Boolean) ? 'keyframe' : mode;
+  const unsupported = !!model && (!model.modes.includes(effectiveMode) || !model.resolutions.includes(resolution) ||
+    duration < model.duration_min || duration > model.duration_max ||
+    (!model.supports_last_frame && (mode === 'keyframe' ? !!keyframeRefUrls[0] : mode === 'description' && !!descImageUrls[1])));
+  const isSubmitDisabled = !prompt.trim() || isKeyframeMissingFirstFrame || isReferenceMissingImage ||
+    submitting || videoConfig.loading || videoConfig.failed || !videoConfig.config?.configured || !model || unsupported;
 
   if (!isOpen) return null;
 
@@ -239,6 +262,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-semibold text-foreground">{t.scriptPanel.aiVideoScript.modalTitle}</h2>
+              {submissionError && <p role="alert" className="mt-2 text-sm text-red-400">{submissionError}</p>}
               <p className="text-sm text-muted-foreground mt-1">{subtitle ?? t.scriptPanel.aiVideoScript.modalSubtitle}</p>
             </div>
             <button
@@ -255,10 +279,19 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+          <div className="rounded-md border border-border p-3 text-sm" aria-live="polite">
+            <p>{t.integrations.videoGeneration.modelLabel}: {model?.display_name ?? '?'}</p>
+            {videoConfig.loading && <p>{t.integrations.videoGeneration.loading}</p>}
+            {videoConfig.failed && <p role="alert">{t.integrations.videoGeneration.loadFailed} <button type="button" onClick={() => void videoConfig.refresh()}>{t.integrations.videoGeneration.retry}</button></p>}
+            {!videoConfig.loading && !videoConfig.failed && !videoConfig.config?.configured && <p>{t.integrations.videoGeneration.notConfigured}</p>}
+            {unsupported && <p role="alert">{t.integrations.videoGeneration.unsupported}</p>}
+            <ConfigureCta integrationId="ark_video" />
+          </div>
           {/* Mode SegmentedControl — same style as AIVideoScriptTab */}
           <div className="flex rounded-md border border-border overflow-hidden">
             <button
               onClick={() => handleModeSwitch('keyframe')}
+              disabled={!model?.modes.includes('keyframe')}
               className={`flex-1 py-2 text-sm font-medium transition-colors ${
                 mode === 'keyframe'
                   ? 'bg-purple-500 text-white dark:bg-purple-600'
@@ -269,6 +302,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
             </button>
             <button
               onClick={() => handleModeSwitch('reference')}
+              disabled={!model?.modes.includes('reference')}
               className={`flex-1 py-2 text-sm font-medium transition-colors border-l border-border ${
                 mode === 'reference'
                   ? 'bg-purple-500 text-white dark:bg-purple-600'
@@ -477,7 +511,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                   materials={materials}
                   projectId={projectId}
                 />
-                {keyframeRefUrls.map((url, i) => (
+                {keyframeRefUrls.map((url, i) => (model?.supports_last_frame || url) ? (
                   <ImagePickerSlot
                     key={i}
                     label={keyframeRefLabels[i]}
@@ -502,7 +536,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                     materials={materials}
                     projectId={projectId}
                   />
-                ))}
+                ) : null)}
               </div>
             </div>
           ) : (
@@ -556,7 +590,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
             {showAdvanced && (
               <div className="mt-4 space-y-4 pl-3 border-l-2 border-primary/20">
                 {/* Camera Fixed */}
-                <div className="flex items-center justify-between">
+                {model?.supports_camera_fixed && <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-foreground">{t.scriptPanel.aiVideoScript.fixedCamera}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{t.scriptPanel.aiVideoScript.fixedCameraDesc}</p>
@@ -573,6 +607,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                   </div>
                 </div>
 
+                }
                 {/* Watermark */}
                 <div className="flex items-center justify-between">
                   <div>
@@ -599,6 +634,7 @@ const AiVideoModal: React.FC<AiVideoModalProps> = ({
                       <button
                         key={r}
                         onClick={() => setResolution(r)}
+                        disabled={!model?.resolutions.includes(r)}
                         className={`flex-1 py-2 rounded-md text-xs font-medium border transition-all ${
                           resolution === r
                             ? 'bg-primary text-primary-foreground border-primary'

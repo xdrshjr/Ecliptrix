@@ -29,10 +29,12 @@ from app.models.integration_models import (
     IntegrationTestData,
     IntegrationTestResponse,
 )
-from app.services.credential_errors import require_configured
+from app.services.credential_errors import require_configured, generation_error_response
+from app.services.ark_video_profiles import InvalidModelConfiguration
 from app.services.integration_credentials_service import (
     CredentialValidationError,
     IntegrationSaveFailed,
+    IntegrationLoadFailed,
     ResolvedField,
     ResolvedIntegration,
     UnknownIntegrationError,
@@ -95,10 +97,14 @@ def to_public(resolved: ResolvedIntegration) -> IntegrationPublic:
         usable=resolved.usable,
         source=resolved.source,
         fields=[_public_field(item, limits[item.name]) for item in resolved.fields],
+        configuration_warning=resolved.configuration_warning,
     )
 
 
 def _unknown(error: UnknownIntegrationError) -> JSONResponse:
+    if error.integration_id == "ark":
+        return _error(410, "integration_replaced", "图片和视频凭证现已独立配置。",
+                      {"replacements": ["ark_image", "ark_video"]})
     return _error(404, "unknown_integration", "Unknown integration.",
                   {"integration_id": error.integration_id})
 
@@ -124,6 +130,8 @@ async def save_integration(
         resolved = await integration_credentials.save(integration_id, body.fields)
     except UnknownIntegrationError as error:
         return _unknown(error)
+    except (IntegrationLoadFailed, InvalidModelConfiguration) as error:
+        return generation_error_response(error, "ark_video:contents/generations/tasks")
     except CredentialValidationError as error:
         return _error(
             _VALIDATION_STATUS, error.code,
@@ -145,6 +153,8 @@ async def clear_integration(integration_id: str, request: Request):
         resolved = await integration_credentials.clear(integration_id)
     except UnknownIntegrationError as error:
         return _unknown(error)
+    except IntegrationLoadFailed as error:
+        return generation_error_response(error, "ark_video:contents/generations/tasks")
     except IntegrationSaveFailed:
         return _error(500, "integration_save_failed",
                       "Could not clear the credential. Please try again.")
@@ -163,6 +173,8 @@ async def test_integration(integration_id: str, request: Request):
         report = await run_probe(integration_id)
     except UnknownIntegrationError as error:
         return _unknown(error)
+    except (IntegrationLoadFailed, InvalidModelConfiguration) as error:
+        return generation_error_response(error, "ark_video:contents/generations/tasks")
     return IntegrationTestResponse(success=True, data=IntegrationTestData(
         outcome=report.outcome, verify_level=report.verify_level,
         elapsed_ms=report.elapsed_ms,

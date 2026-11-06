@@ -1,626 +1,257 @@
-"""
-Service for Ark Seedance video generation via Ark API.
-"""
+"""Seedance 单次提交、原任务读取及本地可用完成契约。"""
+from __future__ import annotations
 
 import asyncio
-import base64
-import os
-import logging
-from datetime import date
+import re
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Dict, Optional
 
-import aiofiles
 import httpx
 
-from app.config import settings
-from app.services.integration_credentials_service import (
-    ARK_NOT_CONFIGURED_MESSAGE,
-    ark_api_key,
-)
 from app.models.ark_video_models import ArkVideoGenerateRequest, ArkVideoStatusResponse
-
-logger = logging.getLogger(__name__)
+from app.services.ark_video_config import resolve_video_config
+from app.services.ark_video_payload import build_payload, encode_payload, validate_remote_url
+from app.services.ark_video_task_context import video_task_contexts, validate_task_id, VideoTaskContext
+from app.services import ark_video_artifacts as artifacts
+from app.services.credential_errors import VideoError, classify_generation_error
 
 ARK_API_BASE = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"
-
-# Model supports both text-to-video and image-to-video in one endpoint.
-ARK_MODEL = "doubao-seedance-1-5-pro-251215"
-
-_MIME_MAP = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".bmp": "image/bmp",
-}
-
-# In-memory cache: ark_task_id -> status dict (avoids re-downloading completed tasks).
-# Capped at _TASK_RESULTS_MAX_SIZE to prevent unbounded growth.
-_task_results: Dict[str, dict] = {}
-_TASK_RESULTS_MAX_SIZE = 200
-
-# Tracks in-progress background download tasks to avoid duplicates.
-_pending_downloads: Dict[str, asyncio.Task] = {}
-
-# Caches CDN URL info for tasks whose background download is still in progress.
-# Allows subsequent polls to return CDN URL without re-querying the Ark API.
-_cdn_urls: Dict[str, dict] = {}
+_recovery_lock = asyncio.Lock()
+_ARTIFACT_ERRORS = {"video_download_failed", "invalid_video_artifact", "video_cache_failed"}
 
 
-async def _resolve_image_url(url: str) -> str:
-    """
-    Convert relative/local image URLs to base64 data URIs for ARK API compatibility.
-
-    The ARK Seedance API requires publicly accessible image URLs or data URIs.
-    Local server paths (e.g., /api/storage/files/images/xxx.jpg) are unreachable
-    by the API server, so we convert them to base64 data URIs instead.
-    """
-    if not url:
-        return url
-
-    # Already in a format the ARK API can handle
-    if (
-        url.startswith("data:")
-        or url.startswith("https://")
-        or url.startswith("http://")
-    ):
-        return url
-
-    # Handle relative storage URLs like /api/storage/files/...
-    if url.startswith("/"):
-        storage_root = getattr(settings, "storage", None)
-        if storage_root and hasattr(storage_root, "root"):
-            root = storage_root.root
-        else:
-            root = "static/uploads"
-
-        # Strip leading /api/storage/files/ prefix to get relative file path
-        if url.startswith("/api/storage/files/"):
-            relative_path = url[len("/api/storage/files/") :]
-        else:
-            relative_path = url.lstrip("/")
-
-        local_path = os.path.join(root, relative_path)
-
-        if os.path.exists(local_path):
-            try:
-                async with aiofiles.open(local_path, "rb") as f:
-                    file_data = await f.read()
-
-                ext = os.path.splitext(local_path)[1].lower()
-                mime_type = _MIME_MAP.get(ext, "image/jpeg")
-                b64 = base64.b64encode(file_data).decode("ascii")
-                data_uri = f"data:{mime_type};base64,{b64}"
-                logger.info(
-                    f"Resolved local image URL to base64 data URI "
-                    f"(path={local_path}, size={len(file_data)} bytes, mime={mime_type})"
-                )
-                return data_uri
-            except Exception as exc:
-                logger.warning(
-                    f"Failed to convert local image to base64: {local_path}: {exc}"
-                )
-
-        logger.warning(
-            f"Local image file not found for URL '{url}' "
-            f"(tried path: {local_path}). "
-            f"ARK API requires publicly accessible URLs or data URIs."
-        )
-
-    return url
+@dataclass(frozen=True)
+class VideoSubmission:
+    task_id: str
+    model_id: str
+    config_revision: str
 
 
-def _cache_result(ark_task_id: str, result: dict) -> None:
-    """Store completed task result; evict oldest entries when over limit."""
-    if len(_task_results) >= _TASK_RESULTS_MAX_SIZE:
-        # Remove the first (oldest) entry
-        oldest_key = next(iter(_task_results))
-        del _task_results[oldest_key]
-    _task_results[ark_task_id] = result
-
-
-def _parse_resolution(data: dict) -> tuple[Optional[int], Optional[int]]:
-    """
-    Extract (width, height) from Ark API response.
-    The API returns resolution as a top-level string like "1280x720" or "720p",
-    and may also return width/height directly.
-    """
-    # Try explicit fields first
-    width = data.get("width")
-    height = data.get("height")
-    if width and height:
-        return int(width), int(height)
-
-    # Fall back to "resolution" string field
-    resolution = data.get("resolution", "")
-    if "x" in resolution:
-        try:
-            parts = resolution.split("x")
-            return int(parts[0]), int(parts[1])
-        except (ValueError, IndexError):
-            pass
-
-    # Alias patterns like "1280x720", "720p", "1080p"
-    if "1080" in resolution:
-        return 1920, 1080
-    if "720" in resolution:
-        return 1280, 720
-    if "480" in resolution:
-        return 854, 480
-
-    return None, None
-
-
-async def _download_and_cache(
-    ark_task_id: str,
-    video_remote_url: str,
-    duration: Optional[int],
-    width: Optional[int],
-    height: Optional[int],
-) -> None:
-    """
-    Background task: download video from ARK CDN to local storage and extract thumbnail.
-    Uses asyncio.create_subprocess_exec for non-blocking ffmpeg execution.
-    Video and thumbnail are served via local URLs.
-    Updates _task_results cache when complete so subsequent polls return the final URL.
-    """
-    try:
-        today_str = date.today().strftime("%Y%m%d")
-        storage_root = settings.storage.root  # e.g. "static/uploads"
-        local_dir = os.path.join(storage_root, "video", "ark", today_str)
-        os.makedirs(local_dir, exist_ok=True)
-
-        local_filename = f"{ark_task_id}.mp4"
-        local_path = os.path.join(local_dir, local_filename)
-
-        # Skip download if file already exists (e.g. after server restart)
-        if not Path(local_path).exists():
-            logger.info(
-                f"Background: downloading Ark video {ark_task_id} to {local_path}"
-            )
-            async with httpx.AsyncClient(
-                timeout=120.0, follow_redirects=True
-            ) as dl_client:
-                async with dl_client.stream("GET", video_remote_url) as stream_response:
-                    stream_response.raise_for_status()
-                    async with aiofiles.open(local_path, "wb") as f:
-                        async for chunk in stream_response.aiter_bytes(
-                            chunk_size=65536
-                        ):
-                            await f.write(chunk)
-            logger.info(f"Background: Ark video {ark_task_id} downloaded")
-        else:
-            logger.info(
-                f"Background: Ark video {ark_task_id} already exists locally, skipping download"
-            )
-
-        local_url = f"/api/storage/files/video/ark/{today_str}/{local_filename}"
-
-        # Write-through into the cached_materials table so the timeline preview
-        # pipeline (selectPlaybackUrl in the frontend) can resolve a same-origin
-        # `local_url` for this asset on the very next /api/material/lookup poll
-        # — without re-downloading the same file via ffmpeg. Failures here
-        # MUST NOT abort generation; they simply mean the preview falls back
-        # to the (still-valid) CDN URL.
-        try:
-            from app.services.material_download_service import (
-                get_material_download_service,
-            )
-
-            material_svc = get_material_download_service()
-            await material_svc.store_external_download_async(
-                url=video_remote_url,
-                local_path=local_path,
-                source="ark",
-                source_id=ark_task_id,
-            )
-            logger.info(
-                f"Background: Ark video {ark_task_id} cached for preview "
-                f"(source=ark, id={ark_task_id})"
-            )
-        except Exception as cache_exc:  # pragma: no cover - defensive
-            logger.warning(
-                f"Background: cached_materials write-back failed for {ark_task_id}: "
-                f"{cache_exc}"
-            )
-
-        final_video_url = local_url
-
-        # Generate thumbnail via ffmpeg — use asyncio subprocess to avoid blocking event loop
-        thumbnail_url: Optional[str] = None
-        try:
-            thumb_filename = f"thumb_{ark_task_id}.jpg"
-            thumb_path = os.path.join(local_dir, thumb_filename)
-
-            if not Path(thumb_path).exists():
-                seek_time = 1 if (duration or 0) > 2 else 0
-                ffmpeg_cmd = [
-                    "ffmpeg",
-                    "-ss",
-                    str(seek_time),
-                    "-i",
-                    local_path,
-                    "-vframes",
-                    "1",
-                    "-q:v",
-                    "2",
-                    "-vf",
-                    "scale=320:-1",
-                    "-y",
-                    thumb_path,
-                ]
-                process = await asyncio.create_subprocess_exec(
-                    *ffmpeg_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
-                if process.returncode == 0 and Path(thumb_path).exists():
-                    thumbnail_url = (
-                        f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
-                    )
-                    logger.info(
-                        f"Background: Ark video thumbnail generated: {thumb_path}"
-                    )
-                else:
-                    logger.warning(
-                        f"Background: ffmpeg thumbnail failed for {ark_task_id}: "
-                        + (stderr.decode(errors="replace")[:300] if stderr else "")
-                    )
-            else:
-                thumbnail_url = (
-                    f"/api/storage/files/video/ark/{today_str}/{thumb_filename}"
-                )
-                logger.info(
-                    f"Background: Ark video thumbnail already exists: {thumb_path}"
-                )
-        except FileNotFoundError:
-            logger.warning(
-                "Background: ffmpeg not found — skipping Ark video thumbnail generation"
-            )
-        except asyncio.TimeoutError:
-            logger.warning(f"Background: ffmpeg thumbnail timed out for {ark_task_id}")
-            try:
-                process.kill()
-                await process.wait()
-            except Exception:
-                pass
-        except Exception as exc:
-            logger.warning(f"Background: Ark video thumbnail generation failed: {exc}")
-
-        result = {
-            "video_url": final_video_url,
-            "thumbnail_url": thumbnail_url,
-            "duration": duration,
-            "width": width,
-            "height": height,
-        }
-        _cache_result(ark_task_id, result)
-        logger.info(
-            f"Background: Ark video {ark_task_id} processing complete, final URL: {final_video_url}"
-        )
-
-    except asyncio.CancelledError:
-        logger.info(f"Background: Ark video {ark_task_id} download cancelled")
-        raise
-    except Exception as exc:
-        logger.error(
-            f"Background: Ark video {ark_task_id} download/processing failed: {exc}"
-        )
-    finally:
-        _pending_downloads.pop(ark_task_id, None)
-        _cdn_urls.pop(ark_task_id, None)
-
-
-async def create_task(request: ArkVideoGenerateRequest) -> str:
-    """
-    Submit a video generation task to the Ark platform.
-
-    Supports three generation modes:
-    - "description": Uses image_url/image_urls as reference images (first_frame/last_frame roles).
-      Ratio is "adaptive" when images are present, otherwise uses request.aspect_ratio.
-    - "keyframe": Uses first_frame_url (required) and last_frame_url (optional).
-      Ratio is always forced to "adaptive". Additional images from image_urls
-      are included beyond first/last frame, up to 4 images total.
-    - "reference": Uses image_url/image_urls as reference images with first_frame/last_frame roles.
-      Supports 1-4 images. Ratio is "adaptive" when images are present.
-      Uses first_frame/last_frame roles (not reference_image) to avoid task_type=r2v
-      which is unsupported by doubao-seedance-1-5-pro.
-
-    Returns the ark_task_id string.
-    Raises ValueError if ARK_API_KEY is not configured or if keyframe mode is missing first_frame_url.
-    Raises httpx.HTTPStatusError or httpx.RequestError on network/API failure.
-    """
-    if not ark_api_key():
-        raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
-
-    # Build content list — always starts with the text prompt
-    content: list = [{"type": "text", "text": request.prompt}]
-
-    if request.mode == "keyframe":
-        # --- Keyframe mode ---
-        # first_frame_url is required; last_frame_url is optional.
-        # Additional images from image_urls are included beyond first/last frame,
-        # up to 4 images total, with "first_frame" role for extras.
-        if not request.first_frame_url:
-            raise ValueError(
-                "first_frame_url is required when mode is 'keyframe'. "
-                "Provide a URL or base64 data URI for the first frame image."
-            )
-
-        used_urls = set()
-        resolved_first = await _resolve_image_url(request.first_frame_url)
-        content.append(
-            {
-                "type": "image_url",
-                "image_url": {"url": resolved_first},
-                "role": "first_frame",
-            }
-        )
-        used_urls.add(request.first_frame_url.strip())
-
-        if request.last_frame_url:
-            resolved_last = await _resolve_image_url(request.last_frame_url)
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": resolved_last},
-                    "role": "last_frame",
-                }
-            )
-            used_urls.add(request.last_frame_url.strip())
-
-        extra_images = [
-            url
-            for url in (request.image_urls or [])
-            if url.strip() and url.strip() not in used_urls
-        ]
-        for extra_url in extra_images[: 4 - len(used_urls)]:
-            resolved = await _resolve_image_url(extra_url)
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": resolved},
-                    "role": "first_frame",
-                }
-            )
-
-        ratio = "adaptive"
-        image_count = len([c for c in content if c.get("type") == "image_url"])
-
-    elif request.mode == "reference":
-        # --- Reference mode ---
-        # Use first_frame/last_frame roles so the API infers task_type=i2v
-        # (supported by doubao-seedance-1-5-pro). role="reference_image" would
-        # cause the API to infer task_type=r2v, which that model does NOT support.
-        # Supports 1-4 reference images.
-        all_images = list(request.image_urls or [])
-        if request.image_url and request.image_url not in all_images:
-            all_images.insert(0, request.image_url)
-
-        image_roles = ["first_frame", "last_frame"]
-        for i, img_url in enumerate(all_images[:4]):
-            resolved_url = await _resolve_image_url(img_url)
-            role = image_roles[i] if i < len(image_roles) else "first_frame"
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": resolved_url},
-                    "role": role,
-                }
-            )
-
-        ratio = "adaptive" if all_images else request.aspect_ratio
-        image_count = len(all_images[:4])
-
+async def create_task(request: ArkVideoGenerateRequest, context_handle: str | None = None) -> VideoSubmission:
+    """容量先原子预留；创建永不重试，不在响应时重新读设置。"""
+    if context_handle:
+        config = video_task_contexts.config_for(context_handle)
+        if config is None:
+            raise VideoError("video_task_expired", status_code=410)
     else:
-        # --- Description mode (default) ---
-        # Preserves existing behavior: merge image_urls and image_url, assign first_frame/last_frame roles.
-        # first_frame_url / last_frame_url are intentionally ignored in this mode.
-        all_images = list(request.image_urls or [])
-        if request.image_url and request.image_url not in all_images:
-            all_images.insert(0, request.image_url)
+        config = resolve_video_config(request.model, request.expected_config_revision)
+        context_handle = (await video_task_contexts.reserve(config))[0]
+    bound = False
+    try:
+        payload = await build_payload(request, config)
+        ctx = video_task_contexts.context(context_handle)
+        if ctx.finished_at is not None or time.monotonic() - ctx.created_at >= video_task_contexts.ttl:
+            raise VideoError("video_task_expired", status_code=410)
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(ARK_API_BASE, content=encode_payload(payload), headers={
+                "Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json",
+            })
+            response.raise_for_status()
+            try:
+                data = response.json()
+                task_id = validate_task_id(data.get("id", ""))
+            except (ValueError, AttributeError, TypeError, VideoError):
+                raise VideoError("generation_submission_unknown", status_code=502, retryable=False, sticky=True) from None
+        await video_task_contexts.bind(context_handle, task_id)
+        bound = True
+        return VideoSubmission(task_id, config.model_id, config.config_revision)
+    except httpx.HTTPStatusError as error:
+        raise classify_generation_error(
+            error, "ark_video:contents/generations/tasks",
+        ) from None
+    except httpx.RequestError:
+        # 队列直接调用服务，同样需要保留“可能已受理”的收费语义。
+        raise VideoError(
+            "generation_submission_unknown", status_code=502,
+            retryable=False, sticky=True,
+        ) from None
+    finally:
+        if not bound:
+            await video_task_contexts.release(context_handle)
 
-        image_roles = ["first_frame", "last_frame"]
-        for i, img_url in enumerate(all_images[:4]):
-            resolved_url = await _resolve_image_url(img_url)
-            role = image_roles[i] if i < len(image_roles) else "first_frame"
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": resolved_url},
-                    "role": role,
-                }
-            )
 
-        ratio = "adaptive" if all_images else request.aspect_ratio
-        image_count = len(all_images[:4])
+def status_error(response: httpx.Response | None = None) -> VideoError:
+    status = response.status_code if response is not None else None
+    details = {"operation": "status", "upstream_status": status, "retryable": False}
+    code, local_status = "video_status_unavailable", 502
+    if status in (401, 403):
+        code = "provider_authentication"
+    elif status == 404:
+        code, local_status = "video_task_not_found", 404
+    elif status == 429:
+        code, local_status = "provider_rate_limited", 429
+        details["retryable"] = True
+    else:
+        details["retryable"] = status is None or status >= 500
+    if response is not None:
+        identifier = response.headers.get("x-request-id") or response.headers.get("x-tt-logid") or ""
+        if re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", identifier):
+            details["provider_request_id"] = identifier
+        retry_after = response.headers.get("retry-after", "")
+        try:
+            seconds = float(retry_after) if retry_after.isdigit() else (parsedate_to_datetime(retry_after) - datetime.now(timezone.utc)).total_seconds()
+            details["retry_after_seconds"] = max(0, min(86400, int(seconds + 0.999)))
+        except (ValueError, TypeError, OverflowError):
+            pass
+    return VideoError(code, status_code=local_status, **details)
 
-    # duration, ratio, resolution are top-level payload fields (not prompt flags)
-    payload: dict = {
-        "model": ARK_MODEL,
-        "content": content,
-        "duration": request.duration,
-        "ratio": ratio,
-        "resolution": request.resolution,
-    }
 
-    headers = {
-        "Authorization": f"Bearer {ark_api_key()}",
-        "Content-Type": "application/json",
-    }
+async def _read_provider(task_id: str, api_key: str) -> dict:
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"{ARK_API_BASE}/{task_id}", headers={"Authorization": f"Bearer {api_key}"})
+        if response.status_code != 200:
+            raise status_error(response)
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError
+        return data
+    except httpx.RequestError:
+        raise status_error() from None
+    except (ValueError, TypeError):
+        raise VideoError("invalid_provider_response", status_code=502, operation="status", retryable=False) from None
 
-    logger.info(
-        f"Ark video task request: model={ARK_MODEL}, mode={request.mode}, "
-        f"images={image_count}, ratio={ratio}, duration={request.duration}"
+
+def _response(ctx: VideoTaskContext) -> ArkVideoStatusResponse:
+    return ArkVideoStatusResponse(
+        success=ctx.status not in ("failed", "timeout"), message=ctx.error_code or ctx.status,
+        status=ctx.status, phase=ctx.phase, ark_task_id=ctx.task_id, model=ctx.model,
+        error=ctx.error_code, error_code=ctx.error_code,
+        **{key: value for key, value in ctx.result.items() if not key.startswith("_")},
     )
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(ARK_API_BASE, json=payload, headers=headers)
-        if response.status_code != 200:
-            error_body = response.text
-            logger.error(f"Ark API error {response.status_code}: {error_body}")
-            logger.error(
-                f"Ark API failed payload (mode={request.mode}): "
-                f"ratio={ratio}, duration={request.duration}, "
-                f"content_types={[c.get('type') for c in content]}"
-            )
+
+def _start_artifact(ctx: VideoTaskContext, url: str | None, cached_path: Path | None = None, *, refresh_invalid_original: bool = False) -> None:
+    if ctx.finished_at is not None:
+        # 已完成文件的复验有独立本地期限，不继承旧生成任务的年龄。
+        ctx.created_at = time.monotonic()
+    ctx.status = "running"
+    ctx.phase = "validating" if cached_path else "downloading"
+    ctx.finished_at, ctx.error_code = None, None
+    video_task_contexts.drop_secret(ctx.handle)
+
+    async def collect() -> None:
+        try:
             try:
-                error_json = response.json()
-                ark_error_msg = (
-                    error_json.get("error", {}).get("message")
-                    if isinstance(error_json.get("error"), dict)
-                    else error_json.get("message", "")
+                ctx.result = await artifacts.collect_artifact(
+                    ctx.task_id, url, cached_path, phase=lambda value: setattr(ctx, "phase", value),
                 )
-            except Exception:
-                ark_error_msg = error_body[:500]
-            raise httpx.HTTPStatusError(
-                f"Ark API {response.status_code}: {ark_error_msg or error_body[:300]}",
-                request=response.request,
-                response=response,
-            )
-        data = response.json()
-
-    ark_task_id = data.get("id")
-    if not ark_task_id:
-        raise ValueError(f"Ark API response missing task ID: {data}")
-
-    logger.info(f"Ark video task created: {ark_task_id} (mode={request.mode})")
-    return ark_task_id
-
-
-async def get_status(ark_task_id: str) -> ArkVideoStatusResponse:
-    """
-    Query task status from Ark.
-
-    On first successful poll: returns CDN URL immediately and starts a background
-    task to download the video to local storage + extract thumbnail.
-
-    On subsequent polls (after background download completes): returns local URL
-    and server-side thumbnail from cache.
-    """
-    # Return cached result (local URL + thumbnail) if background download completed
-    if ark_task_id in _task_results:
-        cached = _task_results[ark_task_id]
-        return ArkVideoStatusResponse(
-            success=True,
-            message="Task completed (cached)",
-            status="succeeded",
-            video_url=cached.get("video_url"),
-            thumbnail_url=cached.get("thumbnail_url"),
-            duration=cached.get("duration"),
-            width=cached.get("width"),
-            height=cached.get("height"),
-        )
-
-    # Background download in progress — return CDN URL without re-querying Ark API
-    if ark_task_id in _cdn_urls:
-        cdn = _cdn_urls[ark_task_id]
-        return ArkVideoStatusResponse(
-            success=True,
-            message="Video generation succeeded",
-            status="succeeded",
-            video_url=cdn["video_url"],
-            thumbnail_url=None,
-            duration=cdn.get("duration"),
-            width=cdn.get("width"),
-            height=cdn.get("height"),
-        )
-
-    if not ark_api_key():
-        raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
-
-    headers = {
-        "Authorization": f"Bearer {ark_api_key()}",
-        "Content-Type": "application/json",
-    }
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.get(f"{ARK_API_BASE}/{ark_task_id}", headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-    task_status = data.get("status", "").lower()
-    logger.info(f"Ark task {ark_task_id} status: {task_status}")
-
-    if task_status == "succeeded":
-        # Extract video URL — content is a dict: {"video_url": "https://..."}
-        content = data.get("content", {})
-        if isinstance(content, dict):
-            video_remote_url: Optional[str] = content.get("video_url")
-        else:
-            video_remote_url = None
-
-        if not video_remote_url:
-            logger.error(
-                f"Ark task {ark_task_id} succeeded but no video_url found. "
-                f"Response keys: {list(data.keys())}, content keys: {list(content.keys()) if isinstance(content, dict) else type(content)}"
-            )
-            return ArkVideoStatusResponse(
-                success=False,
-                message="Task succeeded but no video URL returned",
-                status="failed",
-                error="No video URL in response",
-            )
-
-        # Duration and resolution are top-level fields
-        duration_val = data.get("duration")
-        duration: Optional[int] = (
-            int(duration_val) if duration_val is not None else None
-        )
-        width, height = _parse_resolution(data)
-
-        # Start background download+thumbnail task if not already running
-        if ark_task_id not in _pending_downloads:
-            _cdn_urls[ark_task_id] = {
-                "video_url": video_remote_url,
-                "duration": duration,
-                "width": width,
-                "height": height,
-            }
-            task = asyncio.create_task(
-                _download_and_cache(
-                    ark_task_id, video_remote_url, duration, width, height
+            except VideoError as error:
+                if not refresh_invalid_original or error.code != "invalid_video_artifact":
+                    raise
+                # 显式重新收取时，坏原件不能永久遮挡原任务的有效产物。
+                data = await _read_provider(ctx.task_id, resolve_video_config().api_key)
+                content = data.get("content")
+                refreshed_url = content.get("video_url") if isinstance(content, dict) else None
+                if data.get("status") != "succeeded":
+                    raise VideoError("invalid_provider_response", status_code=502)
+                validate_remote_url(refreshed_url)
+                ctx.result = await artifacts.collect_artifact(
+                    ctx.task_id, refreshed_url, phase=lambda value: setattr(ctx, "phase", value),
                 )
-            )
-            _pending_downloads[ark_task_id] = task
-            logger.info(
-                f"Ark task {ark_task_id}: started background download, "
-                "returning CDN URL immediately for instant playback"
-            )
+            video_task_contexts.finish(ctx, "succeeded")
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            code = error.code if isinstance(error, VideoError) else "video_download_failed"
+            video_task_contexts.finish(ctx, "failed", code)
+        finally:
+            ctx.worker = None
 
-        # Return CDN URL immediately — frontend can play video right away.
-        # thumbnail_url is None here; the frontend generates it client-side via canvas.
-        return ArkVideoStatusResponse(
-            success=True,
-            message="Video generation succeeded",
-            status="succeeded",
-            video_url=video_remote_url,
-            thumbnail_url=None,
-            duration=duration,
-            width=width,
-            height=height,
-        )
+    ctx.worker = asyncio.create_task(collect())
 
-    elif task_status in ("failed", "cancelled", "canceled", "error", "timeout"):
-        error_msg = (
-            data.get("error", {}).get("message")
-            or data.get("message")
-            or f"Task {task_status}"
-        )
-        return ArkVideoStatusResponse(
-            success=False,
-            message=f"Task {task_status}",
-            status="failed",
-            error=error_msg,
-        )
 
+async def _recover_context(task_id: str) -> VideoTaskContext:
+    async with _recovery_lock:
+        existing = video_task_contexts.by_task(task_id)
+        if existing:
+            return existing
+        cached = await artifacts.lookup_cached(task_id)
+        config = None if cached else resolve_video_config()
+        handle = (await video_task_contexts.reserve(config))[0]
+        ctx = await video_task_contexts.bind(handle, task_id)
+        if cached:
+            _start_artifact(ctx, None, cached)
+        return ctx
+
+
+async def _apply_provider(ctx: VideoTaskContext, data: dict) -> None:
+    if ctx.finished_at is not None or time.monotonic() - ctx.created_at >= video_task_contexts.ttl:
+        return
+    status = str(data.get("status", "")).lower()
+    if status in ("queued", "running"):
+        ctx.status = status
+        ctx.phase = "queued" if status == "queued" else "generating"
+        return
+    if status == "succeeded":
+        content = data.get("content")
+        url = content.get("video_url") if isinstance(content, dict) else None
+        try:
+            validate_remote_url(url)
+        except (VideoError, TypeError):
+            video_task_contexts.finish(ctx, "failed", "invalid_provider_response")
+            return
+        _start_artifact(ctx, url)
+        return
+    if status in ("expired", "timeout"):
+        video_task_contexts.finish(ctx, "timeout", "video_task_expired")
+    elif status in ("failed", "cancelled", "canceled", "error"):
+        video_task_contexts.finish(ctx, "failed", "video_generation_failed")
     else:
-        # queued / running / processing / pending
-        return ArkVideoStatusResponse(
-            success=True,
-            message="Task in progress",
-            status="running",
-        )
+        video_task_contexts.finish(ctx, "failed", "invalid_provider_response")
+
+
+async def get_status(ark_task_id: str, retry_artifact: bool = False) -> ArkVideoStatusResponse:
+    validate_task_id(ark_task_id)
+    await video_task_contexts.reap()
+    ctx = video_task_contexts.by_task(ark_task_id) or await _recover_context(ark_task_id)
+    async with ctx.lock:
+        if ctx.worker:
+            return _response(ctx)
+        if ctx.status == "succeeded":
+            fingerprint = ctx.result.get("_fingerprint")
+            try:
+                unchanged = fingerprint and artifacts.file_fingerprint(Path(fingerprint[0])) == fingerprint
+            except OSError:
+                unchanged = False
+            if not unchanged:
+                cached = await artifacts.lookup_cached(ark_task_id)
+                ctx.result = {}
+                if cached:
+                    _start_artifact(ctx, None, cached)
+                else:
+                    video_task_contexts.finish(ctx, "failed", "invalid_video_artifact")
+            return _response(ctx)
+        if ctx.status in ("failed", "timeout"):
+            if not retry_artifact or ctx.error_code not in _ARTIFACT_ERRORS:
+                return _response(ctx)
+            now = time.monotonic()
+            if now - ctx.retry_at < 30:
+                raise VideoError("video_artifact_retry_cooldown", status_code=429, retryable=False)
+            ctx.retry_at = now
+            original = await artifacts.find_original(ark_task_id)
+            ctx.created_at = now
+            if original:
+                _start_artifact(ctx, None, original, refresh_invalid_original=True)
+                return _response(ctx)
+            # 只读取同一个原生任务以刷新 URL，绝不创建新任务。
+            config = resolve_video_config()
+            data = await _read_provider(ark_task_id, config.api_key)
+            ctx.finished_at = None
+            await _apply_provider(ctx, data)
+            return _response(ctx)
+        config = video_task_contexts.config_for(ctx.handle)
+        if config is None:
+            video_task_contexts.finish(ctx, "timeout", "video_task_expired")
+            return _response(ctx)
+        try:
+            data = await _read_provider(ark_task_id, config.api_key)
+        except VideoError as error:
+            if not error.details.get("retryable"):
+                video_task_contexts.finish(ctx, "failed", error.code)
+            raise
+        await _apply_provider(ctx, data)
+        return _response(ctx)

@@ -3485,7 +3485,7 @@ export interface Translations {
       generic: string;
     };
   };
-  integrations: Record<'volcano_tts' | 'volcano_asr' | 'volcano_voice_clone' | 'ark' | 'pexels' | 'unsplash' | 'freesound', { name: string; desc: string; pitfall: string }> & {
+  integrations: Record<'volcano_tts' | 'volcano_asr' | 'volcano_voice_clone' | 'ark_image' | 'ark_video' | 'pexels' | 'unsplash' | 'freesound', { name: string; desc: string; pitfall: string }> & {
     field: {
       apiKey: string;
       appId: string;
@@ -3496,8 +3496,14 @@ export interface Translations {
       ttsResourceId: string;
       apiKeys: string;
       accessKeys: string;
+      defaultModel: string;
+      customModel: string;
+      customProfile: string;
     };
     choice: Record<string, string>;
+    warning: Record<'legacy_image_environment' | 'invalid_model_configuration' | 'integration_load_failed', string>;
+    videoGeneration: Record<'modelLabel' | 'loading' | 'loadFailed' | 'retry' | 'unsupported' | 'notConfigured' | 'historyUnknown' | 'submissionUnknown' | 'waitTimeout' | 'artifactRetry'
+      | 'configurationChanged' | 'downloadFailed' | 'invalidArtifact' | 'cacheFailed' | 'authenticationFailed' | 'generationFailed' | 'statusLabel' | 'taskLabel' | 'dismiss' | 'retryFailed', string>;
     hint: {
       configuredCount: string;
       keepSecret: string;
@@ -3525,7 +3531,7 @@ export interface Translations {
       saveAnyway: string;
     };
     test: Record<
-      'ok' | 'okArk' | 'invalid_credentials' | 'not_entitled' | 'rate_limited' | 'unreachable' | 'upstream_error' | 'unverifiable',
+      'ok' | 'okArk' | 'imageSaved' | 'invalid_credentials' | 'not_entitled' | 'rate_limited' | 'unreachable' | 'upstream_error' | 'unverifiable',
       string
     >;
     err: {
@@ -3537,6 +3543,9 @@ export interface Translations {
       required: string;
       originForbidden: string;
       unknownField: string;
+      invalidModel: string;
+      loadFailed: string;
+      replaced: string;
     };
     source: { database: string; environment: string; default: string; none: string };
     link: {
@@ -7671,10 +7680,15 @@ export const translations: Record<string, Translations> = {
         desc: 'Volcano Engine · clone your own voice',
         pitfall: 'Besides these credentials you must buy a speaker_id (a voice slot) in the console; it is not part of the key. This service can’t be checked for free, so it is only verified the first time you train a voice.',
       },
-      ark: {
-        name: 'AI image & video generation',
-        desc: 'Volcano Ark · Seedream images and Seedance video',
-        pitfall: 'One key unlocks AI images (Seedream) and AI video (Seedance), and also storyboard and cover generation. After creating the key, enable the models under “Activation management”; otherwise generation is refused even though the key is valid.',
+      ark_image: {
+        name: 'AI image generation (Seedream)',
+        desc: 'Volcano Ark · images, storyboards and covers',
+        pitfall: 'This key is only used for images, storyboard images and AI covers. Your existing image configuration is preserved; configure video separately. Enable Seedream under “Activation management”. Saving does not generate a billed image.',
+      },
+      ark_video: {
+        name: 'AI video generation (Seedance)',
+        desc: 'Volcano Ark · an independent key and default video model',
+        pitfall: 'Enter a separate video credential and select the default model. Enable that model under “Activation management”. The free check only verifies task-list authentication; model access and real video generation are verified when you generate a video.',
       },
       pexels: {
         name: 'Pexels video library',
@@ -7701,6 +7715,9 @@ export const translations: Record<string, Translations> = {
         ttsResourceId: 'Synthesis resource ID',
         apiKeys: 'API Keys',
         accessKeys: 'Access Keys',
+        defaultModel: 'Default video model',
+        customModel: 'Custom video model / endpoint ID',
+        customProfile: 'Custom model capabilities',
       },
       choice: {
         'seed-tts-2.0': '2.0 voices · billed per character (recommended)',
@@ -7712,6 +7729,40 @@ export const translations: Record<string, Translations> = {
         'volc.seedasr.sauc.concurrent': 'Recognition 2.0 · concurrency',
         'seed-icl-1.0': 'Voice cloning 1.0 (default)',
         'seed-icl-1.0-concurr': 'Voice cloning 1.0 · concurrency',
+        'doubao-seedance-2-0-260128': 'Seedance 2.0 (default)',
+        'doubao-seedance-2-0-fast-260128': 'Seedance 2.0 Fast',
+        'doubao-seedance-2-0-mini-260615': 'Seedance 2.0 Mini',
+        custom: 'Custom model / endpoint',
+        text_only: 'Text to video only',
+        first_frame: 'Text or one first frame',
+        seedance_2: 'Seedance 2: text, first / last frames, reference images',
+      },
+      warning: {
+        legacy_image_environment: 'Image generation uses the legacy ARK_API_KEY environment setting. Video requires its own credential.',
+        invalid_model_configuration: 'The video model configuration is invalid. Check the model and custom endpoint fields.',
+        integration_load_failed: 'Local credentials could not be loaded. Repair the local database and restart before changing media settings.',
+      },
+      videoGeneration: {
+        modelLabel: 'Video model',
+        loading: 'Loading video model configuration…',
+        loadFailed: 'Could not load video configuration. Your saved settings have not changed.',
+        retry: 'Reload configuration',
+        unsupported: 'The selected model does not support these parameters. Update the options before generating.',
+        notConfigured: 'Configure an independent video key and model in Settings.',
+        historyUnknown: 'Historical model unknown',
+        submissionUnknown: 'The submission result is unknown. The provider may still be generating; do not submit again automatically.',
+        waitTimeout: 'Local waiting has stopped. The provider task may still be running.',
+        artifactRetry: 'Retrieve this video again',
+        configurationChanged: 'Video settings changed. Check the current model, then choose Generate again.',
+        downloadFailed: 'The video could not be downloaded. You can retrieve the same task again.',
+        invalidArtifact: 'The downloaded video failed validation. You can retrieve the same task again.',
+        cacheFailed: 'The video could not be saved to the local library. You can retrieve the same task again.',
+        authenticationFailed: 'Video authentication failed. Check the independent video key and model permissions.',
+        generationFailed: 'Video generation failed.',
+        statusLabel: 'Video generation status',
+        taskLabel: 'Task',
+        dismiss: 'Dismiss',
+        retryFailed: 'The video could not be retrieved again. Try later.',
       },
       hint: {
         configuredCount: '{count} configured',
@@ -7741,7 +7792,8 @@ export const translations: Record<string, Translations> = {
       },
       test: {
         ok: 'Connected.',
-        okArk: 'The key is valid. Also make sure the Seedream / Seedance models are enabled for it.',
+        okArk: 'Task-list authentication passed. Model access and video generation have not been verified.',
+        imageSaved: 'Image credentials saved. Image permissions will be checked on the first image generation; this check does not create a billed image.',
         invalid_credentials: 'The credentials were rejected. Check them and try again.',
         not_entitled: 'The credentials work, but this service isn’t enabled for the account (or its quota is used up).',
         rate_limited: 'Too many checks in a row. Wait a moment and try again.',
@@ -7758,6 +7810,9 @@ export const translations: Record<string, Translations> = {
         required: 'Fill in the required fields first.',
         originForbidden: 'The request was rejected because it didn’t come from the app window. Reload the app and try again.',
         unknownField: 'Unexpected field.',
+        invalidModel: 'Enter a valid video model or ep- endpoint ID and select its capabilities.',
+        loadFailed: 'Local credentials could not be loaded. Repair the local database and restart.',
+        replaced: 'Image and video settings are now separate. Reload the settings page.',
       },
       source: {
         database: 'Saved in app',
@@ -11890,10 +11945,15 @@ export const translations: Record<string, Translations> = {
         desc: '火山引擎 · 复刻你自己的声音',
         pitfall: '除了这些凭证，还需要在控制台另外购买 speaker_id（声音名额），它不属于 Key 的一部分。本项无法免费验证，会在你第一次训练声音时才校验。',
       },
-      ark: {
-        name: 'AI 图片与视频生成',
-        desc: '火山方舟 · Seedream 图片 / Seedance 视频',
-        pitfall: '一个 Key 同时开启 AI 图片（Seedream）和 AI 视频（Seedance），也用于分镜和封面生成。创建 Key 后，还需要在「开通管理」里开通对应模型，否则 Key 有效也会被拒绝。',
+      ark_image: {
+        name: 'AI 图片生成（Seedream）',
+        desc: '火山方舟 · 图片、分镜图和封面',
+        pitfall: '此凭证仅用于图片、分镜图和 AI 封面。原有图片配置已保留；视频请单独配置。请在「开通管理」中开通 Seedream；保存和检查连接不会收费生成图片。',
+      },
+      ark_video: {
+        name: 'AI 视频生成（Seedance）',
+        desc: '火山方舟 · 独立凭证与默认视频模型',
+        pitfall: '单独填写视频凭证并选择默认模型，在「开通管理」中开通该模型。免费检查只验证任务列表鉴权；模型权限及真实出片需在实际生成时验证。',
       },
       pexels: {
         name: 'Pexels 视频素材库',
@@ -11920,6 +11980,9 @@ export const translations: Record<string, Translations> = {
         ttsResourceId: '合成资源 ID',
         apiKeys: 'API Key（可多个）',
         accessKeys: 'Access Key（可多个）',
+        defaultModel: '默认视频模型',
+        customModel: '自定义视频模型／接入点 ID',
+        customProfile: '自定义模型能力',
       },
       choice: {
         'seed-tts-2.0': '2.0 音色 · 按字符计费（推荐）',
@@ -11931,6 +11994,40 @@ export const translations: Record<string, Translations> = {
         'volc.seedasr.sauc.concurrent': '识别 2.0 · 并发版',
         'seed-icl-1.0': '声音复刻 1.0（默认）',
         'seed-icl-1.0-concurr': '声音复刻 1.0 · 并发版',
+        'doubao-seedance-2-0-260128': 'Seedance 2.0（默认）',
+        'doubao-seedance-2-0-fast-260128': 'Seedance 2.0 Fast',
+        'doubao-seedance-2-0-mini-260615': 'Seedance 2.0 Mini',
+        custom: '自定义模型／接入点',
+        text_only: '仅文生视频',
+        first_frame: '文生或单首帧',
+        seedance_2: 'Seedance 2：文生、首尾帧、参考图',
+      },
+      warning: {
+        legacy_image_environment: '图片正在使用旧 ARK_API_KEY 环境配置；视频需要单独配置凭证。',
+        invalid_model_configuration: '视频模型配置无效，请检查默认模型与自定义接入点字段。',
+        integration_load_failed: '本地凭证加载失败。请修复本地数据库并重启，再修改图片或视频设置。',
+      },
+      videoGeneration: {
+        modelLabel: '视频模型',
+        loading: '正在加载视频模型配置…',
+        loadFailed: '视频配置加载失败，已保存的设置未改变。',
+        retry: '重新加载配置',
+        unsupported: '当前模型不支持这些参数，请调整选项后再生成。',
+        notConfigured: '请在设置中单独配置视频凭证和模型。',
+        historyUnknown: '历史模型未知',
+        submissionUnknown: '受理状态未知，供应商可能仍在生成；请勿自动重复提交。',
+        waitTimeout: '已停止本地等待，供应商任务可能仍在运行。',
+        artifactRetry: '重新收取此视频',
+        configurationChanged: '视频设置已变化，请检查当前模型后再次明确点击生成。',
+        downloadFailed: '视频下载失败，可重新收取同一任务。',
+        invalidArtifact: '下载的视频未通过验证，可重新收取同一任务。',
+        cacheFailed: '视频未能保存到本地素材库，可重新收取同一任务。',
+        authenticationFailed: '视频鉴权失败，请检查独立视频凭证及模型权限。',
+        generationFailed: '视频生成失败。',
+        statusLabel: '视频生成状态',
+        taskLabel: '任务',
+        dismiss: '关闭',
+        retryFailed: '重新收取失败，请稍后重试。',
       },
       hint: {
         configuredCount: '已配置 {count} 个',
@@ -11960,7 +12057,8 @@ export const translations: Record<string, Translations> = {
       },
       test: {
         ok: '连接正常。',
-        okArk: 'Key 有效；还需确认已开通 Seedream / Seedance 模型。',
+        okArk: '任务列表鉴权通过；模型生成权限与真实出片尚未验证。',
+        imageSaved: '图片凭证已保存；首次生成时验证图片权限，本次检查不会收费生成图片。',
         invalid_credentials: '凭证被拒绝，请检查后重试。',
         not_entitled: '凭证有效，但该账号尚未开通此服务（或额度已用完）。',
         rate_limited: '连续检查过于频繁，请稍后再试。',
@@ -11977,6 +12075,9 @@ export const translations: Record<string, Translations> = {
         required: '请先填写必填项。',
         originForbidden: '请求因不是来自应用窗口而被拒绝，请重新加载应用后再试。',
         unknownField: '出现了未知字段。',
+        invalidModel: '请填写有效的视频模型或 ep- 接入点 ID，并选择对应能力。',
+        loadFailed: '本地凭证加载失败，请修复本地数据库后重启。',
+        replaced: '图片和视频配置已拆分，请重新加载设置页面。',
       },
       source: {
         database: '应用内',

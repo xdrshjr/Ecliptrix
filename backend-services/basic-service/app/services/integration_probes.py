@@ -175,7 +175,7 @@ def _classify_ark(status_code: int) -> str:
 
 
 async def _probe_ark() -> str:
-    key = integration_credentials.value("ark", "api_key")
+    key = integration_credentials.value("ark_video", "api_key")
     return await _probe_http(
         ARK_URL, {"Authorization": f"Bearer {key}"}, {"page_size": "1"},
         classify=_classify_ark,
@@ -307,7 +307,8 @@ PROBES: Dict[str, Callable[[], Awaitable[str]]] = {
     "pexels": _probe_pexels,
     "unsplash": _probe_unsplash,
     "freesound": _probe_freesound,
-    "ark": _probe_ark,
+    "ark_image": _probe_unverifiable,
+    "ark_video": _probe_ark,
     "volcano_asr": _probe_asr,
     "volcano_tts": _probe_tts,
     "volcano_voice_clone": _probe_unverifiable,
@@ -333,6 +334,7 @@ async def run_probe(integration_id: str) -> ProbeReport:
     spec = get_spec(integration_id)
     if spec is None:
         raise UnknownIntegrationError(integration_id)
+    integration_credentials.require_loaded(integration_id)
     level = spec.verify_level
     if level == "none":
         return ProbeReport("unverifiable", level, 0)

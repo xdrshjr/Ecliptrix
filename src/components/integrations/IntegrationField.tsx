@@ -66,6 +66,7 @@ const IntegrationField: React.FC<IntegrationFieldProps> = ({
 
   if (field.kind === 'choice') {
     const current = draft ?? field.value ?? field.choices?.[0] ?? '';
+    const unknownChoice = !(field.choices ?? []).includes(current);
     return (
       <div>
         <label htmlFor={id} className={LABEL_CLASS}>
@@ -76,8 +77,12 @@ const IntegrationField: React.FC<IntegrationFieldProps> = ({
           value={current}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
+          autoFocus={autoFocus}
+          aria-invalid={invalid || unknownChoice || undefined}
+          aria-describedby={describedBy}
           className={`mt-1.5 ${FIELD_INPUT}`}
         >
+          {unknownChoice && <option value={current} disabled>{current}</option>}
           {(field.choices ?? []).map((choice) => (
             <option key={choice} value={choice}>
               {copy.choice[choice] ?? choice}

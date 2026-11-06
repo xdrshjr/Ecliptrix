@@ -15,7 +15,8 @@ import pytest
 import pytest_asyncio
 
 from app.services.integration_credentials_service import (
-    ark_api_key,
+    ark_image_api_key,
+    ark_video_api_key,
 )
 from app.services.integration_credentials_service import (
     integration_credentials as creds,
@@ -118,12 +119,23 @@ async def test_unsplash_rotation_survives_the_key_list_shrinking(store):
 
 
 @pytest.mark.asyncio
-async def test_ark_api_key_helper_tracks_saves_and_clears(store):
-    assert ark_api_key() == ""
-    await store.save("ark", {"api_key": KEY})
-    assert ark_api_key() == KEY
-    await store.clear("ark")
-    assert ark_api_key() == ""
+async def test_ark_image_api_key_helper_tracks_saves_and_clears(store):
+    assert ark_image_api_key() == ""
+    await store.save("ark_image", {"api_key": KEY})
+    assert ark_image_api_key() == KEY
+    await store.clear("ark_image")
+    assert ark_image_api_key() == ""
+
+
+@pytest.mark.asyncio
+async def test_video_helper_tracks_only_video_saves_and_clears(store):
+    await store.save("ark_image", {"api_key": "separate-image-key"})
+    assert ark_video_api_key() == ""
+    await store.save("ark_video", {"api_key": KEY})
+    assert ark_video_api_key() == KEY
+    await store.clear("ark_video")
+    assert ark_video_api_key() == ""
+    assert ark_image_api_key() == "separate-image-key"
 
 
 def test_test_overrides_still_work_and_win_over_the_resolver(store):

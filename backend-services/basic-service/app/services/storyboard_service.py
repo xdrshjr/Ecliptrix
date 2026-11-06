@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.services.integration_credentials_service import (
     ARK_NOT_CONFIGURED_MESSAGE,
-    ark_api_key,
+    ark_image_api_key,
 )
 from app.logger import get_logger
 from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
@@ -511,7 +511,7 @@ async def _call_ark_seedream(
         payload["image"] = reference_image
 
     headers = {
-        "Authorization": f"Bearer {ark_api_key()}",
+        "Authorization": f"Bearer {ark_image_api_key()}",
         "Content-Type": "application/json",
     }
 
@@ -763,7 +763,7 @@ async def _generate_storyboard_core(
     (module-level entry point) so tests can call this function directly with
     a mocked Seedream stub.
     """
-    if not ark_api_key():
+    if not ark_image_api_key():
         raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
 
     # Validator guarantees grid_size == "2x2" and 1 <= frame_count <= 16.
@@ -1369,135 +1369,77 @@ async def generate_frame_descriptions(
 
 
 async def batch_generate_videos(request: StoryboardBatchVideoRequest) -> List[dict]:
-    """Enqueue ARK video generation jobs for storyboard frames.
-
-    Each (segment, repeat_index) tuple produces one independent queue job;
-    the queue enforces a global concurrency cap (``storyboard.video_generation.
-    max_concurrent``) and a per-job timeout. Jobs whose slot is not yet free
-    are returned with status="queued" and no ``ark_task_id``.
-    """
+    """完整验证后整批预留；排队参数只持有不透明快照句柄。"""
+    from pathlib import Path
+    from app.models.ark_video_models import ArkVideoGenerateRequest
+    from app.services.ark_video_config import resolve_video_config
+    from app.services.ark_video_payload import build_payload
+    from app.services.ark_video_task_context import video_task_contexts
+    from app.services.credential_errors import VideoError
     from app.services.storyboard_video_queue import storyboard_video_queue
 
+    config = resolve_video_config(expected_config_revision=request.expected_config_revision)
     pack_directory = _pack_dir(request.pack_id)
     if not pack_directory:
-        raise FileNotFoundError(f"Storyboard pack not found: {request.pack_id}")
-
-    metadata_path = os.path.join(pack_directory, "metadata.json")
-    async with aiofiles.open(metadata_path, "r", encoding="utf-8") as f:
-        metadata = json.loads(await f.read())
-
-    # Build a lookup: index -> frame info
-    frame_map = {fr["index"]: fr for fr in metadata.get("frames", [])}
-
-    # Pre-read frame images once per frame_index (shared across repeats).
-    frame_data_cache: Dict[int, str] = {}
-
-    async def _frame_data_uri(frame_index: int) -> Optional[str]:
-        if frame_index in frame_data_cache:
-            return frame_data_cache[frame_index]
-        frame_info = frame_map.get(frame_index)
-        if not frame_info:
-            return None
-        frame_path = os.path.join(pack_directory, frame_info["filename"])
-        try:
-            async with aiofiles.open(frame_path, "rb") as img_file:
-                img_bytes = await img_file.read()
-            uri = f"data:image/png;base64,{base64.b64encode(img_bytes).decode()}"
-            frame_data_cache[frame_index] = uri
-            return uri
-        except Exception as exc:
-            logger.error(f"Failed to read frame image {frame_path}: {exc}")
-            return None
-
-    results: List[dict] = []
-    # Each segment × repeat_index gets its own independent job slot.
-    for seg in request.segments:
-        data_uri = await _frame_data_uri(seg.frame_index)
-        for ri in range(seg.repeat):
-            if not frame_map.get(seg.frame_index):
-                logger.warning(
-                    f"Frame index {seg.frame_index} not found in pack {request.pack_id}"
-                )
-                results.append(
-                    {
-                        "frame_index": seg.frame_index,
-                        "ark_task_id": None,
-                        "job_id": None,
-                        "repeat_index": ri,
-                        "status": "failed",
-                        "error": "Frame not found",
-                    }
-                )
-                continue
-            if data_uri is None:
-                results.append(
-                    {
-                        "frame_index": seg.frame_index,
-                        "ark_task_id": None,
-                        "job_id": None,
-                        "repeat_index": ri,
-                        "status": "failed",
-                        "error": "Cannot read frame image",
-                    }
-                )
-                continue
-            try:
-                job_id = await storyboard_video_queue.enqueue(
-                    pack_id=request.pack_id,
-                    frame_index=seg.frame_index,
-                    repeat_index=ri,
-                    description=seg.description,
-                    duration=seg.duration,
-                    frame_data_uri=data_uri,
-                )
-                results.append(
-                    {
-                        "frame_index": seg.frame_index,
-                        # Keep ark_task_id populated with job_id so existing
-                        # frontend callers that treat ark_task_id as the polling
-                        # handle continue to work. Real ARK id is exposed later
-                        # once the worker submits, via the status endpoint.
-                        "ark_task_id": job_id,
-                        "job_id": job_id,
-                        "repeat_index": ri,
-                        "status": "queued",
-                    }
-                )
-            except Exception as exc:
-                logger.error(
-                    f"Failed to enqueue video job for frame {seg.frame_index} repeat {ri}: {exc}",
-                    exc_info=True,
-                )
-                results.append(
-                    {
-                        "frame_index": seg.frame_index,
-                        "ark_task_id": None,
-                        "job_id": None,
-                        "repeat_index": ri,
-                        "status": "failed",
-                        "error": str(exc),
-                    }
-                )
-
-    # Update per-pack job_id mapping.
-    if len(_pack_video_tasks) >= _PACK_CACHE_MAX_SIZE:
-        oldest = next(iter(_pack_video_tasks))
-        del _pack_video_tasks[oldest]
-
-    existing = _pack_video_tasks.get(request.pack_id, {})
-    for r in results:
-        jid = r.get("job_id")
-        if not jid:
+        raise FileNotFoundError("Storyboard pack not found")
+    async with aiofiles.open(os.path.join(pack_directory, "metadata.json"), "r", encoding="utf-8") as file:
+        metadata = json.loads(await file.read())
+    frame_map = {frame["index"]: frame for frame in metadata.get("frames", [])}
+    frame_data = {}
+    pending, results = [], []
+    root = Path(pack_directory).resolve()
+    for segment in request.segments:
+        frame = frame_map.get(segment.frame_index)
+        if not frame:
+            for repeat in range(segment.repeat):
+                results.append({"frame_index": segment.frame_index, "repeat_index": repeat,
+                                "status": "failed", "ark_task_id": None, "job_id": None,
+                                "error": "storyboard_frame_not_found"})
             continue
-        fi = r["frame_index"]
-        existing.setdefault(fi, []).append(jid)
-    _pack_video_tasks[request.pack_id] = existing
-
-    logger.info(
-        f"Batch video: {len(results)} jobs enqueued for pack {request.pack_id} "
-        f"(queue={sum(1 for r in results if r.get('status') == 'queued')}, "
-        f"failed={sum(1 for r in results if r.get('status') == 'failed')})"
-    )
+        if segment.frame_index not in frame_data:
+            try:
+                path = (root / frame["filename"]).resolve(strict=True)
+                if not path.is_relative_to(root) or path.stat().st_size >= 30_000_000:
+                    raise ValueError
+                mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(path.suffix.lower())
+                if not mime:
+                    raise ValueError
+                async with aiofiles.open(path, "rb") as file:
+                    image = await file.read()
+                frame_data[segment.frame_index] = f"data:{mime};base64," + base64.b64encode(image).decode("ascii")
+            except (OSError, ValueError, KeyError):
+                raise VideoError("video_parameters_unsupported", field="frame_index") from None
+        uri = frame_data[segment.frame_index]
+        candidate = ArkVideoGenerateRequest(prompt=segment.description, duration=segment.duration, image_urls=[uri])
+        await build_payload(candidate, config)
+        pending.extend((segment, repeat, uri) for repeat in range(segment.repeat))
+    if not pending:
+        return results
+    handles = await video_task_contexts.reserve(config, len(pending))
+    jobs = []
+    try:
+        for handle, (segment, repeat, uri) in zip(handles, pending):
+            job_id = await storyboard_video_queue.enqueue(
+                pack_id=request.pack_id, frame_index=segment.frame_index, repeat_index=repeat,
+                description=segment.description, duration=segment.duration, frame_data_uri=uri,
+                context_handle=handle,
+            )
+            jobs.append(job_id)
+            results.append({"frame_index": segment.frame_index, "repeat_index": repeat,
+                            "ark_task_id": job_id, "job_id": job_id, "status": "queued",
+                            "phase": "queued", "model": config.model_id})
+    except BaseException:
+        for job_id in jobs:
+            await storyboard_video_queue.cancel(job_id)
+        for handle in handles:
+            await video_task_contexts.release(handle)
+        raise
+    if len(_pack_video_tasks) >= _PACK_CACHE_MAX_SIZE:
+        _pack_video_tasks.pop(next(iter(_pack_video_tasks)))
+    existing = _pack_video_tasks.setdefault(request.pack_id, {})
+    for result in results:
+        if result.get("job_id"):
+            existing.setdefault(result["frame_index"], []).append(result["job_id"])
     return results
 
 
@@ -1547,6 +1489,12 @@ async def get_batch_video_status(pack_id: str) -> List[dict]:
                     "status": job.status,
                     "video_url": job.video_url,
                     "thumbnail_url": job.thumbnail_url,
+                    "duration": job.duration,
+                    "width": job.width,
+                    "height": job.height,
+                    "model": job.model,
+                    "phase": job.phase,
+                    "error_code": job.error_code,
                     "error": job.error,
                     "position_in_queue": position,
                 }

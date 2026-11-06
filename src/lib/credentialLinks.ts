@@ -43,7 +43,13 @@ export const INTEGRATION_LINKS: Record<LinkTarget, CredentialLink> = {
     consoleUrl: 'https://freesound.org/apiv2/apply/',
     docsUrl: 'https://freesound.org/docs/api/authentication.html',
   },
-  ark: {
+  ark_image: {
+    consoleUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apikey',
+    docsUrl: 'https://docs.volcengine.com/docs/82379',
+    activationUrl:
+      'https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement',
+  },
+  ark_video: {
     consoleUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apikey',
     docsUrl: 'https://docs.volcengine.com/docs/82379',
     activationUrl:

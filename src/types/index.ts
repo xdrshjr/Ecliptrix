@@ -582,6 +582,10 @@ export interface StoryboardVideoCandidate {
   progress: number;              // 0-100
   videoUrl?: string;
   thumbnailUrl?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  model?: string | null;
   error?: string;
   queuePosition?: number;
 }
@@ -597,9 +601,14 @@ export interface StoryboardScriptSegment {
   duration: number;            // seconds (4-12)
   generationStatus: 'idle' | 'generating' | 'succeeded' | 'failed' | 'queued' | 'timeout';
   generationProgress?: number;
+  generationTimeoutSeconds?: number;
   arkTaskId?: string;
   generatedVideoUrl?: string;
   generatedVideoThumbnailUrl?: string;
+  generatedVideoDuration?: number;
+  generatedVideoWidth?: number;
+  generatedVideoHeight?: number;
+  generatedVideoModel?: string | null;
   generationError?: string;
   /** Queue position when status='queued' (1-based). */
   queuePosition?: number;

@@ -22,6 +22,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -33,6 +34,10 @@ from app.services.integration_registry import (
     FieldSpec,
     IntegrationSpec,
     get_spec,
+    LEGACY_CREDENTIAL_BASELINES,
+)
+from app.services.ark_video_profiles import (
+    InvalidModelConfiguration, validate_custom_model, validate_model_configuration,
 )
 from app.services.secret_values import is_placeholder, is_usable_secret
 
@@ -75,6 +80,15 @@ class IntegrationSaveFailed(Exception):
         self.integration_id = integration_id
 
 
+class IntegrationLoadFailed(Exception):
+    """加载状态未知时禁止媒体读写，避免环境回退掩盖数据库故障。"""
+
+    def __init__(self, integration_id: str) -> None:
+        self.integration_id = integration_id
+        self.code = "integration_load_failed"
+        super().__init__(self.code)
+
+
 @dataclass(frozen=True)
 class ResolvedField:
     """One resolved field. ``value``/``values`` are secrets: never log them."""
@@ -100,6 +114,7 @@ class ResolvedIntegration:
     source: str  # database | environment | none
     filled_required: int
     total_required: int
+    configuration_warning: Optional[str] = None
 
     def field(self, name: str) -> Optional[ResolvedField]:
         for item in self.fields:
@@ -132,6 +147,15 @@ def _baseline_reader(spec_field: FieldSpec) -> FieldValue:
     return raw if isinstance(raw, str) else ""
 
 
+def _image_environment() -> Tuple[str, bool]:
+    spec = get_spec("ark_image").field("api_key")
+    current = _baseline_reader(spec)
+    if is_usable_secret(current):
+        return current.strip(), False
+    legacy = _baseline_reader(FieldSpec("api_key", "secret", baseline=LEGACY_CREDENTIAL_BASELINES[0]))
+    return (legacy.strip(), True) if is_usable_secret(legacy) else ("", False)
+
+
 def _clean_list(raw: Any) -> List[str]:
     """Strip, drop placeholders/empties and de-duplicate, keeping order."""
     seen: List[str] = []
@@ -151,6 +175,8 @@ def _resolve_scalar(spec_field: FieldSpec, stored: Dict[str, Any]) -> ResolvedFi
     if isinstance(from_db, str) and is_usable_secret(from_db):
         return ResolvedField(**base, source="database", configured=True, value=from_db.strip())
     from_env = _baseline_reader(spec_field)
+    if spec_field.baseline and spec_field.baseline.settings_attr == "ark_image_api_key":
+        from_env = _image_environment()[0]
     if isinstance(from_env, str) and is_usable_secret(from_env):
         return ResolvedField(**base, source="environment", configured=True, value=from_env.strip())
     return ResolvedField(**base, source="none", configured=False)
@@ -163,9 +189,14 @@ def _resolve_choice(spec_field: FieldSpec, stored: Dict[str, Any]) -> ResolvedFi
         choices=spec_field.choices,
     )
     from_db = stored.get(spec_field.name)
+    strict_video = spec_field.baseline and spec_field.baseline.settings_attr.startswith("ark_video_")
+    if strict_video and isinstance(from_db, str) and from_db.strip():
+        return ResolvedField(**base, source="database", configured=from_db in spec_field.choices, value=from_db)
     if from_db in spec_field.choices:
         return ResolvedField(**base, source="database", configured=True, value=from_db)
     from_env = _baseline_reader(spec_field)
+    if strict_video and isinstance(from_env, str) and from_env.strip():
+        return ResolvedField(**base, source="environment", configured=from_env in spec_field.choices, value=from_env)
     if from_env in spec_field.choices and from_env != spec_field.default:
         return ResolvedField(**base, source="environment", configured=True, value=from_env)
     return ResolvedField(**base, source="default", configured=True, value=spec_field.default)
@@ -258,17 +289,19 @@ def validate_patch(spec: IntegrationSpec, patch: Dict[str, Any]) -> Dict[str, An
     for name, raw in patch.items():
         spec_field = spec.field(name)
         if spec_field is None:
-            raise CredentialValidationError("unknown_field", str(name))
+            raise CredentialValidationError("unknown_field", "unknown_field")
         if _is_clear_request(raw):
             cleaned[name] = None
         elif spec_field.kind == "choice":
             if raw not in spec_field.choices:
+                if spec.id == "ark_video":
+                    raise InvalidModelConfiguration(name)
                 raise CredentialValidationError("invalid_choice", name)
             cleaned[name] = raw
         elif spec_field.kind == "secret_list":
             cleaned[name] = _validate_list(raw, spec_field)
         elif spec_field.kind == "text":
-            cleaned[name] = _validate_text(raw, name)
+            cleaned[name] = validate_custom_model(raw) if spec.id == "ark_video" and name == "custom_model" else _validate_text(raw, name)
         else:
             cleaned[name] = _validate_secret(raw, name)
     return cleaned
@@ -281,17 +314,29 @@ class IntegrationCredentialsService:
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
         self.load_failed = False
+        self._video_revision = str(uuid4())
+        self._video_signature: Optional[Tuple[str, ...]] = None
 
     def reset(self) -> None:
         """Drop all cached state (test isolation; never called in production)."""
         self._cache = {}
         self._locks = {}
         self.load_failed = False
+        self._video_revision = str(uuid4())
+        self._video_signature = None
 
     async def load_all(self) -> None:
         """Fill the cache from the database. Never raises: sets ``load_failed``."""
+        from app.services import integration_credential_migration
+
         try:
             async with async_session_factory() as session:
+                rows = (await session.execute(select(IntegrationCredential))).scalars().all()
+                current_image = _baseline_reader(get_spec("ark_image").field("api_key"))
+                await integration_credential_migration.migrate_media_credentials(
+                    session, rows, is_usable_secret(current_image),
+                )
+                await session.commit()
                 rows = (await session.execute(select(IntegrationCredential))).scalars().all()
             self._cache = {
                 row.integration_id: dict(row.fields or {})
@@ -299,6 +344,8 @@ class IntegrationCredentialsService:
                 if get_spec(row.integration_id) is not None
             }
             self.load_failed = False
+            self._video_revision = str(uuid4())
+            self._video_signature = None
         except Exception as error:  # noqa: BLE001 - startup must not abort
             self.load_failed = True
             logger.error(
@@ -310,6 +357,7 @@ class IntegrationCredentialsService:
 
     def read(self, integration_id: str, field_name: str) -> FieldValue:
         """Resolved value of one field; list for secret_list, ``""`` if none."""
+        self.require_loaded(integration_id)
         spec = get_spec(integration_id)
         spec_field = spec.field(field_name) if spec else None
         if spec_field is None:
@@ -336,6 +384,17 @@ class IntegrationCredentialsService:
             raise UnknownIntegrationError(integration_id)
         stored = self._stored(integration_id)
         fields = tuple(_resolve_field(item, stored) for item in spec.fields)
+        warning = None
+        model_valid = True
+        if integration_id == "ark_video":
+            try:
+                validate_model_configuration({item.name: item.value for item in fields})
+            except InvalidModelConfiguration:
+                warning, model_valid = "invalid_model_configuration", False
+        elif integration_id == "ark_image" and fields[0].source == "environment" and _image_environment()[1]:
+            warning = "legacy_image_environment"
+        if integration_id in ("ark_image", "ark_video") and self.load_failed:
+            warning, model_valid = "integration_load_failed", False
         required = [item for item in fields if item.required]
         filled = [item for item in required if item.configured]
         sources = {item.source for item in filled}
@@ -344,9 +403,23 @@ class IntegrationCredentialsService:
         else:
             source = "database" if "database" in sources else "environment"
         return ResolvedIntegration(
-            id=integration_id, fields=fields, usable=len(filled) == len(required),
+            id=integration_id, fields=fields, usable=len(filled) == len(required) and model_valid,
             source=source, filled_required=len(filled), total_required=len(required),
+            configuration_warning=warning,
         )
+
+    def require_loaded(self, integration_id: str) -> None:
+        """媒体加载失败时不使用缓存或环境值继续运行。"""
+        if self.load_failed and integration_id in ("ark_image", "ark_video"):
+            raise IntegrationLoadFailed(integration_id)
+
+    def video_config_revision(self) -> str:
+        """仅有效视频配置变化时换 UUID；秘密不哈希、不公开。"""
+        values = tuple(item.value for item in self.resolve("ark_video").fields)
+        if self._video_signature != values:
+            self._video_signature = values
+            self._video_revision = str(uuid4())
+        return self._video_revision
 
     def is_usable(self, integration_id: str) -> bool:
         """True when every required field has a usable value."""
@@ -366,6 +439,7 @@ class IntegrationCredentialsService:
             CredentialValidationError: a field value was rejected (nothing written).
             IntegrationSaveFailed: the database write failed (cache unchanged).
         """
+        self.require_loaded(integration_id)
         spec = get_spec(integration_id)
         if spec is None:
             raise UnknownIntegrationError(integration_id)
@@ -377,11 +451,14 @@ class IntegrationCredentialsService:
                     merged.pop(name, None)
                 else:
                     merged[name] = value
+            if integration_id == "ark_video":
+                validate_model_configuration({item.name: _resolve_field(item, merged).value for item in spec.fields})
             await self._commit(integration_id, merged)
         return self.resolve(integration_id)
 
     async def clear(self, integration_id: str) -> ResolvedIntegration:
         """Delete the app-level configuration and fall back to the environment."""
+        self.require_loaded(integration_id)
         if get_spec(integration_id) is None:
             raise UnknownIntegrationError(integration_id)
         async with self._lock_for(integration_id):
@@ -407,6 +484,8 @@ class IntegrationCredentialsService:
         else:
             updated.pop(integration_id, None)
         self._cache = updated
+        if integration_id == "ark_video":
+            self.video_config_revision()
         logger.info(
             "integration credentials updated: id=%s fields=%s",
             integration_id, sorted(merged),
@@ -441,9 +520,14 @@ ARK_NOT_CONFIGURED_MESSAGE = (
 )
 
 
-def ark_api_key() -> str:
-    """Current Ark (Seedream / Seedance) API key, ``""`` when unconfigured."""
-    return integration_credentials.value("ark", "api_key")
+def ark_image_api_key() -> str:
+    """当前独立图片凭证；允许图片的遗留环境兼容来源。"""
+    return integration_credentials.value("ark_image", "api_key")
+
+
+def ark_video_api_key() -> str:
+    """当前独立视频凭证；永不回退到图片或遗留共享凭证。"""
+    return integration_credentials.value("ark_video", "api_key")
 
 
 class credential_property:  # noqa: N801 - descriptor, lowercase like ``property``

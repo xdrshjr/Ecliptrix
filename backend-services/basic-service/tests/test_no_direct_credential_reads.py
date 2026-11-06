@@ -15,6 +15,7 @@ from typing import List, Tuple
 from app.services.integration_registry import (
     NON_CREDENTIAL_SETTINGS,
     REGISTRY,
+    LEGACY_CREDENTIAL_BASELINES,
 )
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
@@ -23,6 +24,11 @@ EXEMPT = {"config.py", "integration_registry.py", "integration_credentials_servi
 
 def _forbidden_patterns() -> List[Tuple[str, "re.Pattern[str]"]]:
     patterns: List[Tuple[str, "re.Pattern[str]"]] = []
+    for ref in LEGACY_CREDENTIAL_BASELINES:
+        if ref.settings_attr:
+            patterns.append((f"settings.{ref.settings_attr}", re.compile(rf"\bsettings\.{re.escape(ref.settings_attr)}\b")))
+        if ref.env_var:
+            patterns.append((f'env "{ref.env_var}"', re.compile(rf'''["']{re.escape(ref.env_var)}["']''')))
     for spec in REGISTRY:
         for field in spec.fields:
             ref = field.baseline
@@ -50,6 +56,8 @@ def _scanned_files() -> List[Path]:
 def test_patterns_are_generated_from_every_registry_field():
     names = {name for name, _ in _forbidden_patterns()}
     assert "settings.ark_api_key" in names
+    assert "settings.ark_image_api_key" in names
+    assert "settings.ark_video_api_key" in names
     assert "settings.volcano_tts_resource_id" in names
     assert "settings.volcano_voice_clone_tts_resource_id" in names
     assert 'env "UNSPLASH_ACCESS_KEYS"' in names

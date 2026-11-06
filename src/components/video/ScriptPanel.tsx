@@ -84,7 +84,7 @@ interface ScriptPanelProps {
   onGenerateAiVideoForSentence?: (
     params: ArkVideoGenerateParams,
     link: { segmentId: string; sentenceId: string },
-  ) => void;
+  ) => void | Promise<void>;
   // 「解说直接生成」句卡片「重新生成」AI 视频脚本：父级桥接 generateNarrationVideoScript。
   onRegenerateVideoScript?: (segmentId: string, sentenceId: string) => void;
   /** 段落试听开始前暂停成片预览（spec §3.5.2 useSegmentAudition）。 */
@@ -1785,6 +1785,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       ) : activeTab === 'aiVideo' ? (
         onUpdateAIVideoScriptSegments ? (
           <AIVideoScriptTab
+            projectKey={projectId ?? taskId}
             segments={aiVideoScriptSegments}
             onUpdateSegments={onUpdateAIVideoScriptSegments}
             onAddMaterial={onAddMaterial}
@@ -1836,9 +1837,9 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       <AiVideoModal
         isOpen={sentenceAiModal.open}
         onClose={() => setSentenceAiModal({ open: false })}
-        onConfirm={(params) => {
+        onConfirm={async (params) => {
           if (sentenceAiModal.segmentId && sentenceAiModal.sentenceId) {
-            onGenerateAiVideoForSentence?.(params, {
+            await onGenerateAiVideoForSentence?.(params, {
               segmentId: sentenceAiModal.segmentId,
               sentenceId: sentenceAiModal.sentenceId,
             });
