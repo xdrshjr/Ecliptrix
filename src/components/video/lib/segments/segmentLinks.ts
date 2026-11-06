@@ -21,6 +21,12 @@ export interface LinkableItem {
   duration: number;
   materialId?: string;
   originalMaterialType?: string;
+  name?: string;
+  url?: string;
+  serverUrl?: string;
+  cacheUrl?: string;
+  thumbnailUrl?: string;
+  storageKey?: string;
   metadata?: Record<string, unknown>;
   sentenceSegments?: { segment_id?: string; total_duration?: number } | null;
 }
@@ -108,8 +114,7 @@ function readString(value: unknown): string | null {
 
 /**
  * Timeline item → owning segment id. Priority: the item's own sentence
- * segments, then its source material's `segment_id`, then a `linkedSegmentId`
- * (AI video generated for a sentence) on the material or the item snapshot.
+ * segments, then explicit clip ownership, then source material / snapshot.
  */
 export function resolveItemSegmentId(
   item: LinkableItem,
@@ -117,11 +122,13 @@ export function resolveItemSegmentId(
 ): string | null {
   const fromSentences = readString(item.sentenceSegments?.segment_id);
   if (fromSentences) return fromSentences;
+  const fromClip = readString(item.metadata?.linkedSegmentId);
+  if (fromClip) return fromClip;
   const material = item.materialId ? materialsById.get(item.materialId) : undefined;
   const fromMaterial = readString(material?.metadata?.segment_id);
   if (fromMaterial) return fromMaterial;
   return readString(material?.metadata?.linkedSegmentId)
-    ?? readString(item.metadata?.linkedSegmentId);
+    ?? readString(item.metadata?.segment_id);
 }
 
 function forEachItem(
@@ -145,6 +152,34 @@ export function collectSegmentItemIds(
 
 function isVisualItem(item: LinkableItem): boolean {
   return item.type === 'video';
+}
+
+/** 候选优先，随后按时间、轨道和片段顺序展示已上轨画面；不回写脚本。 */
+export function deriveSegmentVisuals(
+  segment: ScriptSegment,
+  tracks: readonly LinkableTrack[],
+  materialsById: ReadonlyMap<string, MaterialItem>,
+): MaterialItem[] {
+  const visuals = [...segment.videos ?? []];
+  const seen = new Set(visuals.map(m => m.id));
+  const items = tracks.flatMap((track, trackIndex) => track.type !== 'video' ? [] : track.items
+    .filter(item => isVisualItem(item) && resolveItemSegmentId(item, materialsById) === segment.id)
+    .map((item, itemIndex) => ({ item, trackIndex, itemIndex })))
+    .sort((a, b) => a.item.startTime - b.item.startTime || a.trackIndex - b.trackIndex || a.itemIndex - b.itemIndex);
+  for (const { item } of items) {
+    const id = item.materialId ?? item.id;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const material = materialsById.get(id);
+    const type = material?.type === 'image' || item.originalMaterialType === 'image' ? 'image' : 'video';
+    visuals.push({
+      id, name: item.name ?? '', type, format: '', size: 0, createdAt: new Date(0), duration: item.duration,
+      ...material,
+      url: material?.cacheUrl || material?.serverUrl || material?.url || item.cacheUrl || item.serverUrl || item.url || '',
+      thumbnailUrl: material?.thumbnailUrl || item.thumbnailUrl,
+    });
+  }
+  return visuals;
 }
 
 function extend(range: SegmentTimeRange | null, item: LinkableItem): SegmentTimeRange {

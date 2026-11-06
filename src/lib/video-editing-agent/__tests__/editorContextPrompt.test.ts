@@ -30,6 +30,6 @@ describe('editorContext in the agent prompt (T-AG-1)', () => {
     const line = formatEditorContextLine({
       selectedSegmentId: 'seg-2', segmentLabel: '第 2 段「活泼天性」', segmentRange: { start: 8.5, end: 16.5 },
     });
-    expect(line).toBe('用户当前正在编辑第 2 段「活泼天性」（时间轴 8.5s–16.5s）。除非用户另有说明，涉及「这一段 / 本段」的指令都指该段。');
+    expect(line).toBe('用户当前正在编辑第 2 段「活泼天性」（时间轴 8.5s–16.5s）（segment_id: seg-2）。除非用户另有说明，涉及「这一段 / 本段」的指令都指该段。');
   });
 });

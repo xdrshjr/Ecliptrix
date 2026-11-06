@@ -1,0 +1,33 @@
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+stdout | docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 脚本工具结果和脚本操作均未携带稳定段落 ID
+脚本操作段落： {"title":"清晨","scriptText":"清晨的阳光照亮山谷。","narrationText":"清晨的阳光照亮山谷。"}
+
+stdout | docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 单段配音和字幕已上轨，重新派生仍显示未生成
+单段配音与字幕已上轨： {"types":["audio","subtitle"],"range":null,"status":{"visual":"missing","voice":"none","voiceOnTimeline":"absent","subtitle":"none","candidate":null}}
+仅补齐配音关联的对照组： {"visual":"missing","voice":"ready","voiceOnTimeline":"current","subtitle":"ready","candidate":null}
+
+stdout | docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 批量 TTS 的临时请求 ID 未成为面板段落关联
+批量请求使用临时段落 ID；素材关联： null 配音状态： none
+
+stdout | docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 画面上轨仍未关联；有段落标记时状态立即变为已配置
+画面已上轨： missing 仅补齐关联后的对照组： configured
+
+ ✓ docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 脚本工具结果和脚本操作均未携带稳定段落 ID 15ms
+ ✓ docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 单段配音和字幕已上轨，重新派生仍显示未生成 79ms
+ ✓ docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 批量 TTS 的临时请求 ID 未成为面板段落关联 2ms
+stdout | docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 已有段落元数据在 Agent 上轨快照中丢失，移除素材后关联中断
+Agent 片段快照缺少段落关联；不提供素材查找表时： null
+
+stdout | docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 状态芯片已配置时，缩略图仍只读 segment.videos 并显示未配置画面
+同一卡片同时显示：画面已配置 / 未配置画面
+
+ ✓ docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 画面上轨仍未关联；有段落标记时状态立即变为已配置 5ms
+ ✓ docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 已有段落元数据在 Agent 上轨快照中丢失，移除素材后关联中断 4ms
+ ✓ docs/diagnoses/agent-script-panel-status-stale/repro.test.ts > 诊断：Agent 产物与脚本段落的关联缺失 > 状态芯片已配置时，缩略图仍只读 segment.videos 并显示未配置画面 13ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  21:46:29
+   Duration  4.03s (transform 1.49s, setup 125ms, import 2.56s, tests 123ms, environment 1.03s)

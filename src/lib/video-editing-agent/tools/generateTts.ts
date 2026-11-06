@@ -7,15 +7,16 @@ import { toolFetch } from './apiHelper';
 import {
   assertTtsNotAborted, invalidTtsRequest, normalizeSingleTtsResponse,
   readTtsResponse, ttsRequestFailure, ttsToolResult,
+  prepareSegmentVoice, segmentVoiceMetadata,
 } from './ttsResponse';
 
 const MAX_TEXT_LENGTH = 5000;
 
 const parameters = Type.Object({
+  segment_id: Type.Optional(Type.String({ description: '脚本配音必传稳定段 ID；普通无脚本配音省略。' })),
   text: Type.String({ description: '需要转换成语音的文本。' }),
   voice_type: Type.Optional(Type.String({
-    description: '火山语音音色 ID；省略则使用本工程「全片默认音色」，用户明确指定则以用户为准。' +
-      '通过 explore_tools("tts_tools") 查看音色。',
+    description: '火山音色 ID；省略用段落/全片默认音色。explore_tools("tts_tools") 查看音色。',
   })),
   speed: Type.Optional(Type.Number({
     description: '语速倍数，0.5–2.0，默认为 1.0。',
@@ -30,9 +31,8 @@ export function createGenerateTtsTool(
   return {
     name: 'generate_tts',
     label: '生成配音',
-    description: '将文本转换成语音并加入素材库。默认使用本工程「全片默认音色」，不要每轮追问；' +
-      '仅当用户提到性别/风格/语言/年龄/情绪或抱怨音色不对时，先用 ask_user 问一次（YOLO 模式除外）。' +
-      '仅音色不可用时回退一次默认音色；其他失败返回具体原因。',
+    description: '生成配音入库。脚本配音传 segment_id；音色优先段落设置，否则用全片默认音色，不要每轮追问。' +
+      '用户指定性别/风格/语言/年龄/情绪或抱怨音色时 ask_user 一次（YOLO 除外）。仅音色不可用时回退一次。',
     parameters,
     execute: async (toolCallId, params: Params) => {
       assertTtsNotAborted(context);
@@ -42,13 +42,19 @@ export function createGenerateTtsTool(
           (params.voice_type !== undefined && !params.voice_type.trim())) {
         return ttsToolResult({ success: false, ...invalidTtsRequest() });
       }
-      const voiceType = resolveVoiceType(params.voice_type, context.defaultVoiceId);
-      const speed = Math.max(0.5, Math.min(2, params.speed ?? 1));
+      const prepared = prepareSegmentVoice(context, params.segment_id, text);
+      if (prepared.failure) return ttsToolResult({ success: false, ...prepared.failure });
+      const voiceType = resolveVoiceType(params.voice_type ?? prepared.segment?.voiceId, context.defaultVoiceId);
+      const speed = Math.max(0.5, Math.min(2, params.speed ?? prepared.segment?.voiceSpeed ?? 1));
       try {
         const outcome = await generateSpeech(context, text, voiceType, speed);
         assertTtsNotAborted(context);
         if (!outcome.result.success) return ttsToolResult(outcome.result);
+        if (prepared.segment && !context.scriptSegments?.some(s => s.id === prepared.segment!.id)) {
+          return ttsToolResult({ success: false, ...invalidTtsRequest(), error: '脚本段落已删除，已丢弃迟到配音。' });
+        }
         const material = createSpeechMaterial(text, outcome.result);
+        material.metadata = segmentVoiceMetadata(prepared, outcome.voiceType, speed);
         assertTtsNotAborted(context);
         context.materials.push(material);
         context.recordOperation(toolCallId, { type: 'add_material', material });
@@ -56,6 +62,7 @@ export function createGenerateTtsTool(
           success: true,
           // 回显实际使用的音色：模型/用户/日志都能确认这一次到底用了哪个音色。
           voice_type: outcome.voiceType,
+          ...(prepared.segment ? { segment_id: prepared.segment.id } : {}),
           material: {
             id: material.id, name: material.name, type: 'audio',
             duration: material.duration, url: material.url, format: 'mp3',

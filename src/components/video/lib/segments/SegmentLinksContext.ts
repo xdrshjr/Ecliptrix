@@ -21,6 +21,8 @@ import type {
 } from './segmentLinks';
 
 export interface SegmentLinksValue {
+  /** 只读画面展示：手动候选 + 关联时间轴画面。 */
+  visualsById?: ReadonlyMap<string, readonly MaterialItem[]>;
   /** segmentId → ordinal / badge / label ("01 丝滑亮相"). */
   segmentIndex: ReadonlyMap<string, SegmentIndexEntry>;
   /** timeline itemId → owning segmentId (only for known segments). */
@@ -42,6 +44,7 @@ export interface SegmentLinksValue {
 }
 
 const EMPTY_VALUE: SegmentLinksValue = {
+  visualsById: new Map(),
   segmentIndex: new Map(),
   itemSegmentMap: new Map(),
   materialSegmentMap: new Map(),

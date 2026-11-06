@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { ArrowLeftRight, Clock, GripVertical, ImageIcon, Play, RefreshCw, Square } from './icons';
-import type { ScriptSegment } from '@/types';
+import type { MaterialItem, ScriptSegment } from '@/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import MaterialThumbnail from '../MaterialsPanel/MaterialThumbnail';
 import type { SegmentIndexEntry, SegmentStatus } from '../../lib/segments/segmentLinks';
@@ -45,6 +45,7 @@ export interface SegmentCardState {
 }
 
 export interface SegmentCardProps {
+  visualMaterials?: readonly MaterialItem[];
   segment: ScriptSegment;
   index: SegmentIndexEntry;
   /** Null for the placeholder script. */
@@ -80,11 +81,12 @@ function focusFirstEditorControl(body: HTMLElement | null): void {
 
 const SegmentThumbnail: React.FC<{
   segment: ScriptSegment;
+  visualMaterials?: readonly MaterialItem[];
   onReplaceVisual(): void;
   blockReason: string | null;
-}> = ({ segment, onReplaceVisual, blockReason }) => {
+}> = ({ segment, visualMaterials, onReplaceVisual, blockReason }) => {
   const { t } = useLocale();
-  const first = segment.videos?.[0];
+  const first = (visualMaterials ?? segment.videos)?.[0];
   if (first) {
     return (
       <div className="segment-card__thumb">
@@ -274,6 +276,7 @@ const SegmentCard: React.FC<SegmentCardProps> = (props) => {
         <div className="segment-card__preview">
           <SegmentThumbnail
             segment={segment}
+            visualMaterials={props.visualMaterials}
             onReplaceVisual={actions.onReplaceVisual}
             blockReason={state.replaceVisualBlockReason}
           />

@@ -20,6 +20,7 @@ import {
   buildSegmentIndex,
   computeSegmentTimeRange,
   deriveSegmentStatus,
+  deriveSegmentVisuals,
   findLatestVoiceMaterial,
   findPlayingSegmentId,
   listVoiceVersions,
@@ -47,6 +48,7 @@ export interface UseSegmentLinksReturn {
 }
 
 interface StaticLinks {
+  visualsById: Map<string, MaterialItem[]>;
   segmentIndex: SegmentLinksValue['segmentIndex'];
   itemSegmentMap: Map<string, string>;
   materialSegmentMap: Map<string, string>;
@@ -62,6 +64,8 @@ function deriveStaticLinks(
 ): StaticLinks {
   const segmentIndex = buildSegmentIndex(segments);
   const materialsById = buildMaterialsById(materials);
+  const visualsById = new Map(segments.map(segment =>
+    [segment.id, deriveSegmentVisuals(segment, tracks, materialsById)]));
   const itemSegmentMap = new Map<string, string>();
   tracks.forEach((track) => track.items.forEach((item) => {
     const segmentId = resolveItemSegmentId(item, materialsById);
@@ -94,7 +98,7 @@ function deriveStaticLinks(
     if (versions.length > 1) voiceVersionsById.set(segmentId, versions);
   });
   return {
-    segmentIndex, itemSegmentMap, materialSegmentMap, segmentRanges, latestVoiceById, voiceVersionsById,
+    segmentIndex, itemSegmentMap, materialSegmentMap, segmentRanges, latestVoiceById, voiceVersionsById, visualsById,
   };
 }
 

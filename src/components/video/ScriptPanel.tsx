@@ -190,6 +190,18 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   // 视频搜索相关状态
   const [currentSegmentId, setCurrentSegmentId] = useState<string | null>(null);
   const [segmentVideoIndexes, setSegmentVideoIndexes] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setSegmentVideoIndexes(previous => {
+      let changed = false;
+      const next = Object.fromEntries(segments.map(segment => {
+        const count = (segmentLinks.visualsById?.get(segment.id) ?? segment.videos ?? []).length;
+        const index = Math.max(0, Math.min(previous[segment.id] ?? 0, count - 1));
+        if ((previous[segment.id] ?? 0) !== index) changed = true;
+        return [segment.id, index];
+      }));
+      return changed ? next : previous;
+    });
+  }, [segments, segmentLinks.visualsById]);
   
     // 新增：视频播放状态管理
   const [playingVideos, setPlayingVideos] = useState<Set<string>>(new Set());
@@ -1145,17 +1157,18 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   // 切换视频预览
   const handleVideoNavigation = useCallback((segmentId: string, direction: 'prev' | 'next') => {
     const segment = segments.find(s => s.id === segmentId);
-    if (!segment?.videos || segment.videos.length === 0) return;
+    const videos = segmentLinks.visualsById?.get(segmentId) ?? segment?.videos ?? [];
+    if (videos.length === 0) return;
 
-    const currentIndex = segmentVideoIndexes[segmentId] || 0;
-    const currentVideo = segment.videos[currentIndex];
+    const currentIndex = Math.max(0, Math.min(segmentVideoIndexes[segmentId] || 0, videos.length - 1));
+    const currentVideo = videos[currentIndex];
     
     // 计算新的索引
     let newIndex: number;
     if (direction === 'prev') {
-      newIndex = currentIndex > 0 ? currentIndex - 1 : segment.videos.length - 1;
+      newIndex = currentIndex > 0 ? currentIndex - 1 : videos.length - 1;
     } else {
-      newIndex = currentIndex < segment.videos.length - 1 ? currentIndex + 1 : 0;
+      newIndex = currentIndex < videos.length - 1 ? currentIndex + 1 : 0;
     }
 
     // 如果新索引和当前索引相同，说明只有一个视频，无需切换
@@ -1163,7 +1176,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       logger.info('只有一个视频，无需切换', {
         segmentId,
         videoId: currentVideo?.id,
-        totalVideos: segment.videos.length
+        totalVideos: videos.length
       });
       return;
     }
@@ -1221,20 +1234,20 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       [segmentId]: newIndex
     }));
 
-    const newVideo = segment.videos?.[newIndex];
+    const newVideo = videos[newIndex];
     logger.userAction('切换视频预览', 'videoNavigation', {
       segmentId,
       direction,
       currentIndex,
       newIndex,
-      totalVideos: segment.videos?.length || 0,
+      totalVideos: videos.length,
       previousVideoId: currentVideo?.id,
       previousVideoName: currentVideo?.name,
       newVideoId: newVideo?.id,
       newVideoName: newVideo?.name
     });
 
-  }, [segments, segmentVideoIndexes, playingVideos, logger]);
+  }, [segments, segmentLinks.visualsById, segmentVideoIndexes, playingVideos, logger]);
 
   // 格式化时间显示（秒转换为 mm:ss.s 格式）
   const formatTime = useCallback((seconds: number): string => {
@@ -1629,6 +1642,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
       />
       <SegmentVideoCarousel
         segment={segment}
+        visualMaterials={segmentLinks.visualsById?.get(segment.id)}
         currentIndex={segmentVideoIndexes[segment.id] || 0}
         loadStates={videoLoadingStates}
         handlers={carouselHandlers}

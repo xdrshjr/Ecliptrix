@@ -175,6 +175,7 @@ function renderCard(segment: ScriptSegment, position: number, context: CardConte
       )}
       <SegmentCard
         segment={segment}
+        visualMaterials={links.visualsById?.get(segment.id)}
         index={index}
         status={isPlaceholder ? null : links.statusById.get(segment.id) ?? null}
         durationSeconds={resolveSegmentDuration(segment, range, latestVoice)}

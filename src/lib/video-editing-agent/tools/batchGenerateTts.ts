@@ -8,6 +8,7 @@ import { toolFetch } from './apiHelper';
 import {
   assertTtsNotAborted, invalidTtsRequest, normalizeBatchTtsResponse,
   readTtsResponse, ttsRequestFailure, ttsToolResult,
+  prepareSegmentVoice, segmentVoiceMetadata,
 } from './ttsResponse';
 import type { TtsRequestSegment } from './ttsResponse';
 
@@ -16,6 +17,7 @@ const MAX_TEXT_LENGTH = 5000;
 
 const parameters = Type.Object({
   segments: Type.Array(Type.Object({
+    segment_id: Type.Optional(Type.String({ description: '该项对应的稳定脚本段 ID；不替代批次请求 ID。' })),
     text: Type.String({ description: '本段需要转换的文本。' }),
     voice_type: Type.Optional(Type.String({
       description: '本段的火山语音音色 ID；省略则使用本工程「全片默认音色」。',
@@ -40,11 +42,14 @@ export function createBatchGenerateTtsTool(
       if (!validParams(params)) {
         return ttsToolResult({ success: false, ...invalidTtsRequest() });
       }
+      const prepared = params.segments.map(s => prepareSegmentVoice(context, s.segment_id, s.text.trim()));
+      const invalid = prepared.find(p => p.failure)?.failure;
+      if (invalid) return ttsToolResult({ success: false, ...invalid });
       const taskId = `batch-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const requests = params.segments.map((segment, input_index) => ({
         segment_id: `${taskId}-seg-${input_index}`, input_index,
         text: segment.text.trim(),
-        voice_type: resolveVoiceType(segment.voice_type, context.defaultVoiceId),
+        voice_type: resolveVoiceType(segment.voice_type ?? prepared[input_index].segment?.voiceId, context.defaultVoiceId),
       }));
       let normalized: ReturnType<typeof normalizeBatchTtsResponse>;
       try {
@@ -57,8 +62,20 @@ export function createBatchGenerateTtsTool(
         }, requests);
       }
       assertTtsNotAborted(context);
-      const materials = normalized.results.map(result =>
-        createBatchMaterial(result, requests[result.input_index].text));
+      normalized.results = normalized.results.filter(result => {
+        const segment = prepared[result.input_index].segment;
+        if (!segment || context.scriptSegments?.some(s => s.id === segment.id)) return true;
+        normalized.failures.push({ input_index: result.input_index, segment_id: result.segment_id,
+          ...invalidTtsRequest(), error: '脚本段落已删除，已丢弃迟到配音。' });
+        return false;
+      });
+      const materials = normalized.results.map(result => {
+        const request = requests[result.input_index];
+        const material = createBatchMaterial(result, request.text);
+        material.metadata = segmentVoiceMetadata(prepared[result.input_index], request.voice_type,
+          Math.max(0.5, Math.min(2, params.speed ?? 1)));
+        return material;
+      });
       if (materials.length > 0) {
         assertTtsNotAborted(context);
         context.materials.push(...materials);
@@ -68,7 +85,16 @@ export function createBatchGenerateTtsTool(
         console.warn('[batch_generate_tts] 忽略无关或无效结果条数：', normalized.ignoredResults);
       }
       const defaultVoiceType = resolveVoiceType(undefined, context.defaultVoiceId);
-      return ttsToolResult(batchPayload(taskId, normalized, defaultVoiceType));
+      const payload = batchPayload(taskId, normalized, defaultVoiceType);
+      const identify = <T extends { input_index: number }>(row: T) => {
+        const id = prepared[row.input_index].segment?.id;
+        return { ...row, ...(id ? { script_segment_id: id } : {}) };
+      };
+      return ttsToolResult({ ...payload,
+        results: payload.results.map(identify), failures: payload.failures.map(identify),
+        message: payload.message + (prepared.some(p => p.segment)
+          ? ' 上轨时使用 script_segment_id 作为 segment_id；结果中的 segment_id 是批次请求 ID。' : ''),
+      });
     },
   };
 }

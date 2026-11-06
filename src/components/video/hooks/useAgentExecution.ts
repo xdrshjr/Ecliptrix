@@ -11,6 +11,7 @@
 
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { readSetupConfigRevision } from '@/lib/setupEvents';
+import { readScriptSegments, type ScriptSegmentSnapshot } from '@/lib/video-editing-agent/editorContextPrompt';
 import {
   describeServerErrorText,
   describeStreamErrorText,
@@ -78,6 +79,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface UseAgentExecutionParams {
+  getScriptSegments?: () => readonly ScriptSegmentSnapshot[];
   coverAgentBridge?: CoverAgentBridge;
   coverAspectRatio?: CoverAspectRatio;
   /** All conversations (array format matching content.conversations). */
@@ -401,8 +403,11 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     (stateManager: AgentStateManager, operationApplier: OperationApplier,
       onCoverStatus: () => void) => {
       const token = {};
+      const requestProjectId = paramsRef.current.projectId;
       liveTokenRef.current = token;
       return new AgentEventRouter({
+        isCurrentProject: () => mounted.current && paramsRef.current.projectId === requestProjectId,
+        getScriptSegments: () => paramsRef.current.getScriptSegments?.(),
         coverAgentBridge: coverBridgeRef.current,
         onCoverStatus,
         stateManager,
@@ -689,6 +694,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           timelineState: { ...baseline,
             aspectRatioId: coverAspectRatioRef.current ?? '16:9' },
           materials: stripInlineMediaForAgent(materialsRef.current),
+          scriptSegments: readScriptSegments(paramsRef.current.getScriptSegments?.()),
           projectId,
           conversationId: convId,
           generationConfigRevision: readSetupConfigRevision(),

@@ -27,6 +27,7 @@ import { resolveModelFormat } from './modelFormat';
 
 export { resolveModelFormat };
 import { buildSystemPrompt, L0_PROMPT_CHAR_CEILING } from './systemPrompt';
+import { readScriptSegments, formatScriptSegments } from './editorContextPrompt';
 import { skillAvailability } from './skillContext';
 import { convertToAgentMessages } from './messageConverter';
 import { HISTORY_CHAR_BUDGET, compactHistoryForModel } from './historyBudget';
@@ -101,6 +102,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     lastCompositionId: config.lastCompositionId,
     // 请求即快照：本回合的工程默认音色，TTS 工具的缺省值来源（不再硬编码）。
     defaultVoiceId: config.defaultVoiceId,
+    scriptSegments: config.scriptSegments === undefined ? undefined : readScriptSegments(config.scriptSegments),
     operations: new Map(),
     updateTimeline: (toolCallId: string, operation: TimelineOperation) => {
       if (toolContext.abortSignal?.aborted) {
@@ -213,7 +215,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
     skillIndex: config.skillIndex,
     crewEnabled: config.crewSettings?.enabled,
     autonomy: config.autonomy,
-  }) + (exploredCategories.length
+  }) + formatScriptSegments(toolContext.scriptSegments ?? []) + (exploredCategories.length
     ? '\n## 已加载的高级工具（历史提示）\n' +
       exploredCategories.slice(-2).join(', ') +
       '：仅供回顾。历史不恢复工具授权；非核心工具须先 explore_tools 再在下一响应调用。'
@@ -657,7 +659,9 @@ function addClipLocally(state: TimelineState, operation: AddClipOperation): void
     ...(material.serverUrl ? { serverUrl: material.serverUrl } : {}),
     ...(material.cacheUrl ? { cacheUrl: material.cacheUrl } : {}),
     ...(material.storageKey ? { storageKey: material.storageKey } : {}),
-    ...(material.metadata ? { metadata: { ...material.metadata } } : {}),
+    ...(material.metadata || operation.clip.metadata
+      ? { metadata: { ...material.metadata, ...operation.clip.metadata } } : {}),
+    ...(material.sentenceSegments ? { sentenceSegments: structuredClone(material.sentenceSegments) } : {}),
   });
 }
 

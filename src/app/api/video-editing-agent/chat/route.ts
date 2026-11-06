@@ -18,6 +18,7 @@ import { readVoiceId } from '@/lib/video-editing-agent/voiceDefaults';
 import {
   appendEditorContext,
   readEditorContext,
+  readScriptSegments,
   type EditorContextPayload,
 } from '@/lib/video-editing-agent/editorContextPrompt';
 import type {
@@ -594,6 +595,7 @@ export async function POST(request: NextRequest) {
             lastCompositionId,
             autonomy,
             defaultVoiceId,
+            scriptSegments: body.scriptSegments === undefined ? undefined : readScriptSegments(body.scriptSegments),
           });
 
           // Wire the route-wide tool-abort signal into the ToolContext so

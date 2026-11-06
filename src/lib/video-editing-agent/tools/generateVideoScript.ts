@@ -117,6 +117,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
         const hasRealNarration = data.segments.every(seg => !!seg.narrationText);
 
         const segmentsForDisplay = data.segments.map(seg => ({
+          id: `agent-segment-${crypto.randomUUID()}`,
           title: seg.title,
           scriptText: seg.scriptText,
           narrationText: seg.narrationText || seg.scriptText,
@@ -127,6 +128,11 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           .join('\n\n');
 
         // NOTE: only one recordOperation per toolCallId — Map.set overwrites previous entries.
+        context.scriptSegments = segmentsForDisplay.map(seg => ({
+          id: seg.id, title: seg.title, narrationText: seg.narrationText,
+          sentences: seg.scriptText.split(/(?<=[。！？.!?])\s*/).filter(s => s.trim())
+            .map((text, i) => ({ id: `${seg.id}-s-${i}`, text: text.trim() })),
+        }));
         // The AgentEventRouter handles building markdown content from structured segments.
         // For UI display, we use scriptText fallback when narrationText is missing
         // so the ScriptPanel always shows meaningful content.
@@ -152,12 +158,13 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
             has_narration: hasRealNarration,
           },
           segments: data.segments.map((seg, i) => ({
+            segment_id: segmentsForDisplay[i].id,
             index: i + 1,
             title: seg.title,
             narration_text: seg.narrationText || '',
           })),
           message: hasRealNarration
-            ? `Generated ${segmentsForDisplay.length}-scene script with narration. Use the narration_text from each segment for TTS generation.`
+            ? `已生成 ${segmentsForDisplay.length} 段脚本。逐段使用 narration_text 配音，并将 segment_id 传入 generate_tts / batch_generate_tts 和 add_to_track，以关联脚本面板。`
             : `Generated ${segmentsForDisplay.length}-scene script. Note: narration text is empty — ask the user if they want to add narration.`,
         };
 

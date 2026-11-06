@@ -163,6 +163,7 @@ export interface AgentTrackPatch {
 }
 
 export interface AgentClipData {
+  metadata?: { linkedSegmentId: string };
   id: string;
   trackId: string;
   startTime: number;
@@ -180,6 +181,7 @@ export interface AgentClipData {
  * previewing and exporting even if the material leaves the library.
  */
 export interface AgentMaterialData {
+  sentenceSegments?: MaterialItem['sentenceSegments'];
   id: string;
   name: string;
   type: string;
@@ -189,10 +191,11 @@ export interface AgentMaterialData {
   serverUrl?: string;
   cacheUrl?: string;
   storageKey?: string;
-  metadata?: Pick<
+  metadata?: Partial<Pick<
     NonNullable<MaterialItem['metadata']>,
-    'storageKind' | 'storageKey' | 'localResolvedUrl'
-  >;
+    'storageKind' | 'storageKey' | 'localResolvedUrl' | 'segment_id' | 'linkedSegmentId'
+    | 'segment_text_hash' | 'segment_assigned_at' | 'voice_type' | 'voice_speed'
+  >>;
 }
 
 /**

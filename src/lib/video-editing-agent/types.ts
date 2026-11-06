@@ -6,6 +6,7 @@ import type { ResearchRunClient } from '@/lib/server/researchRunClient';
 import type { ToolkitTurnState } from '@/types/agentToolkit';
 import type { HostCapabilitySnapshot } from '@/types/agentHost';
 import type { SkillIndexEntry } from '@/types/agentSkills';
+import type { ScriptSegmentSnapshot } from './editorContextPrompt';
 
 // --- Tool Context ---
 
@@ -19,6 +20,7 @@ import type { SkillIndexEntry } from '@/types/agentSkills';
 export type AgentAutonomy = 'interactive' | 'yolo';
 
 export interface ToolContext {
+  scriptSegments?: ScriptSegmentSnapshot[];
   researchRun?: ResearchRunClient;
   timelineState: TimelineState;
   materials: MaterialItem[];
@@ -150,6 +152,7 @@ export type TimelineOperation =
         clipEnd: number;
         originalDuration: number;
         volume: number;
+        metadata?: { linkedSegmentId: string };
       };
       /** Playback snapshot (`toAgentClipMaterial`): the clip keeps previewing
        *  after its material leaves the library. */
@@ -205,7 +208,7 @@ export type MaterialOperation =
 export type ScriptOperation =
   | { type: 'set_script'; content: string; scriptType: string }
   | { type: 'append_script'; content: string }
-  | { type: 'set_script_with_narration'; segments: Array<{ title: string; scriptText: string; narrationText: string }>; scriptType: string };
+  | { type: 'set_script_with_narration'; segments: Array<{ id?: string; title: string; scriptText: string; narrationText: string }>; scriptType: string };
 
 // --- Storyboard Operations ---
 
@@ -367,6 +370,7 @@ export type SkillSkipReason = 'not_found' | 'disabled' | 'invalid' | 'unavailabl
 // --- API Route Request ---
 
 export interface AgentChatRequest {
+  scriptSegments?: ScriptSegmentSnapshot[];
   conversationId?: string;
   generationConfigRevision?: string;
   messages: ChatMessage[];
@@ -438,6 +442,7 @@ export const DEFAULT_CREW_SETTINGS: CrewSettings = {
 // --- Agent Factory Config ---
 
 export interface VideoEditingAgentConfig {
+  scriptSegments?: ScriptSegmentSnapshot[];
   conversationId?: string;
   recoveryScope?: string;
   generationConfigRevision?: string;

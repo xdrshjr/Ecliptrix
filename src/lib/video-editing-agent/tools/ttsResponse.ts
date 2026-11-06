@@ -6,6 +6,32 @@ import type {
   TtsFailure, TtsSegmentFailure, TtsSegmentSuccess,
 } from '@/lib/ttsErrors';
 import type { ToolContext } from '../types';
+import { segmentTextHash } from '@/components/video/lib/aiMix/segmentTextHash';
+import { convertScriptSegmentToSentenceRequest } from '@/lib/api/tts';
+import type { ScriptSegmentSnapshot } from '../editorContextPrompt';
+
+/** 在请求前验证文本，保留真实请求快照；迟到结果不能盖上新文案的哈希。 */
+export function prepareSegmentVoice(context: ToolContext, id: string | undefined, text: string): {
+  segment?: ScriptSegmentSnapshot; hash?: string; failure?: TtsFailure;
+} {
+  if (id === undefined) return {};
+  const segment = typeof id === 'string' && id.trim()
+    ? context.scriptSegments?.find(s => s.id === id) : undefined;
+  if (!segment) return { failure: { ...invalidTtsRequest(), error: '脚本段落不存在，请使用当前脚本返回的 segment_id。' } };
+  const expected = convertScriptSegmentToSentenceRequest(segment, '').sentences.map(s => s.text).join(' ');
+  const normalize = (value: string) => value.trim().replace(/(?<=[。！？.!?])\s+/g, '').replace(/\s+/g, ' ');
+  if (normalize(text) !== normalize(expected)) {
+    return { failure: { ...invalidTtsRequest(), error: '配音文本与该脚本段落不一致，请使用该段完整解说文本。' } };
+  }
+  return { segment, hash: segmentTextHash(segment) };
+}
+
+export function segmentVoiceMetadata(prepared: ReturnType<typeof prepareSegmentVoice>, voice: string, speed: number) {
+  return prepared.segment ? {
+    segment_id: prepared.segment.id, segment_text_hash: prepared.hash,
+    segment_assigned_at: Date.now(), voice_type: voice, voice_speed: speed,
+  } : undefined;
+}
 
 interface ParsedTtsResponse {
   body?: Record<string, unknown>;

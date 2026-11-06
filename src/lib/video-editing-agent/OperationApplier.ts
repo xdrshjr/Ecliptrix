@@ -664,6 +664,8 @@ function addClipToState(state: TimelineState, operation: AddClipOperation): void
     // field; without it agent-added images were never drawn.
     originalMaterialType: (material.type as MaterialType) || undefined,
     ...clipPlaybackFields(material),
+    ...(clip.metadata ? { metadata: { ...material.metadata, ...clip.metadata } } : {}),
+    ...(material.sentenceSegments ? { sentenceSegments: structuredClone(material.sentenceSegments) } : {}),
   });
 }
 

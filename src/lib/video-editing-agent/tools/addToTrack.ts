@@ -6,6 +6,7 @@ import { isMetadataOnlyMaterial, materialNotMaterializedFailure } from './stillC
 import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning, collectClipStarts, diffClipStarts, findClip, toAgentClipMaterial, POSITION_EPSILON } from './index';
 
 const parameters = Type.Object({
+  segment_id: Type.Optional(Type.String({ description: '用于脚本段落的画面/配音时传入稳定段 ID；音频默认继承素材归属，不修改源素材。' })),
   materialId: Type.String({ description: 'The ID of the material to add' }),
   trackId: Type.Optional(Type.String({ description: 'Target track ID. Auto-selected if omitted.' })),
   startTime: Type.Optional(Type.Number({ description: 'Insertion point in seconds on the timeline. Defaults to end of track.' })),
@@ -52,7 +53,7 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
     name: 'add_to_track',
     label: 'Add to Track',
     description:
-      'Add a material from the library to a timeline track. If no track is specified, automatically selects the appropriate track based on material type. If no start time is specified, places it at the end of the track. ' +
+      '将素材上轨；默认选择匹配轨道并追加到末尾。脚本画面须传 segment_id，配音继承素材归属。' +
       'Clips on video and audio tracks sit end to end: startTime is an insertion point — the clip goes before any clip starting at the same moment, then the whole track is re-packed from 0. ' +
       'The startTime in the result is where the clip actually landed; shiftedClips lists clips that moved to make room. ' +
       'Images are refused unless as_still:true (overlays only): convert scene images with image_to_video first.',
@@ -85,6 +86,20 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
           error: `Material not found: ${params.materialId}. If you have not yet called a search or generate tool in this session, do that first — add_to_track can only use materials that already exist in the library. Call list_materials to see what is available.`,
         };
         return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
+      }
+
+      const sentenceId = material.sentenceSegments?.segment_id;
+      const inheritedId = sentenceId ?? material.metadata?.segment_id ?? material.metadata?.linkedSegmentId;
+      const segmentId = params.segment_id ?? (typeof inheritedId === 'string' ? inheritedId : undefined);
+      if (params.segment_id !== undefined && (!params.segment_id.trim()
+        || !context.scriptSegments?.some(s => s.id === params.segment_id))) {
+        return toolErrorResponse({ success: false, error: '脚本段落不存在，请使用当前脚本的 segment_id。' });
+      }
+      if (segmentId && context.scriptSegments && !context.scriptSegments.some(s => s.id === segmentId)) {
+        return toolErrorResponse({ success: false, error: '素材所属脚本段落已删除，不能关联到当前脚本。' });
+      }
+      if (sentenceId && segmentId !== sentenceId) {
+        return toolErrorResponse({ success: false, error: '目标段落与素材真实句级配音归属冲突。' });
       }
 
       // A search candidate has no bytes yet (size 0): refuse it before the
@@ -160,6 +175,7 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
         // Stills have no source length; 0 means "absent" to both appliers.
         originalDuration: material.type === 'image' ? 0 : duration,
         volume: 1.0,
+        ...(segmentId ? { metadata: { linkedSegmentId: segmentId } } : {}),
       };
 
       const before = collectClipStarts(context.timelineState, [trackId]);

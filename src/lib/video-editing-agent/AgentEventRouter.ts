@@ -26,12 +26,15 @@ import type {
 import type { AgentStateManager } from './AgentStateManager';
 import type { ApplyOutcome, OperationApplier } from './OperationApplier';
 import { useVideoEditingStore } from '@/stores';
+import type { ScriptSegmentSnapshot } from './editorContextPrompt';
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
 export interface AgentEventRouterConfig {
+  getScriptSegments?: () => readonly ScriptSegmentSnapshot[] | undefined;
+  isCurrentProject?: () => boolean;
   coverAgentBridge?: CoverAgentBridge;
   onCoverStatus?: (toolCallId: string, status: CoverOperationStatus) => void;
   stateManager: AgentStateManager;
@@ -76,6 +79,8 @@ export type CrewLiveEvent = SSEEvent & {
 // ---------------------------------------------------------------------------
 
 export class AgentEventRouter {
+  private readonly getScriptSegments?: AgentEventRouterConfig['getScriptSegments'];
+  private readonly isCurrentProject?: AgentEventRouterConfig['isCurrentProject'];
   private readonly coverAgentBridge?: CoverAgentBridge;
   private readonly onCoverStatus?: AgentEventRouterConfig['onCoverStatus'];
   private readonly startedCoverCalls = new Set<string>();
@@ -91,6 +96,8 @@ export class AgentEventRouter {
     'onContextUsage' | 'onToolProgress' | 'onCrewEvent'>;
 
   constructor(config: AgentEventRouterConfig) {
+    this.getScriptSegments = config.getScriptSegments;
+    this.isCurrentProject = config.isCurrentProject;
     this.coverAgentBridge = config.coverAgentBridge;
     this.onCoverStatus = config.onCoverStatus;
     this.stateManager = config.stateManager;
@@ -121,6 +128,7 @@ export class AgentEventRouter {
    *   others         -> no-op (lifecycle markers forwarded but no state change)
    */
   async handleEvent(event: SSEEvent): Promise<void> {
+    if (this.isCurrentProject && !this.isCurrentProject()) return;
     switch (event.type) {
       case 'thinking_start':
         this.stateManager.setThinkingPhase('thinking');
@@ -242,6 +250,11 @@ export class AgentEventRouter {
     const batchOps = resultObj?.operations;
     if (Array.isArray(batchOps) && batchOps.length > 0 && this.isTimelineOperation(batchOps[0] as AgentOperation)) {
       const operations = batchOps as import('./types').TimelineOperation[];
+      // 与单条操作共用实时归属校验；分镜批次不能只落下仍有效的一部分。
+      if (operations.some(op => !this.filterCurrentSegmentOperation(op))) {
+        this.rejectStaleSegmentOperation(event.toolCallId);
+        return;
+      }
       // auto_fix_overlaps reports a finished re-pack, not steps to replay.
       const outcome = event.toolName === 'auto_fix_overlaps'
         ? this.operationApplier.applyRepack(operations, event.toolCallId)
@@ -254,7 +267,12 @@ export class AgentEventRouter {
 
     // Route operation to the appropriate handler
     if (event.operation) {
-      const op = event.operation;
+      const op = this.filterCurrentSegmentOperation(event.operation);
+      if (!op) {
+        this.rejectStaleSegmentOperation(event.toolCallId);
+        return;
+      }
+      event = { ...event, operation: op };
 
       if (this.isTimelineOperation(op)) {
         // Timeline operations go through OperationApplier (existing path)
@@ -392,6 +410,30 @@ export class AgentEventRouter {
   // -------------------------------------------------------------------------
   // Operation handlers for non-timeline operations
   // -------------------------------------------------------------------------
+
+  private rejectStaleSegmentOperation(toolCallId: string): void {
+    this.stateManager.updateToolStatus(toolCallId, 'error', {
+      success: false, error: '脚本段落已删除或替换，已丢弃迟到的关联操作。',
+    });
+  }
+
+  /** 使用前端当前段落核验，服务端回合快照无法看到用户正在进行的编辑。 */
+  private filterCurrentSegmentOperation(op: AgentOperation): AgentOperation | null {
+    const segments = this.getScriptSegments?.();
+    if (!segments) return op; // 兼容无脚本上下文的旧调用者。
+    const exists = (id: unknown) => typeof id !== 'string' || segments.some(s => s.id === id);
+    if (op.type === 'add_material') return exists(op.material.metadata?.segment_id) ? op : null;
+    if (op.type === 'add_materials') {
+      const materials = op.materials.filter(m => exists(m.metadata?.segment_id));
+      return materials.length ? { ...op, materials } : null;
+    }
+    if (op.type === 'add_clip') {
+      const id = op.material.sentenceSegments?.segment_id ?? op.clip.metadata?.linkedSegmentId
+        ?? op.material.metadata?.segment_id ?? op.material.metadata?.linkedSegmentId;
+      if (!exists(id)) return null;
+    }
+    return op;
+  }
 
   private handleMaterialOperation(op: MaterialOperation): void {
     const store = useVideoEditingStore.getState();

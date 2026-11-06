@@ -313,6 +313,8 @@ export function toAgentClipMaterial(material: MaterialItem): AgentMaterialData {
     ...(metadata?.storageKind ? { storageKind: metadata.storageKind } : {}),
     ...(metadata?.storageKey ? { storageKey: metadata.storageKey } : {}),
     ...(metadata?.localResolvedUrl ? { localResolvedUrl: metadata.localResolvedUrl } : {}),
+    ...Object.fromEntries(['segment_id', 'linkedSegmentId', 'segment_text_hash', 'segment_assigned_at',
+      'voice_type', 'voice_speed'].filter(key => metadata?.[key] !== undefined).map(key => [key, metadata![key]])),
   };
   return {
     id: material.id,
@@ -326,6 +328,7 @@ export function toAgentClipMaterial(material: MaterialItem): AgentMaterialData {
     ...(material.cacheUrl ? { cacheUrl: material.cacheUrl } : {}),
     ...(material.storageKey ? { storageKey: material.storageKey } : {}),
     ...(Object.keys(storageMetadata).length > 0 ? { metadata: storageMetadata } : {}),
+    ...(material.sentenceSegments ? { sentenceSegments: structuredClone(material.sentenceSegments) } : {}),
   };
 }
 

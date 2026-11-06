@@ -26,6 +26,7 @@ export interface VideoCarouselHandlers {
 }
 
 interface SegmentVideoCarouselProps {
+  visualMaterials?: readonly MaterialItem[];
   segment: ScriptSegment;
   currentIndex: number;
   loadStates: Record<string, VideoLoadState>;
@@ -110,10 +111,11 @@ const SlideMedia: React.FC<VideoSlideProps> = (props) => {
     const isYoutube = video.metadata?.source === 'youtube' && video.metadata?.youtubeId;
     return isYoutube ? <YoutubeSlide {...props} /> : <VideoElementSlide {...props} />;
   }
-  if (video.thumbnailUrl) {
+  const imageUrl = video.thumbnailUrl || (video.type === 'image' ? video.url : undefined);
+  if (imageUrl) {
     return (
       <img
-        src={video.thumbnailUrl}
+        src={imageUrl}
         alt={video.name}
         className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
         onClick={() => {
@@ -206,14 +208,16 @@ const CarouselNavigation: React.FC<{ segmentId: string; handlers: VideoCarouselH
 /** 绑定视频轮播（从 ScriptPanel 原样移出；播放 / 加载状态仍由 ScriptPanel 持有）。 */
 const SegmentVideoCarousel: React.FC<SegmentVideoCarouselProps> = ({
   segment,
+  visualMaterials,
   currentIndex,
   loadStates,
   handlers,
   logger,
 }) => {
   const { t } = useLocale();
-  const videos = segment.videos ?? [];
-  const currentVideo = videos[currentIndex];
+  const videos = visualMaterials ?? segment.videos ?? [];
+  const safeIndex = Math.max(0, Math.min(currentIndex, videos.length - 1));
+  const currentVideo = videos[safeIndex];
   if (videos.length === 0) return null;
   const videoKey = currentVideo ? `${segment.id}_${currentVideo.id}` : '';
   return (
@@ -228,7 +232,7 @@ const SegmentVideoCarousel: React.FC<SegmentVideoCarouselProps> = ({
           )}
         </h5>
         <span className="text-xs text-muted-foreground ws-tabular">
-          {currentIndex + 1} / {videos.length}
+          {safeIndex + 1} / {videos.length}
         </span>
       </div>
       {currentVideo && (

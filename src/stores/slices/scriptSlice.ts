@@ -20,6 +20,7 @@ export type ScriptType = 'video' | 'understanding' | 'ai_generated';
 // ---------------------------------------------------------------------------
 
 export interface ScriptSegmentData {
+  id: string;
   title: string;
   scriptText: string;
   narrationText: string;
@@ -39,7 +40,7 @@ export interface ScriptSlice {
   appendScriptContent: (content: string) => void;
   setScriptGenerating: (generating: boolean) => void;
   setScriptGenerationProgress: (progress: number) => void;
-  setScriptSegmentsData: (data: ScriptSegmentData[] | null) => void;
+  setScriptSegmentsData: (data: Array<Omit<ScriptSegmentData, 'id'> & { id?: string }> | null) => void;
   resetScript: () => void;
 }
 
@@ -74,7 +75,10 @@ export const createScriptSlice: StateCreator<
   setScriptGenerationProgress: (progress) =>
     set({ scriptGenerationProgress: Math.min(100, Math.max(0, progress)) }),
 
-  setScriptSegmentsData: (data) => set({ scriptSegmentsData: data }),
+  // 旧操作仅在接收时分配身份；React 消费、重排及保存始终沿用。
+  setScriptSegmentsData: (data) => set({ scriptSegmentsData: data?.map(segment => ({
+    ...segment, id: segment.id?.trim() ? segment.id : `agent-segment-${crypto.randomUUID()}`,
+  })) ?? null }),
 
   resetScript: () =>
     set({
