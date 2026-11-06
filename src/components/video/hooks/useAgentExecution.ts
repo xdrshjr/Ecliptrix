@@ -54,12 +54,15 @@ import type {
   StartExecutionParams,
 } from './useAgentExecutionState';
 import { useAgentExecutionState } from './useAgentExecutionState';
+import type { ConversationSendContext, ConversationWriteScope,
+  SendMessageResult } from './videoChatSessionModel';
 import {
   useAgentExecutionSteering,
   type UseAgentExecutionSteeringReturn,
 } from './useAgentExecutionSteering';
 import { triggerClipAnimation } from './clipAnimation';
 import { useAgentLiveEvents, type AgentLiveEvents } from './useAgentLiveEvents';
+import { hasRunningCrew } from './agentLiveProgress';
 import {
   createAgentPlaceholder,
   createTurnMessageIds,
@@ -111,6 +114,13 @@ export interface UseAgentExecutionParams {
    * agent-tts-ignores-project-default-voice/analysis.md §9.1）。
    */
   defaultVoiceId?: string;
+  getConversation?: (id: string) => Conversation | undefined;
+  getActiveConversationId?: () => string | null;
+  captureWriteScope?: (id: string) => ConversationWriteScope | null;
+  isScopeValid?: (scope: ConversationWriteScope) => boolean;
+  writeScopedMessages?: (scope: ConversationWriteScope,
+    messages: ChatMessage[]) => boolean;
+  canStartRequest?: (context?: ConversationSendContext) => boolean;
 }
 
 // 回合上下文形状与组装已抽到 `agentTurnContext`（见文件头 §5.2.1 棘轮）；
@@ -132,7 +142,12 @@ export interface UseAgentExecutionReturn {
   /** Toggle agent mode on/off. */
   setAgentMode: (mode: boolean) => void;
   /** Send a message to the agent (starts SSE execution). */
-  sendAgentMessage: (text: string, options?: SendAgentMessageOptions) => Promise<void>;
+  sendAgentMessage: (text: string, options?: SendAgentMessageOptions,
+    context?: ConversationSendContext) => Promise<SendMessageResult | void>;
+  executionConversationId: string | null;
+  isConversationBusy: () => boolean;
+  consumeDraftRestore: (nonce: number) => void;
+  acknowledgeTurnEnd: (turnSeq: number) => void;
   /** Mid-run notes, the follow-up queue, input restore and the skill-skip notice. */
   steering: UseAgentExecutionSteeringReturn['steering'];
   draftRestore: UseAgentExecutionSteeringReturn['draftRestore'];
@@ -169,7 +184,8 @@ const NO_MESSAGE_IDS: ReadonlySet<string> = new Set();
 
 type TurnStreamCallbacks = Pick<
   StartExecutionParams,
-  'onEvent' | 'onRestart' | 'onComplete' | 'onError' | 'onCancel' | 'onFinishingTimeout'
+  'onEvent' | 'onRestart' | 'onComplete' | 'onError' | 'onCancel'
+  | 'onFinishingTimeout' | 'onBeforeTerminal'
 >;
 
 // ---------------------------------------------------------------------------
@@ -177,6 +193,22 @@ type TurnStreamCallbacks = Pick<
 // ---------------------------------------------------------------------------
 
 export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExecutionReturn {
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const mounted = useRef(true);
+  const handoffRef = useRef<number | null>(null);
+  const [, refreshHandoff] = useState(0);
+  const [executionConversationId, setExecutionConversationId] = useState<string | null>(null);
+  const ownerRef = useRef<string | null>(null);
+  const liveTokenRef = useRef<object | null>(null);
+  const usageTokenRef = useRef<object | null>(null);
+  const executionScopeRef = useRef<ConversationWriteScope | undefined>(undefined);
+  const readConversation = useCallback((id: string) =>
+    paramsRef.current.getConversation ? paramsRef.current.getConversation(id)
+      : paramsRef.current.conversations.find(item => item.id === id), []);
+  const readActiveId = useCallback(() => paramsRef.current.getActiveConversationId
+    ? paramsRef.current.getActiveConversationId()
+    : paramsRef.current.activeConversationId, []);
   const {
     conversations,
     updateConversationMessages,
@@ -208,15 +240,10 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     startExecution,
     cancelExecution: cancelExecState,
     resetState,
+    getStatusNow,
   } = useAgentExecutionState();
 
   // -- Refs for stable access in callbacks --
-  const conversationsRef = useRef(conversations);
-  conversationsRef.current = conversations;
-
-  const activeConversationIdRef = useRef(activeConversationId);
-  activeConversationIdRef.current = activeConversationId;
-
   const timelineStateRef = useRef(timelineState);
   timelineStateRef.current = timelineState;
 
@@ -258,14 +285,12 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // -- The SSE stream is still open (tools may still be called) --
   const isStreamLive =
     executionState.status === 'executing' || executionState.status === 'retrying';
-  const streamLiveRef = useRef(isStreamLive);
-  streamLiveRef.current = isStreamLive;
+  const isStreamLiveNow = useCallback(() =>
+    ['executing', 'retrying'].includes(getStatusNow()), [getStatusNow]);
 
   // -- agentIsExecuting also covers `finishing`: the edit lock, the send
   //    button and agent undo wait until queued operations are applied --
   const agentIsExecuting = isStreamLive || executionState.status === 'finishing';
-  const agentIsExecutingRef = useRef(agentIsExecuting);
-  agentIsExecutingRef.current = agentIsExecuting;
   const liveEvents = useAgentLiveEvents(agentIsExecuting);
 
   // -- Re-entry guard for sendAgentMessage until its request has started --
@@ -276,7 +301,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   // -- Mid-run steering. It sends follow-ups and stops turns through refs
   //    because `sendAgentMessage` / `cancelByUser` are defined further down. --
-  const sendAgentMessageRef = useRef<(text: string) => Promise<void>>(async () => undefined);
+  const sendAgentMessageRef = useRef<UseAgentExecutionReturn['sendAgentMessage']>(
+    async () => ({ accepted: false, reason: 'not_ready' }));
   const cancelByUserRef = useRef<() => void>(() => undefined);
   const steeringBridge = useAgentExecutionSteering({
     agentIsExecuting,
@@ -285,14 +311,27 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     finishingTimedOut: finishingTimedOutRef.current,
     activeConversationId,
     getStateManager: () => stateManagerRef.current,
-    getMessages: () => conversationsRef.current
-      .find(c => c.id === activeConversationIdRef.current)?.messages,
-    sendFollowUp: text => { void sendAgentMessageRef.current(text); },
+    getMessages: id => readConversation(id ?? ownerRef.current ?? '')?.messages,
+    onTurnEndSampled: seq => {
+      if (paramsRef.current.captureWriteScope) handoffRef.current = seq;
+    },
+    sendFollowUp: (text, seq) =>
+      sendAgentMessageRef.current(text, undefined, { followUpTurnSeq: seq }),
     cancelTurn: () => cancelByUserRef.current(),
     onNotification,
   });
   const steeringBridgeRef = useRef(steeringBridge);
   steeringBridgeRef.current = steeringBridge;
+  const isConversationBusy = useCallback(() => sendingRef.current
+    || ['executing', 'retrying', 'finishing'].includes(getStatusNow())
+    || handoffRef.current !== null
+    || steeringBridgeRef.current.steering.hasPendingInput()
+    || steeringBridgeRef.current.hasDraftRestore(), [getStatusNow]);
+  const acknowledgeTurnEnd = useCallback((seq: number) => {
+    if (handoffRef.current !== seq) return;
+    handoffRef.current = null;
+    if (mounted.current) refreshHandoff(value => value + 1);
+  }, []);
 
   // -----------------------------------------------------------------------
   // Event chain, turn patches and per-turn collaborators
@@ -360,8 +399,10 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   const createEventRouter = useCallback(
     (stateManager: AgentStateManager, operationApplier: OperationApplier,
-      onCoverStatus: () => void) =>
-      new AgentEventRouter({
+      onCoverStatus: () => void) => {
+      const token = {};
+      liveTokenRef.current = token;
+      return new AgentEventRouter({
         coverAgentBridge: coverBridgeRef.current,
         onCoverStatus,
         stateManager,
@@ -374,8 +415,19 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         },
         onError: notifyAgentError,
         describeError: describeServerError,
-        ...liveEvents.sinks,
-      }),
+        onContextUsage: event => {
+          if (liveTokenRef.current !== token) return;
+          usageTokenRef.current = token;
+          liveEvents.sinks.onContextUsage(event);
+        },
+        onToolProgress: event => {
+          if (liveTokenRef.current === token) liveEvents.sinks.onToolProgress(event);
+        },
+        onCrewEvent: event => {
+          if (liveTokenRef.current === token) liveEvents.sinks.onCrewEvent(event);
+        },
+      });
+    },
     [notifyAgentError, describeServerError, liveEvents.sinks],
   );
 
@@ -396,8 +448,12 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       };
 
       return {
+        onBeforeTerminal: () => {
+          if (paramsRef.current.captureWriteScope) handoffRef.current = -1;
+        },
         onEvent: (event: SSEEvent) => {
-          if (steeringBridgeRef.current.routeEvent(event)) return;
+          if (stateManagerRef.current === stateManager
+            && steeringBridgeRef.current.routeEvent(event)) return;
           if (event.type === 'tool_call') router.beginCoverOperation(event);
           runAfterQueuedEvents(() => router.handleEvent(event), 'handling event');
         },
@@ -472,6 +528,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       agentMessageId: string;
       messagesWithUser: ChatMessage[];
       turnStart: TimelineState;
+      scope?: ConversationWriteScope;
     }) => {
       const operationApplier = createOperationApplier();
       operationAppliersRef.current.set(turn.agentMessageId, operationApplier);
@@ -479,12 +536,19 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       const stateManager = new AgentStateManager(turn.agentMessageId);
       stateManagerRef.current = stateManager;
       let retired = false;
+      const write = (messages: ChatMessage[]) => {
+        if (turn.scope && !mounted.current) return;
+        if (turn.scope) {
+          if (!paramsRef.current.isScopeValid?.(turn.scope)) return;
+          paramsRef.current.writeScopedMessages?.(turn.scope, messages);
+        } else updateConvMessagesRef.current(turn.convId, messages);
+      };
       const writeAgentMessage = (agentMessage: ChatMessage): void => {
         if (!retired) {
-          updateConvMessagesRef.current(turn.convId, [...turn.messagesWithUser, agentMessage]);
+          write([...turn.messagesWithUser, agentMessage]);
           return;
         }
-        const conversation = conversationsRef.current.find(c => c.id === turn.convId);
+        const conversation = readConversation(turn.convId);
         const messages = conversation
           ? replaceRetiredTurnMessage(conversation.messages, agentMessage)
           : null;
@@ -494,7 +558,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           });
           return;
         }
-        updateConvMessagesRef.current(turn.convId, messages);
+        write(messages);
       };
       const retire = (): void => {
         retired = true;
@@ -504,9 +568,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       const router = createEventRouter(stateManager, operationApplier, () => {
         // The job may outlive SSE. Patch only its card in the current message,
         // retaining newer turns and the final timeline undo snapshot.
-        const conversation = conversationsRef.current.find(c => c.id === turn.convId);
+        const conversation = readConversation(turn.convId);
         if (!conversation) return;
-        updateConvMessagesRef.current(turn.convId, conversation.messages.map(message =>
+        write(conversation.messages.map(message =>
           message.id === turn.agentMessageId
             ? { ...message, agentToolCalls: stateManager.toMessageUpdate().agentToolCalls }
             : message));
@@ -521,7 +585,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         retire,
       });
     },
-    [createOperationApplier, createEventRouter, createTurnCallbacks],
+    [createOperationApplier, createEventRouter, createTurnCallbacks, readConversation],
   );
 
   // -----------------------------------------------------------------------
@@ -532,19 +596,36 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // start) whose steps must not interleave with another send.
   const sendAgentMessage = useCallback(async (
     message: string, options?: SendAgentMessageOptions,
-  ) => {
-    if (sendingRef.current || agentIsExecutingRef.current) return;
-    if (!activeConversationIdRef.current) return;
+    context?: ConversationSendContext,
+  ): Promise<SendMessageResult> => {
+    const internal = context?.followUpTurnSeq !== undefined
+      && context.followUpTurnSeq === handoffRef.current;
+    if (!mounted.current || sendingRef.current
+      || ['executing', 'retrying', 'finishing'].includes(getStatusNow())
+      || (!internal && (handoffRef.current !== null
+        || steeringBridgeRef.current.hasDraftRestore()))
+      || paramsRef.current.canStartRequest?.(context) === false) {
+      return { accepted: false, reason: 'busy' };
+    }
+    const convId = readActiveId();
+    if (!convId) return { accepted: false, reason: 'not_ready' };
+    const scope = paramsRef.current.captureWriteScope?.(convId);
+    if (paramsRef.current.captureWriteScope && !scope) {
+      return { accepted: false, reason: 'stale_scope' };
+    }
     sendingRef.current = true;
     finishingTimedOutRef.current = false;
+    let rollback = () => {};
     try {
       // Operations still queued from the previous turn must land before the
       // new turn snapshots the timeline, or its patches would swallow them.
       await eventChainRef.current;
 
-      const convId = activeConversationIdRef.current;
-      const activeConversation = conversationsRef.current.find(c => c.id === convId);
-      if (!convId || !activeConversation) return;
+      const activeConversation = readConversation(convId);
+      if (!mounted.current || !activeConversation || readActiveId() !== convId
+        || (scope && !paramsRef.current.isScopeValid?.(scope))) {
+        return { accepted: false, reason: 'stale_scope' };
+      }
       // Writes the previous turn still owes may only touch its own message.
       retireTurnRef.current?.();
 
@@ -568,12 +649,24 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         // 自动续跑的消息绝不假装是用户亲手打的字（§7.3）。
         ...(options?.automatic ? { metadata: { type: options.automatic } } : {}),
       };
-      steeringBridgeRef.current.beginTurn(userMessage);
       const messagesWithUser = [...activeConversation.messages, userMessage];
-      updateConversationMessages(convId, [
+      rollback = () => {
+        const latest = readConversation(convId);
+        if (!latest || (scope && !paramsRef.current.isScopeValid?.(scope))) return;
+        const messages = latest.messages.filter(item =>
+          item.id !== userMessageId && item.id !== agentMessageId);
+        if (scope) paramsRef.current.writeScopedMessages?.(scope, messages);
+        else updateConvMessagesRef.current(convId, messages);
+      };
+      const nextMessages = [
         ...messagesWithUser,
         createAgentPlaceholder(agentMessageId),
-      ]);
+      ];
+      if (scope) {
+        if (!paramsRef.current.writeScopedMessages?.(scope, nextMessages)) {
+          return { accepted: false, reason: 'stale_scope' };
+        }
+      } else updateConvMessagesRef.current(convId, nextMessages);
 
       console.log('[useAgentExecution] Sending agent message', {
         messageLength: message.length,
@@ -584,10 +677,12 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       // 3. Per-execution applier, state manager and event router
       const callbacks = createTurnRuntime({
         convId, agentMessageId, messagesWithUser, turnStart,
+        scope: scope ?? undefined,
       });
 
       // 4. Start execution via useAgentExecutionState (owns the SSEStreamManager)
-      startExecution({
+      steeringBridgeRef.current.beginTurn(userMessage, scope ?? undefined);
+      const started = startExecution({
         url: '/api/video-editing-agent/chat',
         body: {
           messages: stripHistoryForRequest(messagesWithUser),
@@ -611,13 +706,26 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         },
         ...callbacks,
       });
+      if (!started) throw new Error('Execution did not start');
+      ownerRef.current = convId;
+      executionScopeRef.current = scope ?? undefined;
+      setExecutionConversationId(convId);
+      handoffRef.current = null;
+      return { accepted: true };
+    } catch (error) {
+      console.error('[useAgentExecution] Failed to start request', error);
+      steeringBridgeRef.current.abortUnacceptedTurn();
+      retireTurnRef.current?.();
+      rollback();
+      resetState();
+      return { accepted: false, reason: 'start_failed' };
     } finally {
       sendingRef.current = false;
     }
   }, [
-    updateConversationMessages,
     createTurnRuntime,
     startExecution,
+    getStatusNow, readActiveId, readConversation, resetState,
     projectId,
     // 少了它 `sendAgentMessage` 会一直闭包着首次渲染的 `yolo`（=false）：
     // 开关打开后请求体仍不带 `autonomy`，整个全自动模式静默失效。
@@ -647,7 +755,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       // Only a live stream can be stopped. A turn that already ended (done,
       // failed, or sealed by the watchdog) is final: sealing it again would
       // record it as stopped by the user and rewrite its message.
-      if (!streamLiveRef.current) return;
+      if (!isStreamLiveNow()) return;
       const sm = stateManagerRef.current;
       const writeAgentMessage = turnWriterRef.current;
       if (!sm || !writeAgentMessage) return;
@@ -667,7 +775,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         });
       }, 'sealing agent message');
     },
-    [runAfterQueuedEvents, computeTurnPatches],
+    [runAfterQueuedEvents, computeTurnPatches, isStreamLiveNow],
   );
 
   // Seal first: the cancel's `finishing` phase waits for the chain tail, and
@@ -695,9 +803,9 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   /** Clears the error card of a run that already ended; a live run is left alone. */
   const dismissExecutionError = useCallback(() => {
-    if (agentIsExecutingRef.current) return;
+    if (isConversationBusy()) return;
     resetState();
-  }, [resetState]);
+  }, [resetState, isConversationBusy]);
 
   // -----------------------------------------------------------------------
   // undoAllOperations — revert the track patches of an agent message
@@ -709,17 +817,17 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
    * would contain the revert. Refused (with a notice) until the run ends.
    */
   const isAgentUndoBlocked = useCallback((): boolean => {
-    if (!agentIsExecutingRef.current && !isEditLocked(useTimelineStore.getState())) return false;
+    if (!isConversationBusy() && !isEditLocked(useTimelineStore.getState())) return false;
     onNotification?.('warning', t.agentUndo.blockedWhileRunning);
     return true;
-  }, [onNotification, t]);
+  }, [onNotification, t, isConversationBusy]);
 
   const undoAllOperations = useCallback((messageId: string) => {
     if (isAgentUndoBlocked()) return;
-    const convId = activeConversationIdRef.current;
+    const convId = readActiveId();
     if (!convId) return;
 
-    const activeConversation = conversationsRef.current.find(c => c.id === convId);
+    const activeConversation = readConversation(convId);
     const patches = activeConversation?.messages
       .find(m => m.id === messageId)?.timelineTrackPatches;
     const current = timelineStateRef.current;
@@ -752,7 +860,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         : msg
     );
     updateConversationMessages(convId, updatedMessages);
-  }, [isAgentUndoBlocked, setTimelineState, onTimelineUpdate, onNotification, updateConversationMessages, t]);
+  }, [isAgentUndoBlocked, setTimelineState, onTimelineUpdate, onNotification,
+    updateConversationMessages, readActiveId, readConversation, t]);
 
   // -----------------------------------------------------------------------
   // undoSingleOperation — undo one specific tool call's operation
@@ -783,8 +892,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     onTimelineUpdate?.(nextExternalUpdateId('agent-undo-single'));
 
     // Mark the tool call 'undone' and keep the turn's own undo usable.
-    const convId = activeConversationIdRef.current;
-    const activeConversation = conversationsRef.current.find(c => c.id === convId);
+    const convId = readActiveId();
+    const activeConversation = convId ? readConversation(convId) : undefined;
     if (convId && activeConversation) {
       updateConversationMessages(
         convId,
@@ -798,7 +907,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     }
 
     console.log('[useAgentExecution] Single operation undone:', toolCallId);
-  }, [isAgentUndoBlocked, onTimelineUpdate, onNotification, updateConversationMessages, t]);
+  }, [isAgentUndoBlocked, onTimelineUpdate, onNotification,
+    updateConversationMessages, readActiveId, readConversation, t]);
 
   // -----------------------------------------------------------------------
   // Cancel execution on conversation switch (uses cancelByNavigation —
@@ -809,13 +919,16 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // A `finishing` turn is left alone: its stream already ended, and its
   // remaining writes are bound to its own conversation id.
   useEffect(() => {
-    if (streamLiveRef.current) {
+    if (isStreamLiveNow()) {
       cancelByNavigation();
     }
     // Single-step undo records belong to the conversation being left.
     if (operationAppliersRef.current.size > 0) {
       operationAppliersRef.current.clear();
       setSingleUndoMessageIds(NO_MESSAGE_IDS);
+    }
+    if (!['executing', 'retrying', 'finishing'].includes(getStatusNow())) {
+      resetState();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversationId]);
@@ -833,10 +946,12 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   cancelByNavigationRef.current = cancelByNavigation;
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
+      mounted.current = false;
       coverRoutersRef.current.forEach(router => router.cancelCoverOperations(false));
       coverRoutersRef.current.clear();
-      if (streamLiveRef.current) {
+      if (isStreamLiveNow()) {
         cancelByNavigationRef.current();
         return;
       }
@@ -848,6 +963,24 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // Return
   // -----------------------------------------------------------------------
 
+  const owner = executionConversationId
+    ? readConversation(executionConversationId) : undefined;
+  const validOwner = owner && (!executionScopeRef.current
+    || params.isScopeValid?.(executionScopeRef.current));
+  const toolIds = new Set(validOwner ? owner.messages.flatMap(message =>
+    message.agentToolCalls?.map(tool => tool.id) ?? []) : []);
+  const crews = Object.fromEntries(Object.entries(liveEvents.crew.crews)
+    .filter(([id]) => toolIds.has(id)));
+  const acquire = Object.fromEntries(Object.entries(liveEvents.crew.acquire)
+    .filter(([id]) => toolIds.has(id)));
+  const ownedLiveEvents: AgentLiveEvents = { ...liveEvents,
+    contextUsage: validOwner && usageTokenRef.current === liveTokenRef.current
+      ? liveEvents.contextUsage : null,
+    crew: { ...liveEvents.crew,
+      crews, acquire,
+      isCrewRunning: agentIsExecuting && hasRunningCrew({ crews, acquire }),
+    },
+  };
   return {
     executionState,
     agentMode,
@@ -857,12 +990,15 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     steering: steeringBridge.steering,
     draftRestore: steeringBridge.draftRestore,
     skillSkip: steeringBridge.skillSkip,
-    liveEvents,
+    liveEvents: ownedLiveEvents,
     cancelExecution,
     undoAllOperations,
     undoSingleOperation,
     dismissExecutionError,
     singleUndoMessageIds,
     lastTurnEnd: steeringBridge.lastTurnEnd,
+    executionConversationId: validOwner ? executionConversationId : null,
+    isConversationBusy, acknowledgeTurnEnd,
+    consumeDraftRestore: steeringBridge.consumeDraftRestore,
   };
 }

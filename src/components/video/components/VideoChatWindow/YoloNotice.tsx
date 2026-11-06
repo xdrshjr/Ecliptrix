@@ -1,95 +1,124 @@
 'use client';
 
-/**
- * YoloNotice — 首次开启 YOLO 时的一条行内说明
- * （docs/plans/agent-yolo-autonomous-mode spec.md §4.9.4 / AC-C5）。
- *
- * 为什么不是模态确认（D-10）：这是一个随时可逆、且不影响数据安全的模式开关，
- * 用 `ConfirmationDialog` 会制造"危险操作"的错误暗示，也打断"打开面板→立刻发
- * 任务"的连招。一句话 + 8 秒自动消失 + 可随时停止，才是这一档风险的正确成本。
- *
- * 已读标记写 `localStorage`（纯 UI 记忆，不是可信状态；权威值在
- * `system_settings`）。
- *
- * @module VideoChatWindow/YoloNotice
- */
-
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import styles from './AgentComposer.module.css';
 
-/** 已读标记：v1 后缀保证将来改文案时能重新播一次。 */
 export const YOLO_NOTICE_STORAGE_KEY = 'ecliptrix:yolo-notice-v1';
-
-/** 自动消失时间（毫秒）。 */
 export const YOLO_NOTICE_VISIBLE_MS = 8_000;
+
+/** 编辑器拥有预算，切换会话不会重新开始首次说明的计时。 */
+export interface YoloNoticeState {
+  remainingMs: number;
+  dismissed: boolean;
+}
+
+export interface YoloNoticeProps {
+  yolo: boolean;
+  enabled?: boolean;
+  isVisible?: boolean;
+  suppressed?: boolean;
+  availableHeight?: number;
+  notice?: YoloNoticeState;
+  onRestoreFocus?: () => void;
+}
 
 function hasSeenNotice(): boolean {
   try {
     return window.localStorage.getItem(YOLO_NOTICE_STORAGE_KEY) === '1';
   } catch {
-    // 隐私模式 / 存储被禁：当作已读，绝不因为一条提示而抛错。
     return true;
   }
 }
 
 function markSeen(): void {
-  try {
-    window.localStorage.setItem(YOLO_NOTICE_STORAGE_KEY, '1');
-  } catch {
-    // 同上：提示已读只是体验优化，失败不影响开关。
-  }
+  try { window.localStorage.setItem(YOLO_NOTICE_STORAGE_KEY, '1'); }
+  catch { /* 已读标记不可写时，仍保留本项目内存标记。 */ }
 }
 
-export interface YoloNoticeProps {
-  /** 只有在 YOLO 已开启时才有内容可展示。 */
-  yolo: boolean;
-}
-
-const YoloNotice: React.FC<YoloNoticeProps> = ({ yolo }) => {
+/** 非模态说明；仅实际可读且未被操作时消耗八秒预算。 */
+const YoloNotice: React.FC<YoloNoticeProps> = ({
+  yolo, enabled = true, isVisible = true, suppressed = false,
+  availableHeight = Number.POSITIVE_INFINITY, notice, onRestoreFocus,
+}) => {
   const { t } = useLocale();
-  const copy = t.videoChatWindow;
-  const [dismissed, setDismissed] = useState(false);
+  const localNotice = useRef<YoloNoticeState>({
+    remainingMs: YOLO_NOTICE_VISIBLE_MS, dismissed: false,
+  });
+  const budget = notice ?? localNotice.current;
+  const root = useRef<HTMLDivElement>(null);
+  const visibleRef = useRef(isVisible);
+  visibleRef.current = isVisible;
   const [seen, setSeen] = useState(true);
-
-  // localStorage 只在客户端可读，挂载后再判断，避免 SSR/首帧不一致。
-  useEffect(() => { setSeen(hasSeenNotice()); }, []);
+  const [dismissed, setDismissed] = useState(budget.dismissed);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [pageVisible, setPageVisible] = useState(true);
 
   useEffect(() => {
-    if (!yolo || seen || dismissed) return undefined;
-    // 自动消失同样要记「已读」：否则「首次开启」的说明会在每次开启时重播，
-    // 与 AC-C5 的「只出现一次」相悖。
-    const timer = setTimeout(() => {
-      markSeen();
-      setDismissed(true);
-    }, YOLO_NOTICE_VISIBLE_MS);
-    return () => clearTimeout(timer);
-  }, [yolo, seen, dismissed]);
+    setSeen(hasSeenNotice());
+    const sync = () => setPageVisible(document.visibilityState === 'visible');
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, []);
 
-  if (!yolo || seen || dismissed) return null;
-
-  const dismiss = () => {
+  const dismiss = useCallback(() => {
+    const restore = root.current?.contains(document.activeElement);
+    budget.dismissed = true;
+    budget.remainingMs = 0;
     markSeen();
     setDismissed(true);
-  };
+    if (restore && visibleRef.current) onRestoreFocus?.();
+  }, [budget, onRestoreFocus]);
 
+  const shown = yolo && enabled && isVisible && !suppressed && !seen
+    && !dismissed && !budget.dismissed && availableHeight >= 50;
+  useEffect(() => {
+    if (!shown || !pageVisible || hovered || focused) return;
+    const started = Date.now();
+    const timer = setTimeout(dismiss, budget.remainingMs);
+    return () => {
+      clearTimeout(timer);
+      budget.remainingMs = Math.max(0,
+        budget.remainingMs - (Date.now() - started));
+    };
+  }, [shown, pageVisible, hovered, focused, budget, dismiss]);
+
+  useEffect(() => {
+    if (!shown) { setHovered(false); setFocused(false); }
+  }, [shown]);
+
+  if (!shown) return null;
   return (
-    <div
-      data-testid="yolo-notice"
-      role="status"
-      aria-live="polite"
-      className="flex-shrink-0 flex items-center justify-between h-[22px] px-3
-        text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50
-        dark:bg-amber-950/30 border-y border-amber-200 dark:border-amber-900"
-    >
-      <span className="truncate" title={copy.yoloNotice}>{copy.yoloNotice}</span>
-      <button
-        type="button"
-        onClick={dismiss}
-        className="ml-2 shrink-0 hover:underline focus:outline-none
-          focus-visible:ring-1 focus-visible:ring-amber-500 rounded"
-      >
-        {copy.yoloNoticeDismiss}
-      </button>
+    <div className={styles.noticeAnchor}>
+      <div ref={root} data-testid="yolo-notice" role="status"
+        aria-live="polite" className={styles.notice}
+        style={{ maxHeight: Number.isFinite(availableHeight)
+          ? availableHeight : undefined }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocusCapture={() => setFocused(true)}
+        onBlurCapture={event => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setFocused(false);
+          }
+        }}
+        onKeyDown={event => {
+          if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+          event.preventDefault();
+          event.stopPropagation();
+          dismiss();
+        }}>
+        <span className={styles.noticeIcon} aria-hidden="true">✦</span>
+        <span className={styles.noticeText}>{t.videoChatWindow.yoloNotice}</span>
+        <button type="button" onClick={dismiss}
+          className={styles.noticeClose}
+          aria-label={t.videoChatWindow.yoloNoticeDismiss}
+          title={t.videoChatWindow.yoloNoticeDismiss}>
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
     </div>
   );
 };

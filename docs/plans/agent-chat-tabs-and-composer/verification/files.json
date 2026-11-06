@@ -1,0 +1,290 @@
+[
+  {
+    "path": "docs/plans/agent-chat-tabs-and-composer/spec.md",
+    "exists": true,
+    "lines": 905,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/VideoEditingInterface.tsx",
+    "exists": true,
+    "lines": 2473,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/useVideoChatContentBridge.ts",
+    "exists": true,
+    "lines": 78,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/useVideoChatSessions.ts",
+    "exists": true,
+    "lines": 159,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/videoChatSessionModel.ts",
+    "exists": true,
+    "lines": 72,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/conversationViewCache.ts",
+    "exists": true,
+    "lines": 157,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/AgentChatDock/AgentChatDock.tsx",
+    "exists": true,
+    "lines": 239,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/AgentChatDock/ConversationTabs.tsx",
+    "exists": true,
+    "lines": 213,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/AgentChatDock/ConversationTabs.module.css",
+    "exists": true,
+    "lines": 51,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/VideoChatWindow.tsx",
+    "exists": true,
+    "lines": 448,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/AgentComposer.tsx",
+    "exists": true,
+    "lines": 234,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/AgentModeToolbar.tsx",
+    "exists": true,
+    "lines": 61,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/AgentComposer.module.css",
+    "exists": true,
+    "lines": 82,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/YoloNotice.tsx",
+    "exists": true,
+    "lines": 126,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/YoloToggle.tsx",
+    "exists": true,
+    "lines": 88,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/useComposer.ts",
+    "exists": true,
+    "lines": 302,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/useComposerStorage.ts",
+    "exists": true,
+    "lines": 163,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/timeline/TimelineChatPanel.tsx",
+    "exists": true,
+    "lines": 383,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/timeline/types.ts",
+    "exists": true,
+    "lines": 158,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/useAgentExecution.ts",
+    "exists": true,
+    "lines": 1004,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/useAgentExecutionState.ts",
+    "exists": true,
+    "lines": 478,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/useAgentExecutionSteering.ts",
+    "exists": true,
+    "lines": 201,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/useYoloAutoContinue.ts",
+    "exists": true,
+    "lines": 112,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/useContextMemory.ts",
+    "exists": true,
+    "lines": 241,
+    "review": "已核对"
+  },
+  {
+    "path": "src/styles/video-editing.css",
+    "exists": true,
+    "lines": 1527,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/__tests__/videoChatSessionModel.test.ts",
+    "exists": true,
+    "lines": 33,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/__tests__/useVideoChatSessions.test.tsx",
+    "exists": true,
+    "lines": 62,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/__tests__/useVideoChatContentBridge.test.tsx",
+    "exists": true,
+    "lines": 46,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/AgentChatDock/__tests__/ConversationTabs.test.tsx",
+    "exists": true,
+    "lines": 103,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/AgentChatDock/__tests__/AgentChatDock.lifecycle.test.tsx",
+    "exists": true,
+    "lines": 508,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/__tests__/AgentComposer.test.tsx",
+    "exists": true,
+    "lines": 108,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/__tests__/YoloNotice.test.tsx",
+    "exists": true,
+    "lines": 105,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/__tests__/useComposerStorage.test.tsx",
+    "exists": true,
+    "lines": 137,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/__tests__/useComposer.test.tsx",
+    "exists": true,
+    "lines": 284,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/__tests__/conversationViewCache.test.ts",
+    "exists": true,
+    "lines": 44,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/timeline/__tests__/TimelineChatPanel.visibility.test.tsx",
+    "exists": true,
+    "lines": 164,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/__tests__/useAgentExecution.sessions.test.tsx",
+    "exists": true,
+    "lines": 169,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/__tests__/useAgentExecutionState.sessions.test.tsx",
+    "exists": true,
+    "lines": 57,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/__tests__/useYoloAutoContinue.test.tsx",
+    "exists": true,
+    "lines": 209,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/hooks/__tests__/useContextMemory.sessions.test.tsx",
+    "exists": true,
+    "lines": 62,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/__tests__/VideoEditingInterface.chatSessions.test.tsx",
+    "exists": true,
+    "lines": 84,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/projects/__tests__/projectPersistence.integration.test.tsx",
+    "exists": true,
+    "lines": 325,
+    "review": "已核对"
+  },
+  {
+    "path": "src/lib/api/__tests__/videoProjects.normalise.test.ts",
+    "exists": true,
+    "lines": 123,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/__tests__/YoloToggle.test.tsx",
+    "exists": true,
+    "lines": 83,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/VideoChatWindow/timeline/__tests__/AgentResponseNode.undoDisabled.test.tsx",
+    "exists": true,
+    "lines": 123,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/AgentChatDock/__tests__/AgentChatDock.test.tsx",
+    "exists": true,
+    "lines": 168,
+    "review": "已核对"
+  },
+  {
+    "path": "src/components/video/components/AgentChatDock/__tests__/AgentChatDock.sessions.test.tsx",
+    "exists": true,
+    "lines": 75,
+    "review": "已核对"
+  },
+  {
+    "path": "src/lib/i18n.ts",
+    "exists": true,
+    "lines": 12422,
+    "review": "已核对"
+  }
+]

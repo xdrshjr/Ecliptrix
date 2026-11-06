@@ -1,0 +1,82 @@
+.outer { flex: none; padding: 0 12px 12px; min-width: 0; }
+.composer { position: relative; z-index: 1; min-width: 0; }
+.toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 6px 12px; min-height: 36px; padding-bottom: 6px;
+  font-size: 12px; line-height: 16px;
+}
+.tools, .modes, .actionGroup {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.modes { gap: 8px; margin-left: auto; flex-shrink: 0; }
+.card {
+  position: relative; min-width: 0; padding: 8px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--input); transition: border-color 150ms;
+}
+.card:focus-within { border-color: var(--primary); }
+.textArea {
+  display: block; width: 100%; min-height: 40px; max-height: 120px;
+  padding: 0 2px; border: 0; border-radius: 0; background: transparent;
+  color: var(--foreground); resize: none; font: inherit;
+  font-size: 14px; line-height: 20px; outline: none;
+}
+.textArea::placeholder { color: var(--muted-foreground); }
+.textArea:focus-visible { outline: none !important; }
+.actions {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; min-height: 36px; margin-top: 4px;
+}
+.button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex: 0 0 32px; padding: 0;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--secondary-foreground); transition: background-color 150ms;
+}
+.button svg { width: 16px; height: 16px; }
+.button:hover:not(:disabled) { background: var(--accent); }
+.button:disabled { opacity: .45; cursor: not-allowed; }
+.button:focus-visible, .noticeClose:focus-visible {
+  outline: 2px solid var(--primary); outline-offset: 2px;
+}
+.button.primary { background: var(--primary); color: var(--primary-foreground); }
+.button.primary:hover:not(:disabled) { background: var(--primary); filter: brightness(1.1); }
+.button.primary:disabled { background: var(--muted); color: var(--muted-foreground); }
+.button.stop { background: var(--destructive); color: var(--destructive-foreground); }
+.button.stop:hover:not(:disabled) { background: var(--destructive); filter: brightness(1.1); }
+.skill { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--card); color: var(--foreground); font-size: 12px;
+}
+.chip button { flex: none; border-radius: 3px; }
+.error { padding: 4px 2px 0; color: var(--destructive); font-size: 12px; }
+.hint { padding: 4px 2px; color: var(--muted-foreground); font-size: 12px; }
+.noticeAnchor {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 6px);
+  z-index: 10; pointer-events: none;
+}
+.notice {
+  display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box;
+  padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--popover); color: var(--foreground); pointer-events: auto;
+  box-shadow: 0 4px 16px rgb(0 0 0 / .12); font-size: 12px; line-height: 18px;
+}
+.noticeIcon { flex: none; padding-top: 4px; color: #b45309; }
+:global(.dark) .noticeIcon { color: #fcd34d; }
+.noticeText {
+  min-width: 0; flex: 1; align-self: stretch; padding-top: 4px;
+  overflow-y: auto; overflow-wrap: anywhere;
+}
+.noticeClose {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex: 0 0 28px; border-radius: 6px;
+  color: var(--muted-foreground); font-size: 20px; line-height: 1;
+}
+.noticeClose:hover { background: var(--accent); color: var(--foreground); }
+:global([data-compact="true"]) .outer { padding: 0 8px 8px; }
+:global([data-compact="true"]) .textArea { max-height: 80px; }
+@media (prefers-reduced-motion: reduce) {
+  .card, .button { transition: none; }
+}

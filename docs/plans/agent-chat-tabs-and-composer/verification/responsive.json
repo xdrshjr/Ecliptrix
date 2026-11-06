@@ -1,0 +1,101 @@
+{
+  "results": [
+    {
+      "viewport": [
+        2095,
+        1089
+      ],
+      "width": 320,
+      "compact": "true",
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        },
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        },
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        }
+      ],
+      "chatInstances": 1
+    },
+    {
+      "viewport": [
+        2095,
+        1089
+      ],
+      "width": 360,
+      "compact": "true",
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        },
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        },
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        }
+      ],
+      "chatInstances": 1
+    },
+    {
+      "viewport": [
+        2095,
+        1089
+      ],
+      "width": 520,
+      "compact": "true",
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        },
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        },
+        {
+          "width": 32,
+          "height": 32,
+          "visible": true,
+          "unobstructed": true
+        }
+      ],
+      "chatInstances": 1
+    }
+  ],
+  "fifty": {
+    "tabs": 50,
+    "panels": 50,
+    "visiblePanels": 1,
+    "chats": 1,
+    "inputFocused": true
+  }
+}

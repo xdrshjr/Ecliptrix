@@ -71,6 +71,25 @@ function setupScroll() {
 }
 
 describe('最小化期间的阅读位置', () => {
+  it('会话卸载后保留阅读快照，重挂载不强制跟随底部', () => {
+    let snapshot = { top: 0, follow: true };
+    const scrollCache = { get: () => snapshot,
+      set: (value: typeof snapshot) => { snapshot = value; } };
+    const first = render(React.createElement(Panel, { ...props, scrollCache }));
+    const container = first.container.querySelector('.agent-chat-messages')!;
+    Object.defineProperties(container, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    container.scrollTop = 120;
+    fireEvent.scroll(container);
+    first.unmount();
+    expect(snapshot).toEqual({ top: 120, follow: false });
+    const second = render(React.createElement(Panel, { ...props, scrollCache }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(snapshot.follow).toBe(false);
+    second.unmount();
+  });
   it('阅读历史后隐藏不执行定时滚动，零尺寸 scroll 不覆盖快照', () => {
     const { container, rerender, resize } = setupScroll();
     container.scrollTop = 120;

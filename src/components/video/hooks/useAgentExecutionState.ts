@@ -162,6 +162,8 @@ export interface StartExecutionParams {
   onCancel?: TerminalCallback;
   /** Called when a terminal callback did not settle within FINISHING_WATCHDOG_MS. */
   onFinishingTimeout?: () => void;
+  /** 终态公开前同步取得会话交接锁，包括取消及看门狗路径。 */
+  onBeforeTerminal?: () => void;
   /**
    * Called when the stream manager reconnects. A reconnect re-runs the whole
    * turn on the server, so the consumer must drop the text, thinking content
@@ -175,7 +177,15 @@ export interface StartExecutionParams {
 // ---------------------------------------------------------------------------
 
 export function useAgentExecutionState() {
-  const [state, setState] = useState<AgentExecutionState>(INITIAL_STATE);
+  const [state, publishState] = useState<AgentExecutionState>(INITIAL_STATE);
+  const stateRef = useRef(state);
+  // 先更新 ref，再发布展示快照，避免首个 render 前重入。
+  const setState = useCallback((next: AgentExecutionState |
+    ((previous: AgentExecutionState) => AgentExecutionState)) => {
+    stateRef.current = typeof next === 'function' ? next(stateRef.current) : next;
+    publishState(stateRef.current);
+  }, []);
+  const getStatusNow = useCallback(() => stateRef.current.status, []);
   const managerRef = useRef<SSEStreamManager | null>(null);
   // Ref to track accumulated text so we don't depend on stale closures
   const accumulatedTextRef = useRef('');
@@ -210,7 +220,7 @@ export function useAgentExecutionState() {
       }
       return next;
     });
-  }, []);
+  }, [setState]);
 
   /**
    * `finishing` → wait for the terminal callback (bounded by the watchdog)
@@ -244,9 +254,10 @@ export function useAgentExecutionState() {
         });
         onFinishingTimeout?.();
       }
+      paramsRef.current?.onBeforeTerminal?.();
       updateState(terminal);
     },
-    [updateState],
+    [updateState, setState],
   );
 
   // ---- handleEvent: update execution state from SSE events ----
@@ -340,9 +351,10 @@ export function useAgentExecutionState() {
   const startExecution = useCallback(
     (params: StartExecutionParams) => {
       // Guard: only one execution at a time
-      if (managerRef.current?.isRunning) {
+      if (managerRef.current?.isRunning ||
+          ['executing', 'retrying', 'finishing'].includes(stateRef.current.status)) {
         console.warn('[useAgentExecutionState] Execution already in progress — ignoring start.');
-        return;
+        return false;
       }
 
       // Reset accumulated text
@@ -402,8 +414,9 @@ export function useAgentExecutionState() {
       manager.start().catch((err) => {
         console.error('[useAgentExecutionState] Unexpected manager error:', err);
       });
+      return true;
     },
-    [handleEvent, updateState, finishExecution],
+    [handleEvent, updateState, finishExecution, setState],
   );
 
   // ---- cancelExecution ----
@@ -452,7 +465,7 @@ export function useAgentExecutionState() {
     accumulatedTextRef.current = '';
     executionIdRef.current += 1;
     setState(INITIAL_STATE);
-  }, []);
+  }, [setState]);
 
   return {
     state,
@@ -460,5 +473,6 @@ export function useAgentExecutionState() {
     cancelExecution,
     retryExecution,
     resetState,
+    getStatusNow,
   } as const;
 }

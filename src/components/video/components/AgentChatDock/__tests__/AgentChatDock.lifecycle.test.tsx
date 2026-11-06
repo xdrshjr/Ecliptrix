@@ -12,6 +12,15 @@ import fabSource from '../AgentChatFloatingButton.tsx?raw';
 import chatSource from '../../VideoChatWindow/VideoChatWindow.tsx?raw';
 // @ts-expect-error -- Vite raw source.
 import timelineSource from '../../VideoChatWindow/timeline/TimelineChatPanel.tsx?raw';
+// @ts-expect-error -- Vite raw source for the existing JSX-preserve test loader.
+import tabsSource from '../ConversationTabs.tsx?raw';
+// @ts-expect-error -- Vite raw source.
+import composerSource from '../../VideoChatWindow/AgentComposer.tsx?raw';
+// @ts-expect-error -- Vite raw source.
+import toolbarSource from '../../VideoChatWindow/AgentModeToolbar.tsx?raw';
+import tabStyles from '../ConversationTabs.module.css';
+import composerStyles from '../../VideoChatWindow/AgentComposer.module.css';
+import type { AgentChatSessions } from '../AgentChatDock';
 import {
   compileComponent, compileComponentModule, localeContextModule, reactModules,
   type ModuleMap,
@@ -40,6 +49,7 @@ interface DockProps {
   agentIsExecuting: boolean;
   chatProps: VideoChatWindowProps;
   contextLabel: string | null;
+  sessions?: AgentChatSessions;
 }
 
 let Dock: React.FC<DockProps>;
@@ -76,6 +86,21 @@ beforeAll(async () => {
     },
   };
   const Timeline = compileTimelinePanel(shared);
+  const empty = { __esModule: true, default: () => null };
+  const Toolbar = compileComponent(toolbarSource, { ...shared,
+    './YoloToggle': empty,
+    './AgentComposer.module.css': { __esModule: true, default: composerStyles },
+  });
+  const Composer = compileComponent(composerSource, { ...shared,
+    './YoloNotice': empty, './ComposerSkillPicker': empty,
+    './ComposerMentionPicker': empty, './ComposerPicker': composerPicker,
+    './ContextRing': { ConnectedContextRing: () => null },
+    './AgentModeToolbar': { __esModule: true, default: Toolbar },
+    './AgentComposer.module.css': { __esModule: true, default: composerStyles },
+  });
+  const Tabs = compileComponent(tabsSource, { ...shared,
+    './ConversationTabs.module.css': { __esModule: true, default: tabStyles },
+  });
   const Chat = compileComponent<VideoChatWindowProps>(chatSource, {
     ...shared,
     './timeline': { TimelineChatPanel: (props: TimelineChatPanelProps) =>
@@ -91,6 +116,7 @@ beforeAll(async () => {
     // YOLO 开关与首开说明不在本用例的关注面内（见 YoloToggle/YoloNotice 测试）。
     './YoloToggle': { __esModule: true, default: () => null },
     './YoloNotice': { __esModule: true, default: () => null },
+    './AgentComposer': { __esModule: true, default: Composer },
     '@/lib/video-editing-agent/planScan': planScan,
     '@/lib/video-editing-agent/askScan': askScan,
     '@/types/agentToolkit': agentToolkitTypes,
@@ -116,6 +142,7 @@ beforeAll(async () => {
   const presence = await import('../useDockPresence');
   Dock = compileComponent<DockProps>(dockSource, {
     ...shared, '../VideoChatWindow': { VideoChatWindow: Chat },
+    '@/components/ui/ConfirmationDialog': empty,
     './AgentChatFloatingPanel': { __esModule: true, default: Panel },
     './AgentChatFloatingButton': Fab,
     './useDraggableFab': { useDraggableFab: (ref?: React.RefObject<HTMLElement | null>) => {
@@ -124,6 +151,11 @@ beforeAll(async () => {
         isDragging: forcedDragging || actual.isDragging };
     } },
     './useDockPresence': presence,
+    './ConversationTabs': { __esModule: true, default: Tabs },
+    './ConversationTabs.module.css': { __esModule: true, default: tabStyles },
+    '@/contexts/NotificationContext': {
+      useNotification: () => ({ showConfirm: vi.fn(), showError: vi.fn() }),
+    },
   });
 });
 
@@ -169,6 +201,33 @@ function openDock() {
 }
 
 describe('助手最小化生命周期', () => {
+  it('多个页签只有活动面板挂载聊天实例，切换保持导航壳', () => {
+    const conversations = ['A', 'B', 'C'].map(id => ({
+      id, title: id, messages: [], createdAt: new Date(0), updatedAt: new Date(0),
+    }));
+    const sessions: AgentChatSessions = {
+      conversations, activeConversationId: 'A',
+      createConversation: vi.fn(() => ({ ok: true })),
+      selectConversation: vi.fn(() => ({ ok: true })),
+      renameConversation: vi.fn(() => ({ ok: true })),
+      deleteConversation: vi.fn(() => ({ ok: true })),
+    };
+    const options = { isOpen: true, onOpen: vi.fn(), onMinimize: vi.fn(),
+      agentIsExecuting: false, chatProps, contextLabel: null, sessions };
+    const { rerender } = render(React.createElement(Dock, options));
+    act(() => vi.advanceTimersByTime(260));
+    const tablist = screen.getByRole('tablist');
+    const firstInput = screen.getByRole('textbox');
+    expect(screen.getAllByRole('tabpanel', { hidden: true })).toHaveLength(3);
+    expect(screen.getAllByRole('textbox', { hidden: true })).toHaveLength(1);
+    rerender(React.createElement(Dock, { ...options,
+      sessions: { ...sessions, activeConversationId: 'B' } }));
+    expect(screen.getByRole('tablist')).toBe(tablist);
+    expect(screen.getByRole('textbox')).not.toBe(firstInput);
+    expect(screen.getAllByRole('textbox', { hidden: true })).toHaveLength(1);
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('B');
+  });
+
   it('收起保留聊天 DOM 和未发送草稿，隐藏内容 inert', () => {
     render(React.createElement(Harness));
     openDock();

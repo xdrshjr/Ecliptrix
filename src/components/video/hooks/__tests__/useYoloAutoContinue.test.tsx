@@ -87,6 +87,48 @@ beforeEach(() => {
 });
 
 describe('useYoloAutoContinue', () => {
+  it('用户消息和助手占位同时写入时，新用户回合仍各有一次续跑额度', async () => {
+    const agent = { ...agentStub(null), acknowledgeTurnEnd: vi.fn() };
+    const user = { id: 'u1', role: 'user' as const, content: '第一项任务',
+      timestamp: new Date() };
+    let messages: Conversation['messages'] = [user, agentMessage];
+    const view = setup(args(agent, { conversation: conversation(messages) }));
+    agent.lastTurnEnd = end({ turnSeq: 1 });
+    await act(async () => {
+      view.rerender(args(agent, { conversation: conversation(messages) }));
+    });
+    expect(agent.sendAgentMessage).toHaveBeenCalledTimes(1);
+
+    messages = [...messages, { ...user, id: 'auto-1',
+      metadata: { type: 'yolo_continue' } }, { ...agentMessage, id: 'a2' }];
+    agent.lastTurnEnd = end({ turnSeq: 2 });
+    await act(async () => {
+      view.rerender(args(agent, { conversation: conversation(messages) }));
+    });
+    expect(agent.sendAgentMessage).toHaveBeenCalledTimes(1);
+
+    // 真实发送一次写入 user + assistant，不会渲染最后一条为 user 的中间态。
+    messages = [...messages, { ...user, id: 'u2', content: '第二项任务' },
+      { ...agentMessage, id: 'a3', isStreaming: true }];
+    view.rerender(args(agent, { conversation: conversation(messages) }));
+    agent.lastTurnEnd = end({ turnSeq: 3 });
+    messages = messages.map(message => ({ ...message, isStreaming: false }));
+    await act(async () => {
+      view.rerender(args(agent, { conversation: conversation(messages) }));
+    });
+    expect(agent.sendAgentMessage).toHaveBeenCalledTimes(2);
+    expect(agent.acknowledgeTurnEnd).toHaveBeenCalledTimes(3);
+  });
+
+  it('YOLO 关闭期间仍确认旧事实，重新开启与 A→B→A 不重播', () => {
+    const agent = { ...agentStub(end()), acknowledgeTurnEnd: vi.fn() };
+    const view = setup(args(agent, { yolo: false }));
+    expect(agent.acknowledgeTurnEnd).toHaveBeenCalledExactlyOnceWith(1);
+    view.rerender(args(agent, { conversation: conversation([], 'conv-2') }));
+    view.rerender(args(agent));
+    expect(agent.sendAgentMessage).not.toHaveBeenCalled();
+  });
+
   it('does nothing while the turn is not over (no fact yet)', () => {
     const agent = agentStub(null);
     setup(args(agent));

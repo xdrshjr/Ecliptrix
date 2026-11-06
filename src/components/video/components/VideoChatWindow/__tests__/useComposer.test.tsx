@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MaterialItem } from '@/types';
 import type { SkillSummary } from '@/types/agentSkills';
 import { useComposer, type UseComposerParams } from '../useComposer';
+import { createConversationViewCache } from '../conversationViewCache';
 
 const skills: SkillSummary[] = [
   { id: 'explainer-video', name: 'Explainer', description: 'narrated video', version: 1, tools: [],
@@ -58,11 +59,11 @@ beforeEach(() => { window.localStorage.clear(); });
 afterEach(cleanup);
 
 describe('idle: Enter sends exactly like before (AC-A1)', () => {
-  it('sends the trimmed text once and clears the box', () => {
+  it('sends the trimmed text once and clears the box', async () => {
     const { result, params } = setup();
     act(() => result.current.handleChange(change('  make a video  ')));
     const { event, preventDefault } = key({});
-    act(() => result.current.handleKeyDown(event));
+    await act(async () => result.current.handleKeyDown(event));
     expect(preventDefault).toHaveBeenCalled();
     expect(params.onSendMessage).toHaveBeenCalledWith('make a video');
     expect(result.current.text).toBe('');
@@ -89,6 +90,46 @@ describe('idle: Enter sends exactly like before (AC-A1)', () => {
     act(() => result.current.handleChange(change('go')));
     act(() => result.current.handleKeyDown(key({ altKey: true }).event));
     expect(params.onSendMessage).toHaveBeenCalledWith('go');
+  });
+});
+
+describe('发送接纳与草稿修订', () => {
+  it('旧会话的延迟接纳不会清除新会话草稿', async () => {
+    const cache = createConversationViewCache('p');
+    cache.setDraft('b', { version: 2, text: '会话 B 草稿', skill: null, mentions: [] });
+    let resolve!: (result: { accepted: boolean }) => void;
+    const pending = new Promise<{ accepted: boolean }>(done => { resolve = done; });
+    const { result, rerender, params } = setup({
+      draftScope: { projectKey: 'p', conversationId: 'a' }, viewCache: cache,
+      onSendMessage: vi.fn(() => pending),
+    });
+    act(() => result.current.setText('会话 A 消息'));
+    act(() => result.current.submit());
+    rerender({ ...params, draftScope: { projectKey: 'p', conversationId: 'b' } });
+    expect(result.current.text).toBe('会话 B 草稿');
+    await act(async () => { resolve({ accepted: true }); });
+    expect(result.current.text).toBe('会话 B 草稿');
+    expect(cache.getDraft('b').text).toBe('会话 B 草稿');
+  });
+  it('拒绝发送后保留完整草稿', async () => {
+    const { result } = setup({ onSendMessage: vi.fn(async () => ({
+      accepted: false, reason: 'busy' as const,
+    })) });
+    act(() => result.current.setText('保留内容'));
+    await act(async () => result.current.submit());
+    expect(result.current.text).toBe('保留内容');
+    expect(result.current.sendRejected).toBe(true);
+  });
+  it('等待接纳期间的新输入不会被成功结果清除', async () => {
+    let resolve!: (result: { accepted: boolean }) => void;
+    const pending = new Promise<{ accepted: boolean }>(done => { resolve = done; });
+    const { result, params } = setup({ onSendMessage: vi.fn(() => pending) });
+    act(() => result.current.setText('第一条'));
+    act(() => { result.current.submit(); result.current.submit(); });
+    expect(params.onSendMessage).toHaveBeenCalledTimes(1);
+    act(() => result.current.setText('第二条'));
+    await act(async () => { resolve({ accepted: true }); });
+    expect(result.current.text).toBe('第二条');
   });
 });
 
@@ -167,7 +208,7 @@ describe('skill picker (AC-B9)', () => {
     expect(params.onSendMessage).not.toHaveBeenCalled();
 
     act(() => result.current.handleChange(change('check it')));
-    act(() => result.current.handleKeyDown(key({}).event));
+    await act(async () => result.current.handleKeyDown(key({}).event));
     expect(params.onSendMessage).toHaveBeenCalledWith('check it', { skillId: 'final-qc' });
     expect(result.current.skill).toBeNull();
   });

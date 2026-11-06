@@ -47,7 +47,7 @@ const Toggle: React.FC<YoloToggleProps> = ({
       : agentIsExecuting ? copy.yoloTitleBusy
         : yolo ? copy.yoloTitleOn : copy.yoloTitleOff;
   const track = yolo
-    ? 'bg-amber-500 border border-amber-600/70 shadow-[0_0_0_3px_rgba(245,158,11,0.12)]'
+    ? 'bg-amber-500 border border-amber-600/70'
     : 'bg-border dark:bg-zinc-600';
   const label = yolo
     ? 'text-amber-700 dark:text-amber-300'
@@ -62,6 +62,7 @@ const Toggle: React.FC<YoloToggleProps> = ({
         {copy.yoloToggleLabel}
       </span>
       <button
+        data-yolo-toggle=""
         type="button"
         role="switch"
         aria-checked={yolo}
@@ -79,7 +80,7 @@ const Toggle: React.FC<YoloToggleProps> = ({
           } ${yolo ? 'translate-x-[18px]' : 'translate-x-[3px]'}`}
         />
       </button>
-      <span id={descriptionId} className="sr-only">{title}</span>
+      <span id={descriptionId} className="sr-only">{title}. {copy.yoloNotice}</span>
     </div>
   );
 };

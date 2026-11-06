@@ -165,10 +165,13 @@ type TimelineChatPanelComponentProps = TimelineChatPanelProps & {
 };
 
 /** 持续保存可见状态的快照，不能在 display:none 后读取零尺寸。 */
-function useVisibleScroll(isVisible: boolean) {
+function useVisibleScroll(isVisible: boolean,
+  scrollCache?: TimelineChatPanelProps['scrollCache']) {
   const containerRef = useRef<HTMLDivElement>(null);
   const visibleRef = useRef(isVisible);
-  const snapshotRef = useRef({ top: 0, follow: true });
+  const snapshotRef = useRef(scrollCache?.get() ?? { top: 0, follow: true });
+  const cacheRef = useRef(scrollCache);
+  cacheRef.current = scrollCache;
   visibleRef.current = isVisible;
 
   const scrollToBottom = useCallback(() => {
@@ -177,6 +180,7 @@ function useVisibleScroll(isVisible: boolean) {
     container.scrollTop = Math.max(0,
       container.scrollHeight - container.clientHeight);
     snapshotRef.current.top = container.scrollTop;
+    cacheRef.current?.set({ ...snapshotRef.current });
   }, []);
 
   const handleScroll = useCallback(() => {
@@ -189,6 +193,7 @@ function useVisibleScroll(isVisible: boolean) {
       follow: container.scrollHeight - container.scrollTop -
         container.clientHeight < 100,
     };
+    cacheRef.current?.set({ ...snapshotRef.current });
   }, []);
 
   useLayoutEffect(() => {
@@ -199,6 +204,9 @@ function useVisibleScroll(isVisible: boolean) {
       ? maxTop : Math.min(snapshotRef.current.top, maxTop);
     snapshotRef.current.top = container.scrollTop;
   }, [isVisible]);
+  useLayoutEffect(() => () => {
+    cacheRef.current?.set({ ...snapshotRef.current });
+  }, []);
 
   return { containerRef, scrollToBottom, handleScroll };
 }
@@ -218,13 +226,14 @@ const TimelineChatPanel: React.FC<TimelineChatPanelComponentProps> = ({
   onUndoCompaction,
   compactingAfterMessageId,
   isVisible = true,
+  scrollCache,
 }) => {
   const { t } = useLocale();
   const isFinishing = executionState?.status === 'finishing';
   const undoDisabled = undoDisabledProp || isAgentRunning(executionState?.status);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { containerRef, scrollToBottom, handleScroll } =
-    useVisibleScroll(isVisible);
+    useVisibleScroll(isVisible, scrollCache);
 
   // Scroll when messages change
   useEffect(() => {

@@ -6,6 +6,8 @@ import { listSkills } from '@/lib/api/agentSkills';
 import type { DraftRestore } from '@/components/video/hooks/useAgentExecutionSteering';
 import type { SendAgentMessageOptions } from '@/components/video/hooks/useAgentExecution';
 import type { UseAgentSteeringReturn } from '@/components/video/hooks/useAgentSteering';
+import type { SendMessageResult } from '../../hooks/videoChatSessionModel';
+import type { ConversationViewCache } from './conversationViewCache';
 import {
   MAX_MENTIONS, activeMentions, detectMentionTrigger, detectSkillTrigger, insertMention,
   removeTrigger, type TriggerMatch,
@@ -14,7 +16,7 @@ import { visibleSkills, type SkillListStatus } from './ComposerSkillPicker';
 import { visibleCommands, type ComposerCommand } from './composerCommands';
 import { visibleMaterials } from './ComposerMentionPicker';
 import {
-  collectInputHistory, createHistoryNavigator, draftStorageKey, useComposerDraft,
+  collectInputHistory, createHistoryNavigator, useStructuredComposerDraft,
 } from './useComposerStorage';
 
 /**
@@ -41,7 +43,11 @@ export interface UseComposerParams {
   messages: readonly ChatMessage[] | undefined;
   /** 草稿与历史的归属：`{projectKey}.{conversationId}`；缺省则不保存草稿。 */
   draftScope: { projectKey: string; conversationId: string } | null;
-  onSendMessage: (message: string, options?: SendAgentMessageOptions) => Promise<void>;
+  onSendMessage: (message: string, options?: SendAgentMessageOptions) =>
+    Promise<SendMessageResult | void>;
+  viewCache?: ConversationViewCache;
+  onDraftRestoreConsumed?: (nonce: number) => void;
+  isVisible?: boolean;
   onCancel: () => void;
   /** Editor commands listed in the `/` menu after the skills. */
   commands?: readonly ComposerCommand[];
@@ -68,10 +74,25 @@ function useSkillOptions(open: boolean) {
 export function useComposer(params: UseComposerParams) {
   const { agentMode, agentIsExecuting, isFinishing, isLoading, steering, materials } = params;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [text, setText] = useState('');
+  const storage = useStructuredComposerDraft(params.draftScope, params.viewCache);
+  const { text, skill, mentions } = storage.draft;
+  const { setDraft, clearDraft } = storage;
+  const setText = useCallback((value: string | ((text: string) => string)) =>
+    setDraft(previous => ({ ...previous, text: typeof value === 'function'
+      ? value(previous.text) : value })), [setDraft]);
+  const setSkill = useCallback((value: SelectedSkill | null) =>
+    setDraft(previous => ({ ...previous, skill: value })), [setDraft]);
+  const setMentions = useCallback((value: MaterialMention[] |
+    ((mentions: MaterialMention[]) => MaterialMention[])) =>
+    setDraft(previous => ({ ...previous, mentions: typeof value === 'function'
+      ? value(previous.mentions) : value })), [setDraft]);
   const [caret, setCaret] = useState(0);
-  const [skill, setSkill] = useState<SelectedSkill | null>(null);
-  const [mentions, setMentions] = useState<MaterialMention[]>([]);
+  const sending = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sendRejected, setSendRejected] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true;
+    return () => { mounted.current = false; }; }, []);
   const [activeIndex, setActiveIndex] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [escArmed, setEscArmed] = useState(false);
@@ -79,7 +100,7 @@ export function useComposer(params: UseComposerParams) {
   const escTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const running = agentMode && agentIsExecuting && !!steering;
-  const disabled = isLoading || (agentIsExecuting && !steering);
+  const disabled = agentIsExecuting && !steering;
 
   // ---- pickers ----
   const skillTrigger = agentMode && !agentIsExecuting ? detectSkillTrigger(text, caret) : null;
@@ -114,7 +135,7 @@ export function useComposer(params: UseComposerParams) {
     setText(next.text);
     setSkill({ id: chosen.id, name: chosen.name });
     moveCaret(next.caret);
-  }, [trigger, text, moveCaret]);
+  }, [trigger, text, moveCaret, setText, setSkill]);
 
   const selectMaterial = useCallback((material: MaterialItem) => {
     if (!trigger) return;
@@ -123,7 +144,7 @@ export function useComposer(params: UseComposerParams) {
     setMentions(previous => (previous.some(item => item.materialId === material.id)
       ? previous : [...previous, { materialId: material.id, label: material.name }]));
     moveCaret(next.caret);
-  }, [trigger, text, moveCaret]);
+  }, [trigger, text, moveCaret, setText, setMentions]);
 
   // Selecting a command runs it and removes the `/word`; other typed text stays.
   const selectCommand = useCallback((command: ComposerCommand) => {
@@ -132,7 +153,7 @@ export function useComposer(params: UseComposerParams) {
     setText(next.text);
     moveCaret(next.caret);
     params.onCommand?.(command);
-  }, [trigger, text, moveCaret, params]);
+  }, [trigger, text, moveCaret, params, setText]);
 
   const confirmPicker = useCallback(() => {
     if (!trigger) return;
@@ -149,9 +170,6 @@ export function useComposer(params: UseComposerParams) {
   }, [trigger, kind, skills, commands, materials, activeIndex, selectSkill, selectCommand, selectMaterial]);
 
   // ---- draft + history ----
-  const draftKey = params.draftScope
-    ? draftStorageKey(params.draftScope.projectKey, params.draftScope.conversationId) : null;
-  const { clearDraft } = useComposerDraft(draftKey, text, setText);
   const navigator = useMemo(
     () => createHistoryNavigator(collectInputHistory(params.messages)),
     [params.messages]);
@@ -160,40 +178,64 @@ export function useComposer(params: UseComposerParams) {
   useEffect(() => {
     const restore = params.draftRestore;
     if (!restore || restore.nonce === lastRestore.current) return;
+    if (restore.conversationId &&
+        restore.conversationId !== params.draftScope?.conversationId) return;
     lastRestore.current = restore.nonce;
-    setText(previous => (previous.trim() ? `${previous}\n\n${restore.text}` : restore.text));
-    textareaRef.current?.focus();
-  }, [params.draftRestore]);
+    if (params.draftScope) setDraft(storage.cache.applyRestore(storage.id, restore));
+    else setText(previous => previous.trim()
+      ? `${previous}\n\n${restore.text}` : restore.text);
+    params.onDraftRestoreConsumed?.(restore.nonce);
+  }, [params,
+    storage.cache, storage.id, setDraft, setText]);
 
   // ---- send ----
   const reset = useCallback(() => {
-    setText('');
     setCaret(0);
-    setSkill(null);
-    setMentions([]);
     navigator.reset();
     clearDraft();
   }, [navigator, clearDraft]);
 
   const send = useCallback((mode: 'steer' | 'queue' | 'send') => {
-    const trimmed = text.trim();
+    const trimmed = storage.current.current.text.trim();
     if (!trimmed) return;
     if (mode === 'send') {
-      const chosen = activeMentions(trimmed, mentions);
+      if (sending.current || isLoading || disabled) return;
+      const chosen = activeMentions(trimmed, mentions.filter(item =>
+        materials.some(material => material.id === item.materialId)));
       setMentionsTruncated(chosen.truncated);
       const options: SendAgentMessageOptions = agentMode ? {
         ...(skill ? { skillId: skill.id } : {}),
         ...(chosen.mentions.length ? { mentions: chosen.mentions } : {}),
       } : {};
-      // No extras → the call is exactly the old `onSendMessage(text)`.
-      if (Object.keys(options).length) void params.onSendMessage(trimmed, options);
-      else void params.onSendMessage(trimmed);
-      reset();
+      const revision = storage.revision.current;
+      const scopeVersion = storage.scopeVersion.current;
+      sending.current = true;
+      setIsSubmitting(true);
+      setSendRejected(false);
+      void (async () => {
+        try {
+          const result = Object.keys(options).length
+            ? await params.onSendMessage(trimmed, options)
+            : await params.onSendMessage(trimmed);
+          if (!mounted.current || storage.scopeVersion.current !== scopeVersion) return;
+          if (result?.accepted === false) setSendRejected(true);
+          else if (storage.revision.current === revision) reset();
+        } catch {
+          if (mounted.current && storage.scopeVersion.current === scopeVersion) {
+            setSendRejected(true);
+          }
+        }
+        finally {
+          sending.current = false;
+          if (mounted.current) setIsSubmitting(false);
+        }
+      })();
       return;
     }
     // Running: the text stays in the box when the queue is full (never lost).
     if (steering?.submit(trimmed, isFinishing ? 'queue' : mode) === 'accepted') reset();
-  }, [text, mentions, skill, agentMode, steering, isFinishing, params, reset]);
+  }, [storage, mentions, skill, agentMode, steering, isFinishing, params,
+    reset, isLoading, disabled, materials]);
 
   const submit = useCallback(() => send(running ? 'steer' : 'send'), [send, running]);
 
@@ -222,7 +264,7 @@ export function useComposer(params: UseComposerParams) {
     if (next === null) return false;
     setText(next);
     return true;
-  }, [text, navigator]);
+  }, [text, navigator, setText]);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
@@ -245,10 +287,13 @@ export function useComposer(params: UseComposerParams) {
     syncCaret(event.target);
     setMentionsTruncated(false);
     if (navigator.isBrowsing()) navigator.reset();
-  }, [syncCaret, navigator]);
+  }, [syncCaret, navigator, setText]);
 
   return {
     textareaRef, text, setText, disabled, running, skill, clearSkill: () => setSkill(null),
+    isSubmitting, sendRejected,
+    invalidReferences: mentions.some(item =>
+      !materials.some(material => material.id === item.materialId)),
     pickerOpen, pickerKind: kind, pickerQuery: trigger?.query ?? '', activeIndex,
     setActiveIndex, skills, skillStatus, selectSkill, selectMaterial, selectCommand,
     escArmed, mentionsTruncated, mentionLimit: MAX_MENTIONS,

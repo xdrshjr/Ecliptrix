@@ -6,7 +6,7 @@ import responseNodeSource from '../AgentResponseNode.tsx?raw';
 // @ts-expect-error -- Vite resolves ?raw imports; this repo has no ambient typing for them
 import chatPanelSource from '../TimelineChatPanel.tsx?raw';
 // @ts-expect-error -- Vite resolves ?raw imports; this repo has no ambient typing for them
-import chatWindowSource from '../../VideoChatWindow.tsx?raw';
+import chatWindowSource from '../../AgentComposer.tsx?raw';
 import {
   compileComponent,
   localeContextModule,
@@ -112,7 +112,7 @@ describe('AgentResponseNode undo while the agent runs', () => {
       liveIndicatorStop: panel.includes('disabled={isFinishing}'),
       executionNodeStopHidden: panel.includes('onCancel={isFinishing ? undefined : onCancel}'),
       responseUndo: panel.includes('undoDisabled={undoDisabled}'),
-      windowStop: chatWindow.includes('disabled={isFinishing}'),
+      windowStop: chatWindow.includes('disabled={actions.isFinishing}'),
     }).toEqual({
       liveIndicatorStop: true,
       executionNodeStopHidden: true,

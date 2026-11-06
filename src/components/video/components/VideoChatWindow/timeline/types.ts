@@ -122,6 +122,10 @@ export type ConnectorState = 'default' | 'active' | 'undone';
 // ---------------------------------------------------------------------------
 
 export interface TimelineChatPanelProps {
+  scrollCache?: {
+    get(): { top: number; follow: boolean };
+    set(snapshot: { top: number; follow: boolean }): void;
+  };
   /** 最小化时暂停自动滚动，重开恢复当前会话的阅读位置。 */
   isVisible?: boolean;
   /** Removes a compaction message, restoring what it superseded. */

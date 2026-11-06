@@ -1,0 +1,65 @@
+{
+  "before": {
+    "focused": "取消",
+    "outsideDock": true
+  },
+  "after": {
+    "draft": "审查：取消删除应保留草稿。",
+    "focusedRole": "tab",
+    "modalCount": 0
+  },
+  "yolo": {
+    "before": {
+      "toolbarTop": 833.1875,
+      "composerTop": 833.1875,
+      "panelTop": 311.1875,
+      "noticeTop": null,
+      "noticeBottom": null,
+      "inputHeight": 40,
+      "inputScrollHeight": 40,
+      "inputOverflow": "hidden"
+    },
+    "visible": {
+      "toolbarTop": 833.1875,
+      "composerTop": 833.1875,
+      "panelTop": 311.1875,
+      "noticeTop": 777.1875,
+      "noticeBottom": 827.1875,
+      "inputHeight": 40,
+      "inputScrollHeight": 40,
+      "inputOverflow": "hidden"
+    },
+    "hidden": {
+      "toolbarTop": 833.1875,
+      "composerTop": 833.1875
+    }
+  },
+  "resize": {
+    "wide": {
+      "width": 476,
+      "height": 60,
+      "scrollHeight": 60
+    },
+    "narrow": {
+      "width": 276,
+      "height": 100,
+      "scrollHeight": 100,
+      "overflow": "hidden",
+      "buttons": [
+        {
+          "width": 32,
+          "height": 32
+        },
+        {
+          "width": 32,
+          "height": 32
+        },
+        {
+          "width": 32,
+          "height": 32
+        }
+      ]
+    }
+  },
+  "screenshotLimitation": "本轮 screenshot 返回浏览器窗口已最小化；保留上游 8 张真实截图，本轮以 DOM 和几何实测记录为准。"
+}

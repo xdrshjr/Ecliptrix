@@ -1,0 +1,42 @@
+{
+  "actions": [
+    {
+      "label": "添加文档",
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(179, 179, 179)",
+      "disabled": true
+    },
+    {
+      "label": "清空聊天记录",
+      "background": "rgba(0, 0, 0, 0)",
+      "color": "rgb(179, 179, 179)",
+      "disabled": true
+    },
+    {
+      "label": "插话",
+      "background": "rgb(13, 153, 255)",
+      "color": "rgb(255, 255, 255)",
+      "disabled": false
+    },
+    {
+      "label": "停止 Agent",
+      "background": "rgb(242, 72, 34)",
+      "color": "rgb(255, 255, 255)",
+      "disabled": false
+    }
+  ],
+  "themes": [
+    {
+      "theme": "dark",
+      "foreground": "#E0E0E0",
+      "background": "#2C2C2C",
+      "contrast": 10.579032206991233
+    },
+    {
+      "theme": "light",
+      "foreground": "#333333",
+      "background": "#F0F0F0",
+      "contrast": 11.086814357548405
+    }
+  ]
+}

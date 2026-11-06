@@ -136,6 +136,25 @@ export interface Translations {
     reason: Record<string, string>;
     tools: Record<string, string>;
   };
+  agentConversations: {
+    label: string;
+    newConversation: string;
+    defaultTitle: string;
+    actions: string;
+    rename: string;
+    delete: string;
+    invalidTitle: string;
+    busyAgent: string;
+    busyChat: string;
+    busyUpload: string;
+    busyCompaction: string;
+    preparing: string;
+    deleteConfirm: string;
+    invalidReferences: string;
+    sendRejected: string;
+    sourceUnavailable: string;
+    updateFailed: string;
+  };
   // BEGIN agentCollab
   agentCollab: {
     steerPlaceholder: string;
@@ -3951,6 +3970,25 @@ export interface Translations {
 
 export const translations: Record<string, Translations> = {
   en: {
+    agentConversations: {
+      label: 'Assistant conversations',
+      newConversation: 'New conversation',
+      defaultTitle: 'New chat {n}',
+      actions: 'Current conversation actions',
+      rename: 'Rename',
+      delete: 'Delete conversation',
+      invalidTitle: 'Enter a name of 1–40 characters',
+      busyAgent: 'Stop or finish the current task to switch conversations',
+      busyChat: 'Wait for the reply to switch conversations',
+      busyUpload: 'Wait for the document to finish uploading',
+      busyCompaction: 'Compacting context, please wait',
+      preparing: 'Preparing conversations…',
+      deleteConfirm: 'Delete “{title}”, its messages and draft? Project materials and the timeline will be kept.',
+      invalidReferences: 'Some references are unavailable and will be omitted',
+      sendRejected: 'Cannot send yet. Your draft has been kept.',
+      sourceUnavailable: 'The original conversation was cleared or deleted. The result was not added to chat.',
+      updateFailed: 'Could not update the conversation. Try again.',
+    },
     // BEGIN agentCollab
     agentCollab: {
       steerPlaceholder: 'Add a note or change course — Enter to steer · Alt+Enter to queue',
@@ -8155,6 +8193,25 @@ export const translations: Record<string, Translations> = {
     },
   },
   'zh-CN': {
+    agentConversations: {
+      label: '助手会话',
+      newConversation: '新建会话',
+      defaultTitle: '新会话 {n}',
+      actions: '当前会话操作',
+      rename: '重命名',
+      delete: '删除会话',
+      invalidTitle: '请输入 1–40 个字符的会话名称',
+      busyAgent: '任务处理中，停止或完成后可切换会话',
+      busyChat: '正在回复，完成后可切换会话',
+      busyUpload: '正在添加文档，完成后可切换会话',
+      busyCompaction: '正在整理上下文，请稍候',
+      preparing: '正在准备会话…',
+      deleteConfirm: '删除会话“{title}”及其聊天记录和草稿？项目素材与时间轴会保留。',
+      invalidReferences: '部分引用已失效，发送时将忽略',
+      sendRejected: '暂时无法发送，草稿已保留',
+      sourceUnavailable: '原会话已清空或删除，结果未写入聊天',
+      updateFailed: '会话更新失败，请重试',
+    },
     // BEGIN agentCollab
     agentCollab: {
       steerPlaceholder: '补充说明或纠正方向，Enter 插话 · Alt+Enter 排队',

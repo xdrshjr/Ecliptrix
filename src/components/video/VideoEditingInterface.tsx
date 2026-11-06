@@ -46,6 +46,10 @@ import { useAgentYoloMode } from './hooks/useAgentYoloMode';
 import { useYoloAutoContinue } from './hooks/useYoloAutoContinue';
 import { useInterruptedConversationCleanup } from './hooks/agentTurnLifecycle';
 import { useContextMemory } from './hooks/useContextMemory';
+import { useVideoChatContentBridge } from './hooks/useVideoChatContentBridge';
+import { useVideoChatSessions } from './hooks/useVideoChatSessions';
+import type { ConversationSendContext, ConversationUploadToken,
+  ConversationWriteScope, SendMessageResult } from './hooks/videoChatSessionModel';
 import { withoutCompaction } from './hooks/conversationCompaction';
 import { useAIMixedEditing } from './hooks/useAIMixedEditing';
 import { generateKeywordsForSegments, deriveLocalKeywordsFromNarration } from './hooks/useScriptGeneration';
@@ -94,7 +98,7 @@ import ConvertToScriptModal from './components/ConvertToScriptModal';
 import { createAIVideoSegment } from './components/AIVideoScriptTab';
 import VideoUnderstandingScriptProgressModal from './components/VideoUnderstandingScriptProgressModal';
 import { AsyncTaskPoller } from './components/AsyncTaskPoller';
-import { Conversation, ChatMessage } from '@/types';
+import { ChatMessage } from '@/types';
 import VideoCutModal, { VideoClip } from './components/VideoCutModal/VideoCutModal';
 import { VideoPlayerPanelRef } from './components/VideoPlayerPanel/VideoPlayerPanel';
 import { EditorTopBar, EditorWorkbench, InspectorPanel, RightPanel, SegmentDialogsHost, FooterToolbar,
@@ -166,7 +170,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   taskId,
   projectId,
   content,
-  onUpdateContent,
+  onUpdateContent: publishContent,
   projectChrome,
 }) => {
   // 获取国际化上下文
@@ -249,9 +253,29 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   // 浮动 Agent 对话 Dock 的开合（内存态，默认关闭，不入 content 持久化）
   const [isAgentDockOpen, setIsAgentDockOpen] = useState<boolean>(false);
 
-  // Keep a ref to the latest content so callbacks always read the current value
-  const contentRef = useRef(content);
-  contentRef.current = content;
+  const contentBridge = useVideoChatContentBridge({
+    projectKey: projectId ?? taskId, content, onUpdateContent: publishContent,
+  });
+  const { contentRef, publishProjectContent: onUpdateContent } = contentBridge;
+  const chatBusyRef = useRef(false);
+  const uploadTokenRef = useRef<ConversationUploadToken | null>(null);
+  const [, setUploadBusy] = useState(false);
+  const activityRef = useRef<{ agent(): boolean; compact(): boolean }>({
+    agent: () => false, compact: () => false,
+  });
+  const getBusyReason = useCallback(() => {
+    if (activityRef.current.agent()) return t.agentConversations.busyAgent;
+    if (chatBusyRef.current) return t.agentConversations.busyChat;
+    if (uploadTokenRef.current) return t.agentConversations.busyUpload;
+    if (activityRef.current.compact()) return t.agentConversations.busyCompaction;
+    return null;
+  }, [t]);
+  const publishCleanedConversations = useCallback((next: VideoEditingTaskContent) => {
+    contentBridge.commitConversations(() => ({
+      conversations: next.conversations ?? [],
+      activeConversationId: next.activeConversationId ?? null,
+    }));
+  }, [contentBridge.commitConversations]);
 
   const logger = useMemo(
     () => new VideoEditingLogger({ taskId: taskId || 'unknown', component: 'VideoEditingInterface' }),
@@ -398,8 +422,40 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [timelineCurrentTime, content, onUpdateContent]);
 
   const isConversationReady = useInterruptedConversationCleanup({
-    projectKey: projectId ?? taskId, content, onUpdateContent,
+    projectKey: projectId ?? taskId, content,
+    onUpdateContent: publishCleanedConversations,
   });
+  const sessions = useVideoChatSessions({ projectKey: projectId ?? taskId,
+    contentBridge, isConversationReady, getBusyReason,
+    labels: t.agentConversations });
+  const polishScope = useRef<ConversationWriteScope | null>(null);
+  const sessionReadyRef = useRef(false);
+  sessionReadyRef.current = sessions.isReady;
+  const canStartRequest = useCallback((context?: ConversationSendContext) =>
+    sessionReadyRef.current && !sessions.getIsMutating() &&
+    !chatBusyRef.current && !activityRef.current.compact() &&
+    (!uploadTokenRef.current ||
+      uploadTokenRef.current === context?.uploadToken), [sessions.getIsMutating]);
+  const onUploadBusyChange = useCallback((token: ConversationUploadToken,
+    busy: boolean): boolean => {
+    if (!busy) {
+      if (uploadTokenRef.current === token) {
+        uploadTokenRef.current = null;
+        setUploadBusy(false);
+      }
+      return true;
+    }
+    if (!canStartRequest() || activityRef.current.agent() ||
+        !sessions.isScopeValid(token)) return false;
+    uploadTokenRef.current = token;
+    setUploadBusy(true);
+    return true;
+  }, [canStartRequest, sessions.isScopeValid]);
+  const createUploadToken = useCallback(() => {
+    const id = contentBridge.getActiveConversationId();
+    const scope = id ? sessions.captureWriteScope(id) : null;
+    return scope ? { ...scope, requestId: crypto.randomUUID() } : null;
+  }, [contentBridge.getActiveConversationId, sessions.captureWriteScope]);
 
   // Mobile device detection effect - backup safety check
   useEffect(() => {
@@ -798,6 +854,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   
   // 处理智能润色
   const handlePolishClick = useCallback(() => {
+    const originId = contentBridge.getActiveConversationId();
+    polishScope.current = originId ? sessions.captureWriteScope(originId) : null;
     // 获取当前活动对话内容
     const activeConversation = content?.conversations?.find(
       conv => conv.id === content?.activeConversationId
@@ -816,7 +874,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     setPolishChatContent(chatContent);
     setIsPolishModalOpen(true);
-  }, [taskId, documentState.markdownValue.length, content]);
+  }, [taskId, documentState.markdownValue.length, content,
+    contentBridge.getActiveConversationId, sessions.captureWriteScope]);
 
   const handlePolishClose = useCallback(() => {
     console.log(`[VideoEditingInterface] 关闭智能润色弹窗`, {
@@ -840,48 +899,22 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
 
     // 构建完整的更新内容（包含markdown和对话更新），避免多次调用onUpdateContent导致状态覆盖
     const now = new Date();
-    let updatedContent: VideoEditingTaskContent = {
+    const updatedContent: VideoEditingTaskContent = {
       ...(content || { markdownContent: '', lastModified: now }),
       markdownContent: polishedContent,
       lastModified: now,
       scriptSegments: content?.scriptSegments,
     };
 
-    // 将润色结果回写到聊天区域
-    const activeConversationId = content?.activeConversationId;
-    if (activeConversationId) {
-      const activeConversation = content?.conversations?.find(
-        conv => conv.id === activeConversationId
-      );
-      if (activeConversation) {
-        const newMessage: ChatMessage = {
-          id: `polish-${Date.now()}`,
-          role: 'assistant',
-          content: `[智能润色结果]\n\n${polishedContent}`,
-          timestamp: now,
-        };
-        updatedContent = {
-          ...updatedContent,
-          conversations: (content?.conversations || []).map(conv => {
-            if (conv.id === activeConversationId) {
-              return {
-                ...conv,
-                messages: [...conv.messages, newMessage],
-                updatedAt: now,
-              };
-            }
-            return conv;
-          }),
-        };
-        console.log(`[VideoEditingInterface] 润色结果已回写到聊天区域`, {
-          conversationId: activeConversationId,
-          messageId: newMessage.id,
-          timestamp: now.toISOString()
-        });
-      }
-    }
-
     onUpdateContent(updatedContent);
+    const scope = polishScope.current;
+    const origin = scope && contentBridge.getConversation(scope.conversationId);
+    if (scope && origin && sessions.isScopeValid(scope)) {
+      sessions.writeMessages(scope, [...origin.messages, {
+        id: `polish-${crypto.randomUUID()}`, role: 'assistant',
+        content: polishedContent, timestamp: now,
+      }]);
+    } else showWarning(t.agentConversations.sourceUnavailable);
     setIsPolishModalOpen(false);
   }, [taskId, documentState.markdownValue.length, documentState.setMarkdownValue, content, onUpdateContent]);
 
@@ -1846,107 +1879,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     }
   }, [materialsToAddToTimeline]);
 
-  // 聊天对话自动初始化
-  useEffect(() => {
-    if (!hasAutoChatInitialized.current && (!content?.conversations || content.conversations.length === 0)) {
-      hasAutoChatInitialized.current = true;
-      
-      logger.debug('自动初始化视频编辑聊天对话', {
-        taskId,
-        timestamp: new Date().toISOString()
-      });
-
-      const now = new Date();
-      const conversationId = `video-chat-${Date.now()}`;
-      
-      const defaultConversation: Conversation = {
-        id: conversationId,
-        title: '视频编辑 AI 助手',
-        messages: [],
-        createdAt: now,
-        updatedAt: now,
-        chatType: 'chatbot',
-      };
-
-      const updatedContent: VideoEditingTaskContent = {
-        ...content!,
-        conversations: [defaultConversation],
-        activeConversationId: conversationId,
-      };
-
-      onUpdateContent(updatedContent);
-      
-      logger.debug('视频编辑聊天对话初始化完成', {
-        conversationId,
-        timestamp: now.toISOString()
-      });
-    }
-  }, []); // 只在组件挂载时运行一次
-
-  // 聊天消息处理
-  const updateConversationMessages = useCallback((conversationId: string, messages: ChatMessage[]) => {
-    const currentContent = contentRef.current;
-    console.log(`[VideoEditingInterface] 更新聊天消息`, {
-      conversationId,
-      messageCount: messages.length,
-      timestamp: new Date().toISOString()
-    });
-
-    const conversations = currentContent?.conversations || [];
-    const updatedConversations = conversations.map(conv => {
-      if (conv.id === conversationId) {
-        return {
-          ...conv,
-          messages,
-          updatedAt: new Date(),
-        };
-      }
-      return conv;
-    });
-
-    const updatedContent: VideoEditingTaskContent = {
-      ...currentContent!,
-      conversations: updatedConversations,
-    };
-
-    onUpdateContent(updatedContent);
-  }, [onUpdateContent]);
-
-  const handleClearChatMessages = useCallback(() => {
-    const activeConversationId = content?.activeConversationId;
-    if (!activeConversationId) {
-      console.warn('[VideoEditingInterface] 没有活动的聊天对话');
-      return;
-    }
-
-    console.log(`[VideoEditingInterface] 清空聊天记录`, {
-      conversationId: activeConversationId,
-      timestamp: new Date().toISOString()
-    });
-    
-    const conversations = content?.conversations || [];
-    const updatedConversations = conversations.map(conv => {
-      if (conv.id === activeConversationId) {
-        console.log(`[VideoEditingInterface] 清空 ${conv.messages.length} 条消息`, {
-          conversationId: conv.id
-        });
-        return {
-          ...conv,
-          messages: [],
-          updatedAt: new Date(),
-        };
-      }
-      return conv;
-    });
-
-    const updatedContent: VideoEditingTaskContent = {
-      ...content!,
-      conversations: updatedConversations,
-    };
-
-    onUpdateContent(updatedContent);
-    console.log('[VideoEditingInterface] 聊天记录已清空');
-  }, [content, onUpdateContent]);
+  const updateConversationMessages = useCallback((id: string,
+    messages: ChatMessage[]) => {
+    const scope = sessions.captureWriteScope(id);
+    if (scope) sessions.writeMessages(scope, messages);
+  }, [sessions.captureWriteScope, sessions.writeMessages]);
+  const handleClearChatMessages = useCallback((id?: string) => {
+    const target = id ?? contentBridge.getActiveConversationId();
+    if (target) sessions.clearMessages(target);
+  }, [contentBridge.getActiveConversationId, sessions.clearMessages]);
 
   // --- Agent Execution Hook (replaces inline agent logic) ---
   const activateCoverSchema = useCallback(() => {
@@ -2011,9 +1952,15 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const agent = useAgentExecution({
     coverAgentBridge: cover.bridge,
     coverAspectRatio: (content?.canvasSettings?.aspectRatioId ?? '16:9') as CoverAspectRatio,
-    conversations: content?.conversations || [],
+    conversations: sessions.conversations,
     updateConversationMessages,
-    activeConversationId: content?.activeConversationId,
+    activeConversationId: sessions.activeConversationId,
+    getConversation: contentBridge.getConversation,
+    getActiveConversationId: contentBridge.getActiveConversationId,
+    captureWriteScope: sessions.captureWriteScope,
+    isScopeValid: sessions.isScopeValid,
+    writeScopedMessages: sessions.writeMessages,
+    canStartRequest,
     timelineState: currentTimelineState,
     setTimelineState: setCurrentTimelineState,
     // 使用 allMaterials：Agent 执行需要看到全部素材，不能因 MaterialsPanel 的类型筛选丢素材
@@ -2054,37 +2001,38 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   });
 
   // --- Unified send handler: routes to agent or regular based on agentMode ---
-  const handleSendChatMessage = useCallback(async (message: string, options?: SendAgentMessageOptions) => {
-    if (!isConversationReady) return;
-    if (agent.agentMode) {
-      return agent.sendAgentMessage(message, options);
+  const handleSendChatMessage = useCallback(async (message: string,
+    options?: SendAgentMessageOptions,
+    context?: ConversationSendContext): Promise<SendMessageResult> => {
+    if (!canStartRequest(context)) return { accepted: false, reason: 'busy' };
+    if (context?.uploadToken && !sessions.isScopeValid(context.uploadToken)) {
+      return { accepted: false, reason: 'stale_scope' };
     }
-
-    // Original non-agent chat logic below
-    const activeConversationId = content?.activeConversationId;
-    if (!activeConversationId || isChatLoading) return;
-
-    const conversations = content?.conversations || [];
-    const activeConversation = conversations.find(
-      conv => conv.id === activeConversationId
-    );
-    
-    if (!activeConversation) return;
-
+    if (agent.agentMode) return await agent.sendAgentMessage(message,
+      options, context) ?? { accepted: true };
+    if (activityRef.current.agent()) return { accepted: false, reason: 'busy' };
+    const activeConversationId = contentBridge.getActiveConversationId();
+    const activeConversation = activeConversationId
+      ? contentBridge.getConversation(activeConversationId) : undefined;
+    const scope = activeConversationId
+      ? sessions.captureWriteScope(activeConversationId) : null;
+    if (!activeConversation || !scope) return { accepted: false, reason: 'not_ready' };
+    chatBusyRef.current = true;
+    const write = (messages: ChatMessage[]) => sessions.writeMessages(scope, messages);
     setIsChatLoading(true);
     
+    const userMessage: ChatMessage = {
+      id: `msg-${crypto.randomUUID()}-user`, role: 'user',
+      content: message, timestamp: new Date(),
+    };
+    const messagesWithUser = [...activeConversation.messages, userMessage];
+    if (!write(messagesWithUser)) {
+      chatBusyRef.current = false;
+      setIsChatLoading(false);
+      return { accepted: false, reason: 'start_failed' };
+    }
+    void (async () => {
     try {
-      const userMessage: ChatMessage = {
-        id: `msg-${Date.now()}-user`,
-        role: 'user',
-        content: message,
-        timestamp: new Date(),
-      };
-
-      // 添加用户消息
-      const messagesWithUser = [...activeConversation.messages, userMessage];
-      updateConversationMessages(activeConversationId, messagesWithUser);
-      
       // 创建助手消息占位符
       const assistantMessageId = `msg-${Date.now()}-assistant`;
       const assistantMessage: ChatMessage = {
@@ -2094,11 +2042,6 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timestamp: new Date(),
         isStreaming: true,
       };
-
-      console.log('[VideoEditingInterface] 发送聊天消息到 API', {
-        messageLength: message.length,
-        timestamp: new Date().toISOString()
-      });
 
       let response: Response;
       try {
@@ -2140,7 +2083,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
                 ...messagesWithUser,
                 { ...assistantMessage, content: accumulatedContent, isStreaming: true }
               ];
-              updateConversationMessages(activeConversationId, updatedMessages);
+              write(updatedMessages);
             }
           } catch (e) {
             console.error('[VideoEditingInterface] 解析SSE数据错误:', e);
@@ -2153,10 +2096,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         ...messagesWithUser,
         { ...assistantMessage, content: accumulatedContent, isStreaming: false }
       ];
-      console.log(`[VideoEditingInterface] 聊天消息接收完成`, {
-        finalContentLength: accumulatedContent.length
-      });
-      updateConversationMessages(activeConversationId, finalMessages);
+      write(finalMessages);
 
     } catch (error) {
       console.error('[VideoEditingInterface] 聊天消息发送失败:', error);
@@ -2170,29 +2110,59 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timestamp: new Date(),
       }]);
       
-      updateConversationMessages(activeConversationId, messagesWithoutAssistant);
+      write(messagesWithoutAssistant);
       
     } finally {
-      setIsChatLoading(false);
+      chatBusyRef.current = false;
+      if (sessions.isScopeValid(scope)) setIsChatLoading(false);
     }
-  }, [isConversationReady, content, onUpdateContent, isChatLoading, updateConversationMessages, taskId, showError, agent.agentMode, agent.sendAgentMessage]);
+    })();
+    return { accepted: true };
+  }, [canStartRequest, sessions.isScopeValid, sessions.captureWriteScope,
+    sessions.writeMessages, contentBridge.getActiveConversationId,
+    contentBridge.getConversation, taskId, showError,
+    agent.agentMode, agent.sendAgentMessage]);
 
-  // 获取当前活动的聊天对话
-  const activeConversation = content?.conversations?.find(
-    conv => conv.id === content?.activeConversationId
-  );
+  const activeConversation = sessions.activeConversation;
+  const ownsExecution = agent.executionConversationId === activeConversation?.id;
   // 全自动模式：开关真相在 autonomyStore（AC-C9）；续跑只读 lastTurnEnd（AC-C6）。
-  useYoloAutoContinue({ agent, yolo: yoloMode.yolo, conversation: activeConversation });
+  useYoloAutoContinue({ agent, yolo: yoloMode.yolo,
+    conversation: activeConversation, getConversation: contentBridge.getConversation });
   const contextMemory = useContextMemory({
     conversationId: activeConversation?.id,
     messages: activeConversation?.messages ?? NO_CHAT_MESSAGES,
     writeMessages: updateConversationMessages,
-    liveUsage: agent.liveEvents.contextUsage,
+    liveUsage: ownsExecution ? agent.liveEvents.contextUsage : null,
+    getConversation: contentBridge.getConversation,
+    getSelectionEpoch: sessions.getSelectionEpoch,
+    captureWriteScope: sessions.captureWriteScope,
+    isScopeValid: sessions.isScopeValid,
+    writeScopedMessages: sessions.writeMessages,
+    canStartCompaction: () => sessionReadyRef.current &&
+      !sessions.getIsMutating() && !activityRef.current.agent() &&
+      !chatBusyRef.current && !uploadTokenRef.current,
     agentIsExecuting: agent.agentIsExecuting,
     executionStatus: agent.executionState.status,
     hasPendingSteers: agent.steering.queued.length > 0
       || agent.steering.notes.some(note => note.status === 'local' || note.status === 'sent'),
   });
+
+  activityRef.current = { agent: agent.isConversationBusy,
+    compact: contextMemory.isCompactingNow ?? (() => false) };
+  useEffect(() => {
+    const restore = agent.draftRestore;
+    if (!restore?.conversationId || !restore.instanceToken ||
+        restore.messagesEpoch === undefined) return;
+    const scope: ConversationWriteScope = {
+      conversationId: restore.conversationId,
+      instanceToken: restore.instanceToken, messagesEpoch: restore.messagesEpoch,
+    };
+    if (sessions.isScopeValid(scope)) {
+      sessions.viewCache.applyRestore(restore.conversationId, restore);
+    }
+    agent.consumeDraftRestore(restore.nonce);
+  }, [agent.draftRestore, agent.consumeDraftRestore,
+    sessions.isScopeValid, sessions.viewCache]);
 
   // 段落中心工作台（spec segment-centric-editor-workbench §3）。段落派生唯一来源（RV-01）：
   // 与传给 ScriptPanel / MaterialsPanel 的是同一对值；其余接线在 useWorkbenchWiring。
@@ -2331,17 +2301,45 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
             onMinimize={() => setIsAgentDockOpen(false)}
             agentIsExecuting={agent.agentIsExecuting}
             contextLabel={workbench.assistantContextLabel}
+            sessions={{ ...sessions,
+              busyReason: !sessions.isReady || sessions.isMutating
+                ? t.agentConversations.preparing : getBusyReason(),
+              hasContent: id => !!contentBridge.getConversation(id)
+                ?.messages.length || sessions.viewCache.hasContent(id),
+            }}
             chatProps={{
               conversation: activeConversation, onSendMessage: handleSendChatMessage,
-              onClearMessages: handleClearChatMessages, isLoading: isChatLoading || !isConversationReady,
+              onClearMessages: handleClearChatMessages,
+              isLoading: isChatLoading || !sessions.isReady || sessions.isMutating,
+              viewCache: sessions.viewCache,
+              createUploadToken, onUploadBusyChange,
+              isScopeValid: sessions.isScopeValid,
+              onDraftRestoreConsumed: agent.consumeDraftRestore,
+              busyReason: getBusyReason(),
               onCreativeBrainstormingClick: handleCreativeBrainstormingClick, onPolishClick: handlePolishClick,
               onConvertMessageToScript: handleConvertMessageToScript,
-              agentMode: agent.agentMode, onAgentModeChange: agent.setAgentMode,
-              agentIsExecuting: agent.agentIsExecuting, executionState: agent.executionState,
+              agentMode: agent.agentMode, onAgentModeChange: enabled => {
+                if (canStartRequest() && !agent.isConversationBusy()) {
+                  agent.setAgentMode(enabled);
+                }
+              },
+              agentIsExecuting: agent.agentIsExecuting,
+              executionState: ownsExecution ? agent.executionState : null,
               onAgentUndo: undefined, onUndoAll: agent.undoAllOperations, onUndoSingle: agent.undoSingleOperation,
               onCancel: agent.cancelExecution, onDismissError: agent.dismissExecutionError,
-              singleUndoMessageIds: agent.singleUndoMessageIds, steering: agent.steering, draftRestore: agent.draftRestore, skillSkip: agent.skillSkip, mentionMaterials: materialManagement.allMaterials, draftProjectKey: projectId,
-              contextMemory, liveProgress: agent.liveEvents.crew, yolo: yoloMode.yolo, yoloReady: yoloMode.yoloReady, onYoloChange: yoloMode.toggleYolo,
+              singleUndoMessageIds: agent.singleUndoMessageIds,
+              steering: agent.steering, draftRestore: agent.draftRestore,
+              skillSkip: activeConversation?.messages.some(message =>
+                message.id === agent.skillSkip?.messageId) ? agent.skillSkip : null,
+              mentionMaterials: materialManagement.allMaterials,
+              draftProjectKey: projectId ?? taskId,
+              contextMemory, liveProgress: ownsExecution ? agent.liveEvents.crew : undefined,
+              yolo: yoloMode.yolo, yoloReady: yoloMode.yoloReady,
+              onYoloChange: enabled => {
+                if (canStartRequest() && !agent.isConversationBusy()) {
+                  yoloMode.toggleYolo(enabled);
+                }
+              },
             }}
           />
         }

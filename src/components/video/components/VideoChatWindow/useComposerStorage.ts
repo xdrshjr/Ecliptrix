@@ -1,5 +1,48 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage } from '@/types';
+import {
+  createConversationViewCache, emptyDraft, type ConversationDraft,
+  type ConversationViewCache,
+} from './conversationViewCache';
+
+export function useStructuredComposerDraft(
+  scope: { projectKey: string; conversationId: string } | null,
+  externalCache?: ConversationViewCache,
+) {
+  const projectKey = scope?.projectKey ?? 'standalone';
+  const local = useMemo(() => createConversationViewCache(projectKey), [projectKey]);
+  const cache = externalCache ?? local;
+  const id = scope?.conversationId ?? 'standalone';
+  const hasScope = scope !== null;
+  const [draft, renderDraft] = useState(() => scope
+    ? cache.getDraft(id) : emptyDraft());
+  const current = useRef(draft);
+  const revision = useRef(0);
+  const scopeVersion = useRef(0);
+  const setDraft = useCallback((update: ConversationDraft |
+    ((previous: ConversationDraft) => ConversationDraft)) => {
+    const next = typeof update === 'function' ? update(current.current) : update;
+    current.current = next;
+    revision.current++;
+    if (hasScope) cache.setDraft(id, next);
+    renderDraft(next);
+  }, [cache, id, hasScope]);
+  useEffect(() => {
+    // A → B → A 也会退休旧发送结果，不能只比较最终会话 ID。
+    scopeVersion.current++;
+    const next = hasScope ? cache.getDraft(id) : emptyDraft();
+    current.current = next;
+    renderDraft(next);
+    const flush = () => { if (hasScope) cache.flushDraft(id); };
+    window.addEventListener('pagehide', flush);
+    return () => { flush(); window.removeEventListener('pagehide', flush); };
+  }, [cache, id, hasScope, projectKey]);
+  const clearDraft = useCallback(() => {
+    setDraft(emptyDraft());
+    if (hasScope) cache.clearDraft(id);
+  }, [cache, id, setDraft, hasScope]);
+  return { draft, setDraft, clearDraft, current, revision, scopeVersion, cache, id };
+}
 
 /**
  * 输入区的两项便利功能：草稿保留与 ↑ 历史回溯。

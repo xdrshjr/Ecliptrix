@@ -1,0 +1,8 @@
+{
+  "retainedDraft": "停止后保留的草稿",
+  "transcriptUnchanged": true,
+  "reducedMotion": {
+    "matches": true,
+    "buttonTransition": "0s"
+  }
+}

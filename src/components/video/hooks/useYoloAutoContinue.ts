@@ -26,15 +26,17 @@ import {
 
 export interface UseYoloAutoContinueArgs {
   /** `useAgentExecution` 的返回值：提供回合结束事实与发送通道。 */
-  agent: Pick<UseAgentExecutionReturn, 'lastTurnEnd' | 'sendAgentMessage'>;
+  agent: Pick<UseAgentExecutionReturn, 'lastTurnEnd' | 'sendAgentMessage'>
+    & Partial<Pick<UseAgentExecutionReturn, 'acknowledgeTurnEnd'>>;
   /** 当前是否开启 YOLO（关闭即清零计数并取消待发）。 */
   yolo: boolean;
   /** 当前活动会话（消息与 id 都从它取，绑定会话防止跨会话续跑）。 */
   conversation: Conversation | undefined;
+  getConversation?: (id: string) => Conversation | undefined;
 }
 
 export function useYoloAutoContinue({
-  agent, yolo, conversation,
+  agent, yolo, conversation, getConversation,
 }: UseYoloAutoContinueArgs): void {
   /** 本用户回合链内已续跑次数；会话变化或用户自己发消息即清零。 */
   const continueCountRef = useRef(0);
@@ -42,14 +44,23 @@ export function useYoloAutoContinue({
   const handledSeqRef = useRef(0);
   /** 绑定计数所属的会话。 */
   const boundConversationRef = useRef<string | null>(null);
+  const boundUserMessageRef = useRef<string | null>(null);
 
   const conversationId = conversation?.id ?? null;
   const { lastTurnEnd } = agent;
   const send = agent.sendAgentMessage;
+  const acknowledge = agent.acknowledgeTurnEnd;
 
-  // 用户自己发了消息（消息数增长且最后一条是 user）或关掉 YOLO → 计数清零。
+  // 发送会一次写入 user 和助手占位，不能依赖最后一条恰好是 user。
   const lastMessage = conversation?.messages[conversation?.messages.length - 1];
-  const lastMessageIsUser = lastMessage?.role === 'user';
+  let userMessageId: string | null = null;
+  for (let index = (conversation?.messages.length ?? 0) - 1; index >= 0; index--) {
+    const message = conversation!.messages[index];
+    if (message.role === 'user' && message.metadata?.type !== 'yolo_continue') {
+      userMessageId = message.id;
+      break;
+    }
+  }
 
   useEffect(() => {
     if (!yolo) {
@@ -57,17 +68,18 @@ export function useYoloAutoContinue({
       return;
     }
     if (boundConversationRef.current !== conversationId) {
-      // 切换会话：挂起而不是清零（P2-06），回到原会话仍沿用本链计数。
+      // 已处理的 turnSeq 不重播；切换后从新会话的用户回合开始计数。
       boundConversationRef.current = conversationId;
       continueCountRef.current = 0;
     }
-    if (lastMessageIsUser && lastMessage?.metadata?.type !== 'yolo_continue') {
+    if (boundUserMessageRef.current !== userMessageId) {
+      boundUserMessageRef.current = userMessageId;
       continueCountRef.current = 0;
     }
-  }, [yolo, conversationId, lastMessageIsUser, lastMessage]);
+  }, [yolo, conversationId, userMessageId]);
 
   useEffect(() => {
-    if (!lastTurnEnd || !yolo) return;
+    if (!lastTurnEnd) return;
     if (lastTurnEnd.turnSeq <= handledSeqRef.current) return;
     handledSeqRef.current = lastTurnEnd.turnSeq;
     if (boundConversationRef.current !== conversationId) {
@@ -75,15 +87,26 @@ export function useYoloAutoContinue({
     }
     // C4 的后半段：该会话最后一条消息必须是**本回合刚写完的 agent 消息**
     // （切换会话或用户又发了消息时这里就否决，不对着新会话求值）。
-    if (!lastMessage?.isAgentMessage) return;
-    const plan = scanLatestPlan(conversation?.messages ?? []);
+    const current = conversationId
+      ? getConversation?.(conversationId) ?? conversation : undefined;
+    const latest = current?.messages[current.messages.length - 1];
+    if (!yolo || !latest?.isAgentMessage) {
+      acknowledge?.(lastTurnEnd.turnSeq);
+      return;
+    }
+    const plan = scanLatestPlan(current?.messages ?? []);
     if (!shouldAutoContinue({
       lastTurnEnd,
       plan,
       continueCount: continueCountRef.current,
       activeConversationId: conversationId,
-    })) return;
+    })) { acknowledge?.(lastTurnEnd.turnSeq); return; }
     continueCountRef.current += 1;
-    void send(YOLO_CONTINUE_PROMPT, { automatic: 'yolo_continue' });
-  }, [lastTurnEnd, yolo, conversation, conversationId, lastMessage, send]);
+    const pending = acknowledge
+      ? send(YOLO_CONTINUE_PROMPT, { automatic: 'yolo_continue' },
+        { followUpTurnSeq: lastTurnEnd.turnSeq })
+      : send(YOLO_CONTINUE_PROMPT, { automatic: 'yolo_continue' });
+    void pending.finally(() => acknowledge?.(lastTurnEnd.turnSeq));
+  }, [lastTurnEnd, yolo, conversation, conversationId, lastMessage,
+    send, acknowledge, getConversation]);
 }

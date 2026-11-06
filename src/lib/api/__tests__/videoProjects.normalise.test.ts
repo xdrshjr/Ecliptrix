@@ -11,6 +11,25 @@
 import { describe, it, expect } from 'vitest';
 import { normaliseProjectDataForSave } from '../videoProjects';
 import type { VideoEditingTaskContent } from '@/types';
+import { createConversation } from '@/components/video/hooks/videoChatSessionModel';
+
+describe('多会话保存结构', () => {
+  it('保留顺序、活动 ID 和压缩消息，删除只影响目标会话', () => {
+    const a = createConversation('a', '方案讨论');
+    const b = createConversation('b', '剪辑执行');
+    a.messages.push({ id: 'compact', role: 'system', content: '摘要',
+      timestamp: new Date(), metadata: { type: 'compaction' } });
+    const content = { markdownContent: '', lastModified: new Date(),
+      conversations: [a, b], activeConversationId: 'b' };
+    const saved = JSON.parse(JSON.stringify(normaliseProjectDataForSave(content)));
+    expect(saved.conversations.map((item: { id: string }) => item.id))
+      .toEqual(['a', 'b']);
+    expect(saved.activeConversationId).toBe('b');
+    expect(saved.conversations[0].messages[0].metadata.type).toBe('compaction');
+    expect(normaliseProjectDataForSave({ ...content, conversations: [b] })
+      .conversations).toEqual([b]);
+  });
+});
 
 const DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ';
 const BACKEND_POSTER = '/api/storage/files/static/video/thumbnails/uuid/poster.jpg';

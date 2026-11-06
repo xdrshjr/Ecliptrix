@@ -59,7 +59,7 @@ describe('AgentChatDock — floating button replaces the drawer', () => {
   it('the panel carries the stable AGENT_PANEL_ID the top bar points at', () => {
     expect(dock).toContain("export const AGENT_PANEL_ID = 'ws-assistant-panel';");
     expect(dock).toContain('panelId={AGENT_PANEL_ID}');
-    expect(dock).not.toContain('useId');
+    expect(dock).not.toMatch(/AGENT_PANEL_ID\s*=\s*useId/);
     expect(topBarSrc).toContain('aria-controls={AGENT_PANEL_ID}');
   });
 
@@ -156,7 +156,10 @@ describe('stylesheets — legacy layout and drawer removed', () => {
 
   it('keeps the chat body rules VideoChatWindow still uses', () => {
     expect(cssSrc).toContain('.agent-chat-messages');
-    expect(cssSrc).toContain('.agent-chat-input-area');
+    expect(cssSrc).not.toContain('.agent-chat-input-area');
+    expect(readFileSync(resolve(DIR,
+      '../VideoChatWindow/AgentComposer.module.css'), 'utf-8'))
+      .toContain('.textArea');
   });
 
   it('the FAB is positioned inside .ws-main', () => {

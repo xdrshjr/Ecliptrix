@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { requestConversationCompaction, type CompactionOutcome } from '@/lib/api/agentCompact';
 import { estimateConversationTokens } from '@/lib/video-editing-agent/memory/estimateTokens';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, Conversation } from '@/types';
+import type { ConversationWriteScope } from './videoChatSessionModel';
 import type { AgentExecutionStatus } from './useAgentExecutionState';
 import { stripHistoryForRequest } from './agentTurnLifecycle';
 import {
@@ -28,6 +29,12 @@ import { useCompactionSettings, type UseCompactionSettingsReturn } from './useCo
 export type CompactionResult = 'compacted' | FoldRefusal | 'failed' | 'discarded';
 
 export interface UseContextMemoryParams {
+  getConversation?: (id: string) => Conversation | undefined;
+  getSelectionEpoch?: () => number;
+  captureWriteScope?: (id: string) => ConversationWriteScope | null;
+  isScopeValid?: (scope: ConversationWriteScope) => boolean;
+  writeScopedMessages?: (scope: ConversationWriteScope, messages: ChatMessage[]) => boolean;
+  canStartCompaction?: () => boolean;
   conversationId: string | null | undefined;
   messages: readonly ChatMessage[];
   /** Replaces the conversation's messages (same writer the agent turn uses). */
@@ -46,6 +53,7 @@ export interface UseContextMemoryReturn {
   percent: number;
   level: ContextLevel;
   isCompacting: boolean;
+  isCompactingNow?: () => boolean;
   /** Idle conversation, none in flight: `/compact` and the ring button may run. */
   canCompact: boolean;
   /** The message the pending digest will follow; null when none is pending. */
@@ -101,6 +109,9 @@ export function useContextMemory(params: UseContextMemoryParams): UseContextMemo
   const latest = useRef(params);
   latest.current = params;
   const inFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true;
+    return () => { mounted.current = false; }; }, []);
   const abort = useRef<AbortController | null>(null);
   const discardedUsage = useRef<ContextUsageReading | null>(null);
   const usageOwner = useRef<UsageClaim | null>(null);
@@ -115,12 +126,15 @@ export function useContextMemory(params: UseContextMemoryParams): UseContextMemo
   /** Write the digest unless the conversation moved on while it was being made. */
   const commit = useCallback((
     conversation: string, plan: FoldPlan, outcome: CompactionOutcome, auto: boolean,
+    scope?: ConversationWriteScope | null,
   ): CompactionResult => {
     if (!outcome.success) {
       console.warn('[useContextMemory] compaction produced no summary', outcome.error_code);
       return 'failed';
     }
-    const { messages: fresh, conversationId: currentId, liveUsage: reading } = latest.current;
+    const { conversationId: currentId, liveUsage: reading } = latest.current;
+    const fresh = latest.current.getConversation?.(conversation)?.messages
+      ?? latest.current.messages;
     if (currentId !== conversation || !isFoldStillValid(fresh, plan)) return 'discarded';
     const message = buildCompactionMessage(plan, {
       id: newCompactionId(),
@@ -133,13 +147,21 @@ export function useContextMemory(params: UseContextMemoryParams): UseContextMemo
       now: new Date(),
     });
     discardedUsage.current = reading;
-    latest.current.writeMessages(conversation, insertCompaction(fresh, plan, message));
+    const next = insertCompaction(fresh, plan, message);
+    if (scope && latest.current.writeScopedMessages) {
+      if (!latest.current.writeScopedMessages(scope, next)) return 'discarded';
+    } else latest.current.writeMessages(conversation, next);
     return 'compacted';
   }, []);
 
   const compact = useCallback(async (auto: boolean): Promise<CompactionResult> => {
-    const { conversationId: id, messages: current, agentIsExecuting: running } = latest.current;
-    if (!id || running || inFlight.current) return 'busy';
+    const { conversationId: id, agentIsExecuting: running } = latest.current;
+    if (!id || running || inFlight.current ||
+        latest.current.canStartCompaction?.() === false) return 'busy';
+    const current = latest.current.getConversation?.(id)?.messages
+      ?? latest.current.messages;
+    const scope = latest.current.captureWriteScope?.(id);
+    if (latest.current.captureWriteScope && !scope) return 'discarded';
     const plan = planFold(current);
     if (typeof plan === 'string') return plan;
     inFlight.current = true;
@@ -152,11 +174,19 @@ export function useContextMemory(params: UseContextMemoryParams): UseContextMemo
         previousSummary: plan.previous?.metadata?.compaction?.summaryText,
         locale,
       }, controller.signal);
-      return commit(id, plan, outcome, auto);
+      if (!mounted.current || controller.signal.aborted ||
+          (scope && latest.current.isScopeValid?.(scope) === false)) {
+        return 'discarded';
+      }
+      return commit(id, plan, outcome, auto, scope);
+    } catch (error) {
+      if (controller.signal.aborted || !mounted.current) return 'discarded';
+      console.warn('[useContextMemory] compaction request failed', error);
+      return 'failed';
     } finally {
       inFlight.current = false;
       abort.current = null;
-      setCompactingAfter(null);
+      if (mounted.current) setCompactingAfter(null);
     }
   }, [locale, commit]);
 
@@ -166,9 +196,18 @@ export function useContextMemory(params: UseContextMemoryParams): UseContextMemo
     const finished = wasExecuting.current && !agentIsExecuting;
     wasExecuting.current = agentIsExecuting;
     if (!finished || executionStatus !== 'completed') return;
+    const origin = latest.current;
+    const epoch = origin.getSelectionEpoch?.();
+    const snapshot = origin.getConversation?.(origin.conversationId ?? '')
+      ?.messages ?? origin.messages;
     void (async () => {
       const fresh = await refresh();
       const state = latest.current;
+      if (!mounted.current || state.conversationId !== origin.conversationId ||
+          state.getSelectionEpoch?.() !== epoch ||
+          (state.getConversation?.(state.conversationId ?? '')?.messages
+            ?? state.messages) !== snapshot ||
+          state.canStartCompaction?.() === false) return;
       if (!fresh.autoCompact || state.agentIsExecuting || state.hasPendingSteers) return;
       const afterTurn = idleReading(
         estimateConversationTokens(state.messages as ChatMessage[]), state.liveUsage);
@@ -182,16 +221,21 @@ export function useContextMemory(params: UseContextMemoryParams): UseContextMemo
 
   const undoCompaction = useCallback((compactionId: string): boolean => {
     const { conversationId: id, messages: current, agentIsExecuting: running } = latest.current;
-    if (!id || running || !current.some(message => message.id === compactionId)) return false;
+    if (!id || running || inFlight.current ||
+        latest.current.canStartCompaction?.() === false ||
+        !current.some(message => message.id === compactionId)) return false;
     discardedUsage.current = latest.current.liveUsage;
     latest.current.writeMessages(id, removeCompaction(current, compactionId));
     return true;
   }, []);
+  const isCompactingNow = useCallback(() => inFlight.current, []);
 
   return {
     reading, ratio, percent: ratioPercent(ratio), level: contextLevel(ratio, reading.dropped),
-    isCompacting: compactingAfter !== null, compactingAfterMessageId: compactingAfter,
-    canCompact: Boolean(conversationId) && !agentIsExecuting && compactingAfter === null,
+    isCompacting: compactingAfter !== null, isCompactingNow,
+    compactingAfterMessageId: compactingAfter,
+    canCompact: Boolean(conversationId) && !agentIsExecuting &&
+      compactingAfter === null && params.canStartCompaction?.() !== false,
     settings, setAutoCompact, compactNow: () => compact(false), undoCompaction,
   };
 }

@@ -76,7 +76,7 @@ describe('YoloToggle', () => {
     renderToggle({ yolo: true });
     const described = toggleButton().getAttribute('aria-describedby');
     expect(described).toBeTruthy();
-    expect(document.getElementById(described!)?.textContent).toBe(copy.yoloTitleOn);
+    expect(document.getElementById(described!)?.textContent).toContain(copy.yoloTitleOn);
     expect(toggleButton().getAttribute('aria-label'))
       .toContain(copy.yoloToggleLabel);
   });

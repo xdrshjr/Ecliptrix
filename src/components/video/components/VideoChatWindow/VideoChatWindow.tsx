@@ -3,9 +3,8 @@
 /**
  * VideoChatWindow — the main chat panel for the video editing interface.
  *
- * Refactored to use TimelineChatPanel for message rendering instead of
- * the old AgentMessageBubble / MessageBubble flat list. The input area,
- * action buttons bar, and agent mode toggle remain unchanged.
+ * 消息由 TimelineChatPanel 渲染；AgentComposer 统一模式横条、输入卡片、
+ * 附件和发送操作。会话 key 的挂载边界由外层 AgentChatDock 管理。
  *
  * ## Changes from previous version
  * - Replaced flat message list with TimelineChatPanel (timeline/index.ts)
@@ -22,6 +21,10 @@ import React, {
 import { Conversation, ChatMessage, MaterialItem } from '@/types';
 import type { AgentExecutionState } from '@/components/video/hooks/useAgentExecutionState';
 import type { SendAgentMessageOptions } from '@/components/video/hooks/useAgentExecution';
+import type { ConversationSendContext, ConversationUploadToken,
+  ConversationWriteScope, SendMessageResult } from '../../hooks/videoChatSessionModel';
+import type { ConversationViewCache } from './conversationViewCache';
+import AgentComposer from './AgentComposer';
 import type { UseAgentSteeringReturn } from '@/components/video/hooks/useAgentSteering';
 import type {
   DraftRestore, SkillSkipNotice,
@@ -33,14 +36,8 @@ import { EMPTY_LIVE_PROGRESS } from '@/components/video/hooks/agentLiveProgress'
 import { scanLatestPlan, selectActiveStep } from '@/lib/video-editing-agent/planScan';
 import { TimelineChatPanel } from './timeline';
 import AgentBusyBar from './AgentBusyBar';
-import YoloToggle from './YoloToggle';
-import YoloNotice from './YoloNotice';
 import SteerQueue from './SteerQueue';
-import ComposerSkillPicker from './ComposerSkillPicker';
-import ComposerMentionPicker from './ComposerMentionPicker';
-import { pickerOptionId } from './ComposerPicker';
 import { useComposer } from './useComposer';
-import { ConnectedContextRing } from './ContextRing';
 import { useChatCompaction } from './useChatCompaction';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -56,12 +53,19 @@ import { collectUnansweredQuestionIds } from '@/lib/video-editing-agent/askScan'
 import type { AgentToolkitCapabilities } from '@/types/agentToolkit';
 
 export interface VideoChatWindowProps {
+  viewCache?: ConversationViewCache;
+  createUploadToken?: () => ConversationUploadToken | null;
+  onUploadBusyChange?: (token: ConversationUploadToken, busy: boolean) => boolean;
+  isScopeValid?: (scope: ConversationWriteScope) => boolean;
+  onDraftRestoreConsumed?: (nonce: number) => void;
+  busyReason?: string | null;
   /** 最小化只暂停展示工作，不影响会话与 Agent 执行。 */
   isVisible?: boolean;
   conversation: Conversation | undefined;
   /** `options` (skill / mentions) only reach the agent path. */
-  onSendMessage: (message: string, options?: SendAgentMessageOptions) => Promise<void>;
-  onClearMessages: () => void;
+  onSendMessage: (message: string, options?: SendAgentMessageOptions,
+    context?: ConversationSendContext) => Promise<SendMessageResult | void>;
+  onClearMessages: (conversationId?: string) => void;
   isLoading: boolean;
   onCreativeBrainstormingClick?: () => void;
   onPolishClick?: () => void;
@@ -102,21 +106,6 @@ export interface VideoChatWindowProps {
   liveProgress?: Pick<UseCrewProgressReturn, 'crews' | 'acquire' | 'isCrewRunning'>;
 }
 
-const SKILL_LIST_ID = 'agent-skill-listbox';
-const MENTION_LIST_ID = 'agent-mention-listbox';
-const INPUT_MIN_HEIGHT = 40;
-const INPUT_MAX_HEIGHT = 120;
-const INPUT_COMPACT_MAX_HEIGHT = 80;
-
-function resizeInput(textarea: HTMLTextAreaElement) {
-  const compact = textarea.closest('[data-compact="true"]');
-  const maxHeight = compact ? INPUT_COMPACT_MAX_HEIGHT : INPUT_MAX_HEIGHT;
-  textarea.style.height = 'auto';
-  textarea.style.height = `${Math.max(INPUT_MIN_HEIGHT,
-    Math.min(textarea.scrollHeight, maxHeight))}px`;
-  textarea.style.overflow = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
-}
-
 // 保留既有输入、工具栏与执行接线，避免本次浮窗调整扩大成聊天组件重构。
 const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   conversation,
@@ -147,12 +136,28 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   contextMemory,
   liveProgress,
   isVisible = true,
+  viewCache, createUploadToken, onUploadBusyChange, isScopeValid,
+  onDraftRestoreConsumed, busyReason,
 }) => {
   const { t } = useLocale();
   const { showConfirm } = useNotification();
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 文档上传：同一时刻只允许一个（`uploading` 即互斥锁）。
   const [uploading, setUploading] = useState(false);
+  const uploadRef = useRef<ConversationUploadToken | object | null>(null);
+  const mounted = useRef(true);
+  const releaseUploadRef = useRef(onUploadBusyChange);
+  releaseUploadRef.current = onUploadBusyChange;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (uploadRef.current && 'requestId' in uploadRef.current) {
+        releaseUploadRef.current?.(uploadRef.current as ConversationUploadToken, false);
+      }
+      uploadRef.current = null;
+    };
+  }, []);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [toolkitCaps, setToolkitCaps] =
     useState<AgentToolkitCapabilities | null>(null);
@@ -187,7 +192,9 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   const compaction = useChatCompaction(contextMemory);
   const composer = useComposer({
     commands: compaction.commands, onCommand: compaction.onCommand,
-    agentMode, agentIsExecuting, isFinishing, isLoading, steering, draftRestore,
+    agentMode, agentIsExecuting, isFinishing,
+    isLoading: isLoading || uploading || !!contextMemory?.isCompacting,
+    steering, draftRestore, viewCache, onDraftRestoreConsumed, isVisible,
     materials: mentionMaterials ?? [],
     messages,
     draftScope: conversation && draftProjectKey
@@ -195,19 +202,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
     onSendMessage,
     onCancel: () => onCancel?.(),
   });
-  const { textareaRef } = composer;
   const [inputFocused, setInputFocused] = useState(false);
-
-  // ----- Textarea height management -----
-
-  useEffect(() => {
-    if (textareaRef.current) resizeInput(textareaRef.current);
-  }, [composer.text, textareaRef]);
-
-  const handleSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    composer.submit();
-  }, [composer]);
+  const setComposerText = composer.setText;
 
   /**
    * `AskUserCard` 的选项按钮只发一个 window 事件；这里把答案变成**一条普通
@@ -219,13 +215,13 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         questionId?: string; answer?: string }>).detail;
       const questionId = detail?.questionId;
       const answer = detail?.answer?.trim();
-      if (!questionId || !answer) return;
+      if (!questionId || !answer || !unresolvedQuestionIds.has(questionId)) return;
       if (agentIsExecuting) return;
       void onSendMessage(askAnswerMessage(questionId, answer));
     };
     window.addEventListener(ASK_ANSWER_EVENT, onAnswer);
     return () => window.removeEventListener(ASK_ANSWER_EVENT, onAnswer);
-  }, [onSendMessage, agentIsExecuting]);
+  }, [onSendMessage, agentIsExecuting, unresolvedQuestionIds]);
 
   // 文档能力开关决定「添加文档」按钮是否可用；失败只降级，不阻塞聊天。
   useEffect(() => {
@@ -244,7 +240,8 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   const uploadSelectedDocument = useCallback(
     async (file: File | undefined) => {
-      if (!file || uploading) return;
+      if (!file || uploadRef.current || isLoading || agentIsExecuting ||
+          contextMemory?.isCompacting) return;
       setUploadError(null);
       // 前端预检：超限直接拒绝，不发请求（避免 413 往返）。
       if (maxFileMb > 0 && file.size > maxFileMb * 1024 * 1024) {
@@ -252,29 +249,56 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           '{mb}', String(maxFileMb)));
         return;
       }
+      const token = createUploadToken?.();
+      if (createUploadToken && !token) return;
+      if (token && onUploadBusyChange?.(token, true) === false) return;
+      const request = token ?? {};
+      uploadRef.current = request;
       setUploading(true);
       try {
         const uploaded = await uploadDocument(file);
+        if (!mounted.current || uploadRef.current !== request ||
+            (token && isScopeValid?.(token) === false)) return;
         // 成功后**恰**发一条消息；失败绝不发送（否则模型会引用不存在的文档）。
-        await onSendMessage(
-          documentRefMessage(uploaded.document_id, uploaded.name));
+        const text = documentRefMessage(uploaded.document_id, uploaded.name);
+        const result = await onSendMessage(text, undefined,
+          token ? { uploadToken: token } : undefined);
+        if (result?.accepted === false && mounted.current &&
+            (!token || isScopeValid?.(token) !== false)) {
+          if (token && viewCache) {
+            const previous = viewCache.getDraft(token.conversationId);
+            const draft = { ...previous,
+              text: previous.text ? `${previous.text}\n\n${text}` : text };
+            viewCache.setDraft(token.conversationId, draft);
+            setComposerText(draft.text);
+          } else setComposerText(previous => previous ? `${previous}\n\n${text}` : text);
+          setUploadError(t.agentConversations.sendRejected);
+        }
       } catch (error) {
+        if (!mounted.current || uploadRef.current !== request) return;
         const code = error instanceof AgentToolkitApiError
           ? error.errorCode : 'document_parse_failed';
         const status = resolveAgentToolkitStatus({ error_code: code });
         setUploadError(status
           ? t.agentToolkit[status.key] : t.agentToolkit.attachFailed);
       } finally {
-        setUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (uploadRef.current === request) {
+          uploadRef.current = null;
+          if (token) onUploadBusyChange?.(token, false);
+          if (mounted.current) setUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
       }
     },
-    [uploading, maxFileMb, onSendMessage, t.agentToolkit],
+    [isLoading, agentIsExecuting, contextMemory?.isCompacting, maxFileMb,
+      onSendMessage, t, createUploadToken, onUploadBusyChange, isScopeValid,
+      viewCache, setComposerText],
   );
 
   const handleClearChat = useCallback(() => {
     if (!conversation || conversation.messages.length === 0) return;
-    showConfirm(t.videoChatWindow.clearChatConfirm, onClearMessages);
+    const id = conversation.id;
+    showConfirm(t.videoChatWindow.clearChatConfirm, () => onClearMessages(id));
   }, [conversation, showConfirm, t.videoChatWindow.clearChatConfirm, onClearMessages]);
 
   // ----- Bridge: onUndoAll -----
@@ -315,13 +339,6 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
 
   // ----- Derived state -----
 
-  const inputDisabled = isLoading || agentIsExecuting;
-  const placeholderText = agentIsExecuting
-    ? (steering ? t.agentCollab.steerPlaceholder : t.videoChatWindow.agentWorkingPlaceholder)
-    : agentMode
-      ? t.videoChatWindow.agentInputPlaceholder
-      : t.videoChatWindow.inputPlaceholder;
-
   const currentTurn = messages && messages.length > 0
     ? [messages[messages.length - 1]] : [];
   const planStep = agentIsExecuting
@@ -335,7 +352,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
   // unconditionally so the popup is immediately chat-ready (round 2 requirement).
 
   return (
-    <div className="agent-chat-window flex flex-col h-full bg-card min-h-0">
+    <div className="agent-chat-window flex flex-1 flex-col bg-card min-h-0 min-w-0">
       {/* Messages Area — rendered by TimelineChatPanel. While there are no
           messages yet the area stays blank (an empty flex spacer) so the panel
           opens straight into the chat surface instead of a welcome landing. */}
@@ -355,86 +372,16 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
           answeredQuestionIds={answeredQuestionIds}
           unresolvedQuestionIds={unresolvedQuestionIds}
           isVisible={isVisible}
+          scrollCache={viewCache ? {
+            get: () => viewCache.getScroll(conversation.id),
+            set: value => viewCache.setScroll(conversation.id, value),
+          } : undefined}
         />
         </LiveProgressContext.Provider>
       ) : (
         <div className="flex-1 min-h-0" />
       )}
 
-      {/* Action Buttons Bar - Above Input Area */}
-      <div className="agent-chat-toolbar flex-shrink-0 border-t border-border bg-card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            {/* Creative Brainstorming button */}
-            {onCreativeBrainstormingClick && (
-              <button
-                onClick={() => onCreativeBrainstormingClick?.()}
-                disabled={isLoading}
-                className="flex items-center justify-center w-9 h-9 bg-card dark:bg-zinc-800 hover:bg-accent dark:hover:bg-zinc-700 border border-border dark:border-zinc-700 hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-                title={t.videoChatWindow.creativeBrainstormingTooltip}
-                aria-label={t.videoChatWindow.creativeBrainstormingTooltip}
-              >
-                <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              </button>
-            )}
-
-            {/* Polish Content button */}
-            {onPolishClick && (
-              <button
-                onClick={() => onPolishClick?.()}
-                disabled={isLoading}
-                className="flex items-center justify-center w-9 h-9 bg-card dark:bg-zinc-800 hover:bg-accent dark:hover:bg-zinc-700 border border-border dark:border-zinc-700 hover:border-primary/30 rounded-md transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-                title={t.videoChatWindow.polishContentTooltip}
-                aria-label={t.videoChatWindow.polishContentTooltip}
-              >
-                <svg className="w-4 h-4 text-primary group-hover:text-primary/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-            )}
-          </div>
-
-          {/* Agent Toggle */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground dark:text-zinc-400">{t.videoChatWindow.agentToggleLabel}</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={agentMode}
-              aria-label={t.videoChatWindow.agentToggleLabel}
-              disabled={agentIsExecuting}
-              onClick={() => onAgentModeChange(!agentMode)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${
-                agentMode ? 'bg-primary' : 'bg-border dark:bg-zinc-600'
-              }`}
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-                  agentMode ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                }`}
-              />
-            </button>
-
-            {/* YOLO 全自动模式：前置 1px 分隔线，几何与左侧 Agent 开关同源
-                （agent-yolo-autonomous-mode §4.9.1）。 */}
-            <div className="w-px h-4 bg-border dark:bg-zinc-700" aria-hidden="true" />
-            <YoloToggle
-              yolo={yolo}
-              yoloReady={yoloReady}
-              agentMode={agentMode}
-              agentIsExecuting={agentIsExecuting}
-              onYoloChange={(next) => onYoloChange?.(next)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Agent busy status bar — narrow strip that appears between the
-          action-buttons bar and the input form while the agent is
-          executing. Conditionally rendered so idle-state DOM is unchanged. */}
-      <YoloNotice yolo={yolo} />
       {agentIsExecuting && !isFinishing && (
         <AgentBusyBar
           executionState={executionState}
@@ -461,7 +408,7 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         </div>
       )}
 
-      {steering && (
+      {agentIsExecuting && steering && (
         <SteerQueue
           notes={steering.notes}
           queued={steering.queued}
@@ -478,202 +425,22 @@ const VideoChatWindow: React.FC<VideoChatWindowProps> = ({
         </p>
       )}
 
-      {/* Input Area */}
-      <div className="agent-chat-input-area flex-shrink-0 bg-card">
-        {composer.skill && (
-          <div className="mb-1 flex items-center gap-1 px-1">
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground">
-              {t.agentCollab.skillChip.replace('{name}', composer.skill.name)}
-              <button
-                type="button"
-                onClick={composer.clearSkill}
-                aria-label={t.agentCollab.skillChipRemove}
-                className="rounded text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <span aria-hidden="true">✕</span>
-              </button>
-            </span>
-          </div>
-        )}
-        {composer.escArmed && (
-          <p role="status" className="px-1 pb-1 text-xs text-amber-700 dark:text-amber-300">
-            {t.agentCollab.escToStop}
-          </p>
-        )}
-        <form onSubmit={handleSubmit} className="flex items-center space-x-2">
-          <div className="flex-1 relative flex items-center">
-            {composer.pickerOpen && composer.pickerKind === 'skill' && (
-              <ComposerSkillPicker
-                id={SKILL_LIST_ID}
-                query={composer.pickerQuery}
-                skills={composer.skills}
-                status={composer.skillStatus}
-                activeIndex={composer.activeIndex}
-                onSelect={composer.selectSkill}
-                onHover={composer.setActiveIndex}
-                commands={compaction.commands}
-                onSelectCommand={composer.selectCommand}
-              />
-            )}
-            {composer.pickerOpen && composer.pickerKind === 'mention' && (
-              <ComposerMentionPicker
-                id={MENTION_LIST_ID}
-                query={composer.pickerQuery}
-                materials={mentionMaterials ?? []}
-                activeIndex={composer.activeIndex}
-                onSelect={composer.selectMaterial}
-                onHover={composer.setActiveIndex}
-              />
-            )}
-            <textarea
-              ref={textareaRef}
-              // 卡片（自检 / 视觉观察）预填修复指令的唯一落点：
-              // `sendPrefilledMessage` 只认这个属性，不依赖任何 store（§7.1）。
-              data-agent-input=""
-              value={composer.text}
-              onChange={composer.handleChange}
-              onKeyDown={composer.handleKeyDown}
-              onKeyUp={(event) => composer.syncCaret(event.currentTarget)}
-              onClick={(event) => composer.syncCaret(event.currentTarget)}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              // Stays a plain textbox: a multi-line field is not a valid combobox,
-              // and existing consumers look it up by role. The picker is linked through
-              // aria-controls / aria-activedescendant, which textbox supports.
-              aria-haspopup="listbox"
-              aria-autocomplete="list"
-              aria-controls={composer.pickerOpen
-                ? (composer.pickerKind === 'skill' ? SKILL_LIST_ID : MENTION_LIST_ID) : undefined}
-              aria-activedescendant={composer.pickerOpen
-                ? pickerOptionId(composer.pickerKind === 'skill' ? SKILL_LIST_ID : MENTION_LIST_ID,
-                  composer.activeIndex) : undefined}
-              placeholder={placeholderText}
-              aria-label={t.videoChatWindow.inputAriaLabel}
-              className="agent-chat-input w-full px-3 py-2 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-muted text-sm text-foreground"
-              rows={1}
-              disabled={composer.disabled}
-              style={{ height: `${INPUT_MIN_HEIGHT}px`, overflow: 'hidden' }}
-            />
-          </div>
-          {/* Add Document — the only model-free entry for uploads (§6.3). */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept={documentAccept}
-            onChange={(event) => {
-              void uploadSelectedDocument(event.target.files?.[0]);
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!documentsEnabled || uploading || inputDisabled}
-            aria-label={t.agentToolkit.attachDocument}
-            title={documentsEnabled
-              ? t.agentToolkit.attachDocument : t.agentToolkit.attachDisabled}
-            className="bg-card dark:bg-zinc-800 border border-border dark:border-zinc-600 hover:bg-accent dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-foreground dark:text-zinc-300 rounded-md transition-colors flex items-center justify-center shrink-0"
-            style={{ width: '32px', height: '32px' }}
-          >
-            {uploading ? (
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"
-                aria-hidden="true">
-                <circle className="opacity-25" cx="12" cy="12" r="10"
-                  stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor"
-                viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 10-5.656-5.656L5.05 10.828a6 6 0 108.485 8.485l6.586-6.586" />
-              </svg>
-            )}
-          </button>
-          <span aria-live="polite" className="sr-only">
-            {uploading ? t.agentToolkit.attaching : ''}
-          </span>
-          {/* Clear Chat Button */}
-          <button
-            type="button"
-            onClick={handleClearChat}
-            disabled={!conversation || conversation.messages.length === 0 || inputDisabled}
-            className="bg-card dark:bg-zinc-800 border border-border dark:border-zinc-600 hover:bg-accent dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-foreground dark:text-zinc-300 rounded-md transition-colors flex items-center justify-center shrink-0"
-            title={t.videoChatWindow.clearChatTooltip}
-            style={{ width: '32px', height: '32px' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-          {/* Send / Stop Button — polymorphic. While the agent is executing
-              it renders as a red Stop button that calls onCancel. Otherwise
-              it acts as the regular submit button. */}
-          {agentIsExecuting && steering && (
-            <button
-              type="submit"
-              disabled={!composer.text.trim() || isFinishing}
-              className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
-              title={t.agentCollab.steerButton}
-              aria-label={t.agentCollab.steerButton}
-              data-testid="agent-steer-button"
-              style={{ width: '32px', height: '32px' }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
-          )}
-          {agentIsExecuting ? (
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={isFinishing}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors flex items-center justify-center shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-600"
-              title={isFinishing ? t.agentApply.finishing : t.videoChatWindow.stopAgentTooltip}
-              aria-label={isFinishing ? t.agentApply.finishing : t.videoChatWindow.stopAgentTooltip}
-              data-testid="agent-stop-button"
-              style={{ width: '32px', height: '32px' }}
-            >
-              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <rect x="6" y="6" width="12" height="12" rx="1.5" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!composer.text.trim() || inputDisabled}
-              className="bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground rounded-md transition-colors flex items-center justify-center shrink-0"
-              title={t.videoChatWindow.sendMessageTooltip}
-              style={{ width: '32px', height: '32px' }}
-            >
-              {inputDisabled ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-              )}
-            </button>
-          )}
-        </form>
-        {contextMemory && agentMode && (
-          <div className="mt-1 flex justify-end px-1">
-            <ConnectedContextRing memory={contextMemory} onCompact={() => void compaction.handleCompact()} />
-          </div>
-        )}
-        {uploadError && (
-          <p role="alert"
-            className="mt-1 px-1 text-xs text-red-500 dark:text-red-400">
-            {uploadError}
-          </p>
-        )}
-      </div>
+      <AgentComposer composer={composer}
+        mode={{ agentMode, onAgentModeChange, yolo, yoloReady,
+          onYoloChange: next => onYoloChange?.(next),
+          disabled: isLoading || agentIsExecuting || uploading || !!busyReason,
+          onCreativeBrainstormingClick, onPolishClick }}
+        actions={{ isLoading, agentIsExecuting, isFinishing,
+          hasMessages: !!messages?.length, onClear: handleClearChat,
+          onCancel: handleCancel, onFocusChange: setInputFocused,
+          busyReason, hasQueuedInput: steering?.hasPendingInput() }}
+        upload={{ fileInputRef, enabled: documentsEnabled, uploading,
+          accept: documentAccept, error: uploadError,
+          onSelect: uploadSelectedDocument }}
+        context={contextMemory ? { memory: contextMemory,
+          onCompact: () => { void compaction.handleCompact(); } } : undefined}
+        materials={mentionMaterials} commands={compaction.commands}
+        isVisible={isVisible} notice={viewCache?.notice} />
     </div>
   );
 };

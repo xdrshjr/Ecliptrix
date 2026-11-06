@@ -1367,6 +1367,13 @@
   transform-origin: center;
 }
 
+/* 紧凑面板中浮球可遮住卡片主操作；保留外露拖拽区，焦点/拖拽仍可提升。 */
+.agent-chat-fab:not(:focus-visible):not(.is-dragging):has(
+  + .agent-chat-floating-panel[data-compact="true"][aria-hidden="false"]
+) {
+  z-index: 850 !important;
+}
+
 .dark .agent-chat-floating-panel {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
 }
@@ -1427,10 +1434,6 @@
   overflow-wrap: anywhere;
 }
 
-.agent-chat-toolbar { padding: 12px 16px 0; }
-.agent-chat-input-area { padding: 12px 16px 16px; }
-.agent-chat-input { min-height: 40px; max-height: 120px; }
-
 .agent-chat-floating-panel[data-compact] .agent-chat-panel-header {
   height: 44px;
   padding-inline: 8px;
@@ -1438,17 +1441,6 @@
 .agent-chat-floating-panel[data-compact] .agent-chat-messages {
   padding: 8px;
 }
-.agent-chat-floating-panel[data-compact] .agent-chat-toolbar {
-  padding: 8px 8px 0;
-}
-.agent-chat-floating-panel[data-compact] .agent-chat-input-area {
-  padding: 8px;
-}
-.agent-chat-floating-panel[data-compact] .agent-chat-input {
-  max-height: 80px;
-  overflow-y: auto !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-fab,
   .agent-chat-fab::after,
