@@ -1,0 +1,53 @@
+[Unit]
+Description=Ecliptrix account server
+Documentation=https://github.com/ecliptrix/ecliptrix
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=webserver
+Group=webserver
+# The standalone `server.js` calls `process.chdir(__dirname)`, so this is only the
+# starting point; every path below is absolute for exactly that reason.
+WorkingDirectory=/opt/webserver/.next/standalone
+
+# Secrets live in a 0600 file owned by the service user, never in this unit.
+EnvironmentFile=/opt/webserver/.env
+Environment=NODE_ENV=production
+Environment=PORT=8787
+Environment=HOST=127.0.0.1
+# Absolute, because the effective cwd is the standalone directory: the
+# `./data/webserver.db` that .env.example suggests would resolve to
+# `.next/standalone/data` — outside ReadWritePaths — and SQLite would fail to
+# open it, producing an exit(1) + Restart=always loop that reads like a crash.
+Environment=DATABASE_PATH=/opt/webserver/data/webserver.db
+Environment=MIGRATIONS_DIR=/opt/webserver/.next/standalone/migrations
+# Apply the schema at boot: the runtime tree carries no TypeScript toolchain, so
+# `npm run db:migrate` cannot run there. The runner is idempotent and wraps each
+# migration in one transaction.
+Environment=AUTO_MIGRATE=true
+ExecStartPre=/usr/bin/node -e "console.log('starting Ecliptrix account server')"
+ExecStart=/usr/bin/node /opt/webserver/.next/standalone/server.js
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Hardening: the process only ever writes under its own data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/webserver/data
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ecliptrix-webserver
+
+[Install]
+WantedBy=multi-user.target

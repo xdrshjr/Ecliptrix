@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, material management and AI generation. It ships as a **single-user Electron desktop app**: the main process launches a local FastAPI backend (SQLite) and a Next.js standalone server, both bound to `127.0.0.1`, and the renderer loads the local page. There is no server deployment, no multi-tenancy and no login — `npm run dev` in a browser exists only as a debugging path for the same product.
+Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, material management and AI generation. It ships as a **single-user Electron desktop app**: the main process launches a local FastAPI backend (SQLite) and a Next.js standalone server, both bound to `127.0.0.1`, and the renderer loads the local page. The shipped app has no in-process login and no multi-tenancy, and its business tables keep `user_id = LOCAL_OWNER_ID` — `npm run dev` in a browser exists only as a debugging path for the same product.
+
+Identity is delegated to a **separate, independently deployed** account server in `webserver/` (see **Account server** below): the desktop app authenticates against it, while a break-glass `admin` account stays local. `webserver/` is a self-contained npm project — it shares the design language, not the code.
 
 ## Commands
 
@@ -132,6 +134,53 @@ The backend uses multiple independent LLM configurations, all using OpenAI-compa
 - Default connection: `sqlite+aiosqlite:///./data/ecliptrix.db`. `app/database.py` rewrites a legacy PostgreSQL DSN to the SQLite path rather than failing, so an old `.env` still boots.
 - **Tests use SQLite in-memory** (`sqlite+aiosqlite:///:memory:`), not PostgreSQL
 - **API docs**: Available at `http://localhost:8000/docs` (Swagger) and `/redoc` when backend is running
+
+### Account server (`webserver/`)
+
+A **separate, independently deployable** Next.js 15 subproject that owns user
+identity for the desktop app. It is a standalone npm project: do not import `@/*`
+from the root `src/`, do not add root dependencies to it, and do not build the
+root project to deploy it. Blueprint: `docs/plans/webserver-user-management/spec.md`
+— read its tail sections 「实施过程发现的方案缺陷」 and 「代码评审」 before changing
+behaviour; they record every deliberate deviation from that design.
+
+```bash
+# from webserver/
+npm run dev          # :8787
+npm run build        # standalone output
+npm run type-check   # tsc --noEmit
+npm run lint         # eslint . --max-warnings 0
+npm test             # vitest: unit + integration, a real SQLite file per case
+npm run db:migrate   # idempotent; also runs at boot when AUTO_MIGRATE=true
+npm run user:create -- --email a@b.c --password '…' --role admin
+npm run user:reset  -- --email a@b.c --password '…'   # break-glass
+node scripts/smoke.mjs   # 52 end-to-end assertions against a RUNNING server
+```
+
+- **Stack**: Next.js App Router + TypeScript + React 19 + Tailwind 3, SQLite via
+  `better-sqlite3` (WAL), hand-written migrations, opaque tokens (**no JWT**),
+  scrypt passwords. No Prisma/Drizzle/NextAuth.
+- **Layering is enforced**: `app/**/page.tsx` (RSC) calls `server/services/*`
+  directly and never fetches its own API; `app/api/v1/**/route.ts` only parses,
+  `zod`-validates, takes a guard and calls a service; SQL exists only in
+  `server/db/repositories/*`. Server Components pass `locale` (a serialisable
+  string) to client components, never a translation function — a function prop
+  throws at render time and 500s the whole page.
+- **Two guards, one place**: admin routes call `requireAdminWrite()`
+  (permission → CSRF → `admin:write` budget) or `requireAdminRead()`
+  (permission → `read:user` budget) from `server/auth/guards.ts`. Never hand-roll
+  that sequence in a route; the one route that did shipped without CSRF.
+- **Bearer vs cookie**: the desktop sends `Authorization: Bearer` and is exempt from
+  CSRF; the browser uses the `ecs_session` cookie plus a double-submit
+  `X-CSRF-Token`. Choose the response shape from the **token carrier**, not from a
+  request header.
+- **Owner protection**: an `owner`-role account cannot be suspended, demoted or
+  deleted through the API, nobody can delete themselves, and `?hard=true`
+  additionally requires the owner role. Break-glass for a self-inflicted lockout is
+  the offline CLI (`user:reset`), never an API exception.
+- **Deployment**: `Dockerfile`, `docker-compose.yml` and
+  `deploy/{nginx.conf.example,webserver.service}`. Single writer only — scaling out
+  requires PostgreSQL.
 
 ### Service Configuration
 

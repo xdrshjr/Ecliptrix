@@ -1,0 +1,51 @@
+# Single-instance deployment.
+#
+# SQLite in WAL mode allows exactly one writer process. Do not scale this service
+# with `--scale` / `deploy.replicas > 1`: the second replica will fight for the
+# write lock and answer 500s. Replicas require PostgreSQL (see README §部署).
+services:
+  webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ecliptrix-webserver:latest
+    container_name: ecliptrix-webserver
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8787:8787'
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '8787'
+      DATABASE_PATH: /app/data/webserver.db
+      MIGRATIONS_DIR: /app/migrations
+      # Migrate at boot, explicitly chosen rather than inherited.
+      #
+      # The runtime image deliberately carries no TypeScript toolchain, so
+      # `npm run db:migrate` cannot run inside it; with AUTO_MIGRATE=false and an
+      # empty ./data volume the process refuses to start, `restart:
+      # unless-stopped` loops it forever, and `/api/v1/ready` never leaves 503 —
+      # a fresh deployment cannot come up at all. The runner is idempotent and
+      # wraps every migration in one transaction, so repeated boots are harmless.
+      # A future multi-replica or zero-downtime setup MUST pre-migrate and turn
+      # this off (the driver is single-writer SQLite — see the header).
+      AUTO_MIGRATE: 'true'
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/api/v1/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'

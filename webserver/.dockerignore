@@ -1,0 +1,32 @@
+# Build context hygiene.
+#
+# Without this file the whole working tree is shipped to the daemon on every
+# build: host `node_modules` (Windows binaries for better-sqlite3 and
+# @next/swc would overwrite the musl ones built in the deps stage), `.next`
+# (stale output), `data/` (a live SQLite database), and `.env` — which Next
+# traces into `.next/standalone`, putting a working dev SESSION_SECRET and the
+# root admin password inside an image layer.
+
+node_modules
+.next
+out
+coverage
+data
+tests
+docs
+
+# Secrets and local state
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Tooling noise
+.git
+.gitignore
+.dockerignore
+*.tsbuildinfo
+next-env.d.ts

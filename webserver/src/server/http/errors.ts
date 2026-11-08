@@ -1,0 +1,87 @@
+import { ERROR_CODE, type ErrorCode } from '@/server/auth/constants'
+
+/**
+ * The one error type services throw.
+ *
+ * A service never knows about HTTP status codes: it raises the domain failure
+ * (`email_taken`) and `ERROR_STATUS` maps it. That keeps the mapping in one
+ * table, which is what makes `docs/api.md` and the client's error switch
+ * trustworthy.
+ */
+export class AppError extends Error {
+  public readonly code: ErrorCode
+  public readonly status: number
+  public readonly details?: Record<string, unknown>
+  /** Seconds until the caller may retry; only meaningful for 423 / 429. */
+  public readonly retryAfterSeconds?: number
+
+  constructor(
+    code: ErrorCode,
+    message: string,
+    options: {
+      status?: number
+      details?: Record<string, unknown>
+      retryAfterSeconds?: number
+    } = {},
+  ) {
+    super(message)
+    this.name = 'AppError'
+    this.code = code
+    this.status = options.status ?? ERROR_STATUS[code] ?? 500
+    this.details = options.details
+    this.retryAfterSeconds = options.retryAfterSeconds
+  }
+}
+
+export const ERROR_STATUS: Record<ErrorCode, number> = {
+  invalid_request: 400,
+  validation_failed: 422,
+  unauthorized: 401,
+  invalid_credentials: 401,
+  session_expired: 401,
+  session_revoked: 401,
+  password_change_required: 403,
+  forbidden: 403,
+  account_suspended: 403,
+  account_locked: 423,
+  registration_disabled: 403,
+  invite_required: 403,
+  invite_invalid: 403,
+  invite_exhausted: 409,
+  email_taken: 409,
+  username_taken: 409,
+  weak_password: 422,
+  password_mismatch: 401,
+  cannot_modify_owner: 409,
+  cannot_modify_self: 409,
+  role_in_use: 409,
+  system_role_protected: 403,
+  not_found: 404,
+  conflict: 409,
+  rate_limited: 429,
+  csrf_failed: 403,
+  payload_too_large: 413,
+  service_unavailable: 503,
+  internal_error: 500,
+}
+
+/** Shorthands for the failures raised more than once. */
+export const errors = {
+  unauthorized: (message = '需要登录') => new AppError(ERROR_CODE.unauthorized, message),
+  forbidden: (message = '权限不足') => new AppError(ERROR_CODE.forbidden, message),
+  notFound: (message = '资源不存在') => new AppError(ERROR_CODE.notFound, message),
+  conflict: (message = '状态冲突') => new AppError(ERROR_CODE.conflict, message),
+  csrf: () => new AppError(ERROR_CODE.csrfFailed, 'CSRF 校验失败，请刷新页面后重试'),
+  invalidCredentials: () =>
+    new AppError(ERROR_CODE.invalidCredentials, '邮箱或口令不正确'),
+  rateLimited: (retryAfterSeconds: number, message = '请求过于频繁，请稍后再试') =>
+    new AppError(ERROR_CODE.rateLimited, message, {
+      details: { retryAfterSeconds },
+      retryAfterSeconds,
+    }),
+} as const
+
+/** Narrow an unknown throwable to AppError. */
+export function isAppError(value: unknown): value is AppError {
+  return value instanceof AppError
+}

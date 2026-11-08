@@ -1,0 +1,92 @@
+# Ecliptrix account server — Nginx reverse proxy example.
+#
+# Terminates TLS and forwards to the single Node process. Copy to
+# /etc/nginx/sites-available/webserver, adjust server_name and certificate paths,
+# then `nginx -t && systemctl reload nginx`.
+
+upstream ecliptrix_webserver {
+    server 127.0.0.1:8787;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name id.ecliptrix.app;
+
+    # Everything except the ACME challenge goes to HTTPS.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name id.ecliptrix.app;
+
+    ssl_certificate     /etc/letsencrypt/live/id.ecliptrix.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/id.ecliptrix.app/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # Request bodies are capped at the application's own limit plus headroom.
+    client_max_body_size 1m;
+    client_body_timeout  15s;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # The application sets its own CSP and friends; do not duplicate them here,
+    # a second header would intersect with the first and silently break inline
+    # styles that the console needs.
+
+    access_log /var/log/nginx/ecliptrix-webserver.access.log;
+    error_log  /var/log/nginx/ecliptrix-webserver.error.log warn;
+
+    location /_next/static/ {
+        proxy_pass http://ecliptrix_webserver;
+        proxy_cache_valid 200 365d;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location /api/ {
+        proxy_pass http://ecliptrix_webserver;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        # $remote_addr, NOT $proxy_add_x_forwarded_for: the latter APPENDS the real
+        # address to whatever the client already sent, so the first entry of the
+        # header stays attacker-controlled. Every IP-keyed rate limit (login
+        # 20/5min, register 10/h, reset 3/h), the lockout accounting and the audit
+        # `ip` field would then be forgeable by rotating a fake prefix per request.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection        "";
+        proxy_read_timeout 30s;
+        proxy_buffering off;
+    }
+
+    location / {
+        proxy_pass http://ecliptrix_webserver;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        # $remote_addr, NOT $proxy_add_x_forwarded_for: the latter APPENDS the real
+        # address to whatever the client already sent, so the first entry of the
+        # header stays attacker-controlled. Every IP-keyed rate limit (login
+        # 20/5min, register 10/h, reset 3/h), the lockout accounting and the audit
+        # `ip` field would then be forgeable by rotating a fake prefix per request.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+        proxy_read_timeout 30s;
+    }
+}
