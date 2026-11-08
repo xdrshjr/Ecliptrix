@@ -9,6 +9,8 @@
  * possibly-undefined (`window.ecliptrixDesktop?.…` or via `isDesktop()`).
  */
 
+import type { AuthBridge } from '@/lib/api/authBridge';
+
 export interface DesktopWindowControls {
   /** Minimize the current window. */
   minimize(): Promise<void>;
@@ -42,6 +44,12 @@ export interface EcliptrixDesktopBridge {
   windowControls: DesktopWindowControls;
   /** Absent on builds whose preload predates the close handshake. */
   app?: DesktopAppLifecycle;
+  /**
+   * Identity gate (spec desktop-account-login-gate §4.1). Absent on a build
+   * whose preload predates it, which is exactly what `SessionContext` treats as
+   * "no bridge" (fail-closed in production, dev banner in development).
+   */
+  auth?: AuthBridge;
 }
 
 declare global {

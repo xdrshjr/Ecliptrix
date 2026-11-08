@@ -22,22 +22,36 @@ export const POST = withContext(async ({ request, context }) => {
     displayName: input.displayName,
     inviteCode: input.inviteCode,
     client: input.client,
+    clientVersion: input.clientVersion,
     device: input.device,
     ip: context.ip,
     userAgent: context.userAgent,
     requestId: context.requestId,
   })
 
+  // One user shape for both carriers. The desktop session file needs the same
+  // fields login returns (`planTag`, `avatarUrl`, `mustChangePassword`), and the
+  // browser ignores the extras — two shapes is how `refreshExpiresAt` went
+  // missing here while login had it (the gate then stored a session whose
+  // offline grace was unbounded by the refresh token's own lifetime).
+  const user = {
+    id: result.user.id,
+    email: result.user.email,
+    username: result.user.username,
+    displayName: result.user.display_name,
+    avatarUrl: result.user.avatar_url,
+    status: result.user.status,
+    planTag: result.user.plan_tag,
+    mustChangePassword: result.user.must_change_password === 1,
+    role: result.role,
+    permissions: result.permissions,
+    // Same key set as login's user (tests/integration/desktop-login.test.ts
+    // asserts the two payloads stay identical): a sign-up *is* a login.
+    lastLoginAt: new Date().toISOString(),
+  }
+
   const payload = {
-    user: {
-      id: result.user.id,
-      email: result.user.email,
-      username: result.user.username,
-      displayName: result.user.display_name,
-      status: result.user.status,
-      role: result.role,
-      permissions: result.permissions,
-    },
+    user,
     expiresAt: new Date(result.tokens.accessExpiresAt).toISOString(),
   }
 
@@ -47,6 +61,7 @@ export const POST = withContext(async ({ request, context }) => {
         ...payload,
         accessToken: result.tokens.accessToken,
         refreshToken: result.tokens.refreshToken,
+        refreshExpiresAt: new Date(result.tokens.refreshExpiresAt).toISOString(),
         sessionId: result.sessionId,
       },
       { status: 201 },

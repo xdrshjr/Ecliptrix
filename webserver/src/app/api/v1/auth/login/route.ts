@@ -47,6 +47,7 @@ export const POST = withContext(async ({ request, context }) => {
     identifier: input.identifier,
     password: input.password,
     client: input.client,
+    clientVersion: input.clientVersion,
     device: input.device,
     ip: context.ip,
     userAgent: context.userAgent,

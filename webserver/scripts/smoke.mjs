@@ -281,6 +281,202 @@ async function main() {
   })
   check('out-of-range setting → 422', settingsInvalid.status === 422)
 
+  // ---- desktop login gate -------------------------------------------------
+  // Everything below runs against a throwaway account, and the console cookies
+  // are parked: a desktop call must arrive with no `ecs_session`, or the login
+  // route (rightly) demands a CSRF token for the session-fixation guard.
+  const gateJar = new Map(cookies)
+  const withOwnerJar = () => {
+    cookies.clear()
+    for (const [name, value] of gateJar) cookies.set(name, value)
+  }
+  const withDesktopJar = () => cookies.clear()
+
+  const gateEmail = `gate-${Date.now()}@example.com`
+  const gateDeviceA = 'smokedeviceaaaa1111'
+  const gateDeviceB = 'smokedevicebbbb2222'
+  const gateDeviceC = 'smokedevicecccc3333'
+  const device = (deviceKey) => ({
+    name: 'Smoke Gate',
+    platform: 'win32-x64',
+    appVersion: '1.0.1',
+    deviceKey,
+  })
+  const gateLogin = (clientVersion, deviceKey = gateDeviceA) =>
+    call('/api/v1/auth/login', {
+      method: 'POST',
+      body: {
+        identifier: gateEmail,
+        password,
+        client: 'desktop',
+        clientVersion,
+        device: device(deviceKey),
+      },
+    })
+
+  const gateMeta = await call('/api/v1/meta')
+  check(
+    '/meta exposes minClientVersion, maintenanceMessage and maxActiveSessions',
+    typeof gateMeta.json?.data?.minClientVersion === 'string' &&
+      typeof gateMeta.json?.data?.maintenanceMessage === 'string' &&
+      typeof gateMeta.json?.data?.maxActiveSessions === 'number',
+  )
+
+  withDesktopJar()
+  // Registration already opened a session on device A (desktop mode sets no cookies).
+  const gateRegistered = await call('/api/v1/auth/register', {
+    method: 'POST',
+    body: {
+      email: gateEmail,
+      password,
+      client: 'desktop',
+      clientVersion: '1.0.1',
+      device: device(gateDeviceA),
+    },
+  })
+  const gateFirst = await gateLogin('1.0.1')
+  const gateSecond = await gateLogin('1.0.1')
+  const oldHeartbeat = await call('/api/v1/auth/heartbeat', {
+    method: 'POST',
+    bearer: gateFirst.json?.data?.accessToken,
+  })
+  check(
+    'signing in twice from one deviceKey revokes the first session',
+    gateRegistered.status === 201 &&
+      gateSecond.status === 200 &&
+      oldHeartbeat.status === 401 &&
+      oldHeartbeat.json?.error_code === 'session_revoked',
+    `register ${gateRegistered.status}, second ${gateSecond.status}, heartbeat ${oldHeartbeat.status}`,
+  )
+
+  withOwnerJar()
+  const gateMin = await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: { 'client.minVersion': '9.9.9' },
+  })
+  withDesktopJar()
+  const outdated = await gateLogin('1.0.0')
+  check(
+    'an outdated desktop build → 426 client_outdated with details.minVersion',
+    gateMin.status === 200 &&
+      outdated.status === 426 &&
+      outdated.json?.error_code === 'client_outdated' &&
+      outdated.json?.error?.details?.minVersion === '9.9.9',
+    `got ${outdated.status} ${outdated.json?.error_code ?? ''}`,
+  )
+
+  const current = await gateLogin('10.0.0')
+  const currentToken = current.json?.data?.accessToken
+  check(
+    'a current build still signs in right after a 426',
+    current.status === 200 && typeof currentToken === 'string',
+    `got ${current.status}`,
+  )
+
+  const mySessions = await call('/api/v1/me/sessions', { bearer: currentToken })
+  const sessionItems = mySessions.json?.data?.items ?? []
+  check(
+    '/me/sessions marks exactly one session as current',
+    mySessions.status === 200 &&
+      sessionItems.filter((item) => item.current).length === 1 &&
+      sessionItems.find((item) => item.current)?.id === current.json?.data?.sessionId,
+  )
+  check(
+    '/me/sessions echoes the deviceKey of each desktop row',
+    sessionItems.some((item) => item.deviceKey === gateDeviceA),
+  )
+
+  withOwnerJar()
+  const gateSettings = await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: {
+      'client.minVersion': '1.0.0',
+      'app.maintenanceMessage': '',
+      'security.maxActiveSessions': 10,
+    },
+  })
+  const gateSettingsRead = await call('/api/v1/admin/settings')
+  const gateSettingsData = gateSettingsRead.json?.data?.settings ?? {}
+  check(
+    'the three new settings round-trip through PATCH /admin/settings',
+    gateSettings.status === 200 &&
+      gateSettingsData['client.minVersion'] === '1.0.0' &&
+      gateSettingsData['app.maintenanceMessage'] === '' &&
+      gateSettingsData['security.maxActiveSessions'] === 10,
+  )
+
+  const maintenanceOn = await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: { 'app.maintenanceMessage': '今晚 23:00 数据库维护' },
+  })
+  withDesktopJar()
+  const blocked = await gateLogin('1.0.1')
+  const beatingDuringMaintenance = await call('/api/v1/auth/heartbeat', {
+    method: 'POST',
+    bearer: currentToken,
+  })
+  withOwnerJar()
+  const maintenanceOff = await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: { 'app.maintenanceMessage': '' },
+  })
+  withDesktopJar()
+  const reopened = await gateLogin('1.0.1')
+
+  check(
+    'maintenance mode answers 503 details.reason=maintenance, then reopens on clear',
+    maintenanceOn.status === 200 &&
+      blocked.status === 503 &&
+      blocked.json?.error?.details?.reason === 'maintenance' &&
+      maintenanceOff.status === 200 &&
+      reopened.status === 200,
+    `blocked ${blocked.status}, reopened ${reopened.status}`,
+  )
+  check(
+    'heartbeat keeps working while the announcement is up',
+    beatingDuringMaintenance.status === 200,
+    `got ${beatingDuringMaintenance.status}`,
+  )
+
+  withOwnerJar()
+  await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: { 'app.maintenanceMessage': '', 'security.maxActiveSessions': 2 },
+  })
+  withDesktopJar()
+  const slotOne = await gateLogin('1.0.1', gateDeviceA)
+  await call('/api/v1/auth/heartbeat', { method: 'POST', bearer: slotOne.json?.data?.accessToken })
+  const slotTwo = await gateLogin('1.0.1', gateDeviceB)
+  const slotThree = await gateLogin('1.0.1', gateDeviceC)
+  const evicted = await call('/api/v1/auth/heartbeat', {
+    method: 'POST',
+    bearer: slotOne.json?.data?.accessToken,
+  })
+  const thirdAlive = await call('/api/v1/auth/heartbeat', {
+    method: 'POST',
+    bearer: slotThree.json?.data?.accessToken,
+  })
+  check(
+    'security.maxActiveSessions=2 evicts the least recently used session',
+    slotTwo.status === 200 &&
+      slotThree.status === 200 &&
+      evicted.status === 401 &&
+      thirdAlive.status === 200,
+    `evicted ${evicted.status}, third ${thirdAlive.status}`,
+  )
+
+  withOwnerJar()
+  await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: { 'security.maxActiveSessions': 10 },
+  })
+
   // ---- lockout ------------------------------------------------------------
   // Use a throwaway account, not the owner: this section deliberately burns the
   // failure budget and must never lock the human out of their own console.

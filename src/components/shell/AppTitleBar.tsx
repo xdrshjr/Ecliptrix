@@ -14,6 +14,13 @@ import type { DesktopWindowControls } from '@/types/desktop';
 interface AppTitleBarProps {
   onSettingsClick?: () => void;
   showSettingsAttention?: boolean;
+  /**
+   * Session surface (account capsule + badges). Rendered inside the `no-drag`
+   * command zone and before the action cluster, so it stays clickable and sits
+   * left of the settings gear. Only the main page passes it; with no value the
+   * bar renders exactly as before.
+   */
+  sessionSlot?: React.ReactNode;
 }
 
 /**
@@ -105,6 +112,12 @@ export default function AppTitleBar(props: AppTitleBarProps) {
 
       {/* Command zone — opts out of the drag region so buttons/dropdowns stay clickable. */}
       <div className="flex items-stretch h-full" style={{ WebkitAppRegion: 'no-drag' }}>
+        {/* Session slot — inside no-drag (a drag strip would eat the clicks)
+            and before the gear. */}
+        {props.sessionSlot && (
+          <div className="flex items-center h-full pl-2">{props.sessionSlot}</div>
+        )}
+
         {hasAppActions && (
           <>
             <div className="flex items-center h-full pl-2">

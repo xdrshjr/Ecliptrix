@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import '@/styles/globals.css'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { LocaleProvider } from '@/contexts/LocaleContext'
+import { SessionProvider } from '@/contexts/SessionContext'
+import SessionGate from '@/components/auth/SessionGate'
 
 export const metadata: Metadata = {
   title: 'Ecliptrix - Where light and shadow collide',
@@ -29,7 +31,9 @@ export default function RootLayout({
       >
         <LocaleProvider>
           <NotificationProvider>
-            {children}
+            <SessionProvider>
+              <SessionGate>{children}</SessionGate>
+            </SessionProvider>
           </NotificationProvider>
         </LocaleProvider>
       </body>

@@ -2,7 +2,7 @@ import { getDb } from '@/server/db/client'
 import * as settingsRepo from '@/server/db/repositories/settingsRepo'
 import { getConfig } from '@/server/config'
 import { AppError } from '@/server/http/errors'
-import { ERROR_CODE } from '@/server/auth/constants'
+import { DEFAULT_MAX_ACTIVE_SESSIONS, ERROR_CODE } from '@/server/auth/constants'
 import { log } from '@/server/http/requestContext'
 
 /**
@@ -21,8 +21,11 @@ export type SettingKey =
   | 'invite.required'
   | 'security.loginMaxAttempts'
   | 'security.loginLockMinutes'
+  | 'security.maxActiveSessions'
   | 'session.webTtlHours'
   | 'session.desktopRefreshDays'
+  | 'client.minVersion'
+  | 'app.maintenanceMessage'
   | 'branding.appName'
   | 'branding.supportEmail'
 
@@ -50,6 +53,17 @@ const SPECS: Record<SettingKey, SettingSpec> = {
     max: 1440,
     default: (env) => env.loginLockMinutes,
   },
+  /**
+   * Replaces the hard-coded per-user session cap. Lowering it does not kick
+   * anybody: the LRU trim in `sessionService.createSession` converges on the
+   * next login, and the session it pushes out is recorded as `session_limit`.
+   */
+  'security.maxActiveSessions': {
+    type: 'int',
+    min: 1,
+    max: 50,
+    default: () => DEFAULT_MAX_ACTIVE_SESSIONS,
+  },
   'session.webTtlHours': { type: 'int', min: 1, max: 168, default: (env) => env.accessTokenTtlHours },
   'session.desktopRefreshDays': {
     type: 'int',
@@ -59,6 +73,19 @@ const SPECS: Record<SettingKey, SettingSpec> = {
   },
   'branding.appName': { type: 'string', maxLength: 40, default: () => 'Ecliptrix' },
   'branding.supportEmail': { type: 'string', maxLength: 120, default: () => '' },
+  /**
+   * Minimum desktop build. Empty string means "no gate"; a non-empty value is
+   * compared semver-style against the client's `clientVersion` at login/register.
+   * Format is validated as a side effect of the comparison, not guessed here.
+   */
+  'client.minVersion': { type: 'string', maxLength: 20, default: () => '' },
+  /**
+   * Non-empty puts the account server into maintenance mode: login and register
+   * answer 503 `service_unavailable` with `details.reason='maintenance'`, while
+   * heartbeat, refresh and logout keep working — an already signed-in user must
+   * not be locked out of the app by an announcement.
+   */
+  'app.maintenanceMessage': { type: 'string', maxLength: 200, default: () => '' },
 }
 
 export const SETTING_KEYS = Object.keys(SPECS) as SettingKey[]
@@ -186,6 +213,11 @@ export function publicMeta(): {
   appName: string
   supportEmail: string
   version: string
+  /** Empty string = no version gate. The desktop compares it before login. */
+  minClientVersion: string
+  /** Empty string = not in maintenance mode. */
+  maintenanceMessage: string
+  maxActiveSessions: number
 } {
   const config = getConfig()
   return {
@@ -196,5 +228,10 @@ export function publicMeta(): {
     appName: getString('branding.appName'),
     supportEmail: getString('branding.supportEmail'),
     version: process.env.npm_package_version ?? '0.1.0',
+    // Both gates live in `app_settings`, so an operator can flip them without a
+    // redeploy — that is the whole point of having a console.
+    minClientVersion: getString('client.minVersion'),
+    maintenanceMessage: getString('app.maintenanceMessage'),
+    maxActiveSessions: getNumber('security.maxActiveSessions'),
   }
 }

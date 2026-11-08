@@ -37,7 +37,7 @@ export default async function AdminUserDetailPage({ params }: PageProps) {
   const detail = loadUser(id)
   if (!detail) notFound()
 
-  const sessions: SessionDto[] = listForUser(id).map((row) => toSessionDto(row) as SessionDto)
+  const sessions: SessionDto[] = listForUser(id).map((row) => toSessionDto(row))
   const roles: RoleOption[] = listRoles().map((role) => ({
     id: role.id,
     key: role.key,

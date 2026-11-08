@@ -19,6 +19,7 @@ import * as settingsService from '@/server/services/settingsService'
 import * as auditService from '@/server/services/auditService'
 import * as sessionService from '@/server/services/sessionService'
 import { normalizeEmail, normalizeUsername } from '@/server/services/normalize'
+import { log } from '@/server/http/requestContext'
 import type { UserRow } from '@/server/db/types'
 import type { UserStatus } from '@/server/db/types'
 
@@ -39,7 +40,13 @@ export interface LoginInput {
   identifier: string
   password: string
   client: 'web' | 'desktop'
-  device: { name: string; platform: string; appVersion: string }
+  /**
+   * Desktop build string. Optional in the service type (the HTTP schema already
+   * defaults it to `''`) so non-HTTP callers — the CLI, the test suite — cannot
+   * break on a field they do not have.
+   */
+  clientVersion?: string
+  device: { name: string; platform: string; appVersion: string; deviceKey?: string }
   ip: string
   userAgent: string
   requestId: string
@@ -63,6 +70,38 @@ const LOCK_MAX_MS = 24 * 60 * 60 * 1000
 function lockDurationMs(lockCount: number): number {
   const base = settingsService.getNumber('security.loginLockMinutes') * 60 * 1000
   return Math.min(base * 2 ** Math.max(0, lockCount - 1), LOCK_MAX_MS)
+}
+
+/** `1.0.10` → `[1, 0, 10]`; `null` when the string is not dotted digits. */
+function parseVersion(value: string): number[] | null {
+  const trimmed = value.trim().replace(/^v/i, '')
+  if (!trimmed) return null
+  const numbers: number[] = []
+  for (const part of trimmed.split('.')) {
+    if (!/^\d+$/.test(part)) return null
+    numbers.push(Number(part))
+  }
+  return numbers
+}
+
+/**
+ * Semver-style comparison, tolerant of unequal segment counts (`1.2` vs `1.2.0`).
+ *
+ * An unparseable value on EITHER side answers `false`: a typo in the setting must
+ * never become a fleet-wide lockout. The console validates the format; this is
+ * the belt to that braces.
+ */
+export function isVersionOutdated(clientVersion: string, minVersion: string): boolean {
+  const client = parseVersion(clientVersion)
+  const minimum = parseVersion(minVersion)
+  if (!client || !minimum) return false
+  const length = Math.max(client.length, minimum.length)
+  for (let index = 0; index < length; index += 1) {
+    const left = client[index] ?? 0
+    const right = minimum[index] ?? 0
+    if (left !== right) return left < right
+  }
+  return false
 }
 
 function recordAttempt(
@@ -131,6 +170,84 @@ export interface AuthenticateResult {
   permissions: string[]
 }
 
+/** The subset of a login/register call the pre-credential gates look at. */
+interface GateInput {
+  client: 'web' | 'desktop'
+  /** `undefined` and `''` both mean "this caller does not report a version". */
+  clientVersion?: string | undefined
+  ip: string
+  requestId: string
+}
+
+/**
+ * Maintenance mode: a non-empty announcement blocks new sign-ins and sign-ups.
+ *
+ * It deliberately does NOT block heartbeat, refresh or logout. An operator posting
+ * "database maintenance tonight" must not eject everyone who is already working,
+ * and a client that cannot reach logout forces users to kill the app.
+ *
+ * Records one audit row (never a `login_attempts` row) before throwing, so a wave
+ * of 503s can be recognised as the announcement working rather than an attack.
+ */
+function assertNotInMaintenance(input: GateInput, source: 'login' | 'register'): void {
+  const message = settingsService.getString('app.maintenanceMessage').trim()
+  if (message === '') return
+  auditService.record(
+    { actorUserId: null, actorLabel: 'anonymous', ip: input.ip, requestId: input.requestId },
+    {
+      // One action for both endpoints: an operator filtering the audit log wants
+      // "the announcement blocked people", not two near-identical rows.
+      action: 'auth.login_blocked_maintenance',
+      targetType: 'user',
+      metadata: { client: input.client, source },
+    },
+  )
+  throw new AppError(ERROR_CODE.serviceUnavailable, message, {
+    details: { reason: 'maintenance' },
+  })
+}
+
+/**
+ * Version gate: an outdated desktop build is refused with 426 before the password
+ * is even looked at.
+ *
+ * Applies only to `client === 'desktop'` with a non-empty `clientVersion`, and
+ * never to heartbeat/refresh/logout — an old client still has to be able to sign
+ * out of an existing session. Nothing is written to `login_attempts`, so a
+ * misconfigured gate cannot lock an account out.
+ */
+function assertClientSupported(input: GateInput): void {
+  const clientVersion = (input.clientVersion ?? '').trim()
+  if (input.client !== 'desktop' || clientVersion === '') return
+  const minVersion = settingsService.getString('client.minVersion').trim()
+  if (minVersion === '') return
+  if (parseVersion(minVersion) === null) {
+    // A minimum nobody can parse would either block everyone or nobody. Both are
+    // wrong, so the gate steps aside — but silently stepping aside is how an
+    // operator concludes "the gate works" while every old build still gets in.
+    log('warn', 'client.minVersion is not comparable; version gate skipped', { minVersion })
+    return
+  }
+  if (parseVersion(clientVersion) === null) {
+    // The desktop always sends `x.y.z`; anything else (a wrapped/vendored build
+    // tag) cannot be ordered, so it is treated as "not provably old" — the same
+    // fail-open the setting takes, and the reason the console validates `x.y.z`.
+    log('warn', 'clientVersion is not comparable; version gate skipped', { clientVersion })
+    return
+  }
+  if (!isVersionOutdated(clientVersion, minVersion)) return
+
+  auditService.record(
+    { actorUserId: null, actorLabel: 'anonymous', ip: input.ip, requestId: input.requestId },
+    {
+      action: 'auth.login_blocked_outdated_client',
+      targetType: 'user',
+      metadata: { clientVersion, minVersion },
+    },
+  )
+  throw errors.clientOutdated(minVersion)
+}
+
 /**
  * Verify credentials without issuing a session.
  *
@@ -184,13 +301,21 @@ export async function verifyCredentials(
 
 /** Full login: verify, mark the user, mint a session, audit. */
 export async function login(input: LoginInput): Promise<LoginSuccess> {
+  // Order is fixed (spec §2.11): rate limit in the route → maintenance →
+  // version gate → credential check. The two gates run before the password, so
+  // they must never write `login_attempts` nor count towards the lockout.
+  assertNotInMaintenance(input, 'login')
+  assertClientSupported(input)
+
   const authenticated = await verifyCredentials(input.identifier, input.password, {
     ip: input.ip,
   })
   const now = Date.now()
   usersRepo.markLoggedIn(getDb(), authenticated.user.id, now)
 
-  const issued = sessionService.createSession({
+  // Synchronous by contract: one transaction retires this device's previous
+  // session and inserts the new one (see `replaceDeviceSession`).
+  const issued = sessionService.replaceDeviceSession({
     userId: authenticated.user.id,
     client: input.client,
     ip: input.ip,
@@ -198,7 +323,25 @@ export async function login(input: LoginInput): Promise<LoginSuccess> {
     deviceName: input.device.name,
     platform: input.device.platform,
     appVersion: input.device.appVersion,
+    deviceKey: input.device.deviceKey ?? '',
   })
+
+  if (issued.replacedCount > 0) {
+    auditService.record(
+      {
+        actorUserId: authenticated.user.id,
+        actorLabel: authenticated.user.email,
+        ip: input.ip,
+        requestId: input.requestId,
+      },
+      {
+        action: 'auth.session_relogin',
+        targetType: 'user',
+        targetId: authenticated.user.id,
+        metadata: { deviceKey: input.device.deviceKey ?? '', replacedCount: issued.replacedCount },
+      },
+    )
+  }
 
   auditService.record(
     {
@@ -236,7 +379,9 @@ export interface RegisterInput {
   displayName?: string
   inviteCode?: string
   client: 'web' | 'desktop'
-  device: { name: string; platform: string; appVersion: string }
+  /** Desktop build string; gated by the same 426 answer as login. */
+  clientVersion?: string
+  device: { name: string; platform: string; appVersion: string; deviceKey?: string }
   ip: string
   userAgent: string
   requestId: string
@@ -259,6 +404,12 @@ function usernameFromEmail(email: string): string {
 export async function register(input: RegisterInput): Promise<RegisterSuccess> {
   const db = getDb()
   const now = Date.now()
+
+  // Same pre-credential gates as login, in the same order. A closed registration
+  // must not hide a "your build is too old" answer from somebody who cannot
+  // upgrade yet: the two are different problems with different support routes.
+  assertNotInMaintenance(input, 'register')
+  assertClientSupported(input)
 
   if (!settingsService.getBoolean('registration.enabled')) {
     throw new AppError(ERROR_CODE.registrationDisabled, '当前不开放注册')
@@ -362,6 +513,7 @@ export async function register(input: RegisterInput): Promise<RegisterSuccess> {
     deviceName: input.device.name,
     platform: input.device.platform,
     appVersion: input.device.appVersion,
+    deviceKey: input.device.deviceKey ?? '',
   })
 
   const user = usersRepo.findById(db, userId)

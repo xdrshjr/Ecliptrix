@@ -137,8 +137,9 @@ release-essentials 构建(GPL,许可证文本随包发布);国内网络不通时
 
 打包产物双击即开——**不需要预先配置任何 API key**:
 
-1. 启动后直接进入剪辑工作区——没有登录页,也没有账号:桌面端只绑
-   `127.0.0.1`,有且只有一个本机所有者;
+1. 启动后先出现登录界面(账号服务器登录 / 本地管理员登录),通过后才进入剪辑工作区;
+   本地后端仍只绑 `127.0.0.1`、仍只有一个本机所有者(登录只决定谁能看到窗口,
+   见下方「登录与破窗账号」);
 2. 未配置 LLM 时会弹出配置引导,点「前往设置」直达
    设置 → 模型与凭证:添加服务商 → 测试连接 → 分配给功能(对话/混剪/视觉理解);
 3. 配置保存后引导与设置入口的琥珀色提醒点自动消失,AI 功能即刻可用。
@@ -159,6 +160,18 @@ node scripts/smoke-test.js [--unpacked <path>]   # 默认 release/win-unpacked
 90 秒内两个服务健康 → llm-status 返回未配置 → **不带任何鉴权头**读取工程列表
 (同一条断言证明「无鉴权层」与「SQLite 链路可读」)→ 正常退出 →
 断言无残留进程、SQLite 文件已生成。
+
+> **「空 `.env`」不等于「零凭证」。** 打包应用把**继承来的进程环境**当作配置层:
+> `main/backendService.js` 把 `process.env` 展开给后端子进程,后端按
+> 「数据库 > 环境变量 > 默认值」解析凭证。所以冒烟在拉起 exe 之前先调用
+> `scripts/lib/electron-env.js` 的 `withoutCredentialEnv()`,剔除**构建机自己**
+> 名字命中凭证规则(`*_API_KEY`、`*_SECRET`、`*_TOKEN`、`*_PASSWORD`、`*_ACCESS_KEY*`…,
+> 判定与打包扫描共用 `scripts/lib/secret-shape.js`)或值呈厂商凭证形状的变量,
+> 只把**被剔除的变量名**打进日志;随后在任何功能流程之前用 `/api/integrations`
+> 断言全部集成未配置。实测:构建机把 `ARK_API_KEY` 存进 `HKCU\Environment` 后,
+> 封面工作台的生成按钮会按设计启用,冒烟就会在封面流程深处报
+> `generation is enabled without credentials and with a nonempty prompt`——
+> 那是环境泄漏,不是打包缺陷。
 
 ## 开发模式
 
@@ -196,6 +209,63 @@ npm run dev:attach     # Electron 直连 http://localhost:3000,不拉起任何�
 以下值由主进程注入,用户在 .env 中配置不生效:`DATABASE_URL`、`STORAGE_ROOT`、
 `HOST/PORT`、`CORS_ALLOWED_ORIGINS`。端口可在 `desktop-config.json` 中固定
 (默认 18320/18321;被占用时自动向上探测并弹窗提示)。
+
+## 登录与破窗账号
+
+桌面端启动后会先经过身份闸门（`desktop/main/authController.js`），界面在
+`src/components/auth/` 下，规格见 `docs/plans/desktop-account-login-gate/spec.md`。
+
+### 两种入口
+
+| 入口 | 走什么 | 适用场景 |
+|---|---|---|
+| 账号服务器登录 | 主进程 HTTPS 调 `{accountServerUrl}/api/v1/auth/login`（`client: "desktop"`） | 日常使用；注册、找回口令、改密、设备管理同样直连该服务器 |
+| 本地管理员登录 | 只在本机比对 `desktop-config.json` 里的 `localAdmin`，**不发任何请求** | 账号服务器宕机／忘记口令／网络被墙时救援本机数据 |
+
+### 配置文件（权威来源）
+
+`%APPDATA%\Ecliptrix\desktop-config.json`：
+
+```json
+{
+  "schemaVersion": 1,
+  "localAdmin": { "username": "admin", "password": "adminjr", "enabled": true },
+  "auth": { "accountServerUrl": "https://id.example.com", "offlineGraceDays": 7 }
+}
+```
+
+- **`auth.accountServerUrl` 是唯一权威来源**：改完重启生效。`userData/.env` 里的
+  `ACCOUNT_SERVER_URL` 是**可选覆盖**：打包版主进程会读这个文件，一旦那里非空就会
+  盖掉配置文件（`desktop/ npm run dev` 不读它）。随包模板把它留空，请保持留空，否则
+  「改配置文件看不到反应」。
+- **`localAdmin` 不联网、不写会话文件**：口令改完重启即生效，旧口令立即失效。安装包
+  发布前**必须**改掉默认的 `admin`／`adminjr`，否则登录屏会一直显示红字告警。
+- **`auth.offlineGraceDays`**（1–30，默认 7）：断网后仍可进入应用的天数，同时受刷新
+  令牌寿命约束；超过后要求重新登录。若 `userData/.env` 里显式写了
+  `ACCOUNT_OFFLINE_GRACE_DAYS`，它优先于本键（模板默认留空，即不覆盖）。
+- 别把 `%APPDATA%` 纳入 OneDrive 等云同步——`localAdmin` 口令是明文存的。
+
+### 开关与排障
+
+| 目的 | 做法 |
+|---|---|
+| 彻底关闭闸门（紧急） | 启动前设 `ECLIPTRIX_AUTH_GATE=off`；界面顶部常驻红条，主进程每次启动告警 |
+| 在 dev 下验证闸门本身 | `ECLIPTRIX_AUTH_GATE=on npm run dev`（dev 未设置时闸门默认关闭，只显示琥珀条） |
+| 解除破窗失败锁定 | 删除 `%APPDATA%\Ecliptrix\auth-attempts.json`（5 次失败锁 60s，之后每次翻倍到 900s 上限） |
+| 会话状态在哪 | `%APPDATA%\Ecliptrix\auth-session.json`（safeStorage 加密；无法加密时降级为明文并在界面显示黄条），删除即登出 |
+| 账号服务器地址改错了 | 闸门显示「未配置账号服务器」阻断屏时，仍可用本地管理员进入后修配置 |
+| 日志 | `%APPDATA%\Ecliptrix\logs\main.log` 里 `[auth]` 类别的行（WARN 及以上同时进 `error.log`）：只记通道名／路径／状态码／错误码／请求号，不记口令与令牌 |
+
+> 打包冒烟（`node scripts/smoke-test.js`）在拉起 exe 时带 `ECLIPTRIX_AUTH_GATE=off`：
+> 无账号服务器的零配置跑批必须显式关闸，否则会停在「未配置账号服务器」阻断屏。
+> 闸门自身的行为由 `npm run test:auth` 与 `scripts/auth-smoke.js` 覆盖。
+
+### 自检
+
+```bash
+npm run test:auth          # 主进程六个模块的单元测试（纯 node，不需要 Electron）
+node scripts/auth-smoke.js # 假账号服务器上的 14 条端到端断言
+```
 
 ## 常见问题
 

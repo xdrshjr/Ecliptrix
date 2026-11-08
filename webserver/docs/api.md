@@ -52,6 +52,7 @@ Content-Type：`application/json; charset=utf-8`
 | `forbidden` | 403 | 权限不足 |
 | `account_suspended` | 403 | 账号停用 |
 | `account_locked` | 423 | 失败次数过多（`details.retryAfterSeconds`） |
+| `client_outdated` | 426 | 桌面端版本低于 `client.minVersion`（`details.minVersion`）；**只**由 login/register 返回 |
 | `registration_disabled` | 403 | 注册关闭 |
 | `invite_required` / `invite_invalid` / `invite_exhausted` | 403 / 403 / 409 | 邀请码 |
 | `email_taken` / `username_taken` | 409 | 唯一冲突 |
@@ -105,9 +106,20 @@ curl -s http://127.0.0.1:8787/api/v1/health
   "passwordPolicy": { "minLength": 10, "maxBytes": 128 },
   "appName": "Ecliptrix",
   "supportEmail": "",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "minClientVersion": "",
+  "maintenanceMessage": "",
+  "maxActiveSessions": 10
 }
 ```
+
+三个闸门字段（都来自 `app_settings`，可在 `/admin/settings` 热改，无需重启）：
+
+| 字段 | 含义 | 默认 |
+|---|---|---|
+| `minClientVersion` | 最低桌面客户端版本，语义化比较（`1.0.10` > `1.0.9`）。空串 = 不限制 | `''` |
+| `maintenanceMessage` | 非空即维护模式：`/auth/login`、`/auth/register` 返回 `503 service_unavailable` + `details.reason='maintenance'`；**心跳与续期不受影响** | `''` |
+| `maxActiveSessions` | 每用户并发会话上限（1–50）。调小不批量踢人，下次登录按 LRU 收敛 | `10` |
 
 ---
 
@@ -119,6 +131,16 @@ curl -s http://127.0.0.1:8787/api/v1/health
 curl -s -X POST http://127.0.0.1:8787/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"identifier":"owner@example.com","password":"owner-password-123","client":"web"}'
+```
+
+桌面端登录（带设备身份，`device.deviceKey` 可选但强烈建议）：
+
+```bash
+curl -s -X POST http://127.0.0.1:8787/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"ada@example.com","password":"…","client":"desktop","clientVersion":"1.0.1",
+       "device":{"name":"DESKTOP-7F3K2","platform":"win32-x64","appVersion":"1.0.1",
+                 "deviceKey":"9b2c1f8e0a4d6c3b7e5f1a2d4c8b6e0f"}}'
 ```
 
 ```json
@@ -134,7 +156,15 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/auth/login \
 
 `client=web` 不返回令牌（只进 Cookie）；`client=desktop` 返回 `accessToken/refreshToken/refreshExpiresAt` 且不设 Cookie。
 
-限流：`20 / 5min / IP`、`5 / 5min / 标识`。
+限流：`20 / 5min / IP`、`12 / 5min / 标识`。
+
+**执行顺序（固定）**：限流（路由层）→ 维护闸门 → 版本闸门 → 口令校验。前两道闸门**不写 `login_attempts`、不计锁定**，因此一次配置失误不会把账号锁死。
+
+**同设备顶号**：`device.deviceKey` 是「这台机器 + 这个 profile」的稳定指纹（8–64 位 `[A-Za-z0-9_-]`）。同一 `(user, deviceKey)` 再次登录时，服务端在**同一事务**内先撤销旧会话（`revoked_reason='same_device_relogin'`，旧访问令牌随后心跳得到 `401 session_revoked`），再建新会话，并写审计 `auth.session_relogin`。不传 `deviceKey`（浏览器、旧客户端）时行为与以前完全一致。
+
+**版本闸门**：仅当 `client=desktop` 且 `clientVersion` 非空时生效；`clientVersion < client.minVersion` → `426 client_outdated` + `details.minVersion`，并写审计 `auth.login_blocked_outdated_client`。`heartbeat`/`refresh`/`logout` **永不**返回 426——旧客户端必须还能登出。
+
+**维护模式**：`app.maintenanceMessage` 非空时，login/register → `503 service_unavailable` + `details.reason='maintenance'`，`message` 就是公告原文；已存在的会话心跳与续期照常。
 
 ### `POST /auth/register`
 
@@ -145,6 +175,10 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/auth/register \
 ```
 
 `201`。受 `registration.enabled` 与 `invite.required` 约束。限流 `10 / h / IP`。
+
+入参与登录同形：`clientVersion`（桌面端）+ `device.deviceKey`；维护模式 → `503`，版本过低 → `426 client_outdated`，两者都在创建账号之前判定。
+
+`client=desktop` 的 `201` body 与登录**逐键同形**（`user` 含 `avatarUrl`/`planTag`/`mustChangePassword`/`lastLoginAt`，外加 `accessToken`/`refreshToken`/`expiresAt`/`refreshExpiresAt`/`sessionId` 且不设 Cookie）；`client=web` 只返回 `user` + `expiresAt` + `sessionId`，令牌进 Cookie。
 
 ### `POST /auth/logout`
 
@@ -213,7 +247,7 @@ SMTP 未配置时不发信、不报错，管理端改用一次性口令。
 |---|---|---|
 | GET | `/me` | 本人资料 |
 | PATCH | `/me` | 改 `displayName/avatarUrl/locale/timezone`（`.strict()`，其他字段 → 422） |
-| GET | `/me/sessions` | 本人设备列表（含 `current` 标记） |
+| GET | `/me/sessions` | 本人设备列表（含 `current` 标记与 `deviceKey`） |
 | DELETE | `/me/sessions/{id}` | 撤销本人某设备；他人会话 → 404 |
 | GET | `/me/activity` | 本人 90 天白名单事件 |
 | POST | `/me/deletion-request` | 记录注销申请（写审计 `user.deletion_requested`，**不删除账号**） |
@@ -222,6 +256,19 @@ SMTP 未配置时不发信、不报错，管理端改用一次性口令。
 curl -s http://127.0.0.1:8787/api/v1/me \
   -H 'Cookie: ecs_session=…'
 ```
+
+`GET /me/sessions` 的每一项（`toSessionDto`，`current` 由调用方自己的会话 id 标注）：
+
+```json
+{ "items": [ { "id": "…", "client": "desktop", "deviceName": "DESKTOP-7F3K2",
+               "platform": "win32-x64", "appVersion": "1.0.1",
+               "deviceKey": "9b2c1f8e…", "ip": "203.0.113.7", "userAgent": "…",
+               "createdAt": "…", "lastSeenAt": "…", "expiresAt": "…",
+               "current": true } ],
+  "total": 1 }
+```
+
+`current` **恰好一条**（就是本次调用携带令牌的那条）；`deviceKey` 对网页会话与 0004 之前的历史行是空串。
 
 ```json
 { "id": "…", "email": "owner@example.com", "username": "owner", "displayName": "owner",
@@ -344,7 +391,25 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/admin/users \
 -d '{"registration.enabled":false,"invite.required":true,"security.loginMaxAttempts":5}'
 ```
 
-白名单与类型：`registration.enabled:boolean`、`invite.required:boolean`、`security.loginMaxAttempts:int 3..20`、`security.loginLockMinutes:int 1..1440`、`session.webTtlHours:int 1..168`、`session.desktopRefreshDays:int 7..365`、`branding.appName:string≤40`、`branding.supportEmail:string`。越界 → `422`（`details.fields`）。
+白名单与类型：`registration.enabled:boolean`、`invite.required:boolean`、`security.loginMaxAttempts:int 3..20`、`security.loginLockMinutes:int 1..1440`、`security.maxActiveSessions:int 1..50`、`session.webTtlHours:int 1..168`、`session.desktopRefreshDays:int 7..365`、`client.minVersion:string≤20`、`app.maintenanceMessage:string≤200`、`branding.appName:string≤40`、`branding.supportEmail:string`。越界 → `422`（`details.fields`）。
+
+`client.minVersion` / `app.maintenanceMessage` / `security.maxActiveSessions` 是桌面端闸门：
+
+```bash
+# 强制升级（高风险：高于线上版本会让所有旧客户端登录被 426 拦住）
+curl -s -X PATCH http://127.0.0.1:8787/api/v1/admin/settings \
+  -H 'Content-Type: application/json' -H "X-CSRF-Token: $CSRF" \
+  -H 'Cookie: ecs_session=…; ecs_csrf=…' \
+  -d '{"client.minVersion":"1.1.0"}'
+
+# 维护公告：非空即进入维护模式；空串恢复
+-d '{"app.maintenanceMessage":"今晚 23:00 数据库维护，预计 30 分钟"}'
+
+# 每用户并发会话上限
+-d '{"security.maxActiveSessions":5}'
+```
+
+`GET /admin/settings` 返回 `{ settings, available }`，`settings` 是上述键的完整快照（缺失行回落默认值）。
 
 ---
 

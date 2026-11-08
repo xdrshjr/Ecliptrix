@@ -2,7 +2,8 @@ import { getDb } from '@/server/db/client'
 import { getConfig } from '@/server/config'
 import * as repo from '@/server/db/repositories/sessionsRepo'
 import { hashToken, newToken } from '@/server/auth/tokens'
-import { MAX_ACTIVE_SESSIONS_PER_USER, REVOKE_REASON } from '@/server/auth/constants'
+import { REVOKE_REASON } from '@/server/auth/constants'
+import * as settingsService from '@/server/services/settingsService'
 import type { SessionClient, SessionRow } from '@/server/db/types'
 
 /**
@@ -29,6 +30,8 @@ export interface CreateSessionOptions {
   deviceName?: string
   platform?: string
   appVersion?: string
+  /** Stable per-machine fingerprint; empty string for browser sessions. */
+  deviceKey?: string
 }
 
 function ttlFor(client: SessionClient): { accessMs: number; refreshMs: number } {
@@ -50,18 +53,22 @@ function ttlFor(client: SessionClient): { accessMs: number; refreshMs: number } 
  * A per-user cap is enforced by revoking the least recently used sessions: an
  * unbounded list of live sessions is both a UX problem (the device list becomes
  * noise) and a security problem (every one is a token that can leak).
+ *
+ * The cap itself is the `security.maxActiveSessions` setting, not a constant, so
+ * an operator can adjust it for their real device count without a redeploy.
  */
 export function createSession(options: CreateSessionOptions): IssuedTokens {
   const db = getDb()
   const config = getConfig()
   const now = Date.now()
   const ttl = ttlFor(options.client)
+  const maxActiveSessions = settingsService.getNumber('security.maxActiveSessions')
 
   const accessToken = newToken()
   const refreshToken = newToken()
   const sessionId = newToken().slice(0, 22)
 
-  const stolen = repo.oldestActiveIds(db, options.userId, MAX_ACTIVE_SESSIONS_PER_USER - 1, now)
+  const stolen = repo.oldestActiveIds(db, options.userId, maxActiveSessions - 1, now)
   for (const id of stolen) repo.revokeOne(db, id, now, REVOKE_REASON.sessionLimit)
 
   repo.create(db, {
@@ -73,6 +80,7 @@ export function createSession(options: CreateSessionOptions): IssuedTokens {
     deviceName: options.deviceName ?? '',
     platform: options.platform ?? '',
     appVersion: options.appVersion ?? '',
+    deviceKey: options.deviceKey ?? '',
     ip: options.ip,
     userAgent: options.userAgent,
     now,
@@ -87,6 +95,46 @@ export function createSession(options: CreateSessionOptions): IssuedTokens {
     refreshExpiresAt: now + ttl.refreshMs,
     sessionId,
   }
+}
+
+export interface ReplaceDeviceResult extends IssuedTokens {
+  /** How many earlier sessions of the same device were retired (0 on first login). */
+  replacedCount: number
+}
+
+/**
+ * Mint a session, retiring the previous session of the same device.
+ *
+ * **This function must stay synchronous and its body must never contain
+ * `await`.** `better-sqlite3`'s `db.transaction(fn)` commits as soon as `fn`
+ * returns; an `await` inside would end the transaction in the middle of the
+ * work (and then throw against an already-committed transaction). That is why
+ * the replacement lives here and not inside `authService.login()`, which is
+ * `async` because it verifies a scrypt password.
+ *
+ * A blank `deviceKey` (web login, old clients) degrades to `createSession`, so
+ * browser behaviour is byte-for-byte what it was before migration 0004.
+ *
+ * @throws {AppError} whatever `createSession` throws — in that case the whole
+ *         transaction rolls back and the previous device session stays valid.
+ */
+export function replaceDeviceSession(
+  options: CreateSessionOptions & { deviceKey: string },
+): ReplaceDeviceResult {
+  if (options.deviceKey === '') return { ...createSession(options), replacedCount: 0 }
+
+  const db = getDb()
+  const replace = db.transaction((input: CreateSessionOptions & { deviceKey: string }) => {
+    const replacedCount = repo.revokeActiveByDevice(
+      db,
+      input.userId,
+      input.deviceKey,
+      Date.now(),
+      REVOKE_REASON.sameDeviceRelogin,
+    )
+    return { ...createSession(input), replacedCount }
+  })
+  return replace(options)
 }
 
 /** Resolve a session from an access token. Returns the row even when revoked. */

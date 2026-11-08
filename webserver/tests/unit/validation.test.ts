@@ -5,7 +5,7 @@ describe('loginSchema', () => {
   it('accepts an email identifier and defaults the client to web', () => {
     const parsed = loginSchema.parse({ identifier: 'ada@example.com', password: 'x' })
     expect(parsed.client).toBe('web')
-    expect(parsed.device).toEqual({ name: '', platform: '', appVersion: '' })
+    expect(parsed.device).toEqual({ name: '', platform: '', appVersion: '', deviceKey: '' })
   })
 
   it('accepts a desktop login with device metadata', () => {

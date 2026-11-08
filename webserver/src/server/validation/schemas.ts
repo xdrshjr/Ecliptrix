@@ -37,13 +37,37 @@ export const deviceSchema = z
     name: z.string().trim().max(80).default(''),
     platform: z.string().trim().max(60).default(''),
     appVersion: z.string().trim().max(40).default(''),
+    /**
+     * Stable per-machine fingerprint from `deriveDeviceKey()` — not a random id,
+     * so a reinstall keeps it and a re-login replaces the earlier session instead
+     * of consuming another slot of the per-user cap.
+     *
+     * The shape is `[A-Za-z0-9_-]{8,64}`, with the empty string meaning "this
+     * caller has no device identity" (browser, old build). The allowance is an
+     * explicit `refine` rather than a `.?` in the regex because zod 3.25
+     * validates the value produced by `.default('')`: a bare
+     * `.regex(/^[A-Za-z0-9_-]{8,64}$/).default('')` rejects its own default.
+     */
+    deviceKey: z
+      .string()
+      .trim()
+      .max(64)
+      .refine(
+        (value) => value === '' || /^[A-Za-z0-9_-]{8,64}$/.test(value),
+        '设备标识格式不正确',
+      )
+      .default(''),
   })
-  .default({ name: '', platform: '', appVersion: '' })
+  .default({ name: '', platform: '', appVersion: '', deviceKey: '' })
+
+/** Desktop build string, e.g. `1.0.1`. Empty for the browser. */
+export const clientVersionSchema = z.string().trim().max(40).default('')
 
 export const loginSchema = z.object({
   identifier: identifierSchema,
   password: passwordSchema,
   client: clientSchema.default('web'),
+  clientVersion: clientVersionSchema,
   device: deviceSchema,
 })
 
@@ -54,6 +78,7 @@ export const registerSchema = z.object({
   displayName: displayNameSchema.optional(),
   inviteCode: z.string().trim().max(64).optional(),
   client: clientSchema.default('web'),
+  clientVersion: clientVersionSchema,
   device: deviceSchema,
 })
 

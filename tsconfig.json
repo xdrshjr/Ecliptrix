@@ -27,6 +27,8 @@
   "exclude": [
     "node_modules",
     "example-package",
-    "src/components/video/utils/__tests__/trimming.test.ts"
+    "src/components/video/utils/__tests__/trimming.test.ts",
+    "webserver",
+    "backend-services"
   ]
 }

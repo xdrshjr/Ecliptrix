@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, material management and AI generation. It ships as a **single-user Electron desktop app**: the main process launches a local FastAPI backend (SQLite) and a Next.js standalone server, both bound to `127.0.0.1`, and the renderer loads the local page. The shipped app has no in-process login and no multi-tenancy, and its business tables keep `user_id = LOCAL_OWNER_ID` — `npm run dev` in a browser exists only as a debugging path for the same product.
+Ecliptrix is an AI-powered content creation platform combining video editing, voice synthesis, material management and AI generation. It ships as a **single-user Electron desktop app**: the main process launches a local FastAPI backend (SQLite) and a Next.js standalone server, both bound to `127.0.0.1`, and the renderer loads the local page. The shipped app boots into an in-process login gate (see **Desktop identity gate** below) and has no multi-tenancy; its business tables keep `user_id = LOCAL_OWNER_ID` — `npm run dev` in a browser exists only as a debugging path for the same product.
 
 Identity is delegated to a **separate, independently deployed** account server in `webserver/` (see **Account server** below): the desktop app authenticates against it, while a break-glass `admin` account stays local. `webserver/` is a self-contained npm project — it shares the design language, not the code.
 
@@ -154,7 +154,7 @@ npm test             # vitest: unit + integration, a real SQLite file per case
 npm run db:migrate   # idempotent; also runs at boot when AUTO_MIGRATE=true
 npm run user:create -- --email a@b.c --password '…' --role admin
 npm run user:reset  -- --email a@b.c --password '…'   # break-glass
-node scripts/smoke.mjs   # 52 end-to-end assertions against a RUNNING server
+node scripts/smoke.mjs   # 62 end-to-end assertions against a RUNNING server
 ```
 
 - **Stack**: Next.js App Router + TypeScript + React 19 + Tailwind 3, SQLite via
@@ -181,6 +181,52 @@ node scripts/smoke.mjs   # 52 end-to-end assertions against a RUNNING server
 - **Deployment**: `Dockerfile`, `docker-compose.yml` and
   `deploy/{nginx.conf.example,webserver.service}`. Single writer only — scaling out
   requires PostgreSQL.
+
+### Desktop identity gate (`desktop/main/auth*.js`)
+
+The Electron window is gated before the workspace mounts. Tokens never leave the
+main process; the renderer only ever sees a redacted `AuthStatus`. Blueprint:
+`docs/plans/desktop-account-login-gate/spec.md` (v2) — read its R.1 block (the four
+P0s) and its 「实施过程发现的方案缺陷」 before changing behaviour.
+
+```
+desktop/main/authConfig.js       config + env → AuthConfig, deriveDeviceKey(), resolveGate()
+desktop/main/authPolicy.js       decideStartup() 12-row table, graceDeadline(), nextTimerDelay()
+desktop/main/authSessionStore.js safeStorage envelope → userData/auth-session.json (epoch ms)
+desktop/main/authHttp.js         the ONLY account-server HTTP client (Bearer, never Cookie)
+desktop/main/localAdmin.js       break-glass compare (timingSafeEqual) + failure lock
+desktop/main/authController.js   state machine, single-flight refresh, heartbeat, auth:changed
+desktop/main/authBridge.js       10 ipcMain.handle channels + structured input validation
+src/lib/api/authBridge.ts        typed IPC wrapper (window.ecliptrixDesktop.auth)
+src/contexts/SessionContext.tsx  SessionProvider / useSession() — status + onChanged only
+src/components/auth/*            SessionGate, LoginScreen, AccountMenu, AuthBlocker, …
+```
+
+Three invariants — breaking one is a defect, not a refactor:
+
+1. **Tokens only in the main process.** No `auth:*` channel returns `accessToken`
+   or `refreshToken`, and the renderer never calls the account server directly.
+2. **`localAdmin` only in `desktop-config.json`.** The break-glass account defaults
+   to `admin` / `adminjr`, is compared with `crypto.timingSafeEqual`, and never
+   touches the network. Change it in the file and restart; a release build must change
+   the default password first.
+3. **Business `user_id` stays `LOCAL_OWNER_ID`.** The gate decides *who sees the
+   window*; it is not data access control (`backend-services/` still has no auth
+   dependency). Never write the account server's `user.id` into a local business row.
+
+```bash
+# from desktop/
+npm run test:auth                     # 6 suites / 107 checks, pure node, no Electron
+node scripts/auth-smoke.js            # 14 end-to-end assertions against a fake account server
+ECLIPTRIX_AUTH_GATE=off npm run dev   # emergency valve: gate disabled, red strip
+```
+
+`userData/desktop-config.json` is authoritative for `auth.accountServerUrl`.
+`userData/.env` is a *child-process* environment; a **packaged** main process merges it
+for the two optional overrides (`ACCOUNT_SERVER_URL`, `ACCOUNT_OFFLINE_GRACE_DAYS`) and for
+`ECLIPTRIX_AUTH_GATE`, while `desktop/ npm run dev` ignores it (otherwise a packaged
+`ECLIPTRIX_AUTH_GATE=on` in `%APPDATA%` would silently gate the dev loop — D-07). Any change
+to this contract must be written back to `webserver/docs/desktop-integration.md` (v2).
 
 ### Service Configuration
 
@@ -228,7 +274,7 @@ The frontend reads `local_url` from `/api/material/{ingest,lookup}` responses; t
 - **Async everywhere**: Backend uses `async/await` throughout — async DB sessions via `get_db_session()` dependency, async HTTP clients (httpx), async file I/O (aiofiles).
 - **Git commit style**: Messages prefixed with `[add]`, `[modify]`, `[update]`, `[refactor]`, `[fix]`.
 - **Environment files**: Frontend uses `.env.local`, backend uses `.env` in its own directory. Templates are `env.template` in each location.
-- **No auth**: there is no user system, login, session or RBAC. The backend binds to `127.0.0.1` and has exactly one owner, represented by the compile-time constants `LOCAL_OWNER_ID` / `LOCAL_OWNER_NAME` in `app/constants.py`, mirrored in `src/lib/localOwner.ts` (the two `LOCAL_OWNER_ID` values MUST stay identical). Routes take no auth dependency; `http-client` injects no credentials; the proxy in `src/lib/api/server/backend-proxy.ts` forwards none. `RateLimitError` / HTTP 429 handling IS still live — `media_proxy_service` keeps its own per-IP download throttle — so do not remove it while removing "auth-looking" code.
+- **No auth in the local backend**: the FastAPI service still has no user system, session or RBAC — the Electron window is gated by the desktop identity gate (above), which decides who sees the app, not who may read local data. The backend binds to `127.0.0.1` and has exactly one owner, represented by the compile-time constants `LOCAL_OWNER_ID` / `LOCAL_OWNER_NAME` in `app/constants.py`, mirrored in `src/lib/localOwner.ts` (the two `LOCAL_OWNER_ID` values MUST stay identical). Routes take no auth dependency; `http-client` injects no credentials; the proxy in `src/lib/api/server/backend-proxy.ts` forwards none. `RateLimitError` / HTTP 429 handling IS still live — `media_proxy_service` keeps its own per-IP download throttle — so do not remove it while removing "auth-looking" code.
 - **Stage precisely**: `.gitignore` covers the usual build output, but `__pycache__/`, `*.pyc`, `tsconfig.tsbuildinfo`, `.next/` and `.idea/` still surface as modified from time to time. Prefer `git add <path>` over `git add -A`, and check `git status --porcelain` before committing.
 - **Preview flags**: the playback-v2 flag is gone — the multi-track canvas compositor is the SOLE preview path. What remains in `@/lib/playbackFlags` are two independent, default-ON flags gating the preview-proxy and local-download optimizations for remote material. Spec: `docs/plans/local-video-editing-refactor/`.
 

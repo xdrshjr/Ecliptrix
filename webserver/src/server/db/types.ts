@@ -56,6 +56,11 @@ export interface SessionRow {
   device_name: string
   platform: string
   app_version: string
+  /**
+   * Stable per-machine fingerprint sent by the desktop client. Empty string for
+   * web sessions and for rows written before migration 0004.
+   */
+  device_key: string
   ip: string
   user_agent: string
   created_at: number
@@ -199,6 +204,8 @@ export interface SessionDto {
   deviceName: string
   platform: string
   appVersion: string
+  /** Echoed back so the desktop can mark "this is my device" in its own list. */
+  deviceKey: string
   ip: string
   userAgent: string
   createdAt: string
@@ -214,6 +221,7 @@ export function toSessionDto(row: SessionRow, currentSessionId?: string): Sessio
     deviceName: row.device_name,
     platform: row.platform,
     appVersion: row.app_version,
+    deviceKey: row.device_key,
     ip: row.ip,
     userAgent: row.user_agent,
     createdAt: toIso(row.created_at),

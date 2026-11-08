@@ -1,8 +1,9 @@
 'use strict'
 
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
-const { app, dialog, session } = require('electron')
+const { app, dialog, session, shell, safeStorage, ipcMain, powerMonitor } = require('electron')
 
 const { initUserData, saveConfig } = require('./config')
 const { loadUserEnv, backfillUserEnv } = require('./envCheck')
@@ -15,6 +16,11 @@ const { APP_ICON_PATH, resolveAppUserModelId } = require('./appIcon')
 const { registerWindowControlIpc } = require('./windowControls')
 const { resolveBrowserHostCwd } = require('./browserHostPaths')
 const { probeSystemProxy } = require('./proxyProbe')
+const { readAuthConfig } = require('./authConfig')
+const { createSessionStore } = require('./authSessionStore')
+const { createAccountClient } = require('./authHttp')
+const { createAuthController } = require('./authController')
+const { registerAuthIpc, EVENT_CHANNEL: AUTH_CHANGED_CHANNEL } = require('./authBridge')
 const windows = require('./window')
 
 // `npm run dev` — attach to manually started dev servers instead of spawning
@@ -63,6 +69,10 @@ const state = {
   researchBrowserPorts: null,
   mainWindow: null,
   splash: null,
+  // 身份闸门（spec desktop-account-login-gate §3.1）：控制器是唯一的状态真相，
+  // authIpc 只为 before-quit 的注销保留句柄。
+  authController: null,
+  authIpc: null,
   quitting: false,
   cleanupDone: false,
 }
@@ -90,6 +100,9 @@ if (process.argv.includes('--agent-browser-host')) {
     state.quitting = true
     if (state.cleanupDone) return
     event.preventDefault()
+    // The gate owns a timer and an IPC surface: neither may outlive the app.
+    // This project has no `will-quit` handler (P2-6), so it belongs here.
+    disposeAuthGate()
     stopChildren().finally(() => {
       state.cleanupDone = true
       if (state.logger) state.logger.close()
@@ -109,7 +122,7 @@ if (process.argv.includes('--agent-browser-host')) {
 async function main() {
   state.userDataPath = app.getPath('userData')
   const envTemplatePath = path.join(app.getAppPath(), 'scripts', 'env.template.desktop')
-  const { config, envPath } = initUserData({
+  const { config, envPath, attemptsPath } = initUserData({
     userDataPath: state.userDataPath,
     appVersion: app.getVersion(),
     envTemplatePath,
@@ -127,10 +140,28 @@ async function main() {
     state.logger.warn('main', `App icon missing at ${APP_ICON_PATH}`)
   }
 
+  // Read userData/.env BEFORE the gate: `readAuthConfig` needs it for
+  // ECLIPTRIX_AUTH_GATE and the optional ACCOUNT_SERVER_URL override. Pure read
+  // (no writes), so moving it above the dev early-return changes nothing that
+  // used to happen (spec §2.6 / P0-2). Backfill stays below: it WRITES the
+  // file, and `npm run dev` must not rewrite a developer's .env.
+  const early = loadUserEnv(envPath)
+  state.userEnv = early.env
+
   // Register renderer-facing IPC BEFORE the `--dev` early-return (spec §2.3b /
   // R2). main() runs once via app.whenReady(), so these never double-register.
   // Window controls need no env.
   registerWindowControlIpc(state.logger)
+
+  // Identity gate first, window second: `desktop/ npm run dev` returns right
+  // after `createMainWindow`, and the dev window also carries the preload — an
+  // unregistered `auth` namespace would make the renderer fail closed and lock
+  // developers out of their own app (P0-2).
+  startIdentityGate({ config, attemptsPath })
+
+  powerMonitor.on('resume', () => {
+    if (state.authController) state.authController.onWindowFocused().catch(() => {})
+  })
 
   if (isDev) {
     state.logger.info('main', `dev mode — attaching to ${DEV_FRONTEND_URL}`)
@@ -143,13 +174,17 @@ async function main() {
   // Self-heal an old placeholder .env left by a pre-round-1 install: rewrite
   // any key still holding a placeholder with the bundled template's real
   // default credential (config.js only copies the template on first run, so
-  // upgrade users never receive the keys otherwise). Must run BEFORE loadUserEnv
-  // so the injected child-process env carries the healed values.
+  // upgrade users never receive the keys otherwise). Must run BEFORE the
+  // second loadUserEnv so the injected child-process env carries the healed
+  // values.
   const healed = backfillUserEnv(envPath, envTemplatePath)
   if (healed.length > 0) {
     state.logger.info('config', `self-healed ${healed.length} placeholder credential(s) from bundled template: ${healed.join(', ')}`)
   }
 
+  // Second read on purpose: the gate already took its snapshot above, the
+  // children get the healed one (spec §2.6 — one extra readFileSync instead of
+  // an ordering dependency).
   const { env: userEnv, missing } = loadUserEnv(envPath)
   if (missing.length > 0) {
     // Round 3: do NOT block — the renderer shows an in-app setup guide instead.
@@ -177,6 +212,111 @@ async function main() {
   }
 }
 
+/**
+ * Build and start the identity gate (spec §2.6 P0-2 order):
+ * readAuthConfig → createSessionStore → createAccountClient →
+ * createAuthController → registerAuthIpc → controller.start().
+ *
+ * `serverUrl` comes from `desktop-config.json` → `auth.accountServerUrl`; the
+ * .env snapshot only contributes the optional overrides (P0-1).
+ *
+ * Dev deliberately ignores the .env snapshot: a packaged `ECLIPTRIX_AUTH_GATE=on`
+ * left in `%APPDATA%\Ecliptrix\.env` must not silently switch the gate on during
+ * `desktop/ npm run dev` (spec §2.13 / R10 — dev stays gate-disabled unless the
+ * developer exports the variable themselves).
+ *
+ * @param {{ config: object, attemptsPath: string }} input
+ * @returns {void}
+ */
+function startIdentityGate({ config, attemptsPath }) {
+  const authConfig = readAuthConfig({
+    config,
+    env: gateEnv(),
+    isDev,
+    userDataPath: state.userDataPath,
+    hostname: os.hostname(),
+    appVersion: app.getVersion(),
+    logger: state.logger,
+  })
+  const store = createSessionStore({ dir: state.userDataPath, safeStorage })
+  const client = createAccountClient({
+    baseUrl: authConfig.serverUrl,
+    clientVersion: authConfig.appVersion,
+    logger: state.logger,
+    timeouts: {
+      probeMs: authConfig.probeTimeoutMs,
+      loginMs: authConfig.loginTimeoutMs,
+      heartbeatMs: authConfig.heartbeatTimeoutMs,
+      sessionMs: authConfig.sessionTimeoutMs,
+    },
+  })
+  state.authController = createAuthController({
+    config: authConfig,
+    store,
+    client,
+    attemptsPath,
+    logger: state.logger,
+  })
+  state.authIpc = registerAuthIpc({
+    ipcMain,
+    controller: state.authController,
+    logger: state.logger,
+    serverUrl: authConfig.serverUrl,
+    broadcast: broadcastAuthStatus,
+    openExternal: (url) => shell.openExternal(url),
+  })
+  if (!authConfig.serverUrl) {
+    state.logger.warn('auth', 'auth.accountServerUrl is empty — the gate will report server-not-configured (break-glass login still works)')
+  }
+  if (!authConfig.gateEnabled) {
+    state.logger.warn('auth', 'identity gate disabled (dev default or ECLIPTRIX_AUTH_GATE=off) — every user is let through')
+  }
+  // Not awaited: the window must appear immediately, the booting status covers
+  // the gap while the server probe runs (spec §2.6).
+  state.authController.start().catch((err) => {
+    state.logger.error('auth', `auth controller start failed: ${(err && err.stack) || err}`)
+  })
+}
+
+/**
+ * Environment the identity gate reads.
+ *
+ * Packaged builds merge the `userData/.env` snapshot, which is what makes
+ * `ACCOUNT_SERVER_URL` an *optional* override and keeps `desktop-config.json`
+ * authoritative (P0-1). Dev reads only the inherited environment so a packaged
+ * `.env` in the developer's %APPDATA% cannot flip `ECLIPTRIX_AUTH_GATE` on.
+ *
+ * @returns {Record<string, string|undefined>}
+ */
+function gateEnv() {
+  if (isDev) return { ...process.env }
+  return { ...process.env, ...(state.userEnv || {}) }
+}
+
+/**
+ * Push an AuthStatus to the main window (spec §4.5). Only the main window: a
+ * splash or error window has no business receiving session state.
+ *
+ * @param {object} status AuthStatus
+ */
+function broadcastAuthStatus(status) {
+  const win = state.mainWindow
+  if (!win || win.isDestroyed()) return
+  win.webContents.send(AUTH_CHANGED_CHANNEL, status)
+}
+
+/** Tear the gate down: stop its timer, unsubscribe, drop the IPC handlers. */
+function disposeAuthGate() {
+  if (state.authIpc) {
+    state.authIpc.dispose()
+    state.authIpc = null
+  }
+  if (state.authController) {
+    state.authController.dispose()
+    state.authController = null
+  }
+}
+
 async function resolvePorts() {
   const backendPick = await pickPort(state.config.backendPort)
   let frontendPick = await pickPort(state.config.frontendPort)
@@ -194,15 +334,15 @@ async function resolvePorts() {
         `(configured ${state.config.frontendPort}/${state.config.backendPort})`
     )
     if (frontendPick.changed) {
-      // Frontend origin change moves localStorage (login state, local
-      // preferences) — make it explicit instead of silently confusing the
-      // user (spec §7 risk 5).
+      // The desktop session lives in the main process and on disk, so an origin
+      // change only costs renderer-local preferences — say exactly that instead
+      // of scaring the user about "login state" (spec §7 risk 6 / R6).
       dialog.showMessageBoxSync({
         type: 'warning',
         title: 'Ecliptrix 端口变更',
         message: `默认端口被占用,本次使用 ${state.frontendPort} 端口启动。`,
         detail:
-          '由于浏览器存储按端口隔离,登录状态与本地偏好可能需要重新设置。\n' +
+          '由于浏览器存储按端口隔离,本地偏好可能需要重新设置,登录状态不受影响。\n' +
           `新端口已写入配置文件,后续启动将继续使用;如需固定其他端口,可编辑:\n` +
           `${path.join(state.userDataPath, 'desktop-config.json')}`,
         buttons: ['知道了'],
@@ -434,6 +574,11 @@ function createMainWindow(url) {
     state.logger.info('main', `main window shown (bounds=${JSON.stringify(state.mainWindow.getBounds())})`)
     closeSplash()
   })
+  // Minimising for two hours must not leave a fifteen-minute-old verdict on
+  // screen (spec §2.6 / D2-07).
+  state.mainWindow.on('focus', () => {
+    if (state.authController) state.authController.onWindowFocused().catch(() => {})
+  })
   state.mainWindow.on('closed', () => {
     state.logger.info('main', 'main window closed')
     state.mainWindow = null
@@ -518,6 +663,9 @@ async function restartServices() {
   try {
     await stopChildren()
     await startServices()
+    // Local services are back: let the renderer turn its "retry" affordance into
+    // a real action without waiting for an auth field to change (spec §3.1).
+    if (state.authController) state.authController.markServicesRestarted()
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.reload()
     } else {

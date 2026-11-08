@@ -18,8 +18,14 @@ export interface SessionDto {
   client: string
   deviceName: string
   platform: string
+  appVersion: string
+  /** Stable per-machine fingerprint; the console shows its first 8 characters. */
+  deviceKey: string
   ip: string
+  userAgent: string
+  createdAt: string
   lastSeenAt: string
+  expiresAt: string
   current: boolean
 }
 

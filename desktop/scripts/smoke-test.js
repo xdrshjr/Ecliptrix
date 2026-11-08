@@ -991,6 +991,18 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
     await cdp.send('Runtime.enable')
     await cdp.send('Network.enable')
+    // Identity gate (desktop-account-login-gate AC-19 / AC-29): the packaged
+    // renderer must carry the preload auth namespace, must be open because the
+    // run closed it explicitly, and must never expose a token.
+    const gateStatus = await cdp.evaluate(`window.ecliptrixDesktop?.auth?.status?.()
+      .then((s) => JSON.stringify(s)) ?? 'null'`)
+    if (!gateStatus || gateStatus === 'null') fail('preload auth namespace missing from the packaged renderer')
+    const gate = JSON.parse(gateStatus)
+    if (gate.state !== 'authenticated' || gate.source !== 'gate-disabled') {
+      fail(`identity gate did not open via ECLIPTRIX_AUTH_GATE=off (state=${gate.state}, source=${gate.source})`)
+    }
+    if (gate.securityWarning !== 'gate-disabled') fail('a closed gate must report securityWarning=gate-disabled')
+    if (/accessToken|refreshToken/.test(gateStatus)) fail('auth:status leaked a token to the renderer (AC-05)')
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: artifacts, eventsEnabled: true })
     cdp.on('Browser.downloadWillBegin', () => { nativeDownloads++ })
     cdp.on('Page.loadEventFired', () => { pageLoads++ })
@@ -1449,7 +1461,16 @@ async function runDesktopSmoke(research) {
   // --user-data-dir with "bad option" and the smoke gate false-fails.
   const childEnv = withoutElectronRunAsNode({ ...process.env, TEMP: tempDir, TMP: tempDir,
     ECLIPTRIX_RESEARCH_CDP_PORT: String(researchCdpPort),
-    ECLIPTRIX_RESEARCH_CONTROL_PORT: String(researchControlPort) })
+    ECLIPTRIX_RESEARCH_CONTROL_PORT: String(researchControlPort),
+    // The identity gate (desktop-account-login-gate) has no account server in a
+    // keyless smoke run: with auth.accountServerUrl empty the gate reports
+    // 'blocked / server-not-configured', the renderer shows the blocker and the
+    // workbench below never mounts — a 60s timeout several minutes into the run.
+    // ECLIPTRIX_AUTH_GATE=off is the documented emergency valve for exactly this
+    // case. The gate itself is asserted right below (it must report
+    // source='gate-disabled' and leak no token); its behaviour is covered by
+    // `npm run test:auth` and scripts/auth-smoke.js.
+    ECLIPTRIX_AUTH_GATE: 'off' })
   const child = spawn(exePath, [`--user-data-dir=${userDataDir}`, `--remote-debugging-port=${debugPort}`, '--remote-debugging-address=127.0.0.1'], {
     stdio: 'ignore',
     detached: false,

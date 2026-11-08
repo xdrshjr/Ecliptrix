@@ -23,6 +23,11 @@ export const REVOKE_REASON = {
   passwordChanged: 'password_changed',
   sessionLimit: 'session_limit',
   deleted: 'deleted',
+  /**
+   * The same machine signed in again. The previous session of that device is
+   * retired so a reinstall does not burn a slot of the per-user session budget.
+   */
+  sameDeviceRelogin: 'same_device_relogin',
 } as const
 
 export type RevokeReason = (typeof REVOKE_REASON)[keyof typeof REVOKE_REASON]
@@ -39,6 +44,12 @@ export const ERROR_CODE = {
   forbidden: 'forbidden',
   accountSuspended: 'account_suspended',
   accountLocked: 'account_locked',
+  /**
+   * The desktop build is older than `client.minVersion`. Only login/register
+   * ever answer this: a client that cannot present a session must still be able
+   * to log out, and a session in flight must still be refreshable.
+   */
+  clientOutdated: 'client_outdated',
   registrationDisabled: 'registration_disabled',
   inviteRequired: 'invite_required',
   inviteInvalid: 'invite_invalid',
@@ -63,7 +74,13 @@ export const ERROR_CODE = {
 export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE]
 
 /** Proxy/session housekeeping. */
-export const MAX_ACTIVE_SESSIONS_PER_USER = 10
+/**
+ * Fallback for `security.maxActiveSessions`, which is the live value.
+ *
+ * The constant stays because the settings table can be empty on a fresh database
+ * and `settingsService` needs a default that does not come from the environment.
+ */
+export const DEFAULT_MAX_ACTIVE_SESSIONS = 10
 export const HEARTBEAT_TOUCH_INTERVAL_MS = 5 * 60 * 1000
 
 /**

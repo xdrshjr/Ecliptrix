@@ -14,6 +14,7 @@ const ACTION_LABELS: Record<string, string> = {
   'auth.logout': '退出登录',
   'auth.password_changed': '修改口令',
   'auth.session_revoked': '撤销设备',
+  'auth.session_relogin': '同设备重新登录',
   'user.register': '注册账号',
   'user.profile_updated': '更新资料',
   'authz.denied': '访问被拒绝',

@@ -18,6 +18,8 @@ export interface CreateSessionInput {
   deviceName: string
   platform: string
   appVersion: string
+  /** Empty string for web sessions — the partial index only covers real keys. */
+  deviceKey: string
   ip: string
   userAgent: string
   now: number
@@ -29,11 +31,11 @@ export function create(db: Db, input: CreateSessionInput): void {
   db.prepare(
     `INSERT INTO sessions (
        id, user_id, client, access_token_hash, refresh_token_hash,
-       device_name, platform, app_version, ip, user_agent,
+       device_name, platform, app_version, device_key, ip, user_agent,
        created_at, last_seen_at, access_expires_at, refresh_expires_at
      ) VALUES (
        @id, @userId, @client, @accessTokenHash, @refreshTokenHash,
-       @deviceName, @platform, @appVersion, @ip, @userAgent,
+       @deviceName, @platform, @appVersion, @deviceKey, @ip, @userAgent,
        @now, @now, @accessExpiresAt, @refreshExpiresAt
      )`,
   ).run(input)
@@ -110,6 +112,32 @@ export function revokeOne(db: Db, id: string, now: number, reason: string): void
     `UPDATE sessions SET revoked_at = ?, revoked_reason = ?
       WHERE id = ? AND revoked_at IS NULL`,
   ).run(now, reason, id)
+}
+
+/**
+ * Retire every live session of one `(user, deviceKey)` pair.
+ *
+ * `device_key <> ''` is deliberate: without it a web login (which sends no key)
+ * would revoke every other web session of the account, and the guard belongs in
+ * SQL so no caller can forget it.
+ *
+ * @returns the number of rows actually revoked (0 when nothing matched).
+ */
+export function revokeActiveByDevice(
+  db: Db,
+  userId: string,
+  deviceKey: string,
+  now: number,
+  reason: string,
+): number {
+  const result = db
+    .prepare(
+      `UPDATE sessions SET revoked_at = @now, revoked_reason = @reason
+        WHERE user_id = @userId AND device_key = @deviceKey AND device_key <> ''
+          AND revoked_at IS NULL`,
+    )
+    .run({ now, reason, userId, deviceKey })
+  return result.changes
 }
 
 /** Returns the number of sessions actually revoked (idempotent). */

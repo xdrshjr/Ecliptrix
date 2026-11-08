@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import AppTitleBar from '@/components/shell/AppTitleBar';
+import AccountMenu from '@/components/auth/AccountMenu';
 import VerticalTaskbar from '@/components/VerticalTaskbar';
 import Container from '@/components/Container';
 import SettingsPage from '@/components/settings/SettingsPage';
@@ -143,6 +144,7 @@ export default function HomePage() {
       <AppTitleBar
         onSettingsClick={() => setIsSettingsOpen(true)}
         showSettingsAttention={setupStatus === 'needs-setup'}
+        sessionSlot={<AccountMenu />}
       />
 
       <div className="flex-1 flex overflow-hidden">

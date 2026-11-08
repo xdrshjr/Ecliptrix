@@ -44,6 +44,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   forbidden: 403,
   account_suspended: 403,
   account_locked: 423,
+  client_outdated: 426,
   registration_disabled: 403,
   invite_required: 403,
   invite_invalid: 403,
@@ -78,6 +79,17 @@ export const errors = {
     new AppError(ERROR_CODE.rateLimited, message, {
       details: { retryAfterSeconds },
       retryAfterSeconds,
+    }),
+  /**
+   * The client build is below `client.minVersion` (HTTP 426, Upgrade Required).
+   *
+   * `minVersion` travels in `details` so the client can say "update to x.y.z"
+   * instead of "update", and so support can tell a real gate from a network
+   * failure. Never raised by heartbeat/refresh/logout — see `authService.login`.
+   */
+  clientOutdated: (minVersion: string) =>
+    new AppError(ERROR_CODE.clientOutdated, `客户端版本过低，请升级到 ${minVersion} 或更高版本`, {
+      details: { minVersion },
     }),
 } as const
 

@@ -61,9 +61,11 @@ they are ordered by "how bad is it if you skip it".
 
 ## 5. Functional smoke (release gate)
 
-- [ ] `node scripts/smoke.mjs` against the deployed origin: 46 checks green.
+- [ ] `node scripts/smoke.mjs` against the deployed origin: 62 checks green.
       It registers throwaways — point `SMOKE_BASE_URL` at staging, or accept the
-      noise on production and clean up afterwards.
+      noise on production and clean up afterwards. Run it against a **freshly
+      started** process: the login IP budget (20 / 5 min) makes a second run on
+      the same process fail for reasons that have nothing to do with the code.
 - [ ] Sign in at `/login` as the owner in a real browser on http*S*;
       landing page → console → users list all render.
 - [ ] Create a user, copy the one-time password, sign in with it and confirm the
@@ -80,8 +82,21 @@ they are ordered by "how bad is it if you skip it".
       password has been **rotated away from the default `adminjr`**.
       Record where the new value is stored (password manager) — there is no
       server-side reset for it.
+- [ ] Break-glass default broken: confirm the shipped installer/docs do **not**
+      leave `adminjr` as the working password anywhere — grep the release notes and
+      the first-run instructions, and try `admin` / `adminjr` once on a clean
+      profile (it must fail). A default password in a shipped build is a backdoor:
+      it is documented in the repository, so it is public.
 - [ ] Offline grace (7 days) is understood by support: an unreachable server is not
       a lockout, and only a `403 account_suspended` is.
+- [ ] Desktop gate settings are deliberate: `GET /api/v1/meta` returns
+      `minClientVersion` / `maintenanceMessage` / `maxActiveSessions`, and
+      `client.minVersion` is **empty or equal to the released build**. A minimum
+      above the shipped version answers `426` to every older client — the fastest
+      way to lock out the entire fleet by accident.
+- [ ] `app.maintenanceMessage` is **empty** on go-live (a leftover announcement
+      blocks all new sign-ins), and `security.maxActiveSessions` matches the real
+      device count you are willing to keep alive per user.
 
 ## 7. Operations
 

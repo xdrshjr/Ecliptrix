@@ -3975,6 +3975,79 @@ export interface Translations {
     description: string;
     close: string;
   };
+  auth: {
+    title: string;
+    subtitle: string;
+    identifier: { label: string; placeholder: string };
+    password: { label: string; show: string; hide: string; capsLock: string };
+    remember: string;
+    forgot: string;
+    submit: string;
+    submitting: string;
+    or: string;
+    noAccount: string;
+    createAccount: string;
+    backToLogin: string;
+    invite: { label: string; hint: string };
+    confirmPassword: { label: string };
+    displayName: { label: string };
+    username: { label: string };
+    terms: { accept: string };
+    error: {
+      invalidCredentials: string;
+      locked: string;
+      rateLimited: string;
+      retryIn: string;
+      suspended: string;
+      revoked: string;
+      expired: string;
+      network: string;
+      graceExpired: string;
+      bridgeUnavailable: string;
+      serverNotConfigured: string;
+      outdatedClient: string;
+      maintenance: string;
+      requestId: string;
+      clockRollback: string;
+      weakPassword: string;
+      emailTaken: string;
+      usernameTaken: string;
+      inviteRequired: string;
+      inviteInvalid: string;
+      registrationDisabled: string;
+      passwordMismatch: string;
+      termsRequired: string;
+      required: string;
+      unknown: string;
+    };
+    local: {
+      entry: string;
+      title: string;
+      hint: string;
+      submit: string;
+      lockIn: string;
+      attemptsLeft: string;
+      defaultPasswordWarning: string;
+      badge: string;
+      sessionNote: string;
+    };
+    offline: { badge: string; daysLeft: string; lastVerified: string };
+    menu: { label: string; accountCenter: string; devices: string; changePassword: string; logout: string };
+    devices: { current: string; revoke: string; empty: string; title: string; unreachable: string };
+    changePassword: { title: string; current: string; new: string; signOutOthers: string };
+    passwordStrength: { weak: string; fair: string; strong: string; excellent: string };
+    maintenance: { title: string; download: string };
+    gateDisabled: { badge: string };
+    session: { plaintext: string };
+    dev: { badge: string };
+    reset: { sent: string; contactAdmin: string };
+    outdated: { title: string; current: string; minimum: string };
+    accountCenter: { unavailable: string };
+    retry: string;
+    logs: string;
+    logoutConfirm: string;
+  };
+
 }
 
 export const translations: Record<string, Translations> = {
@@ -8246,6 +8319,116 @@ export const translations: Record<string, Translations> = {
       description: 'Narration generation from video understanding is under development and will arrive in a future update.',
       close: 'Close',
     },
+    auth: {
+      title: 'Sign in',
+      subtitle: 'Continue with your Ecliptrix account',
+      identifier: { label: 'Email or username', placeholder: 'you@example.com' },
+      password: { label: 'Password', show: 'Show password', hide: 'Hide password', capsLock: 'Caps Lock is on' },
+      remember: 'Remember this device',
+      forgot: 'Forgot password?',
+      submit: 'Sign in',
+      submitting: 'Signing in…',
+      or: 'or',
+      noAccount: 'No account yet?',
+      createAccount: 'Create account',
+      backToLogin: 'Back to sign in',
+      invite: {
+        label: 'Invite code',
+        hint: 'This server requires an invite code to register.',
+      },
+      confirmPassword: { label: 'Confirm password' },
+      displayName: { label: 'Display name (optional)' },
+      username: { label: 'Username (optional)' },
+      terms: { accept: 'I accept the terms of service and the privacy policy' },
+      error: {
+        invalidCredentials: 'Incorrect email/username or password.',
+        locked: 'Too many failed attempts. Try again later.',
+        rateLimited: 'Too many requests. Please slow down.',
+        retryIn: 'Retry in {seconds}s',
+        suspended: 'This account has been suspended. Contact your administrator.',
+        revoked: 'This session was revoked. Please sign in again.',
+        expired: 'Your session expired. Please sign in again.',
+        network: 'Cannot reach the account server. Check the connection and retry.',
+        graceExpired: 'The offline grace period has ended. Sign in again to continue.',
+        bridgeUnavailable: 'The desktop bridge is missing, so your identity cannot be verified.',
+        serverNotConfigured: 'This installation has no account server configured.',
+        outdatedClient: 'This client version is no longer supported.',
+        maintenance: 'The account server is under maintenance.',
+        requestId: 'Error reference {id}',
+        clockRollback: 'The system clock moved backwards, so the offline session cannot be trusted. Please sign in again.',
+        weakPassword: 'That password is too weak.',
+        emailTaken: 'That e-mail address already has an account. Sign in or reset the password.',
+        usernameTaken: 'That username is taken. Pick another one.',
+        inviteRequired: 'Registration on this server needs an invite code.',
+        inviteInvalid: 'That invite code is not valid or has been used up.',
+        registrationDisabled: 'This server is not accepting new sign-ups. Ask an administrator for an account.',
+        passwordMismatch: 'The two passwords do not match.',
+        termsRequired: 'Accept the terms to continue.',
+        required: 'This field is required.',
+        unknown: 'Something went wrong. Please try again.',
+      },
+      local: {
+        entry: 'Sign in with the local administrator',
+        title: 'Local administrator',
+        hint: 'Device rescue only: no network access, no other people\'s data.',
+        submit: 'Sign in locally',
+        lockIn: 'Locked. Try again in {seconds}s',
+        attemptsLeft: 'Attempts left: {count}',
+        defaultPasswordWarning: 'The local administrator still uses the default or a weak password. Change localAdmin.password in desktop-config.json.',
+        badge: 'Local administrator',
+        sessionNote: 'This session is not governed by the account server.',
+      },
+      offline: {
+        badge: 'Offline mode',
+        daysLeft: '{days} day(s) left',
+        lastVerified: 'Last verified {time}',
+      },
+      menu: {
+        label: 'Account menu',
+        accountCenter: 'Open account centre',
+        devices: 'My devices',
+        changePassword: 'Change password',
+        logout: 'Sign out',
+      },
+      devices: {
+        current: 'This device',
+        revoke: 'Revoke',
+        empty: 'No active sessions.',
+        title: 'Active sessions',
+        unreachable: 'Cannot reach the account server. Retry.',
+      },
+      changePassword: {
+        title: 'Change password',
+        current: 'Current password',
+        new: 'New password',
+        signOutOthers: 'Also sign out other devices',
+      },
+      passwordStrength: {
+        weak: 'Weak',
+        fair: 'Fair',
+        strong: 'Strong',
+        excellent: 'Excellent',
+      },
+      maintenance: { title: 'Maintenance in progress', download: 'Open download page' },
+      gateDisabled: { badge: 'Identity gate is disabled (ECLIPTRIX_AUTH_GATE=off)' },
+      session: { plaintext: 'This device cannot encrypt the session file; tokens are stored in plain text — do not use it on a shared machine.' },
+      dev: { badge: 'Development mode: identity gate disabled' },
+      reset: {
+        sent: 'If that email exists, a reset link has been sent.',
+        contactAdmin: 'Self-service reset is unavailable. Ask an administrator for a one-time password.',
+      },
+      outdated: {
+        title: 'Update required',
+        current: 'Current version {version}',
+        minimum: 'Minimum version {version}',
+      },
+      accountCenter: {
+        unavailable: 'Cannot open the account centre right now. Retry later or contact {email}.',
+      },
+      retry: 'Retry',
+      logs: 'Log directory',
+      logoutConfirm: 'Signing out closes this workbench and unsaved changes can be lost. Make sure autosave has finished first.',
+    },
   },
   'zh-CN': {
     agentConversations: {
@@ -12510,6 +12693,116 @@ export const translations: Record<string, Translations> = {
       comingSoon: '功能开发中',
       description: '基于视频理解的解说生成正在开发中，后续版本将上线，敬请期待。',
       close: '关闭',
+    },
+    auth: {
+      title: '登录',
+      subtitle: '使用 Ecliptrix 账号继续',
+      identifier: { label: '邮箱或用户名', placeholder: 'you@example.com' },
+      password: { label: '口令', show: '显示口令', hide: '隐藏口令', capsLock: '大写锁定已开启' },
+      remember: '记住这台设备',
+      forgot: '忘记口令？',
+      submit: '登录',
+      submitting: '正在登录…',
+      or: '或',
+      noAccount: '还没有账号？',
+      createAccount: '创建账号',
+      backToLogin: '返回登录',
+      invite: {
+        label: '邀请码',
+        hint: '该服务器需要邀请码才能注册。',
+      },
+      confirmPassword: { label: '确认口令' },
+      displayName: { label: '显示名（可选）' },
+      username: { label: '用户名（可选）' },
+      terms: { accept: '我已阅读并同意服务条款与隐私政策' },
+      error: {
+        invalidCredentials: '邮箱/用户名或口令不正确。',
+        locked: '失败次数过多，请稍后再试。',
+        rateLimited: '请求过于频繁，请稍后再试。',
+        retryIn: '{seconds} 秒后可重试',
+        suspended: '该账号已被停用，请联系管理员。',
+        revoked: '当前会话已失效，请重新登录。',
+        expired: '登录已过期，请重新登录。',
+        network: '无法连接账号服务器，请检查网络后重试。',
+        graceExpired: '离线宽限期已结束，请重新登录后继续。',
+        bridgeUnavailable: '桌面桥缺失，无法校验身份。',
+        serverNotConfigured: '本次安装尚未配置账号服务器。',
+        outdatedClient: '当前客户端版本已不再受支持。',
+        maintenance: '账号服务器正在维护。',
+        requestId: '错误编号 {id}',
+        clockRollback: '系统时间发生回拨，离线会话不可信，请重新登录。',
+        weakPassword: '口令强度不足。',
+        emailTaken: '该邮箱已注册，请直接登录或找回口令。',
+        usernameTaken: '该用户名已被占用，请换一个。',
+        inviteRequired: '本服务器需要邀请码才能注册。',
+        inviteInvalid: '邀请码无效或已被用完。',
+        registrationDisabled: '本服务器当前不接受新注册，请联系管理员开通账号。',
+        passwordMismatch: '两次输入的口令不一致。',
+        termsRequired: '请先同意服务条款。',
+        required: '此项为必填。',
+        unknown: '操作失败，请重试。',
+      },
+      local: {
+        entry: '使用本地管理员登录',
+        title: '本地管理员',
+        hint: '本地管理员仅用于设备救援，不联网、不加载他人数据。',
+        submit: '本地登录',
+        lockIn: '已锁定，{seconds} 秒后可重试',
+        attemptsLeft: '剩余尝试次数：{count}',
+        defaultPasswordWarning: '当前使用的是默认/弱口令，请修改 desktop-config.json 中的 localAdmin.password。',
+        badge: '本地管理员',
+        sessionNote: '本次会话不受服务端管辖。',
+      },
+      offline: {
+        badge: '离线模式',
+        daysLeft: '剩余 {days} 天',
+        lastVerified: '上次验证于 {time}',
+      },
+      menu: {
+        label: '账号菜单',
+        accountCenter: '打开账号中心',
+        devices: '我的设备',
+        changePassword: '修改口令',
+        logout: '退出登录',
+      },
+      devices: {
+        current: '当前设备',
+        revoke: '撤销',
+        empty: '没有其他会话。',
+        title: '活跃会话',
+        unreachable: '无法连接账号服务器，请重试。',
+      },
+      changePassword: {
+        title: '修改口令',
+        current: '当前口令',
+        new: '新口令',
+        signOutOthers: '同时注销其他设备',
+      },
+      passwordStrength: {
+        weak: '弱',
+        fair: '中',
+        strong: '强',
+        excellent: '极强',
+      },
+      maintenance: { title: '维护中', download: '打开下载页' },
+      gateDisabled: { badge: '身份闸门已关闭（ECLIPTRIX_AUTH_GATE=off）' },
+      session: { plaintext: '本机无法加密会话文件，登录凭证以明文保存；请勿在共用电脑上使用。' },
+      dev: { badge: '开发模式：身份闸门未启用' },
+      reset: {
+        sent: '若该邮箱存在，重置链接已发出。',
+        contactAdmin: '暂不支持自助重置，请联系管理员签发一次性口令。',
+      },
+      outdated: {
+        title: '需要更新客户端',
+        current: '当前版本 {version}',
+        minimum: '最低版本 {version}',
+      },
+      accountCenter: {
+        unavailable: '暂时无法打开账号中心，请稍后重试或联系 {email}。',
+      },
+      retry: '重试',
+      logs: '日志目录',
+      logoutConfirm: '退出登录会关闭当前工作台，未保存的改动可能丢失。请先确认已自动保存。',
     },
   },
 };

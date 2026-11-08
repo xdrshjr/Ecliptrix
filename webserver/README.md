@@ -162,11 +162,19 @@ sudo systemctl enable --now webserver
 
 ## 桌面端接入 🔑
 
-桌面端登录接入的完整契约（端点、令牌存储、离线宽限、错误映射、时序图）见 [`docs/desktop-integration.md`](docs/desktop-integration.md)。三条不变式：
+桌面端登录接入的完整契约（端点、令牌存储、离线宽限、错误映射、时序图）见 [`docs/desktop-integration.md`](docs/desktop-integration.md)（**v2**）。三条不变式：
 
 1. **业务数据的 `user_id` 继续恒为 `LOCAL_OWNER_ID`**。身份认证只决定「谁能打开应用」，不改变本地数据归属，因此不需要任何数据迁移，也与 `CLAUDE.md` 的「No auth / single owner」约定兼容。
 2. 普通用户**必须**联网校验；离线只允许在 7 天宽限期内继续使用，超过后必须重新联网。
 3. 管理员在后台「踢下线」后，桌面端下一次心跳（15 分钟）就会拿到 401 并清空本地会话。
+
+服务端为桌面端额外提供三条能力（都可在 `/admin/settings` 热改，不必发版）：
+
+- **设备顶号**：桌面端带上稳定的 `device.deviceKey`（这台机器 + 这个 profile 的指纹，不是随机数）。同一设备再次登录时，服务端在**一个事务**内撤掉该设备的旧会话（`revoked_reason='same_device_relogin'`）再建新会话，因此重装或反复登录不会把每用户会话名额吃光；旧令牌随后的心跳得到 `401 session_revoked`。
+- **版本闸门**：`client.minVersion` 非空时，低于它的桌面构建登录/注册直接 `426 client_outdated`（`details.minVersion` 给出目标版本），且**不消耗登录失败次数、不锁号**。`heartbeat` / `refresh` / `logout` 永不返回 426——旧客户端必须还能体面登出。
+- **会话上限**：`security.maxActiveSessions`（1–50，默认 10）取代了硬编码常量。调小不会批量踢人，下一次登录按 LRU 收敛，被挤掉的会话记 `session_limit`。
+
+维护模式（`app.maintenanceMessage` 非空）只拦**新的**登录/注册（`503 service_unavailable` + `details.reason='maintenance'`）：已经在工作的用户不会因为一条公告被踢出应用。
 
 ---
 
@@ -217,11 +225,13 @@ webserver/
 ```bash
 npm run type-check     # 0 error
 npm run lint           # 0 warning
-npm test               # 142 tests green（单元 + 集成 + RBAC 矩阵，真实 SQLite）
+npm test               # 173 tests green（单元 + 集成 + RBAC 矩阵，真实 SQLite）
 npm run build          # standalone 产物（含 /admin/users/[id]、/api/v1/me/deletion-request、OG 图）
 npm run db:migrate     # 连跑两次，第二次输出 "nothing to do"
 
-# 对运行中的服务做端到端冒烟（52 项断言，含 Cookie/CSRF/Bearer/重用检测/锁定/详情页/OG 图）
+# 对运行中的服务做端到端冒烟（62 项断言，含 Cookie/CSRF/Bearer/重用检测/锁定/详情页/OG 图
+# 以及桌面端闸门：设备顶号、426 版本闸门、维护模式、/me/sessions 的 current 与 deviceKey、
+# 三个新设置项往返、maxActiveSessions 挤压）
 npm run dev            # 另一个终端
 node scripts/smoke.mjs
 ```

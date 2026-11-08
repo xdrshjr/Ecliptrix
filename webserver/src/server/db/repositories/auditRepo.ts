@@ -107,6 +107,9 @@ export const SELF_VISIBLE_ACTIONS = [
   'auth.logout',
   'auth.password_changed',
   'auth.session_revoked',
+  // Same-device re-login revokes the user's *own* older session; without this
+  // the timeline cannot explain the "you were signed out" the desktop shows.
+  'auth.session_relogin',
   'user.register',
   'user.profile_updated',
   'authz.denied',
