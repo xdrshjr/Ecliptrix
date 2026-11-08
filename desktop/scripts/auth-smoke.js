@@ -86,6 +86,12 @@ async function startFakeServer() {
     revokedAccess: new Set(),
     refreshReuse: false,
     delayMs: 0,
+    // Scenario switches for the account-lifecycle checks.
+    loginCode: null,
+    resendCode: null,
+    displayName: null,
+    heartbeatCode: null,
+    heartbeatReason: null,
   }
 
   function issue(prefix) {
@@ -122,7 +128,80 @@ async function startFakeServer() {
         }),
       }
     }
+    if (entry.path === '/api/v1/me') {
+      if (entry.method === 'PATCH') {
+        state.displayName = (entry.body && entry.body.displayName) || state.displayName
+        return {
+          body: okEnvelope({
+            id: 'user-1',
+            email: 'ada@example.com',
+            emailVerified: false,
+            displayName: state.displayName || 'Ada',
+            username: 'ada',
+            locale: 'zh-CN',
+            timezone: 'Asia/Shanghai',
+            role: { key: 'member', name: 'Member' },
+            planTag: 'free',
+            createdAt: new Date().toISOString(),
+            lastLoginAt: null,
+            pendingEmail: null,
+            deletion: null,
+          }),
+        }
+      }
+      return {
+        body: okEnvelope({
+          id: 'user-1',
+          email: 'ada@example.com',
+          emailVerified: false,
+          displayName: state.displayName || 'Ada',
+          username: 'ada',
+          locale: 'zh-CN',
+          timezone: 'Asia/Shanghai',
+          role: { key: 'member', name: 'Member' },
+          planTag: 'free',
+          createdAt: new Date().toISOString(),
+          lastLoginAt: null,
+          pendingEmail: null,
+          deletion: null,
+        }),
+      }
+    }
+    if (entry.path.startsWith('/api/v1/me/activity')) {
+      return {
+        body: okEnvelope({
+          items: [
+            {
+              id: 'a1',
+              action: 'auth.login',
+              targetType: 'session',
+              targetId: 's1',
+              ip: '203.0.113.42',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          page: { page: 1, pageSize: 30, total: 42, totalPages: 2 },
+        }),
+      }
+    }
+    if (entry.path === '/api/v1/auth/email/verify/resend') {
+      if (state.resendCode) {
+        return errorEnvelope(409, state.resendCode)
+      }
+      return {
+        status: 202,
+        body: okEnvelope({
+          sentAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+        }),
+      }
+    }
     if (entry.path === '/api/v1/auth/login') {
+      if (state.loginCode) {
+        const status = state.loginCode === 'email_not_verified' ? 403 : 401
+        return errorEnvelope(status, state.loginCode)
+      }
+
       const issued = issue('login')
       return {
         body: okEnvelope({
@@ -144,6 +223,14 @@ async function startFakeServer() {
       }
     }
     if (entry.path === '/api/v1/auth/heartbeat') {
+      if (state.heartbeatCode) {
+        const envelope = errorEnvelope(401, state.heartbeatCode)
+        if (state.heartbeatReason) {
+          envelope.body.error.details = { reason: state.heartbeatReason }
+        }
+        return envelope
+      }
+
       const token = String(entry.headers.authorization || '').replace('Bearer ', '')
       const answer = (() => {
         if (state.revokedAccess.has(token)) return errorEnvelope(401, 'session_revoked')
@@ -488,12 +575,113 @@ async function main() {
       }
       assert.strictEqual(bridged.state, 'authenticated', 'the IPC channel answers with a real status')
     })
+    // ----------------------------------------------------------- 15..20 -----
+    // The account-centre surface. Same fake server, extra switches.
+    const centre = makeController({})
+    await centre.start()
+    await centre.login({ identifier: 'ada@example.com', password: 'pw', rememberDevice: true })
+
+    server.state.loginCode = 'email_not_verified'
+    const gateController = makeController({})
+    await gateController.start()
+    let gateFailure = null
+    try {
+      await gateController.login({ identifier: 'ada@example.com', password: 'pw' })
+    } catch (err) {
+      gateFailure = err
+    }
+    check('15. login 403 email_not_verified -> reason email-unverified', () => {
+      assert.ok(gateFailure, 'login must fail')
+      assert.strictEqual(gateFailure.code, 'email_not_verified')
+      assert.strictEqual(gateFailure.toFailure().reason, 'email-unverified')
+      // A refused login must not disturb an existing session on disk: the user may
+      // still be signed in as somebody else on this machine.
+      assert.strictEqual(gateController.status().state, 'authenticated')
+    })
+    server.state.loginCode = null
+
+    server.state.resendCode = 'email_already_verified'
+    let resendFailure = null
+    try {
+      await centre.resendVerification()
+    } catch (err) {
+      resendFailure = err
+    }
+    check('16. resend 409 email_already_verified keeps its own reason', () => {
+      assert.ok(resendFailure, 'resend must fail')
+      assert.strictEqual(resendFailure.code, 'email_already_verified')
+      assert.strictEqual(resendFailure.toFailure().reason, 'email-unverified')
+    })
+    server.state.resendCode = null
+
+    let meView = null
+    try {
+      meView = await centre.me()
+    } catch (err) {
+      meView = null
+    }
+    check('17. auth:me returns the documented MeView shape', () => {
+      assert.ok(meView, 'me() must resolve')
+      assert.strictEqual(meView.email, 'ada@example.com')
+      assert.strictEqual(typeof meView.emailVerified, 'boolean')
+      assert.strictEqual(meView.pendingEmail, null)
+      assert.strictEqual(meView.deletion, null)
+    })
+
+    let updated = null
+    try {
+      updated = await centre.updateProfile({ displayName: 'Ada L' })
+    } catch (err) {
+      updated = null
+    }
+    check('18. auth:update-profile round-trips and updates the session user', () => {
+      assert.ok(updated, 'updateProfile must resolve')
+      assert.strictEqual(updated.displayName, 'Ada L')
+      assert.strictEqual(centre.status().user.displayName, 'Ada L')
+    })
+
+    let rows = null
+    try {
+      rows = await centre.activity()
+    } catch (err) {
+      rows = null
+    }
+    check('19. auth:activity masks the ip before it reaches the renderer', () => {
+      assert.ok(rows, 'activity() must resolve')
+      assert.strictEqual(rows.items.length, 1)
+      assert.strictEqual(rows.items[0].ipMasked, '203.0.x.x')
+      assert.strictEqual(rows.truncated, true, '42 total rows for 1 returned means more')
+      assert.ok(
+        !JSON.stringify(rows).includes('203.0.113.42'),
+        'the raw ip must not survive the boundary',
+      )
+    })
+
+    // Same shape as scenario 7: a stored session plus a start(), which is exactly
+    // what a user's next launch looks like after their account was deleted.
+    store.write({ ...stale, lastVerifiedAt: clock.now })
+    server.state.heartbeatCode = 'session_revoked'
+    server.state.heartbeatReason = 'account_deleted'
+    const deleted = makeController({})
+    await deleted.start()
+    check('20. heartbeat reason account_deleted -> account-deleted and a cleared session', () => {
+      const status = deleted.status()
+      assert.strictEqual(status.state, 'unauthenticated')
+      assert.strictEqual(status.reason, 'account-deleted')
+      assert.strictEqual(
+        fs.existsSync(path.join(userDataPath, 'auth-session.json')),
+        false,
+        'the session file is gone: retrying could only fail again',
+      )
+    })
+    server.state.heartbeatCode = null
+    server.state.heartbeatReason = null
   } finally {
     await server.close()
     fs.rmSync(userDataPath, { recursive: true, force: true })
   }
 
-  console.log(`\n[auth-smoke] ${passed}/14 checks passed`)
+  console.log(`\n[auth-smoke] ${passed}/20 checks passed`)
   if (failures.length > 0) {
     console.error('[auth-smoke] FAIL')
     for (const failure of failures) {

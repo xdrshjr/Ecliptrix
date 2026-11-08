@@ -6,15 +6,23 @@ import { codeHint, hashToken, newId, newInviteCode } from '@/server/auth/tokens'
 import { ERROR_CODE } from '@/server/auth/constants'
 import { AppError, errors } from '@/server/http/errors'
 import * as auditService from '@/server/services/auditService'
+import * as mailService from '@/server/services/mailService'
+import { maskEmail } from '@/server/services/privacy'
+import { buildInviteUrl } from '@/server/mail/links'
+import { translator, type Locale } from '@/lib/i18n'
 import type { AuditContext } from '@/server/services/auditService'
 import type { InviteListRow } from '@/server/db/repositories/invitesRepo'
 
 /**
  * Registration invites.
  *
- * The plaintext code exists exactly once — in the creation response. Only its
- * HMAC digest is stored, so listing invites can never re-display one, and a
- * database leak does not hand out registration rights.
+ * The plaintext code exists exactly once — in the creation response, or in the
+ * invitation mail. Only its HMAC digest is stored, so listing invites can never
+ * re-display one, and a database leak does not hand out registration rights.
+ *
+ * That one-shot property is also why the invitation mail is `retryable = 0`: the
+ * outbox keeps `code` only inside the already-redacted body, so a retry could not
+ * reproduce the message.
  */
 
 export interface CreatedInvite {
@@ -26,10 +34,30 @@ export interface CreatedInvite {
   expiresAt: string | null
 }
 
-export function createInvite(
-  input: { maxUses: number; expiresInDays: number; roleKey: string },
+export interface CreatedInviteWithMail extends CreatedInvite {
+  /** Null when no address was supplied (the console still shows the code). */
+  mail: { queued: boolean; id: string | null; status: string } | null
+}
+
+export interface CreateInviteInput {
+  maxUses: number
+  expiresInDays: number
+  roleKey: string
+  /** Optional recipient: when present the invitation is mailed. */
+  email?: string
+  note?: string
+}
+
+/**
+ * Create an invite, and mail it when an address was supplied.
+ *
+ * @throws {AppError} `validation_failed` | `forbidden` | `unauthorized`
+ */
+export async function createInvite(
+  input: CreateInviteInput,
   actor: AuditContext,
-): CreatedInvite {
+  locale: Locale = 'zh-CN',
+): Promise<CreatedInviteWithMail> {
   const db = getDb()
   const now = Date.now()
   const role = rolesRepo.findByKey(db, input.roleKey)
@@ -56,11 +84,20 @@ export function createInvite(
     action: 'invite.create',
     targetType: 'invite',
     targetId: id,
-    metadata: { roleKey: role.key, maxUses: input.maxUses, expiresInDays: input.expiresInDays },
+    metadata: {
+      roleKey: role.key,
+      maxUses: input.maxUses,
+      expiresInDays: input.expiresInDays,
+      mailed: Boolean(input.email),
+      // The operator's own words, kept here because there is nowhere else to put
+      // them: an invite has no free-text column. Dropping it silently made the
+      // route's "the note is kept for the audit row" comment a lie.
+      note: input.note ? input.note.slice(0, 200) : null,
+    },
   })
 
   const created = invitesRepo.findById(db, id)
-  return {
+  const base: CreatedInvite = {
     id,
     code,
     codeHint: codeHint(code),
@@ -68,6 +105,32 @@ export function createInvite(
     maxUses: input.maxUses,
     expiresAt: created?.expires_at ? new Date(created.expires_at).toISOString() : null,
   }
+
+  if (!input.email) return { ...base, mail: null }
+
+  const tt = translator(locale)
+  const queued = await mailService.queue({
+    template: 'invite',
+    to: input.email,
+    locale,
+    // Not tied to an account: the recipient may not exist yet. This is also why
+    // the per-user daily cap does not cover invitations (the admin's own 60/hour
+    // budget does, in the route).
+    userId: null,
+    params: {
+      // Masked, like every other templated address: an unconfirmed address must
+      // not be re-exposed in the outbox body or in `db:backup`.
+      displayName: maskEmail(input.email),
+      code,
+      link: buildInviteUrl(code),
+      expiresIn:
+        input.expiresInDays > 0
+          ? tt('mail.duration.days', { count: input.expiresInDays })
+          : undefined,
+    },
+  })
+
+  return { ...base, mail: { queued: true, id: queued.id, status: queued.status } }
 }
 
 export interface InviteDto {

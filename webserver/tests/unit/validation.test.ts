@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { loginSchema, profilePatchSchema, registerSchema, bulkActionSchema } from '@/server/validation/schemas'
+import {
+  loginSchema,
+  profilePatchSchema,
+  registerSchema,
+  bulkActionSchema,
+  emailVerifySchema,
+  emailChangeSchema,
+  adminSessionsRevokeSchema,
+  adminDeletionConfirmSchema,
+  createInviteSchema,
+} from '@/server/validation/schemas'
+import { ERROR_CODE, type ErrorCode } from '@/server/auth/constants'
+import { ERROR_STATUS } from '@/server/http/errors'
 
 describe('loginSchema', () => {
   it('accepts an email identifier and defaults the client to web', () => {
@@ -99,5 +111,78 @@ describe('bulkActionSchema', () => {
       ids: Array.from({ length: 201 }, () => '3f2504e0-4f89-11d3-9a0c-0305e82c3301'),
     })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('account lifecycle schemas', () => {
+  it('accepts a token-only verification body and rejects a short one', () => {
+    expect(emailVerifySchema.safeParse({ token: 'a'.repeat(43) }).success).toBe(true)
+    expect(emailVerifySchema.safeParse({ token: 'short' }).success).toBe(false)
+  })
+
+  it('requires a password and a valid address to change the address', () => {
+    expect(
+      emailChangeSchema.safeParse({ password: 'x', newEmail: 'new@example.com' }).success,
+    ).toBe(true)
+    expect(emailChangeSchema.safeParse({ password: 'x', newEmail: 'nope' }).success).toBe(false)
+    expect(emailChangeSchema.safeParse({ newEmail: 'new@example.com' }).success).toBe(false)
+  })
+
+  it('caps a bulk revoke at 100 ids and requires at least one', () => {
+    expect(adminSessionsRevokeSchema.safeParse({ ids: ['sess_1'] }).success).toBe(true)
+    expect(adminSessionsRevokeSchema.safeParse({ ids: [] }).success).toBe(false)
+    const tooMany = Array.from({ length: 101 }, (_, index) => `sess_${index}`)
+    expect(adminSessionsRevokeSchema.safeParse({ ids: tooMany }).success).toBe(false)
+  })
+
+  it('constrains the revoke reasons to the whitelist', () => {
+    expect(
+      adminSessionsRevokeSchema.safeParse({ ids: ['sess_1'], reason: 'admin_lockdown' }).success,
+    ).toBe(true)
+    expect(
+      adminSessionsRevokeSchema.safeParse({ ids: ['sess_1'], reason: 'because' }).success,
+    ).toBe(false)
+  })
+
+  it('accepts an invitation with an optional address and note', () => {
+    const withMail = createInviteSchema.parse({
+      email: 'new@example.com',
+      note: 'hello',
+      maxUses: 1,
+      expiresInDays: 7,
+      roleKey: 'member',
+    })
+    expect(withMail.email).toBe('new@example.com')
+    const without = createInviteSchema.parse({ maxUses: 1, expiresInDays: 7, roleKey: 'member' })
+    expect(without.email).toBeUndefined()
+  })
+
+  it('requires a reason for an on-behalf deletion confirmation', () => {
+    expect(adminDeletionConfirmSchema.safeParse({ reason: '工单 #42' }).success).toBe(true)
+    expect(adminDeletionConfirmSchema.safeParse({ reason: '' }).success).toBe(false)
+  })
+})
+
+describe('error code table', () => {
+  it('keeps ERROR_CODE and ERROR_STATUS in step for the five new codes', () => {
+    // `ERROR_STATUS` is `Record<ErrorCode, number>`, so a missing key is a compile
+    // error — but a wrong number is not, which is what this table pins.
+    const expected: Record<string, number> = {
+      email_not_verified: 403,
+      email_already_verified: 409,
+      token_invalid: 400,
+      deletion_pending: 409,
+      mail_disabled: 503,
+    }
+    for (const [code, status] of Object.entries(expected)) {
+      expect(Object.values(ERROR_CODE)).toContain(code)
+      expect(ERROR_STATUS[code as ErrorCode]).toBe(status)
+    }
+  })
+
+  it('maps every error code to a status', () => {
+    for (const code of Object.values(ERROR_CODE)) {
+      expect(ERROR_STATUS[code], code).toBeTypeOf('number')
+    }
   })
 })

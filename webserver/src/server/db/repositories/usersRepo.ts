@@ -48,7 +48,7 @@ const COLUMNS = `u.id, u.email, u.email_normalized, u.username, u.username_norma
   u.display_name, u.password_hash, u.password_updated_at, u.role_id, u.status,
   u.plan_tag, u.must_change_password, u.email_verified_at, u.avatar_url, u.locale,
   u.timezone, u.note, u.last_login_at, u.failed_login_count, u.lock_count,
-  u.locked_until, u.created_at, u.updated_at, u.deleted_at`
+  u.locked_until, u.created_at, u.updated_at, u.deleted_at, u.last_exported_at`
 
 const SELECT_WITH_ROLE = `SELECT ${COLUMNS}, r.key AS role_key, r.name AS role_name,
   (SELECT COUNT(*) FROM sessions s
@@ -356,4 +356,42 @@ export function findIdsIn(db: Db, ids: readonly string[]): UserRow[] {
     `SELECT ${COLUMNS} FROM users u WHERE u.id IN (${placeholders(ids.length)})`,
   )
   return statement.all(...ids) as UserRow[]
+}
+
+/** Lookup by address that does NOT hide soft-deleted rows (restore path). */
+export function findByEmailIncludingDeleted(db: Db, emailNormalized: string): UserRow | undefined {
+  return db
+    .prepare(`SELECT ${COLUMNS} FROM users u WHERE u.email_normalized = ? LIMIT 1`)
+    .get(emailNormalized) as UserRow | undefined
+}
+
+/** Stamp the export cooldown. See `accountExportService.cooldown`. */
+export function touchLastExportedAt(db: Db, id: string, now: number): void {
+  db.prepare('UPDATE users SET last_exported_at = ?, updated_at = ? WHERE id = ?').run(
+    now,
+    now,
+    id,
+  )
+}
+
+/**
+ * Rows for the console's CSV export.
+ *
+ * Shares the list filter so "export what I am looking at" is literally true, and
+ * caps at `limit + 1` so the caller can tell "truncated" from "exactly full"
+ * without a second count.
+ */
+export function listForExport(
+  db: Db,
+  filter: Omit<UserListFilter, 'page' | 'sort'>,
+  limit: number,
+  now: number,
+): UserListRow[] {
+  const { where, params } = buildFilter(filter, now)
+  return db
+    .prepare(
+      `${SELECT_WITH_ROLE} ${where}
+       ORDER BY u.created_at DESC LIMIT @limit`,
+    )
+    .all({ ...params, limit: limit + 1 }) as UserListRow[]
 }

@@ -42,3 +42,10 @@ export function consume(db: Db, id: string, now: number): boolean {
 export function pruneExpired(db: Db, now: number): number {
   return db.prepare('DELETE FROM password_reset_tokens WHERE expires_at < ?').run(now).changes
 }
+
+/** Void every unused reset token of one user (account anonymisation). */
+export function invalidateAllForUser(db: Db, userId: string, now: number): number {
+  return db
+    .prepare('UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL')
+    .run(now, userId).changes
+}

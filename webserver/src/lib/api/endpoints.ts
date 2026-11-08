@@ -41,6 +41,7 @@ export interface AdminUserDto {
   note: string
   mustChangePassword: boolean
   emailVerified: boolean
+  emailVerifiedAt: string | null
   lastLoginAt: string | null
   createdAt: string
   updatedAt: string
@@ -90,11 +91,37 @@ export const usersApi = {
       `${BASE}/admin/users/${id}/password-reset`,
       { mode: 'temp_password' },
     ),
+  /** Mark an address verified on behalf of a user who cannot receive mail. */
+  markEmailVerified: (id: string) =>
+    api.post<{ emailVerifiedAt: string }>(`${BASE}/admin/users/${id}/email-verify`),
+  /** Confirm a pending deletion for a user who lost access to the mailbox. */
+  confirmDeletion: (id: string, reason: string) =>
+    api.post<{ status: string; scheduledFor: string }>(`${BASE}/admin/users/${id}/deletion`, {
+      reason,
+    }),
   bulk: (body: BulkBody) =>
     api.post<{ requested: number; affected: string[]; skipped: { id: string; reason: string }[] }>(
       `${BASE}/admin/users/bulk`,
       body,
     ),
+}
+
+export interface AdminSessionRow {
+  id: string
+  userId: string
+  userEmail: string
+  userDisplayName: string
+  client: string
+  deviceName: string
+  platform: string
+  appVersion: string
+  deviceKeyPrefix: string
+  ip: string
+  createdAt: string
+  lastSeenAt: string
+  revokedAt: string | null
+  revokedReason: string | null
+  active: boolean
 }
 
 export const sessionsApi = {
@@ -104,8 +131,82 @@ export const sessionsApi = {
   /** Self-service revoke — another user's session answers 404 by design. */
   revokeMine: (sessionId: string) =>
     api.delete<{ revoked: boolean }>(`${BASE}/me/sessions/${sessionId}`),
+  /** Global list with URL-driven filters. */
+  list: (query: Record<string, string>) => {
+    const search = new URLSearchParams(query).toString()
+    return api.get<{ rows: AdminSessionRow[]; total: number }>(
+      `${BASE}/admin/sessions${search ? `?${search}` : ''}`,
+    )
+  },
+  revokeMany: (ids: string[], reason: string) =>
+    api.post<{ revoked: number; skipped: number }>(`${BASE}/admin/sessions/revoke`, {
+      ids,
+      reason,
+    }),
+}
+
+export interface MailRow {
+  id: string
+  template: string
+  toMasked: string
+  status: 'captured' | 'sent' | 'failed'
+  attempts: number
+  retryable: boolean
+  lastError: string
+  createdAt: string
+  sentAt: string | null
+}
+
+export const mailApi = {
+  list: (query: Record<string, string>) => {
+    const search = new URLSearchParams(query).toString()
+    return api.get<{ rows: MailRow[]; total: number }>(
+      `${BASE}/admin/mail${search ? `?${search}` : ''}`,
+    )
+  },
+  detail: (id: string) =>
+    api.get<MailRow & { subject: string; text: string }>(`${BASE}/admin/mail/${id}`),
+  retry: (id: string) =>
+    api.post<{ id: string; status: string; attempts: number; lastError: string }>(
+      `${BASE}/admin/mail/${id}/retry`,
+    ),
+}
+
+export interface MeProfileDto {
+  id: string
+  email: string
+  username: string
+  displayName: string
+  avatarUrl: string | null
+  locale: string
+  timezone: string
+  planTag: string
+  status: string
+  mustChangePassword: boolean
+  role: { id: string; key: string; name: string }
+  createdAt: string
+  lastLoginAt: string | null
+  emailVerified: boolean
+  emailVerifiedAt: string | null
+  pendingEmail: string | null
+  deletion: { status: 'awaiting_confirmation' | 'scheduled'; scheduledFor: string | null } | null
 }
 
 export const meApi = {
-  requestDeletion: () => api.post<{ requested: boolean }>(`${BASE}/me/deletion-request`),
+  profile: () => api.get<MeProfileDto>(`${BASE}/me`),
+  patch: (body: { displayName?: string; locale?: string; timezone?: string }) =>
+    api.patch<MeProfileDto>(`${BASE}/me`, body),
+  requestDeletion: (body: { password: string; reason?: string }) =>
+    api.post<{ requestId: string; requiresConfirmation: boolean; scheduledFor: string | null }>(
+      `${BASE}/me/deletion-request`,
+      body,
+    ),
+  cancelDeletion: () => api.delete<{ cancelled: boolean }>(`${BASE}/me/deletion-request`),
+  requestEmailChange: (body: { password: string; newEmail: string }) =>
+    api.post<{ pendingEmail: string; expiresAt: string }>(`${BASE}/me/email/change`, body),
+  cancelEmailChange: () => api.delete<{ cancelled: true }>(`${BASE}/me/email/change`),
+  resendVerification: () =>
+    api.post<{ sentAt: string; expiresAt: string }>(`${BASE}/auth/email/verify/resend`),
+  /** Export is a download, so it is a navigation rather than an XHR. */
+  exportUrl: () => `${BASE}/me/export`,
 }

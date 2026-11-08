@@ -56,6 +56,27 @@ export function listAll(db: Db): InviteListRow[] {
 }
 
 /**
+ * The invites one account issued — the data-export feed.
+ *
+ * `used_count` is the only redemption signal the schema keeps: there is no
+ * redemption table, so "which invite did I redeem" is not answerable and the
+ * export must not pretend otherwise. Filtering happens in SQL, not in memory.
+ */
+export function listByCreator(
+  db: Db,
+  userId: string,
+): { id: string; used_count: number; created_at: number; revoked_at: number | null }[] {
+  return db
+    .prepare(
+      `SELECT id, used_count, created_at, revoked_at
+         FROM registration_invites
+        WHERE created_by = ?
+        ORDER BY created_at DESC`,
+    )
+    .all(userId) as { id: string; used_count: number; created_at: number; revoked_at: number | null }[]
+}
+
+/**
  * Atomically consume one use.
  *
  * The WHERE clause carries the whole validity rule, so two concurrent

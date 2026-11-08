@@ -4,6 +4,7 @@ import { translator } from '@/lib/i18n'
 import { currentSession } from '@/lib/session'
 import { can } from '@/server/auth/guards'
 import * as settingsService from '@/server/services/settingsService'
+import * as mailService from '@/server/services/mailService'
 import { SettingsForm } from '@/components/console/settings-form'
 
 /** System settings — the values that change behaviour without a redeploy. */
@@ -16,6 +17,7 @@ export default async function AdminSettingsPage() {
 
   const locale = await resolveLocale()
   const tt = translator(locale)
+  const mail = mailService.capabilities()
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -26,6 +28,13 @@ export default async function AdminSettingsPage() {
         locale={locale}
         settings={settingsService.all() as Record<string, boolean | number | string>}
         canWrite={can(session, 'settings.write')}
+        mail={{
+          mode: mail.mode,
+          fromAddress: mail.fromAddress,
+          configured: mail.configured,
+          sent24h: mail.sent24h,
+          failed24h: mail.failed24h,
+        }}
       />
     </div>
   )

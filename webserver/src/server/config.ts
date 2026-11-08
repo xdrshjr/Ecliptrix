@@ -80,6 +80,8 @@ const envSchema = z.object({
   TRUST_PROXY: booleanish,
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   AUTO_MIGRATE: optionalString,
+  MAIL_SEND_TIMEOUT_MS: intInRange(500, 20000),
+  ECLIPTRIX_E2E: booleanish,
 })
 
 export interface ServerConfig {
@@ -114,6 +116,16 @@ export interface ServerConfig {
   readonly trustProxy: boolean
   readonly logLevel: 'debug' | 'info' | 'warn' | 'error'
   readonly autoMigrate: boolean
+  /**
+   * Upper bound on ONE SMTP attempt, applied to all three nodemailer timeouts
+   * (`connectionTimeout` / `greetingTimeout` / `socketTimeout`).
+   *
+   * Without it the only limit is nodemailer's default socketTimeout of one hour,
+   * which turns "the SMTP host is unreachable" into a hung register request.
+   */
+  readonly mailSendTimeoutMs: number
+  /** Playwright banner: never true in production, see `loadConfig`. */
+  readonly e2eMode: boolean
 }
 
 export class ConfigError extends Error {
@@ -182,6 +194,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     trustProxy: value.TRUST_PROXY ?? true,
     logLevel: value.LOG_LEVEL,
     autoMigrate: autoMigrateRaw === undefined ? nodeEnv !== 'production' : autoMigrateRaw === 'true',
+    mailSendTimeoutMs: value.MAIL_SEND_TIMEOUT_MS ?? 5000,
+    // A production deployment must never answer to the test flag, however the
+    // environment was assembled: E2E mode loosens CSRF-free guards and is only
+    // ever legitimate against a throwaway database.
+    e2eMode: nodeEnv !== 'production' && (nodeEnv === 'test' || value.ECLIPTRIX_E2E === true),
   })
 }
 

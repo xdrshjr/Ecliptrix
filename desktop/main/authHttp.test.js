@@ -299,6 +299,60 @@ async function run() {
       await server.close()
     })
 
+    await test('me asks GET /me with a Bearer header', async () => {
+      const server = await startServer(() => ({ body: ok({ id: 'user-1', emailVerified: true }) }))
+      const client = createAccountClient({ baseUrl: server.baseUrl, clientVersion: '1' })
+      const view = await client.me('access-token')
+      assert.strictEqual(view.emailVerified, true)
+      assert.strictEqual(server.requests[0].method, 'GET')
+      assert.strictEqual(server.requests[0].url, '/api/v1/me')
+      assert.strictEqual(server.requests[0].headers.authorization, 'Bearer access-token')
+      await server.close()
+    })
+
+    await test('updateProfile sends PATCH /me with only the fields given', async () => {
+      const server = await startServer(() => ({ body: ok({ displayName: 'Ada L' }) }))
+      const client = createAccountClient({ baseUrl: server.baseUrl, clientVersion: '1' })
+      await client.updateProfile('access-token', { displayName: 'Ada L' })
+      assert.strictEqual(server.requests[0].method, 'PATCH')
+      assert.strictEqual(server.requests[0].url, '/api/v1/me')
+      assert.deepStrictEqual(server.requests[0].body, { displayName: 'Ada L' })
+      await server.close()
+    })
+
+    await test('activity asks GET /me/activity with the fixed page window', async () => {
+      const server = await startServer(() => ({
+        body: ok({ items: [], page: { page: 1, pageSize: 30, total: 0, totalPages: 1 } }),
+      }))
+      const client = createAccountClient({ baseUrl: server.baseUrl, clientVersion: '1' })
+      await client.activity('access-token', { page: 1, pageSize: 30 })
+      assert.strictEqual(server.requests[0].method, 'GET')
+      assert.strictEqual(server.requests[0].url, '/api/v1/me/activity?page=1&pageSize=30')
+      await server.close()
+    })
+
+    await test('resendVerification posts to the resend path', async () => {
+      const server = await startServer(() => ({
+        body: ok({ sentAt: '2026-01-01T00:00:00.000Z', expiresAt: '2026-01-03T00:00:00.000Z' }),
+      }))
+      const client = createAccountClient({ baseUrl: server.baseUrl, clientVersion: '1' })
+      const result = await client.resendVerification('access-token')
+      assert.match(result.expiresAt, /^2026-01-03/)
+      assert.strictEqual(server.requests[0].method, 'POST')
+      assert.strictEqual(server.requests[0].url, '/api/v1/auth/email/verify/resend')
+      await server.close()
+    })
+
+    await test('mail_disabled keeps its own code so the UI can explain it', async () => {
+      const server = await startServer(() => fail(503, 'mail_disabled'))
+      const client = createAccountClient({ baseUrl: server.baseUrl, clientVersion: '1' })
+      await assert.rejects(
+        () => client.resendVerification('access-token'),
+        (err) => err.code === 'mail_disabled',
+      )
+      await server.close()
+    })
+
     await test('revokeSession sends DELETE to the session path', async () => {
       const server = await startServer(() => ({ body: ok({ revoked: true }) }))
       const client = createAccountClient({ baseUrl: server.baseUrl, clientVersion: '1' })

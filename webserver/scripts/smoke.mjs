@@ -555,15 +555,470 @@ async function main() {
     )
   }
 
-  // Deletion request: records intent, deletes nothing.
-  const deletionRequest = await call('/api/v1/me/deletion-request', { method: 'POST', csrf: true })
+  // ---- account lifecycle (migration 0005) ---------------------------------
+  // A dedicated throwaway account, because the interesting checks below either
+  // mutate the account (address change, deletion) or burn a per-account budget.
+  // The owner's jar is parked and restored for the admin sections.
+  const smtpEnabled = meta.json?.data?.smtpEnabled === true
+  const ownerJar = new Map(cookies)
+  const switchJar = (jar) => {
+    cookies.clear()
+    for (const [name, value] of jar) cookies.set(name, value)
+  }
+
+  const lifeEmail = `life-${Date.now()}@example.com`
+  cookies.clear()
+  const lifeRegistered = await call('/api/v1/auth/register', {
+    method: 'POST',
+    body: { email: lifeEmail, password, client: 'web' },
+  })
+  const lifeJar = new Map(cookies)
   check(
-    'POST /me/deletion-request → 200 without deleting the account',
-    deletionRequest.status === 200,
-    `got ${deletionRequest.status}`,
+    'the lifecycle account registers as unverified',
+    lifeRegistered.status === 201 && lifeRegistered.json?.data?.user?.emailVerified === false,
+    `got ${lifeRegistered.status}`,
   )
+
+  const lifeMeta = await call('/api/v1/meta')
+  check(
+    '/meta exposes emailVerificationRequired',
+    typeof lifeMeta.json?.data?.emailVerificationRequired === 'boolean',
+  )
+
+  const meLifecycle = await call('/api/v1/me')
+  check(
+    '/me exposes emailVerified, pendingEmail and deletion',
+    typeof meLifecycle.json?.data?.emailVerified === 'boolean' &&
+      'pendingEmail' in (meLifecycle.json?.data ?? {}) &&
+      'deletion' in (meLifecycle.json?.data ?? {}),
+  )
+
+  const verifyPage = await fetch(`${BASE}/verify-email?token=smoke-token-value-123456`, {
+    headers: { Cookie: cookieHeader() },
+  })
+  check('GET /verify-email renders the shell', verifyPage.status === 200)
+  check(
+    'the token pages send Referrer-Policy: no-referrer',
+    verifyPage.headers.get('referrer-policy') === 'no-referrer',
+    `got ${verifyPage.headers.get('referrer-policy') ?? 'none'}`,
+  )
+
+  const deletionPage = await fetch(`${BASE}/confirm-deletion?token=smoke-token-value-123456`, {
+    headers: { Cookie: cookieHeader() },
+  })
+  check('GET /confirm-deletion renders the shell', deletionPage.status === 200)
+
+  const bogusVerify = await call('/api/v1/auth/email/verify', {
+    method: 'POST',
+    body: { token: 'not-a-real-token-value' },
+  })
+  check(
+    'POST /auth/email/verify with an unknown token -> 400 token_invalid',
+    bogusVerify.status === 400 && bogusVerify.json?.error_code === 'token_invalid',
+    `got ${bogusVerify.status} ${bogusVerify.json?.error_code ?? ''}`,
+  )
+
+  const bogusDeletionConfirm = await call('/api/v1/auth/deletion/confirm', {
+    method: 'POST',
+    body: { token: 'not-a-real-token-value' },
+  })
+  check(
+    'POST /auth/deletion/confirm with an unknown token -> 400 token_invalid',
+    bogusDeletionConfirm.status === 400 &&
+      bogusDeletionConfirm.json?.error_code === 'token_invalid',
+    `got ${bogusDeletionConfirm.status}`,
+  )
+
+  const lifeResend = await call('/api/v1/auth/email/verify/resend', {
+    method: 'POST',
+    csrf: true,
+  })
+  check(
+    smtpEnabled
+      ? 'POST /auth/email/verify/resend -> 202 on an unverified account'
+      : 'POST /auth/email/verify/resend -> 503 mail_disabled without smtp',
+    smtpEnabled ? lifeResend.status === 202 : lifeResend.status === 503,
+    `got ${lifeResend.status} ${lifeResend.json?.error_code ?? ''}`,
+  )
+
+  // ---- admin override for "this user cannot receive mail" -----------------
+  const lifeId = lifeRegistered.json?.data?.user?.id
+  switchJar(ownerJar)
+  const markedVerified = await call(`/api/v1/admin/users/${lifeId}/email-verify`, {
+    method: 'POST',
+    csrf: true,
+  })
+  check(
+    'POST /admin/users/{id}/email-verify marks the address verified',
+    markedVerified.status === 200 && typeof markedVerified.json?.data?.emailVerifiedAt === 'string',
+    `got ${markedVerified.status} ${markedVerified.json?.error_code ?? ''}`,
+  )
+  const markedAgain = await call(`/api/v1/admin/users/${lifeId}/email-verify`, {
+    method: 'POST',
+    csrf: true,
+  })
+  check(
+    'a second admin verification answers 409 email_already_verified',
+    markedAgain.status === 409 && markedAgain.json?.error_code === 'email_already_verified',
+    `got ${markedAgain.status}`,
+  )
+
+  // ---- address change -----------------------------------------------------
+  switchJar(lifeJar)
+  const changeWrongPassword = await call('/api/v1/me/email/change', {
+    method: 'POST',
+    csrf: true,
+    body: { password: 'wrong-password-1', newEmail: `changed-${Date.now()}@example.com` },
+  })
+  check(
+    'POST /me/email/change with a wrong password -> 401 password_mismatch',
+    changeWrongPassword.status === 401 &&
+      changeWrongPassword.json?.error_code === 'password_mismatch',
+    `got ${changeWrongPassword.status}`,
+  )
+
+  const changeSame = await call('/api/v1/me/email/change', {
+    method: 'POST',
+    csrf: true,
+    body: { password, newEmail: lifeEmail },
+  })
+  check(
+    'changing to the current address -> 422 validation_failed',
+    changeSame.status === 422,
+    `got ${changeSame.status} ${changeSame.json?.error_code ?? ''}`,
+  )
+
+  const newAddress = `changed-${Date.now()}@example.com`
+  const changeAccepted = await call('/api/v1/me/email/change', {
+    method: 'POST',
+    csrf: true,
+    body: { password, newEmail: newAddress },
+  })
+  check(
+    smtpEnabled
+      ? 'POST /me/email/change -> 202 with a masked pending address'
+      : 'POST /me/email/change -> 503 mail_disabled without smtp',
+    smtpEnabled
+      ? changeAccepted.status === 202 &&
+          String(changeAccepted.json?.data?.pendingEmail ?? '').includes('***')
+      : changeAccepted.status === 503,
+    `got ${changeAccepted.status} ${changeAccepted.json?.error_code ?? ''}`,
+  )
+
+  const mePending = await call('/api/v1/me')
+  check(
+    'GET /me reports the pending address only in masked form',
+    smtpEnabled
+      ? typeof mePending.json?.data?.pendingEmail === 'string' &&
+          !String(mePending.json?.data?.pendingEmail).includes('changed-')
+      : mePending.json?.data?.pendingEmail === null,
+    JSON.stringify(mePending.json?.data?.pendingEmail ?? null),
+  )
+
+  const cancelChange = await call('/api/v1/me/email/change', { method: 'DELETE', csrf: true })
+  check(
+    smtpEnabled
+      ? 'DELETE /me/email/change -> 200 when a change is pending'
+      : 'DELETE /me/email/change -> 404 when no change could be started',
+    smtpEnabled ? cancelChange.status === 200 : cancelChange.status === 404,
+    `got ${cancelChange.status}`,
+  )
+  const cancelAgain = await call('/api/v1/me/email/change', { method: 'DELETE', csrf: true })
+  check('cancelling a change twice answers 404', cancelAgain.status === 404, `got ${cancelAgain.status}`)
+
+  // ---- data export --------------------------------------------------------
+  const exported = await call('/api/v1/me/export')
+  check(
+    'GET /me/export answers 200 with an attachment',
+    exported.status === 200 &&
+      (exported.headers.get('content-disposition') ?? '').startsWith('attachment;'),
+    `got ${exported.status}`,
+  )
+  check(
+    'the export carries the six documented blocks and no hash field',
+    exported.json?.format === 'ecliptrix.account.export' &&
+      Boolean(exported.json?.account) &&
+      Boolean(exported.json?.sessions) &&
+      Boolean(exported.json?.activity) &&
+      !JSON.stringify(exported.json).includes('_hash'),
+  )
+  const exportedAgain = await call('/api/v1/me/export')
+  check(
+    'a second export inside the cooldown answers 429 as json',
+    exportedAgain.status === 429 &&
+      (exportedAgain.headers.get('content-type') ?? '').includes('application/json') &&
+      exportedAgain.headers.get('content-disposition') === null,
+    `got ${exportedAgain.status}`,
+  )
+
+  // ---- real deletion ------------------------------------------------------
+  // Two throwaway accounts: one for the "missing/wrong password" probes (each call
+  // spends a slot of the per-account deletion budget) and one for the state machine.
+  const probeEmail = `probe-${Date.now()}@example.com`
+  cookies.clear()
+  await call('/api/v1/auth/register', {
+    method: 'POST',
+    body: { email: probeEmail, password, client: 'web' },
+  })
+  const deletionNoPassword = await call('/api/v1/me/deletion-request', {
+    method: 'POST',
+    csrf: true,
+    body: {},
+  })
+  check(
+    'POST /me/deletion-request without a password -> 422',
+    deletionNoPassword.status === 422,
+    `got ${deletionNoPassword.status}`,
+  )
+  const deletionWrongPassword = await call('/api/v1/me/deletion-request', {
+    method: 'POST',
+    csrf: true,
+    body: { password: 'definitely-not-it' },
+  })
+  check(
+    'POST /me/deletion-request with a wrong password -> 401',
+    deletionWrongPassword.status === 401,
+    `got ${deletionWrongPassword.status}`,
+  )
+
+  switchJar(lifeJar)
+  const deletionRequest = await call('/api/v1/me/deletion-request', {
+    method: 'POST',
+    csrf: true,
+    body: { password, reason: 'smoke test' },
+  })
+  check(
+    'POST /me/deletion-request -> 202 and never deletes immediately',
+    deletionRequest.status === 202,
+    `got ${deletionRequest.status} ${deletionRequest.json?.error_code ?? ''}`,
+  )
+  check(
+    'the response says whether a confirmation mail is required',
+    typeof deletionRequest.json?.data?.requiresConfirmation === 'boolean' &&
+      'scheduledFor' in (deletionRequest.json?.data ?? {}),
+  )
+  check(
+    'without smtp the request is scheduled immediately',
+    smtpEnabled
+      ? deletionRequest.json?.data?.requiresConfirmation === true
+      : deletionRequest.json?.data?.requiresConfirmation === false &&
+          typeof deletionRequest.json?.data?.scheduledFor === 'string',
+  )
+
   const stillThere = await call('/api/v1/me')
-  check('the account still exists after a deletion request', stillThere.status === 200)
+  check(
+    'the account still works while the request is live',
+    stillThere.status === 200 && stillThere.json?.data?.deletion !== null,
+  )
+
+  const secondRequest = await call('/api/v1/me/deletion-request', {
+    method: 'POST',
+    csrf: true,
+    body: { password },
+  })
+  check(
+    'a second request while one is live -> 409 deletion_pending',
+    secondRequest.status === 409 && secondRequest.json?.error_code === 'deletion_pending',
+    `got ${secondRequest.status} ${secondRequest.json?.error_code ?? ''}`,
+  )
+
+  const patchDuringDeletion = await call('/api/v1/me', {
+    method: 'PATCH',
+    csrf: true,
+    body: { displayName: 'Blocked Rename' },
+  })
+  check(
+    'PATCH /me is refused while a deletion is pending',
+    patchDuringDeletion.status === 409 && patchDuringDeletion.json?.error_code === 'deletion_pending',
+    `got ${patchDuringDeletion.status} ${patchDuringDeletion.json?.error_code ?? ''}`,
+  )
+
+  const cancelled = await call('/api/v1/me/deletion-request', { method: 'DELETE', csrf: true })
+  check(
+    'DELETE /me/deletion-request -> 200 and cancels',
+    cancelled.status === 200 && cancelled.json?.data?.cancelled === true,
+    `got ${cancelled.status}`,
+  )
+  const cancelDeletionAgain = await call('/api/v1/me/deletion-request', {
+    method: 'DELETE',
+    csrf: true,
+  })
+  check(
+    'cancelling a deletion twice answers 404',
+    cancelDeletionAgain.status === 404,
+    `got ${cancelDeletionAgain.status}`,
+  )
+  const afterCancel = await call('/api/v1/me')
+  check(
+    'the account is untouched after a cancelled deletion',
+    afterCancel.status === 200 && afterCancel.json?.data?.deletion === null,
+  )
+
+  const activity = await call('/api/v1/me/activity?page=1&pageSize=10')
+  check(
+    'GET /me/activity exposes a masked IP and the new self-service actions',
+    activity.status === 200 &&
+      Array.isArray(activity.json?.data?.items) &&
+      activity.json.data.items.every((item) => typeof item.ipMasked === 'string') &&
+      activity.json.data.items.some((item) => item.action.startsWith('account.deletion')),
+    `got ${activity.status}`,
+  )
+
+  // ---- admin session governance ------------------------------------------
+  switchJar(ownerJar)
+
+  const adminSessions = await call('/api/v1/admin/sessions?page=1&pageSize=10')
+  check(
+    'GET /admin/sessions lists rows with masked addresses and IPs',
+    adminSessions.status === 200 &&
+      Array.isArray(adminSessions.json?.data?.rows) &&
+      adminSessions.json?.data?.rows?.every(
+        (row) =>
+          row.userEmail.includes('***') && (/(x\.x|…)$/.test(row.ip) || row.ip === ''),
+      ),
+    `got ${adminSessions.status}`,
+  )
+
+  const activeSessionsOnly = await call(`/api/v1/admin/sessions?activeOnly=1&client=desktop`)
+  check(
+    'GET /admin/sessions honours activeOnly and client',
+    activeSessionsOnly.status === 200 &&
+      activeSessionsOnly.json?.data?.rows?.every((row) => row.active && row.client === 'desktop'),
+  )
+
+  const bulkRevokeUnknown = await call('/api/v1/admin/sessions/revoke', {
+    method: 'POST',
+    csrf: true,
+    body: { ids: ['does-not-exist-1'], reason: 'admin_revoke' },
+  })
+  check(
+    'POST /admin/sessions/revoke skips unknown ids instead of failing',
+    bulkRevokeUnknown.status === 200 &&
+      bulkRevokeUnknown.json?.data?.revoked === 0 &&
+      bulkRevokeUnknown.json?.data?.skipped === 1,
+    JSON.stringify(bulkRevokeUnknown.json?.data ?? null),
+  )
+
+  const bulkRevokeTooMany = await call('/api/v1/admin/sessions/revoke', {
+    method: 'POST',
+    csrf: true,
+    body: { ids: Array.from({ length: 101 }, (_, index) => `sess_${index}`) },
+  })
+  check(
+    'POST /admin/sessions/revoke refuses more than 100 ids (422)',
+    bulkRevokeTooMany.status === 422,
+    `got ${bulkRevokeTooMany.status}`,
+  )
+
+  const sessionsPage = await fetch(`${BASE}/admin/sessions`, { headers: { Cookie: cookieHeader() } })
+  check('GET /admin/sessions renders', sessionsPage.status === 200)
+
+  // ---- mail observability -------------------------------------------------
+  const mailList = await call('/api/v1/admin/mail?page=1&pageSize=10')
+  check(
+    'GET /admin/mail lists the outbox with masked recipients',
+    mailList.status === 200 &&
+      Array.isArray(mailList.json?.data?.rows) &&
+      mailList.json?.data?.rows?.every((row) => row.toMasked.includes('***')),
+    `got ${mailList.status}`,
+  )
+  check(
+    'outbox rows expose status, attempts and retryable',
+    (mailList.json?.data?.rows ?? []).every(
+      (row) =>
+        typeof row.status === 'string' &&
+        typeof row.attempts === 'number' &&
+        typeof row.retryable === 'boolean',
+    ),
+  )
+
+  const badMailFilter = await call('/api/v1/admin/mail?status=sentt')
+  check(
+    'GET /admin/mail with an unknown status -> 422 (not the whole table)',
+    badMailFilter.status === 422 && badMailFilter.json?.error_code === 'validation_failed',
+    `got ${badMailFilter.status} ${badMailFilter.json?.error_code ?? ''}`,
+  )
+
+  const mailPage = await fetch(`${BASE}/admin/mail`, { headers: { Cookie: cookieHeader() } })
+  check('GET /admin/mail renders', mailPage.status === 200)
+
+  const missingMail = await call('/api/v1/admin/mail/00000000-0000-4000-8000-000000000000')
+  check('GET /admin/mail/{unknown} -> 404', missingMail.status === 404, `got ${missingMail.status}`)
+
+  const settingsWithMail = await call('/api/v1/admin/settings')
+  const mailBlock = settingsWithMail.json?.data?.mail
+  check(
+    'GET /admin/settings includes the read-only mail capability block',
+    typeof mailBlock?.mode === 'string' &&
+      typeof mailBlock?.sent24h === 'number' &&
+      typeof mailBlock?.failed24h === 'number' &&
+      typeof mailBlock?.fromAddress === 'string',
+    JSON.stringify(mailBlock ?? null),
+  )
+  const mailPolicyPatch = await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: {
+      'account.deletionGraceHours': 72,
+      'account.exportCooldownMinutes': 60,
+      'audit.retentionDays': 180,
+    },
+  })
+  const mailPolicyRead = await call('/api/v1/admin/settings')
+  const policySettings = mailPolicyRead.json?.data?.settings ?? {}
+  check(
+    'the new account-policy settings round-trip',
+    mailPolicyPatch.status === 200 &&
+      policySettings['account.deletionGraceHours'] === 72 &&
+      policySettings['account.exportCooldownMinutes'] === 60 &&
+      policySettings['audit.retentionDays'] === 180,
+  )
+  const verificationGate = await call('/api/v1/admin/settings', {
+    method: 'PATCH',
+    csrf: true,
+    body: { 'mail.verificationRequired': true },
+  })
+  check(
+    smtpEnabled
+      ? 'enabling the verification gate is accepted with smtp configured'
+      : 'enabling the verification gate is refused without smtp (422)',
+    smtpEnabled ? verificationGate.status === 200 : verificationGate.status === 422,
+    `got ${verificationGate.status}`,
+  )
+
+  // ---- metrics and csv ----------------------------------------------------
+  const metrics30 = await call('/api/v1/admin/metrics?days=30')
+  check(
+    'GET /admin/metrics?days=30 returns the new series',
+    metrics30.status === 200 &&
+      metrics30.json?.data?.loginsTrend?.length === 30 &&
+      metrics30.json?.data?.sessionsTrend?.length === 30 &&
+      typeof metrics30.json?.data?.emailVerifiedRate === 'number' &&
+      typeof metrics30.json?.data?.pendingDeletions === 'number' &&
+      Array.isArray(metrics30.json?.data?.clientBreakdown),
+    `got ${metrics30.status}`,
+  )
+  const metricsInvalid = await call('/api/v1/admin/metrics?days=365')
+  check(
+    'GET /admin/metrics?days=365 -> 422',
+    metricsInvalid.status === 422,
+    `got ${metricsInvalid.status}`,
+  )
+
+  const csv = await call('/api/v1/admin/users/export')
+  check(
+    'GET /admin/users/export answers csv with an attachment',
+    csv.status === 200 &&
+      (csv.headers.get('content-type') ?? '').includes('text/csv') &&
+      (csv.headers.get('content-disposition') ?? '').includes('attachment'),
+    `got ${csv.status}`,
+  )
+  check(
+    'the csv keeps the documented header row',
+    csv.text.includes(
+      'email,username,display_name,role,status,plan_tag,email_verified,created_at,last_login_at,active_sessions',
+    ),
+  )
 
   console.log(`\n${passed} passed, ${failed} failed\n`)
   process.exit(failed === 0 ? 0 : 1)

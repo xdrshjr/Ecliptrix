@@ -25,6 +25,25 @@ type Handler = (deps: RouteDeps) => Promise<NextResponse> | NextResponse
 
 const MAX_BODY_BYTES = 64 * 1024
 
+/**
+ * Run the lazy housekeeping sweep without awaiting it.
+ *
+ * `next start` has no resident worker, so the "execute overdue deletions" step
+ * rides on the request path. It is fired AFTER the response is produced and is not
+ * awaited: the caller must never wait for another account's deletion, and
+ * `sweepIfDue` swallows its own failures.
+ */
+function scheduleSweep(): void {
+  void (async () => {
+    try {
+      const { sweepIfDue } = await import('@/server/services/maintenanceService')
+      sweepIfDue()
+    } catch {
+      // Never a request concern; the sweep logs its own problems.
+    }
+  })()
+}
+
 export function withContext(handler: Handler): (request: Request) => Promise<NextResponse> {
   return async (request: Request): Promise<NextResponse> => {
     const context = buildRequestContext(request)
@@ -42,6 +61,7 @@ export function withContext(handler: Handler): (request: Request) => Promise<Nex
       // that cannot be matched to a log line makes the id pointless for exactly
       // the case people need it — "it worked, but not the way I expected".
       response.headers.set(REQUEST_ID_HEADER, context.requestId)
+      scheduleSweep()
       return response
     } catch (error) {
       if (error instanceof AppError) {
@@ -120,6 +140,37 @@ export async function readOptionalJson<TSchema extends ZodTypeAny>(
     }
   }
   return readJson(request, schema)
+}
+
+/**
+ * Validate the query string against a schema.
+ *
+ * The list endpoints used to read `searchParams.get(...)` and *drop* anything
+ * unexpected, so `?status=sentt` silently returned every row instead of a `422`,
+ * and an unbounded `?template=` reached the repository. A schema also gives the
+ * caller the same `details.fields` shape the console already renders for bodies.
+ *
+ * Missing keys come through as `undefined` (not `''`), so optional fields stay
+ * optional and defaults apply.
+ */
+export function readSearch<TSchema extends ZodTypeAny>(
+  searchParams: URLSearchParams,
+  schema: TSchema,
+): z.infer<TSchema> {
+  const raw: Record<string, string> = {}
+  for (const [key, value] of searchParams.entries()) {
+    if (value !== '') raw[key] = value
+  }
+  try {
+    return schema.parse(raw) as z.infer<TSchema>
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new AppError(ERROR_CODE.validationFailed, '请求参数校验失败', {
+        details: { fields: fieldErrors(error) },
+      })
+    }
+    throw error
+  }
 }
 
 export { ok }

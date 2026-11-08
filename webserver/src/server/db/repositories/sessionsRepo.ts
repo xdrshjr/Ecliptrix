@@ -1,6 +1,13 @@
 import type { Db } from '@/server/db/client'
 import type { SessionClient, SessionRow } from '@/server/db/types'
-import { scalarCount } from '@/server/db/repositories/shared'
+import type { PageRequest } from '@/server/http/pagination'
+import {
+  likeContains,
+  likePrefix,
+  placeholders,
+  scalarCount,
+  scalarCountNamed,
+} from '@/server/db/repositories/shared'
 
 /**
  * Session storage.
@@ -218,6 +225,116 @@ export function countRefreshReuse(db: Db, userId: string): number {
     'SELECT COUNT(*) AS count FROM refresh_token_reuse_events WHERE user_id = ?',
     [userId],
   )
+}
+
+/** Distinct recent device keys, newest first — the "is this a new machine" probe. */
+export function recentDeviceKeys(db: Db, userId: string, limit = 5): string[] {
+  const rows = db
+    .prepare(
+      `SELECT device_key FROM sessions
+        WHERE user_id = ? AND device_key <> ''
+        GROUP BY device_key
+        ORDER BY MAX(last_seen_at) DESC
+        LIMIT ?`,
+    )
+    .all(userId, limit) as { device_key: string }[]
+  return rows.map((row) => row.device_key)
+}
+
+export const SESSION_SORT_COLUMNS = ['created_at', 'last_seen_at'] as const
+export type SessionSortColumn = (typeof SESSION_SORT_COLUMNS)[number]
+
+export interface AdminSessionFilter {
+  query?: string
+  client?: string
+  platform?: string
+  activeOnly?: boolean
+  sort: { column: SessionSortColumn; direction: 'ASC' | 'DESC' }
+  page: PageRequest
+}
+
+export interface AdminSessionRow extends SessionRow {
+  user_email: string
+  user_display_name: string
+}
+
+/**
+ * Every session of every user, for the console.
+ *
+ * The join is `INNER` on purpose: a session whose user row vanished cannot be
+ * administered and must not appear as a blank row.
+ */
+export function listAll(
+  db: Db,
+  filter: AdminSessionFilter,
+  now: number,
+): { rows: AdminSessionRow[]; total: number } {
+  const clauses: string[] = []
+  const params: Record<string, unknown> = { now }
+  if (filter.query) {
+    clauses.push(
+      `(u.email LIKE @prefix ESCAPE '\\' OR u.display_name LIKE @contains ESCAPE '\\'
+        OR s.device_name LIKE @contains ESCAPE '\\')`,
+    )
+    params.prefix = likePrefix(filter.query)
+    params.contains = likeContains(filter.query)
+  }
+  if (filter.client) {
+    clauses.push('s.client = @client')
+    params.client = filter.client
+  }
+  if (filter.platform) {
+    clauses.push('s.platform = @platform')
+    params.platform = filter.platform
+  }
+  if (filter.activeOnly) {
+    clauses.push('s.revoked_at IS NULL AND s.access_expires_at > @now')
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  const from = 'FROM sessions s JOIN users u ON u.id = s.user_id'
+
+  const total = scalarCountNamed(db, `SELECT COUNT(*) AS count ${from} ${where}`, params)
+  const rows = db
+    .prepare(
+      `SELECT s.*, u.email AS user_email, u.display_name AS user_display_name
+       ${from} ${where}
+       ORDER BY s.${filter.sort.column} ${filter.sort.direction}
+       LIMIT @limit OFFSET @offset`,
+    )
+    .all({ ...params, limit: filter.page.pageSize, offset: filter.page.offset }) as AdminSessionRow[]
+  return { rows, total }
+}
+
+export const MAX_BULK_REVOKE = 100
+
+/**
+ * Revoke up to 100 sessions in one statement.
+ *
+ * Ids that do not exist — or are already revoked — are skipped and counted rather
+ * than raising: a console operator selecting a stale row should not have the whole
+ * action fail. The cap lives in the repository so no route can forget it.
+ */
+export function revokeMany(
+  db: Db,
+  ids: readonly string[],
+  now: number,
+  reason: string,
+): { revoked: number; skipped: number } {
+  const unique = [...new Set(ids.filter(Boolean))].slice(0, MAX_BULK_REVOKE)
+  if (unique.length === 0) return { revoked: 0, skipped: 0 }
+  const select = db.prepare(
+    `SELECT id FROM sessions WHERE id IN (${placeholders(unique.length)})
+       AND revoked_at IS NULL`,
+  )
+  const live = (select.all(...unique) as { id: string }[]).map((row) => row.id)
+  if (live.length === 0) return { revoked: 0, skipped: unique.length }
+  const result = db
+    .prepare(
+      `UPDATE sessions SET revoked_at = @now, revoked_reason = @reason
+        WHERE revoked_at IS NULL AND id IN (${placeholders(live.length)})`,
+    )
+    .run({ now, reason }, ...live)
+  return { revoked: result.changes, skipped: unique.length - result.changes }
 }
 
 /**

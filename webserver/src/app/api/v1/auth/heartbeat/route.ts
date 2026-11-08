@@ -41,5 +41,11 @@ export const POST = withContext(async ({ request, context }) => {
     mustChangePassword: auth.user.must_change_password === 1,
     role: auth.role,
     permissions: auth.permissions,
+    // Round-tripped on every heartbeat so the desktop's cached `SessionUser` cannot
+    // go stale: without these two the window keeps showing "email not verified"
+    // (and the old display name) until the app is restarted, and
+    // `authController.statusSignature()` has nothing to detect a change from.
+    emailVerified: auth.user.email_verified_at !== null,
+    displayName: auth.user.display_name,
   })
 })

@@ -31,9 +31,26 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
     { href: '/account/activity', label: tt('account.activity'), section: 'account', permission: null },
     { href: '/admin', label: tt('admin.title'), section: 'admin', permission: 'users.read' },
     { href: '/admin/users', label: tt('admin.users.title'), section: 'admin', permission: 'users.read' },
+    {
+      href: '/admin/sessions',
+      label: tt('admin.sessions.title'),
+      section: 'admin',
+      permission: 'users.read',
+    },
     { href: '/admin/roles', label: tt('admin.roles.title'), section: 'admin', permission: 'roles.read' },
-    { href: '/admin/invites', label: tt('admin.invites.title'), section: 'admin', permission: 'invites.read' },
+    {
+      href: '/admin/invites',
+      label: tt('admin.invites.title'),
+      section: 'admin',
+      permission: 'invites.read',
+    },
     { href: '/admin/audit', label: tt('admin.audit.title'), section: 'admin', permission: 'audit.read' },
+    {
+      href: '/admin/mail',
+      label: tt('admin.mail.title'),
+      section: 'admin',
+      permission: 'settings.read',
+    },
     { href: '/admin/settings', label: tt('admin.settings.title'), section: 'admin', permission: 'settings.read' },
   ]
 

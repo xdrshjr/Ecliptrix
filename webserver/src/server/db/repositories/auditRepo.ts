@@ -113,6 +113,31 @@ export const SELF_VISIBLE_ACTIONS = [
   'user.register',
   'user.profile_updated',
   'authz.denied',
+  /**
+   * Account-lifecycle actions (migration 0005).
+   *
+   * This array is the entire contract of `/me/activity`: the query is
+   * `action IN (…)`, so an action missing here is invisible no matter how many
+   * rows it wrote. The whole email/export/deletion feature set would therefore
+   * ship "working but blank", and no existing test would go red — which is exactly
+   * the defect this block fixes. Anything self-service belongs here; anything
+   * administrative (bulk revoke, CSV export, settings) must NOT.
+   */
+  'auth.email_verified',
+  'auth.email_verify_resent',
+  'auth.email_verify_blocked_login',
+  'user.email_change_requested',
+  'user.email_change_cancelled',
+  'user.email_changed',
+  'user.email_verified_by_admin',
+  'user.exported',
+  // `user.deletion_requested` stays for historical rows written before 0005.
+  'user.deletion_requested',
+  'account.deletion_requested',
+  'account.deletion_scheduled',
+  'account.deletion_cancelled',
+  'account.deletion_confirmed_by_admin',
+  'account.deleted',
 ] as const
 
 export function listForUser(
@@ -138,6 +163,29 @@ export function listForUser(
     )
     .all(...args, page.pageSize, page.offset) as AuditRow[]
   return { rows, total }
+}
+
+/**
+ * Every event a user is the actor or the target of — the data-export feed.
+ *
+ * Deliberately NOT `listForUser`: that one is the console's self-service
+ * timeline, windowed to 90 days and filtered by the `SELF_VISIBLE_ACTIONS`
+ * allowlist. An export must hand back the account holder's own history in full,
+ * which is the one case where the allowlist is the wrong instrument.
+ */
+export function listForExport(
+  db: Db,
+  userId: string,
+  limit: number,
+): { rows: AuditRow[]; truncated: boolean } {
+  const rows = db
+    .prepare(
+      `SELECT * FROM audit_events
+        WHERE (actor_user_id = ? OR (target_type = 'user' AND target_id = ?))
+        ORDER BY created_at DESC LIMIT ?`,
+    )
+    .all(userId, userId, limit + 1) as AuditRow[]
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit }
 }
 
 /** Last recorded metadata for a target+action — used to restore a soft delete. */

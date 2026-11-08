@@ -4018,6 +4018,11 @@ export interface Translations {
       passwordMismatch: string;
       termsRequired: string;
       required: string;
+      // Account lifecycle (migration 0005).
+      emailUnverified: string;
+      accountDeleted: string;
+      deletionPending: string;
+      mailDisabled: string;
       unknown: string;
     };
     local: {
@@ -4040,9 +4045,38 @@ export interface Translations {
     gateDisabled: { badge: string };
     session: { plaintext: string };
     dev: { badge: string };
+    /**
+     * The signed-out screen for a session whose account was closed. It is NOT a
+     * login-screen banner: only someone holding a dead session sees it, so it
+     * cannot be used to ask "does this address exist".
+     */
+    deleted: { title: string; body: string; signInOther: string };
     reset: { sent: string; contactAdmin: string };
     outdated: { title: string; current: string; minimum: string };
     accountCenter: { unavailable: string };
+    /**
+     * Account centre (migration 0005): four tabs plus the copy used when the main
+     * process does not provide the four new channels.
+     */
+    account: {
+      title: string;
+      tabs: { profile: string; devices: string; security: string; activity: string };
+      profile: { saved: string; emailManaged: string };
+      verified: string;
+      unverified: string;
+      unverifiedHint: string;
+      resend: string;
+      resent: string;
+      pendingEmail: string;
+      deletion: { requested: string; scheduled: string };
+      activity: { empty: string; more: string };
+      openInBrowser: string;
+      browserUnavailable: string;
+      degraded: string;
+      close: string;
+      loading: string;
+      failed: string;
+    };
     retry: string;
     logs: string;
     logoutConfirm: string;
@@ -8362,6 +8396,10 @@ export const translations: Record<string, Translations> = {
         inviteRequired: 'Registration on this server needs an invite code.',
         inviteInvalid: 'That invite code is not valid or has been used up.',
         registrationDisabled: 'This server is not accepting new sign-ups. Ask an administrator for an account.',
+        emailUnverified: 'Verify your email address before signing in. Open the link we mailed you, then try again.',
+        accountDeleted: 'This account was deleted and can no longer sign in.',
+        deletionPending: 'A deletion request is already in progress for this account.',
+        mailDisabled: 'This deployment cannot send mail, so this action is unavailable. Ask an administrator.',
         passwordMismatch: 'The two passwords do not match.',
         termsRequired: 'Accept the terms to continue.',
         required: 'This field is required.',
@@ -8413,6 +8451,11 @@ export const translations: Record<string, Translations> = {
       gateDisabled: { badge: 'Identity gate is disabled (ECLIPTRIX_AUTH_GATE=off)' },
       session: { plaintext: 'This device cannot encrypt the session file; tokens are stored in plain text — do not use it on a shared machine.' },
       dev: { badge: 'Development mode: identity gate disabled' },
+      deleted: {
+        title: 'This account has been closed',
+        body: 'The account was deleted and can no longer sign in. Its personal data has been removed; audit records are kept anonymously.',
+        signInOther: 'Sign in with another account',
+      },
       reset: {
         sent: 'If that email exists, a reset link has been sent.',
         contactAdmin: 'Self-service reset is unavailable. Ask an administrator for a one-time password.',
@@ -8424,6 +8467,32 @@ export const translations: Record<string, Translations> = {
       },
       accountCenter: {
         unavailable: 'Cannot open the account centre right now. Retry later or contact {email}.',
+      },
+      account: {
+        title: 'Account centre',
+        tabs: { profile: 'Profile', devices: 'Devices', security: 'Security', activity: 'Activity' },
+        profile: {
+          saved: 'Profile saved',
+          emailManaged: 'Ask an administrator to change your email address',
+        },
+        verified: 'Verified',
+        unverified: 'Not verified',
+        unverifiedHint: 'Verify {email} so the account can be recovered if the password is lost.',
+        resend: 'Resend the verification mail',
+        resent: 'Verification mail sent again',
+        pendingEmail: 'Awaiting confirmation: {email}',
+        deletion: { requested: 'A deletion request is in progress', scheduled: 'Deletion on {date}' },
+        activity: {
+          empty: 'Nothing to show yet',
+          more: 'Older activity is available in the web account centre',
+        },
+        openInBrowser: 'Open the account centre in a browser',
+        browserUnavailable: 'The account service address is unknown, so this cannot be opened',
+        degraded:
+          'This build cannot manage the account here. Status and devices still work; use the browser for the rest.',
+        close: 'Close',
+        loading: 'Loading…',
+        failed: 'Could not load the account data',
       },
       retry: 'Retry',
       logs: 'Log directory',
@@ -12737,6 +12806,10 @@ export const translations: Record<string, Translations> = {
         inviteRequired: '本服务器需要邀请码才能注册。',
         inviteInvalid: '邀请码无效或已被用完。',
         registrationDisabled: '本服务器当前不接受新注册，请联系管理员开通账号。',
+        emailUnverified: '请先验证邮箱再登录：打开我们发送的邮件里的链接，然后重试。',
+        accountDeleted: '该账号已注销，无法再登录。',
+        deletionPending: '该账号已有进行中的注销申请。',
+        mailDisabled: '当前部署未配置邮件服务，该操作暂不可用，请联系管理员。',
         passwordMismatch: '两次输入的口令不一致。',
         termsRequired: '请先同意服务条款。',
         required: '此项为必填。',
@@ -12788,6 +12861,11 @@ export const translations: Record<string, Translations> = {
       gateDisabled: { badge: '身份闸门已关闭（ECLIPTRIX_AUTH_GATE=off）' },
       session: { plaintext: '本机无法加密会话文件，登录凭证以明文保存；请勿在共用电脑上使用。' },
       dev: { badge: '开发模式：身份闸门未启用' },
+      deleted: {
+        title: '该账号已注销',
+        body: '账号已被注销，无法再登录。个人数据已移除，审计记录以匿名形式保留。',
+        signInOther: '使用其他账号登录',
+      },
       reset: {
         sent: '若该邮箱存在，重置链接已发出。',
         contactAdmin: '暂不支持自助重置，请联系管理员签发一次性口令。',
@@ -12799,6 +12877,31 @@ export const translations: Record<string, Translations> = {
       },
       accountCenter: {
         unavailable: '暂时无法打开账号中心，请稍后重试或联系 {email}。',
+      },
+      account: {
+        title: '账号中心',
+        tabs: { profile: '资料', devices: '设备', security: '安全', activity: '活动' },
+        profile: {
+          saved: '资料已保存',
+          emailManaged: '如需更换邮箱，请联系管理员',
+        },
+        verified: '已验证',
+        unverified: '未验证',
+        unverifiedHint: '请验证 {email}，这样忘记口令时还能找回账号。',
+        resend: '重新发送验证邮件',
+        resent: '验证邮件已重新发送',
+        pendingEmail: '待确认的新邮箱：{email}',
+        deletion: { requested: '注销申请进行中', scheduled: '将于 {date} 执行注销' },
+        activity: {
+          empty: '暂时没有可展示的活动',
+          more: '更早的活动可在网页账号中心查看',
+        },
+        openInBrowser: '在浏览器中打开账号中心',
+        browserUnavailable: '账号服务地址未知，无法打开',
+        degraded: '当前版本无法在这里管理账号；状态与设备可用，其余请在浏览器中完成。',
+        close: '关闭',
+        loading: '加载中…',
+        failed: '无法加载账号数据',
       },
       retry: '重试',
       logs: '日志目录',

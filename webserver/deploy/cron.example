@@ -1,0 +1,44 @@
+# Scheduled maintenance for the account server.
+#
+# Two jobs, both idempotent, both safe to run while the service is live:
+#   db:prune        retention (audit / outbox / tokens / reuse events)
+#   accounts:sweep  execute deletions whose grace period has elapsed
+#
+# `next start` has no resident worker, so the deletion sweep normally rides on the
+# request path (at most once an hour). A cron entry makes it punctual instead of
+# "sometime in the next hour" — worth having, but the system works without it.
+#
+# Install (Linux, as the service user):
+#   sudo cp deploy/cron.example /etc/cron.d/ecliptrix-webserver
+#   sudo chown root:root /etc/cron.d/ecliptrix-webserver
+#   sudo chmod 644 /etc/cron.d/ecliptrix-webserver
+#
+# Verify the paths below point at the deployment directory and that the user can
+# write DATABASE_PATH before enabling it.
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# Nightly backup + retention at 03:10 (audit retention comes from the setting).
+10 3 * * * ecliptrix cd /srv/ecliptrix-webserver && npm run db:backup >> /var/log/ecliptrix-backup.log 2>&1
+20 3 * * * ecliptrix cd /srv/ecliptrix-webserver && npm run db:prune  >> /var/log/ecliptrix-prune.log 2>&1
+
+# Deletion sweep every 15 minutes. The lazy in-request sweep already runs hourly;
+# this only shortens the worst case for a user who asked to be deleted.
+*/15 * * * * ecliptrix cd /srv/ecliptrix-webserver && npm run accounts:sweep >> /var/log/ecliptrix-sweep.log 2>&1
+
+# ---------------------------------------------------------------------------
+# Windows (the primary platform for this project) — no cron.
+#
+# Register the two equivalents with Task Scheduler, running as the account that
+# owns the database directory:
+#
+#   schtasks /Create /TN "Ecliptrix db:prune" /SC DAILY /ST 03:20 ^
+#     /TR "cmd /c cd /d C:\\ecliptrix\\webserver && npm run db:prune >> C:\\ecliptrix\\logs\\prune.log 2>&1"
+#
+#   schtasks /Create /TN "Ecliptrix accounts:sweep" /SC MINUTE /MO 15 ^
+#     /TR "cmd /c cd /d C:\\ecliptrix\\webserver && npm run accounts:sweep >> C:\\ecliptrix\\logs\\sweep.log 2>&1"
+#
+# Before the first real run, check the blast radius with `--dry-run` for both:
+#   npm run db:prune -- --dry-run
+#   npm run accounts:sweep -- --dry-run

@@ -28,6 +28,19 @@ export const REVOKE_REASON = {
    * retired so a reinstall does not burn a slot of the per-user session budget.
    */
   sameDeviceRelogin: 'same_device_relogin',
+  /** The account holder confirmed a new address; every other session is retired. */
+  emailChanged: 'email_changed',
+  /**
+   * Self-service deletion executed by the sweeper. Distinct from `deleted`
+   * (which an administrator triggers): the audit trail must be able to tell
+   * "an admin deleted this" from "the owner closed their own account", even
+   * though the desktop maps both onto the same `account-deleted` reason.
+   */
+  accountDeleted: 'account_deleted',
+  /** Bulk revoke from the console lockdown switch. */
+  adminLockdown: 'admin_lockdown',
+  /** Bulk revoke after a suspected compromise. */
+  securityIncident: 'security_incident',
 } as const
 
 export type RevokeReason = (typeof REVOKE_REASON)[keyof typeof REVOKE_REASON]
@@ -69,6 +82,29 @@ export const ERROR_CODE = {
   payloadTooLarge: 'payload_too_large',
   serviceUnavailable: 'service_unavailable',
   internalError: 'internal_error',
+  /**
+   * The account's address is unverified and `mail.verificationRequired` is on.
+   * Only `POST /auth/login` raises it — register must never, because a brand-new
+   * account is by definition unverified and blocking it would close the door on
+   * every new user (and leave the verification mail with no recipient).
+   */
+  emailNotVerified: 'email_not_verified',
+  /** "Resend the verification mail" on an account that is already verified. */
+  emailAlreadyVerified: 'email_already_verified',
+  /**
+   * A mailed one-time token that is unknown, expired, already used, or of the
+   * wrong purpose. Deliberately one code: distinguishing them would let a caller
+   * probe which tokens ever existed.
+   */
+  tokenInvalid: 'token_invalid',
+  /** A deletion request is in flight, so profile changes are refused. */
+  deletionPending: 'deletion_pending',
+  /**
+   * The action requires mail, and mail is not configured. The only sanctioned
+   * exception to "a mail outage never changes an API result", together with the
+   * administrator-issued password reset.
+   */
+  mailDisabled: 'mail_disabled',
 } as const
 
 export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE]

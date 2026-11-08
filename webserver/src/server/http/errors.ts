@@ -64,6 +64,11 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   payload_too_large: 413,
   service_unavailable: 503,
   internal_error: 500,
+  email_not_verified: 403,
+  email_already_verified: 409,
+  token_invalid: 400,
+  deletion_pending: 409,
+  mail_disabled: 503,
 }
 
 /** Shorthands for the failures raised more than once. */
@@ -90,6 +95,16 @@ export const errors = {
   clientOutdated: (minVersion: string) =>
     new AppError(ERROR_CODE.clientOutdated, `客户端版本过低，请升级到 ${minVersion} 或更高版本`, {
       details: { minVersion },
+    }),
+  /**
+   * A mailed link that cannot be honoured. One code for unknown/expired/used/
+   * wrong-purpose: the caller must not learn which (spec §5.1).
+   */
+  tokenInvalid: (message = '链接无效或已过期') => new AppError(ERROR_CODE.tokenInvalid, message),
+  /** The action needs mail and this deployment has no SMTP. */
+  mailDisabled: () =>
+    new AppError(ERROR_CODE.mailDisabled, '当前部署未配置邮件服务，无法发送邮件', {
+      details: { reason: 'mail_disabled' },
     }),
 } as const
 

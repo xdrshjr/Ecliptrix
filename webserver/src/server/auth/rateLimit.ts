@@ -119,4 +119,19 @@ export const LIMITS = {
   adminWrite: { limit: 120, windowMs: MINUTE },
   heartbeatSession: { limit: 60, windowMs: HOUR },
   readUser: { limit: 600, windowMs: MINUTE },
+  /** Resend a verification mail: per account and per source address. */
+  mailVerifyResend: { limit: 3, windowMs: HOUR },
+  mailVerifyResendIp: { limit: 10, windowMs: HOUR },
+  mailChangeEmail: { limit: 3, windowMs: 24 * HOUR },
+  mailInvite: { limit: 60, windowMs: HOUR },
+  mailDeletion: { limit: 3, windowMs: HOUR },
+  /**
+   * The two session-less consumers (`/auth/email/verify`, `/auth/deletion/confirm`).
+   * The token is 32 random bytes and cannot be brute-forced, but each call does a
+   * database lookup and possibly an audit write, so an unbudgeted endpoint is a
+   * free amplification surface.
+   */
+  emailVerifyConsume: { limit: 60, windowMs: HOUR },
+  /** Data export is expensive and is meant to be occasional. */
+  accountExport: { limit: 10, windowMs: HOUR },
 } as const

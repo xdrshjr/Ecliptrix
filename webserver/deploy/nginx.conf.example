@@ -73,6 +73,20 @@ server {
         proxy_buffering off;
     }
 
+    # The two routes whose URL carries a one-time token. `add_header` replaces the
+    # inherited set for this location, so Referrer-Policy has to be spelled out
+    # here; the application sends `no-referrer` for them as well (middleware).
+    location ~ ^/(verify-email|confirm-deletion) {
+        proxy_pass http://ecliptrix_webserver;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection        "";
+        add_header Referrer-Policy "no-referrer" always;
+    }
+
     location / {
         proxy_pass http://ecliptrix_webserver;
         proxy_http_version 1.1;

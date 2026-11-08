@@ -66,8 +66,13 @@ Content-Type：`application/json; charset=utf-8`
 | `rate_limited` | 429 | 限流（带 `Retry-After`） |
 | `csrf_failed` | 403 | CSRF 校验失败 |
 | `payload_too_large` | 413 | body > 64 KB |
-| `service_unavailable` | 503 | 维护 / DB 不可用 / 未配置邮件 |
+| `service_unavailable` | 503 | 维护 / DB 不可用 |
 | `internal_error` | 500 | 未预期错误 |
+| `email_not_verified` | 403 | 开启 `mail.verificationRequired` 后未验证的**桌面端**登录（`details.redirect`）；**只**由 `POST /auth/login` 返回，注册永不返回 |
+| `email_already_verified` | 409 | 对已验证地址请求重发 / 再次标记已验证 |
+| `token_invalid` | 400 | 邮件令牌无效/过期/已用/用途不符（不细分，防探测） |
+| `deletion_pending` | 409 | 已有进行中的注销申请（`POST/DELETE /me/email/change`、`PATCH /me`） |
+| `mail_disabled` | 503 | 该动作必须有邮件而部署未配置 SMTP（重发验证信、换邮箱、管理员代发重置链接） |
 
 ---
 
@@ -109,9 +114,13 @@ curl -s http://127.0.0.1:8787/api/v1/health
   "version": "0.1.0",
   "minClientVersion": "",
   "maintenanceMessage": "",
-  "maxActiveSessions": 10
+  "maxActiveSessions": 10,
+  "emailVerificationRequired": false
 }
 ```
+
+`emailVerificationRequired` 是「桌面端未验证邮箱不得登录」的开关（`mail.verificationRequired`，
+无 SMTP 时强制为 `false`）。网页端登录永不受它限制，注册也永不施加该闸门。
 
 三个闸门字段（都来自 `app_settings`，可在 `/admin/settings` 热改，无需重启）：
 
@@ -203,7 +212,48 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/auth/heartbeat \
 
 ```json
 { "ok": true, "sessionId": "…", "userId": "…", "expiresAt": "…", "revoked": false,
-  "mustChangePassword": false, "role": { "key": "member" }, "permissions": [] }
+  "mustChangePassword": false, "role": { "key": "member" }, "permissions": [],
+  "emailVerified": true, "displayName": "Ada" }
+```
+
+`emailVerified` 与 `displayName` 每次都回传：桌面主进程把它们写回缓存的
+`SessionUser` 快照，并在变化时推送 `auth:changed`。少了这两个字段，用户在会话期间完成
+邮箱验证（或在账号中心改了昵称）后，标题栏与账号中心会一直显示旧值直到重启。
+
+任何 401 都带 `error.details.reason`（`session_expired` / `session_revoked` + 吊销理由 /
+`deleted` / `suspended` / `account_deleted`）：客户端靠它区分「刷新即可」和「别再重试」。
+
+### `POST /auth/email/verify`
+
+无会话：令牌本身即凭据。邮件里的链接由 `/verify-email` 页面在**客户端**消费（GET 不生效，避免邮件扫描器烧掉令牌）。
+
+会话是**可选**的，且只用于一件事：换邮箱确认会吊销「其他」会话，正在点击链接的那个浏览器
+保留自己的会话（否则用户会在自己眼前的页面上被登出）。
+
+```bash
+curl -s -X POST http://127.0.0.1:8787/api/v1/auth/email/verify \
+  -H 'Content-Type: application/json' -d '{"token":"…"}'
+# → 200 { "email": "a@b.c", "verifiedAt": "…", "changed": false }
+# → 200 { "email": "new@b.c", "verifiedAt": "…", "changed": true, "sessionsRevoked": 2 }
+# → 400 token_invalid
+```
+
+### `POST /auth/email/verify/resend`
+
+需会话 + CSRF（Cookie）或 Bearer。限流：3/h/账号 + 10/h/IP。
+
+```bash
+# → 202 { "sentAt": "…", "expiresAt": "…" }
+# → 409 email_already_verified | 429 rate_limited | 503 mail_disabled
+```
+
+### `POST /auth/deletion/confirm`
+
+无会话，令牌即凭据，限流 60/h/IP。确认后**只是排期**（`now + account.deletionGraceHours`），期间仍可取消。
+
+```bash
+# → 200 { "scheduledFor": "…" }
+# → 400 token_invalid | 409 conflict（已取消/已完成）
 ```
 
 ### `GET /auth/session`
@@ -249,8 +299,12 @@ SMTP 未配置时不发信、不报错，管理端改用一次性口令。
 | PATCH | `/me` | 改 `displayName/avatarUrl/locale/timezone`（`.strict()`，其他字段 → 422） |
 | GET | `/me/sessions` | 本人设备列表（含 `current` 标记与 `deviceKey`） |
 | DELETE | `/me/sessions/{id}` | 撤销本人某设备；他人会话 → 404 |
-| GET | `/me/activity` | 本人 90 天白名单事件 |
-| POST | `/me/deletion-request` | 记录注销申请（写审计 `user.deletion_requested`，**不删除账号**） |
+| GET | `/me/activity` | 本人 90 天白名单事件（每行带 `ipMasked`，原始 `ip` 亦返回但桌面端只用遮罩值） |
+| POST | `/me/deletion-request` | **开启真实注销流程**（需口令）：有邮件 → `awaiting_confirmation` + 确认邮件；无邮件 → 直接 `scheduled`。`202` |
+| DELETE | `/me/deletion-request` | 取消进行中的注销申请（`200`；无申请 → `404`） |
+| POST | `/me/email/change` | 发起换邮箱（需口令）；双封信（新址确认 + 旧址通知）；`202`。无 SMTP → `503 mail_disabled` |
+| DELETE | `/me/email/change` | 取消待确认的换邮箱（`200`；无待确认 → `404`） |
+| GET | `/me/export` | 数据导出附件（JSON，`Content-Disposition: attachment`），冷却期见 `account.exportCooldownMinutes` |
 
 ```bash
 curl -s http://127.0.0.1:8787/api/v1/me \
@@ -274,18 +328,29 @@ curl -s http://127.0.0.1:8787/api/v1/me \
 { "id": "…", "email": "owner@example.com", "username": "owner", "displayName": "owner",
   "avatarUrl": null, "locale": "zh-CN", "timezone": "Asia/Shanghai", "planTag": "studio",
   "status": "active", "mustChangePassword": false,
+  "emailVerified": true, "emailVerifiedAt": "…",
+  "pendingEmail": null,
+  "deletion": null,
   "role": { "id": "…", "key": "owner", "name": "超级管理员" },
   "createdAt": "…", "lastLoginAt": "…" }
 ```
 
-`PATCH /me` 白名单之外（`email`、`status`、`roleId`、`planTag`）→ `422 validation_failed`。
+`pendingEmail` 是**脱敏**的待确认地址（`n***@b.c`）：未确认之前它还不是既成事实。
+`deletion` 为 `null` 或 `{ status: 'awaiting_confirmation' | 'scheduled', scheduledFor }`。
 
-`POST /me/deletion-request` 只表达意图：账号继续可用，直到管理员处理审计记录。自助硬删除不在本轮范围内。
+`PATCH /me` 白名单之外（`email`、`status`、`roleId`、`planTag`）→ `422 validation_failed`；
+注销申请进行中时 `PATCH /me` → `409 deletion_pending`。
 
 ```bash
+# 注销申请（需口令；无 SMTP 时直接排期）
 curl -s -X POST http://127.0.0.1:8787/api/v1/me/deletion-request \
-  -H 'Cookie: ecs_session=…; ecs_csrf=…' -H "X-CSRF-Token: $CSRF"
-# → { "success": true, "data": { "requested": true } }
+  -H 'Cookie: ecs_session=…; ecs_csrf=…' -H "X-CSRF-Token: $CSRF" \
+  -H 'Content-Type: application/json' -d '{"password":"…","reason":"不再使用"}'
+# → 202 { "requestId": "…", "requiresConfirmation": true, "scheduledFor": null }
+
+# 导出（成功体是附件；错误体仍是 JSON 信封）
+curl -s -D - -o account.json http://127.0.0.1:8787/api/v1/me/export \
+  -H 'Cookie: ecs_session=…'
 ```
 
 ---
@@ -313,6 +378,13 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/me/deletion-request \
 | DELETE | `/admin/invites/{id}` | `invites.write` |
 | GET | `/admin/audit` | `audit.read` |
 | GET/PATCH | `/admin/settings` | `settings.read` / `settings.write` |
+| GET | `/admin/sessions` | `users.read`（列表；邮箱与 IP 脱敏） |
+| POST | `/admin/sessions/revoke` | `sessions.revoke`（≤100 个 id，一条聚合审计） |
+| GET | `/admin/mail` · `/admin/mail/{id}` | `settings.read` |
+| POST | `/admin/mail/{id}/retry` | `users.write` |
+| GET | `/admin/users/export` | `users.read`（CSV 附件） |
+| POST | `/admin/users/{id}/email-verify` | `users.write` |
+| POST | `/admin/users/{id}/deletion` | `users.delete`（管理员代确认注销） |
 
 ### `GET /admin/users`
 
@@ -391,7 +463,12 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/admin/users \
 -d '{"registration.enabled":false,"invite.required":true,"security.loginMaxAttempts":5}'
 ```
 
-白名单与类型：`registration.enabled:boolean`、`invite.required:boolean`、`security.loginMaxAttempts:int 3..20`、`security.loginLockMinutes:int 1..1440`、`security.maxActiveSessions:int 1..50`、`session.webTtlHours:int 1..168`、`session.desktopRefreshDays:int 7..365`、`client.minVersion:string≤20`、`app.maintenanceMessage:string≤200`、`branding.appName:string≤40`、`branding.supportEmail:string`。越界 → `422`（`details.fields`）。
+白名单与类型（共 **19** 个键）：`registration.enabled:boolean`、`invite.required:boolean`、`security.loginMaxAttempts:int 3..20`、`security.loginLockMinutes:int 1..1440`、`security.maxActiveSessions:int 1..50`、`session.webTtlHours:int 1..168`、`session.desktopRefreshDays:int 7..365`、`client.minVersion:string≤20`、`app.maintenanceMessage:string≤200`、`branding.appName:string≤40`、`branding.supportEmail:string`，
+以及邮件与账号生命周期分组：`mail.verificationRequired:boolean`、`mail.verificationTtlHours:int 1..168`（默认 48）、`mail.emailChangeTtlHours:int 1..72`（默认 24）、`mail.notifyNewDevice:boolean`、`mail.notifyPasswordChange:boolean`、`account.deletionGraceHours:int 1..720`（默认 72）、`account.exportCooldownMinutes:int 1..1440`（默认 60）、`audit.retentionDays:int 30..3650`（默认 180，`npm run db:prune` 读取）。越界 → `422`（`details.fields`）。
+
+无 SMTP 时 `mail.verificationRequired` 在**读和写两侧都被夹紧为 `false`**：写入 `true` 回答 `422`，`GET` 也永远返回 `false`。否则管理员打开开关的同时没有任何投递通道，全体桌面端用户会被 403 锁在门外。
+
+`GET /admin/settings` 返回 `{settings, available, mail}`：`mail` 是只读能力块（`mode` / `fromAddress` / `configured` / `sent24h` / `failed24h` / `sendTimeoutMs`），不是可写键。
 
 `client.minVersion` / `app.maintenanceMessage` / `security.maxActiveSessions` 是桌面端闸门：
 
@@ -409,9 +486,63 @@ curl -s -X PATCH http://127.0.0.1:8787/api/v1/admin/settings \
 -d '{"security.maxActiveSessions":5}'
 ```
 
-`GET /admin/settings` 返回 `{ settings, available }`，`settings` 是上述键的完整快照（缺失行回落默认值）。
+`GET /admin/settings` 返回 `{ settings, available, mail }`，`settings` 是上述 19 个键的完整快照（缺失行回落默认值），`mail` 是只读能力块（见 `PATCH /admin/settings` 一节）。
 
 ---
+
+### `GET /admin/sessions` / `POST /admin/sessions/revoke`
+
+`users.read` / `sessions.revoke`（**`support` 也持有 `sessions.revoke`**，所以客服可以批量踢下线，这是既有角色设计）。
+
+```bash
+curl -s 'http://127.0.0.1:8787/api/v1/admin/sessions?client=desktop&activeOnly=1' \
+  -H 'Cookie: ecs_session=…'
+# → { "rows": [ { "userEmail": "a***@b.c", "ip": "1.2.x.x", … } ], "total": 42, "page": {…} }
+
+curl -s -X POST http://127.0.0.1:8787/api/v1/admin/sessions/revoke \
+  -H 'Cookie: ecs_session=…; ecs_csrf=…' -H "X-CSRF-Token: $CSRF" \
+  -H 'Content-Type: application/json' \
+  -d '{"ids":["…","…"],"reason":"admin_revoke"}'
+# → { "revoked": 2, "skipped": 0 }；写入**一条**聚合审计 admin.sessions_revoked
+```
+
+列表里的邮箱与 IP 一律脱敏；上限 100 个 id（超出 → `422`），未知 id 计入 `skipped` 而不是失败。
+
+### `/admin/mail`（outbox 可观测）
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| GET | `/admin/mail` | `settings.read` | 列表，收件人脱敏 |
+| GET | `/admin/mail/{id}` | `settings.read` | 详情：**只回文本**（`html` 永不回传），正文里的一次性凭据已脱敏为 `token=***` / `invite=***` / `***`（邀请码整行） |
+| POST | `/admin/mail/{id}/retry` | `users.write` | 同步重试一次；`retryable=0`（含一次性链接）→ `409 conflict` |
+
+> 重试权限是 `users.write` 而不是 `settings.write`：`admin` 角色没有 `settings.write`（只有 `owner` 有），那样就等于"只有超管能重试邮件"。
+
+### `/admin/users/export`（CSV）
+
+`users.read`，与列表同一套筛选参数。响应是附件：`text/csv; charset=utf-8` + UTF-8 BOM（否则 Excel 中文乱码），上限 20000 行，超出时用响应头 `X-Export-Truncated: 1` 表达。
+
+### `/admin/users/{id}/email-verify` 与 `/admin/users/{id}/deletion`
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| POST | `/admin/users/{id}/email-verify` | `users.write` | 管理员强制标记已验证（用户收不到信时的出口），审计 `user.email_verified_by_admin` |
+| POST | `/admin/users/{id}/deletion` | `users.delete` | 管理员代确认注销（用户丢失邮箱访问权），`{ "reason": "…" }`；**不**跳过冷静期与审计 |
+
+### `GET /admin/metrics?days=14|30`
+
+`users.read`，`days` 范围 7–90，越界 → `422`。除既有字段外新增：
+
+```jsonc
+{
+  "loginsTrend": [{ "date": "2026-01-01", "count": 12 }],
+  "sessionsTrend": [{ "date": "2026-01-01", "count": 4 }],
+  "emailVerifiedRate": 62.5,
+  "pendingDeletions": 3,
+  "clientBreakdown": [{ "platform": "win32-x64", "appVersion": "1.0.3", "sessions": 7 }],
+  "rangeDays": 30
+}
+```
 
 ## 限流表
 

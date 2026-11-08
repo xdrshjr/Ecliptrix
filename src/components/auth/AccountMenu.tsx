@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useSession } from '@/contexts/SessionContext';
 import { accountCenterUrl, offlineDaysLeft, type SessionInfo } from '@/lib/api/authBridge';
+import AccountCentreDialog from './AccountCentreDialog';
 import { flushAllPending } from '@/components/video/projects/autosaveRegistry';
 import ChangePasswordDialog from './ChangePasswordDialog';
 
@@ -121,6 +122,7 @@ export default function AccountMenu() {
   } = useSession();
   const [open, setOpen] = useState(false);
   const [showDevices, setShowDevices] = useState(false);
+  const [showAccountCentre, setShowAccountCentre] = useState(false);
   const [devices, setDevices] = useState<DevicesState>({ phase: 'idle' });
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -144,6 +146,12 @@ export default function AccountMenu() {
     setConfirmLogout(false);
     setHint(null);
   }, []);
+
+  /** Open the embedded account centre (the browser stays one click away). */
+  const openAccountCentre = () => {
+    closeMenu();
+    setShowAccountCentre(true);
+  };
 
   const loadDevices = useCallback(async () => {
     setDevices({ phase: 'loading' });
@@ -177,8 +185,15 @@ export default function AccountMenu() {
       setHint(unavailable);
       return;
     }
+    // Prefer the address this session actually talks to; `null` means "unknown",
+    // and navigating anywhere else would be worse than saying so.
+    const url = accountCenterUrl(status.server.baseUrl);
+    if (!url) {
+      setHint(unavailable);
+      return;
+    }
     try {
-      await openExternal(accountCenterUrl());
+      await openExternal(url);
       closeMenu();
     } catch {
       setHint(unavailable);
@@ -247,6 +262,11 @@ export default function AccountMenu() {
         >
           <div className="px-3 py-2 border-b border-border">
             <p className="truncate text-xs text-popover-foreground">{user?.email ?? displayName}</p>
+            {/* The only persistent session surface, so it is also the only place an
+                unverified address is visible without opening the account centre. */}
+            {user && !user.emailVerified && !isLocalRoot && (
+              <p className="mt-0.5 text-[10px] text-amber-500">{t.auth.account.unverified}</p>
+            )}
             <p className="mt-0.5 text-[10px] text-muted-foreground">
               {isLocalRoot ? t.auth.local.sessionNote : status.source ?? ''}
             </p>
@@ -293,8 +313,11 @@ export default function AccountMenu() {
               >
                 {t.auth.menu.changePassword}
               </button>
+              <button type="button" className={MENU_ITEM} onClick={openAccountCentre}>
+                {t.auth.account.title}
+              </button>
               <button type="button" className={MENU_ITEM} onClick={() => void handleAccountCenter()}>
-                {t.auth.menu.accountCenter}
+                {t.auth.account.openInBrowser}
               </button>
               {confirmLogout ? (
                 <div className="px-3 py-2">
@@ -342,6 +365,16 @@ export default function AccountMenu() {
       {showChangePassword && (
         <ChangePasswordDialog open onClose={() => setShowChangePassword(false)} />
       )}
+
+      <AccountCentreDialog
+        open={showAccountCentre}
+        onClose={() => setShowAccountCentre(false)}
+        onOpenBrowser={(url) => {
+          // Already resolved against the runtime origin and inside the main
+          // process allowlist; a rejection surfaces as the inline hint.
+          void openExternal(url).catch(() => setHint(t.auth.account.browserUnavailable));
+        }}
+      />
     </div>
   );
 }

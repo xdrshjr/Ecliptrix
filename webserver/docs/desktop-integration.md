@@ -1,4 +1,4 @@
-# 桌面端接入契约 v2
+# 桌面端接入契约 v3
 
 本文是 `webserver/` 与 Ecliptrix 桌面端之间的**唯一契约**。桌面端接入实现必须逐条满足；服务端实现已按此契约锁定，改动任一侧都需要同步改另一侧。
 
@@ -225,7 +225,7 @@ DELETE /me/sessions/{id}
      │    ├─ 200 → 进入应用（source: server，刷新 lastVerifiedAt）
      │    ├─ 401 revoked/suspended → 清会话 → LoginScreen（带原因）
      │    └─ 网络错误 → now - lastVerifiedAt ≤ 7d ? 进入应用（离线角标） : LoginScreen（需联网）
-     └─ 用户点「本地管理员登录」→ IPC auth:local-verify → 常量时间比对 → owner 权限进入
+     └─ 用户点「本地管理员登录」→ IPC auth:login-local（`CHANNELS.LOGIN_LOCAL`）→ 主进程常量时间比对 → owner 权限进入
 ```
 
 维护模式由 `GET /meta` 的 `maintenanceMessage !== ''` 判定（**不**靠心跳——心跳不受维护影响）：显示阻断屏 + 公告 + 重试 + 破窗入口。
@@ -268,7 +268,7 @@ DELETE /me/sessions/{id}
 | `desktop/main/authSessionStore.js` | 新增 | `safeStorage` 信封 + 原子写 + 损坏容错（见 D2-04） |
 | `desktop/main/authHttp.js` | 新增 | 账号服务器 HTTP 客户端：信封解包、超时、`AccountError`、日志脱敏、**不自动重试** |
 | `desktop/main/authController.js` | 新增 | 状态机、心跳调度、单飞续期（见 D2-07/D2-08/D2-11） |
-| `desktop/main/authBridge.js` | 新增 | 10 个 `ipcMain.handle` + 入参校验 + 错误归一化 + `openExternal` 白名单 |
+| `desktop/main/authBridge.js` | 新增 | **14** 个 `ipcMain.handle`（10 个基础通道 + `auth:me`/`auth:update-profile`/`auth:activity`/`auth:resend-verification`）+ 入参校验 + 错误归一化 + `openExternal` 白名单（`auth:changed` 是事件通道，不计入） |
 | `desktop/main/localAdmin.js` | 新增 | 破窗凭据常量时间比对 + 失败计数 + 指数退避 |
 | `src/contexts/SessionContext.tsx` | 新增 | 状态机 `booting｜authenticated｜unauthenticated｜blocked` + 心跳订阅 |
 | `src/components/auth/*` | 新增 | `SessionGate` / `LoginScreen` / `RegisterForm` / `ResetPasswordForm` / `LocalAdminForm` / `ChangePasswordDialog` / `AuthBlocker` / `AccountMenu` / `AuthTitleBar` |
@@ -308,3 +308,59 @@ DELETE /me/sessions/{id}
 | 会话上限 | `security.maxActiveSessions`（1–50，默认 10） | 调小不批量踢人，下次登录按 LRU 收敛，被挤掉记 `session_limit` |
 | 设备顶号 | `device.deviceKey` | 同 `(user, deviceKey)` 登录时在同一事务内替换；审计 `auth.session_relogin` |
 | 审计 | `auth.login_blocked_outdated_client` / `auth.login_blocked_maintenance` / `auth.session_relogin` | 排障时先看这三条 |
+
+
+---
+
+## 11. v3 增量：账号中心与生命周期（本轮）
+
+v2 描述的是"谁能进门"；v3 补的是"进来以后能管什么"。四条通道、两条边界、四个错误原因。
+
+### 11.1 新增 IPC 通道
+
+| 通道 | 入参 | 返回 | 说明 |
+|---|---|---|---|
+| `auth:me` | 无 | `MeView` | 调用方自己的档案；`pendingEmail` 已由服务端脱敏 |
+| `auth:update-profile` | `{ displayName?, locale?, timezone? }` | `MeView` | 只此三键，其余 → `invalid_request`；locale 限 `zh-CN`/`en-US`，timezone 需 `Area/City` 形态 |
+| `auth:activity` | 无（主进程固定 `page=1&pageSize=30`） | `{ items, truncated }` | `truncated` 语义是"还有更多"，不是"服务端截断" |
+| `auth:resend-verification` | 无 | `{ sentAt, expiresAt }` | 已验证 → `409 email_already_verified`；无 SMTP → `503 mail_disabled` |
+
+`mustChangePassword` 的缩口名单由 5 个扩到 **6** 个：加入 `auth:me`（强制改密页需要显示"你正在为谁改密"），
+它是**只读**调用，不增加任何写能力。
+
+### 11.2 两条边界
+
+1. **IP 只在主进程脱敏。** 服务端 `/me/activity` 回的是原始 `ip`（账号主人有权看到自己的数据），
+   `authController.activity()` 把它转成 `ipMasked`（IPv4 `1.2.x.x`，IPv6 `1.2:…`）后才交给渲染层。
+   用例断言"返回值里不出现完整四段 IPv4"。
+2. **能力探测必须逐方法。** 旧主进程有 bridge 但没有这 4 个方法，因此 `SessionContext.capabilities`
+   用 `typeof auth?.me === 'function'` 逐个探测，`AccountCentreDialog` 据此决定渲染哪些控件；
+   缺方法时降级为"仅状态 + 浏览器"，绝不渲染一个点了就报错的按钮。
+
+### 11.3 错误原因增补
+
+| `error_code` | `reason` | 出现位置 | 文案意图 |
+|---|---|---|---|
+| `email_not_verified` | `email-unverified` | 只有 `POST /auth/login`（策略开启 + 桌面端） | "去收信 / 重发"，不是口令错 |
+| `email_already_verified` | `email-unverified` | 重发验证信 | "已经验证过了" |
+| `deletion_pending` | `deletion-pending` | `PATCH /me`、换邮箱 | "注销进行中，先取消" |
+| `mail_disabled` | `mail-disabled` | 重发验证信、换邮箱 | "这个部署没有邮件服务" |
+
+**吊销理由 → reason**：`auth.session_revoked` 的 `error_details.reason` 里，
+`account_deleted`（本人注销）与 `deleted`（管理员删号）**都**映射到 `account-deleted`；
+`suspended` → `account-suspended`；`refresh_reuse` → `session-revoked`。
+
+> **登录屏不给 `account-deleted` 专用文案**：已注销账号重新登录仍然返回 `invalid_credentials`
+> （刻意的防枚举设计）。写一条专用文案就等于提供了一个"这个邮箱曾经存在过"的探针。
+> `account-deleted` 只可能出现在已登录会话的心跳 / refresh 401 上。
+
+### 11.4 会话文件增量
+
+`auth-session.json` 的 `user` 多一个 `emailVerified` 布尔。信封仍是 `schemaVersion: 1`，
+旧文件读出来是 `undefined`，主进程在 `currentUser()` 里统一归一为 `false`（下一步心跳后刷新）。
+
+### 11.5 "在浏览器中打开"的地址来源
+
+渲染层**不再**使用构建期常量做默认值：`accountCenterUrl(status.server.baseUrl)` 优先取运行时地址，
+为空才回落 `NEXT_PUBLIC_ACCOUNT_SERVER_URL`，两者都为空时按钮 `disabled` 并说明原因。
+`/meta` 因此多回一个 `baseUrl`（就是本次连接的服务地址），它已经在 `open-external` 的动态白名单里。

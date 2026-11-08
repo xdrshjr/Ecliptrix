@@ -24,6 +24,9 @@ export function toAdminUserDto(row: UserListRow | (UserRow & { role_key?: string
     note: row.note,
     mustChangePassword: row.must_change_password === 1,
     emailVerified: row.email_verified_at !== null,
+    // The timestamp, not just the flag: an operator asking "when was this address
+    // proven" cannot answer it from a boolean.
+    emailVerifiedAt: row.email_verified_at ? new Date(row.email_verified_at).toISOString() : null,
     lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),

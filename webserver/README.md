@@ -51,6 +51,11 @@ npm run db:backup      # 在线备份到 data/backup-<ts>.db
 npm run seed:demo      # 仅非生产：创建 admin/support/member 三个演示账号（打印口令）
 npm run user:create -- --email a@b.c --password '…' --role admin
 npm run user:reset  -- --email a@b.c --password '…'    # 破窗重置（含解锁、踢下线）
+npm run user:verify -- --email a@b.c                   # 管理员强制标记已验证
+npm run user:verify -- --all-unverified [--dry-run]    # 开启验证策略前的批量放行
+npm run account:confirm-deletion -- --email a@b.c [--force]   # 破窗代确认注销
+npm run db:prune     -- [--dry-run]                    # 保留清理（审计/邮件/令牌）
+npm run accounts:sweep -- [--dry-run]                  # 执行到期注销
 ```
 
 CLI 直连数据库与服务层，**不起 HTTP**，输出只打印邮箱与角色，绝不打印口令或哈希。
@@ -144,10 +149,29 @@ sudo systemctl enable --now webserver
 
 **迁移策略**：`deploy/webserver.service` 与 `docker-compose.yml` 都在启动时迁移（`AUTO_MIGRATE=true`）——运行产物里没有 TypeScript 工具链，`npm run db:migrate` 在那里跑不起来，而 `AUTO_MIGRATE=false` 遇到未应用的迁移会直接退出，`Restart=always` 只会把「拒绝启动」变成重启风暴。迁移器幂等、每个迁移单事务，重复启动无副作用。只有在你**能预迁移**的环境（CI 里带源码跑 `npm run db:migrate`，或多副本滚动升级）才应把它关掉。
 
+### 没有 SMTP 时会发生什么
+
+这是**受支持的部署形态**，不是一个坏掉的配置。差别如下——每一行都有对应的端点或命令，不要凭猜测回答运维问题：
+
+| 场景 | 有 SMTP | 没有 SMTP |
+|---|---|---|
+| 忘记口令 | 自助邮件重置 | 管理员用 `user:reset` / 控制台一次性口令 |
+| 注册后验证邮箱 | 发验证信 | 邮件只进 outbox（`captured`），用户保持"未验证" |
+| 重发验证信 | `202` | `503 mail_disabled`（该动作没有邮件就真的做不了） |
+| 换邮箱 | 双封信 + 确认 | `503 mail_disabled`（不能确认的换邮箱是个陷阱） |
+| 注销账号 | 确认邮件 → 冷静期 → 匿名化 | 直接排期（`requiresConfirmation:false`），仍然有冷静期 |
+| `mail.verificationRequired` | 可开 | **强制为 `false`**（读写两侧都夹紧，开不了） |
+| 管理员代发重置链接 | 发信并检查结果 | `503 mail_disabled`，改用一次性口令 |
+
 ### 运维
 
 - 备份：`npm run db:backup`（SQLite `.backup`，运行中安全），建议 cron 每日。
-- 审计保留：默认 180 天，用 SQL 按 `created_at` 清理；代码里没有删除接口，这是刻意的。
+- 保留清理：`npm run db:prune`（审计按 `audit.retentionDays`，outbox 30 天、`captured` 7 天、令牌 7 天，`refresh_token_reuse_events` 180 天）。`--dry-run` 先看数量。
+- 到期注销：`npm run accounts:sweep`（与请求路径上的惰性清扫同一实现；`next start` 没有常驻 worker，不设 cron 时也会在任意请求后一小时内执行）。
+- **Windows 没有 cron**：用「任务计划程序」跑同样两条命令（`npm run db:prune`、`npm run accounts:sweep`），首次执行前先用 `--dry-run` 核对影响范围。样例见 [`deploy/cron.example`](deploy/cron.example)。
+- 开启 `mail.verificationRequired` 之前：先跑 `npm run user:verify -- --all-unverified --dry-run` 看清有多少既有账号会受影响（迁移 0005 之前的所有账号都是未验证）。
+- 审计保留：默认 180 天，用 `npm run db:prune` 清理；代码里没有删除接口，这是刻意的。
+- 导出的 JSON **不是备份**：它只包含一个账号自己的数据，且不含任何可用于恢复登录的凭据。
 - 升级：`git pull && npm ci && npm run build`，然后**把静态资源同步进 standalone 目录**（`next build` 不会替你放）：
   ```bash
   cp -r .next/static .next/standalone/.next/
@@ -202,7 +226,7 @@ webserver/
 ├── src/
 │   ├── app/
 │   │   ├── (marketing)/      落地页、法务页（公开）
-│   │   ├── (auth)/           登录、注册、找回、重置
+│   │   ├── (auth)/           登录、注册、找回、重置、验证邮箱、确认注销
 │   │   ├── (console)/        account/* 与 admin/*（需会话 / 权限）
 │   │   └── api/v1/           REST 边界：validate → guard → service
 │   ├── components/           ui / marketing / auth / console / account / shell
@@ -211,7 +235,7 @@ webserver/
 │   └── middleware.ts         安全头 + Cookie 快速跳转
 ├── src/server/db/migrations/ 手写迁移（单一事务、只做加法）
 ├── tests/                    单元 + 集成（真实 SQLite，不 mock 数据库）
-├── scripts/                  migrate / backup / user:create / user:reset
+├── scripts/                  migrate / backup / prune / sweep / user:* / account:confirm-deletion
 ├── deploy/                   nginx.conf.example / webserver.service
 └── docs/                     api.md / desktop-integration.md
 ```
@@ -224,17 +248,22 @@ webserver/
 
 ```bash
 npm run type-check     # 0 error
-npm run lint           # 0 warning
-npm test               # 173 tests green（单元 + 集成 + RBAC 矩阵，真实 SQLite）
-npm run build          # standalone 产物（含 /admin/users/[id]、/api/v1/me/deletion-request、OG 图）
+npm run lint           # 0 warning（--max-warnings 0）
+npm test               # 280 tests green / 28 files（单元 + 集成 + RBAC 矩阵，真实 SQLite）
+npm run build          # standalone 产物（含 /admin/sessions、/admin/mail、/verify-email、
+                       # /confirm-deletion 与 8 个新 API 路由）
 npm run db:migrate     # 连跑两次，第二次输出 "nothing to do"
 
-# 对运行中的服务做端到端冒烟（62 项断言，含 Cookie/CSRF/Bearer/重用检测/锁定/详情页/OG 图
-# 以及桌面端闸门：设备顶号、426 版本闸门、维护模式、/me/sessions 的 current 与 deviceKey、
-# 三个新设置项往返、maxActiveSessions 挤压）
+# 对运行中的服务做端到端冒烟（109 项断言）
 npm run dev            # 另一个终端
 node scripts/smoke.mjs
 ```
+
+冒烟覆盖：Cookie/CSRF/Bearer、刷新重用检测、锁定、详情页、OG 图、设备顶号、426 版本闸门、维护模式、会话上限，
+以及本轮新增的邮件闭环与生命周期——`/meta` 的 `emailVerificationRequired`、`/me` 的
+`emailVerified/pendingEmail/deletion`、令牌消费的四态、换邮箱双确认、导出附件头与冷却 `429`、
+注销状态机（无口令 422 / 错口令 401 / 202 / 二次申请 409 / 申请期间禁改资料 / 取消 / 二次取消 404）、
+`/admin/sessions` 的脱敏与批量吊销、`/admin/mail` 的脱敏与 404、指标新序列与 `days` 越界 422、CSV 列序。
 
 冒烟脚本会临时注册测试账号；如果它跑在**你自己的**数据库上，那些账号会留在库里。
 建议对一次性数据库执行：`DATABASE_PATH=./data/smoke.db npm run dev`。同一进程连跑第二次会

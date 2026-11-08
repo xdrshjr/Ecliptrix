@@ -63,7 +63,12 @@ export function resolveAuth(request: Request, context: RequestContext): AuthCont
     })
   }
   if (session.access_expires_at <= Date.now()) {
-    throw new AppError(ERROR_CODE.sessionExpired, '登录已过期，请重新登录')
+    // `details.reason` on every 401 is part of the desktop contract (§5.2): the
+    // main process distinguishes "expired, refresh it" from "revoked, stop" by
+    // reading it, and a bare code leaves it on the unknown-error path.
+    throw new AppError(ERROR_CODE.sessionExpired, '登录已过期，请重新登录', {
+      details: { reason: 'session_expired' },
+    })
   }
 
   const db = getDb()
@@ -74,7 +79,13 @@ export function resolveAuth(request: Request, context: RequestContext): AuthCont
     throw new AppError(ERROR_CODE.accountSuspended, '账号已被停用，请联系管理员')
   }
   if (user.status !== 'active') {
-    throw errors.unauthorized()
+    // `deleted` reaches the desktop here when the session row survived the
+    // anonymisation (its revocation reason was pruned, or the request predates the
+    // 0005 sweep). Without it the client cannot tell "this account is gone" from
+    // "your token is bad" and retries a login that can never succeed.
+    throw new AppError(ERROR_CODE.unauthorized, '账号不可用，请重新登录', {
+      details: { reason: user.status },
+    })
   }
 
   const role = rolesRepo.findById(db, user.role_id)

@@ -83,3 +83,60 @@ describe('desktop gate settings', () => {
     )
   })
 })
+
+describe('mail and account policy settings', () => {
+  it('has defaults and bounds for the eight new keys', () => {
+    expect(settingsService.getBoolean('mail.verificationRequired')).toBe(false)
+    expect(settingsService.getNumber('mail.verificationTtlHours')).toBe(48)
+    expect(settingsService.getNumber('mail.emailChangeTtlHours')).toBe(24)
+    expect(settingsService.getBoolean('mail.notifyNewDevice')).toBe(true)
+    expect(settingsService.getBoolean('mail.notifyPasswordChange')).toBe(true)
+    expect(settingsService.getNumber('account.deletionGraceHours')).toBe(72)
+    expect(settingsService.getNumber('account.exportCooldownMinutes')).toBe(60)
+    expect(settingsService.getNumber('audit.retentionDays')).toBe(180)
+    // All eight are whitelisted, so a PATCH of any of them is not an unknown-key 422.
+    for (const key of [
+      'mail.verificationRequired',
+      'mail.verificationTtlHours',
+      'mail.emailChangeTtlHours',
+      'mail.notifyNewDevice',
+      'mail.notifyPasswordChange',
+      'account.deletionGraceHours',
+      'account.exportCooldownMinutes',
+      'audit.retentionDays',
+    ]) {
+      expect(settingsService.SETTING_KEYS).toContain(key)
+    }
+  })
+
+  it('rejects out-of-range values for the new numeric keys', () => {
+    const cases: [string, number][] = [
+      ['mail.verificationTtlHours', 0],
+      ['mail.verificationTtlHours', 169],
+      ['mail.emailChangeTtlHours', 73],
+      ['account.deletionGraceHours', 0],
+      ['account.exportCooldownMinutes', 1441],
+      ['audit.retentionDays', 29],
+    ]
+    for (const [key, value] of cases) {
+      expect(() => patch({ [key]: value })).toThrowError(
+        expect.objectContaining({ code: 'validation_failed' }),
+      )
+    }
+  })
+
+  it('refuses to arm the verification gate while smtp is off', () => {
+    expect(() => patch({ 'mail.verificationRequired': true })).toThrowError(
+      expect.objectContaining({ code: 'validation_failed' }),
+    )
+    // … and the read side reports false regardless of what is stored.
+    expect(settingsService.publicMeta().emailVerificationRequired).toBe(false)
+  })
+
+  it('accepts the new keys that do not depend on smtp', () => {
+    expect(() => patch({ 'account.deletionGraceHours': 24 })).not.toThrow()
+    expect(settingsService.getNumber('account.deletionGraceHours')).toBe(24)
+    expect(() => patch({ 'mail.notifyNewDevice': false })).not.toThrow()
+    expect(settingsService.getBoolean('mail.notifyNewDevice')).toBe(false)
+  })
+})

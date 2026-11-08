@@ -47,7 +47,12 @@ export type AuthReason =
   | 'validation-failed'
   | 'password-mismatch'
   | 'registration-disabled'
-  | 'internal-error';
+  | 'internal-error'
+  // Added with the account-lifecycle release.
+  | 'email-unverified'
+  | 'account-deleted'
+  | 'deletion-pending'
+  | 'mail-disabled';
 
 /** Public server metadata mirrored from `GET /api/v1/meta`. */
 export interface ServerMeta {
@@ -63,6 +68,20 @@ export interface ServerMeta {
   /** `''` means "not in maintenance". */
   maintenanceMessage: string;
   maxActiveSessions: number;
+  /**
+   * True when this deployment refuses an unverified desktop login. The login
+   * screen uses it to explain a 403 `email_not_verified` instead of showing a
+   * generic failure.
+   */
+  emailVerificationRequired: boolean;
+  /**
+   * The runtime origin of the account server this session talks to.
+   *
+   * `''` means "unknown" (the main process never reached it). "Open the account
+   * centre in a browser" prefers this over the build-time constant so a
+   * self-hosted deployment never sends its users to another company's site.
+   */
+  baseUrl: string;
 }
 
 /** The signed-in account as the main process last saw it. */
@@ -75,8 +94,83 @@ export interface SessionUser {
   status: string;
   planTag: string;
   mustChangePassword: boolean;
+  /** False = the address has not been proven; the account centre shows a banner. */
+  emailVerified: boolean;
   role: { key: string; name: string };
   permissions: string[];
+}
+
+/**
+ * The caller's own record, as `/me` returns it (through `auth:me`).
+ *
+ * `pendingEmail` is already MASKED by the server: an address that is not yet
+ * confirmed must not be displayed as if it were the current one.
+ */
+export interface MeView {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  displayName: string;
+  username: string;
+  locale: 'zh-CN' | 'en-US';
+  timezone: string;
+  role: { key: string; name: string };
+  planTag: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  pendingEmail: string | null;
+  deletion: { status: 'awaiting_confirmation' | 'scheduled'; scheduledFor: string | null } | null;
+}
+
+/**
+ * One row of the activity timeline.
+ *
+ * `ipMasked` — the main process masks the address before it crosses into the
+ * renderer, so a full IP is never available here to be logged or reported.
+ */
+export interface ActivityItem {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  ipMasked: string;
+  createdAt: string;
+}
+
+export interface ActivityResult {
+  items: ActivityItem[];
+  /** "There are more rows" — not "the server truncated the list". */
+  truncated: boolean;
+}
+
+export interface UpdateProfilePayload {
+  displayName?: string;
+  locale?: 'zh-CN' | 'en-US';
+  timezone?: string;
+}
+
+/**
+ * Which of the account-centre capabilities this main process actually provides.
+ *
+ * Per METHOD, not per bridge: an older main process ships the bridge but not these
+ * four methods, and calling one would throw inside the renderer. Everything the
+ * dialog offers is gated on this probe.
+ */
+export interface AuthBridgeCapabilities {
+  me: boolean;
+  updateProfile: boolean;
+  activity: boolean;
+  resendVerification: boolean;
+}
+
+/** Probe the four capabilities without calling anything. */
+export function probeAuthCapabilities(bridge: AuthBridge | null): AuthBridgeCapabilities {
+  return {
+    me: typeof bridge?.me === 'function',
+    updateProfile: typeof bridge?.updateProfile === 'function',
+    activity: typeof bridge?.activity === 'function',
+    resendVerification: typeof bridge?.resendVerification === 'function',
+  };
 }
 
 /** One row of `GET /me/sessions`, re-shaped by the main process. */
@@ -169,6 +263,11 @@ export interface AuthBridge {
   listSessions(): Promise<SessionListResult>;
   revokeSession(id: string): Promise<{ ok: true }>;
   openExternal(url: string): Promise<{ ok: true }>;
+  // Account centre (optional: an older main process has the bridge, not these).
+  me?(): Promise<MeView>;
+  updateProfile?(payload: UpdateProfilePayload): Promise<MeView>;
+  activity?(): Promise<ActivityResult>;
+  resendVerification?(): Promise<{ sentAt: string; expiresAt: string }>;
   onChanged(cb: (s: AuthStatus) => void): () => void;
 }
 
@@ -316,6 +415,40 @@ export async function bridgeOpenExternal(url: string): Promise<{ ok: true }> {
 }
 
 /** `auth:changed` — subscribe to main-process pushes; returns the unsubscriber. */
+/**
+ * Account-centre wrappers.
+ *
+ * Each one refuses politely when the METHOD is missing (an older main process
+ * ships the bridge without them). That is the difference between "the account
+ * centre degrades to status + browser" and "the dialog throws when it opens".
+ */
+export async function bridgeMe(): Promise<MeView> {
+  const bridge = requireBridge();
+  if (typeof bridge.me !== 'function') throw new AuthBridgeUnavailableError();
+  return bridge.me();
+}
+
+/** `auth:update-profile` - display name / locale / time zone only. */
+export async function bridgeUpdateProfile(payload: UpdateProfilePayload): Promise<MeView> {
+  const bridge = requireBridge();
+  if (typeof bridge.updateProfile !== 'function') throw new AuthBridgeUnavailableError();
+  return bridge.updateProfile(payload);
+}
+
+/** `auth:activity` - rows already carry `ipMasked`, never a raw address. */
+export async function bridgeActivity(): Promise<ActivityResult> {
+  const bridge = requireBridge();
+  if (typeof bridge.activity !== 'function') throw new AuthBridgeUnavailableError();
+  return bridge.activity();
+}
+
+/** `auth:resend-verification` - the 202 body with the new expiry. */
+export async function bridgeResendVerification(): Promise<{ sentAt: string; expiresAt: string }> {
+  const bridge = requireBridge();
+  if (typeof bridge.resendVerification !== 'function') throw new AuthBridgeUnavailableError();
+  return bridge.resendVerification();
+}
+
 export function bridgeOnChanged(cb: (status: AuthStatus) => void): () => void {
   const bridge = getAuthBridge();
   if (!bridge) return () => {};
@@ -349,6 +482,11 @@ export type AuthErrorCopyKey =
   | 'inviteRequired'
   | 'inviteInvalid'
   | 'registrationDisabled'
+  // Account lifecycle (migration 0005).
+  | 'emailUnverified'
+  | 'accountDeleted'
+  | 'deletionPending'
+  | 'mailDisabled'
   | 'unknown';
 
 const ERROR_COPY_KEYS: Record<string, AuthErrorCopyKey> = {
@@ -379,6 +517,14 @@ const ERROR_COPY_KEYS: Record<string, AuthErrorCopyKey> = {
   invite_invalid: 'inviteInvalid',
   invite_exhausted: 'inviteInvalid',
   registration_disabled: 'registrationDisabled',
+  // The account-lifecycle codes. Each one has a different next step for the user,
+  // so collapsing them into "unknown" would be the same mistake as collapsing the
+  // registration failures was.
+  email_not_verified: 'emailUnverified',
+  email_already_verified: 'emailUnverified',
+  deletion_pending: 'deletionPending',
+  mail_disabled: 'mailDisabled',
+  token_invalid: 'unknown',
 };
 
 /** Map a failure code to the `auth.error.*` copy key. Unknown codes are generic. */
@@ -408,6 +554,16 @@ const REASON_COPY_KEYS: Partial<Record<AuthReason, AuthErrorCopyKey>> = {
   maintenance: 'maintenance',
   'bridge-unavailable': 'bridgeUnavailable',
   'server-not-configured': 'serverNotConfigured',
+  'email-unverified': 'emailUnverified',
+  // Deliberately ABSENT: `account-deleted`.
+  //
+  // There is no "this account was deleted" banner on the sign-in form. A deleted
+  // account still answers `invalid_credentials`, and a dedicated message would be
+  // a "this address existed" oracle for anyone who types one (spec P1-5). The fact
+  // is shown by `AccountDeletedScreen`, which is only reachable from a session the
+  // main process had already authenticated.
+  'deletion-pending': 'deletionPending',
+  'mail-disabled': 'mailDisabled',
 };
 
 /** Banner copy key for a login-screen `reason`. `undefined` = no banner. */
@@ -476,24 +632,60 @@ export function secondsUntil(deadline: string | null, now: number = Date.now()):
 }
 
 /**
- * Account-service origin used for the two "open the web app" links.
+ * Account-service origin used for the "open the web app" links.
  *
- * The renderer deliberately does not receive the account server URL (§4.6:
- * "渲染进程永远不需要知道它"), so a self-hosted deployment can pin it at build
- * time with `NEXT_PUBLIC_ACCOUNT_SERVER_URL`; otherwise the hosted origin is
- * used. Both are inside the main process `openExternal` allowlist, and a
- * rejection is surfaced as an inline hint instead of a blank window.
+ * Order of preference (spec §3.7 / P1-8):
+ *  1. the RUNTIME address the main process actually connected to
+ *     (`status.server.baseUrl`) — authoritative for a self-hosted instance;
+ *  2. the build-time `NEXT_PUBLIC_ACCOUNT_SERVER_URL`, for an older main process
+ *     that does not expose a runtime URL;
+ *  3. nothing — the helper answers `null` and the caller disables the button
+ *     instead of silently navigating to the vendor's site.
+ *
+ * Rule 3 is the important one: a build-time default of `https://ecliptrix.app`
+ * used to send a self-hosted user to a domain that is not theirs, which is a
+ * phishing-shaped bug, not a cosmetic one.
  */
-const ACCOUNT_SERVICE_ORIGIN = (
+const BUILD_TIME_ACCOUNT_ORIGIN = (
   process.env.NEXT_PUBLIC_ACCOUNT_SERVER_URL ?? ''
-).trim().replace(/\/+$/, '') || 'https://ecliptrix.app';
+).trim().replace(/\/+$/, '');
 
-/** `/account` on the account service — the "account centre" menu item. */
-export function accountCenterUrl(): string {
-  return `${ACCOUNT_SERVICE_ORIGIN}/account`;
+/** Trim a URL down to `scheme://host[:port]`, or '' when it is unusable. */
+function originOf(value: string | null | undefined): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The account-service origin for this session, or `null` when unknown.
+ *
+ * @param runtimeBaseUrl `AuthStatus['server']?.baseUrl` (may be absent).
+ */
+export function accountServiceOrigin(runtimeBaseUrl?: string | null): string | null {
+  const runtime = originOf(runtimeBaseUrl);
+  if (runtime) return runtime;
+  return originOf(BUILD_TIME_ACCOUNT_ORIGIN) || null;
+}
+
+/**
+ * `/account` on the account service — the "account centre" menu item.
+ *
+ * @returns the URL, or `null` when the address is unknown (disable the affordance).
+ */
+export function accountCenterUrl(runtimeBaseUrl?: string | null): string | null {
+  const origin = accountServiceOrigin(runtimeBaseUrl);
+  return origin ? `${origin}/account` : null;
 }
 
 /** `/download` on the account service — the "client too old" escape hatch. */
 export function clientDownloadUrl(): string {
-  return `${ACCOUNT_SERVICE_ORIGIN}/download`;
+  const origin = accountServiceOrigin(null);
+  return origin ? `${origin}/download` : 'https://ecliptrix.app/download';
 }

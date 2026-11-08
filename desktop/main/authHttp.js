@@ -228,13 +228,73 @@ function createAccountClient(deps) {
       return result.data
     },
 
-    /** `GET /me/sessions` — DESKTOP → `{ items: SessionInfo[] }`. */
+    /**
+     * `GET /me/sessions` — DESKTOP → `{ items: SessionInfo[] }`.
+     */
     async listSessions(accessToken) {
       const result = await send({
         method: 'GET',
         path: '/api/v1/me/sessions',
         accessToken,
         timeoutMs: timeouts.sessionMs,
+      })
+      return result.data || {}
+    },
+
+    /** `GET /me` — the caller's own profile (documented shape: `MeView`). */
+    async me(accessToken) {
+      const result = await send({
+        method: 'GET',
+        path: '/api/v1/me',
+        accessToken,
+        timeoutMs: timeouts.sessionMs,
+      })
+      return result.data || {}
+    },
+
+    /**
+     * `PATCH /me` — presentation fields only.
+     *
+     * The server's schema is `.strict()`, so anything else (email, status, roleId)
+     * is a 422. Passing one through from the renderer would look like "saving
+     * works" while nothing changed.
+     */
+    async updateProfile(accessToken, payload) {
+      const result = await send({
+        method: 'PATCH',
+        path: '/api/v1/me',
+        accessToken,
+        body: payload,
+        timeoutMs: timeouts.sessionMs,
+      })
+      return result.data || {}
+    },
+
+    /**
+     * `GET /me/activity` — the caller's own timeline.
+     *
+     * The server returns the raw `ip` (the account holder's own data). The masking
+     * to `ipMasked` happens in `authController`, NOT here and NOT in the renderer:
+     * the Electron renderer must never receive a full address (spec §3.10).
+     */
+    async activity(accessToken, query) {
+      const search = `page=${query.page}&pageSize=${query.pageSize}`
+      const result = await send({
+        method: 'GET',
+        path: `/api/v1/me/activity?${search}`,
+        accessToken,
+        timeoutMs: timeouts.sessionMs,
+      })
+      return result.data || {}
+    },
+
+    /** `POST /auth/email/verify/resend` — 202 with the new expiry. */
+    async resendVerification(accessToken) {
+      const result = await send({
+        method: 'POST',
+        path: '/api/v1/auth/email/verify/resend',
+        accessToken,
+        timeoutMs: timeouts.loginMs,
       })
       return result.data || {}
     },

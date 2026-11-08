@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
   ArrowLeft,
+  BadgeCheck,
   KeyRound,
   LockOpen,
   Pencil,
@@ -145,6 +146,26 @@ export function UserDetail(props: UserDetailProps) {
               onClick={() => run('unlock', () => usersApi.unlock(user.id), tt('admin.users.unlocked'))}
             >
               {tt('admin.users.unlock')}
+            </Button>
+          ) : null}
+          {canWrite && !user.emailVerified && !deleted ? (
+            // The escape hatch for "the user cannot receive mail": marks the
+            // address verified and records `user.email_verified_by_admin`, so the
+            // user can see an administrator let them in.
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={busy === 'emailVerify'}
+              icon={<BadgeCheck size={13} />}
+              onClick={() =>
+                run(
+                  'emailVerify',
+                  () => usersApi.markEmailVerified(user.id),
+                  tt('admin.users.markVerified'),
+                )
+              }
+            >
+              {tt('admin.users.markVerified')}
             </Button>
           ) : null}
           {canWrite && !isOwnerTarget ? (
@@ -293,6 +314,17 @@ function ProfileTab({ locale, user }: { locale: Locale; user: AdminUserDto }) {
       ),
     },
     { label: tt('admin.users.note'), value: user.note || '—' },
+    // Verification state belongs on the profile tab: without it a verified address
+    // and one that was never verified look identical unless the "mark verified"
+    // button happens to be absent, which is not a signal anybody reads.
+    {
+      label: tt('admin.users.emailVerified'),
+      value: user.emailVerified ? '✓' : tt('admin.users.notVerified'),
+    },
+    {
+      label: tt('admin.users.verifiedAt'),
+      value: user.emailVerifiedAt ? absoluteTime(user.emailVerifiedAt, locale) : '—',
+    },
   ]
 
   return (

@@ -18,6 +18,16 @@ import { DELETE as revokeAdminSession } from '@/app/api/v1/admin/sessions/[id]/r
 import { GET as listAudit } from '@/app/api/v1/admin/audit/route'
 import { PATCH as patchMe } from '@/app/api/v1/me/route'
 import { DELETE as revokeMine } from '@/app/api/v1/me/sessions/[id]/route'
+import { GET as listAdminSessions } from '@/app/api/v1/admin/sessions/route'
+import { POST as bulkRevokeSessions } from '@/app/api/v1/admin/sessions/revoke/route'
+import { GET as listMail } from '@/app/api/v1/admin/mail/route'
+import { GET as getMail } from '@/app/api/v1/admin/mail/[id]/route'
+import { POST as retryMail } from '@/app/api/v1/admin/mail/[id]/retry/route'
+import { GET as exportUsersCsv } from '@/app/api/v1/admin/users/export/route'
+import { POST as markEmailVerified } from '@/app/api/v1/admin/users/[id]/email-verify/route'
+import { POST as confirmDeletion } from '@/app/api/v1/admin/users/[id]/deletion/route'
+import { GET as getMetrics } from '@/app/api/v1/admin/metrics/route'
+import { GET as getSettings } from '@/app/api/v1/admin/settings/route'
 
 /**
  * RBAC matrix (spec §6.2).
@@ -373,6 +383,183 @@ describe('RBAC matrix — reads and self-service', () => {
         token,
       })
       expect(response.status, `${role} → DELETE /me/sessions/{foreign}`).toBe(404)
+    }
+  })
+})
+
+/**
+ * The eight endpoints this release adds, asserted against the REAL permission
+ * matrix rather than an assumed one (AC-31).
+ *
+ * The two expectations that were wrong in the design draft and are now facts:
+ *  - `support` DOES hold `sessions.revoke`, so bulk revoke is a 200 for support;
+ *  - `admin` does NOT hold `settings.write`, so saving settings stays owner-only —
+ *    while retrying a mail is `users.write`, which admin has.
+ */
+describe('RBAC matrix — new lifecycle endpoints', () => {
+  it('GET /admin/sessions: owner, admin and support may read; member may not', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 200, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const response = await call(listAdminSessions, {
+        method: 'GET',
+        path: '/api/v1/admin/sessions',
+        token,
+      })
+      expect(response.status, `${role} — GET /admin/sessions`).toBe(expected[role])
+    }
+  })
+
+  it('POST /admin/sessions/revoke: support holds sessions.revoke, so 200 for it too', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 200, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const sessionId = await freshForeignSession(`bulk_${role}`)
+      const response = await call(bulkRevokeSessions, {
+        method: 'POST',
+        path: '/api/v1/admin/sessions/revoke',
+        token,
+        body: { ids: [sessionId], reason: 'admin_revoke' },
+      })
+      expect(response.status, `${role} — POST /admin/sessions/revoke`).toBe(expected[role])
+    }
+  })
+
+  it('GET /admin/mail and its detail are settings.read: owner and admin only', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 403, member: 403 }
+    // One real outbox row so the detail route has something to find.
+    const { queue } = await import('@/server/services/mailService')
+    const queued = await queue({
+      template: 'new-device',
+      to: 'ada@example.com',
+      locale: 'zh-CN',
+      userId: null,
+      params: { displayName: 'Ada' },
+    })
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const list = await call(listMail, { method: 'GET', path: '/api/v1/admin/mail', token })
+      expect(list.status, `${role} — GET /admin/mail`).toBe(expected[role])
+      const detail = await callWithId(getMail, {
+        method: 'GET',
+        path: `/api/v1/admin/mail/${queued.id}`,
+        id: queued.id,
+        token,
+      })
+      expect(detail.status, `${role} — GET /admin/mail/{id}`).toBe(expected[role])
+    }
+  })
+
+  it('POST /admin/mail/{id}/retry is users.write: admin can, support cannot', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 403, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const { queue } = await import('@/server/services/mailService')
+      const queued = await queue({
+        template: 'new-device',
+        to: 'ada@example.com',
+        locale: 'zh-CN',
+        userId: null,
+        params: { displayName: 'Ada' },
+      })
+      const response = await callWithId(retryMail, {
+        method: 'POST',
+        path: `/api/v1/admin/mail/${queued.id}/retry`,
+        id: queued.id,
+        token,
+      })
+      expect(response.status, `${role} — POST /admin/mail/{id}/retry`).toBe(expected[role])
+    }
+  })
+
+  it('GET /admin/users/export follows users.read', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 200, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const response = await call(exportUsersCsv, {
+        method: 'GET',
+        path: '/api/v1/admin/users/export',
+        token,
+      })
+      expect(response.status, `${role} — GET /admin/users/export`).toBe(expected[role])
+    }
+  })
+
+  it('POST /admin/users/{id}/email-verify follows users.write', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 403, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const targetId = await freshMember(`verify_${role}`)
+      const response = await callWithId(markEmailVerified, {
+        method: 'POST',
+        path: `/api/v1/admin/users/${targetId}/email-verify`,
+        id: targetId,
+        token,
+      })
+      expect(response.status, `${role} — POST /admin/users/{id}/email-verify`).toBe(expected[role])
+    }
+  })
+
+  it('POST /admin/users/{id}/deletion follows users.delete', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 403, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const targetId = await freshMember(`del_${role}`)
+      // A live request must exist, otherwise every role would get a 409 and the
+      // matrix would prove nothing.
+      const { request } = await import('@/server/services/accountDeletionService')
+      const { findById } = await import('@/server/db/repositories/usersRepo')
+      const target = findById((await import('@/server/db/client')).getDb(), targetId)
+      if (target) {
+        request(
+          target,
+          { password: MEMBER_PASSWORD },
+          {
+            ip: '1.1.1.1',
+            requestId: 'req-matrix',
+            audit: {
+              actorUserId: actor.actorUserId,
+              actorLabel: 'matrix',
+              ip: '1.1.1.1',
+              requestId: 'req-matrix',
+            },
+          },
+        )
+      }
+      const response = await callWithId(confirmDeletion, {
+        method: 'POST',
+        path: `/api/v1/admin/users/${targetId}/deletion`,
+        id: targetId,
+        token,
+        body: { reason: 'matrix check' },
+      })
+      expect(response.status, `${role} — POST /admin/users/{id}/deletion`).toBe(expected[role])
+    }
+  })
+
+  it('GET /admin/metrics answers 200 for the three console roles', async () => {
+    const expected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 200, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const response = await call(getMetrics, {
+        method: 'GET',
+        path: '/api/v1/admin/metrics',
+        token,
+      })
+      expect(response.status, `${role} — GET /admin/metrics`).toBe(expected[role])
+    }
+  })
+
+  it('GET /admin/settings: admin may read but never write (settings.write is owner-only)', async () => {
+    const readExpected: Record<RoleKey, number> = { owner: 200, admin: 200, support: 403, member: 403 }
+    for (const role of ROLES) {
+      const token = await tokenFor(role)
+      const response = await call(getSettings, {
+        method: 'GET',
+        path: '/api/v1/admin/settings',
+        token,
+      })
+      expect(response.status, `${role} — GET /admin/settings`).toBe(readExpected[role])
     }
   })
 })

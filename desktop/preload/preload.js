@@ -50,6 +50,13 @@ contextBridge.exposeInMainWorld('ecliptrixDesktop', {
     listSessions: () => ipcRenderer.invoke('auth:list-sessions'),
     revokeSession: (id) => ipcRenderer.invoke('auth:revoke-session', id),
     openExternal: (url) => ipcRenderer.invoke('auth:open-external', url),
+    // Account centre (migration 0005). `updateProfile` takes only
+    // `{ displayName?, locale?, timezone? }` — the bridge rejects anything else, so
+    // a renderer bug cannot attempt an email/role change through this path.
+    me: () => ipcRenderer.invoke('auth:me'),
+    updateProfile: (payload) => ipcRenderer.invoke('auth:update-profile', payload),
+    activity: () => ipcRenderer.invoke('auth:activity'),
+    resendVerification: () => ipcRenderer.invoke('auth:resend-verification'),
     onChanged: (cb) => subscribe('auth:changed', cb),
   },
 })

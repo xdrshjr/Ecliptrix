@@ -195,7 +195,12 @@ function CreateInviteDialog({
   onCreated: (code: string) => void
 }) {
   const tt = translator(locale)
-  const [form, setForm] = useState({ maxUses: 1, expiresInDays: 14, roleKey: 'member' })
+  const [form, setForm] = useState({
+    maxUses: 1,
+    expiresInDays: 14,
+    roleKey: 'member',
+    email: '',
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -204,10 +209,14 @@ function CreateInviteDialog({
     setSaving(true)
     setError(null)
     try {
+      // `email` is what makes the invitation mail reachable at all: without it the
+      // create dialog could only ever hand the operator a code to paste into a chat
+      // window, and the mail template + its budget were API-only.
       const result = await api.post<{ invite: { code: string } }>('/api/v1/admin/invites', {
         maxUses: Number(form.maxUses),
         expiresInDays: Number(form.expiresInDays),
         roleKey: form.roleKey,
+        email: form.email.trim() || undefined,
       })
       onCreated(result.invite.code)
     } catch (thrown) {
@@ -258,7 +267,20 @@ function CreateInviteDialog({
             onChange={(event) => setForm({ ...form, maxUses: Number(event.target.value) })}
           />
         </Field>
-        <Field label={tt('admin.invites.expires')} htmlFor="invite-days" hint="0 表示永不过期">
+        <Field label={tt('admin.invites.email')} htmlFor="invite-email">
+          <Input
+            id="invite-email"
+            type="email"
+            autoComplete="off"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+          />
+        </Field>
+        <Field
+          label={tt('admin.invites.expires')}
+          htmlFor="invite-days"
+          hint={tt('admin.invites.neverExpires')}
+        >
           <Input
             id="invite-days"
             type="number"

@@ -152,9 +152,13 @@ npm run type-check   # tsc --noEmit
 npm run lint         # eslint . --max-warnings 0
 npm test             # vitest: unit + integration, a real SQLite file per case
 npm run db:migrate   # idempotent; also runs at boot when AUTO_MIGRATE=true
+npm run db:prune -- --dry-run              # retention: audit / outbox / tokens
+npm run accounts:sweep -- --dry-run        # execute deletions past their grace period
+npm run user:verify -- --all-unverified [--dry-run]   # pre-flight for the verification gate
+npm run account:confirm-deletion -- --email a@b.c     # break-glass deletion confirmation
 npm run user:create -- --email a@b.c --password '…' --role admin
 npm run user:reset  -- --email a@b.c --password '…'   # break-glass
-node scripts/smoke.mjs   # 62 end-to-end assertions against a RUNNING server
+node scripts/smoke.mjs   # 109 end-to-end assertions against a RUNNING server
 ```
 
 - **Stack**: Next.js App Router + TypeScript + React 19 + Tailwind 3, SQLite via
@@ -182,6 +186,32 @@ node scripts/smoke.mjs   # 62 end-to-end assertions against a RUNNING server
   `deploy/{nginx.conf.example,webserver.service}`. Single writer only — scaling out
   requires PostgreSQL.
 
+**Mail is a pipeline, not a function.** `server/mail/mailer.ts` is only the SMTP
+transport (`isMailEnabled()` + `sendRaw()`), and it sets all three nodemailer timeouts
+from `MAIL_SEND_TIMEOUT_MS` — without them the default socketTimeout is one hour and a
+dead SMTP host hangs whatever awaited it. `mailService.queue()` is the single exit:
+render → insert the outbox row (tokens already `token=***`) → one bounded attempt →
+write the outcome back. User-facing paths fire it without awaiting; only
+`/admin/mail/{id}/retry` waits, because the administrator asked "tell me now". "No
+SMTP" is a supported deployment mode (`captured` rows, no error), and the only actions
+answering `503 mail_disabled` are the ones that are *impossible* without mail (resend
+verification, change the address, mail a reset link).
+
+**Three partial unique indexes carry invariants — read the predicate before touching
+the code that writes them:**
+- `idx_email_action_live (user_id, purpose) WHERE used_at IS NULL` does **not**
+  consider `expires_at`, so issuing a token must invalidate *every* unused row (expired
+  included) in the same transaction, before the insert;
+- `idx_deletion_live (user_id) WHERE status IN ('awaiting_confirmation','scheduled')`
+  means "re-request" must cancel the old row *before* inserting the new one;
+- `account_deletion_requests.token_hash` is nullable on purpose: the no-SMTP path mails
+  no link, and writing `''` would collide on the second request.
+
+**Deletion anonymises, never deletes.** `users` keeps the row (`status='deleted'`,
+tombstone address, random password hash) so `audit_events` and role history stay
+intact. `users.last_exported_at` — not the audit log — drives the export cooldown,
+because `auditService.record` is best-effort and audit rows are pruned.
+
 ### Desktop identity gate (`desktop/main/auth*.js`)
 
 The Electron window is gated before the workspace mounts. Tokens never leave the
@@ -196,11 +226,35 @@ desktop/main/authSessionStore.js safeStorage envelope → userData/auth-session.
 desktop/main/authHttp.js         the ONLY account-server HTTP client (Bearer, never Cookie)
 desktop/main/localAdmin.js       break-glass compare (timingSafeEqual) + failure lock
 desktop/main/authController.js   state machine, single-flight refresh, heartbeat, auth:changed
-desktop/main/authBridge.js       10 ipcMain.handle channels + structured input validation
+desktop/main/authBridge.js       14 ipcMain.handle channels + structured input validation
 src/lib/api/authBridge.ts        typed IPC wrapper (window.ecliptrixDesktop.auth)
-src/contexts/SessionContext.tsx  SessionProvider / useSession() — status + onChanged only
-src/components/auth/*            SessionGate, LoginScreen, AccountMenu, AuthBlocker, …
+src/contexts/SessionContext.tsx  SessionProvider / useSession() — status, onChanged, actions
+src/components/auth/*            SessionGate, LoginScreen, AccountMenu, AuthBlocker,
+                                 AccountCentreDialog, …
 ```
+
+**Account centre (migration 0005).** Four extra channels — `auth:me`,
+`auth:update-profile`, `auth:activity`, `auth:resend-verification` — so a user can
+manage their own record inside the app instead of being bounced to a browser.
+`mustChangePassword` now narrows to **six** channels (`auth:me` is the sixth; a
+read-only call that lets the forced-change screen say who it is changing).
+
+Two boundaries that are defects if broken:
+- **IP masking happens in the main process.** `/me/activity` returns the real `ip`
+  (the account holder's own data); `authController.activity()` converts it to
+  `ipMasked`, and the renderer never sees a full address.
+- **Capability detection is per METHOD** (`typeof bridge.me === 'function'`), not per
+  bridge: an older main process ships the bridge without these four, and a missing one
+  must hide its control rather than throw at click time.
+
+`accountCenterUrl(status.server.baseUrl)` prefers the runtime origin, falls back to
+`NEXT_PUBLIC_ACCOUNT_SERVER_URL`, and answers `null` when neither is known (the button
+is then disabled). The old build-time default sent a self-hosted user to the vendor.
+
+A revoked session reports its cause in `error.details.reason`; `account_deleted` and
+`deleted` both become `account-deleted`. The **login screen deliberately has no
+"account deleted" copy**: a deleted account still answers `invalid_credentials`, and a
+dedicated message would be a "this address existed" oracle.
 
 Three invariants — breaking one is a defect, not a refactor:
 
@@ -216,8 +270,8 @@ Three invariants — breaking one is a defect, not a refactor:
 
 ```bash
 # from desktop/
-npm run test:auth                     # 6 suites / 107 checks, pure node, no Electron
-node scripts/auth-smoke.js            # 14 end-to-end assertions against a fake account server
+npm run test:auth                     # 7 suites / 134 checks, pure node, no Electron
+node scripts/auth-smoke.js            # 20 end-to-end assertions against a fake account server
 ECLIPTRIX_AUTH_GATE=off npm run dev   # emergency valve: gate disabled, red strip
 ```
 

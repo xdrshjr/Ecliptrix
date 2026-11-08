@@ -218,6 +218,21 @@ export function touch(sessionId: string, now = Date.now()): void {
   repo.touch(getDb(), sessionId, now)
 }
 
+/**
+ * Why a refresh token is unusable, when the row still exists.
+ *
+ * `rotateRefreshToken` answers `null` for "revoked" and "expired" alike, but the
+ * desktop has to tell a kicked-out user (`session_revoked` + reason
+ * `account_deleted`) from an ordinary expiry: the first shows "your account was
+ * deleted", the second returns to the login screen. Reported in
+ * `error.details.reason` (spec §5.2, D3-08).
+ */
+export function revokeReasonForRefreshToken(token: string): string | null {
+  const row = repo.findByRefreshHash(getDb(), hashToken(getConfig().sessionSecret, token))
+  if (!row || row.revoked_at === null) return null
+  return row.revoked_reason
+}
+
 export function revokeOne(sessionId: string, reason: string): boolean {
   const db = getDb()
   const session = repo.findById(db, sessionId)

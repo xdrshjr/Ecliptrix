@@ -17,9 +17,13 @@
     "test:coverage": "vitest run --coverage",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:backup": "node scripts/backup.mjs",
+    "db:prune": "tsx scripts/prune.ts",
+    "accounts:sweep": "tsx scripts/sweep.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "user:create": "tsx scripts/create-user.ts",
-    "user:reset": "tsx scripts/reset-password.ts"
+    "user:reset": "tsx scripts/reset-password.ts",
+    "user:verify": "tsx scripts/user-verify.ts",
+    "account:confirm-deletion": "tsx scripts/confirm-deletion.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

@@ -109,11 +109,12 @@ function makeLogger() {
 
 async function run() {
   await (async () => {
-    await test('all ten channels are registered, plus the event channel name', async () => {
+    await test('all fourteen channels are registered, plus the event channel name', async () => {
       const ipcMain = fakeIpcMain()
       const { controller, dir } = makeController()
       const registration = registerAuthIpc({ ipcMain, controller })
-      assert.strictEqual(ipcMain.handlers.size, 10)
+      // 10 from the identity gate + the 4 account-centre channels (migration 0005).
+      assert.strictEqual(ipcMain.handlers.size, 14)
       for (const channel of Object.values(CHANNELS)) {
         assert.ok(ipcMain.handlers.has(channel), `${channel} is registered`)
       }
@@ -231,7 +232,7 @@ async function run() {
       fs.rmSync(dir, { recursive: true, force: true })
     })
 
-    await test('mustChangePassword narrows the surface to five channels (AC-13)', async () => {
+    await test('mustChangePassword narrows the surface to six channels (AC-13)', async () => {
       const ipcMain = fakeIpcMain()
       const { controller, dir } = makeController()
       registerAuthIpc({ ipcMain, controller })
@@ -252,6 +253,8 @@ async function run() {
       })
       assert.strictEqual(blockedRegister.code, 'password_change_required')
 
+      // Six since the account centre landed: `auth:me` is a read of the caller's
+      // own record, which the forced-change screen needs to say WHO it is changing.
       assert.deepStrictEqual(
         [...PASSWORD_CHANGE_ALLOWED].sort(),
         [
@@ -260,6 +263,7 @@ async function run() {
           CHANNELS.LOGOUT,
           CHANNELS.LIST_SESSIONS,
           CHANNELS.REVOKE_SESSION,
+          CHANNELS.ME,
         ].sort(),
       )
       const status = await ipcMain.handlers.get(CHANNELS.STATUS)()

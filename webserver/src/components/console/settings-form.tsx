@@ -19,15 +19,26 @@ import { errorMessage, translator, type Locale } from '@/lib/i18n'
 /** `x.y.z` (1–4 numeric segments). Mirrors the server's semver comparison. */
 const VERSION_PATTERN = /^\d+(\.\d+){0,3}$/
 
+export interface MailCapabilitiesView {
+  mode: 'smtp' | 'outbox'
+  fromAddress: string
+  configured: boolean
+  sent24h: number
+  failed24h: number
+}
+
 export function SettingsForm({
   locale,
   settings,
   canWrite,
+  mail,
 }: {
   locale: Locale
   settings: Record<string, boolean | number | string>
   canWrite: boolean
+  mail: MailCapabilitiesView
 }) {
+  const mailConfigured = mail.configured
   const tt = translator(locale)
   const router = useRouter()
   const [form, setForm] = useState(settings)
@@ -65,6 +76,16 @@ export function SettingsForm({
         'app.maintenanceMessage': String(form['app.maintenanceMessage'] ?? ''),
         'branding.appName': String(form['branding.appName'] ?? ''),
         'branding.supportEmail': String(form['branding.supportEmail'] ?? ''),
+        // The mail/account policy group (migration 0005). `mail.verificationRequired`
+        // is only sent while SMTP is configured — the server refuses it otherwise.
+        ...(mailConfigured ? { 'mail.verificationRequired': Boolean(form['mail.verificationRequired']) } : {}),
+        'mail.verificationTtlHours': Number(form['mail.verificationTtlHours']),
+        'mail.emailChangeTtlHours': Number(form['mail.emailChangeTtlHours']),
+        'mail.notifyNewDevice': Boolean(form['mail.notifyNewDevice']),
+        'mail.notifyPasswordChange': Boolean(form['mail.notifyPasswordChange']),
+        'account.deletionGraceHours': Number(form['account.deletionGraceHours']),
+        'account.exportCooldownMinutes': Number(form['account.exportCooldownMinutes']),
+        'audit.retentionDays': Number(form['audit.retentionDays']),
       })
       toast.success(tt('admin.settings.saved'))
       // R8: setting the floor above the shipped version blocks every older
@@ -257,6 +278,124 @@ export function SettingsForm({
             className="mono"
           />
         </Field>
+      </fieldset>
+
+      <fieldset
+        disabled={!canWrite}
+        className="flex flex-col gap-4 rounded-md border border-[var(--border)] bg-[var(--surface)] p-5"
+      >
+        <legend className="px-1 text-xs uppercase tracking-wider text-[var(--muted)]">
+          {tt('admin.settings.mail.group')}
+        </legend>
+        {!mailConfigured && (
+          <p className="rounded-sm border border-[var(--warning)]/40 bg-[var(--warning)]/5 px-3 py-2 text-xs text-[var(--warning)]">
+            {tt('admin.settings.mail.readOnlyNoSmtp')}
+          </p>
+        )}
+        <div className="rounded-sm border border-[var(--border)] px-3 py-2 text-2xs text-[var(--muted)]">
+          <span className="text-[var(--foreground)]">{tt('admin.settings.mail.capabilities')}: </span>
+          {mail.mode === 'smtp' ? tt('admin.mail.modeSmtp') : tt('admin.mail.modeOutbox')} ·{' '}
+          <span className="mono">{mail.fromAddress}</span> · {tt('admin.mail.sent24h')}{' '}
+          {mail.sent24h} / {tt('admin.mail.failed24h')} {mail.failed24h}
+        </div>
+        <Checkbox
+          id="mail.verificationRequired"
+          label={tt('admin.settings.mail.verificationRequired')}
+          // Without SMTP the server clamps this to false on read AND refuses to
+          // store true, so the control is disabled rather than lying.
+          disabled={!mailConfigured}
+          checked={Boolean(form['mail.verificationRequired']) && mailConfigured}
+          onChange={(event) => set('mail.verificationRequired', event.target.checked)}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label={tt('admin.settings.mail.verificationTtl')}
+            htmlFor="mail.verificationTtlHours"
+            error={errors['mail.verificationTtlHours']}
+            hint="1 – 168"
+          >
+            <Input
+              id="mail.verificationTtlHours"
+              type="number"
+              min={1}
+              max={168}
+              value={Number(form['mail.verificationTtlHours'])}
+              onChange={(event) => set('mail.verificationTtlHours', Number(event.target.value))}
+            />
+          </Field>
+          <Field
+            label={tt('admin.settings.mail.emailChangeTtl')}
+            htmlFor="mail.emailChangeTtlHours"
+            error={errors['mail.emailChangeTtlHours']}
+            hint="1 – 72"
+          >
+            <Input
+              id="mail.emailChangeTtlHours"
+              type="number"
+              min={1}
+              max={72}
+              value={Number(form['mail.emailChangeTtlHours'])}
+              onChange={(event) => set('mail.emailChangeTtlHours', Number(event.target.value))}
+            />
+          </Field>
+          <Field
+            label={tt('admin.settings.mail.deletionGrace')}
+            htmlFor="account.deletionGraceHours"
+            error={errors['account.deletionGraceHours']}
+            hint="1 – 720"
+          >
+            <Input
+              id="account.deletionGraceHours"
+              type="number"
+              min={1}
+              max={720}
+              value={Number(form['account.deletionGraceHours'])}
+              onChange={(event) => set('account.deletionGraceHours', Number(event.target.value))}
+            />
+          </Field>
+          <Field
+            label={tt('admin.settings.mail.exportCooldown')}
+            htmlFor="account.exportCooldownMinutes"
+            error={errors['account.exportCooldownMinutes']}
+            hint="1 – 1440"
+          >
+            <Input
+              id="account.exportCooldownMinutes"
+              type="number"
+              min={1}
+              max={1440}
+              value={Number(form['account.exportCooldownMinutes'])}
+              onChange={(event) => set('account.exportCooldownMinutes', Number(event.target.value))}
+            />
+          </Field>
+          <Field
+            label={tt('admin.settings.mail.retentionDays')}
+            htmlFor="audit.retentionDays"
+            error={errors['audit.retentionDays']}
+            hint="30 – 3650"
+          >
+            <Input
+              id="audit.retentionDays"
+              type="number"
+              min={30}
+              max={3650}
+              value={Number(form['audit.retentionDays'])}
+              onChange={(event) => set('audit.retentionDays', Number(event.target.value))}
+            />
+          </Field>
+        </div>
+        <Checkbox
+          id="mail.notifyNewDevice"
+          label={tt('admin.settings.mail.notifyNewDevice')}
+          checked={Boolean(form['mail.notifyNewDevice'])}
+          onChange={(event) => set('mail.notifyNewDevice', event.target.checked)}
+        />
+        <Checkbox
+          id="mail.notifyPasswordChange"
+          label={tt('admin.settings.mail.notifyPasswordChange')}
+          checked={Boolean(form['mail.notifyPasswordChange'])}
+          onChange={(event) => set('mail.notifyPasswordChange', event.target.checked)}
+        />
       </fieldset>
 
       {errors.form ? (

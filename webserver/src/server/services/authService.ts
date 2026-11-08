@@ -18,6 +18,8 @@ import { AppError, errors } from '@/server/http/errors'
 import * as settingsService from '@/server/services/settingsService'
 import * as auditService from '@/server/services/auditService'
 import * as sessionService from '@/server/services/sessionService'
+import * as emailVerificationService from '@/server/services/emailVerificationService'
+import * as sessionsRepo from '@/server/db/repositories/sessionsRepo'
 import { normalizeEmail, normalizeUsername } from '@/server/services/normalize'
 import { log } from '@/server/http/requestContext'
 import type { UserRow } from '@/server/db/types'
@@ -249,6 +251,41 @@ function assertClientSupported(input: GateInput): void {
 }
 
 /**
+ * `mail.verificationRequired`: an unverified desktop account may not sign in.
+ *
+ * Exemptions, all deliberate:
+ *  - web clients, because the browser IS the place where a user reads the mail
+ *    and clicks the link;
+ *  - administrators and the owner, so an operator can never lock themselves out
+ *    of the console that fixes verification;
+ *  - the break-glass account, which never reaches this code at all (it is gate
+ *    local to the desktop app).
+ *
+ * Nothing is written to `login_attempts`: a policy decision must not scroll the
+ * user's lockout counter towards a 423.
+ */
+function assertEmailVerifiedForLogin(user: UserRow, input: LoginInput): void {
+  if (input.client !== 'desktop') return
+  if (!settingsService.getBoolean('mail.verificationRequired')) return
+  if (user.email_verified_at !== null) return
+  const role = rolesRepo.findById(getDb(), user.role_id)
+  if (role && (role.key === 'owner' || role.key === 'admin')) return
+
+  auditService.record(
+    { actorUserId: user.id, actorLabel: user.email, ip: input.ip, requestId: input.requestId },
+    {
+      action: 'auth.email_verify_blocked_login',
+      targetType: 'user',
+      targetId: user.id,
+      metadata: { client: input.client },
+    },
+  )
+  throw new AppError(ERROR_CODE.emailNotVerified, '请先验证邮箱后再登录', {
+    details: { redirect: '/verify-email' },
+  })
+}
+
+/**
  * Verify credentials without issuing a session.
  *
  * Split out because the login endpoint, the desktop heartbeat and the CLI all
@@ -310,8 +347,28 @@ export async function login(input: LoginInput): Promise<LoginSuccess> {
   const authenticated = await verifyCredentials(input.identifier, input.password, {
     ip: input.ip,
   })
+
+  /**
+   * Verification gate — AFTER the password, BEFORE the session.
+   *
+   * Only `POST /auth/login` applies it: `register` creates a user that is
+   * necessarily unverified, so applying the same gate there would answer 403 to
+   * every sign-up and leave the verification mail with nobody to send it to.
+   * Sitting after `verifyCredentials` means it cannot become an enumeration probe
+   * ("does this account exist / is it verified"), and sitting before the session
+   * means it does not displace the machine's existing session.
+   */
+  assertEmailVerifiedForLogin(authenticated.user, input)
+
   const now = Date.now()
   usersRepo.markLoggedIn(getDb(), authenticated.user.id, now)
+
+  // Read BEFORE the insert: the new row carries this device's key, which would
+  // otherwise make every sign-in look like "a known device".
+  const recentDeviceKeys =
+    input.client === 'desktop'
+      ? sessionsRepo.recentDeviceKeys(getDb(), authenticated.user.id, 5)
+      : []
 
   // Synchronous by contract: one transaction retires this device's previous
   // session and inserts the new one (see `replaceDeviceSession`).
@@ -357,6 +414,20 @@ export async function login(input: LoginInput): Promise<LoginSuccess> {
       metadata: { client: input.client, platform: input.device.platform },
     },
   )
+
+  // Fire and forget: a security notice must never delay or fail a sign-in.
+  if (input.client === 'desktop') {
+    emailVerificationService.notifyNewDevice(
+      authenticated.user,
+      {
+        name: input.device.name,
+        platform: input.device.platform,
+        appVersion: input.device.appVersion,
+        deviceKey: input.device.deviceKey ?? '',
+      },
+      recentDeviceKeys,
+    )
+  }
 
   return {
     user: authenticated.user,
@@ -519,6 +590,11 @@ export async function register(input: RegisterInput): Promise<RegisterSuccess> {
   const user = usersRepo.findById(db, userId)
   if (!user) throw new AppError(ERROR_CODE.internalError, '用户创建后无法读取')
 
+  // Registration mails the verification link (spec §3.4 action 1). Fire and
+  // forget: the outbox row is written synchronously inside `queue`, so a mail
+  // outage cannot delay the 201 and cannot be observed by the caller either.
+  emailVerificationService.issueVerification(user, { ip: input.ip })
+
   return {
     user,
     role: { id: role.id, key: role.key, name: role.name },
@@ -603,6 +679,9 @@ export async function changePassword(input: ChangePasswordInput): Promise<void> 
       metadata: { signedOutOthers: input.signOutOtherSessions },
     },
   )
+
+  // Security notice, fire and forget (never affects the response).
+  emailVerificationService.notifyPasswordChanged(user)
 }
 
 /**

@@ -3,10 +3,13 @@ import * as usersRepo from '@/server/db/repositories/usersRepo'
 import * as rolesRepo from '@/server/db/repositories/rolesRepo'
 import * as sessionsRepo from '@/server/db/repositories/sessionsRepo'
 import * as auditRepo from '@/server/db/repositories/auditRepo'
+import * as emailVerificationService from '@/server/services/emailVerificationService'
+import * as accountDeletionService from '@/server/services/accountDeletionService'
 import { ERROR_CODE, REVOKE_REASON } from '@/server/auth/constants'
 import { AppError, errors } from '@/server/http/errors'
 import * as auditService from '@/server/services/auditService'
 import * as sessionService from '@/server/services/sessionService'
+import { maskIp } from '@/server/services/privacy'
 import type { AuditContext } from '@/server/services/auditService'
 import type { PageRequest } from '@/server/http/pagination'
 import type { AuditRow, UserRow } from '@/server/db/types'
@@ -18,6 +21,10 @@ import type { AuditRow, UserRow } from '@/server/db/types'
  * presentation fields, and may revoke their own devices — nothing else. Email,
  * status, role and plan are administrator-owned, so they are not accepted by the
  * profile patch at all (rejected upstream as 422 by the strict schema).
+ *
+ * Address changes have their own two-confirmation flow
+ * (`emailVerificationService`), and deletion has its own state machine
+ * (`accountDeletionService`); this file only exposes them.
  */
 
 export interface ProfileDto {
@@ -34,6 +41,11 @@ export interface ProfileDto {
   role: { id: string; key: string; name: string }
   createdAt: string
   lastLoginAt: string | null
+  /** Added by migration 0005 — the desktop account centre reads these. */
+  emailVerified: boolean
+  emailVerifiedAt: string | null
+  pendingEmail: string | null
+  deletion: { status: 'awaiting_confirmation' | 'scheduled'; scheduledFor: string | null } | null
 }
 
 export function profile(userId: string): ProfileDto {
@@ -55,6 +67,12 @@ export function profile(userId: string): ProfileDto {
     role: { id: role?.id ?? user.role_id, key: role?.key ?? 'member', name: role?.name ?? '成员' },
     createdAt: new Date(user.created_at).toISOString(),
     lastLoginAt: user.last_login_at ? new Date(user.last_login_at).toISOString() : null,
+    emailVerified: user.email_verified_at !== null,
+    emailVerifiedAt: user.email_verified_at
+      ? new Date(user.email_verified_at).toISOString()
+      : null,
+    pendingEmail: emailVerificationService.pendingEmail(user.id),
+    deletion: accountDeletionService.liveForUser(user.id),
   }
 }
 
@@ -65,10 +83,21 @@ export interface ProfilePatch {
   timezone?: string
 }
 
+/**
+ * Apply a presentation patch.
+ *
+ * Refused while a deletion request is live (`409 deletion_pending`): editing an
+ * account that is on its way out gives a false sense of "it is still mine", and
+ * the same guard already protects the address change.
+ */
 export function updateProfile(userId: string, patch: ProfilePatch, actor: AuditContext): ProfileDto {
   const db = getDb()
   const before = usersRepo.findById(db, userId)
   if (!before) throw errors.unauthorized()
+
+  if (accountDeletionService.liveForUser(userId)) {
+    throw new AppError(ERROR_CODE.deletionPending, '注销申请进行中，暂不能修改资料')
+  }
 
   const next: Partial<UserRow> = {}
   if (patch.displayName !== undefined) next.display_name = patch.displayName.trim()
@@ -130,26 +159,70 @@ export function revokeMySession(
   })
 }
 
-export function myActivity(userId: string, page: PageRequest): {
-  rows: AuditRow[]
-  total: number
-} {
-  const since = Date.now() - 90 * 24 * 60 * 60 * 1000
-  return auditRepo.listForUser(getDb(), userId, since, page)
+export interface ActivityItemDto {
+  id: string
+  action: string
+  targetType: string
+  targetId: string
+  /** The account holder's own address; only the web timeline renders it. */
+  ip: string
+  /** `1.2.x.x` — what the desktop forwards to the renderer. */
+  ipMasked: string
+  createdAt: string
 }
 
-/** Guard used by the console's DangerZone: record intent, change nothing. */
-export function requestAccountDeletion(userId: string, actor: AuditContext): void {
+/**
+ * Activity timeline.
+ *
+ * `SELF_VISIBLE_ACTIONS` is the contract (see `auditRepo`): only actions a user is
+ * allowed to know about themselves are returned, and every new self-service event
+ * this release adds must be in that list — otherwise the tab exists but is empty.
+ *
+ * The DTO carries both `ip` (the account holder's own data, used by the web
+ * timeline) and `ipMasked`. The desktop consumes the masked value only, so the
+ * Electron renderer never receives a full address (spec §3.10 / P1-6).
+ */
+export function myActivity(
+  userId: string,
+  page: PageRequest,
+): { rows: ActivityItemDto[]; total: number } {
+  const since = Date.now() - 90 * 24 * 60 * 60 * 1000
+  const result = auditRepo.listForUser(getDb(), userId, since, page)
+  return {
+    total: result.total,
+    rows: result.rows.map((row: AuditRow) => ({
+      id: row.id,
+      action: row.action,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      ip: row.ip,
+      ipMasked: maskIp(row.ip),
+      createdAt: new Date(row.created_at).toISOString(),
+    })),
+  }
+}
+
+/**
+ * File a deletion request.
+ *
+ * Delegated to `accountDeletionService`, which owns the state machine. Before
+ * migration 0005 this only wrote an audit row — and it wrote the PLAINTEXT address
+ * into `metadata`, which is exactly what the audit rule forbids. The delegation
+ * removes both problems at once: real behaviour, masked metadata.
+ */
+export async function requestAccountDeletion(
+  userId: string,
+  input: { password: string; reason?: string },
+  context: { ip: string; requestId: string; audit: AuditContext },
+): Promise<accountDeletionService.DeletionRequestResult> {
   const db = getDb()
   const user = usersRepo.findById(db, userId)
   if (!user) throw errors.unauthorized()
   if (user.status === 'deleted') {
     throw new AppError(ERROR_CODE.conflict, '账号已注销')
   }
-  auditService.record(actor, {
-    action: 'user.deletion_requested',
-    targetType: 'user',
-    targetId: userId,
-    metadata: { email: user.email_normalized },
-  })
+  // The password is the proof of ownership for a step the user cannot undo —
+  // a stolen session alone must not be enough to close somebody's account.
+  await accountDeletionService.assertPassword(user, input.password)
+  return accountDeletionService.request(user, input, context)
 }

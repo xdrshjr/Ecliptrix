@@ -4,6 +4,7 @@ import { getConfig } from '@/server/config'
 import { AppError } from '@/server/http/errors'
 import { DEFAULT_MAX_ACTIVE_SESSIONS, ERROR_CODE } from '@/server/auth/constants'
 import { log } from '@/server/http/requestContext'
+import { isMailEnabled } from '@/server/mail/mailer'
 
 /**
  * Application settings.
@@ -28,6 +29,14 @@ export type SettingKey =
   | 'app.maintenanceMessage'
   | 'branding.appName'
   | 'branding.supportEmail'
+  | 'mail.verificationRequired'
+  | 'mail.verificationTtlHours'
+  | 'mail.emailChangeTtlHours'
+  | 'mail.notifyNewDevice'
+  | 'mail.notifyPasswordChange'
+  | 'account.deletionGraceHours'
+  | 'account.exportCooldownMinutes'
+  | 'audit.retentionDays'
 
 interface SettingSpec {
   type: 'boolean' | 'int' | 'string'
@@ -86,6 +95,23 @@ const SPECS: Record<SettingKey, SettingSpec> = {
    * not be locked out of the app by an announcement.
    */
   'app.maintenanceMessage': { type: 'string', maxLength: 200, default: () => '' },
+  /**
+   * Mail and account-lifecycle policy (migration 0005).
+   *
+   * `mail.verificationRequired` is clamped to `false` whenever SMTP is not
+   * configured: switching it on without a working mail channel would answer 403
+   * `email_not_verified` to every desktop login with no way for the user to
+   * verify, i.e. it would lock the whole fleet out of the app — including the
+   * administrator who flipped the switch.
+   */
+  'mail.verificationRequired': { type: 'boolean', default: () => false },
+  'mail.verificationTtlHours': { type: 'int', min: 1, max: 168, default: () => 48 },
+  'mail.emailChangeTtlHours': { type: 'int', min: 1, max: 72, default: () => 24 },
+  'mail.notifyNewDevice': { type: 'boolean', default: () => true },
+  'mail.notifyPasswordChange': { type: 'boolean', default: () => true },
+  'account.deletionGraceHours': { type: 'int', min: 1, max: 720, default: () => 72 },
+  'account.exportCooldownMinutes': { type: 'int', min: 1, max: 1440, default: () => 60 },
+  'audit.retentionDays': { type: 'int', min: 30, max: 3650, default: () => 180 },
 }
 
 export const SETTING_KEYS = Object.keys(SPECS) as SettingKey[]
@@ -111,6 +137,12 @@ export function all(): Record<SettingKey, unknown> {
   const out = {} as Record<SettingKey, unknown>
   for (const key of SETTING_KEYS) {
     out[key] = key in stored ? stored[key] : defaultFor(key)
+  }
+  // Read-side clamp (the write side refuses the same combination in `patch`).
+  // A database restored from a deployment that HAD SMTP, or an environment where
+  // SMTP was removed, would otherwise still answer 403 to every desktop login.
+  if (!isMailEnabled() && out['mail.verificationRequired'] === true) {
+    out['mail.verificationRequired'] = false
   }
   return out
 }
@@ -158,6 +190,15 @@ export function patch(
     if (spec.type === 'boolean') {
       if (typeof rawValue !== 'boolean') {
         failures.push({ path: key, message: '必须是布尔值' })
+        continue
+      }
+      // Symmetric with the read-side clamp: refuse to arm a verification gate
+      // that cannot be satisfied.
+      if (key === 'mail.verificationRequired' && rawValue && !isMailEnabled()) {
+        failures.push({
+          path: key,
+          message: '未配置邮件服务（SMTP）时不能开启邮箱验证，否则所有桌面端用户都无法登录',
+        })
         continue
       }
     } else if (spec.type === 'int') {
@@ -218,6 +259,8 @@ export function publicMeta(): {
   /** Empty string = not in maintenance mode. */
   maintenanceMessage: string
   maxActiveSessions: number
+  /** True when this deployment would refuse an unverified desktop login. */
+  emailVerificationRequired: boolean
 } {
   const config = getConfig()
   return {
@@ -233,5 +276,7 @@ export function publicMeta(): {
     minClientVersion: getString('client.minVersion'),
     maintenanceMessage: getString('app.maintenanceMessage'),
     maxActiveSessions: getNumber('security.maxActiveSessions'),
+    // Already clamped by `all()`: false whenever SMTP is not configured.
+    emailVerificationRequired: getBoolean('mail.verificationRequired'),
   }
 }

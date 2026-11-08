@@ -45,6 +45,8 @@ export interface UserRow {
   created_at: number
   updated_at: number
   deleted_at: number | null
+  /** Last successful data export; drives the export cooldown (migration 0005). */
+  last_exported_at: number | null
 }
 
 export interface SessionRow {
@@ -177,6 +179,11 @@ export interface PublicUserDto {
   status: UserStatus
   planTag: string
   mustChangePassword: boolean
+  /**
+   * Whether the address has been proven. Login and register answer the same shape,
+   * so the desktop can show its "unverified" banner without a second request.
+   */
+  emailVerified: boolean
   createdAt: string
   lastLoginAt: string | null
 }
@@ -193,6 +200,7 @@ export function toPublicUserDto(row: UserRow): PublicUserDto {
     status: row.status,
     planTag: row.plan_tag,
     mustChangePassword: bool(row.must_change_password),
+    emailVerified: row.email_verified_at !== null,
     createdAt: toIso(row.created_at),
     lastLoginAt: iso(row.last_login_at),
   }

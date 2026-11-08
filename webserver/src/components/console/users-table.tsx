@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useCallback, useMemo, useState, useTransition } from 'react'
 import {
+  Download,
   KeyRound,
   LockOpen,
   Pencil,
@@ -80,6 +81,7 @@ export function UsersTable(props: UsersTableProps) {
   const [editUser, setEditUser] = useState<AdminUser | null>(null)
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null)
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const setParam = useCallback(
     (updates: Record<string, string | null>) => {
@@ -248,6 +250,46 @@ export function UsersTable(props: UsersTableProps) {
     }
   }
 
+  /**
+   * CSV export of exactly the current filter (§3.9).
+   *
+   * Fetched rather than pointed at with `<a download>` for one reason: the
+   * endpoint reports a capped result through `X-Export-Truncated`, and an anchor
+   * cannot read a response header. Silent truncation is the failure mode the
+   * header exists to prevent — the operator would filter nothing and keep a file
+   * that looks complete.
+   */
+  const exportCsv = async () => {
+    setExporting(true)
+    try {
+      const response = await fetch(`/api/v1/admin/users/export?${searchParams.toString()}`, {
+        credentials: 'same-origin',
+      })
+      if (!response.ok) {
+        toast.error(tt('errors.network'))
+        return
+      }
+      const truncated = response.headers.get('X-Export-Truncated') === '1'
+      const disposition = response.headers.get('Content-Disposition') ?? ''
+      const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'ecliptrix-users.csv'
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      if (truncated) toast.error(tt('admin.users.exportTruncated'))
+      else toast.success(tt('admin.users.exported'))
+    } catch {
+      toast.error(tt('errors.network'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const bulk = async (action: 'suspend' | 'activate' | 'delete') => {
     try {
       const result = await usersApi.bulk({ action, ids: selected })
@@ -268,11 +310,24 @@ export function UsersTable(props: UsersTableProps) {
           <h1 className="text-xl font-semibold tracking-[-0.01em]">{tt('admin.users.title')}</h1>
           <p className="mono mt-1 text-xs text-[var(--muted)]">{props.total}</p>
         </div>
-        {props.canWrite ? (
-          <Button icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
-            {tt('admin.users.new')}
+        <div className="flex items-center gap-2">
+          {/* Export is gated by `users.read` — the same permission that opens this
+              page — not by `users.write`: `support` may export, and it used to see
+              no button for an endpoint that answers 200. */}
+          <Button
+            variant="secondary"
+            icon={<Download size={14} />}
+            loading={exporting}
+            onClick={exportCsv}
+          >
+            {tt('admin.users.exportCsv')}
           </Button>
-        ) : null}
+          {props.canWrite ? (
+            <Button icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
+              {tt('admin.users.new')}
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">

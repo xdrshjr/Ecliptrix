@@ -22,12 +22,18 @@ const CHANNELS = {
   LIST_SESSIONS: 'auth:list-sessions',
   REVOKE_SESSION: 'auth:revoke-session',
   OPEN_EXTERNAL: 'auth:open-external',
+  // Account centre (migration 0005). Read-only except `UPDATE_PROFILE`, which
+  // only ever carries the three presentation fields below.
+  ME: 'auth:me',
+  UPDATE_PROFILE: 'auth:update-profile',
+  ACTIVITY: 'auth:activity',
+  RESEND_VERIFICATION: 'auth:resend-verification',
 }
 
 const EVENT_CHANNEL = 'auth:changed'
 
 // While the account is in "must change password", the main process keeps
-// serving only these five channels (AC-13). The renderer also forces an
+// serving only these SIX channels (AC-25) — the five from v2 plus `auth:me`. The renderer also forces an
 // unclosable dialog; this is the narrowing half of that rule, which is the
 // honest description — the UI itself is not tamper-proof (§2.1.1).
 const PASSWORD_CHANGE_ALLOWED = new Set([
@@ -36,6 +42,10 @@ const PASSWORD_CHANGE_ALLOWED = new Set([
   CHANNELS.LOGOUT,
   CHANNELS.LIST_SESSIONS,
   CHANNELS.REVOKE_SESSION,
+  // The forced-change screen has to say WHO is being changed: without `auth:me`
+  // it can only show a generic lock icon (D3-04). This is a read of the caller's
+  // own record — it widens the surface by zero write capability.
+  CHANNELS.ME,
 ])
 
 // `auth:open-external` allowlist (§2.5): the configured account server plus the
@@ -51,6 +61,10 @@ const MAX_INVITE_LENGTH = 64
 const MAX_SESSION_ID_LENGTH = 128
 const MAX_LOCAL_NAME = 64
 const MAX_URL_LENGTH = 2000
+const MAX_TIMEZONE_LENGTH = 64
+
+/** `Area/City`-ish. Deliberately permissive; the server validates for real. */
+const TIMEZONE_PATTERN = /^[A-Za-z_]+\/[A-Za-z_+\-0-9]+$/
 
 /**
  * Register the ten `auth:*` handlers and the `auth:changed` forwarder.
@@ -164,6 +178,42 @@ function buildHandlers({ controller, deps, allowedHosts }) {
 
     [CHANNELS.REVOKE_SESSION]: async (_event, id) =>
       controller.revokeSession(requireText(id, 'id', MAX_SESSION_ID_LENGTH)),
+
+    // No arguments: the controller reads the caller from its own session. Taking
+    // an id from the renderer would let it ask about somebody else.
+    [CHANNELS.ME]: async () => controller.me(),
+
+    [CHANNELS.UPDATE_PROFILE]: async (_event, payload) => {
+      const input = requireObject(payload)
+      const allowed = ['displayName', 'locale', 'timezone']
+      for (const key of Object.keys(input)) {
+        if (!allowed.includes(key)) throw invalidRequest(`${key} 不允许由本人修改`)
+      }
+      if (Object.keys(input).length === 0) throw invalidRequest('没有需要更新的字段')
+      const patch = {}
+      if (input.displayName !== undefined) {
+        patch.displayName = requireText(input.displayName, 'displayName', MAX_NAME_LENGTH)
+      }
+      if (input.locale !== undefined) {
+        if (input.locale !== 'zh-CN' && input.locale !== 'en-US') {
+          throw invalidRequest('locale 只能是 zh-CN 或 en-US')
+        }
+        patch.locale = input.locale
+      }
+      if (input.timezone !== undefined) {
+        const timezone = requireText(input.timezone, 'timezone', MAX_TIMEZONE_LENGTH)
+        // Loose on purpose: the server is authoritative (Intl knows the real
+        // list), this only keeps obviously wrong shapes from travelling.
+        if (!TIMEZONE_PATTERN.test(timezone)) throw invalidRequest('timezone 格式不正确')
+        patch.timezone = timezone
+      }
+      return controller.updateProfile(patch)
+    },
+
+    // No arguments: the controller fixes `page=1&pageSize=30`.
+    [CHANNELS.ACTIVITY]: async () => controller.activity(),
+
+    [CHANNELS.RESEND_VERIFICATION]: async () => controller.resendVerification(),
 
     [CHANNELS.OPEN_EXTERNAL]: async (_event, url) => {
       const target = requireText(url, 'url', MAX_URL_LENGTH)

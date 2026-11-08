@@ -47,6 +47,96 @@ const SOURCE = {
  * @param {string} appVersion
  * @returns {object} AuthStatus
  */
+// One page of activity is all the desktop shows; the web timeline is the place to
+// scroll. 30 rows is also what the account centre's "recent activity" tab promises.
+const ACTIVITY_PAGE_SIZE = 30
+
+/**
+ * Mask an address for the renderer: `203.0.113.42` → `203.0.x.x`, IPv6 keeps its
+ * first non-empty group.
+ *
+ * @param {unknown} raw
+ * @returns {string}
+ */
+/** `1.2.3.4`, optionally with a port — decided by the DOTS, not the colon. */
+const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::\d+)?$/
+/** Already masked by the server (`/me/activity` returns both forms). */
+const MASKED_IPV4_PATTERN = /^\d{1,3}\.\d{1,3}\.x\.x$/
+
+/**
+ * `203.0.113.42` → `203.0.x.x`; `2001:db8::1` → `2001:…`.
+ *
+ * The order of the two branches matters: `ip:port` also contains a colon, so a
+ * colon-first test turns `203.0.113.42:51234` into `203.0.113.42:…` — a full
+ * address handed to the renderer by the function whose job is to prevent exactly
+ * that. Anything unparsable becomes `…` rather than being echoed.
+ */
+function maskIp(raw) {
+  const value = String(raw == null ? '' : raw).trim()
+  if (!value) return ''
+  // Masking must be idempotent: `authController.activity()` re-masks a value the
+  // server may already have masked.
+  if (MASKED_IPV4_PATTERN.test(value)) return value
+  const ipv4 = IPV4_PATTERN.exec(value)
+  if (ipv4) return `${ipv4[1]}.${ipv4[2]}.x.x`
+  // Bracketed IPv6 with a port (`[2001:db8::1]:443`) — drop the brackets first.
+  const bare = value.replace(/^\[/, '').replace(/\].*$/, '')
+  if (bare.includes(':')) {
+    const groups = bare.split(':').filter(Boolean)
+    return groups.length === 0 ? '::…' : `${groups[0]}:…`
+  }
+  return '…'
+}
+
+/**
+ * Map a revocation reason onto the renderer's `AuthReason` vocabulary.
+ *
+ * Exported for the tests: the two-way mapping (`account_deleted` and the older
+ * admin-only `deleted`) is exactly what this release had to get right.
+ *
+ * @param {unknown} reason Server `revoked_reason` / `error_details.reason`
+ * @returns {string|null}
+ */
+function toUiReasonForRevoke(reason) {
+  const value = String(reason == null ? '' : reason)
+  if (value === 'account_deleted' || value === 'deleted') return 'account-deleted'
+  if (value === 'suspended') return 'account-suspended'
+  if (value === 'refresh_reuse') return 'session-revoked'
+  return null
+}
+
+/**
+ * Normalise the `MeView` payload (defaults for a server that predates a field).
+ *
+ * @param {unknown} raw
+ * @returns {object}
+ */
+function normaliseMe(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {}
+  const role = source.role && typeof source.role === 'object' ? source.role : {}
+  const deletion = source.deletion && typeof source.deletion === 'object' ? source.deletion : null
+  return {
+    id: String(source.id || ''),
+    email: String(source.email || ''),
+    emailVerified: source.emailVerified === true,
+    displayName: String(source.displayName || ''),
+    username: String(source.username || ''),
+    locale: source.locale === 'en-US' ? 'en-US' : 'zh-CN',
+    timezone: String(source.timezone || ''),
+    role: { key: String(role.key || 'member'), name: String(role.name || '') },
+    planTag: String(source.planTag || 'free'),
+    createdAt: String(source.createdAt || ''),
+    lastLoginAt: source.lastLoginAt ? String(source.lastLoginAt) : null,
+    pendingEmail: source.pendingEmail ? String(source.pendingEmail) : null,
+    deletion: deletion
+      ? {
+          status: deletion.status === 'scheduled' ? 'scheduled' : 'awaiting_confirmation',
+          scheduledFor: deletion.scheduledFor ? String(deletion.scheduledFor) : null,
+        }
+      : null,
+  }
+}
+
 function bootingStatus(appVersion) {
   return Object.freeze({
     state: 'booting',
@@ -128,9 +218,13 @@ function createAuthController(deps) {
     plaintextSession: false,
     attempts: readAttempts(attemptsPath),
     signature: '',
+    /** Last `/me` view, so reopening the dialogue does not refetch blindly. */
+    lastMe: null,
   }
   const listeners = new Set()
   let tokenLock = null
+  /** Cause of the last dead session, when the server named one. */
+  let pendingRevokeReason = null
   let timer = null
 
   // ---------------------------------------------------------------- status --
@@ -206,7 +300,13 @@ function createAuthController(deps) {
     // A blocked or signed-out state keeps the cached session for its next
     // launch, but it must not present a user as if they were inside the app.
     if (state.state !== 'authenticated') return null
-    return { ...session.user, mustChangePassword: Boolean(state.mustChangePassword) }
+    // `emailVerified` is coerced here because a session file written before the
+    // field existed has no key at all, and the renderer branches on a boolean.
+    return {
+      ...session.user,
+      emailVerified: session.user.emailVerified === true,
+      mustChangePassword: Boolean(state.mustChangePassword),
+    }
   }
 
   /**
@@ -240,7 +340,18 @@ function createAuthController(deps) {
       status.lockedUntil,
       status.reachable,
       status.securityWarning,
-      user ? [user.id, user.permissions, user.role && user.role.key] : null,
+      user
+        ? [
+            user.id,
+            user.permissions,
+            user.role && user.role.key,
+            // Without these two a heartbeat that merely verified the address or
+            // renamed the account hashes to the same signature, so `auth:changed`
+            // never fires and the account centre keeps its stale snapshot.
+            user.emailVerified === true,
+            user.displayName,
+          ]
+        : null,
       server ? server.maintenanceMessage : null,
     ])
   }
@@ -257,12 +368,18 @@ function createAuthController(deps) {
     state.phase = 'ready'
     state.state = decision.state
     state.source = decision.source
-    state.reason = decision.reason
+    // A dead session reports the generic verdict; prefer the specific cause the
+    // server gave us (`account-deleted`) when there is one.
+    state.reason = decision.reason === 'session-revoked' && pendingRevokeReason
+      ? pendingRevokeReason
+      : decision.reason
     state.mustChangePassword = Boolean(decision.mustChangePassword)
       || Boolean(decision.state === 'authenticated' && state.session
         && state.session.user && state.session.user.mustChangePassword)
     if (clearsSession(decision.reason)) clearSession()
     if (decision.state !== 'authenticated') cancelTimer()
+    // One-shot: a later decision must not inherit a stale cause.
+    pendingRevokeReason = null
   }
 
   // --------------------------------------------------------------- session --
@@ -339,6 +456,11 @@ function createAuthController(deps) {
       const body = await client.heartbeat(session.accessToken)
       return applyHeartbeatBody(session, body)
     } catch (err) {
+      // Remember WHY the session died before the verdict vocabulary flattens it.
+      // `decideStartup()` speaks `session-revoked` for everything, so the specific
+      // cause has to travel separately (`account_deleted` / `deleted`).
+      const cause = revokeReasonFor(err)
+      if (cause) pendingRevokeReason = cause
       return handleHeartbeatError(session, err)
     }
   }
@@ -357,6 +479,15 @@ function createAuthController(deps) {
         permissions: Array.isArray(payload.permissions)
           ? payload.permissions
           : session.user.permissions,
+        // The heartbeat echoes these two so a user who verified their address (or
+        // renamed themselves) mid-session sees it without restarting the app.
+        // Older servers do not send them — keep the cached value then.
+        emailVerified: typeof payload.emailVerified === 'boolean'
+          ? payload.emailVerified
+          : session.user.emailVerified === true,
+        displayName: typeof payload.displayName === 'string' && payload.displayName
+          ? payload.displayName
+          : session.user.displayName,
       }
     }
     persist()
@@ -386,6 +517,13 @@ function createAuthController(deps) {
         //
         // Only a REFUSED refresh token (+ a suspension) means the session is dead;
         // everything else keeps the session and lets the grace window decide.
+        // The refresh endpoint reports the revocation cause in
+        // `error.details.reason` (webserver: /auth/refresh writes
+        // `account_deleted` there), and this is the ONLY path a deleted account
+        // takes when its access token had already expired. Reading the cause here
+        // is what keeps "your account was closed" from becoming "session expired".
+        const refreshCause = revokeReasonFor(refreshError)
+        if (refreshCause) pendingRevokeReason = refreshCause
         const refreshCode = refreshError && refreshError.code
         if (REFRESH_REJECTED.has(refreshCode)) {
           return { status: HEARTBEAT_STATUS.EXPIRED }
@@ -398,6 +536,8 @@ function createAuthController(deps) {
       try {
         return applyHeartbeatBody(rotated, await client.heartbeat(rotated.accessToken))
       } catch (retryError) {
+        const retryCause = revokeReasonFor(retryError)
+        if (retryCause) pendingRevokeReason = retryCause
         return { status: heartbeatStatusFor(retryError) }
       }
     }
@@ -508,8 +648,29 @@ function createAuthController(deps) {
       return
     }
     clearSession()
-    applyDecision({ state: 'unauthenticated', source: null, reason: 'session-revoked' })
+    applyDecision({
+      state: 'unauthenticated',
+      source: null,
+      reason: revokeReasonFor(err) || 'session-revoked',
+    })
     emitChanged(true)
+  }
+
+  /**
+   * Which reason a dead session should show.
+   *
+   * The server reports the revocation cause in `error.details.reason`. Two of them
+   * are NOT the generic "you were signed out":
+   *  - `account_deleted` — the owner closed their account (self-service);
+   *  - `deleted` — an administrator deleted it.
+   * Both must become `account-deleted`, otherwise the user sees "session revoked"
+   * and keeps retrying a login that can never succeed again.
+   *
+   * @param {object} err AccountError
+   * @returns {string|null}
+   */
+  function revokeReasonFor(err) {
+    return toUiReasonForRevoke(err && err.details && err.details.reason)
   }
 
   // ----------------------------------------------------------------- config --
@@ -523,7 +684,7 @@ function createAuthController(deps) {
     try {
       const meta = await client.meta()
       state.reachable = true
-      return normaliseServerMeta(meta)
+      return normaliseServerMeta({ ...meta, baseUrl: config.serverUrl })
     } catch (err) {
       state.reachable = false
       log('warn', `account server metadata unavailable: ${(err && err.code) || err}`)
@@ -775,6 +936,87 @@ function createAuthController(deps) {
     return { ok: true }
   }
 
+  // ------------------------------------------------------- account centre --
+
+  /**
+   * `GET /me` — the account centre's data source.
+   *
+   * @returns {Promise<object>} `MeView`
+   * @throws {AccountError} when there is no usable session
+   */
+  async function me() {
+    const session = requireServerSession()
+    const view = normaliseMe(await client.me(session.accessToken))
+    state.lastMe = view
+    return view
+  }
+
+  /**
+   * `PATCH /me` — display name / locale / time zone only.
+   *
+   * The payload is rebuilt from the whitelist here as well as in the bridge: a
+   * field the server does not accept must never leave the main process, and the
+   * extra copy costs nothing.
+   *
+   * @param {{ displayName?: string, locale?: string, timezone?: string }} input
+   * @returns {Promise<object>} The refreshed `MeView`
+   */
+  async function updateProfile(input) {
+    const session = requireServerSession()
+    const patch = {}
+    if (input && input.displayName !== undefined) patch.displayName = input.displayName
+    if (input && input.locale !== undefined) patch.locale = input.locale
+    if (input && input.timezone !== undefined) patch.timezone = input.timezone
+    const view = normaliseMe(await client.updateProfile(session.accessToken, patch))
+    state.lastMe = view
+    // The display name is part of the session snapshot the title bar renders, so
+    // the cached copy has to follow the change or the two disagree until restart.
+    if (session.user && view.displayName) session.user.displayName = view.displayName
+    emitChanged(true)
+    return view
+  }
+
+  /**
+   * `GET /me/activity` — the caller's own timeline, IPs masked HERE.
+   *
+   * Masking happens in the main process on purpose (spec §3.10): the server
+   * returns the real `ip` because the account holder is entitled to it, but the
+   * Electron renderer must never receive a full address. `truncated` means "there
+   * are more rows", not "the server cut the list".
+   *
+   * @returns {Promise<{ items: object[], truncated: boolean }>}
+   */
+  async function activity() {
+    const session = requireServerSession()
+    const result = await client.activity(session.accessToken, { page: 1, pageSize: ACTIVITY_PAGE_SIZE })
+    const items = Array.isArray(result.items) ? result.items : []
+    const total = result.page && Number.isFinite(result.page.total)
+      ? result.page.total
+      : items.length
+    return {
+      items: items.map((item) => ({
+        id: String(item.id || ''),
+        action: String(item.action || ''),
+        targetType: String(item.targetType || ''),
+        targetId: String(item.targetId || ''),
+        ipMasked: maskIp(item.ipMasked || item.ip),
+        createdAt: String(item.createdAt || ''),
+      })),
+      truncated: total > items.length,
+    }
+  }
+
+  /**
+   * `POST /auth/email/verify/resend`.
+   *
+   * @returns {Promise<{ sentAt: string, expiresAt: string }>}
+   */
+  async function resendVerification() {
+    const session = requireServerSession()
+    const result = await client.resendVerification(session.accessToken)
+    return { sentAt: result.sentAt || '', expiresAt: result.expiresAt || '' }
+  }
+
   // ----------------------------------------------------------------- helper --
 
   /** @returns {object} The active server session. @throws {AccountError} */
@@ -832,6 +1074,10 @@ function createAuthController(deps) {
 
   return {
     start,
+    me,
+    updateProfile,
+    activity,
+    resendVerification,
 
     /** @returns {object} AuthStatus — always answers, even before `start()`. */
     status: buildStatus,
@@ -916,6 +1162,9 @@ function normaliseUser(raw) {
     status: String(user.status || 'active'),
     planTag: String(user.planTag || ''),
     mustChangePassword: user.mustChangePassword === true,
+    // The account centre shows an "unverified" banner from this flag. A session
+    // file written before the field existed reads back as `false` (spec §6.5).
+    emailVerified: user.emailVerified === true,
     role: { key: String(role.key || ''), name: String(role.name || '') },
     permissions: Array.isArray(user.permissions) ? user.permissions.map(String) : [],
   }
@@ -1004,10 +1253,18 @@ function normaliseServerMeta(raw) {
     minClientVersion: String(meta.minClientVersion || ''),
     maintenanceMessage: String(meta.maintenanceMessage || ''),
     maxActiveSessions: Number.isFinite(meta.maxActiveSessions) ? meta.maxActiveSessions : 10,
+    // Whether an unverified desktop login is refused on this deployment.
+    emailVerificationRequired: meta.emailVerificationRequired === true,
+    // The runtime origin the renderer must use for "open in browser" links. It is
+    // already in the `openExternal` allowlist (the allowlist is derived from it).
+    baseUrl: String(meta.baseUrl || ''),
   }
 }
 
 module.exports = {
+  toUiReasonForRevoke,
+  maskIp,
+  normaliseMe,
   createAuthController,
   bootingStatus,
   BOOTING_STATUS,

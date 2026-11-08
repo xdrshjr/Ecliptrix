@@ -8,6 +8,7 @@ import { ERROR_CODE, REVOKE_REASON } from '@/server/auth/constants'
 import { AppError, errors } from '@/server/http/errors'
 import * as sessionService from '@/server/services/sessionService'
 import * as auditService from '@/server/services/auditService'
+import * as emailVerificationService from '@/server/services/emailVerificationService'
 import { displayEmail, displayUsername, normalizeEmail, normalizeUsername } from '@/server/services/normalize'
 import type { AuditContext } from '@/server/services/auditService'
 import type { PageRequest } from '@/server/http/pagination'
@@ -75,6 +76,38 @@ export function getUser(id: string): UserRow {
   const user = usersRepo.findById(getDb(), id)
   if (!user) throw errors.notFound('用户不存在')
   return user
+}
+
+/**
+ * Rows for the console's CSV export.
+ *
+ * Shares the list filter, so "export what I am looking at" is literally true. The
+ * repository fetches `limit + 1` rows so `truncated` is knowable without a second
+ * count — and the flag is surfaced as a response header rather than a silent cut.
+ */
+export function listForExport(
+  query: Omit<ListUsersQuery, 'sort' | 'page'>,
+  limit: number,
+): { rows: usersRepo.UserListRow[]; truncated: boolean } {
+  const rows = usersRepo.listForExport(
+    getDb(),
+    {
+      query: query.query?.trim() || undefined,
+      status: query.status,
+      roleKey: query.roleKey,
+      plan: query.plan && query.plan !== '*' ? query.plan : undefined,
+      createdFrom: query.createdFrom,
+      createdTo: query.createdTo,
+    },
+    limit,
+    Date.now(),
+  )
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit }
+}
+
+/** Administrator override for "this user cannot receive mail". */
+export function markEmailVerified(id: string, actor: AuditContext): { emailVerifiedAt: string } {
+  return emailVerificationService.markVerifiedByAdmin(id, actor)
 }
 
 /** Detail view: row + role + live session count. */

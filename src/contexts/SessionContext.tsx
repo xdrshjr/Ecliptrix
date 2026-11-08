@@ -29,9 +29,14 @@ import {
   bridgeListSessions,
   bridgeLogin,
   bridgeLoginLocal,
+  bridgeActivity,
   bridgeLogout,
+  bridgeMe,
   bridgeOnChanged,
   bridgeOpenExternal,
+  bridgeResendVerification,
+  bridgeUpdateProfile,
+  probeAuthCapabilities,
   bridgeRegister,
   bridgeRequestPasswordReset,
   bridgeRevokeSession,
@@ -39,13 +44,17 @@ import {
   getAuthBridge,
   AuthBusyError,
   AuthBridgeUnavailableError,
+  type ActivityResult,
+  type AuthBridgeCapabilities,
   type AuthReason,
   type AuthStatus,
   type ChangePasswordPayload,
   type LocalLoginPayload,
   type LoginPayload,
+  type MeView,
   type RegisterPayload,
   type SessionListResult,
+  type UpdateProfilePayload,
 } from '@/lib/api/authBridge';
 
 /** Neutral cold-start snapshot. Identical on the server and the first client frame. */
@@ -67,23 +76,6 @@ export const BOOTING_STATUS: AuthStatus = {
   securityWarning: null,
 };
 
-const AUTH_REASONS: readonly AuthReason[] = [
-  'no-session',
-  'session-expired',
-  'session-revoked',
-  'account-suspended',
-  'account-locked',
-  'password-change-required',
-  'grace-expired',
-  'clock-rollback',
-  'network',
-  'client-outdated',
-  'maintenance',
-  'bridge-unavailable',
-  'server-not-configured',
-  'gate-disabled',
-];
-
 export interface SessionContextValue {
   /** Latest main-process snapshot. */
   status: AuthStatus;
@@ -104,6 +96,18 @@ export interface SessionContextValue {
   listSessions: () => Promise<SessionListResult>;
   revokeSession: (id: string) => Promise<{ ok: true }>;
   openExternal: (url: string) => Promise<{ ok: true }>;
+  /**
+   * Which account-centre capabilities this main process provides.
+   *
+   * Probed PER METHOD: an older main process ships the bridge without these four,
+   * and calling a missing one throws at click time. The dialog renders only what
+   * is available (spec §3.10 / P1-7).
+   */
+  capabilities: AuthBridgeCapabilities;
+  me: () => Promise<MeView>;
+  updateProfile: (payload: UpdateProfilePayload) => Promise<MeView>;
+  activity: () => Promise<ActivityResult>;
+  resendVerification: () => Promise<{ sentAt: string; expiresAt: string }>;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
@@ -131,11 +135,27 @@ function statusWithoutBridge(): AuthStatus {
   return { ...BOOTING_STATUS, state: 'blocked', reason: 'bridge-unavailable' };
 }
 
+/**
+ * Reasons that may arrive in `?reason=`.
+ *
+ * A WHITELIST, not "any value in `AUTH_REASONS`". The gate state has to be
+ * believable: `?reason=account-deleted` used to render the deleted-account copy on
+ * the sign-in form with no session at all, which turns a URL into an oracle rather
+ * than a hint. Only the two states that describe the *installation* survive —
+ * neither of them says anything about an address.
+ */
+const URL_REASONS: readonly AuthReason[] = [
+  'maintenance',
+  'client-outdated',
+  'server-not-configured',
+  'bridge-unavailable',
+];
+
 function readUrlReason(): AuthReason | null {
   if (typeof window === 'undefined') return null;
   const value = new URLSearchParams(window.location.search).get('reason');
   if (!value) return null;
-  return (AUTH_REASONS as readonly string[]).includes(value) ? (value as AuthReason) : null;
+  return (URL_REASONS as readonly string[]).includes(value) ? (value as AuthReason) : null;
 }
 
 interface SessionProviderProps {
@@ -254,6 +274,30 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({ children }) =>
     [runAction],
   );
 
+  // Account centre. Each wrapper re-checks the method: a missing one is reported
+  // as "bridge unavailable", never as a crash inside the dialog.
+  const me = useCallback(() => runAction(() => bridgeMe()), [runAction]);
+  const updateProfile = useCallback(
+    (payload: UpdateProfilePayload) => runAction(() => bridgeUpdateProfile(payload)),
+    [runAction],
+  );
+  const activity = useCallback(() => runAction(() => bridgeActivity()), [runAction]);
+  const resendVerification = useCallback(
+    () => runAction(() => bridgeResendVerification()),
+    [runAction],
+  );
+
+  const capabilities = useMemo<AuthBridgeCapabilities>(
+    () => probeAuthCapabilities(getAuthBridge()),
+    // The bridge object is stable per window; re-probe when the status reloads so
+    // a dev reload that swapped preload is picked up. Neither dependency is read
+    // inside the callback — they are a cache key — so the rule is silenced with
+    // that reason rather than by deleting the dependencies (which would keep a
+    // stale capability set after a preload swap).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reloadToken, bridgeAvailable],
+  );
+
   const value = useMemo<SessionContextValue>(
     () => ({
       status,
@@ -270,6 +314,11 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({ children }) =>
       listSessions,
       revokeSession,
       openExternal,
+      capabilities,
+      me,
+      updateProfile,
+      activity,
+      resendVerification,
     }),
     [
       status,
@@ -286,6 +335,11 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({ children }) =>
       listSessions,
       revokeSession,
       openExternal,
+      capabilities,
+      me,
+      updateProfile,
+      activity,
+      resendVerification,
     ],
   );
 

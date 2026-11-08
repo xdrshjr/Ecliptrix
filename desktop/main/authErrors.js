@@ -36,6 +36,12 @@ const SERVER_CODE = {
   NOT_FOUND: 'not_found',
   CONFLICT: 'conflict',
   CSRF_FAILED: 'csrf_failed',
+  // Added with the account-lifecycle release (migration 0005).
+  EMAIL_NOT_VERIFIED: 'email_not_verified',
+  EMAIL_ALREADY_VERIFIED: 'email_already_verified',
+  TOKEN_INVALID: 'token_invalid',
+  DELETION_PENDING: 'deletion_pending',
+  MAIL_DISABLED: 'mail_disabled',
 }
 
 const LOCAL_CODE = {
@@ -66,6 +72,13 @@ const UI_REASON_BY_CODE = {
   [SERVER_CODE.INTERNAL_ERROR]: 'internal-error',
   [SERVER_CODE.PASSWORD_MISMATCH]: 'password-mismatch',
   [SERVER_CODE.REGISTRATION_DISABLED]: 'registration-disabled',
+  // `email_not_verified` is a policy refusal, not a credential failure: the
+  // renderer shows "go verify your address", never the generic wrong-password copy.
+  [SERVER_CODE.EMAIL_NOT_VERIFIED]: 'email-unverified',
+  [SERVER_CODE.EMAIL_ALREADY_VERIFIED]: 'email-unverified',
+  [SERVER_CODE.TOKEN_INVALID]: 'validation-failed',
+  [SERVER_CODE.DELETION_PENDING]: 'deletion-pending',
+  [SERVER_CODE.MAIL_DISABLED]: 'mail-disabled',
   [LOCAL_CODE.NETWORK_UNREACHABLE]: 'network',
   [LOCAL_CODE.REQUEST_TIMEOUT]: 'network',
   [LOCAL_CODE.GRACE_EXPIRED]: 'grace-expired',

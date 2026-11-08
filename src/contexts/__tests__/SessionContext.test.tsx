@@ -34,6 +34,8 @@ const META: ServerMeta = {
   minClientVersion: '',
   maintenanceMessage: '',
   maxActiveSessions: 10,
+  emailVerificationRequired: false,
+  baseUrl: 'https://id.ecliptrix.app',
 };
 
 function status(patch: Partial<AuthStatus>): AuthStatus {
@@ -52,6 +54,7 @@ const SIGNED_IN = status({
     status: 'active',
     planTag: 'pro',
     mustChangePassword: false,
+    emailVerified: true,
     role: { key: 'user', name: 'User' },
     permissions: [],
   },

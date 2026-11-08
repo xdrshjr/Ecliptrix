@@ -25,6 +25,17 @@ const SECURITY_HEADERS: Record<string, string> = {
 }
 
 /**
+ * Routes whose URL carries a one-time token.
+ *
+ * `strict-origin-when-cross-origin` is NOT enough here: it still sends the full
+ * URL on a SAME-origin navigation, so the token lands in our own access log or a
+ * same-origin analytics request. These two pages get `no-referrer`, and
+ * `deploy/nginx.conf.example` repeats the override because Nginx sets its own
+ * header before the request reaches Node.
+ */
+const TOKEN_ROUTES = ['/verify-email', '/confirm-deletion']
+
+/**
  * CSP kept deliberately close to Next's needs: inline styles are required by
  * Tailwind's runtime style injection and Next's dev overlay; scripts stay
  * self-only in production.
@@ -58,18 +69,21 @@ export function middleware(request: NextRequest): NextResponse {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('next', `${pathname}${search}`)
     const redirect = NextResponse.redirect(loginUrl)
-    applySecurityHeaders(redirect, isDev)
+    applySecurityHeaders(redirect, isDev, pathname)
     return redirect
   }
 
   const response = NextResponse.next()
-  applySecurityHeaders(response, isDev)
+  applySecurityHeaders(response, isDev, pathname)
   return response
 }
 
-function applySecurityHeaders(response: NextResponse, isDev: boolean): void {
+function applySecurityHeaders(response: NextResponse, isDev: boolean, pathname = ''): void {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(name, value)
+  }
+  if (TOKEN_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
+    response.headers.set('Referrer-Policy', 'no-referrer')
   }
   response.headers.set('Content-Security-Policy', contentSecurityPolicy(isDev))
   if (!isDev) {

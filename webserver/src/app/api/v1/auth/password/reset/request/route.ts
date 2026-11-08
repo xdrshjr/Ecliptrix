@@ -3,8 +3,10 @@ import { resetRequestSchema } from '@/server/validation/schemas'
 import { errors } from '@/server/http/errors'
 import { hit, LIMITS } from '@/server/auth/rateLimit'
 import * as authService from '@/server/services/authService'
-import { buildResetUrl, sendPasswordResetMail } from '@/server/mail/mailer'
-import { log } from '@/server/http/requestContext'
+import * as mailService from '@/server/services/mailService'
+import { buildResetUrl } from '@/server/mail/links'
+import { translator } from '@/lib/i18n'
+import { localeFromRequest } from '@/lib/locale'
 
 /**
  * `POST /api/v1/auth/password/reset/request`
@@ -12,6 +14,11 @@ import { log } from '@/server/http/requestContext'
  * Always answers `202` with an empty body, whether or not the address exists and
  * whether or not mail is configured. Anything else would turn this endpoint into
  * an account-enumeration oracle (spec §2.9 item 8).
+ *
+ * Since migration 0005 every mail goes through `mailService`, so a deployment
+ * without SMTP still records the message in the outbox instead of losing it —
+ * and the delivery attempt is fired without awaiting, because a 5 s SMTP stall
+ * has no business lengthening a password-reset request.
  */
 export const dynamic = 'force-dynamic'
 
@@ -27,17 +34,19 @@ export const POST = withContext(async ({ request, context }) => {
   })
 
   if (token && user) {
-    const sent = await sendPasswordResetMail({
+    const locale = localeFromRequest(request)
+    const tt = translator(locale)
+    mailService.queueInBackground({
+      template: 'password-reset',
       to: user.email,
-      displayName: user.display_name,
-      resetUrl: buildResetUrl(token),
-      expiresInMinutes: 60,
+      locale,
+      userId: user.id,
+      params: {
+        displayName: user.display_name,
+        link: buildResetUrl(token),
+        expiresIn: tt('mail.duration.minutes', { count: 60 }),
+      },
     })
-    if (!sent) {
-      // Not an API error: the operator gets a hint in the log, the caller learns
-      // nothing. Handing out the token here would defeat the whole flow.
-      log('warn', 'reset requested but mail is not configured', { requestId: context.requestId })
-    }
   }
 
   return ok({ accepted: true }, { status: 202, message: '如果该邮箱存在，重置邮件已经发送' })

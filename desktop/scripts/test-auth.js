@@ -1,6 +1,6 @@
 'use strict'
 
-// Runs the six identity-gate unit suites in one process (spec §3.4 / §6.1).
+// Runs the identity-gate unit suites in one process (spec §3.4 / §6.1).
 //
 // `npm run test:auth` has to work on Windows, macOS and Linux, so the suites are
 // required and awaited in-process instead of chained with `&&`: any suite that
@@ -13,6 +13,7 @@ const suites = [
   'authHttp',
   'localAdmin',
   'authBridge',
+  'authAccountCentre',
 ]
 
 // `require` paths are static so a bundler/packager can see them.
@@ -23,6 +24,7 @@ const LOADERS = {
   authHttp: () => require('../main/authHttp.test.js'),
   localAdmin: () => require('../main/localAdmin.test.js'),
   authBridge: () => require('../main/authBridge.test.js'),
+  authAccountCentre: () => require('../main/authAccountCentre.test.js'),
 }
 
 async function main() {

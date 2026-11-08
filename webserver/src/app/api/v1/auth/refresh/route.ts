@@ -2,9 +2,9 @@ import { withContext, ok, readOptionalJson } from '@/server/http/route'
 import { refreshSchema } from '@/server/validation/schemas'
 import { setSessionCookies } from '@/server/http/cookies'
 import { assertCsrf, readCookieFrom } from '@/server/http/requestContext'
-import { REFRESH_COOKIE } from '@/server/auth/constants'
+import { REFRESH_COOKIE, ERROR_CODE } from '@/server/auth/constants'
 import { newCsrfToken } from '@/server/auth/tokens'
-import { errors } from '@/server/http/errors'
+import { AppError, errors } from '@/server/http/errors'
 import * as sessionService from '@/server/services/sessionService'
 
 /**
@@ -42,7 +42,18 @@ export const POST = withContext(async ({ request, context }) => {
   if (result === 'reuse-detected') {
     throw errors.unauthorized('检测到令牌重复使用，所有会话已被注销，请重新登录')
   }
-  if (!result) throw errors.unauthorized('刷新令牌无效或已过期')
+  if (!result) {
+    // `null` covers both "unknown/expired" and "revoked". When the row still
+    // exists and is revoked, report why in `details.reason` so the desktop can
+    // show "account deleted" instead of "please sign in again" (D3-08).
+    const revokedReason = sessionService.revokeReasonForRefreshToken(presented)
+    if (revokedReason) {
+      throw new AppError(ERROR_CODE.sessionRevoked, '会话已失效，请重新登录', {
+        details: { reason: revokedReason },
+      })
+    }
+    throw errors.unauthorized('刷新令牌无效或已过期')
+  }
 
   if (!cookieMode) {
     return ok({

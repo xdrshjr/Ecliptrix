@@ -176,15 +176,92 @@ export const permissionsSchema = z.object({
   permissions: z.array(z.string().min(1).max(40)).max(200),
 })
 
-export const createInviteSchema = z.object({
+export const settingsPatchSchema = z.record(z.string(), z.union([z.boolean(), z.number(), z.string()]))
+
+/* ------------------------------------------------------------------ *
+ * Account lifecycle (migration 0005)
+ * ------------------------------------------------------------------ */
+
+/** A mailed one-time token. Base64url, 32 bytes → 43 characters. */
+export const emailTokenSchema = z.string().trim().min(16, '链接无效').max(200)
+
+export const emailVerifySchema = z.object({
+  token: emailTokenSchema,
+})
+
+export const emailChangeSchema = z.object({
+  password: passwordSchema,
+  newEmail: emailSchema,
+})
+
+export const deletionRequestSchema = z
+  .object({
+    password: passwordSchema,
+    /** Why the account is going away — shown to administrators, never mailed. */
+    reason: z.string().trim().max(200).optional(),
+  })
+  .default({ password: '' })
+
+export const deletionConfirmSchema = z.object({
+  token: emailTokenSchema,
+})
+
+export const adminSessionsQuerySchema = z.object({
+  query: z.string().trim().max(120).optional(),
+  client: z.enum(['web', 'desktop']).optional(),
+  platform: z.string().trim().max(60).optional(),
+  activeOnly: z.union([z.literal('0'), z.literal('1')]).optional(),
+  page: z.coerce.number().int().min(1).max(100_000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+  sort: z.string().trim().max(40).optional(),
+})
+
+export const adminSessionsRevokeSchema = z.object({
+  // The 100-item cap is also enforced in the repository; here it becomes a 422
+  // with a clear message instead of a silent truncation.
+  ids: z
+    .array(z.string().trim().min(4).max(64))
+    .min(1, '至少选择一个会话')
+    .max(100, '单次最多吊销 100 个会话'),
+  reason: z.enum(['admin_revoke', 'admin_lockdown', 'security_incident']).optional(),
+})
+
+export const adminMailQuerySchema = z.object({
+  status: z.enum(['captured', 'sent', 'failed']).optional(),
+  template: z.string().trim().max(40).optional(),
+  page: z.coerce.number().int().min(1).max(100_000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+})
+
+/** Admin on-behalf deletion confirmation (P1-11). */
+export const adminDeletionConfirmSchema = z.object({
+  reason: z.string().trim().min(3, '请填写处理原因').max(200),
+})
+
+export const userExportQuerySchema = z.object({
+  query: z.string().trim().max(120).optional(),
+  status: z.enum(['active', 'suspended', 'pending', 'deleted']).optional(),
+  role: z.string().trim().max(40).optional(),
+  plan: z.enum(['free', 'pro', 'studio']).optional(),
+})
+
+export const metricsQuerySchema = z.object({
+  days: z.coerce.number().int().min(7).max(90).optional(),
+})
+
+export const inviteCreateSchema = z.object({
   maxUses: z.number().int().min(1, '至少 1 次').max(1000).default(1),
   expiresInDays: z.number().int().min(0).max(365).default(14),
   roleKey: z.string().trim().min(1).max(40).default('member'),
+  /** Optional: when present the invite is mailed instead of only returned. */
+  email: emailSchema.optional(),
+  note: z.string().trim().max(200).optional(),
 })
 
-export const settingsPatchSchema = z.record(z.string(), z.union([z.boolean(), z.number(), z.string()]))
-
 export const localeCookieSchema = z.enum(['zh-CN', 'en-US'])
+
+/** Kept for the existing import sites; the invitation body gained two fields. */
+export const createInviteSchema = inviteCreateSchema
 
 export const LOCALE_COOKIE_NAME = LOCALE_COOKIE
 

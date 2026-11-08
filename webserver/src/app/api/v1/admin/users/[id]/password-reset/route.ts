@@ -5,18 +5,26 @@ import { AppError, errors } from '@/server/http/errors'
 import { ERROR_CODE } from '@/server/auth/constants'
 import * as userService from '@/server/services/userService'
 import * as authService from '@/server/services/authService'
-import { buildResetUrl, isMailEnabled, sendPasswordResetMail } from '@/server/mail/mailer'
+import * as mailService from '@/server/services/mailService'
+import { buildResetUrl } from '@/server/mail/links'
 import { getDb } from '@/server/db/client'
 import * as usersRepo from '@/server/db/repositories/usersRepo'
+import { translator } from '@/lib/i18n'
+import { localeFromRequest } from '@/lib/locale'
 
 /**
  * `POST /api/v1/admin/users/{id}/password-reset`
  *
  * Two modes. `temp_password` (default) works with no mail setup at all and
  * returns the password exactly once; `reset_link` mails a one-time token and
- * requires SMTP, answering `service_unavailable` when it is not configured —
- * here an explicit error beats a silent no-op, because the administrator
- * explicitly asked for delivery.
+ * requires SMTP.
+ *
+ * The `reset_link` branch answers `503 mail_disabled` when mail is not
+ * configured — here an explicit error beats a silent no-op, because the
+ * administrator explicitly asked for delivery (spec §1.3, the one sanctioned
+ * exception to "mail never changes an API result"). It also checks the send
+ * result: before the outbox existed the `false` return of the old mailer was
+ * ignored, so the console reported "sent" for a message that never left.
  */
 export const dynamic = 'force-dynamic'
 
@@ -41,11 +49,7 @@ export async function POST(request: Request, { params }: RouteParams): Promise<R
       })
     }
 
-    if (!isMailEnabled()) {
-      throw new AppError(ERROR_CODE.serviceUnavailable, '未配置邮件服务，无法发送重置链接', {
-        details: { hint: '请使用 mode=temp_password，或在 .env 中配置 SMTP' },
-      })
-    }
+    if (!mailService.isMailEnabled()) throw errors.mailDisabled()
 
     const user = usersRepo.findById(getDb(), id)
     if (!user) throw errors.notFound('用户不存在')
@@ -56,12 +60,26 @@ export async function POST(request: Request, { params }: RouteParams): Promise<R
     })
     if (!token) throw new AppError(ERROR_CODE.conflict, '该账号当前不可重置口令')
 
-    await sendPasswordResetMail({
+    const locale = localeFromRequest(request)
+    const tt = translator(locale)
+    const queued = await mailService.queue({
+      template: 'password-reset',
       to: user.email,
-      displayName: user.display_name,
-      resetUrl: buildResetUrl(token),
-      expiresInMinutes: 60,
+      locale,
+      userId: user.id,
+      params: {
+        displayName: user.display_name,
+        link: buildResetUrl(token),
+        expiresIn: tt('mail.duration.minutes', { count: 60 }),
+      },
     })
-    return ok({ mode: 'reset_link', sentTo: user.email })
+
+    if (queued.status === 'failed') {
+      throw new AppError(ERROR_CODE.serviceUnavailable, '重置邮件发送失败，可稍后在邮件队列中重试', {
+        details: { hint: '请检查 SMTP 配置，或改用 mode=temp_password', outboxId: queued.id },
+      })
+    }
+
+    return ok({ mode: 'reset_link', sentTo: user.email, mailStatus: queued.status })
   })(request)
 }

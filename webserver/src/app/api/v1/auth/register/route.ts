@@ -43,6 +43,9 @@ export const POST = withContext(async ({ request, context }) => {
     status: result.user.status,
     planTag: result.user.plan_tag,
     mustChangePassword: result.user.must_change_password === 1,
+    // Needed by the desktop account centre and the unverified banner; register and
+    // login answer the same key set on purpose (tests assert the parity).
+    emailVerified: result.user.email_verified_at !== null,
     role: result.role,
     permissions: result.permissions,
     // Same key set as login's user (tests/integration/desktop-login.test.ts

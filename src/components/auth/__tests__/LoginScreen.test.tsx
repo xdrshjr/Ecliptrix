@@ -30,6 +30,8 @@ function meta(patch: Partial<ServerMeta> = {}): ServerMeta {
     minClientVersion: '',
     maintenanceMessage: '',
     maxActiveSessions: 10,
+    emailVerificationRequired: false,
+    baseUrl: 'https://id.ecliptrix.app',
     ...patch,
   };
 }
@@ -230,6 +232,75 @@ describe('LoginScreen', () => {
     );
     expect(screen.getByLabelText(copy.identifier.label)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: copy.forgot })).toBeNull();
+  });
+
+  it('explains an unverified address and points at the mail', async () => {
+    const login = vi.fn(() =>
+      Promise.reject(
+        toAuthFailure({
+          ok: false,
+          code: 'email_not_verified',
+          message: 'verify first',
+          details: { redirect: '/verify-email' },
+        }),
+      ),
+    ) as unknown as AuthBridge['login'];
+    renderScreen(signedOut(), login);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: copy.title })).toBeInTheDocument(),
+    );
+    fillCredentials();
+    fireEvent.submit(screen.getByRole('button', { name: copy.submit }).closest('form')!);
+    await waitFor(() =>
+      expect(screen.getByText(copy.error.emailUnverified)).toBeInTheDocument(),
+    );
+  });
+
+  it('renders no banner at all when the reason is account-deleted', async () => {
+    // The reason can arrive from a dead session, so it is not attacker-supplied
+    // here — but the copy must still never appear on the sign-in surface.
+    renderScreen(signedOut({ reason: 'account-deleted' }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: copy.title })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(copy.error.accountDeleted)).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('never shows account-deleted copy on the login screen (no enumeration oracle)', async () => {
+    // A deleted account answers `invalid_credentials` by design, so the login
+    // screen must treat it exactly like a wrong password. A dedicated banner would
+    // tell an attacker "this address existed once".
+    const login = vi.fn(() =>
+      Promise.reject(
+        toAuthFailure({ ok: false, code: 'invalid_credentials', message: 'nope' }),
+      ),
+    ) as unknown as AuthBridge['login'];
+    renderScreen(signedOut(), login);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: copy.title })).toBeInTheDocument(),
+    );
+    fillCredentials();
+    fireEvent.submit(screen.getByRole('button', { name: copy.submit }).closest('form')!);
+    await waitFor(() =>
+      expect(screen.getByText(copy.error.invalidCredentials)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(copy.error.accountDeleted)).toBeNull();
+  });
+
+  it('surfaces a mail-disabled deployment instead of a generic failure', async () => {
+    const login = vi.fn(() =>
+      Promise.reject(
+        toAuthFailure({ ok: false, code: 'mail_disabled', message: 'no smtp' }),
+      ),
+    ) as unknown as AuthBridge['login'];
+    renderScreen(signedOut(), login);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: copy.title })).toBeInTheDocument(),
+    );
+    fillCredentials();
+    fireEvent.submit(screen.getByRole('button', { name: copy.submit }).closest('form')!);
+    await waitFor(() => expect(screen.getByText(copy.error.mailDisabled)).toBeInTheDocument());
   });
 
   it('replaces the form with the maintenance notice', async () => {

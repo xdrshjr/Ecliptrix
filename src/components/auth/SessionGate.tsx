@@ -5,6 +5,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useSession } from '@/contexts/SessionContext';
 import AuthTitleBar from './AuthTitleBar';
 import LoginScreen from './LoginScreen';
+import AccountDeletedScreen from './AccountDeletedScreen';
 import AuthBlocker from './AuthBlocker';
 import ChangePasswordDialog from './ChangePasswordDialog';
 
@@ -123,9 +124,14 @@ export default function SessionGate({ children }: SessionGateProps) {
   }
 
   if (status.state === 'unauthenticated') {
+    // A closed account gets its own screen, never the sign-in form: the form is
+    // reachable by anyone, and "this account was deleted" there is the
+    // "this-address-existed" oracle (spec P1-5). This state is only ever produced
+    // by a session the main process had already authenticated.
+    const deleted = status.reason === 'account-deleted';
     return (
       <PreAuthFrame appVersion={status.appVersion}>
-        <LoginScreen reason={status.reason ?? urlReason} />
+        {deleted ? <AccountDeletedScreen /> : <LoginScreen reason={status.reason ?? urlReason} />}
       </PreAuthFrame>
     );
   }
