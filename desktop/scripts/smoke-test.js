@@ -7,7 +7,7 @@ const net = require('net')
 const { createHash } = require('crypto')
 const path = require('path')
 const { spawn, spawnSync } = require('child_process')
-const { withoutElectronRunAsNode } = require('./lib/electron-env')
+const { withoutElectronRunAsNode, withoutCredentialEnv } = require('./lib/electron-env')
 const { processesUnder, killPids, waitForNoProcessesUnder } = require('./lib/process-cleanup')
 const { waitForNoLeakedProcesses } = require('./lib/process-scope')
 const { awaitStableState, describeReadinessFailure,
@@ -1459,7 +1459,8 @@ async function runDesktopSmoke(research) {
   // Strip ELECTRON_RUN_AS_NODE: agent harnesses / Electron-spawned terminals
   // set it, which turns Ecliptrix.exe into plain Node — it then rejects
   // --user-data-dir with "bad option" and the smoke gate false-fails.
-  const childEnv = withoutElectronRunAsNode({ ...process.env, TEMP: tempDir, TMP: tempDir,
+  const { env: keylessEnv, stripped: strippedCredentials } =
+    withoutCredentialEnv({ ...process.env, TEMP: tempDir, TMP: tempDir,
     ECLIPTRIX_RESEARCH_CDP_PORT: String(researchCdpPort),
     ECLIPTRIX_RESEARCH_CONTROL_PORT: String(researchControlPort),
     // The identity gate (desktop-account-login-gate) has no account server in a
@@ -1471,6 +1472,10 @@ async function runDesktopSmoke(research) {
     // source='gate-disabled' and leak no token); its behaviour is covered by
     // `npm run test:auth` and scripts/auth-smoke.js.
     ECLIPTRIX_AUTH_GATE: 'off' })
+  const childEnv = withoutElectronRunAsNode(keylessEnv)
+  if (strippedCredentials.length) {
+    console.log(`[smoke-test] stripped ${strippedCredentials.length} credential-shaped env var(s) inherited from this shell (names only): ${strippedCredentials.join(', ')}`)
+  }
   const child = spawn(exePath, [`--user-data-dir=${userDataDir}`, `--remote-debugging-port=${debugPort}`, '--remote-debugging-address=127.0.0.1'], {
     stdio: 'ignore',
     detached: false,
@@ -1538,6 +1543,36 @@ async function runDesktopSmoke(research) {
       fail(`unexpected llm-status payload (want success=true configured=false): ${llmStatus.body.slice(0, 300)}`)
     }
     console.log('[smoke-test] llm-status reports unconfigured ok')
+
+    // 2.5 Fail fast on credential leakage, before any functional flow. The
+    //     environment filter above is name/shape based, so it cannot catch a
+    //     variable shape it does not know; the app itself is the authority on
+    //     what it resolved. `/api/integrations` reports per-field `configured`
+    //     without ever carrying values, so asserting that NO secret field is
+    //     configured turns an inherited key into one clear line here instead
+    //     of a confusing failure minutes later inside coverSmoke (the cover
+    //     studio legitimately enables Generate once ai_image resolves a key).
+    const integrations = await httpRequest('GET', `http://127.0.0.1:${ports.backend}/api/integrations`)
+    if (integrations.status !== 200) {
+      fail(`GET /api/integrations returned HTTP ${integrations.status}: ${integrations.body.slice(0, 300)}`)
+    }
+    const integrationData = JSON.parse(integrations.body)?.data
+    if (!integrationData || !Array.isArray(integrationData.integrations)) {
+      fail(`unexpected /api/integrations payload: ${integrations.body.slice(0, 300)}`)
+    }
+    if (integrationData.load_failed) {
+      fail('integration credential load failed, so the keyless assertion cannot be trusted')
+    }
+    const credentialBearing = integrationData.integrations.filter(integration =>
+      (integration.fields || []).some(field =>
+        (field.kind === 'secret' || field.kind === 'secret_list') && field.configured))
+    if (credentialBearing.length) {
+      fail('the app resolved credentials although this run must be keyless: ' +
+        `${credentialBearing.map(integration => integration.id).join(', ')} — ` +
+        'a variable in the calling shell leaked into the app environment ' +
+        '(see desktop/README.md 「冒烟测试」 / docs/releases/v1.0.1.md §3)')
+    }
+    console.log(`[smoke-test] integrations report zero configured credentials (${integrationData.integrations.length} checked)`)
 
     // 3. SQLite read with NO credentials of any kind. This single assertion
     //    covers two things at once: the app has no auth layer left (a 401 here
