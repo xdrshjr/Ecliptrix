@@ -286,7 +286,7 @@ async function runChild(submission, mode) {
   child.stderr.on('data', (chunk) => { diagnostics += chunk.toString() })
   child.stdout.on('data', (chunk) => { diagnostics += chunk.toString() })
   const heartbeat = setInterval(() => {
-    if (child.connected) child.send({ type: 'heartbeat', nonce })
+    if (child.connected) child.send({ type: 'heartbeat', nonce }, () => {})
   }, 2000)
   const deadline = setTimeout(() => {
     didTimeout = true
@@ -310,7 +310,7 @@ async function runChild(submission, mode) {
         ownedProcesses = findOwnedProcessTree(child.pid)
         stopRequestedAt = Date.now()
         if (mode === 'cancel') {
-          child.send({ type: 'cancel', nonce })
+          child.send({ type: 'cancel', nonce }, () => {})
           cancelReaper = setTimeout(() => {
             if (child.exitCode !== null || child.signalCode !== null) return
             spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'],
@@ -320,7 +320,7 @@ async function runChild(submission, mode) {
       }
     }
   })
-  child.send({ type: 'start', nonce, submission })
+  child.send({ type: 'start', nonce, submission }, () => {})
   const code = await new Promise((done, reject) => {
     child.once('error', reject)
     child.once('exit', done)

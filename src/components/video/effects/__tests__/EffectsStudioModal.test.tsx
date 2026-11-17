@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/http-client';
 import { createEffectDocument } from '@/lib/effects/catalog';
-import type { EffectDocument, EffectDraft } from '@/types/effects';
+import type { EffectAsset, EffectDocument, EffectDraft } from '@/types/effects';
+import type { MaterialItem } from '@/types';
 import { LocaleProvider } from '@/contexts/LocaleContext';
 import { useEffectsDraft } from '../useEffectsDraft';
 import { useEffectsController } from '../useEffectsController';
@@ -37,6 +38,107 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('工作台草稿的串行保存与关闭', () => {
+  it.each([
+    ['9:16', 1080, 1920], ['1:1', 1080, 1080], ['4:3', 1440, 1080],
+    ['21:9', 1920, 822], ['invalid', 1920, 1080],
+  ])('空白草稿继承项目 %s 比例且遵守渲染尺寸限制', async (ratio, width, height) => {
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      aspectRatioId: String(ratio), materials: [], registerMaterial: vi.fn(),
+    }), { wrapper: LocaleProvider });
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    expect(hook.result.current.draft.document.canvas).toEqual({ width, height, fps: 30 });
+  });
+
+  it.each(['base', 'images'])('按选择顺序串行绑定 %s 槽位', async slot => {
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    if (slot === 'images') act(() => hook.result.current.selectTemplate('slides-stack'));
+    const a = { id: 'a', type: 'image', url: '/api/storage/files/a.png' } as MaterialItem;
+    const b = { id: 'b', type: 'image', url: '/api/storage/files/b.png' } as MaterialItem;
+    let release!: (asset: EffectAsset) => void;
+    api.attachEffectInput.mockImplementation((_project, source) =>
+      source === a.url ? new Promise(done => { release = done; })
+        : Promise.resolve({ id: 'b', kind: 'input-image' }));
+    let first!: Promise<void>, second!: Promise<void>;
+    await act(async () => {
+      first = hook.result.current.attach(slot, a);
+      second = hook.result.current.attach(slot, b);
+      await Promise.resolve();
+    });
+    expect(api.attachEffectInput).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      release({ id: 'a', kind: 'input-image' } as EffectAsset);
+      await Promise.all([first, second]);
+    });
+    expect(hook.result.current.draft.document.inputs.map(input => input.assetId))
+      .toEqual(slot === 'images' ? ['a', 'b'] : ['b']);
+  });
+
+  it('切换模板再切回时不接收旧模板迟到的素材', async () => {
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    let release!: (asset: EffectAsset) => void;
+    api.attachEffectInput.mockImplementationOnce(() => new Promise(done => { release = done; }));
+    let attaching!: Promise<void>;
+    await act(async () => {
+      attaching = hook.result.current.attach('base', { id: 'a', type: 'image',
+        url: '/api/storage/files/a.png' } as MaterialItem);
+      await Promise.resolve();
+    });
+    act(() => {
+      hook.result.current.selectTemplate('image-zoom');
+      hook.result.current.selectTemplate('title-rise');
+    });
+    await act(async () => {
+      release({ id: 'a', kind: 'input-image' } as EffectAsset); await attaching;
+    });
+    expect(hook.result.current.draft.document.inputs).toEqual([]);
+  });
+
+  it('一次绑定失败不会阻断后续选择', async () => {
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    api.attachEffectInput.mockRejectedValueOnce(new Error('failed'))
+      .mockResolvedValueOnce({ id: 'b', kind: 'input-image' });
+    await act(async () => {
+      await Promise.all(['a', 'b'].map(id => hook.result.current.attach('base', {
+        id, type: 'image', url: `/api/storage/files/${id}.png`,
+      } as MaterialItem)));
+    });
+    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('b');
+    expect(hook.result.current.error).toBeUndefined();
+  });
+
+  it('新工作台的绑定不等待旧工作台请求，且旧回包不污染新稿', async () => {
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    let release!: (asset: EffectAsset) => void;
+    api.attachEffectInput.mockImplementationOnce(() => new Promise(done => { release = done; }))
+      .mockResolvedValueOnce({ id: 'b', kind: 'input-image' });
+    let old!: Promise<void>;
+    await act(async () => {
+      old = hook.result.current.attach('base', { id: 'a', type: 'image',
+        url: '/api/storage/files/a.png' } as MaterialItem);
+      await Promise.resolve();
+    });
+    act(() => hook.result.current.close());
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    await act(async () => {
+      await hook.result.current.attach('base', { id: 'b', type: 'image',
+        url: '/api/storage/files/b.png' } as MaterialItem);
+    });
+    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('b');
+    await act(async () => {
+      release({ id: 'a', kind: 'input-image' } as EffectAsset); await old;
+    });
+    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('b');
+    expect(hook.result.current.assets.map(asset => asset.id)).toEqual(['b']);
+  });
+
   it('重新选择已应用的同一成品，再次替换为无副作用操作', async () => {
     const fixture = effectsFixture();
     const applied = planEffectsTimelineChange(fixture);

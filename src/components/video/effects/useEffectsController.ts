@@ -16,6 +16,7 @@ import { useEffectsJobs } from './useEffectsJobs';
 export interface EffectsEntry { material?: MaterialItem; clipId?: string;
   draftId?: string; newDraft?: boolean }
 interface ControllerOptions { projectId?: string; materials: MaterialItem[];
+  aspectRatioId?: string;
   registerMaterial: (material: MaterialItem) => void }
 
 function getLocalSource(material: Partial<MaterialItem>): string {
@@ -85,6 +86,8 @@ export function useEffectsController(options: ControllerOptions) {
   const submitting = useRef(false);
   const owner = useRef(options); owner.current = options;
   const generation = useRef(0);
+  const attachmentRevision = useRef(0);
+  const attachments = useRef({ epoch: '', pending: Promise.resolve() });
   const previousProject = useRef(options.projectId);
   if (previousProject.current !== options.projectId) {
     previousProject.current = options.projectId; generation.current++;
@@ -125,6 +128,7 @@ export function useEffectsController(options: ControllerOptions) {
       const chosen = !entry.newDraft && !entry.material && !entry.clipId
         && !entry.draftId ? { draftId: draft.draft?.id ?? recent[0]?.id } : entry;
       const prepared = await prepareEntry({ entry: chosen, projectId,
+        aspectRatioId: owner.current.aspectRatioId,
         materials: owner.current.materials, name: t.effects.labels.untitled });
       if (token !== generation.current) return;
       draft.load(prepared.working, prepared.persisted);
@@ -132,12 +136,14 @@ export function useEffectsController(options: ControllerOptions) {
     } finally { if (token === generation.current) setBusy(false); }
   });
   const selectTemplate = (id: string) => {
+    attachmentRevision.current++;
+    const current = draft.getCurrent();
     const template = getEffectTemplate(id);
-    const next = { ...draft.document, templateId: id,
+    const next = { ...current.document, templateId: id,
       templateVersion: template.version, params: structuredClone(template.defaults),
-      inputs: draft.document.inputs.filter(input => template.slots.some(slot =>
+      inputs: current.document.inputs.filter(input => template.slots.some(slot =>
         slot.id === input.slot && slot.kinds.includes(input.kind))) };
-    draft.edit({ name: draft.name, document: next });
+    draft.edit({ name: current.name, document: next });
   };
   const render = () => run(async () => {
     const projectId = owner.current.projectId;
@@ -177,32 +183,53 @@ export function useEffectsController(options: ControllerOptions) {
       clipId: selected[0], materials: owner.current.materials });
     if (token === generation.current) setTarget(prepared.target);
   });
-  const attach = (slot: string, material: MaterialItem) => run(async () => {
-    if (!owner.current.projectId) throw new EffectError('EFFECT_NOT_FOUND');
+  const attach = (slot: string, material: MaterialItem) => {
+    const projectId = owner.current.projectId;
     const token = generation.current;
-    const asset = await attachEffectInput(owner.current.projectId,
-      getLocalSource(material), material.id);
-    if (token !== generation.current) return;
-    setAssets(previous => [...previous.filter(a => a.id !== asset.id), asset]);
-    const latest = draft.getCurrent();
-    const descriptor = getEffectTemplate(latest.document.templateId);
-    const destination = descriptor.slots.find(item => item.id === slot);
-    const kind = asset.kind === 'input-video' ? 'video' : 'image';
-    if (!destination || !destination.kinds.includes(kind)) {
-      throw new EffectError('EFFECT_INVALID_ARGUMENT');
+    const revision = attachmentRevision.current;
+    const epoch = `${token}:${revision}`;
+    const isCurrent = () => token === generation.current
+      && revision === attachmentRevision.current
+      && projectId === owner.current.projectId;
+    // Preserve selection order, including the order of slideshow images.
+    // A new editor/template does not wait for the old editor's pending I/O.
+    if (attachments.current.epoch !== epoch) {
+      attachments.current = { epoch, pending: Promise.resolve() };
     }
-    const inputs = slot === 'images' ? [...latest.document.inputs]
-      : latest.document.inputs.filter(input => input.slot !== slot);
-    if (inputs.filter(input => input.slot === slot).length >= destination.max) {
-      throw new EffectError('EFFECT_INVALID_ARGUMENT');
-    }
-    inputs.push({ slot, assetId: asset.id,
-      kind: asset.kind === 'input-video' ? 'video' : 'image',
-      fit: 'cover', focalX: 0.5, focalY: 0.5,
-      ...(slot === 'images' ? { index: inputs.filter(i => i.slot === slot).length } : {}),
-      ...(asset.kind === 'input-video' ? { trimStartSeconds: 0 } : {}) });
-    draft.edit({ name: latest.name, document: { ...latest.document, inputs } });
-  });
+    const pending = attachments.current.pending.then(() => run(async () => {
+      if (!isCurrent()) return;
+      if (!projectId) throw new EffectError('EFFECT_NOT_FOUND');
+      let asset: EffectAsset;
+      try {
+        asset = await attachEffectInput(projectId, getLocalSource(material), material.id);
+      } catch (error) {
+        if (isCurrent()) throw error;
+        return;
+      }
+      if (!isCurrent()) return;
+      setAssets(previous => [...previous.filter(a => a.id !== asset.id), asset]);
+      const latest = draft.getCurrent();
+      const descriptor = getEffectTemplate(latest.document.templateId);
+      const destination = descriptor.slots.find(item => item.id === slot);
+      const kind = asset.kind === 'input-video' ? 'video' : 'image';
+      if (!destination || !destination.kinds.includes(kind)) {
+        throw new EffectError('EFFECT_INVALID_ARGUMENT');
+      }
+      const inputs = slot === 'images' ? [...latest.document.inputs]
+        : latest.document.inputs.filter(input => input.slot !== slot);
+      if (inputs.filter(input => input.slot === slot).length >= destination.max) {
+        throw new EffectError('EFFECT_INVALID_ARGUMENT');
+      }
+      inputs.push({ slot, assetId: asset.id,
+        kind: asset.kind === 'input-video' ? 'video' : 'image',
+        fit: 'cover', focalX: 0.5, focalY: 0.5,
+        ...(slot === 'images' ? { index: inputs.filter(i => i.slot === slot).length } : {}),
+        ...(asset.kind === 'input-video' ? { trimStartSeconds: 0 } : {}) });
+      draft.edit({ name: latest.name, document: { ...latest.document, inputs } });
+    }));
+    attachments.current.pending = pending.catch(() => {});
+    return pending;
+  };
   return { isOpen, busy, error, assets, target, drafts, draft, jobs, ...runtime,
     open, close: () => { generation.current++; setOpen(false); },
     selectTemplate, render, register, apply, reselect, attach, run };
@@ -210,6 +237,7 @@ export function useEffectsController(options: ControllerOptions) {
 
 async function prepareEntry(options: {
   entry: EffectsEntry; projectId: string; materials: MaterialItem[]; name: string;
+  aspectRatioId?: string;
 }) {
   if (options.entry.draftId) {
     const persisted = await getEffectDraft(options.projectId, options.entry.draftId);
@@ -219,6 +247,15 @@ async function prepareEntry(options: {
       persisted, assets, target: undefined };
   }
   const document = createEffectDocument();
+  const ratios: Record<string, [number, number]> = {
+    '16:9': [16, 9], '9:16': [9, 16], '1:1': [1, 1],
+    '4:3': [4, 3], '21:9': [21, 9],
+  };
+  const [width, height] = ratios[options.aspectRatioId ?? ''] ?? ratios['16:9'];
+  const canvasScale = Math.min(1080 / Math.min(width, height),
+    1920 / Math.max(width, height));
+  document.canvas = { width: Math.floor(width * canvasScale / 2) * 2,
+    height: Math.floor(height * canvasScale / 2) * 2, fps: 30 };
   let target: EffectTargetSnapshot | undefined;
   let asset: EffectAsset | undefined;
   if (options.entry.clipId) {

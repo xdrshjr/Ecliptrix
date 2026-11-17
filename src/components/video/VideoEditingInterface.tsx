@@ -1905,6 +1905,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     renderer: coverRenderRef, registerMaterial: materialManagement.addOrReplaceMaterial,
     onApplied: activateCoverSchema });
   const effects = useEffectsController({ projectId,
+    aspectRatioId: content?.canvasSettings?.aspectRatioId,
     materials: materialManagement.allMaterials,
     registerMaterial: materialManagement.addOrReplaceMaterial });
   effectsOpenRef.current = effects.isOpen;

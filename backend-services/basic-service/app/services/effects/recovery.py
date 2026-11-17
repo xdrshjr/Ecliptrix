@@ -271,7 +271,14 @@ async def recover_jobs(service, *, startup: bool) -> None:
 async def _recover_job(service, identifier: UUID) -> None:
     async with service.session_factory() as db:
         job = await db.get(EffectRenderJob, identifier)
+        if job is None:
+            return
         async with project_lock(job.project_id):
+            # Cancellation/deletion may have committed while this lease waited.
+            job = await db.get(EffectRenderJob, identifier,
+                               populate_existing=True)
+            if job is None or job.status not in ACTIVE:
+                return
             try:
                 await require_project(db, job.project_id)
             except EffectError as exc:

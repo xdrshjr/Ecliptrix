@@ -138,6 +138,8 @@ def probe_media(path: Path) -> dict:
             return {"kind": "input-image", "width": width, "height": height,
                     "mime": mime, "extension": extension,
                     "duration_seconds": None}
+    except Image.DecompressionBombError as exc:
+        raise EffectError("EFFECT_INPUT_TOO_LARGE", status=413) from exc
     except (UnidentifiedImageError, OSError):
         probe = probe_video(path)
         if min(probe["width"], probe["height"]) < 64:

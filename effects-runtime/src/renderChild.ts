@@ -23,7 +23,7 @@ let isRendering = false;
 const nonce = process.env.EFFECTS_CHILD_NONCE;
 
 function send(message: object): void {
-  if (process.connected) process.send?.(message);
+  if (process.connected) process.send?.(message, () => {});
 }
 
 function stop(): void {

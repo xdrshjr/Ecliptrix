@@ -1,7 +1,9 @@
 """Real file snapshots, ownership, GC retention and delayed-import deletion."""
 
 import asyncio
+import struct
 import threading
+import zlib
 from uuid import UUID
 
 import pytest
@@ -15,6 +17,31 @@ from app.models.effects_models import AttachInputRequest, EffectError
 from app.services.effects import asset_service as assets
 from app.services.derived_gc_service import DerivedGcService
 from tests.test_effects_jobs import create_project
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [(8000, 6000), (20000, 20000)])
+async def test_oversized_image_header_returns_limit_error_without_publishing(
+        db_session, monkeypatch, tmp_path, size):
+    project_id = await create_project(db_session, monkeypatch, tmp_path)
+
+    def chunk(kind, data):
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data)))
+
+    # Only a header is needed: reject dimensions before decoding any pixels.
+    header = struct.pack(">IIBBBBB", *size, 8, 2, 0, 0, 0)
+    (tmp_path / "oversized.png").write_bytes(
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+        + chunk(b"IDAT", b"") + chunk(b"IEND", b""))
+    with pytest.raises(EffectError) as error:
+        await assets.attach_input(db_session, project_id,
+            AttachInputRequest(source_ref="/api/storage/files/oversized.png"))
+    assert error.value.code == "EFFECT_INPUT_TOO_LARGE"
+    assert error.value.status == 413
+    assert await db_session.scalar(select(func.count()).select_from(
+        EffectAsset)) == 0
+    assert not list((tmp_path / "effects/.staging").glob("*"))
 
 
 @pytest.mark.asyncio

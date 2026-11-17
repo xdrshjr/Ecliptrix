@@ -17,8 +17,9 @@ export function EffectsSourcePicker(options: {
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
+    setUploading(false); setError('');
     return () => controller.abort();
-  }, []);
+  }, [options.template.id]);
   const remove = (index: number) => {
     let position = 0;
     const inputs = options.document.inputs.filter((_, i) => i !== index)
@@ -30,21 +31,22 @@ export function EffectsSourcePicker(options: {
       .map((binding, position) => position === index ? { ...binding, ...patch } : binding) });
   };
   const upload = async (slot: string, file: File) => {
+    const signal = lifetime.current.signal;
     setUploading(true); setError('');
     try {
       const form = new FormData(); form.append('file', file);
       const uploaded = await http.upload<{ success: boolean; file_url: string }>(
-        '/api/storage/upload-file', form, { signal: lifetime.current.signal });
+        '/api/storage/upload-file', form, { signal });
       if (!uploaded.success) throw new Error(t.effects.labels.failed);
-      if (lifetime.current.signal.aborted) return;
+      if (signal.aborted) return;
       await options.onChoose(slot, { id: crypto.randomUUID(), name: file.name,
         type: 'image', url: uploaded.file_url, serverUrl: uploaded.file_url,
         size: file.size, format: file.name.split('.').pop() ?? 'png',
         createdAt: new Date() });
     } catch (error) {
-      if (!lifetime.current.signal.aborted) setError(error instanceof Error
+      if (!signal.aborted) setError(error instanceof Error
         ? error.message : t.effects.labels.failed);
-    } finally { if (!lifetime.current.signal.aborted) setUploading(false); }
+    } finally { if (!signal.aborted) setUploading(false); }
   };
   return <div className="space-y-3">
     {options.template.slots.map(slot => {
@@ -82,7 +84,8 @@ export function EffectsSourcePicker(options: {
           </div> : null)}
         {bindings.length < slot.max && <>
           <select aria-label={`${t.effects.labels.choose} · ${t.effects.labels[slot.id]}`}
-            value="" className="w-full rounded bg-background border border-border p-1.5 text-xs"
+            value="" disabled={uploading}
+            className="w-full rounded bg-background border border-border p-1.5 text-xs"
             onChange={event => {
               const material = options.materials.find(item => item.id === event.target.value);
               if (material) void options.onChoose(slot.id, material);

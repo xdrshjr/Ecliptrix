@@ -147,7 +147,7 @@ export class EffectsRuntimeController {
       this.server!.once('error', reject);
       this.server!.listen(this.options.port, '127.0.0.1', done);
     });
-    process.send({ type: 'listening', instanceId: this.instanceId });
+    process.send({ type: 'listening', instanceId: this.instanceId }, () => {});
   }
 
   private acceptParentMessage(message: unknown): void {
@@ -319,7 +319,7 @@ export class EffectsRuntimeController {
       job.errorCode = 'EFFECT_RENDER_TIMEOUT';
       killOwnedChild(child);
     }, 15 * 60 * 1000);
-    child.send({ type: 'start', nonce: job.nonce, submission });
+    child.send({ type: 'start', nonce: job.nonce, submission }, () => {});
   }
 
   private acceptChildMessage(job: RuntimeJob, message: unknown): void {
@@ -341,7 +341,9 @@ export class EffectsRuntimeController {
 
   private heartbeatChild(job: RuntimeJob): void {
     if (job.child?.connected) {
-      job.child.send({ type: 'heartbeat', nonce: job.nonce });
+      // connected can remain true after the peer has closed its OS pipe.
+      // A write error must not masquerade as the child's actual exit.
+      job.child.send({ type: 'heartbeat', nonce: job.nonce }, () => {});
     }
     if (Date.now() - job.heartbeatAt > 30000 && job.child) {
       job.errorCode = 'EFFECT_RENDER_TIMEOUT';
@@ -373,7 +375,7 @@ export class EffectsRuntimeController {
     job.isCancelRequested = true;
     job.state = 'cancelling';
     const child = job.child;
-    if (child.connected) child.send({ type: 'cancel', nonce: job.nonce });
+    if (child.connected) child.send({ type: 'cancel', nonce: job.nonce }, () => {});
     job.cleanupTimer ??= setTimeout(() => killOwnedChild(child), 2000);
     const hasExited = await Promise.race([
       job.settled.then(() => true),

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -28,10 +29,15 @@ class EffectsRuntimeClient:
                                   .read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise EffectError("EFFECT_RUNTIME_UNAVAILABLE", status=503) from exc
-        if (manifest.get("protocolVersion") != 1
+        if (not isinstance(manifest, dict)
+                or manifest.get("protocolVersion") != 1
                 or manifest.get("engineVersion") != "4.0.544"
                 or manifest.get("catalogHash") != CATALOG_HASH
-                or manifest.get("supportedTemplates") != 24):
+                or manifest.get("supportedTemplates") != 24
+                or any(not isinstance(manifest.get(key), str)
+                       or re.fullmatch(r"[0-9a-f]{64}", manifest[key]) is None
+                       for key in ("runtimeFingerprint", "fontHash",
+                                   "bundleHash"))):
             raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503)
         return manifest
 

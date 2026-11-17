@@ -7,13 +7,14 @@ from pathlib import Path
 import secrets
 import socket
 import subprocess
+from contextlib import asynccontextmanager
 from datetime import datetime
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.constants import LOCAL_OWNER_ID
@@ -23,6 +24,7 @@ from app.models.effects_db_models import EffectAsset, EffectDraft, EffectRenderJ
 from app.models.effects_models import EffectError, SaveDraftRequest
 from app.routers import effects_router
 from app.services.effects import asset_service as assets, draft_service as drafts
+from app.services.effects import recovery
 from app.services.effects.catalog import create_document
 from app.services.effects.job_service import (
     EffectRenderService, effect_render_service, job_data,
@@ -33,6 +35,67 @@ from app.services.video_project_service import video_project_service
 from tests.test_effects_jobs import (
     create_project, dormant_service, job_request, prepare_draft,
 )
+
+
+@pytest.mark.asyncio
+async def test_recovery_ignores_job_deleted_after_scan(
+        db_session, monkeypatch, tmp_path):
+    await create_project(db_session, monkeypatch, tmp_path)
+    service = EffectRenderService(async_sessionmaker(db_session.bind,
+        expire_on_commit=False))
+    await recovery._recover_job(service, uuid4())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["cancelling", "cancelled", "failed", "deleted"])
+async def test_recovery_rechecks_job_after_waiting_for_project_lock(
+        db_session, monkeypatch, tmp_path, status):
+    project_id = await create_project(db_session, monkeypatch, tmp_path)
+    draft = await prepare_draft(db_session, project_id)
+    service = await dormant_service(db_session)
+    queued, _ = await service.submit(db_session, project_id, job_request(draft))
+    identifier = UUID(queued["job_id"])
+    reached, release = asyncio.Event(), asyncio.Event()
+    original_lock = recovery.project_lock
+
+    @asynccontextmanager
+    async def delayed_lock(project):
+        reached.set()
+        await release.wait()
+        async with original_lock(project):
+            yield
+
+    monkeypatch.setattr(recovery, "project_lock", delayed_lock)
+    monkeypatch.setattr(recovery, "read_complete", lambda _: {
+        "probe": {"width": 1920, "height": 1080, "duration_seconds": 5},
+        "video_hash": "a" * 64, "bytes": 100,
+    })
+    task = asyncio.create_task(recovery._recover_job(service, identifier))
+    try:
+        await asyncio.wait_for(reached.wait(), 5)
+        # A different session commits while recovery is waiting for its lease.
+        async with original_lock(project_id):
+            row = await db_session.get(EffectRenderJob, identifier)
+            if status == "deleted":
+                await db_session.delete(row)
+            else:
+                row.status = status
+                row.cancel_requested = status != "failed"
+            await db_session.commit()
+        release.set()
+        await task
+        if status == "deleted":
+            assert await db_session.get(EffectRenderJob, identifier) is None
+        else:
+            await db_session.refresh(row)
+            assert row.status == ("cancelled" if status == "cancelling" else status)
+            assert row.result_asset_id is None
+        assert await db_session.scalar(select(func.count()).select_from(
+            EffectAsset)) == 0
+    finally:
+        release.set()
+        await asyncio.gather(task, return_exceptions=True)
+        await service.close()
 
 
 @pytest.mark.asyncio
@@ -206,7 +269,7 @@ const child = spawn(process.env.EFFECTS_SMOKE_ELECTRON,
 child.stderr.on('data', chunk => process.stderr.write(chunk));
 const timer = setInterval(() => {
   if (child.connected) child.send({type:'heartbeat',
-    nonce:process.env.EFFECTS_PARENT_NONCE});
+    nonce:process.env.EFFECTS_PARENT_NONCE}, () => {});
 }, 1000);
 process.stdin.resume();
 process.stdin.on('end', () => { if (child.connected) child.disconnect(); });
