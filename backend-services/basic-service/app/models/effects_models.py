@@ -94,12 +94,22 @@ class EffectDocument(StrictModel):
     inputs: list[EffectBinding] = Field(default_factory=list, max_length=9)
 
 
-class SaveDraftRequest(StrictModel):
+class DraftContentRequest(StrictModel):
     name: str = Field("", max_length=100)
     document: dict[str, Any]
 
 
-class UpdateDraftRequest(SaveDraftRequest):
+class SaveDraftRequest(DraftContentRequest):
+    draft_id: str | None = None
+
+    @model_validator(mode="after")
+    def require_uuid_id(self) -> "SaveDraftRequest":
+        if self.draft_id is not None:
+            self.draft_id = str(UUID(self.draft_id))
+        return self
+
+
+class UpdateDraftRequest(DraftContentRequest):
     expected_version: int = Field(ge=1)
 
 

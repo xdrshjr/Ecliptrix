@@ -117,3 +117,78 @@ controller 项约 12 秒、带媒体渲染/取消/断连项约 21 秒。
 文字溢出“先入队后失败”的初步怀疑经调用链复核撤回：服务端在创建
 任务前调用 `validate_text_layout`，以 422 和字段路径拒绝，不新增重复校验。
 未执行的安装包、逐帧/音频同步与真实 LLM 发行门禁仍保持原验收状态。
+
+## 第二轮最终审查（基线 `58dce2a7`）
+
+方案为第二轮评审 v2，范围依据 §17 的 52 个计划路径；保留前序定位和
+设计核查记录。逐项核对新增类型、持久请求、保存恢复、轮询、确认层、
+字体、项目删除、后端重放、Agent 历史屏障、runtime 停止门及六场景
+验收工具。计划路径全部存在，tracked 改动均属于本功能；额外的既有
+生命周期断言调整见 IM-R2-01。本次审查说明作为功能文档一起交付。
+
+| 方案范围 | 核查结论 |
+|---|---|
+| §15.1 / 16.1 提交与本地记录 | HTTP 前持久化、原键恢复、Web Locks / revision CAS、删除失效和丢租约交付守卫均已接入 |
+| §15.2 / 16.2 保存 | 新建与更新显式分支；稳定 ID、冻结请求、working-only 恢复、同项目单编辑租约及受限 PUT 重放完整 |
+| §15.3–15.5 工作台 | 单任务独立 timeout / 退避、取消序列、分页链、IME / 关闭意图、字体失败重试已有实现与回归 |
+| §16.3 Agent | 从压缩前结构化历史恢复冻结体，同稿 unknown 宿主屏障、按 requestId 查询及真实应用回执职责分离 |
+| §15.6 runtime | 首次停止原因、迟到成功拒绝、EPIPE 与实际 exit 分离；监督停止不伪造用户取消 |
+| §15.7 / 18 验收 | 目标树依赖边界、独占报告、附件及用例绑定、安装身份核对与源码回归工具齐全；自动测试不能代替实际 installed / all 报告 |
+
+前端与 Agent、后端与 runtime 分别由独立审查者只读交叉复核，主审检查
+验收脚本、对应测试及修改范围。未扩大到账号、研究服务或通用导出重构。
+
+### 本次修复
+
+| 编号 | 级别 | 触发与修复 | 回归证据 |
+|---|---|---|---|
+| CR-13 | P1 | 损坏 working 的未知模板、版本或参数结构通过读取后，在检查器查询模板 / 数组 map 时抛错；记录边界按 catalog 校验结构，拒绝时保留原始记录，继续允许超长文案和越界数值恢复修正 | 五种损坏向量修复前均错误地 resolve，修复后均拒绝；另验证合法模板的越界编辑完整保留 |
+| CR-14 | P2 | 未保存确认内 Ctrl / Meta 撤销冒泡到背景 draft.undo；确认层阻止 keydown 向背景传播，保留普通按钮默认行为及 IME，Tab / Escape 仍独立消费 | Ctrl+Z、Meta+Z、Ctrl+Shift+Z、Ctrl+Y 四项修复前调用背景处理器，修复后均隔离 |
+
+CR-13 / CR-14 的准确失败报告分别为
+`desktop/build/effects/review-r2-corrupt-record-red.json` 和
+`desktop/build/effects/review-r2-dialog-red.json`。修复后合并专项
+`review-r2-fixes-green.json` 为 **50 项通过、0 失败 / 跳过**，包含
+工作台原有 32 项回归；独立审查者再次只读核对了修复及边界。
+
+真实 renderer 切片在开发 payload 上执行 title-rise、video-cinematic
+两模板、640×360、0 / 29 帧的双 PNG 和 DOM 布局采集，均成功；29 帧
+取得实际中文 / 英文文字矩形，0 帧按动画预期不可见。证据位于
+`desktop/build/effects/review-slice` 的独立运行目录。这只证明该开发
+切片可运行，不代表三画布 72 组、真实 Player 或安装树矩阵通过。
+
+### 第二轮审查验证
+
+| 检查 | 本节点实际结果 |
+|---|---|
+| §17 文件核对、Python AST、diff 空白 | 52 个计划路径全部存在且有本轮修改；6 个 Python 文件可解析；`git diff --check` 通过 |
+| 完整前端 / Agent / BFF / Hook / 时间线 / 持久化 / 素材入口回归 | **104 文件、911 项通过，0 失败 / 跳过**；`review-r2-vitest-final.json`；明确使用 4 workers / 15s 测试驱动预算，不改变产品期限 |
+| basic-service 七个特效专项文件 | **54 通过、1 个真实 worker 默认跳过**；`review-r2-backend.xml`；使用仓库内独立 basetemp |
+| 单独启用真实后端 worker | **1 通过、11 未选中**，18.05s；`review-r2-worker.xml`；实际 Electron / Remotion / SQLite 发布、重启恢复及运行中取消 |
+| 桌面和严格报告测试五文件 | **31 通过、0 失败 / 跳过**；`review-r2-desktop.xml` |
+| `npm --prefix effects-runtime run type-check` / `run build` | 类型、controller / child、共享组合、不可变 bundle 和资源 manifest 生成均退出 0 |
+| 最终串行真实 runtime，两个真实测试开关均为 1 | **26 通过、0 失败 / 取消 / 跳过**，46.10s；`review-r2-runtime-verified.xml`；controller 9.183s，全量 12,082 文件校验 4.491s，原 30s / 12s 预算不变 |
+| `npm run build`，结束后 `npm run type-check` | 两者退出 0，90 个静态页面生成；构建沿用现有跳过 lint 配置，lint 单独执行 |
+| 本次 TS / TSX / JS 文件专项 ESLint | 退出 0；0 错误、7 提示：4 个代次 ref 清理、预览回调属性依赖及原有 2 个未使用类型导入。未宣称全仓无告警 |
+| 凭据扫描 | 既有扫描器检查 3,099 个已跟踪文件通过；按同一脱敏规则另覆盖本次全部 **55 个交付文件，0 finding**，包含全部新增源码和测试 |
+
+早期宽范围测试读取到了仍在编写的回归夹具，其中计数模板 ID 写错；
+该次 `review-r2-vitest.json` 不作为通过证据。修正夹具、观察准确的
+先红后绿结果并稳定源码后，再完整执行上述 911 项，没有隐藏失败。
+
+真实 runtime 首次并行检查为 23 通过、2 失败、1 超时取消，涉及冷启动
+30s / 取消退出 12s；随后完整串行检查为 25 通过、1 个 controller
+启动超时，原 `review-r2-runtime-final.xml` 保留。独立 controller smoke
+在相同固定预算下通过，整次约 9.3s、强杀清理 1.382s，报告为
+`review-r2-controller-isolated.json`。没有放宽产品或测试期限，没有
+把温缓存成功表述为冷启动 / 重负载性能验收通过。
+
+本节点的代码审查与提交交付不等同发行批准。真实本轮 installed 树、
+72 组完整视觉 / 音频、最终桌面导出、性能及真实 LLM 发行门禁仍待验；
+已知 emoji 字形缺失沿用 IM-R2-06 的阻塞结论。未使用旧 installer
+证明本次源码，也未生成或声称 `release_ready=true`。后续发行仍须
+对干净提交重新打包 / 安装并执行 §18.5 的 all，不能复用本次开发证据。
+
+任务工具缺少 TASK_SERVER_URL，起始 history / get / put 及过程 progress /
+wait_async 已实际尝试且均未发出 HTTP。收尾按原任务执行三次 complete、
+status 和仅 Subtask #3 的指定本地回退；本地完成不代表服务器确认。

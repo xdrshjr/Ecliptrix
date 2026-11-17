@@ -368,3 +368,42 @@ PowerShell 中设置 `$env:EFFECTS_REAL_RUNTIME_TEST='1'` 后运行后者，验�
 离线、只读安装目录、退出 / 崩溃、导出人工验收，不能用资源目录 smoke
 代替 installer。Remotion 锁定 4.0.544，React 19.1.1；保留字体 OFL，
 分发许可由负责人核对。[完整记录](../docs/plans/remotion-effects-studio/acceptance.md)。
+
+### 特效恢复与安装验收
+
+保存和生成均使用稳定请求身份；丢回包后先查询或同体重放，不能更换请求
+ID 绕过待确认状态。本机记录不可写、损坏或 Web Locks 不可用时，界面保留
+输入并停止发送。关闭时可继续编辑、保存并关闭，或丢弃未发送输入；已发送
+的保存仍可能完成。多窗口写资格由项目编辑器租约保护，项目删除成功才清理。
+
+以下命令从仓库根执行，示例 run 目录每次必须更换。包模式要求显式
+`--report`，默认读取 unpacked 同级的 `research-build-manifest.json`；可用
+`--manifest` 指定同一份真实构建清单。旧 `--packaged` 仅是开发 payload。
+
+```powershell
+node desktop/scripts/effects-smoke.js --unpacked desktop/release/win-unpacked --report .agentmesh/effects-r2/run-001/package/smoke.json
+node desktop/scripts/effects-acceptance.js --unpacked desktop/release/win-unpacked --manifest desktop/release/research-build-manifest.json --report .agentmesh/effects-r2/run-001/unpacked/report.json --scenario package
+node desktop/scripts/effects-acceptance.js --unpacked desktop/release/win-unpacked --installed .agentmesh/effects-r2/run-001/installed --manifest desktop/release/research-build-manifest.json --report .agentmesh/effects-r2/run-001/installed-evidence/report.json --scenario all
+```
+
+运行 all 前，将本次清单绑定的 NSIS 实际安装到隔离的 installed 目录，并在
+报告同级保存 `install-record.json`：记录 `installer_sha256`、绝对
+`installed_root`、UTC `started_at` / `finished_at`、`exit_code=0` 及安装日志
+来源。安装树只读，额外 NSIS 卸载文件会另记散列，不能作为运行依赖。
+测试自己的 userData、输入、缓存和附件全部位于本次证据目录，不读取现有用户工程。
+
+场景参数为 package / visual / desktop / process / performance / agent / all。
+工具分别使用包内 Electron / renderer / 字体 / FFmpeg / Python，拒绝资源
+覆盖和仓库依赖回退。visual 执行 24×3 组合、两次 PNG、MP4/Player 实帧、
+文字布局和校准音频；desktop 通过真实导出按钮验收。缺真实安装或测试模型
+为 blocked；旧包、错误来源、证据缺失或阈值超限为 fail。
+
+退出码 0 表示所选场景通过，1 表示失败，2 表示受环境阻塞。单场景通过
+不会解锁发行。all 的源码回归要求 HEAD 等于清单、dirty=false，且测试前后
+tracked 文件不变；实现节点的开发验证应在最终提交后重建、实装并重验。
+报告先独占预留，进度写 partial，完成后原子封存；存在的报告不可覆盖，
+崩溃遗留 running / partial 也不能作成功证据。
+
+```powershell
+node --test desktop/scripts/effects-smoke.test.js desktop/scripts/lib/effects-release-evidence.test.js
+```

@@ -1,11 +1,61 @@
 # Remotion 特效工作台设计方案
 
-版本：v2（方案评审与修复；代码实施及最终审查已完成）
-适用仓库：Ecliptrix，勘查基线 `9265179e`
+版本：v2（第二轮评审修订，2026-11-17；设计通过，实现及发行验收待执行）
+适用仓库：Ecliptrix；首轮勘查 `9265179e`，本轮代码基线 `58dce2a7`
 方案目录：`docs/plans/remotion-effects-studio/`
-交付物：本文 `spec.md`；本轮仅评审和修订文档，不修改源码、不安装依赖、不提交 Git。
+交付物：本文 `spec.md`；本节点只评审和修订设计，不修改实现、不安装依赖、不提交 Git。
+
+版本沿革：首轮 v1 → 首轮评审 v2 → 第二轮设计输入 v3 → 本节点
+第二轮评审交付 v2。最后一个 v2 是任务约定的评审阶段标识，不表示
+回退首轮实现。`plan-current.json`、`round-2-verification.md` 的 v3
+仍指前序设计输入；本节点按约束只改本文，不改写前序记录。
+
+**本轮阅读顺序**：先读 §14–19。§1–13、RV / IM 记录保留首轮架构、
+24 个模板及实施依据；§14–19 是基于已落地代码的第二轮执行契约，
+发生差异时以该增量为准。§10 的“新增”是首轮历史计划，不得据此重建
+已实现模块；本轮文件范围以 §17 为准。AC-01–34 保留，设计输入新增
+AC-35–46，本评审再补 AC-47–56。
+`acceptance.md` / `final-review.md` 是首轮实测记录，不能当成本轮执行结果。
 
 ## 评审记录
+
+评审输入为第二轮设计 v3，代码基线为 `58dce2a7`。逐节核对可行性、
+完整性、项目约定和范围；保留 12 库 / 24 模板、SQLite 三表、既有
+时间线事务及 Agent 回执。发现 **10 项 P1、2 项 P2，无 P0**，均已
+就地修订。下表的“已修订”只表示设计闭合，不代表源码缺陷已修复。
+
+| 编号 | 级别 | 问题、依据与影响 | 正文修订及验收 |
+|---|---|---|---|
+| R2-RV-01 | P1 | `api/effects.ts::saveEffectDraft` 根据 draftId 是否存在选择 PUT；稳定 ID 会使首次误走更新。后端 parse_body 用严格 Python 模式校验 JSON dict，直接增加 UUID 类型也会拒绝 wire 字符串 | §15.2、16.2 明确请求种类、UUID 字符串校验和兼容状态码；AC-47，已修订 |
+| R2-RV-02 | P1 | §16.1 强制 pendingWrite，但 §15.2 要在确认旧写入后持久化新 working；没有 working-only / 基准版本状态。切草稿和“不保存”也可能重放已丢弃文案，恢复输入未规定资产加载 | §15.2、16.1 补齐记录状态、导航、丢弃和资产恢复；AC-48，已修订 |
+| R2-RV-03 | P1 | 短 Web Lock + 同一冻结体比较不能保护 working：两个编辑器可读到同一 pendingWrite 后覆盖彼此新文案；storage 事件到达晚于写入 | §16.1 单编辑器租约、recordRevision CAS 和失效交付守卫；AC-49，已修订 |
+| R2-RV-04 | P1 | Agent `changeDocument` 会重新附加输入，update 会重新读版本；只返回 draftId 无法跨回合重放原请求，render unknown 也只有提示词禁止换键 | §15.2、16.3 明确冻结 recovery、恢复分支和宿主待确认屏障；AC-50，已修订 |
+| R2-RV-05 | P1 | allSettled 本身仍等最慢查询；“即时合并”没有逐项交付。cancel 失败和同项目翻页也缺错误及过期 cursor 规则 | §15.3 每项独立完成 / 有界请求、取消及分页守卫；AC-38/51，已修订 |
+| R2-RV-06 | P1 | 外层 Modal 的 document Escape 不检查 IME；工作台已有 Ctrl+Z 处理也不检查 composing。确认层若只在 document 注册监听会受注册顺序影响 | §15.4 特效根与确认层 capture 处理，明确 IME 和保存中退出；AC-39/52，已修订 |
+| R2-RV-07 | P1 | controller `finishChild` 只凭 exit=0/result 判成功；仅保存错误码仍可能接受停止后的迟到 result。监督关闭复用 cancel 还会误归用户取消 | §15.6 停止原因锁存、丢弃结果及终态规则；AC-41/53，已修订 |
+| R2-RV-08 | P1 | 视觉 helper 没规定如何在包内 Electron 下调用 renderer；renderStill 不返回 DOM，不能直接实现文字 Rect 比较。环境 override、旧 --packaged 和嵌套子进程仍可能偷用开发资源 | §15.7、18.3 固定目标树、测试子进程和只读 DOM 采集方式；AC-42/54，已修订 |
+| R2-RV-09 | P1 | §18.2 的 status/acceptance_ids/任意 measurements 可自报通过；缺必需附件角色、AC 证据绑定与回归来源。wx 与 partial 原子替换也未定义无覆盖协议 | §18.2 严格报告校验、场景证据矩阵和独占封存；AC-45/55，已修订 |
+| R2-RV-10 | P1 | 先打包验收、后由最终节点提交，与 release_ready 要求 manifest.dirty=false 冲突；旧包或旧报告不能证明最终提交 | §18.5、19.2 明确开发验证与提交后重建重验门禁；AC-56，已修订 |
+| R2-RV-11 | P2 | §18.3 固定音频 0.5 阈值会把外层 gain 后的合法脉冲当漏音；§18.4 全局“无黑帧”与合法淡出 / 黑色背景冲突 | §18.3/4 校准幅度、固定参考帧和预期空白；AC-43/44，已修订 |
+| R2-RV-12 | P2 | 当前版本 v3 与节点交付 v2、§19.3 的 Subtask #0 上报、§17 前序文档动作相互混淆 | 顶部版本沿革、§17、19.2/3 及文末明确当前节点和历史边界；已修订 |
+
+逐节复核结果：
+
+| 章节 | 结论与范围 |
+|---|---|
+| §1–2 | 本地烘焙素材与当前 Electron / FastAPI / SQLite 栈一致；不重建已完成架构 |
+| §3–4 | 保留制作流程、响应式布局、模板及帧单位；焦点 / 字体恢复以 §15.4/5 为准 |
+| §5–6 | 既有三表、项目锁、输入身份与发布恢复保留；新增保存 / 提交恢复见 §15–16，停止终态补强 |
+| §7–9 | 保留单历史事务、来源校验与真实应用回执；只补 Agent 的未知写入恢复，不增加自动上轨权限 |
+| §10–13、IM | 保留首轮历史和已有实测依据；本轮不把历史新增文件计划当作重建指令 |
+| §14–16 | 按上表补齐请求种类、持久状态、多窗口、工具恢复、键盘及运行时边界 |
+| §17 | 文件与新增验收一一对应；开发只执行实现 / 测试 / 使用说明行，前序定位文档不重复生成 |
+| §18–19 | 补齐可执行证据协议与提交后的发行顺序；缺真实环境明确 blocked，不用 mock 代替 |
+
+本节点未解决设计 P0/P1 为 **0**。§11、18 的实现和发行门禁继续保留，
+由下游实际执行；不将这些待执行测试计为本节点已通过的功能验证。
+
+## 首轮 v2 评审记录（历史）
 
 评审基线为前序节点交付的 v1；逐节核对 `CLAUDE.md`、实际接入代码及
 Remotion 官方接口。以下问题均已在正文修复；“已修复”指方案契约已修复，
@@ -1295,7 +1345,8 @@ vectors、素材存储身份与 timeline history 相关回归。
 ### 11.2 后续开发执行命令
 
 以下为仓库根的建议门禁，只有实现节点执行，结果记录到 acceptance.md。
-新 npm scripts 的准确含义固定：effects-runtime test 为 Vitest，build
+新 npm scripts 的准确含义固定：根项目 test 为 Vitest，effects-runtime
+test 为 Node 原生测试运行器（`node --test --test-concurrency=1`），build
 先编译 worker 后 bundle；effects:prepare 只准备开发资源。
 
 ```powershell
@@ -1386,8 +1437,9 @@ acceptance.md 每行记录 AC ID、命令 / 人工步骤、环境、结果、证
 
 ### 13.1 前序 v1 设计节点的核查与运行环境限制
 
-本节保留前序节点的交付记录；其中数量与核查结论均属于 v1，不是本次
-评审的新结论。本轮结果以顶部评审记录、§13.2 及文末评审结论为准。
+本节保留首轮前序节点的交付记录；其中数量与核查结论均属于首轮 v1，
+不是第二轮评审的新结论。当前结果以顶部评审记录、§19.4 及文末
+评审结论为准，§13.2 继续作为首轮历史证据。
 
 本节点已读 README / CLAUDE、依赖清单和上述关键源码；并行只读勘查
 分别核对 UI / 时间线和 backend / Agent，之后交叉检查接口与文件计划。
@@ -1411,7 +1463,7 @@ fallback 填写该路径。恢复调度器环境后，必须先重放下述 put 
 python .agentmesh/task-tge-9a236db4-e3f3-46f7-a524-a0bba2f7c6ff/.task-tools.py put --kind plan --id current --set path=docs/plans/remotion-effects-studio --set slug=remotion-effects-studio --set doc=spec.md --set deliverable=docs/plans/remotion-effects-studio/spec.md
 ```
 
-### 13.2 本次 v2 评审核查与证据边界（2026-11-17）
+### 13.2 首轮 v2 评审核查与证据边界（历史，2026-11-17）
 
 本次核对了 CLAUDE、项目索引与实际 package 清单，以及素材注册/删除、
 Modal、时间线 aggregate/replaceTimeline/applyCover、项目删除、BFF、
@@ -1437,7 +1489,7 @@ AgentEventRouter、OperationApplier、useAgentExecution 与桌面进程管理。
 指定任务板 fallback。服务端状态与 plan/current 写入仍须在调度器环境
 恢复后重放核验，不能由本地文档/任务板的完成状态替代。
 
-## 评审结论
+## 首轮 v2 评审结论（历史）
 
 **有条件通过**。v2 已就地修复 RV-01–RV-09，未解决 P0/P1 为 0，
 可作为后续实现基线。以下条件是进入大规模实现/正式发行的证据门禁，
@@ -1555,3 +1607,1151 @@ IPC 的 connected 标记不是下一次写入一定成功的保证。所有特�
 发送均使用回调承接断连错误，任务完成与渲染槽释放仍等待真实进程退出；
 不能把 EPIPE 当作进程已退出。真实断管道小进程回归覆盖心跳与取消。
 补充复核问题编号为 CR-07–CR-12，证据见 `final-review.md`。
+
+### IM-R2-01：旧生命周期测试仍断言同体 PUT 必须冲突
+
+第二轮 §17 遗漏 `backend-services/basic-service/tests/test_effects_lifecycle.py`。
+其中真实 HTTP 生命周期测试原来把相同 expected_version / name / document
+的第二次 PUT 断言为 409，与已批准的精确一次重放契约冲突。实施时仅将
+该旧断言更新为 200、version 仍为 2；异体 409 断言保留。该文件纳入本轮
+必要回归范围，不改变生产 API 范围或增加依赖。
+
+### IM-R2-02：Agent 停止清理不是既有实现
+
+§16.3 所称“既有 5 秒 requestId 清理”在首轮 effects 工具中实际缺失。
+本轮在既定 `effectsJobTools.ts` 内补齐：停止后共享 5 秒预算按原键查询，
+只取消身份核验成功的真实 job；未知结果保留 recovery，不发 watch / apply。
+没有新增工具、接口或模型配置。
+
+### IM-R2-03：删除通知不足以阻止旧 absent CAS
+
+仅靠 storage 事件撤销租约，无法覆盖另一窗口删项目后事件迟到、旧写入
+仍在等待短锁的窗口。`clearProjectPending` 在短锁内先写项目持久失效标记，
+再清两个记录；`writePending` 在同一短锁内检查该标记。已删除的项目 UUID
+不复用，旧 absent 身份也不能重建本地记录。已补真实记录 API 的负向回归；
+该标记只存项目失效身份，不存 token / 路径 / 媒体，后端 require_project
+继续负责阻止项目重建。
+
+### IM-R2-04：导航退出与恢复读请求的所有权
+
+React 的项目切换 / 卸载不能 await。controller 保留退出项目的原租约，
+只完成最后一次本地 working 快照 CAS 后释放；网络及 UI 回包资格先撤销。
+本地恢复优先于草稿列表，先显示 working；GET 基准确认前阻止自动续写。
+所有恢复 GET 核验项目与草稿身份，旧定时器的 then/catch 也核验原 epoch，
+避免列表故障挡住文案或旧项目异常污染新项目。范围仍为 §17 原有模块。
+
+退出快照因配额、坏记录或本地上限失败时，controller 模块保留该项目
+最新 working、最后确认基准及错误的内存副本。返回项目取得新租约后
+优先回显该副本，保留已有冻结请求并重新核验服务器基准；可重试本地
+保存，不能借此覆盖损坏记录、改用新 ID 或重新授权旧时间线目标。
+副本还保留退出时读到的记录身份与内部最后确认版本。重新取得租约后，
+只有持久记录身份未变时才可合并；另一编辑器已推进、确认或清除记录时
+保留内存稿并报告冲突，不覆盖其 working。连续恢复 GET 失败也不将最后
+确认版本降为 null。只在成功持久化 / 确认保存或用户明确丢弃后释放副本。此保证针对当前
+页面仍存活时的项目导航；本地存储失败本身不能承诺崩溃后的持久恢复。
+
+### IM-R2-05：被草稿屏障拒绝的 render 历史不是未知生成请求
+
+独立审查发现，render_effect 被未知 draft 写入屏障拒绝时会返回草稿
+recovery；若仅按工具名重建历史，会误建永久的截断 render 屏障。
+恢复现按严格 recovery.write 判别，并核对工具来源、调用 ID、项目和
+写入种类；只在没有 render 请求字段的被拒绝分支接受草稿恢复体。
+create/update 两条完整多回合历史均先复现、后修复验证；真实未知生成
+及其截断屏障不随草稿确认而解除。修改仍在 §17 既定 Agent 文件内。
+
+### IM-R2-06：随包字体集尚不能证明 emoji 的离线字形覆盖
+
+本轮新验收工具实际检查首轮随包 sans / serif / mono 字体，发现测试
+字符 U+1F3AC、U+1F600、U+2728 缺少字形。字体文件能加载不代表这些
+字符可在禁止系统字体回退的条件下稳定绘制。验收工具必须将该向量
+判为失败，AC-03 / AC-05 / AC-43 的完整视觉门禁保持未通过，不能用
+操作系统 emoji 回退或首轮联系表替代。第二轮 §17 未列字体资源及其
+构建闭包变更，本节点不擅自更换字体包；后续修订须将补充的离线字形
+资源、许可、manifest 和 Player / renderer 一致性纳入同次方案及重验。
+
+### IM-R2-07：全量资源校验的串行冷读会撞到监管期限
+
+新增真实执行器测到同一 12,082 文件清单：系统 Node 22 串行约
+14.449s，Electron 内 Node 20.18.3 在冷读 / I/O 争用条件下约 202.229s，
+超出产品现有 30s 健康期限。不得通过提高 smoke 或产品期限掩盖问题。
+在 §17 已列的 `effects-runtime/src/server.ts` 内将逐项串行读取改为
+固定 8 个有界 worker、每文件 256KiB 流式计数 / hash，并等待句柄关闭；
+manifest 指纹、realpath 边界、全部文件字节数 / SHA256、catalog 和必要
+执行文件仍须全部通过后才能 ready，没有跳项、延迟校验或信任缓存。
+
+同一热缓存条件下，Electron 新进程的串行基准为 6.059s，有界实现为
+3.370s。两者不能冒充清空 OS 文件缓存后的冷测；正式 installed 冷 / 热
+及性能门禁仍保留。真实文件并发上限 / 关闭、篡改、越界 / Junction、
+缺件及启动回归放入本轮已计划的 stopReason.test.mjs；旧串行实现对
+新增并发 / 流式回归已实际失败，修订后通过。不新增依赖或公开参数。
+
+### IM-R2-08：历史 smoke 的断连退出预算与本轮契约不一致
+
+首轮 effects-smoke.js 用严格小于 8 秒断言进程退出，而实际 renderChild
+在 8 秒触发 reaper 后仍需 Windows 子树终止和 exit 事件调度时间。
+第二轮 §18 已批准的所属后代总退出预算为 12 秒。本轮脚本按该固定
+12 秒检查实际 elapsed 与所属 PID / 创建时间，并保留失败及重跑记录；
+不修改产品 8 秒 reaper、不提高 30 秒健康期限，超过 12 秒仍失败。
+
+### IM-R2-09：工作稿的宽松值校验仍需保证模板结构可编辑
+
+最终代码审查复现：working-only 记录仅检查 templateId 为字符串、params
+为普通对象时，损坏的未知模板或缺失数组参数会进入恢复流程，并在
+检查器查询模板或调用数组 map 时抛错。记录边界现按 catalog 核对模板
+ID / 版本、准确参数键和原始类型；损坏记录报本地状态不可用并保留
+原始字节，不覆盖或发送。文字长度、数值范围仍不按正式保存规则限制，
+超长文案和越界编辑可完整恢复后修正；冻结请求继续完整校验。
+新增五个损坏向量及越界值保留回归，均已先失败后修复验证。
+
+### IM-R2-10：确认层的键盘边界包含背景撤销快捷键
+
+最终审查复现：确认层只消费 Tab / Escape 时，Ctrl+Z 会冒泡到工作台
+根的 draft.undo，使 inert 背景中的工作稿变化。确认层现阻止全部
+keydown 向背景传播，仍只对 Tab / Escape preventDefault；普通按钮的
+Enter 默认行为及 IME 原有处理保留。Ctrl / Meta 撤销、重做四个回归
+先失败后通过，不修改共享 Modal 或时间线快捷键。
+
+## 14. 第二轮概述、范围与现状
+
+本轮继续完善已落地的本地特效制作能力。首轮的 12 库 / 24 模板、
+共享 Remotion composition、素材输入快照、持久渲染队列、时间线原位
+替换与一步撤销、Agent 渐进披露均继续作为产品基础。本轮让用户在
+保存或生成回包丢失、后台任务局部失败、字体暂时加载失败时可以恢复，
+同时补齐未保存提示的键盘交互，避免一次暂时故障迫使用户重新制作。
+
+第二个目标是使“本地可出片”与“安装包可以交付”的证据对应起来。
+首轮验收明确保留逐帧一致性、音频同步、真实安装后的离线闭环、最终
+FFmpeg 导出和真实 LLM 路径。本轮定义独立于开发依赖的 smoke 执行和
+可追溯报告，使下游能按相同输入、包身份和阈值完成这些验收。本文只
+规定实现及验收方式；所有新增验收在本设计节点均为**未执行**。
+
+定位来自本任务板明确给出的 `docs/plans/remotion-effects-studio`、
+同目录的首轮文档和当前 Git 提交。已读 README、CLAUDE、项目索引和
+首轮 `acceptance.md` / `final-review.md`。README / 旧索引的无登录
+描述落后于 CLAUDE，设计沿用现有桌面身份门禁，不修改认证。当前为
+Next.js 15 / React 19 / Zustand、FastAPI / SQLite、本地 Electron 33；
+Remotion 及 player / renderer / bundler 固定为 `4.0.544`。
+
+### 14.1 本轮缺口与代码依据
+
+行号针对 `58dce2a7`，用于复核定位；实施时以符号名为准。下表是
+静态调用链确认的方案输入，并非已执行故障注入的测试报告。
+
+| 编号 | 级别 | 触发、当前代码及影响 | 本轮决策 |
+|---|---|---|---|
+| R2-01 | P1 | `useEffectsController.ts:157` 每次生成创建新 UUID；`api/effects.ts:190` 只在一次调用内查询 / 重放。POST 已提交但 POST / 查询 / 再次 POST 的回包均丢失，下一次点击会换键；后端幂等约束无法合并不同键 | §15.1 持久提交记录；未确认的请求只能查询或同体重放 |
+| R2-02 | P1 | `draft_service.py:create_draft` 总是分配新 ID；PUT 每次只做 CAS。`useEffectsDraft.ts` 出错后不保存服务端 ID / 新版本。首次保存丢回包会重复建稿，更新丢回包会产生自身写入引发的 409 | §15.2 客户端稳定草稿 ID、冻结写请求和受限 CAS 重放 |
+| R2-03 | P1 | `useEffectsJobs.ts:42` 用 Promise.all 批量查询；一个 404 / 503 使其它成功查询一并被丢弃，持续失败的旧任务可使整个列表永久不更新 | §15.3 独立合并任务查询、局部错误与不退回的状态 |
+| R2-04 | P1 | `EffectsStudioModal.tsx:154` 的 alertdialog 只是绝对定位 div，没有初始焦点 / 独立圈定；外层 Modal 仍查询其后的全部可聚焦控件 | §15.4 特效专用关闭确认、背景 inert、独立键盘边界 |
+| R2-05 | P2 | `fonts.ts:30–42` 将失败 Promise 留在模块 Map 中；Player 重挂载继续复用失败结果，恢复字体文件后仍无法在同一页面重试 | §15.5 仅复用成功 / 进行中的字体请求，显式重试预览 |
+| R2-06 | P1 | `effects-smoke.js:54/69` 固定 import 仓库 dist；370 行从 desktop/node_modules 读取 Electron 版本；固定报告路径覆盖旧证据。即使指定 unpacked，也不能据此证明包内依赖闭环 | §15.7 从指定包解析全部执行资源；§18 绑定包身份的验收 |
+| R2-07 | P2 | `renderChild.ts:146/204` 将内部总期限、心跳丢失及用户取消都交给 stop/isStopping，最后可能上报 EFFECT_CANCELLED；controller 的独立期限会让最终错误取决于竞争顺序 | §15.6 保留停止原因；取消、超时和断连分开报告 |
+
+### 14.2 方案选择与边界
+
+比较三个路径：只增加立即重试，改动最少但无法跨刷新恢复；新增通用
+工作流 / 消息平台，可集中调度但扩大持久层和迁移范围；在现有请求
+幂等、草稿 PK/CAS 与项目生命周期上增加小型本地待确认记录，可解决
+本轮故障且不重建渲染系统。选第三种。后端的已提交数据库行仍是任务
+是否存在的唯一依据，本地记录只是待确认请求，不代表渲染任务已完成。
+
+不增加模板数量、云渲染、任意 JSX、透明视频格式或账号服务改动。
+不新增数据库列和表：草稿稳定 ID 使用既有 UUID 主键，任务复用
+`(project_id, request_id)` 唯一约束。保持已实现的项目锁序、源空间
+特效、素材身份、provenance 与 Agent 真实应用回执，禁止用本地提交
+恢复流程自动上轨。新增工具 schema 字段仍按原类别渐进披露。
+
+## 15. 第二轮技术设计与操作顺序
+
+### 15.1 渲染提交的待确认记录
+
+新增 `useEffectsSubmission`，挂在项目 controller 中，不跟随弹窗卸载。
+先 flush 草稿，取不可变的 projectId / draftId / expectedVersion /
+profile，生成 requestId；**先持久化，再发 POST**。同项目同时最多
+一个待确认提交；已经取得 job 的后台任务仍允许继续排队。记录位于
+`localStorage` 的 `ecliptrix:effects:pending:v1:<projectId>`，只含公开
+请求字段与 UTC 创建时间，不存 runtime token、路径或媒体字节。
+
+状态为 idle → submitting → accepted 或 uncertain / rejected。
+accepted 表示取得可验证 job，不表示成品 ready。网络异常、超时、
+5xx、无法解析成功响应、身份字段不匹配均保留记录并进入 uncertain。
+任何请求曾出现未知结果后，不得因随后一次错误响应直接删除记录：
+先按原 requestId 查询；查到原 job 就接管；明确 404 才允许同体 POST。
+没有未知结果且第一 POST 返回明确的业务 4xx 时可以标记 rejected，
+显示原错误并移除待确认记录。幂等冲突 409 保留诊断，不能自动换键。
+
+单次恢复最多执行 GET by-request → 若 404 则一次原体 POST；不在一
+次调用内无限重试。仍不可确认时显示“提交状态待确认 / 重新查询”，
+生成按钮禁用，但允许编辑、自动保存、关闭和切换项目；其它项目正常
+工作。重开该项目或显式重新查询才触发新一轮恢复。编辑造成草稿更新
+不改变旧请求；服务端现有先查 requestId 再检查版本的顺序必须保留。
+
+取到 job 后先 `jobs.watch(job)`，再移除相同 requestId 的记录，清除
+操作必须比较当前存储值的 requestId，避免误删较新的请求。若清除
+失败，保留 accepted 记录和已知 jobId，下次只查询接管、不生成新键。
+切换项目撤销交付资格，不抹除 A 的记录，也不把 A 的 job 注入 B。
+不对未知请求提供“取消”假操作；只有获得 jobId 后才能请求任务取消。
+
+存储访问、配额、JSON / 版本校验失败时，在 POST 前返回
+`EFFECT_LOCAL_STATE_UNAVAILABLE`；保留用户文案，可重试存储。损坏的
+记录不能静默覆盖，不允许退化成无记录 POST。旧版本客户端留下的
+服务端 job 通过现有历史列表加载，不伪造本地请求恢复。项目删除成功
+后清该项目的本地记录；暂时 404 只显示项目不存在，不自动重建项目。
+
+### 15.2 草稿首次创建与更新的回包丢失
+
+为 create 请求增加可选 `draft_id`。新 UI 在新建 / 复制草稿时生成
+UUID；Agent 未提供时由宿主在一次工具执行开始时生成并保持。后端
+把该 ID 写入既有 `effect_drafts.id`。旧调用方省略字段仍兼容，但新
+UI / Agent 不得省略；未知结果返回可恢复的 draftId。
+
+**R2-RV-01：创建与更新必须显式区分。** 客户端
+`saveEffectDraft({projectId, write})` 的 write 改为接收 §16.1 的
+EffectDraftWrite 判别 union，projectId 独立用于构建项目路径，
+不能再以 draftId 是否存在决定 HTTP 方法。kind=create 始终 POST
+集合路径，body 仅 draft_id/name/document；kind=update 始终 PUT
+该 ID 路径，body 仅 expected_version/name/document。两种请求均
+必须有稳定 draftId；只有收到并验证服务端稿后才建立 baseVersion，
+不得因本地已经分配 ID 就把新稿当成已创建。复制同样分配新 ID 走
+create；所有 UI 调用点及 mock 必须随签名更新。
+
+保存器在请求前写入 `ecliptrix:effects:save:v1:<projectId>`，结构见
+§16.1。同项目一个保存器、一次只保留一个未确认写入；它保存首次
+发送的完整 name/document、draftId 和 expectedVersion，不能在重试
+时把新输入塞进旧请求。编辑中的最新文档仍由 workingRef 持有；未知
+保存期间的新编辑也写入同一记录的 working 字段，500ms 防抖，不能
+覆盖 pendingWrite。这样刷新既能恢复提交体，也能恢复晚于提交的输入。
+
+**R2-RV-02：记录同时支持未发送编辑。** 初次编辑即可写 working-only
+记录；baseVersion=null 表示尚未确认创建，正整数表示最后确认的版本。
+pendingWrite 只在即将发送时冻结。保存确认后原子推进 baseVersion，
+移除已确认 pendingWrite，并保留最新 dirty working；下一次保存才
+冻结新的 update。没有 pendingWrite 且 working 与该基准相等时可清
+记录。刷新恢复 working-only 时先 GET：服务器版本必须等于基准，
+否则显式冲突；不能把 GET 新版本直接当本地旧 working 的覆盖授权。
+baseVersion=null 的工作稿仍使用原 draftId 创建，禁止刷新后换 ID。
+
+恢复顺序：GET draftId；404 时 create 原请求；v1 且 name / 规范化
+document_hash 与首次 create 完全一致时采纳；大于 v1、软删除或
+内容不同均转 409，保留本地稿，供加载服务器版或复制为新草稿。服务
+端 create 同 ID / 同项目 / v1 / 同体返回原稿，不新增行；异体返回
+`EFFECT_IDEMPOTENCY_CONFLICT`；跨项目 ID 不可作为本项目草稿读取。
+同 ID 的并发创建即使绕过进程锁，仍由 PK / IntegrityError 回读合并。
+
+PUT 保留 CAS，只有如下严格重放例外：当前版本恰为
+`expected_version + 1`，且 name 与规范化 document_hash 都与请求
+一致、未软删，返回当前稿且不再递增版本。当前版本等于 expected
+时正常 CAS；其它情形一律 `EFFECT_VERSION_CONFLICT`。name 必须独立
+比较，因为 document_hash 不含名称。此契约不推断更久远的相同写入，
+第三方已经更新两次时仍冲突，避免用内容巧合掩盖并发编辑。
+
+成功回包先校验 ID / 项目 / 请求内容，再更新 saved，持久化最新
+working；确认无 dirty 后清 save 记录。未确认旧写入时不发后续 PUT；
+恢复确认旧写入后再以返回版本保存最新 working。版本冲突不重试覆盖。
+原有“保存并关闭”等待 flush 全部完成；“不保存关闭”只丢弃未发送
+working，不撤回已发出的写入，未知请求的恢复记录继续保留。界面应
+说明“已发送的保存仍可能完成”，防止将关闭误解为事务回滚。
+
+“不保存关闭”必须在本地锁内立即移除 working 并取消其防抖定时器，
+保留 pendingWrite（若有）；下次只确认该已发送写入，不恢复已明确
+丢弃的后续输入。无 pendingWrite 时清除该 save 记录。未知写入期间
+选择其它草稿、新建或复制不能覆盖项目唯一 save 记录；先完成恢复，
+或让用户选择保留原记录并继续当前稿。冲突稿的“加载服务器版”明确
+丢弃本地 working；“复制”只在旧 pendingWrite 已确定结果后以新 ID
+建稿，不能靠换 ID 绕过未确认写入。所有自动保存 / 续写前复核当前
+项目、编辑器 epoch 和 §16.1 租约，旧链不阻塞新项目。
+
+恢复先回显完整 working 或冻结体，再从两者的 inputs.assetId 并集
+按本项目 GET asset，重建只在内存使用的 assets；本地记录不存 URL。
+单个资产缺失保留文字和绑定，显示缺失槽位并禁用预览 / 生成；用户
+显式重选，不静默删绑定或换源。恢复时间线来源的稿不恢复旧 target
+授权，仍须重新选择目标并通过 §7 来源及指纹检查。
+
+Agent create 工具增加可选 draftId，重复调用必须复用明确返回的
+draftId；宿主一次调用的内部 HTTP 重试沿用同一 ID / body。
+update 工具第一次读取版本过新时，在没有已冻结原请求的情况下仍报
+冲突，不能从 LLM 的 changes 重新推导并覆盖；只在同次调用的未知
+PUT 恢复中使用上述受限重放。无新工具、无任意 schema 常驻注入。
+
+跨工具调用 / 跨回合未知写入不能只重传 draftId 后重新执行
+changeDocument；该函数会重新附加输入，且当前版本已可能推进。
+完整冻结体、恢复分支和宿主屏障以 §16.3 的 R2-RV-04 契约为准。
+
+### 15.3 任务轮询的局部失败与单向状态
+
+初始 history / active 两个列表和每批 job GET 都使用 allSettled；
+成功项即时合并，失败项留在各自 `jobErrors` 中。首次 active 查询失败
+时 history 成功结果仍显示，并提供重试；不能清空已 watch 的新任务。
+轮询不因一个失败项等待所有任务恢复，也不通过 setJobs([...previous])
+制造全列表重试。每项指数退避 1/2/4/8 秒，后台页最小 5 秒；每批最多
+查询该项目现有五个 active job，每个 job 同时最多一个 GET。
+
+**R2-RV-05：allSettled 仅用于收尾汇总。** 每个请求各自的 then/catch
+在完成时交付成功或局部错误，不等待批次最慢项；每个 GET 有独立
+10 秒 timeout 和 AbortSignal，计时结束即释放该项在途标志。此超时
+不改变 job 状态。即使一项挂满 10 秒，其余项的本轮结果也必须及时
+显示，下一次查询按各自退避调度；不能因 setJobs 更新重置所有计时器。
+
+每次项目切换增加 epoch，所有 GET / cancel / 初始列表请求捕获该值；
+合并前先核对项目、epoch、jobId。每个 job 另有序列号；发 cancel 时
+立即增加序列号，使在途的旧 GET 不能覆盖取消回包。清 timer / Abort
+只是资源清理，不能代替这两个交付守卫。
+
+cancel 有独立在途标记，防止重复点击；只有服务端确认 cancelling
+或终态才推进公开状态，不把一次点击直接锁死为 cancelling。失败
+保存为该 job 的错误并恢复查询；不清旧卡、不造终态。GET 开始捕获
+当前 seq，cancel 完成后的新 GET 先使用新 seq 再按单向规则合并。
+history 的 cursor 绑定项目 epoch 与当前分页链；每条链最多一个
+loadMore，只有匹配返回才能推进 nextCursor。失败保留旧 cursor，
+重试仍查同页，按 jobId 合并去重，不把翻页结果反写成 active 列表。
+
+公开状态仍只有 queued / running / cancelling / succeeded / failed /
+cancelled / interrupted。合并允许 queued → running → terminal，
+queued / running → cancelling → terminal，允许跳过中间状态；
+cancelling 不回 running，terminal 不回 active。相同 terminal 可以
+补齐 outputAsset，progress 在同一非终态取 max。两个不同 terminal
+的回包不相互覆盖，保留第一个并重新 GET，显示局部一致性错误。
+`updated_at` 是展示时间，不用于排序，避免 SQLite 秒精度撞值。
+
+同为 running 时 phase 按 preparing / frames / encoding / validating /
+publishing 的顺序合并，不被历史列表的旧快照退回；终态 phase 必须
+与其公开 status 一致，不能保留完成前的 frames 文案。
+
+GET 单任务 404 保留该卡片并标记“任务不存在”，停止其自动轮询，
+用户可移除卡片或手动重查；不把它伪造成 failed / cancelled。429
+取 Retry-After 与 retry_after_ms 的较大值，上限 60 秒；503 进入局部
+退避。列表 / 任务错误不会重复注册素材；注册和上轨仍由现有明确动作
+或 Agent 原有回执链负责。历史分页增加“加载更多”，复用 nextCursor，
+防止第 13 个及更早成品无法在工作台找到；不自动拉完整历史。
+
+### 15.4 未保存确认的焦点与键盘
+
+新增仅供特效使用的 `EffectsCloseDialog`。打开时记住触发控件，将
+工作台 header / columns / footer 包在单独容器并设 inert；确认层
+是同级节点，role=alertdialog、aria-modal=true，标题与说明各有稳定 ID。
+默认焦点在“继续编辑”，Tab / Shift+Tab 只循环三个动作；Escape
+preventDefault + stopPropagation 后关闭确认，返回触发控件，不关闭
+工作台。关闭确认清 inert；卸载也必须清理。外层 Modal 的 document
+监听通过 defaultPrevented 不再处理同一按键，无需改动共享 Modal。
+
+**R2-RV-06：处理点固定在特效 DOM 子树的 onKeyDownCapture。**
+确认层对每次 Tab（包括内部控件之间的 Tab）都 preventDefault 并
+自行移动焦点，同时 stopPropagation，不能让外层查询 inert 背景
+后的 NodeList 再圈定一次。非 composing Escape 同样在 capture
+消费。不要另注册一个晚于 Modal 的 document 冒泡监听来抢优先级。
+工作台根的快捷键处理也必须先检查 nativeEvent.isComposing、维护的
+compositionstart/end 标志及兼容 keyCode=229；IME 期间仅阻止冒泡
+到外层，不 preventDefault、不关闭、不执行草稿 undo，交还输入法。
+确认层默认焦点、关闭归还及错误摘要聚焦均在实际挂载后执行；摘要
+用 tabIndex=-1，不增加第四个 Tab 动作。
+
+点击“保存并关闭”时禁用重复提交，保存失败保留确认和输入，读出
+具体错误并将焦点送到错误摘要；“不保存关闭”按 §15.2 的已发送
+写入规则执行。IME composing 期间不接管 Ctrl+Z / Enter / Escape；
+文本域里正常输入空格不传播到时间线。窗口小于 900px、125% / 150%
+缩放仍保证动作可见并能滚动到达，避免焦点落入视觉遮挡的背景。
+
+保存中“继续编辑”或 Escape 可返回工作台，保存继续但撤销本次关闭
+意图；异步完成不得再关闭已换稿 / 已重开的编辑器。“不保存关闭”
+在该 flush 尚在执行时禁用，避免同一 working 同时续写和丢弃。
+关闭意图绑定 projectId / editorEpoch，只有本次完整 flush 确认且
+意图仍有效才关闭；unknown / conflict / 存储失败都留在可恢复状态。
+
+### 15.5 字体失败后的预览恢复
+
+抽出 font load helper：缓存 key 继续是 family + URL，只共享进行中
+与成功 Promise；失败时仅当 Map 当前仍指向该 Promise 才删除，避免
+旧失败误删新请求。所有等待者释放各自 delayRender handle；失败
+不加载系统字体替代，不无限自动重试。预览错误提供“重试预览”，
+增加 playerEpoch，重新解析相同资产和字体；不修改草稿、不发渲染
+任务。只有当前 epoch 的结果可以设置 readyKey。
+
+重挂载后重置播放器 frame / isPlaying / isMuted 为实例真实值。
+字体错误、媒体错误和文本溢出使用不同的既有错误摘要；缺少字体
+文件必须显示字体资源失败。runtime 缺随包字体仍按 manifest 检查
+降级，预览重试不能绕过校验，也不触发联网下载。
+
+### 15.6 运行时停止原因
+
+新增纯 helper `stopReason.ts`，定义 `user_cancel | deadline |
+parent_lost`，保存首次触发原因与时间。child 的 stop(reason) 统一
+取消 renderMedia / 关闭 browser / 终止 encoder；deadline 和心跳
+不能再调用无参 stop。映射分别为 EFFECT_CANCELLED、
+EFFECT_RENDER_TIMEOUT、EFFECT_RENDER_INTERRUPTED。
+
+controller 收到 error 只接受固定错误码，已经记下自身 deadline /
+心跳超时不能被迟到 EFFECT_CANCELLED 覆盖。实际 child exit 才释放
+槽，保留 CR-12 的 EPIPE 处理。公开 cancelled 仍仅由数据库中的
+cancel_requested 决定；没有取消请求的超时为 failed + TIMEOUT，
+父进程丢失由恢复落 interrupted。取消与期限竞争沿用用户取消优先的
+数据库规则，内部记录保留第一个停止原因；不可发出成功 asset。
+
+**R2-RV-07：原因和结果采用同一不可逆停止门。** controller 与 child
+分别锁存首个 stopReason；user_cancel 只能来自显式取消协议。
+shutdown / reset / 心跳或 IPC 失联走监督停止 parent_lost，不能因
+内部复用 cancel(job) 就标为用户取消。child 发送 result 前和
+controller 接收 result 时都检查停止门；停止后清 didReceiveResult
+及临时 result，拒绝后续 result/progress/phase 修改。finishChild
+只有未停止、exit=0、收到有效结果才可 succeeded；记录 deadline
+后即使收到 result 并 exit=0 仍为 failed/TIMEOUT。未知 errorCode
+映射既有解码错误，不能覆盖已锁存原因或透出任意字符串。
+
+parent_lost 的实际退出可确认后，经既有恢复屏障转 interrupted；
+退出未确认则保持 unavailable / 待恢复，不伪造 failed 或释放并发
+槽。数据库已落 cancel_requested 时最终仍按原规则 cancelled。
+子进程 spawn 未成功的 error 可终结启动；已启动后的 IPC EPIPE
+不等于 exit。正常发送 result 后的预期 disconnect 属于 finalizing，
+不能反过来将成功停成 parent_lost；stop/finish 均幂等。
+
+测试将时钟 / deadline 作为模块构造选项注入，不新增公开 HTTP 参数，
+不在生产环境提供可调小的任意执行时限。单 delayRender 的 30s 与
+整次任务的 900s 是两个不同期限。前者也是 TIMEOUT；心跳与进程退出
+顺序按既有有界清理规则执行，不能因诊断优化改变监管职责。
+
+### 15.7 安装目录资源与报告
+
+`effects-smoke.js --unpacked <dir>` 的 controller、renderChild、
+protocol、mediaServer、renderer / bundler 依赖全部从
+`<dir>/resources/effects/runtime` 加载，Electron 使用 `<dir>/Ecliptrix.exe`，
+FFmpeg / ffprobe 使用 `<dir>/resources/ffmpeg`。开发模式继续使用
+仓库 dist，但报告 mode=development；不能将该结果标为 packaged。
+安装模式缺任一包内文件直接失败，不回退系统 PATH 或仓库 node_modules。
+
+**R2-RV-08：目标树优先于全部开发 override。** 有 --unpacked 或
+--installed 时拒绝 ECLIPTRIX_EFFECTS_RESOURCE_ROOT /
+ECLIPTRIX_EFFECTS_ELECTRON 等可改变被测入口的环境覆盖；实际测试
+根只能写 evidence 下，不允许指向目标安装树。旧 --packaged 仅表示
+开发暂存 payload，报告 mode=development，不能拿它满足 AC-42。
+真正安装验收的全部执行入口必须来自 --installed 树，--unpacked
+只用于清单核对；主场景和嵌套 renderer/controller/child 使用同一
+targetRoot。路径逐级拒绝 Junction / symlink，执行前校验 manifest。
+
+从包内 Electron 以 ELECTRON_RUN_AS_NODE 获取 process.versions，
+不读取开发 Electron 的 package.json。运行脚本是测试工具，允许来自
+仓库；被测代码、组合 bundle、字体、浏览器与执行依赖必须来自目标
+安装树。新增回归用 require 钩子在 unpacked 模式拒绝仓库 dist /
+node_modules 的被测模块加载，证明测试工具没有偷用开发资源。
+
+require 钩子应预加载到每个测试拥有的 Node / Electron 子进程；
+外层工具本身可加载 node: 内置模块和仓库 desktop/scripts/lib 下
+的验收 helpers，被测 runtime / Remotion / React 依赖必须解析到
+目标 resources/effects/runtime 的生产依赖闭包，不能放行整个仓库
+node_modules。清除 NODE_PATH / NODE_OPTIONS 等继承的模块注入，
+包内 Python 用 -B -X utf8，拒绝 PYTHONPATH 注入，不修改 _pth。
+记录所有执行命令的程序来源与 PID；缺包内依赖必须失败。测试工具
+无额外 npm/pip 依赖。每个子进程显式 cwd，输出和缓存只入 evidence，
+finally 收尾；启动失败同样清理自己持有的进程及心跳。
+
+报告输出必须显式 `--report <file>`；不指定时仅开发模式可写唯一
+run-id 子目录。目标文件已存在时退出 1；不能覆盖成功或失败报告。
+报告包含实际 executable / entry 相对路径、引擎 / browser / Electron
+版本、runtimeFingerprint、catalog/font/bundle hash、包身份与附件
+hash。所有临时文件写仓库内独立 userData / evidence，安装树只读。
+控制器报告和渲染报告作为同次运行的独立附件，不能相互覆盖。
+
+## 16. 第二轮接口与数据模型
+
+### 16.1 本地记录与公开 DTO
+
+以下是精确字段契约，驼峰仅用于客户端；序列化请求仍按 §8 使用
+snake_case。pendingWrites 模块负责 schema 校验和按项目 CAS 清除，
+不直接发网络请求；hook 负责生命周期。名称和文档遵守既有范围限制。
+
+```typescript
+interface EffectPendingSubmission {
+  schemaVersion: 1;
+  projectId: string;
+  requestId: string;
+  draftId: string;
+  expectedVersion: number;
+  profile: 'mp4-1080p' | 'mp4-720p';
+  createdAt: string;
+  state: 'submitting' | 'uncertain' | 'accepted';
+  jobId?: string;
+}
+
+interface EffectPendingSave {
+  schemaVersion: 1;
+  projectId: string;
+  draftId: string;
+  recordRevision: number; // 每次本地变更递增的正整数
+  baseVersion: number | null; // null 仅用于尚未确认创建
+  pendingWrite?: EffectDraftWrite;
+  working?: { name: string; document: EffectDocument };
+  createdAt: string;
+}
+
+type EffectDraftWrite = {
+  kind: 'create'; draftId: string; name: string;
+  document: EffectDocument;
+} | {
+  kind: 'update'; draftId: string; expectedVersion: number;
+  name: string; document: EffectDocument;
+};
+```
+
+EffectPendingSave 至少有 pendingWrite / working 之一；pendingWrite
+的 draftId 必须等于外层 ID，create 要求 baseVersion=null，update
+要求 expectedVersion=baseVersion>=1。确认旧写入时同一原子更新
+推进 baseVersion 并移除 pendingWrite，不能留下相互矛盾的版本。
+working 缺省仅表示明确丢弃了未发送输入、仍有已发送请求待确认；
+不能将其当空文档去保存。对外公开接口优先 interface，两个互斥请求
+使用有限判别 union 以便 TS 和运行时共同校验，不增加数据库字段。
+
+本地 working 允许暂时不符合“可保存文档”的编辑值（例如超过标题
+长度的待修正文案），记录层仅检查结构 / 有限数值和单条 256KiB 上限；
+pendingWrite 必须通过正式保存校验后才可发送。恢复先回显 working，
+不能为满足 schema 截断用户文字。超过本地上限则明确报存储失败，
+不覆盖上一份有效记录，输入仍留在内存供修正。
+
+记录不按 TTL 静默丢弃；只有已确认、明确拒绝或项目删除成功才清除。
+save 与 pending 两个 key 独立，写一个不能清另一个。localStorage
+本身的 setItem 原子性只保证单键，本方案不依赖两个 key 的原子事务。
+同项目多窗口通过 `navigator.locks.request` 的
+`ecliptrix-effects:<projectId>` 锁串行执行本地读-比较-写，锁内不做
+网络 await；已有其它 requestId 的记录时直接返回它，不生成新键。
+save 记录同时比较 draftId、recordRevision 和冻结请求内容；storage
+事件仅用来刷新提示，不作为互斥的依据。运行环境缺 Web Locks 时返回
+本地状态不可用，不把 localStorage 的比较后写入冒充原子 CAS。
+锁只覆盖同源客户端的本地记录，服务端 PK / CAS / 唯一约束继续兜底。
+
+**R2-RV-03：另持有短记录锁之外的编辑器租约。** 工作台打开前以
+`ecliptrix-effects-editor:<projectId>` 的 exclusive / ifAvailable
+Web Lock 取得唯一写编辑器资格，callback 返回由卸载 / 关闭显式
+resolve 的 Promise。未取得者可看项目任务，但不改同项目 working、
+不自动保存 / POST，并显示“此项目正在另一窗口编辑”。关闭前 flush
+最新 working 到本地记录后才释放；崩溃由浏览器释放，不用时间戳
+猜租约过期、不使用 steal。此租约不持有后端项目锁，也不拦其它项目。
+
+两把锁顺序为编辑器租约 → 短记录锁；绝不在短记录锁内等待租约或
+网络。每个回包绑定 editorEpoch，失去租约后不写 save / submission
+记录、不执行续写；新拥有者从原冻结体恢复。后台已知 job 的项目级
+watch 不依赖编辑租约。写 working 需带读到的 recordRevision；发送
+结果不能拿发送时的旧 revision 清记录，须在短锁内重读、核对相同
+pendingWrite，再保留最新 working / revision 并确认旧写入。
+删除成功后的 clearProjectPending 只取短锁并发失效通知，不等待
+编辑器租约；旧编辑器收到项目失效立即撤销交付资格。恢复仍须核对
+服务端项目存在，即使进程崩溃遗留本地记录也不能重建已删项目。
+Web Lock 在 callback 完成时释放，依据为
+[Web Locks 官方平台文档](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)。
+
+pendingWrites 公共签名固定为异步 `readPending(projectId, kind)`、
+`writePending(projectId, kind, record, expectedIdentity)`、
+`clearPending(projectId, kind, expectedIdentity)`、
+`clearProjectPending(projectId)`；kind 为 submission / save，identity
+分别为 requestId、draftId 加冻结请求规范化内容。write / clear 在锁内
+重读并比较；不匹配返回冲突，不静默覆盖。最后一个函数只供项目删除
+成功后使用，删除两个 key 之间崩溃仍可靠项目不存在而阻止任何重放。
+
+save 的 expectedIdentity 还必须带 recordRevision；working-only
+记录使用 draftId/baseVersion/recordRevision 标识。read / write
+返回 `{record, identity}`，缺项用显式 absent identity；调用方必须
+消费返回的新 identity，不能盲写。submission 保留原 requestId
+身份，只允许同一冻结请求的状态推进，不覆盖其它请求。
+
+### 16.2 REST 变化与兼容性
+
+| 接口 | 本轮契约 |
+|---|---|
+| `POST /api/effects/projects/{project_id}/drafts` | 原 name/document 加可选 draft_id（UUID 字符串）；省略仍服务器分配；新 UI / Agent 必须提供。同 ID / 同体初稿重放沿用当前路由的 201，返回原稿且不增版本；客户端兼容 200/201，不靠状态码区分是否新增 |
+| `PUT /api/effects/projects/{project_id}/drafts/{draft_id}` | 保留 expected_version；只增加 §15.2 精确的一次同体重放，不接受 create 的 draft_id 字段 |
+| `GET /api/effects/projects/{project_id}/drafts/{draft_id}` | 不变，用于恢复；返回 read_only、version、document_hash；调用方还比较 name |
+| `POST /api/effects/projects/{project_id}/jobs` | 不改 schema / 幂等先后顺序；新 UI 必须传本地已持久化原请求；重放仍使用原 expected_version/profile |
+| `GET /api/effects/projects/{project_id}/jobs/by-request/{request_id}` | 不变；新客户端与 Agent 用同一接口恢复未知提交 |
+| `GET /api/effects/projects/{project_id}/jobs?cursor=...` | 不变；前端保留 next_cursor 并提供加载更多 |
+
+客户端 create/update 请求使用 §16.1 的 EffectDraftWrite；create
+的 draft_id 是 body 字段，update 的 ID 只在 URL。共享基础模型
+建议命名 DraftContentRequest，SaveDraftRequest 用于 create，
+UpdateDraftRequest 独立继承基础内容，所有对象继续 extra=forbid。
+本轮新旧客户端共存仅承诺 REST 兼容，旧客户端不具备刷新恢复能力。
+
+parse_body 当前使用 `model_validate(json.loads(raw))`，不是 JSON
+模式的 model_validate_json。为保持 StrictModel，不直接声明会拒绝
+Python 字符串的严格 UUID 字段；draft_id 使用 `str | None`，按现有
+SubmitJobRequest 模式在显式 validator 中执行 str(UUID(value))
+规范化，拒绝非字符串 / 非 UUID。缺省保留 None，PUT 不含此字段。
+不得为了新字段把全体 strict=False，或让非法额外字段通过。
+
+create 请求的 JSON 示例（实际 asset 等 ID 使用本项目真实 fixture）：
+
+```json
+{
+  "draft_id": "0e931a68-f0a1-4abd-b530-23a377620ce7",
+  "name": "片头",
+  "document": {
+    "schema_version": 1,
+    "template_id": "title-rise",
+    "template_version": 1,
+    "canvas": {"width": 1920, "height": 1080, "fps": 30},
+    "duration_frames": 150,
+    "seed": 1,
+    "content": {"title": "新的故事", "subtitle": ""},
+    "palette": {"background": "#15171A", "foreground": "#F5F4F1", "accent": "#C87758"},
+    "typography": {"family": "sans", "scale": 1, "align": "center"},
+    "motion": {"speed": 1, "intensity": 1},
+    "params": {"distance": 0.12},
+    "inputs": []
+  }
+}
+```
+
+本节点核查示例 document 时直接调用当前 normalize_document 和现有
+SaveDraftRequest（移除尚待实现的 draft_id 字段），另验证 draft_id
+为合法 UUID；新增字段的完整 HTTP 接受行为由 AC-37 的实现后测试
+负责。params.distance=0.12 位于 title-rise 当前 [0, 0.2] 范围，
+不为示例扩展模板 schema，禁止只验证 JSON 语法。
+
+新增错误仅 `EFFECT_LOCAL_STATE_UNAVAILABLE`（客户端存储）、
+`EFFECT_SUBMISSION_UNKNOWN`（客户端待确认）、`EFFECT_FONT_LOAD_FAILED`
+（可重试预览）；幂等冲突复用已有 EFFECT_IDEMPOTENCY_CONFLICT。
+所有 HTTP 错误仍用 ErrorResponse.error_details，runtime token 和
+私有 drain 不进入 BFF。无新 WebSocket 或生产 CLI。
+
+### 16.3 Agent 工具变化
+
+`create_effect_draft` 增加可选 draftId（UUID），旧字段不变。
+`get_effect_job` 改为 jobId / requestId **二选一**的 strict schema；
+不能同时提供或同时缺失。jobId 走旧查询，requestId 走 by-request，
+成功结果与原 DTO 相同，并返回 requestId 供下一轮复用。render_effect
+未知结果包含原 requestId、draftId、expectedVersion、profile 和
+`status=unknown`，success=false，不记录 watch_job，不声称已生成。
+
+工具描述要求未知后先 get_effect_job(requestId)，404 才能用相同键
+同体 render_effect；不让模型在未知时创建新键。内部状态与提交记录
+是普通数据，不增加初始工具披露。取得 succeeded 后注册素材仍走原
+get 工具逻辑；apply 仍独立依赖客户端回执。本地 POST 幂等与 Agent
+时间线上轨幂等是两种已有职责，不能用查询成功替代 apply 回执。
+
+数据库继续使用原三表、原字段。更新 create model 时将公共 name /
+document 提取为基础请求模型，SaveDraftRequest 只供 create 并包含
+draft_id；UpdateDraftRequest 从基础模型继承 expected_version，
+避免 create 的可选字段意外被 PUT 接受。无需迁移或破坏性启动 DDL。
+
+**R2-RV-04：冻结写入的工具恢复契约。** create 和 update 原有普通
+参数支继续兼容；分别增加独占 `{recovery}` 分支，使用 strict
+object union，不能同时带普通 edits/sourceMaterialId/images。
+recovery 的固定结构为 `{schemaVersion:1, projectId, write}`，
+write 即 §16.1 的 EffectDraftWrite；create 工具只接受 kind=create，
+update 只接受 kind=update。projectId 必须等于 ToolContext 项目，
+document 仍按完整 catalog / UUID / 资产归属校验，不接受 URL、路径
+或未知参数。两个分支都转换为准确的模型可见 JSON Schema，不能
+只依靠 schema 转换时会丢失的 refine 表达互斥。
+
+普通调用先完成 changeDocument 和输入快照，再一次性冻结 ID、名称、
+完整规范文档及 expectedVersion；内部重试 / 恢复分支只发该冻结体，
+不再 GET 后做 changes 合并、不重复 attachInputs。无法确认时返回
+`success=false,status=unknown,draftId,recovery`。恢复 create 可 GET
+同 ID 先比较 §15.2 条件；update 直接以冻结体 PUT，让服务端判断
+精确一次重放。确认结果包含同一 recovery 身份与 committedVersion，
+供宿主解除未确认状态。makeEffectTool 仅透传严格校验的这些公开
+恢复字段，不展开任意 error 对象，不返回私有 request_json。
+
+宿主在当前 ToolContext 保留未确认 draft 写入和 render 提交的 Map；
+agent.ts 在压缩给模型的历史之前，从原 conversationHistory 的
+结构化工具结果还原本项目未解决记录，以后续明确确认结果解除。
+schemaVersion / 项目 / toolCallId / 请求字段逐项核验，不能只从自然
+语言推断。未知 draft 写入时同稿普通 update / render 被拒绝；未知
+render 时同稿新 requestId 在 HTTP 前被拒绝并返回原 recovery，
+不能仅靠提示词要求模型守规。get_effect_job(requestId) 成功或同键
+同体 submit 确认后解除该请求屏障；404 本身不解除。其它明确不同
+草稿的制作和已有成品应用不受影响，时间线 unknown 仍用原独立守卫。
+
+完整历史缺失 / recovery 被截断时不声称可自动恢复，不从 edits
+重算冻结体；保留未知提示并转用户工作台查看真实项目历史。Stop
+保留既有 5 秒 requestId 清理及 apply 租约撤销，不因查询恢复发
+apply 或重新授权旧 target；宿主不把未知写入当作渲染成功。
+
+## 17. 第二轮文件 / 模块变更计划
+
+下表是本轮完整文件范围。标为“前序设计记录”的两份文档已经由
+方案节点写入，本评审节点仅修改 spec.md；下游只执行实现 / 测试 /
+使用说明行，不重新生成前序记录。除明确新增外，其余文件已存在。
+不重建首轮模块，不修改 webserver、研究服务或通用导出算法。
+测试文件验证可观察故障和恢复结果，不逐行复刻实现。
+
+| 文件路径 | 动作与单一意图 |
+|---|---|
+| `src/types/effects.ts` | 修改：create/update 判别请求、working-only / frozen 保存类型、局部查询错误及新客户端错误码 |
+| `src/lib/effects/pendingWrites.ts` | 新增：两类本地记录、编辑器租约与 revision CAS、损坏 / 配额检测及删除失效通知 |
+| `src/lib/api/effects.ts` | 修改：按 kind 选择 POST/PUT；导出 by-request 查询；未知提交返回原请求，不隐式换键 |
+| `src/components/video/effects/useEffectsSubmission.ts` | 新增：先落本地记录再 POST、项目级恢复和 accepted/uncertain 生命周期 |
+| `src/components/video/effects/useEffectsController.ts` | 修改：接入提交 hook、稳定草稿 ID、打开时恢复，保留项目代次及现有目标守卫 |
+| `src/components/video/effects/useEffectsDraft.ts` | 修改：冻结未确认保存、持久 working、受限恢复和最新版本串行续写 |
+| `src/components/video/effects/useEffectsJobs.ts` | 修改：allSettled、每项退避 / epoch / seq、历史分页和局部错误 |
+| `src/components/video/effects/mergeEffectJob.ts` | 新增：无副作用的状态合并与进度规则，仅接受同项目同任务 |
+| `src/components/video/effects/EffectsStudioModal.tsx` | 修改：待确认提交状态 / 重查按钮、草稿恢复提示、inert 背景与生成禁用条件 |
+| `src/components/video/effects/EffectsCloseDialog.tsx` | 新增：特效专用未保存确认、独立焦点 / IME / Esc 行为 |
+| `src/components/video/effects/EffectsJobCard.tsx` | 修改：单项查询错误、404 移除 / 重查、保留成品已有动作 |
+| `src/components/video/effects/EffectsPreview.tsx` | 修改：显式重试预览、重新挂载后的真实播放状态 |
+| `src/lib/effects/fonts.ts` | 修改：失败缓存移除、句柄释放、稳定字体错误，不回退系统字体 |
+| `src/lib/i18n.ts` | 修改：中英待确认、恢复、本地记录失败、焦点摘要、重查和加载更多文案 |
+| `src/components/video/projects/VideoProjectListView.tsx` | 修改：handleDeleteProject 中 deleteVideoProject 成功后清该项目本地记录，失败不清 |
+| `backend-services/basic-service/app/models/effects_models.py` | 修改：分离 create / update 请求继承，create 可选 draft_id UUID |
+| `backend-services/basic-service/app/services/effects/draft_service.py` | 修改：同 ID 初稿重放、精确一次 PUT 重放，沿用项目锁并处理 PK 冲突 |
+| `src/lib/video-editing-agent/tools/effectsDraftTools.ts` | 修改：稳定 draftId、未知创建结果恢复字段、冻结同次调用的 PUT 请求 |
+| `src/lib/video-editing-agent/tools/effectsJobTools.ts` | 修改：get 按 jobId/requestId 二选一、未知 render 返回原请求，无虚假 watch 操作 |
+| `src/lib/video-editing-agent/tools/effectsCatalogTools.ts` | 修改：保留未知提交的结构化结果，避免统一错误包装抹除恢复字段 |
+| `src/lib/video-editing-agent/types.ts` | 修改：本项目未确认 draft / render Map 和严格工具恢复结果类型 |
+| `src/lib/video-editing-agent/agent.ts` | 修改：从原结构化历史恢复 effects 待确认屏障，不改变其它工具和时间线回执守卫 |
+| `effects-runtime/src/stopReason.ts` | 新增：停止原因的首次记录及稳定错误映射 |
+| `effects-runtime/src/renderChild.ts` | 修改：带原因停止、全部句柄有界清理、保持实际 exit 才释放槽 |
+| `effects-runtime/src/server.ts` | 修改：错误码 allowlist、父级超时优先保留、取消标志与 child error 区分 |
+| `desktop/scripts/effects-smoke.js` | 修改：从目标 ENTRY_ROOT 加载被测模块、显式报告位置、包内版本探测与失败不覆盖 |
+| `desktop/scripts/effects-acceptance.js` | 新增：§18 场景 CLI 编排；只调用 helpers，不堆积超长脚本 |
+| `desktop/scripts/lib/effects-release-evidence.js` | 新增：复用 verifyPackageManifest、安装树逐文件比对、报告 / 附件身份及 gate 结果 |
+| `desktop/scripts/lib/effects-visual-acceptance.js` | 新增：确定性 fixture、双 PNG / MP4 / Player 实帧矩阵、结构化测量 |
+| `desktop/scripts/lib/effects-desktop-acceptance.js` | 新增：隔离 Electron 启动、四入口 / 保存 / 撤销 / 重开 / 最终导出、进程与性能采样 |
+| `desktop/scripts/lib/effects_metrics.py` | 新增：用包内 Python/Pillow 解码 PNG、边缘掩码 / MAE / 音频脉冲分析；只作测试工具 |
+| `desktop/scripts/smoke-test.js` | 修改：仅导出既有 connectCdp 供验收复用；原 main / 研究门禁不变 |
+| `src/lib/effects/__tests__/pendingWrites.test.ts` | 新增：持久记录恢复、配额 / 损坏 / 错身份、两 key 不相互清除 |
+| `src/lib/effects/__tests__/fonts.test.tsx` | 新增：一次失败后同 URL 成功重试、并发共享、旧失败不删新请求 |
+| `src/components/video/effects/__tests__/effectsSubmission.test.tsx` | 新增：丢全部回包→刷新→原键恢复、跨项目、存储失败不 POST、丢租约不续写 |
+| `src/components/video/effects/__tests__/EffectsCloseDialog.test.tsx` | 新增：焦点循环 / 恢复、IME、保存失败保留确认与输入 |
+| `src/components/video/effects/__tests__/effectsJobs.test.ts` | 修改：一坏两好、取消与迟到 GET、历史翻页 / 列表局部失败 |
+| `src/components/video/effects/__tests__/EffectsStudioModal.test.tsx` | 修改：稳定 ID 的 POST/PUT、working-only / 资产恢复、待确认禁用生成、切稿与不保存关闭 |
+| `src/components/video/projects/__tests__/VideoProjectListView.effects.test.tsx` | 新增：项目删除成功后只清该项目记录，HTTP 失败保留记录和原有删除提示 |
+| `src/lib/video-editing-agent/__tests__/effectsTools.test.ts` | 修改：带图片的跨回合冻结恢复、get 互斥 schema、宿主未知屏障与同键重放 |
+| `backend-services/basic-service/tests/test_effects_contract.py` | 修改：新 create 参数与旧调用兼容、示例向量及 PUT 拒绝 create 字段 |
+| `backend-services/basic-service/tests/test_effects_draft_replay.py` | 新增：真实 SQLite 并发 create / PUT 精确重放、异体、软删除、第三方更新 |
+| `effects-runtime/tests/stopReason.test.mjs` | 新增：真实子进程短期限 / 父断连的错误码、先后触发与无成功结果 |
+| `effects-runtime/tests/render.integration.test.mjs` | 修改：使用唯一报告路径；保留真实 Electron 渲染门禁 |
+| `desktop/scripts/effects-smoke.test.js` | 新增：目标包资源解析、仓库依赖拒绝、版本来源 / 缺件 / 不覆盖 |
+| `desktop/scripts/lib/effects-release-evidence.test.js` | 新增：空测量 / 假 AC / 缺用例与附件 / 被改包 / 并发报告 / 错安装器 / 错源码回归证据必须失败 |
+| `docs/plans/remotion-effects-studio/acceptance.md` | 后续修改：追加本轮每项真实结果；首轮证据保留原标记，不改写为新证据 |
+| `docs/plans/remotion-effects-studio/round-2-verification.md` | 前序设计记录：v3 输入的结构核查与上报边界；本节点不修改，不是功能测试报告 |
+| `docs/plans/remotion-effects-studio/plan-current.json` | 前序设计记录：v3 输入定位与黑板不可用状态；本节点不修改，当前评审版本见 spec.md 顶部 |
+| `README.md`、`README.zh-CN.md`、`desktop/README.md` | 后续修改：补充提交恢复、真实安装验收命令，声明新增脚本用途 |
+
+无需变更数据库模型、公开路由路径、BFF allowlist、项目物理清理或
+普通 FFmpeg 导出实现。若下游复现发现这些边界有缺陷，在 IM-10 起
+新增记录并补评审，不能偷偷扩大本轮计划。
+
+## 18. 第二轮测试、验收与证据协议
+
+### 18.1 新增行为验收
+
+首轮 AC-01–34 继续有效。下表所有新增项当前状态为未执行；下游先
+复现相应故障，再实现修复。不能以单元 mock 结果替代数据库、真实
+子进程或安装包证据。已有 CR-01–12 回归不得删除或改成跳过。
+
+| ID | 必须观察到的结果 | 测试与关联 |
+|---|---|---|
+| AC-35 | 服务端已接受但全部提交回包丢失；重开 / 刷新后只出现原 requestId 的一个 job。改草稿 / 配额满后仍原键恢复，A→B→A 不串项目 | submission hook 故障注入 + 真 SQLite 计数；R2-01 |
+| AC-36 | localStorage 拒绝写入 / 配额满 / 损坏记录时不 POST，输入保留且可恢复；同项目第二提交被阻止，其它项目可工作 | pendingWrites + hook；R2-01 |
+| AC-37 | create 回包丢失仅一行；update 回包丢失仅递增一次，晚于发送的输入继续保存；第三方写入两次或软删必须冲突 | 真 SQLite 双会话 + UI 保存链；R2-02 |
+| AC-38 | 三任务中一个 503 / 404，其余按时进入成功；取消回包先于旧 running GET 时不退回；过期项目响应不合并；加载第二页能操作第 13 个成品 | hook + 状态合并 + 桌面；R2-03 |
+| AC-39 | 未保存确认只聚焦三个动作；Esc 返回编辑器、再 Esc 才按关闭流程；IME Escape 不关闭；保存 500 / unknown 留输入及焦点摘要 | React 键盘测试 + 真 Electron；R2-04 |
+| AC-40 | 相同字体 URL 第一次失败、第二次恢复时，点重试即可重新预览，无需刷新，无新草稿 / 渲染 / 时间线历史 | FontFace 故障注入 + Player；R2-05 |
+| AC-41 | 总期限失败为 TIMEOUT，父断连为 INTERRUPTED，用户取消为 cancelled；迟到 error/result 不改终态；子进程退出后才释放槽，无后代遗留 | stopReason + 真实 child/controller；R2-07 / AC-25 |
+| AC-42 | 安装模式运行不加载仓库 dist、开发 Electron/node_modules 或 PATH ffmpeg；缺一包内资源必须失败；报告已存在不得覆盖 | smoke 回归 + 真 installed；R2-06 / AC-24 |
+| AC-43 | §18.3 的 72 个模板/画布组合完成同帧对照，双 PNG、文字布局、MP4 有损容差及帧号 / 音频脉冲全部达标 | 真实 renderer / Player / FFmpeg；AC-02/03/05/16 |
+| AC-44 | 实际安装目录断网完成制作→成品入库→上轨→撤销重做→保存重开→最终 FFmpeg 导出；输出解码及音轨通过 §18.4 | 真 Electron installed；AC-15/19/24 |
+| AC-45 | 报告能核对 source_head、全树 package_id、runtime manifest、installer hash、附件 hash；重建包 / 改附件 / 缺必要场景不得 release_ready | evidence helper + 真报告；R2-06 |
+| AC-46 | Agent 真实 LLM 执行 create→render→查询→apply，unknown 原键恢复；停止后不自动上轨，真实回执和撤销成立；首屏未披露全部模板 schema | 原 Agent 自动回归 + 独立真实 LLM 桌面场景；AC-20/21/29 |
+| AC-47 | 新稿 / 复制首次仍 POST，UUID wire 字符串通过严格模型，非法 UUID/类型拒绝；确认后只 PUT 并含 expected_version，不接受字段混用；旧 create 与 200/201 回包兼容 | HTTP 客户端 + 真后端；R2-RV-01 |
+| AC-48 | working-only 刷新按基准版本恢复；旧写入确认后新编辑仍持久保存；丢弃后不恢复未发送输入，切稿不覆盖未知写入；图片资产从 ID 重载，缺失不删文案，旧 target 不复活 | 保存 hook + modal + 真资产 API；R2-RV-02 |
+| AC-49 | 同源两页同项目最多一个可写编辑器；未获租约不写 working / 不 POST，另项目不受限；旧 revision 不覆盖新文案，关闭 / 崩溃释放后可接管恢复，晚回包不写新拥有者 | 真 Electron 双页 Web Locks + 记录 CAS；R2-RV-03 |
+| AC-50 | Agent 带视频 / 图片的 create/update 全部丢回包后，下一回合使用原 frozen recovery，无重复 attach、无多建稿 / 多递增；未知 render 换键在 HTTP 前被宿主拒绝，同键确认可解锁；schema 互斥 | Agent 实际 execute + 原历史还原 + 真 SQLite；R2-RV-04 |
+| AC-51 | 一项 GET 挂满 10 秒时两项成功立即交付；cancel 500 不造 cancelling，旧 GET 不覆盖确认取消；同页重复点击仅一请求，失败重查原 cursor，旧项目翻页响应不合并 | 有界请求及 hook 故障注入；R2-RV-05 |
+| AC-52 | 确认层所有 Tab / Shift+Tab 不落 inert 背景；IME 的 Escape / Ctrl+Z 不触发 Modal 或草稿撤销；保存中继续编辑撤销关闭意图，晚成功不关新编辑器 | DOM capture 交互 + 真 Electron；R2-RV-06 |
+| AC-53 | deadline 后注入 result+exit=0 仍非成功；result 后迟到 cancel 与先停止后迟到 result 均遵守唯一终态；监督停止不记 user_cancel，正常 finalizing disconnect 不污染成功，退出未确认不释放槽 | 真 controller / child 顺序故障注入；R2-RV-07 |
+| AC-54 | visual 的 renderer 与全部运行依赖来自目标包，由包内 Electron 执行；缺被测模块或旧 env override 必失败；实际采集 renderer 与 Player 相同帧的布局，缺采集不算通过 | 包内子进程 + 视觉原始附件；R2-RV-08 |
+| AC-55 | 自报 pass 但空 measurements、伪 AC、少一模板/帧、缺回归、旧 package_id、改附件都不能 release_ready；两个进程同 report 仅一个取得写资格，崩溃 partial 不成为通过报告 | evidence verifier 负向与并发真文件测试；R2-RV-09 |
+| AC-56 | dirty 开发包可验证但不能发行；最终提交后重新打包、绑定新 source_head / installer 并重跑 all，旧包/旧源码回归/旧附件均不能套入新报告 | 包身份与源码身份集成；R2-RV-10 |
+
+### 18.2 验收 CLI 与报告结构
+
+新增工具使用 Node 22+；不会在用户产品运行时增加依赖。精确 CLI：
+
+```text
+node desktop/scripts/effects-acceptance.js
+  --unpacked <win-unpacked目录>
+  [--installed <本次安装目录>]
+  --manifest <research-build-manifest.json>
+  --report <本次唯一报告.json>
+  --scenario <package|visual|desktop|process|performance|agent|all>
+```
+
+上例换行为签名展示，不是可直接粘贴的 PowerShell 续行命令。
+参数只接受上述集合，未知参数、缺值、重复值、包外资源 override 都
+返回退出码 1。installed 场景需要非空 installer 清单、安装记录、
+installed 参数；缺失标记 blocked / 退出 2，不能降级成 unpacked 通过。
+没有 installed 时 visual 可运行但不能完成 AC-44。
+
+复用 `desktop/scripts/lib/research-release-evidence.js` 现有
+verifyPackageManifest，不修改其严格 schema，不再创建另一份包清单。
+它已绑定整个 win-unpacked 文件树、source_head、BUILD_ID 和 installer。
+effects 报告另包含 runtimeFingerprint / catalogHash / fontHash /
+bundleHash，并确认这些文件属于清单中的 resources/effects 子树。
+installed 树逐一比对清单列出的相对文件及 hash；额外 NSIS 卸载文件
+单独记录名称 / hash，不允许作为执行入口或依赖查找根。测试前后
+各核对一次包树与清单，不修改安装目录来适配测试。
+
+最终报告结构如下；steps 的 key 固定为所请求场景，all 使用全部六项。
+
+```typescript
+interface EffectsAcceptanceReport {
+  schema_version: 1;
+  run_id: string;
+  requested_scenario: 'package' | 'visual' | 'desktop' | 'process'
+    | 'performance' | 'agent' | 'all';
+  source_head: string;
+  package_id: string;
+  manifest_sha256: string;
+  runtime_fingerprint: string;
+  catalog_hash: string;
+  font_hash: string;
+  bundle_hash: string;
+  installer_sha256: string | null;
+  mode: 'unpacked' | 'installed';
+  started_at: string;
+  finished_at: string;
+  steps: Record<string, {
+    status: 'pass' | 'fail' | 'blocked';
+    acceptance_ids: string[];
+    measurements: Record<string, number | string | boolean>;
+    attachments: { role: string; path: string; bytes: number;
+      sha256: string }[];
+    reason?: string;
+  }>;
+  regression?: { status: 'pass' | 'fail' | 'blocked';
+    source_head: string; attachment: string };
+  acceptance_results: Record<string, {
+    status: 'pass' | 'fail' | 'blocked';
+    case_ids: string[]; attachment_refs: string[];
+  }>;
+  release_ready: boolean;
+}
+```
+
+**R2-RV-09：报告采用独占预留再封存。** 启动先用 flag=wx 预留最终
+路径，写入带 run_id 的 running 标记、release_ready=false；已存在
+直接退出 1，不改原文件。进度只更新同目录 `.partial.<run_id>`。
+终结时先验证仍持有同一预留文件，再以原子 rename 封存为最终报告；
+只有该 run 可以替换自己的 running 标记。崩溃留下的 running /
+partial 都不是有效终态报告，下次必须换新路径，不清旧证据。
+普通失败也封存 fail 报告；测试必须验证两个真实进程竞争同名路径。
+附件路径相对本次 evidence 根，不接受
+绝对路径、`..`、symlink / Junction；hash 流式计算。日志输出只含
+阶段与非敏感 ID，连接密钥 / token / 用户配置内容不作为附件。
+
+报告 validator 与执行器分离，使用精确字段 allowlist / 类型 / 有限
+数值 / UTC 时间顺序校验；steps 的 key 必须等于 requested_scenario
+展开集合。status、acceptance_ids 和 release_ready 是校验派生值，
+不能相信调用者自报。至少实现以下固定测量和附件角色：
+
+| 场景 | pass 的固定证据与检查 |
+|---|---|
+| package | identity_before/after、runtime_smoke、install_record（installed 必需）；完整树与 installer hash 相符、全部必要依赖有来源、开发被测模块加载数=0 |
+| visual | matrix_index、frame_pair、player_frame、layout、media_probe、audio_metrics；24×3 唯一组合和每组 5 个采样帧恰齐，全部 360 个双 PNG 对、360 个 MP4/Player 采样及额外文本 / A/V 用例符合 §18.3 |
+| desktop | action_trace、save_reopen、export_request、video、media_probe、network_log；四入口、取消、undo/redo、恢复故障各有用例，最终真实导出 degradations=0、时序 / 增益符合固定参考 |
+| process | process_trace；close / kill-main / kill-controller / restart-backend 四用例齐，每个有拥有的 PID/启动时间，12 秒内后代退出、residual_processes=0 |
+| performance | raw_samples、device_record；按 §11.3 目标检查模板可操作≤300ms、输入/参数反映≤150ms、30s 渲染≤180s、总峰值工作集<2GB（2,000,000,000 bytes）；冷 / 热样本和原始采样均保留 |
+| agent | tool_trace、provider_record、apply_receipt、undo_record；真实 provider 调用、按需 schema、unknown 原键恢复、Stop 不上轨和真实撤销齐全；无模型配置为 blocked |
+
+matrix_index / action_trace 等结构化附件都携带 run_id、source_head、
+package_id、用例 ID 和输入 hash；媒体角色逐一绑定实际文件。validator
+按固定用例集合核对数量、唯一性、阈值及交叉引用，不能用另一个图的
+hash 或空数组充数。截图仅作视觉附件，不单独证明恢复或音频成功。
+非 pass 项必须有 reason，不强求不存在的成功附件；缺必要证据只能
+fail / blocked，不能从输出文件存在推断通过。
+
+all 另外生成 source-regression 附件：实际执行 §18.5 的类型检查、
+专项回归、runtime / backend / 桌面测试和 build，记录每条精确 argv、
+cwd、退出码、结构化测试结果及脱敏日志 hash。该附件是源码回归，
+允许使用仓库开发测试依赖，不能冒充安装树场景的被测来源；各子进程
+加载规则按用途区分。源码 HEAD 必须等于 manifest.source_head，
+测试前后检查 tracked 工作树；缺依赖可 blocked，零测试或关键用例
+skipped 不能 pass。Vitest JSON / Node JUnit / pytest JUnit 均用
+现有运行器产出，不新增报告插件；case_id 绑定明确的真实测试名。
+§11、18 的全部 AC-01–56 须有本次用例及附件引用；旧 acceptance.md
+的通过行不是本次 source-regression 证明。未知或重复 AC、附件越界、
+未执行用例都被拒绝。单场景报告只要求该场景关联集合，仍不能发行。
+
+任何 fail 退出 1；无 fail 但存在 blocked 退出 2；全部所选项 pass
+退出 0。**release_ready 只有 all 六场景通过、mode=installed、绑定
+本次 installer、manifest.dirty=false、全部新增及关联 AC 证据齐全才为 true**。单 package
+通过可退出 0，但 release_ready=false；单次执行结果不自动覆盖
+acceptance.md。real LLM 无配置、设备不达要求、尚未安装均明确 blocked，
+不能把它们写为 pass。其它功能已有既有失败单列，不伪造全仓通过。
+
+### 18.3 可重复的视觉与音频矩阵
+
+R2-RV-08 的最小执行切片先验证一份 title-rise 和一份带视频模板，
+确认包内 Electron 能生成 PNG/MP4、捕获布局并清理后，再展开 72 组。
+`effects-visual-acceptance.js` 作为测试工具分别运行协调端及包内
+ELECTRON_RUN_AS_NODE 子进程；子进程通过 createRequire 从目标
+runtime/package.json 解析锁定 renderer/protocol/mediaServer，
+serveUrl、browserExecutable、binariesDirectory 和字体只取目标清单。
+MP4 仍通过真实 controller / renderChild 生产路径生成；PNG 才由
+测试子进程调用 renderStill，不新增产品 still HTTP 接口。
+
+布局采集是测试拥有的只读观察：锁定 4.0.544 的 HeadlessBrowser
+类型具有 newPage/pages，Page 具有 evaluate。测试包装该实例的
+newPage，在其单次 renderStill 页关闭前读取文本节点的
+Range.getClientRects、computed font 及 composition 边界，随 PNG
+保存 layout 附件；不导入会自动注册 IPC 监听的 renderChild 模块。
+包装只存在于测试子进程，不写入产品 bundle / window bridge。
+通过实际 DOM 文本节点匹配固定 fixture 的内容，对 glyph / 行合并
+后比较文字布局；动画隐藏文本的帧比较预期可见集合，不能把所有
+空白都算文本成功。缺页、读取失败或帧号不匹配即失败，不能退化为
+仅 Player 自比。Player 使用真实界面滑条暂停定位后按同样规则读 DOM。
+
+1. 使用 catalog 中全部 24 模板，1920×1080、1080×1920、1080×1080
+   三画布，共 72 份固定文档。模板参数取当前 defaults、seed=1、
+   durationFrames=60；必填图片用本地确定性棋盘 / 色块 PNG，base
+   视频用包内 FFmpeg 生成六秒 30fps 帧号源。所有输入记录 hash。
+2. 每份在 0、14、29、44、59 帧各做两次 renderStill PNG，使用同一
+   包内浏览器、bundle、字体和参数；PNG 字节及解码 RGBA 两次均相等。
+   再正常 renderMedia 生成 MP4、解码这五帧。不能仅比较 MP4 容器 hash。
+3. Player 在真实应用中用时间滑条定位相同帧，暂停，等 document.fonts.ready、
+   图片 decode、视频 seek 完成及两个 animation frame 后截图。记录
+   composition 的实际 CSS 边界和 deviceScaleFactor，排除播放器控件；
+   渲染帧按相同边界缩放后比较。前景文字 Range.getClientRects 的行数
+   一致，每行位置偏差 ≤1 CSS px，不允许换行或字体缺字被 MAE 掩盖。
+   renderer 的源像素 Rect 先按实际 Player composition 缩放比和裁切
+   原点归一到同一 CSS 坐标；不能直接比较两套未换算的坐标。
+4. 比较 MP4 与 PNG 的平坦区，RGB 每通道 MAE≤6；平坦区定义为 PNG
+   相邻四像素的各通道最大差 ≤8，去除其一像素邻接边缘。先把 YUV
+   解码为 sRGB RGB24，再在同尺寸上取掩码；保存掩码和 MAE 明细。
+   Player 比较也使用此规则，文字布局另验。不能手调 mask 来通过。
+5. 额外文本向量为中文、英文、换行、120 / 300 码点、组合字符和 emoji。
+   对三种字体各跑首中末帧；检测缺字方框并保留截图。若随包字体不
+   覆盖字符，记录失败及受影响输入，不默许 OS 字体偶然兜底；修复需
+   增加有授权的离线字体或明确验证拒绝规则并补方案评审。
+6. 帧号视频在源第 60 帧开始裁剪；D=3.37s 对应生成 102 帧，外层
+   clip 仍占 3.37s。源每秒边界有 10ms 音频脉冲和同帧白块，解码为
+   48kHz 单声道 PCM，以 10ms RMS / 0.5 峰值阈值检测脉冲。校正
+   ffprobe start_time / AAC priming 后，音频峰与目标白块差 ≤1/30s。
+   detached 场景恰一条外层原音，普通视频恰一条嵌入原音。
+
+R2-RV-11：以上 0.5 峰值阈值仅用于归一化、unity gain 的原始 fixture；
+外层 gain 测试固定使用非零 50% / 100%，按该增益的预期脉冲峰值
+同比缩放检测阈值，并测量峰值比（容差 5%），不能在低增益结果上
+继续套 0.5。静音场景单独验证无脉冲，不进行无意义的 A/V 峰值对齐。
+参考视频、脉冲位置、增益和 threshold 在运行前固定写入 fixture
+清单；不能观察结果后归一化或调阈值来掩盖重复音 / 增益二次应用。
+
+renderStill 的 frame / imageFormat、Player.seekTo 与 renderer 的
+cancelSignal / binariesDirectory 已核对官方接口；实现仍须以锁定
+4.0.544 包的实际类型为准，不因在线文档新增选项而升级依赖。
+依据：[renderStill](https://www.remotion.dev/docs/renderer/render-still)、
+[Player](https://www.remotion.dev/docs/player/player)、
+[renderMedia](https://www.remotion.dev/docs/renderer/render-media)。
+
+### 18.4 桌面闭环、隔离与最终导出
+
+验收只用本次独立 userData 与项目，不操作已有用户工程。不更改系统
+联网、凭证或现有实例；离线由测试配置 / 请求拦截只允许本地来源。
+这同时记录实际请求日志，发现首次下载即失败。测试启动继承现有
+smoke 的 gate-disabled 方式，仅限隔离子进程，并在报告注明未覆盖
+真实登录验收；真实 LLM 场景在独立环境显式使用已配置测试模型。
+
+通过现有 `--remote-debugging-port` / loopback CDP 驱动打包应用，
+复用既有 connectCdp；不向产品增加全局测试 bridge、窗口对象或
+跳过安全检查的 IPC。所有子进程 windowsHide=true；若需人工看窗，
+在执行该人工矩阵时明确启用可见窗口。测试拥有的 PID / 启动时间
+形成进程快照；关闭 / main 强杀 / controller 强杀 / backend 重启
+各独立执行，12 秒内所属后代退出，不按程序名清理浏览器。
+
+固定闭环：主入口新建中文标题 → 加图 → 生成 / 取消各一次 → 成品
+入库 → 新轨插入 → 撤销 / 重做 → 保存关闭 → 重启应用 → 再次播放。
+再由素材菜单、toolbar、clip 右键各进入一次；取帧号源 clip，设置
+clipStart=2、duration=3.37，并加一次 camera / gain / transition。
+后台生成期间修改另一片段，完成后只替换原目标，其它编辑保留。
+检查分离音频、锁轨、封面、多选、A→B 切项目及 R2 的回包丢失恢复。
+
+最终导出必须使用编辑器真实导出按钮，经过现有
+`VideoCompositionAPI.composeVideo` → `/api/video-compose` →
+`/api/video/compose` 及现有状态轮询，不另拼一条简化 FFmpeg 命令冒充。
+检查成品 H.264 / yuv420p、30fps、无非预期黑帧 / 截断、脉冲音轨；3.37s
+替换片段及相邻片段时序、外层 camera / transition / gain 各只出现
+一次。导出响应 degradations 非空即失败，不能把漏音轨当完成。
+已有成品在 runtime 不可用、草稿软删及重新打开时仍可导出。
+
+非预期黑帧只相对固定源帧号 / 白块 / 模板参考判定；模板合法黑色
+背景、入出场 opacity=0 和用户明确设置的黑场不被全局拒绝。参考
+可见集合、帧数和允许空白区间预先列入附件，漏媒体或错误源仍失败。
+
+性能单独记录冷 / 热启动、48 张预览资源加载、Player 首帧、输入响应、
+30s 1080p 渲染墙钟时间、main/backend/controller/browser/renderChild
+的峰值总工作集。沿用 §11.3 的 300ms / 150ms / 180s / 2GB 目标。
+冷启动 hash 校验 / controller readiness 的首轮 8–9s 实测不能算作
+300ms 模板可操作时间；模板交互可先出现，生成就绪独立显示。
+超目标作为 performance 失败，不通过修改阈值或删除慢样本解决。
+
+### 18.5 下游执行顺序与精确命令
+
+先跑 R2-01–05 / 07 的可重复回归，再做修复并复跑；之后检查 R2-06
+路径闭环及报告 verifier。已有 Agent、timeline history、provenance、
+素材身份 / 删除和首轮后端六个专项保持回归。测试本地临时根设于
+仓库内；不要误装 pytest 的包或修改全局 Python 搜索路径。
+
+以下每行独立执行并检查退出码；**新增文件必须实现后才能执行**。
+本设计节点没有运行这些功能命令，也不把它们写成已通过证据。
+
+```powershell
+npm run type-check
+npm test -- src/lib/effects src/components/video/effects --maxWorkers=4
+npm test -- src/lib/video-editing-agent/__tests__/effectsTools.test.ts src/lib/video-editing-agent/__tests__/effectsActivation.test.ts src/lib/video-editing-agent/__tests__/effectsOperations.test.ts src/components/video/hooks/__tests__/useAgentExecution.effects.test.tsx --maxWorkers=4
+npm test -- src/components/video/timeline/store/actions/__tests__/applyEffects.test.ts src/components/video/projects/__tests__/effectsPersistence.integration.test.tsx
+npm --prefix effects-runtime run type-check
+npm --prefix effects-runtime run build
+$env:EFFECTS_REAL_RUNTIME_TEST='1'
+npm --prefix effects-runtime test
+node --test desktop/scripts/effects-smoke.test.js desktop/scripts/lib/effects-release-evidence.test.js desktop/main/effectsService.test.js
+npm run build
+```
+
+后端在 `backend-services/basic-service` 工作目录使用项目 venv：
+
+```powershell
+python -m pytest tests/test_effects_draft_replay.py tests/test_effects_contract.py tests/test_effects_jobs.py tests/test_effects_assets.py tests/test_effects_lifecycle.py tests/test_effects_paths.py tests/test_effects_runtime_client.py
+```
+
+打包与包内验收从仓库根运行，每次换唯一 run-id，下面使用
+`r2-release-001` 作为首次示例；已存在须换新目录，不删旧报告：
+
+```powershell
+npm --prefix desktop run build
+node desktop/scripts/effects-smoke.js --unpacked desktop/release/win-unpacked --report .agentmesh/effects-r2/r2-release-001/package/smoke.json
+node desktop/scripts/effects-acceptance.js --unpacked desktop/release/win-unpacked --manifest desktop/release/research-build-manifest.json --report .agentmesh/effects-r2/r2-release-001/unpacked/report.json --scenario package
+```
+
+然后实际安装本次 manifest 绑定的 NSIS 到仓库内隔离目录
+`.agentmesh/effects-r2/r2-release-001/installed`，保存安装日志 / 安装器
+hash / 安装目录。安装操作由下游实施 / 发行节点执行；不为本设计
+节点运行 installer。完成后执行：
+
+```powershell
+node desktop/scripts/effects-acceptance.js --unpacked desktop/release/win-unpacked --installed .agentmesh/effects-r2/r2-release-001/installed --manifest desktop/release/research-build-manifest.json --report .agentmesh/effects-r2/r2-release-001/installed-evidence/report.json --scenario all
+```
+
+根项目 lint 首轮有未修改文件的既有失败，记录原始结果并对本轮变更
+文件执行专项 ESLint，不能以生产 build 跳过 lint 宣称 lint 通过。
+最终运行 secrets scan、diff --check；凭据扫描范围应包括新增文件，
+不能把只扫描已跟踪文件表述为覆盖全部交付。
+
+**R2-RV-10：先区分开发验证与发行冻结。** 实现节点可用 dirty 包跑
+上述路径、记录真实 pass/fail，但整体只标“开发验证”，
+release_ready=false；这不妨碍设计/实现节点交付。源码回归在 all
+之外按上述命令运行也只算预检，不能注入最终报告冒充本次执行。
+最终 Review 节点修完源码、测试和打包输入后，按其原任务授权提交
+并取得干净 H；本评审节点不提交。之后重新 build，核对新 manifest
+的 source_head=H / dirty=false，再对该 installer 实装并重跑
+all（包括该 CLI 生成的 source-regression）。不能复用提交前包或
+在旧 manifest 上手工改 dirty/source_head 来通过。
+
+最终验收期间 HEAD 及 tracked 文件不变，输出全部入独立 evidence。
+如回归失败需修改源码，形成新 H 后从 build 重新开始，不套用旧
+附件。完成后 acceptance.md 可以追加对该不可变报告的索引 / 结果，
+作为独立文档记录，不反写 manifest，也不把文档后续提交说成原包
+的 source_head；发行代码身份始终是已验证的 H。任何后续产品源码
+或打包输入变化都需要新包及新门禁，不能用“只是最后修一点”跳过。
+
+## 19. 第二轮风险、完成门禁与交接
+
+### 19.1 风险与明确处理
+
+| 风险 | 缓解与验证 |
+|---|---|
+| 本地存储失败或旧客户端没有恢复记录 | POST 前持久化失败即保留输入并报错；无旧记录只加载真实历史，不推断旧 requestId，AC-35/36 |
+| 相同内容与多方并发被误当重放 | create 仅版本 1、PUT 仅 expected+1，均比较 name/hash/项目/软删；更高版本始终冲突，AC-37 |
+| 本地记录与项目删除交错 | 接到删除成功才清记录；晚回包核对 project epoch；服务器仍按 require_project 阻止重建，保持 AC-26/32 |
+| 终态被迟到 GET 覆盖、单坏任务拖住全部结果 | per-job seq、terminal 单向合并、allSettled 和局部错误，AC-38 |
+| 新确认层影响其它 Modal | 仅特效背景 inert 与独立键盘处理；不修改共享组件，AC-39 |
+| 字体重试无限循环 / 回退掩盖缺字 | 失败缓存删除但仅显式重试，准确错误、离线字体矩阵，AC-40/43 |
+| 旧依赖偶然让实包测试通过 | 被测入口只来自目标安装树，负向加载测试、manifest 前后核对，AC-42/45 |
+| 扩大验收脚本形成新平台 | 只服务现有六场景和已定义 fixture，复用 CDP / manifest；不接入产品工作流或网络服务 |
+| 72 组矩阵耗时与设备性能不确定 | 串行 renderer、阶段输出 / 可取消；独立 performance 记录；允许明确 blocked，不允许替换为 mock |
+| Remotion 再分发许可与离线字体授权未闭环 | 保留项目负责人核对和第三方清单；本轮不作许可结论、不在制作 UI 增加授权提示。依据 [官方许可入口](https://www.remotion.dev/pricing)；此项为发行证据，非本节点审批请求 |
+
+### 19.2 分阶段交付
+
+1. 按本评审 v2 的 R2-01–07 / R2-RV-01–12、REST 兼容和文件表实施。先修未知保存 /
+   提交，再修轮询 / 焦点 / 字体 / 停止原因，避免先跑长时间安装矩阵。
+2. 保留 `58dce2a7` 的原有行为回归，完成 AC-35–41。功能修复与证据
+   工具分开验证，但都在本轮 §17 文件范围，不顺带重构其它模块。
+3. 完成报告 verifier 的负向测试，真实执行 unpacked，再安装本次
+   NSIS，完成 all 六场景。每个证据附命令、版本、输入 hash、环境、
+   时间和结果；没有真实 LLM 或发行机器就保留 blocked / 退出 2。
+4. 更新 acceptance.md 的逐项状态和发行门禁；代码提交由后续节点
+   按其授权精确暂存完成，干净提交后依 §18.5 重建重验。本评审节点
+   不提交、不上包、不标发行通过。
+
+本评审完成门禁：v2 在 git status 可见；顶部评审记录和文末评审结论
+齐全，未解决设计 P0/P1 为 0；概述 / 技术设计 / 文件表 /
+接口 / 数据 / 验收 / 风险齐全；JSON 示例通过当前真实模型和 catalog；
+新增路径与文件表闭合；未执行项准确标注。本节点只修改 spec.md，
+指定任务板回退除外；工作区原有 `.pytest-workspace-import/` 不处理。
+
+### 19.3 调度器、黑板与本轮证据边界
+
+R2-RV-12：当前执行者为方案评审节点 Subtask #1；本节的重放命令和
+最终状态核验均指该节点，前序 Subtask #0 的记录保持历史原样。
+
+history / get(plan) / put(plan) / progress 已实际调用，但当前进程
+没有 TASK_SERVER_URL，在发 HTTP 请求前退出。不能据此称历史为空
+或黑板不存在；本轮读取任务板 Loop Execution Context 的首轮摘要，
+并与首轮审查 / 验收及 Git 记录交叉核对。未猜测服务器端口、执行 ID
+或上报凭证，未把本地副本当共享黑板。无网络条件之外的设计阻塞。
+
+前序设计的 `plan-current.json` 标注 iteration=2、design_version=v3、
+blackboard_write_status=unavailable；该记录是本次输入定位副本，不是
+当前评审版本。本评审节点起始也已实际尝试刷新相同 plan/current，
+同样缺环境变量；按只改 spec.md 的约束不改写前序定位副本。
+恢复调度器后先在真实注入环境执行以下命令，并用 get --kind plan
+核对结果，才能启动依赖黑板的下游节点：
+
+```powershell
+python .agentmesh/task-tge-2d804661-1510-419d-9ecf-b402dcb76b43/.task-tools.py put --kind plan --id current --set path=docs/plans/remotion-effects-studio --set slug=remotion-effects-studio --set doc=spec.md --set deliverable=docs/plans/remotion-effects-studio/spec.md
+python .agentmesh/task-tge-2d804661-1510-419d-9ecf-b402dcb76b43/.task-tools.py get --kind plan
+```
+
+本节点最后按任务指定 complete → 检查 → 最多三次 → status 的顺序
+上报；若仍缺注入，只更新当前任务板 Subtask #1 的 Status / Output /
+Completion Notes，不动其它节点。本地 completed 表示设计交付已落盘，
+**不表示服务端已确认或共享黑板已写入**。恢复后必须重放 complete 并
+确认 tasks 中 index=1 为 completed。前序 `round-2-verification.md`
+只记录设计输入核查；当前评审的文档核查见下节及当前节点任务板。
+
+### 19.4 本节评审核查方法与证据边界
+
+本节点读取完整 spec、CLAUDE、项目索引和任务板历史，并按实际
+UI / hook / 客户端、Agent tools / context、Pydantic / router /
+draft_service、runtime controller / child、打包 smoke 和包清单
+校验调用链逐节评审。Remotion 的 renderStill / Player 接口已查阅
+官方文档，并核对本地锁定 4.0.544 的 Browser / Page 类型；Web
+Locks 的 ifAvailable、callback 生命周期已核对平台文档。
+
+文档收尾校验覆盖主章节、评审项 / 修订定位、AC-01–56 连续唯一、
+§17 计划路径、代码围栏、JSON 示例和严格模型的 UUID 字符串行为，
+并执行 git diff --check 与工作区改动范围核查。结果只证明设计
+文档的结构和已核查接口，不证明待实施的恢复功能、72 组视觉矩阵、
+实包、性能或真实 LLM 已通过；本节点没有运行这些功能门禁。
+
+本次实际核查结果：19 个主章节、12 项评审记录、56 项连续唯一 AC、
+52 个计划路径核对通过；34 条代码围栏成对，2 个 JSON 示例通过当前
+SaveDraftRequest / normalize_document / renderability 的真实校验。
+内存中构造的建议 create/update 模型验证了 UUID 字符串接受、4 类
+非法 UUID/类型拒绝以及 PUT 拒绝 create 字段；也实际复现了严格
+Python UUID 类型拒绝 wire 字符串，故采用 §16.2 的显式字符串校验。
+4 个 TypeScript 示例通过本地 TypeScript 的语法转译检查（非完整
+类型检查）。git diff --check 通过；工作区原有定位 / 核查文档和
+测试临时目录保留，本节点无源码编辑、无 Git 提交。
+
+## 评审结论
+
+**有条件通过**。第二轮评审 v2 已在正文修订 R2-RV-01–12，
+未解决设计 P0/P1 为 **0**，可按 §17 开始增量实现。
+
+1. 实现节点逐项落地 AC-35–56，保留 AC-01–34 与首轮 CR 回归；
+   先复现恢复 / 生命周期故障，再执行长时间的实包视觉和桌面验收。
+2. 正式发行须按 §18.2 / 18.5 绑定干净源码提交、真实 installer
+   和完整 all 报告，补齐真实 LLM、离线闭环、性能与许可记录；缺
+   环境时明确 blocked，不用旧报告或 mock 代替。
+3. 调度器恢复后重放本次 plan/current 和 complete，核验服务端
+   Subtask #1 completed；任务规定的本地回退不代表服务器已确认。
+
+这些条件是实现、发行和调度交接的证据门禁，不是未修复的设计阻塞。

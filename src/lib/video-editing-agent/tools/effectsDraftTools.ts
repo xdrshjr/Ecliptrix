@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { MaterialItem, TimelineItem, Track } from '@/types';
-import type { EffectAsset, EffectDocument, EffectParameterSchema,
+import type { EffectAsset, EffectDocument, EffectDraft, EffectParameterSchema,
   EffectTargetSnapshot } from '@/types/effects';
 import { EffectError } from '@/types/effects';
 import { createEffectDocument, EFFECT_CATALOG, getEffectTemplate } from '@/lib/effects/catalog';
@@ -8,9 +8,12 @@ import { validateEffectDocument } from '@/lib/effects/validation';
 import { fingerprintEffectTarget } from '@/lib/effects/provenance';
 import { fromWireEffectAsset, fromWireEffectDraft,
   toWireEffectDocument } from '@/lib/api/effects';
-import type { ToolContext } from '../types';
+import type { EffectDraftRecovery, ToolContext } from '../types';
 import { effectId, effectRequest, effectProjectPath, effectText,
-  makeEffectTool, strictObject } from './effectsCatalogTools';
+  makeEffectTool, strictObject, effectUuid, effectCreateRecovery,
+  effectUpdateRecovery, EffectRecoveryError, EffectRequestError,
+  assertEffectDraftSettled, effectIdentity,
+  parseEffectDraftRecovery } from './effectsCatalogTools';
 
 const number = z.number().finite();
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -48,6 +51,15 @@ const edits = {
 };
 const editSchema = strictObject(edits);
 type DraftEdits = z.output<typeof editSchema>;
+const createSchema = z.union([
+  strictObject({ templateId: effectId, draftId: effectUuid.optional(), ...edits }),
+  strictObject({ recovery: effectCreateRecovery }),
+]);
+const updateSchema = z.union([
+  strictObject({ draftId: effectUuid,
+    expectedVersion: number.int().positive(), changes: editSchema }),
+  strictObject({ recovery: effectUpdateRecovery }),
+]);
 
 export function getEffectsTargets(context: ToolContext) {
   return context.effectsTargets ??= { drafts: new Map(), outputs: new Map() };
@@ -186,41 +198,144 @@ async function bindImages(context: ToolContext, document: EffectDocument,
   }
 }
 
+function assertDraftResponse(context: ToolContext, recovery: EffectDraftRecovery,
+  draft: EffectDraft): EffectDraft {
+  const { write } = recovery;
+  if (draft.projectId !== context.projectId || draft.id !== write.draftId
+    || draft.readOnly || draft.name !== write.name
+    || draft.version !== (write.kind === 'create' ? 1 : write.expectedVersion + 1)
+    || effectIdentity(validateEffectDocument(draft.document))
+      !== effectIdentity(write.document)) {
+    throw new EffectError('EFFECT_VERSION_CONFLICT');
+  }
+  return draft;
+}
+
+async function sendDraftWrite(context: ToolContext,
+  recovery: EffectDraftRecovery): Promise<EffectDraft> {
+  const { write } = recovery;
+  const suffix = write.kind === 'create' ? '/drafts'
+    : `/drafts/${encodeURIComponent(write.draftId)}`;
+  const wire = await effectRequest(context, effectProjectPath(context, suffix), {
+    method: write.kind === 'create' ? 'POST' : 'PUT',
+    body: { name: write.name, document: toWireEffectDocument(write.document),
+      ...(write.kind === 'create' ? { draft_id: write.draftId }
+        : { expected_version: write.expectedVersion }) },
+  });
+  return assertDraftResponse(context, recovery, fromWireEffectDraft(wire));
+}
+
+async function recoverDraftWrite(context: ToolContext,
+  recovery: EffectDraftRecovery): Promise<EffectDraft> {
+  if (recovery.write.kind === 'update') return sendDraftWrite(context, recovery);
+  const suffix = `/drafts/${encodeURIComponent(recovery.write.draftId)}`;
+  let wire: Record<string, unknown>;
+  try { wire = await effectRequest(context, effectProjectPath(context, suffix)); }
+  catch (error) {
+    if (error instanceof EffectRequestError && error.status === 404) {
+      return sendDraftWrite(context, recovery);
+    }
+    throw error;
+  }
+  return assertDraftResponse(context, recovery, fromWireEffectDraft(wire));
+}
+
+function acceptDraftWrite(context: ToolContext, toolCallId: string,
+  recovery: EffectDraftRecovery, draft: EffectDraft) {
+  const pending = context.effectsPendingDrafts?.get(draft.id);
+  if (effectIdentity(pending?.recovery) === effectIdentity(recovery)) {
+    context.effectsPendingDrafts?.delete(draft.id);
+  }
+  context.effectsRecoveryIncomplete?.delete(draft.id);
+  return { success: true, schemaVersion: 1, projectId: context.projectId,
+    toolCallId, draftId: draft.id, version: draft.version,
+    committedVersion: draft.version, renderability: draft.renderability,
+    recovery };
+}
+
+/** A bounded retry always uses this frozen body, including attached asset IDs. */
+async function persistDraftWrite(context: ToolContext, toolCallId: string,
+  value: EffectDraftRecovery, recover: boolean) {
+  const recovery = parseEffectDraftRecovery(value);
+  if (recovery.projectId !== context.projectId) {
+    throw new EffectError('EFFECT_NOT_FOUND');
+  }
+  const pending = context.effectsPendingDrafts ??= new Map();
+  const previous = pending.get(recovery.write.draftId);
+  if (previous && effectIdentity(previous.recovery) !== effectIdentity(recovery)) {
+    throw new EffectRecoveryError(toolCallId, previous.recovery);
+  }
+  try {
+    const draft = await (recover ? recoverDraftWrite(context, recovery)
+      : sendDraftWrite(context, recovery));
+    return acceptDraftWrite(context, toolCallId, recovery, draft);
+  } catch (error) {
+    if (!recover && !previous && error instanceof EffectRequestError
+      && error.status >= 400 && error.status < 500) throw error;
+    pending.set(recovery.write.draftId, { toolCallId, recovery });
+    if (!recover && !context.abortSignal?.aborted) {
+      try {
+        const draft = await recoverDraftWrite(context, recovery);
+        return acceptDraftWrite(context, toolCallId, recovery, draft);
+      } catch { /* Retain the original frozen body after any uncertain write. */ }
+    }
+    throw new EffectRecoveryError(toolCallId, recovery);
+  }
+}
+
+async function executeCreateDraft(context: ToolContext, toolCallId: string,
+  params: z.output<typeof createSchema>) {
+  if ('recovery' in params) {
+    return persistDraftWrite(context, toolCallId, params.recovery, true);
+  }
+  const draftId = params.draftId ?? crypto.randomUUID();
+  assertEffectDraftSettled(context, draftId, toolCallId);
+  getEffectTemplate(params.templateId);
+  const changed = await changeDocument(context,
+    createEffectDocument(params.templateId), params);
+  const result = await persistDraftWrite(context, toolCallId, { schemaVersion: 1,
+    projectId: context.projectId!, write: { kind: 'create', draftId,
+      name: params.name ?? 'Remotion', document: changed.document } }, false);
+  if (changed.target) getEffectsTargets(context).drafts.set(draftId, changed.target);
+  return { ...result, targetFingerprint: changed.target?.targetFingerprint };
+}
+
+async function executeUpdateDraft(context: ToolContext, toolCallId: string,
+  params: z.output<typeof updateSchema>) {
+  if ('recovery' in params) {
+    return persistDraftWrite(context, toolCallId, params.recovery, true);
+  }
+  assertEffectDraftSettled(context, params.draftId, toolCallId);
+  const path = effectProjectPath(context,
+    `/drafts/${encodeURIComponent(params.draftId)}`);
+  const current = fromWireEffectDraft(await effectRequest(context, path));
+  if (current.projectId !== context.projectId || current.id !== params.draftId
+    || current.version !== params.expectedVersion || current.readOnly) {
+    throw new EffectError('EFFECT_VERSION_CONFLICT');
+  }
+  const changed = await changeDocument(context, current.document, params.changes);
+  const result = await persistDraftWrite(context, toolCallId, { schemaVersion: 1,
+    projectId: context.projectId!, write: { kind: 'update', draftId: params.draftId,
+      expectedVersion: params.expectedVersion,
+      name: params.changes.name ?? current.name, document: changed.document } }, false);
+  if (changed.target) {
+    getEffectsTargets(context).drafts.set(params.draftId, changed.target);
+  } else if (params.changes.sourceMaterialId || params.changes.sourceClipId) {
+    getEffectsTargets(context).drafts.delete(params.draftId);
+  }
+  return result;
+}
+
 export function createEffectsDraftTools(context: ToolContext) {
   return [makeEffectTool({ context, name: 'create_effect_draft',
-    description: 'Create a savable effect draft using local materials or one clip. Missing text/images remain incomplete.',
-    schema: strictObject({ templateId: effectId, ...edits }),
-    run: async (_, params) => {
-      getEffectTemplate(params.templateId);
-      const changed = await changeDocument(context,
-        createEffectDocument(params.templateId), params);
-      const draft = fromWireEffectDraft(await effectRequest(context,
-        effectProjectPath(context, '/drafts'), { body: {
-          name: params.name ?? 'Remotion', document: toWireEffectDocument(changed.document) } }));
-      if (changed.target) getEffectsTargets(context).drafts.set(draft.id, changed.target);
-      return { success: true, draftId: draft.id, version: draft.version,
-        renderability: draft.renderability,
-        targetFingerprint: changed.target?.targetFingerprint };
-    } }), makeEffectTool({ context, name: 'update_effect_draft',
-    description: 'CAS-update one effect draft. Template changes require a new draft; incomplete work remains savable.',
-    schema: strictObject({ draftId: effectId,
-      expectedVersion: number.int().positive(), changes: editSchema }),
-    run: async (_, params) => {
-      const path = effectProjectPath(context, `/drafts/${encodeURIComponent(params.draftId)}`);
-      const current = fromWireEffectDraft(await effectRequest(context, path));
-      if (current.version !== params.expectedVersion || current.readOnly) {
-        throw new EffectError('EFFECT_VERSION_CONFLICT');
-      }
-      const changed = await changeDocument(context, current.document, params.changes);
-      const draft = fromWireEffectDraft(await effectRequest(context, path, {
-        method: 'PUT', body: { expected_version: params.expectedVersion,
-          name: params.changes.name ?? current.name,
-          document: toWireEffectDocument(changed.document) } }));
-      if (changed.target) getEffectsTargets(context).drafts.set(draft.id, changed.target);
-      else if (params.changes.sourceMaterialId || params.changes.sourceClipId) {
-        getEffectsTargets(context).drafts.delete(draft.id);
-      }
-      return { success: true, draftId: draft.id, version: draft.version,
-        renderability: draft.renderability };
-    } })];
+    description: 'Create a savable draft with stable draftId. Unknown results '
+      + 'return recovery; replay that frozen recovery, never rebuild images.',
+    schema: createSchema,
+    run: (id, params) => executeCreateDraft(context, id, params),
+  }), makeEffectTool({ context, name: 'update_effect_draft',
+    description: 'CAS-update a draft. Unknown writes block ordinary edits/render; '
+      + 'recover only with the returned frozen recovery body.',
+    schema: updateSchema,
+    run: (id, params) => executeUpdateDraft(context, id, params),
+  })];
 }

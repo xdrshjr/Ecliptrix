@@ -11,54 +11,74 @@ import { createMediaServer } from './mediaServer';
 import {
   validateSubmission, type RuntimeManifest, type RuntimeSubmission,
 } from './protocol';
+import {
+  getStopErrorCode, latchStopReason, type StopReason, type StopRecord,
+} from './stopReason';
 
 const { cancelSignal, cancel } = makeCancelSignal();
 let hasStarted = false;
 let lastParentHeartbeat = Date.now();
 let browser: Awaited<ReturnType<typeof openBrowser>> | undefined;
 let encoder: ReturnType<typeof spawn> | undefined;
-let isStopping = false;
+let stopReason: StopRecord | undefined;
 let isFinalizing = false;
 let isRendering = false;
+let reaper: NodeJS.Timeout | undefined;
+let browserClose: Promise<void> | undefined;
 const nonce = process.env.EFFECTS_CHILD_NONCE;
 
 function send(message: object): void {
+  const type = (message as { type?: string }).type;
+  if (stopReason && ['result', 'phase', 'progress'].includes(type ?? '')) return;
   if (process.connected) process.send?.(message, () => {});
 }
 
-function stop(): void {
-  if (isStopping) return;
-  isStopping = true;
+function reapOwnedTree(): void {
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/PID', String(process.pid), '/T', '/F'], {
+      windowsHide: true, stdio: 'ignore', timeout: 5000,
+    });
+  } else process.exit(1);
+}
+
+function closeBrowser(): Promise<void> {
+  browserClose ??= browser?.close({ silent: true }).then(() => undefined)
+    ?? Promise.resolve();
+  return browserClose;
+}
+
+function stop(reason: StopReason): void {
+  if (stopReason) return;
+  stopReason = latchStopReason(stopReason, reason);
   cancel();
   encoder?.kill();
-  if (!isRendering) void browser?.close({ silent: true });
+  if (!isRendering && browser) {
+    void closeBrowser().catch(() => { process.exitCode = 1; });
+  }
+  reaper = setTimeout(reapOwnedTree, 8000);
+  reaper.unref();
 }
 
 process.on('disconnect', () => {
   if (isFinalizing) return;
-  stop();
-  const reaper = setTimeout(() => {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/PID', String(process.pid), '/T', '/F'], {
-        windowsHide: true, stdio: 'ignore', timeout: 5000,
-      });
-    } else process.exit(1);
-  }, 2000);
-  reaper.unref();
+  stop('parent_lost');
 });
 process.on('message', (message: unknown) => {
   if (!message || typeof message !== 'object') return;
-  const command = message as { type?: string; nonce?: string; submission?: unknown };
+  const command = message as { type?: string; nonce?: string;
+    submission?: unknown; reason?: StopReason };
   if (command.nonce !== nonce) return;
   if (command.type === 'heartbeat') lastParentHeartbeat = Date.now();
-  if (command.type === 'cancel') stop();
+  if (command.type === 'cancel') stop('user_cancel');
+  if (command.type === 'stop' && ['user_cancel', 'deadline', 'parent_lost']
+    .includes(command.reason ?? '')) stop(command.reason!);
   if (command.type === 'start' && !hasStarted) {
     hasStarted = true;
     void run(validateSubmission(command.submission));
   }
 });
 const heartbeatTimer = setInterval(() => {
-  if (Date.now() - lastParentHeartbeat > 10000) stop();
+  if (Date.now() - lastParentHeartbeat > 10000) stop('parent_lost');
   send({ type: 'heartbeat', at: Date.now() });
 }, 2000);
 
@@ -83,7 +103,7 @@ function restrictBrowserNetwork(baseUrl: string, proxyPort: number): void {
         ...(isProxy ? { url: `${baseUrl}proxy?`
           + request.request.url.slice(proxyPrefix.length) } : {}),
         ...(!allowed ? { errorReason: 'BlockedByClient' } : {}),
-      }).catch(() => stop());
+      }).catch(() => cancel());
     });
     await command('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
     return page;
@@ -143,7 +163,7 @@ async function run(submission: RuntimeSubmission): Promise<void> {
   const jobDirectory = join(storageRoot, submission.projectId,
     '.work', submission.jobId);
   let media: Awaited<ReturnType<typeof createMediaServer>> | undefined;
-  const deadline = setTimeout(stop, 15 * 60 * 1000);
+  const deadline = setTimeout(() => stop('deadline'), 15 * 60 * 1000);
   try {
     const manifest: RuntimeManifest = JSON.parse(await readFile(
       join(resourceRoot, 'manifest.json'), 'utf8'));
@@ -162,7 +182,7 @@ async function run(submission: RuntimeSubmission): Promise<void> {
         'log-file': join(jobDirectory, 'browser.log'),
       } },
     });
-    if (isStopping) throw new Error('EFFECT_CANCELLED');
+    if (stopReason) throw new Error(getStopErrorCode(stopReason));
     restrictBrowserNetwork(media.baseUrl, proxyPort);
     const fontManifest = JSON.parse(await readFile(
       join(resourceRoot, 'fonts/manifest.json'), 'utf8'));
@@ -194,17 +214,20 @@ async function run(submission: RuntimeSubmission): Promise<void> {
     send({ type: 'phase', phase: 'encoding' });
     await remux({ root: resourceRoot, jobDirectory });
     const output = await readFile(join(jobDirectory, 'video.part.mp4'));
-    if (isStopping) throw new Error('EFFECT_CANCELLED');
+    if (stopReason) throw new Error(getStopErrorCode(stopReason));
     send({ type: 'result', outputFile: 'video.part.mp4',
       sha256: createHash('sha256').update(output).digest('hex'),
       bytes: (await stat(join(jobDirectory, 'video.part.mp4'))).size,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
-    const errorCode = isStopping ? 'EFFECT_CANCELLED'
+    if (/timeout|timed out|delayRender.*(?:clear|continue)/i.test(message)) {
+      stop('deadline');
+    }
+    const errorCode = stopReason ? getStopErrorCode(stopReason)
       : /ENOSPC|no space/i.test(message) ? 'EFFECT_DISK_FULL'
-      : /timeout|timed out/i.test(message) ? 'EFFECT_RENDER_TIMEOUT'
       : /EFFECT_INPUT_NOT_LOCAL/.test(message) ? 'EFFECT_INPUT_NOT_LOCAL'
+      : /EFFECT_FONT_LOAD_FAILED/.test(message) ? 'EFFECT_FONT_LOAD_FAILED'
       : 'EFFECT_MEDIA_DECODE_FAILED';
     // Browser errors can contain short-lived media capabilities and local paths.
     send({ type: 'error', errorCode });
@@ -213,8 +236,17 @@ async function run(submission: RuntimeSubmission): Promise<void> {
     isFinalizing = true;
     clearTimeout(deadline);
     clearInterval(heartbeatTimer);
-    await browser?.close({ silent: true });
-    await media?.close();
+    // Browser and encoder cleanup may hang after a renderer failure. Keep the
+    // owned-process reaper armed until every resource has actually closed.
+    reaper ??= setTimeout(reapOwnedTree, 8000);
+    try {
+      await closeBrowser();
+      await media?.close();
+      clearTimeout(reaper);
+    } catch {
+      process.exitCode = 1;
+      reapOwnedTree();
+    }
     if (process.connected) process.disconnect();
   }
 }

@@ -1704,7 +1704,7 @@ async function main() {
 }
 
 module.exports = { createResearchReport, runResearchBrowserSmoke,
-  untilFocusSettled }
+  untilFocusSettled, connectCdp }
 if (require.main === module) main().catch((err) => {
   console.error(`[smoke-test] FAIL: ${(err && err.stack) || String(err)}`)
   process.exitCode = 1

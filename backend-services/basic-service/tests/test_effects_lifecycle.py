@@ -247,8 +247,12 @@ async def _assert_http_drafts(client, project_id):
     assert saved.status_code == 200
     stale = await client.put(path + "/drafts/" + draft["draft_id"], json={
         "expected_version": 1, "name": "", "document": document})
-    assert stale.status_code == 409
-    assert stale.json()["error_code"] == "EFFECT_VERSION_CONFLICT"
+    assert stale.status_code == 200
+    assert stale.json()["data"]["version"] == 2
+    conflict = await client.put(path + "/drafts/" + draft["draft_id"], json={
+        "expected_version": 1, "name": "异体保存", "document": document})
+    assert conflict.status_code == 409
+    assert conflict.json()["error_code"] == "EFFECT_VERSION_CONFLICT"
     for _ in range(5):
         assert (await client.post(path + "/jobs", json=job_request(
             saved.json()["data"]).model_dump())).status_code == 202

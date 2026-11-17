@@ -1,17 +1,67 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MaterialItem, TimelineItem, Track } from '@/types';
+import type { MaterialItem } from '@/types';
 import type { EffectAsset, EffectTargetSnapshot } from '@/types/effects';
 import { EffectError } from '@/types/effects';
 import { useLocale } from '@/contexts/LocaleContext';
 import { attachEffectInput, getEffectAsset, getEffectCapabilities,
-  getEffectDraft, listEffectDrafts, submitEffectJob } from '@/lib/api/effects';
+  getEffectDraft, listEffectDrafts } from '@/lib/api/effects';
 import { createEffectDocument, getEffectTemplate } from '@/lib/effects/catalog';
 import { fingerprintEffectTarget } from '@/lib/effects/provenance';
 import { useTimelineStore } from '../timeline/store/useTimelineStore';
 import { applyEffectsTimelineAction } from '../timeline/store/actions/applyEffects';
 import { createEffectMaterial } from './effectsTimeline';
-import { useEffectsDraft } from './useEffectsDraft';
+import { useEffectsDraft, type EffectMemoryDraft } from './useEffectsDraft';
 import { useEffectsJobs } from './useEffectsJobs';
+import { useEffectsSubmission } from './useEffectsSubmission';
+import { acquireEffectEditor, readPending,
+  writePending } from '@/lib/effects/pendingWrites';
+import type { EffectEditorLease } from '@/lib/effects/pendingWrites';
+import type { PendingIdentity } from '@/lib/effects/pendingWrites';
+
+interface EditorSession {
+  projectId?: string;
+  lease?: EffectEditorLease;
+  snapshot?: EffectMemoryDraft & { dirty: boolean };
+  failure?: Error;
+  pendingExit?: Promise<void>;
+  expectedIdentity?: PendingIdentity;
+}
+// Failed local I/O must not erase the only remaining copy during navigation.
+// This is memory-only and never authorizes a server overwrite or old target.
+const failedEditorSessions = new Map<string, EditorSession>();
+
+// React cleanup cannot await. Keep the old lease alive only for its final local
+// snapshot, then release; network and UI delivery have already been revoked.
+async function persistEditorExit(session: EditorSession) {
+  const { snapshot, projectId, lease } = session;
+  try {
+    if (!projectId || !snapshot?.dirty || !lease?.isActive()) return;
+    failedEditorSessions.set(projectId, session);
+    if (snapshot.isConflicted) {
+      session.expectedIdentity = snapshot.expectedIdentity;
+      session.failure = new EffectError('EFFECT_VERSION_CONFLICT');
+      return;
+    }
+    const stored = await readPending(projectId, 'save');
+    session.expectedIdentity = stored.identity;
+    if (!lease.isActive()) return;
+    if (stored.record && stored.record.draftId !== snapshot.draftId) return;
+    await writePending(projectId, 'save', {
+      schemaVersion: 1, projectId, draftId: snapshot.draftId,
+      baseVersion: stored.record ? stored.record.baseVersion : snapshot.baseVersion,
+      recordRevision: (stored.record?.recordRevision ?? 0) + 1,
+      createdAt: stored.record?.createdAt ?? new Date().toISOString(),
+      ...(stored.record?.pendingWrite ? { pendingWrite: stored.record.pendingWrite } : {}),
+      working: snapshot.working,
+    }, stored.identity);
+    if (failedEditorSessions.get(projectId) === session) {
+      failedEditorSessions.delete(projectId);
+    }
+  } catch (error) {
+    session.failure = error instanceof Error ? error : new Error(String(error));
+    console.error('[effects] Final local draft snapshot failed', error);
+  } finally { lease?.release(); }
+}
 
 export interface EffectsEntry { material?: MaterialItem; clipId?: string;
   draftId?: string; newDraft?: boolean }
@@ -83,7 +133,10 @@ export function useEffectsController(options: ControllerOptions) {
   const [assets, setAssets] = useState<EffectAsset[]>([]);
   const [target, setTarget] = useState<EffectTargetSnapshot>();
   const [drafts, setDrafts] = useState<{ id: string; name: string; version: number }[]>([]);
-  const submitting = useRef(false);
+  const lease = useRef<EffectEditorLease | undefined>(undefined);
+  const editorEpoch = useRef(0);
+  const session = useRef<EditorSession>({ projectId: options.projectId });
+  const [isEditor, setEditor] = useState(false);
   const owner = useRef(options); owner.current = options;
   const generation = useRef(0);
   const attachmentRevision = useRef(0);
@@ -91,12 +144,29 @@ export function useEffectsController(options: ControllerOptions) {
   const previousProject = useRef(options.projectId);
   if (previousProject.current !== options.projectId) {
     previousProject.current = options.projectId; generation.current++;
+    editorEpoch.current++; lease.current = undefined;
+    session.current = { projectId: options.projectId };
   }
   useEffect(() => {
+    const exiting = session.current;
     setOpen(false); setAssets([]); setTarget(undefined); setError(undefined);
-    return () => { generation.current++; };
+    return () => {
+      generation.current++; editorEpoch.current++;
+      exiting.pendingExit = persistEditorExit(exiting);
+    };
   }, [options.projectId]);
-  const draft = useEffectsDraft(options.projectId, isOpen && !busy);
+  const canWrite = () => Boolean(lease.current?.isActive());
+  const getEditorEpoch = () => editorEpoch.current;
+  const draft = useEffectsDraft(options.projectId, isOpen && !busy && isEditor,
+    canWrite, getEditorEpoch);
+  if (draft.status === 'saved' && !draft.isDirty()
+    && failedEditorSessions.get(options.projectId ?? '')?.snapshot?.draftId
+      === draft.draft?.id) failedEditorSessions.delete(options.projectId!);
+  if (draft.getId()) session.current.snapshot = {
+    draftId: draft.getId(), baseVersion: draft.getBaseVersion(),
+    dirty: draft.isDirty(), working: structuredClone(draft.getCurrent()),
+    expectedIdentity: draft.getMemoryIdentity(), isConflicted: draft.hasMemoryConflict(),
+  };
   const runtime = useEffectsCapability();
   const register = useCallback((asset: EffectAsset) => {
     if (asset.projectId !== owner.current.projectId) {
@@ -106,35 +176,100 @@ export function useEffectsController(options: ControllerOptions) {
   }, []);
   const jobs = useEffectsJobs({ projectId: options.projectId,
     onRegister: register });
-  const run = async (action: () => Promise<void>) => {
+  const submission = useEffectsSubmission({ projectId: options.projectId,
+    canWrite, getEditorEpoch, watch: jobs.watch });
+  const run = async (action: () => Promise<void>, ownsResult?: () => boolean) => {
+    const projectId = owner.current.projectId;
+    const capturedEditor = editorEpoch.current;
+    const isCurrent = ownsResult ?? (() => projectId === owner.current.projectId
+      && capturedEditor === editorEpoch.current);
     setError(undefined);
     try { await action(); } catch (error) {
-      setError(error instanceof Error ? error : new Error(String(error)));
+      if (isCurrent()) setError(error instanceof Error ? error : new Error(String(error)));
     }
   };
   const open = (entry: EffectsEntry = {},
-    navigation: { discardChanges?: boolean } = {}) => run(async () => {
+    navigation: { discardChanges?: boolean } = {}) => {
+    const token = ++generation.current;
+    const isCurrent = () => token === generation.current;
+    return run(async () => {
     if (isOpen && draft.isDirty() && !navigation.discardChanges) {
       await draft.flush();
     }
+    if (!isCurrent()) return;
+    if (navigation.discardChanges) {
+      if (draft.status === 'conflict') await draft.discardConflict();
+      else {
+        if (draft.hasPending()) throw new EffectError('EFFECT_SUBMISSION_UNKNOWN');
+        await draft.discard();
+      }
+      failedEditorSessions.delete(owner.current.projectId ?? '');
+    }
     const projectId = owner.current.projectId;
     if (!projectId) throw new EffectError('EFFECT_NOT_FOUND');
-    const token = ++generation.current;
+    editorEpoch.current++;
     setOpen(true); setBusy(true); setTarget(undefined);
     try {
-      const recent = await listEffectDrafts(projectId);
-      if (token !== generation.current) return;
-      setDrafts(recent);
+      await failedEditorSessions.get(projectId)?.pendingExit;
+      if (!isCurrent()) return;
+      const recentTask = listEffectDrafts(projectId).then(recent => {
+        if (isCurrent()) setDrafts(recent); return recent;
+      }).catch(failure => {
+        if (isCurrent()) setError(failure); return [];
+      });
+      if (!lease.current?.isActive()) {
+        const acquired = await acquireEffectEditor(projectId);
+        if (!isCurrent()) { acquired?.release(); return; }
+        lease.current = acquired;
+        editorEpoch.current++;
+        session.current.lease = lease.current;
+      }
+      setEditor(Boolean(lease.current));
+      if (!lease.current) return;
+      const retained = failedEditorSessions.get(projectId);
+      if ((!isOpen || retained) && await draft.restore(() => {
+        if (isCurrent()) setBusy(false);
+      }, retained?.snapshot ? { ...retained.snapshot,
+        expectedIdentity: retained.expectedIdentity } : undefined)) {
+        if (!isCurrent()) return;
+        if (retained?.failure && isCurrent()) setError(retained.failure);
+        if (retained) {
+          try {
+            await draft.persistWorking();
+            if (isCurrent() && failedEditorSessions.get(projectId) === retained) {
+              failedEditorSessions.delete(projectId);
+            }
+          } catch (failure) { if (isCurrent()) setError(failure as Error); }
+        }
+        if (!isCurrent()) return;
+        const snapshot = draft.getCurrent();
+        const stored = await readPending(projectId, 'save');
+        const bindings = [...snapshot.document.inputs,
+          ...(stored.record?.pendingWrite?.document.inputs ?? [])];
+        const found = await Promise.allSettled(Array.from(new Set(
+          bindings.map(input => input.assetId)))
+          .map(id => getEffectAsset(projectId, id)));
+        if (token !== generation.current) return;
+        setAssets(found.flatMap(result => result.status === 'fulfilled'
+          ? [result.value] : []));
+        void submission.recover();
+        return;
+      }
+      const recent = await recentTask;
+      if (!isCurrent()) return;
       const chosen = !entry.newDraft && !entry.material && !entry.clipId
-        && !entry.draftId ? { draftId: draft.draft?.id ?? recent[0]?.id } : entry;
+        && !entry.draftId ? { draftId: (draft.draft?.projectId === projectId
+          ? draft.draft.id : undefined) ?? recent[0]?.id } : entry;
       const prepared = await prepareEntry({ entry: chosen, projectId,
         aspectRatioId: owner.current.aspectRatioId,
         materials: owner.current.materials, name: t.effects.labels.untitled });
       if (token !== generation.current) return;
       draft.load(prepared.working, prepared.persisted);
       setAssets(prepared.assets); setTarget(prepared.target);
+      void submission.recover();
     } finally { if (token === generation.current) setBusy(false); }
-  });
+    }, isCurrent);
+  };
   const selectTemplate = (id: string) => {
     attachmentRevision.current++;
     const current = draft.getCurrent();
@@ -148,17 +283,12 @@ export function useEffectsController(options: ControllerOptions) {
   const render = () => run(async () => {
     const projectId = owner.current.projectId;
     const token = generation.current;
-    if (submitting.current) return;
-    submitting.current = true;
-    try {
+    if (!canWrite() || submission.pending) return;
       const saved = await draft.flush();
       if (!projectId || !saved || token !== generation.current) return;
       if (!saved.renderability.ready) throw new EffectError('EFFECT_DRAFT_INCOMPLETE');
-      const job = await submitEffectJob({ projectId, draftId: saved.id,
-        expectedVersion: saved.version, requestId: crypto.randomUUID() });
-      // Delivery belongs to the project even if its editor has closed.
-      jobs.watch(job);
-    } finally { submitting.current = false; }
+      await submission.submit({ draftId: saved.id,
+        expectedVersion: saved.version });
   });
   const apply = (asset: EffectAsset, mode: 'insert' | 'replace') => run(async () => {
     const projectId = owner.current.projectId;
@@ -184,6 +314,7 @@ export function useEffectsController(options: ControllerOptions) {
     if (token === generation.current) setTarget(prepared.target);
   });
   const attach = (slot: string, material: MaterialItem) => {
+    if (!canWrite()) return Promise.resolve();
     const projectId = owner.current.projectId;
     const token = generation.current;
     const revision = attachmentRevision.current;
@@ -230,8 +361,22 @@ export function useEffectsController(options: ControllerOptions) {
     attachments.current.pending = pending.catch(() => {});
     return pending;
   };
-  return { isOpen, busy, error, assets, target, drafts, draft, jobs, ...runtime,
-    open, close: () => { generation.current++; setOpen(false); },
+  const close = async (discardChanges = false) => {
+    const token = generation.current;
+    if (canWrite()) {
+      if (discardChanges) await draft.discard();
+      else await draft.persistWorking();
+    }
+    if (token !== generation.current) return;
+    generation.current++; editorEpoch.current++; setOpen(false);
+    lease.current?.release(); lease.current = undefined; setEditor(false);
+    session.current.snapshot = undefined;
+    failedEditorSessions.delete(owner.current.projectId ?? '');
+  };
+  return { isOpen, isEditor, editorEpoch: editorEpoch.current,
+    busy, error, assets, target, drafts, draft, jobs, submission, ...runtime,
+    open, close,
+    forgetRecoveredDraft: () => failedEditorSessions.delete(owner.current.projectId ?? ''),
     selectTemplate, render, register, apply, reselect, attach, run };
 }
 
@@ -241,8 +386,10 @@ async function prepareEntry(options: {
 }) {
   if (options.entry.draftId) {
     const persisted = await getEffectDraft(options.projectId, options.entry.draftId);
-    const assets = await Promise.all(Array.from(new Set(persisted.document.inputs
+    const resolved = await Promise.allSettled(Array.from(new Set(persisted.document.inputs
       .map(input => input.assetId))).map(id => getEffectAsset(options.projectId, id)));
+    const assets = resolved.flatMap(result => result.status === 'fulfilled'
+      ? [result.value] : []);
     return { working: { name: persisted.name, document: persisted.document },
       persisted, assets, target: undefined };
   }

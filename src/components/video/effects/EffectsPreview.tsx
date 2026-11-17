@@ -40,6 +40,9 @@ export default function EffectsPreview(options: {
         aspectRatio: `${document.canvas.width}/${document.canvas.height}` }}
       errorFallback={({ error }) => <PreviewError onError={reportError}
         message={t.effects.errors[error.message] ?? t.effects.labels.failed} />} />
+    {hasError && <button type="button" className="text-sm underline"
+      onClick={() => { setHasError(false); setPlayerEpoch(value => value + 1); }}>
+      {t.effects.labels.retryPreview}</button>}
     <div className="w-full space-y-2">
       <input type="range" min={0} max={document.durationFrames - 1}
         aria-label={t.effects.labels.seek} value={Math.min(playback.frame,
@@ -84,6 +87,7 @@ function usePreviewPlayback(epoch: number, frames: number, isReady: boolean) {
     const play = () => setPlaying(true), pause = () => setPlaying(false);
     const mute = (event: { detail: { isMuted: boolean } }) => setMuted(event.detail.isMuted);
     setFrame(current.getCurrentFrame());
+    setPlaying(current.isPlaying()); setMuted(current.isMuted());
     current.addEventListener('frameupdate', update);
     current.addEventListener('play', play); current.addEventListener('pause', pause);
     current.addEventListener('ended', pause); current.addEventListener('mutechange', mute);
@@ -97,6 +101,6 @@ function usePreviewPlayback(epoch: number, frames: number, isReady: boolean) {
 }
 
 function PreviewError(options: { message: string; onError: () => void }) {
-  useEffect(options.onError, [options.onError]);
+  useEffect(() => { options.onError(); }, [options.onError]);
   return <p role="alert" className="p-4 text-sm">{options.message}</p>;
 }

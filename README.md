@@ -759,3 +759,13 @@ Agent 通过按需激活的 effects 工具制作，应用结果以客户端真�
 Remotion 的分发许可由负责人在正式发行前按实际场景核对。
 实测范围及尚待完成的发行验收见
 [验收记录](docs/plans/remotion-effects-studio/acceptance.md)。
+
+草稿和生成请求会先在本机保存恢复记录。网络回包丢失时显示「状态待确认」，
+重新打开同一项目或点击「重新查询」可用原请求身份恢复；确认前不会重复生成。
+「不保存关闭」只丢弃未发送的输入，已经发送的保存仍可能完成。同一项目
+在另一窗口编辑时，当前窗口保留任务查看能力。删除项目成功后才清本地记录。
+
+开发与安装验收使用 `desktop/scripts/effects-acceptance.js`，包含 package、
+visual、desktop、process、performance、agent 六个场景；精确命令和唯一报告
+目录约定见 [桌面验收说明](desktop/README.md)。开发 payload 验证不能代替
+本次安装器的真实安装、离线导出、视觉音频矩阵或真实 LLM 验收。

@@ -1,7 +1,7 @@
-import { http, ApiError } from './http-client';
+import { http, type RequestOptions } from './http-client';
 import type {
   EffectAsset, EffectCapabilities, EffectDocument, EffectDraft,
-  EffectLibrary, EffectPage, EffectRenderJob, EffectTemplate,
+  EffectLibrary, EffectPage, EffectRenderJob, EffectTemplate, EffectDraftWrite,
 } from '@/types/effects';
 
 type Wire = Record<string, unknown>;
@@ -129,15 +129,16 @@ export async function listEffectDrafts(projectId: string) {
 }
 
 export async function saveEffectDraft(options: {
-  projectId: string; name: string; document: EffectDocument;
-  draftId?: string; expectedVersion?: number;
+  projectId: string; write: EffectDraftWrite;
 }) {
-  const body = { name: options.name,
-    document: toWireEffectDocument(options.document),
-    ...(options.draftId ? { expected_version: options.expectedVersion } : {}) };
+  const { write } = options;
+  const body = { name: write.name,
+    document: toWireEffectDocument(write.document),
+    ...(write.kind === 'create' ? { draft_id: write.draftId }
+      : { expected_version: write.expectedVersion }) };
   const path = `${projectPath(options.projectId)}/drafts`;
-  const response = options.draftId
-    ? await http.put<Envelope<Wire>>(`${path}/${options.draftId}`, body,
+  const response = write.kind === 'update'
+    ? await http.put<Envelope<Wire>>(`${path}/${write.draftId}`, body,
       { retries: 0 })
     : await http.post<Envelope<Wire>>(path, body, { retries: 0 });
   return fromWireEffectDraft(response.data);
@@ -159,14 +160,17 @@ export async function getEffectAsset(projectId: string, assetId: string) {
   return fromWireEffectAsset(response.data);
 }
 
-export async function getEffectJob(projectId: string, jobId: string) {
+export async function getEffectJob(projectId: string, jobId: string,
+  requestOptions?: RequestOptions) {
   const response = await http.get<Envelope<Wire>>(
-    `${projectPath(projectId)}/jobs/${encodeURIComponent(jobId)}`);
+    `${projectPath(projectId)}/jobs/${encodeURIComponent(jobId)}`,
+    { retries: 0, timeoutMs: 10000, ...requestOptions });
   return fromWireEffectJob(response.data);
 }
 
 export async function listEffectJobs(
   projectId: string, cursor?: string, status?: 'active',
+  requestOptions?: RequestOptions,
 ) {
   const params = new URLSearchParams();
   if (cursor) params.set('cursor', cursor);
@@ -174,7 +178,8 @@ export async function listEffectJobs(
   const query = params.size ? `?${params}` : '';
   const response = await http.get<Envelope<{
     items: Wire[]; next_cursor?: string;
-  }>>(`${projectPath(projectId)}/jobs${query}`);
+  }>>(`${projectPath(projectId)}/jobs${query}`,
+    { retries: 0, timeoutMs: 10000, ...requestOptions });
   return { items: response.data.items.map(fromWireEffectJob),
     nextCursor: response.data.next_cursor } as EffectPage<EffectRenderJob>;
 }
@@ -186,7 +191,7 @@ export async function cancelEffectJob(projectId: string, jobId: string) {
   return fromWireEffectJob(response.data);
 }
 
-/** Resolve an uncertain submission with the original request ID and body. */
+/** One attempt only; the durable submission owner decides when to recover. */
 export async function submitEffectJob(request: {
   projectId: string; draftId: string; expectedVersion: number;
   requestId: string; profile?: 'mp4-1080p' | 'mp4-720p';
@@ -195,24 +200,16 @@ export async function submitEffectJob(request: {
   const body = { request_id: request.requestId, draft_id: request.draftId,
     expected_version: request.expectedVersion,
     output: { profile: request.profile ?? 'mp4-1080p' } };
-  try {
-    return fromWireEffectJob((await http.post<Envelope<Wire>>(path, body,
-      options)).data);
-  } catch (error) {
-    if (error instanceof ApiError && error.status > 0
-      && error.status < 500) throw error;
-    try {
-      const response = await http.get<Envelope<Wire>>(
-        `${path}/by-request/${request.requestId}`);
-      return fromWireEffectJob(response.data);
-    } catch (lookupError) {
-      if (!(lookupError instanceof ApiError) || lookupError.status !== 404) {
-        throw error;
-      }
-    }
-    return fromWireEffectJob((await http.post<Envelope<Wire>>(path, body,
-      options)).data);
-  }
+  return fromWireEffectJob((await http.post<Envelope<Wire>>(path, body,
+    options)).data);
+}
+
+/** Look up the exact original request without allocating a replacement key. */
+export async function getEffectJobByRequest(projectId: string, requestId: string) {
+  const response = await http.get<Envelope<Wire>>(
+    `${projectPath(projectId)}/jobs/by-request/${encodeURIComponent(requestId)}`,
+    { retries: 0, timeoutMs: 10000 });
+  return fromWireEffectJob(response.data);
 }
 
 export type { EffectTemplate };

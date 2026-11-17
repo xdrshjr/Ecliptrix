@@ -8,6 +8,8 @@ export function EffectsJobCard(options: { job: EffectRenderJob;
   controller: EffectsController; mode: 'insert' | 'replace' }) {
   const { t } = useLocale();
   const { job, controller } = options;
+  const queryError = controller.jobs.jobErrors[job.id];
+  const isCancelling = controller.jobs.cancelling.has(job.id);
   return <article className="rounded border border-border bg-background px-3 py-2 text-xs space-y-2">
     <div className="flex justify-between gap-3" aria-live="polite">
       <span>{t.effects.labels.version} {job.draftVersion}</span>
@@ -16,11 +18,26 @@ export function EffectsJobCard(options: { job: EffectRenderJob;
     {isEffectJobActive(job) && <>
       <progress max={1} value={job.progress}
         aria-label={t.effects.labels[job.status]} className="w-full h-1.5" />
-      <button type="button" disabled={job.status === 'cancelling'}
+      <button type="button" disabled={job.status === 'cancelling'
+        || isCancelling || queryError?.missing}
         onClick={() => void controller.run(() => controller.jobs.cancel(job))}>
         {t.effects.labels.cancel}
       </button>
     </>}
+    {queryError && <div role="alert" className="space-y-1 text-destructive">
+      <p>{queryError.missing ? t.effects.labels.jobMissing
+        : t.effects.labels.jobQueryFailed}</p>
+      <div className="flex flex-wrap gap-3">
+        <button type="button" disabled={isCancelling}
+          onClick={() => void controller.jobs.retry(job.id)}>
+          {t.effects.labels.retryQuery}
+        </button>
+        {queryError.missing && <button type="button"
+          onClick={() => controller.jobs.removeMissing(job.id)}>
+          {t.effects.labels.removeJob}
+        </button>}
+      </div>
+    </div>}
     {job.errorCode && <p role="alert" className="text-destructive">
       {t.effects.errors[job.errorCode] ?? t.effects.labels.failed}
     </p>}

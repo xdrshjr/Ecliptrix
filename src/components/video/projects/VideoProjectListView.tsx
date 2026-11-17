@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import { clearProjectPending } from '@/lib/effects/pendingWrites';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import {
   createVideoProject,
@@ -214,6 +215,11 @@ const VideoProjectListView: React.FC<VideoProjectListViewProps> = ({
       onConfirm: async () => {
         try {
           await deleteVideoProject(project.id);
+          try { await clearProjectPending(project.id); }
+          catch (error) {
+            console.error('[effects] Deleted project recovery cleanup failed', error);
+            showError(t.effects.errors.EFFECT_LOCAL_STATE_UNAVAILABLE);
+          }
           setConfirmation(null);
           void fetchProjects();
         } catch (err) {

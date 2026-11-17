@@ -661,3 +661,13 @@ Ecliptrix 是开源且本地优先的：工程文件、素材、数据库和模�
 [desktop/README.md](desktop/README.md)。字体保留 OFL，Remotion 分发许可
 须由负责人在发行前核对。具体测试证据及未执行的发行项目见
 [验收记录](docs/plans/remotion-effects-studio/acceptance.md)。
+
+保存与生成会先落本地恢复记录。回包丢失后保留原草稿 ID、版本和请求 ID，
+重开项目或「重新查询」会确认原请求；待确认期间不会换键再生成。「不保存
+关闭」只丢弃未发送输入，已发送保存仍可能完成。同项目多窗口只允许一个
+写编辑器；项目删除成功后清理该项目的本地恢复记录。
+
+新增 `desktop/scripts/effects-acceptance.js` 负责真实安装包的六场景验收，
+报告独占创建且不能覆盖。运行命令、安装记录格式及 pass / fail / blocked
+含义见 [桌面说明](desktop/README.md)。只有干净提交对应的新安装器、全部
+真实场景与当前源码回归齐全时，才可能得到 `release_ready=true`。

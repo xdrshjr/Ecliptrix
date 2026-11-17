@@ -1,4 +1,5 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import { createReadStream } from 'node:fs';
 import { readFile, realpath, stat, access } from 'node:fs/promises';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -6,6 +7,10 @@ import { join, resolve, relative, sep } from 'node:path';
 import {
   validateSubmission, type RuntimeSubmission, type RuntimeManifest,
 } from './protocol';
+import {
+  getStopErrorCode, latchStopReason, normalizeChildErrorCode,
+  type StopReason, type StopRecord,
+} from './stopReason';
 
 interface RuntimeOptions {
   resourceRoot: string;
@@ -21,11 +26,25 @@ interface ChildResult {
   bytes: number;
 }
 
+interface RuntimeTiming {
+  deadlineMs: number;
+  heartbeatTimeoutMs: number;
+  heartbeatIntervalMs: number;
+  cleanupMs: number;
+  stopWaitMs: number;
+}
+
+const DEFAULT_TIMING: RuntimeTiming = {
+  deadlineMs: 15 * 60 * 1000, heartbeatTimeoutMs: 30000,
+  heartbeatIntervalMs: 2000, cleanupMs: 2000, stopWaitMs: 8000,
+};
+
 interface RuntimeJob {
   id: string;
   requestHash: string;
   bodyHash: string;
-  state: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled';
+  state: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
+    | 'interrupted';
   phase: string;
   progress: number;
   heartbeatAt: number;
@@ -35,6 +54,7 @@ interface RuntimeJob {
   nonce: string;
   isCancelRequested: boolean;
   didReceiveResult: boolean;
+  stopReason?: StopRecord;
   settled: Promise<void>;
   settle: () => void;
   heartbeatTimer?: NodeJS.Timeout;
@@ -79,8 +99,55 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   catch { throw new RuntimeHttpError(400, 'EFFECT_INVALID_ARGUMENT'); }
 }
 
-/** Verify the installation bytes before allowing any renderer to launch. */
-async function verifyManifest(root: string): Promise<RuntimeManifest> {
+const MANIFEST_READERS = 8;
+const HASH_CHUNK_BYTES = 256 * 1024;
+
+/** Stream large browser/native files without retaining them in memory. */
+async function hashRuntimeFile(target: string) {
+  const hash = createHash('sha256');
+  let bytes = 0;
+  const stream = createReadStream(target, { highWaterMark: HASH_CHUNK_BYTES });
+  try {
+    for await (const chunk of stream) { bytes += chunk.length; hash.update(chunk); }
+    return { bytes, sha256: hash.digest('hex') };
+  } finally {
+    stream.destroy();
+    if (!stream.closed) await new Promise<void>(done => stream.once('close', done));
+  }
+}
+
+async function verifyManifestFile(canonicalRoot: string,
+  file: RuntimeManifest['files'][number]): Promise<void> {
+  const target = await realpath(resolve(canonicalRoot, file.path));
+  const suffix = relative(canonicalRoot, target);
+  if (suffix.startsWith(`..${sep}`) || suffix === '..' || suffix.includes(':')) {
+    throw new Error('EFFECT_RUNTIME_MISMATCH');
+  }
+  const actual = await hashRuntimeFile(target);
+  if (actual.bytes !== file.bytes || actual.sha256 !== file.sha256) {
+    throw new Error('EFFECT_RUNTIME_MISMATCH');
+  }
+}
+
+/** Fixed workers cover every entry before readiness, including pending reads. */
+async function verifyManifestFiles(root: string,
+  files: RuntimeManifest['files']): Promise<void> {
+  let next = 0, hasFailed = false;
+  let failure: unknown;
+  const run = async () => {
+    while (!hasFailed && next < files.length) {
+      const file = files[next++];
+      try { await verifyManifestFile(root, file); }
+      catch (error) { if (!hasFailed) failure = error; hasFailed = true; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MANIFEST_READERS, files.length) },
+    () => run()));
+  if (hasFailed) throw failure;
+}
+
+/** Verify all installation bytes before allowing any renderer to launch. */
+export async function verifyManifest(root: string): Promise<RuntimeManifest> {
   const canonicalRoot = await realpath(root);
   const manifest: RuntimeManifest = JSON.parse(await readFile(
     join(root, 'manifest.json'), 'utf8'));
@@ -90,17 +157,8 @@ async function verifyManifest(root: string): Promise<RuntimeManifest> {
   const { runtimeFingerprint, ...identity } = manifest;
   if (createHash('sha256').update(JSON.stringify(identity)).digest('hex')
       !== runtimeFingerprint) throw new Error('EFFECT_RUNTIME_MISMATCH');
-  for (const file of manifest.files) {
-    const target = await realpath(resolve(root, file.path));
-    const suffix = relative(canonicalRoot, target);
-    if (suffix.startsWith(`..${sep}`) || suffix === '..'
-        || suffix.includes(':')) throw new Error('EFFECT_RUNTIME_MISMATCH');
-    const bytes = await readFile(target);
-    if (bytes.length !== file.bytes || createHash('sha256').update(bytes)
-      .digest('hex') !== file.sha256) throw new Error('EFFECT_RUNTIME_MISMATCH');
-  }
-  const catalog = await readFile(join(root, 'catalog.json'));
-  if (createHash('sha256').update(catalog).digest('hex')
+  await verifyManifestFiles(canonicalRoot, manifest.files);
+  if ((await hashRuntimeFile(join(root, 'catalog.json'))).sha256
       !== manifest.catalogHash) throw new Error('EFFECT_RUNTIME_MISMATCH');
   await access(join(root, manifest.browserExecutable));
   await access(join(root, manifest.binariesDirectory, 'remotion.exe'));
@@ -121,8 +179,12 @@ export class EffectsRuntimeController {
   private parentTimer?: NodeJS.Timeout;
   private server?: http.Server;
   private submissionQueue: Promise<void> = Promise.resolve();
+  private readonly timing: RuntimeTiming;
 
-  constructor(private readonly options: RuntimeOptions) {}
+  constructor(private readonly options: RuntimeOptions,
+    timing: Partial<RuntimeTiming> = {}) {
+    this.timing = { ...DEFAULT_TIMING, ...timing };
+  }
 
   /** Bind only loopback, after verifying resources and IPC parent identity. */
   async start(): Promise<void> {
@@ -309,30 +371,55 @@ export class EffectsRuntimeController {
     child.stdout?.resume();
     child.stderr?.resume();
     child.on('message', (message: unknown) => this.acceptChildMessage(job, message));
+    this.superviseChild(job, child);
+    child.send({ type: 'start', nonce: job.nonce, submission }, () => {});
+  }
+
+  private superviseChild(job: RuntimeJob, child: ChildProcess): void {
     child.once('error', () => {
-      job.errorCode = 'EFFECT_RUNTIME_UNAVAILABLE';
-      this.finishChild(job, 1);
+      if (!child.pid) {
+        job.errorCode = 'EFFECT_RUNTIME_UNAVAILABLE';
+        this.finishChild(job, 1);
+      } else this.stopChild(job, 'parent_lost');
     });
     child.once('exit', (code) => this.finishChild(job, code));
-    job.heartbeatTimer = setInterval(() => this.heartbeatChild(job), 2000);
-    job.deadlineTimer = setTimeout(() => {
-      job.errorCode = 'EFFECT_RENDER_TIMEOUT';
-      killOwnedChild(child);
-    }, 15 * 60 * 1000);
-    child.send({ type: 'start', nonce: job.nonce, submission }, () => {});
+    child.once('disconnect', () => {
+      // Both success and a reported failure disconnect normally while their
+      // browser cleanup finishes; only an unexplained disconnect is IPC loss.
+      if (!job.didReceiveResult && !job.errorCode && job.child) {
+        this.stopChild(job, 'parent_lost');
+      }
+    });
+    job.heartbeatTimer = setInterval(() => this.heartbeatChild(job),
+      this.timing.heartbeatIntervalMs);
+    job.deadlineTimer = setTimeout(() => this.stopChild(job, 'deadline'),
+      this.timing.deadlineMs);
   }
 
   private acceptChildMessage(job: RuntimeJob, message: unknown): void {
     if (!message || typeof message !== 'object' || !job.child) return;
     const event = message as Record<string, unknown>;
     job.heartbeatAt = Date.now();
+    if (job.stopReason) return;
     if (event.type === 'phase') job.phase = String(event.phase);
     if (event.type === 'progress' && Number.isFinite(event.progress)) {
       job.progress = Math.max(job.progress, Math.min(0.99,
         Number(event.progress)));
     }
-    if (event.type === 'error') job.errorCode = String(event.errorCode);
-    if (event.type === 'result' && event.outputFile === 'video.part.mp4') {
+    if (event.type === 'error') {
+      const code = normalizeChildErrorCode(event.errorCode);
+      if (code === 'EFFECT_RENDER_TIMEOUT') this.stopChild(job, 'deadline');
+      else if (code === 'EFFECT_RENDER_INTERRUPTED') {
+        this.stopChild(job, 'parent_lost');
+      } else if (code === 'EFFECT_CANCELLED' && job.isCancelRequested) {
+        this.stopChild(job, 'user_cancel');
+      } else job.errorCode = code === 'EFFECT_CANCELLED'
+        ? 'EFFECT_MEDIA_DECODE_FAILED' : code;
+    }
+    if (event.type === 'result' && event.outputFile === 'video.part.mp4'
+        && /^[0-9a-f]{64}$/.test(String(event.sha256))
+        && Number.isSafeInteger(event.bytes) && Number(event.bytes) > 0
+        && !job.errorCode) {
       job.didReceiveResult = true;
       job.result = { outputFile: 'video.part.mp4',
         sha256: String(event.sha256), bytes: Number(event.bytes) };
@@ -345,10 +432,21 @@ export class EffectsRuntimeController {
       // A write error must not masquerade as the child's actual exit.
       job.child.send({ type: 'heartbeat', nonce: job.nonce }, () => {});
     }
-    if (Date.now() - job.heartbeatAt > 30000 && job.child) {
-      job.errorCode = 'EFFECT_RENDER_TIMEOUT';
-      killOwnedChild(job.child);
-    }
+    if (Date.now() - job.heartbeatAt > this.timing.heartbeatTimeoutMs
+        && job.child) this.stopChild(job, 'parent_lost');
+  }
+
+  private stopChild(job: RuntimeJob, reason: StopReason): void {
+    if (!job.child) return;
+    job.stopReason = latchStopReason(job.stopReason, reason);
+    job.errorCode = getStopErrorCode(job.stopReason);
+    job.didReceiveResult = false;
+    job.result = undefined;
+    const child = job.child;
+    if (child.connected) child.send({ type: 'stop', nonce: job.nonce,
+      reason: job.stopReason.reason }, () => {});
+    job.cleanupTimer ??= setTimeout(() => killOwnedChild(child),
+      this.timing.cleanupMs);
   }
 
   private finishChild(job: RuntimeJob, code: number | null): void {
@@ -360,7 +458,11 @@ export class EffectsRuntimeController {
     if (job.isCancelRequested) {
       job.state = 'cancelled'; job.phase = 'cancelled';
       job.result = undefined;
-    } else if (code === 0 && job.didReceiveResult) {
+    } else if (job.stopReason?.reason === 'parent_lost') {
+      job.state = 'interrupted'; job.phase = 'interrupted';
+      job.result = undefined;
+    } else if (!job.stopReason && !job.errorCode
+        && code === 0 && job.didReceiveResult) {
       job.state = 'succeeded'; job.phase = 'done'; job.progress = 1;
     } else {
       job.state = 'failed'; job.phase = 'failed';
@@ -374,16 +476,20 @@ export class EffectsRuntimeController {
     if (!job.child) return;
     job.isCancelRequested = true;
     job.state = 'cancelling';
-    const child = job.child;
-    if (child.connected) child.send({ type: 'cancel', nonce: job.nonce }, () => {});
-    job.cleanupTimer ??= setTimeout(() => killOwnedChild(child), 2000);
+    this.stopChild(job, 'user_cancel');
+    await this.waitForChildExit(job);
+  }
+
+  private async waitForChildExit(job: RuntimeJob): Promise<void> {
+    let waitTimer: NodeJS.Timeout | undefined;
     const hasExited = await Promise.race([
       job.settled.then(() => true),
       new Promise<boolean>((done) => {
-        const timer = setTimeout(() => done(false), 8000);
-        timer.unref();
+        waitTimer = setTimeout(() => done(false), this.timing.stopWaitMs);
+        waitTimer.unref();
       }),
     ]);
+    clearTimeout(waitTimer);
     if (!hasExited) {
       this.isRestartRequired = true;
       this.errorCode = 'EFFECT_RUNTIME_UNAVAILABLE';
@@ -396,7 +502,10 @@ export class EffectsRuntimeController {
     }
     this.isResetting = true;
     try {
-      if (this.activeJob?.child) await this.cancel(this.activeJob);
+      if (this.activeJob?.child) {
+        this.stopChild(this.activeJob, 'parent_lost');
+        await this.waitForChildExit(this.activeJob);
+      }
       if (this.activeJob?.child) {
         throw new RuntimeHttpError(503, 'EFFECT_RUNTIME_UNAVAILABLE');
       }
@@ -420,7 +529,10 @@ export class EffectsRuntimeController {
     clearInterval(this.parentTimer);
     this.server?.closeAllConnections();
     this.server?.close();
-    if (this.activeJob?.child) await this.cancel(this.activeJob);
+    if (this.activeJob?.child) {
+      this.stopChild(this.activeJob, 'parent_lost');
+      await this.waitForChildExit(this.activeJob);
+    }
     if (this.activeJob?.child) killOwnedChild(this.activeJob.child);
     if (process.connected) process.disconnect();
     process.exit(this.isRestartRequired ? 1 : 0);

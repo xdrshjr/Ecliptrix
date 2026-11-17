@@ -7,7 +7,53 @@ import type { ToolkitTurnState } from '@/types/agentToolkit';
 import type { HostCapabilitySnapshot } from '@/types/agentHost';
 import type { SkillIndexEntry } from '@/types/agentSkills';
 import type { ScriptSegmentSnapshot } from './editorContextPrompt';
-import type { EffectTargets } from '@/types/effects';
+import type { EffectDraftWrite, EffectTargets } from '@/types/effects';
+
+/** Public frozen bodies can be replayed across turns without reattaching media. */
+export interface EffectDraftRecovery {
+  schemaVersion: 1;
+  projectId: string;
+  write: EffectDraftWrite;
+}
+
+export interface EffectRenderRecovery {
+  schemaVersion: 1;
+  projectId: string;
+  requestId: string;
+  draftId: string;
+  expectedVersion: number;
+  profile: 'mp4-1080p' | 'mp4-720p';
+}
+
+export interface EffectPendingAgentWrite<T> {
+  toolCallId: string;
+  recovery: T;
+}
+
+export interface EffectUnknownDraftResult {
+  success: false;
+  status: 'unknown';
+  schemaVersion: 1;
+  projectId: string;
+  toolCallId: string;
+  draftId: string;
+  recovery: EffectDraftRecovery;
+  error_code: string;
+}
+
+export interface EffectUnknownRenderResult {
+  success: false;
+  status: 'unknown';
+  schemaVersion: 1;
+  projectId: string;
+  toolCallId: string;
+  draftId: string;
+  requestId: string;
+  expectedVersion: number;
+  profile: EffectRenderRecovery['profile'];
+  recovery: EffectRenderRecovery;
+  error_code: string;
+}
 
 // --- Tool Context ---
 
@@ -21,6 +67,12 @@ import type { EffectTargets } from '@/types/effects';
 export type AgentAutonomy = 'interactive' | 'yolo';
 
 export interface ToolContext {
+  effectsPendingDrafts?: Map<string,
+    EffectPendingAgentWrite<EffectDraftRecovery>>;
+  effectsPendingRenders?: Map<string,
+    EffectPendingAgentWrite<EffectRenderRecovery>>;
+  effectsRecoveryIncomplete?: Set<string>;
+  effectsRenderRecoveryIncomplete?: Set<string>;
   effectsTargets?: EffectTargets;
   effectsRunId?: string;
   effectsApplyUncertain?: boolean;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/http-client';
 import { createEffectDocument } from '@/lib/effects/catalog';
@@ -12,32 +12,357 @@ import { EffectsStudioModal } from '../EffectsStudioModal';
 import { effectsFixture } from './effectsFixture';
 import { planEffectsTimelineChange } from '../effectsTimeline';
 import { useTimelineStore } from '../../timeline/store/useTimelineStore';
+import { acquireEffectEditor, readPending, writePending } from '@/lib/effects/pendingWrites';
 
 const api = vi.hoisted(() => ({ saveEffectDraft: vi.fn(),
   getEffectCapabilities: vi.fn(), listEffectJobs: vi.fn(),
   listEffectDrafts: vi.fn(), getEffectDraft: vi.fn(),
   getEffectAsset: vi.fn(), getEffectJob: vi.fn(), cancelEffectJob: vi.fn(),
-  attachEffectInput: vi.fn(), submitEffectJob: vi.fn() }));
+  attachEffectInput: vi.fn(), submitEffectJob: vi.fn(), getEffectJobByRequest: vi.fn() }));
 vi.mock('@/lib/api/effects', () => api);
 vi.mock('next/dynamic', () => ({ default: () => () =>
   React.createElement('div', { 'data-testid': 'preview' }) }));
 
 function saved(document: EffectDocument, version = 1): EffectDraft {
-  return { id: 'd', projectId: 'p', name: 'Draft', version, document,
+  return { id: '0e931a68-f0a1-4abd-b530-23a377620ce7', projectId: 'p', name: 'Draft', version, document,
     documentHash: 'hash', createdAt: '', updatedAt: '', readOnly: false,
     renderability: { ready: Boolean(document.content.title), errors: [] } };
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  api.saveEffectDraft.mockImplementation(options => Promise.resolve(
-    saved(options.document, (options.expectedVersion ?? 0) + 1)));
+  const held = new Set<string>();
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+    request: async (name: string, options: { ifAvailable?: boolean },
+      callback: (lock: object | null) => unknown) => {
+      if (options.ifAvailable && held.has(name)) return callback(null);
+      held.add(name);
+      try { return await callback({}); } finally { held.delete(name); }
+    },
+  } });
+  api.saveEffectDraft.mockImplementation(({ write }) => Promise.resolve({
+    ...saved(write.document,
+      write.kind === 'update' ? write.expectedVersion + 1 : 1),
+    id: write.draftId, name: write.name }));
   api.getEffectCapabilities.mockResolvedValue({ ready: true });
   api.listEffectDrafts.mockResolvedValue([]);
   api.listEffectJobs.mockResolvedValue({ items: [] });
+  api.getEffectJobByRequest.mockRejectedValue(new ApiError(404,
+    'EFFECT_NOT_FOUND', 'missing'));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('工作台草稿的串行保存与关闭', () => {
+  it('首次创建丢回包后保留冻结体与新文案，重挂载仅确认旧体再PUT最新文案', async () => {
+    const document = createEffectDocument(); document.content.title = '首次';
+    const first = renderHook(() => useEffectsDraft('p', false));
+    act(() => first.result.current.load({ name: 'Draft', document }));
+    api.saveEffectDraft.mockRejectedValueOnce(new Error('lost response'));
+    await act(async () => { await expect(first.result.current.flush()).rejects.toThrow(); });
+    const original = api.saveEffectDraft.mock.calls[0][0].write;
+    act(() => first.result.current.edit({ name: 'Draft', document: {
+      ...document, content: { title: '稍后的输入', subtitle: '' } } }));
+    await act(async () => { await first.result.current.persistWorking(); });
+    expect((await readPending('p', 'save')).record?.pendingWrite)
+      .toEqual(original);
+    first.unmount();
+    api.getEffectDraft.mockResolvedValue({ ...saved(document), id: original.draftId });
+    const second = renderHook(() => useEffectsDraft('p', false));
+    await act(async () => { await second.result.current.restore(); });
+    expect(second.result.current.document.content.title).toBe('稍后的输入');
+    await act(async () => { await second.result.current.flush(); });
+    expect(api.saveEffectDraft.mock.calls[1][0].write).toMatchObject({
+      kind: 'update', expectedVersion: 1, draftId: original.draftId,
+      document: { content: { title: '稍后的输入' } } });
+    expect((await readPending('p', 'save')).record).toBeUndefined();
+  });
+  it('不保存关闭只保留已发送的写入，不恢复明确丢弃的后续输入', async () => {
+    const document = createEffectDocument(); document.content.title = '已发送';
+    const first = renderHook(() => useEffectsDraft('p', false));
+    act(() => first.result.current.load({ name: 'Draft', document }));
+    api.saveEffectDraft.mockRejectedValueOnce(new Error('lost response'));
+    await act(async () => { await expect(first.result.current.flush()).rejects.toThrow(); });
+    const original = api.saveEffectDraft.mock.calls[0][0].write;
+    act(() => first.result.current.edit({ name: 'Draft', document: {
+      ...document, content: { title: '丢弃的文字', subtitle: '' } } }));
+    await act(async () => {
+      await first.result.current.discard();
+      await first.result.current.persistWorking();
+    });
+    expect((await readPending('p', 'save')).record?.working).toBeUndefined();
+    first.unmount();
+    api.getEffectDraft.mockResolvedValue({ ...saved(document), id: original.draftId });
+    const second = renderHook(() => useEffectsDraft('p', false));
+    await act(async () => { await second.result.current.restore(); });
+    expect(second.result.current.document.content.title).toBe('已发送');
+    expect(second.result.current.dirty).toBe(false);
+    expect(api.saveEffectDraft).toHaveBeenCalledTimes(1);
+  });
+  it('working-only恢复保留超长文案及缺失素材绑定，不恢复旧时间线目标授权', async () => {
+    const document = createEffectDocument();
+    document.content.title = '字'.repeat(200);
+    document.inputs = [{ slot: 'base', assetId: crypto.randomUUID(),
+      kind: 'image', fit: 'cover', focalX: 0.5, focalY: 0.5 }];
+    const draftId = crypto.randomUUID();
+    await writePending('p', 'save', { schemaVersion: 1, projectId: 'p', draftId,
+      recordRevision: 1, baseVersion: null, working: { name: 'Draft', document },
+      createdAt: new Date().toISOString() }, { kind: 'absent' });
+    api.getEffectDraft.mockRejectedValue(new ApiError(404, 'EFFECT_NOT_FOUND', 'missing'));
+    api.getEffectAsset.mockRejectedValue(new ApiError(404, 'EFFECT_NOT_FOUND', 'missing'));
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+    await act(async () => { await hook.result.current.open(); });
+    expect(hook.result.current.draft.document).toEqual(document);
+    expect(hook.result.current.draft.getId()).toBe(draftId);
+    expect(hook.result.current.assets).toEqual([]);
+    expect(hook.result.current.target).toBeUndefined();
+    expect(api.getEffectAsset).toHaveBeenCalledWith('p', document.inputs[0].assetId);
+    expect(api.saveEffectDraft).not.toHaveBeenCalled();
+  });
+  it('丢失编辑租约后的保存回包不交付或续写', async () => {
+    let epoch = 1;
+    const document = createEffectDocument(); document.content.title = '初稿';
+    let release!: (draft: EffectDraft) => void;
+    api.saveEffectDraft.mockImplementationOnce(() => new Promise(done => { release = done; }));
+    const hook = renderHook(() => useEffectsDraft('p', false, () => true, () => epoch));
+    act(() => hook.result.current.load({ name: 'Draft', document }));
+    let pending!: Promise<unknown>;
+    await act(async () => { pending = hook.result.current.flush().catch(() => undefined); });
+    epoch++;
+    await act(async () => {
+      release({ ...saved(document), id: api.saveEffectDraft.mock.calls[0][0].write.draftId });
+      await pending;
+    });
+    expect(hook.result.current.draft).toBeUndefined();
+    expect((await readPending('p', 'save')).record?.pendingWrite).toBeTruthy();
+  });
+  it('working-only恢复的GET暂时失败时不得将未知基准当作新稿POST', async () => {
+    const document = createEffectDocument(); document.content.title = '保留原稿';
+    await writePending('p', 'save', { schemaVersion: 1, projectId: 'p',
+      draftId: crypto.randomUUID(), recordRevision: 1, baseVersion: null,
+      working: { name: 'Draft', document }, createdAt: new Date().toISOString(),
+    }, { kind: 'absent' });
+    api.getEffectDraft.mockRejectedValue(new ApiError(503, 'unavailable', 'retry'));
+    const hook = renderHook(() => useEffectsDraft('p', false));
+    await act(async () => { await hook.result.current.restore(); });
+    await expect(hook.result.current.flush()).rejects.toThrow('EFFECT_SUBMISSION_UNKNOWN');
+    expect(api.saveEffectDraft).not.toHaveBeenCalled();
+    expect(hook.result.current.document.content.title).toBe('保留原稿');
+  });
+  it('项目切换前不足500ms的输入也写入原项目，默认入口不用旧项目draftId', async () => {
+    const document = createEffectDocument(); document.content.title = '原稿';
+    api.getEffectDraft.mockResolvedValue(saved(document));
+    const hook = renderHook(({ projectId }) => useEffectsController({ projectId,
+      materials: [], registerMaterial: vi.fn() }), {
+      initialProps: { projectId: 'p' }, wrapper: LocaleProvider,
+    });
+    await act(async () => { await hook.result.current.open({ draftId:
+      '0e931a68-f0a1-4abd-b530-23a377620ce7' }); });
+    act(() => hook.result.current.draft.edit({ name: 'Draft', document: {
+      ...document, content: { title: '最后一次输入', subtitle: '' } } }));
+    hook.rerender({ projectId: 'q' });
+    await act(async () => { await Promise.resolve(); });
+    expect((await readPending('p', 'save')).record?.working?.document.content.title)
+      .toBe('最后一次输入');
+    api.getEffectDraft.mockClear();
+    await act(async () => { await hook.result.current.open(); });
+    expect(api.getEffectDraft).not.toHaveBeenCalled();
+    expect(hook.result.current.draft.draft).toBeUndefined();
+  });
+  it('退出快照配额失败后保留内存，返回项目优先恢复最新输入并可重试存储', async () => {
+    const document = createEffectDocument(); document.content.title = '服务器原稿';
+    api.getEffectDraft.mockResolvedValue(saved(document));
+    const hook = renderHook(({ projectId }) => useEffectsController({ projectId,
+      materials: [], registerMaterial: vi.fn() }), {
+      initialProps: { projectId: 'p' }, wrapper: LocaleProvider,
+    });
+    await act(async () => { await hook.result.current.open({ draftId:
+      '0e931a68-f0a1-4abd-b530-23a377620ce7' }); });
+    act(() => hook.result.current.draft.edit({ name: 'Draft', document: {
+      ...document, content: { title: '旧有效本地稿', subtitle: '' } } }));
+    await act(async () => { await hook.result.current.draft.persistWorking(); });
+    act(() => hook.result.current.draft.edit({ name: 'Draft', document: {
+      ...document, content: { title: '退出前最后输入', subtitle: '' } } }));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failed = vi.spyOn(localStorage, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota');
+    });
+    hook.rerender({ projectId: 'q' });
+    await act(async () => { await Promise.resolve(); });
+    await waitFor(() => expect(log).toHaveBeenCalled());
+    failed.mockRestore();
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    hook.rerender({ projectId: 'p' });
+    await act(async () => { await hook.result.current.open(); });
+    expect(hook.result.current.draft.document.content.title).toBe('退出前最后输入');
+    expect(hook.result.current.error?.message).toBe('EFFECT_LOCAL_STATE_UNAVAILABLE');
+    await act(async () => { await hook.result.current.draft.flush(); });
+    expect(api.saveEffectDraft.mock.calls.slice(-1)[0]?.[0].write).toMatchObject({
+      kind: 'update', expectedVersion: 1,
+      document: { content: { title: '退出前最后输入' } } });
+    log.mockRestore();
+  });
+  it('连续两次退出失败且中间GET未确认时仍保留原已确认版本', async () => {
+    const document = createEffectDocument(); document.content.title = 'v1原稿';
+    api.getEffectDraft.mockResolvedValue(saved(document));
+    const hook = renderHook(({ projectId }) => useEffectsController({ projectId,
+      materials: [], registerMaterial: vi.fn() }), {
+      initialProps: { projectId: 'p' }, wrapper: LocaleProvider,
+    });
+    await act(async () => { await hook.result.current.open({ draftId:
+      '0e931a68-f0a1-4abd-b530-23a377620ce7' }); });
+    act(() => hook.result.current.draft.edit({ name: 'Draft', document: {
+      ...document, content: { title: '两次退出保留', subtitle: '' } } }));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const storage = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    hook.rerender({ projectId: 'q' });
+    await waitFor(() => expect(log).toHaveBeenCalledTimes(1));
+    api.getEffectDraft.mockRejectedValue(new ApiError(503, 'unavailable', 'offline'));
+    hook.rerender({ projectId: 'p' });
+    await act(async () => { await hook.result.current.open(); });
+    expect(hook.result.current.draft.draft).toBeUndefined();
+    hook.rerender({ projectId: 'q' });
+    await waitFor(() => expect(log).toHaveBeenCalledTimes(2));
+    storage.mockRestore(); api.getEffectDraft.mockResolvedValue(saved(document));
+    hook.rerender({ projectId: 'p' });
+    await act(async () => { await hook.result.current.open(); });
+    expect(hook.result.current.draft.getBaseVersion()).toBe(1);
+    expect(hook.result.current.draft.status).toBe('editing');
+    await act(async () => { await hook.result.current.draft.flush(); });
+    expect(api.saveEffectDraft.mock.calls.slice(-1)[0]?.[0].write).toMatchObject({
+      kind: 'update', expectedVersion: 1,
+      document: { content: { title: '两次退出保留' } } });
+    log.mockRestore();
+  });
+  it('另一编辑器接管后推进的working不能被退出失败的旧内存稿覆盖', async () => {
+    const document = createEffectDocument(); document.content.title = '服务器原稿';
+    api.getEffectDraft.mockResolvedValue(saved(document));
+    const hook = renderHook(({ projectId }) => useEffectsController({ projectId,
+      materials: [], registerMaterial: vi.fn() }), {
+      initialProps: { projectId: 'p' }, wrapper: LocaleProvider,
+    });
+    await act(async () => { await hook.result.current.open({ draftId:
+      '0e931a68-f0a1-4abd-b530-23a377620ce7' }); });
+    act(() => hook.result.current.draft.edit({ name: 'Draft', document }));
+    await act(async () => { await hook.result.current.draft.persistWorking(); });
+    act(() => hook.result.current.draft.edit({ name: 'Draft', document: {
+      ...document, content: { title: '旧窗口内存', subtitle: '' } } }));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const storage = vi.spyOn(localStorage, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota');
+    });
+    hook.rerender({ projectId: 'q' });
+    await waitFor(() => expect(log).toHaveBeenCalled()); storage.mockRestore();
+    const lease = await acquireEffectEditor('p'); expect(lease?.isActive()).toBe(true);
+    const previous = await readPending('p', 'save');
+    await writePending('p', 'save', { ...previous.record!,
+      recordRevision: previous.record!.recordRevision + 1,
+      working: { name: 'Draft', document: { ...document,
+        content: { title: '另一个窗口更新', subtitle: '' } } },
+    }, previous.identity); lease?.release();
+    hook.rerender({ projectId: 'p' });
+    await act(async () => { await hook.result.current.open(); });
+    expect(hook.result.current.draft.document.content.title).toBe('旧窗口内存');
+    expect(hook.result.current.draft.status).toBe('conflict');
+    expect((await readPending('p', 'save')).record?.working?.document.content.title)
+      .toBe('另一个窗口更新');
+    await expect(hook.result.current.draft.flush()).rejects.toThrow('EFFECT_VERSION_CONFLICT');
+    await expect(hook.result.current.draft.discardConflict())
+      .rejects.toThrow('EFFECT_VERSION_CONFLICT');
+    expect(hook.result.current.draft.document.content.title).toBe('旧窗口内存');
+    expect((await readPending('p', 'save')).record?.working?.document.content.title)
+      .toBe('另一个窗口更新');
+    expect(api.saveEffectDraft).not.toHaveBeenCalled();
+    await act(async () => { await hook.result.current.close(true); });
+    expect((await readPending('p', 'save')).record?.working?.document.content.title)
+      .toBe('另一个窗口更新'); log.mockRestore();
+  });
+  it('失败退出的旧恢复GET迟到后不向新项目续写本地working', async () => {
+    const document = createEffectDocument(); document.content.title = '服务器';
+    api.getEffectDraft.mockResolvedValue(saved(document));
+    const hook = renderHook(({ projectId }) => useEffectsController({ projectId,
+      materials: [], registerMaterial: vi.fn() }), {
+      initialProps: { projectId: 'p' }, wrapper: LocaleProvider,
+    });
+    await act(async () => { await hook.result.current.open({ draftId:
+      '0e931a68-f0a1-4abd-b530-23a377620ce7' }); });
+    act(() => hook.result.current.draft.edit({ name: 'Draft', document }));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const quota = vi.spyOn(localStorage, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota');
+    });
+    hook.rerender({ projectId: 'q' });
+    await waitFor(() => expect(log).toHaveBeenCalled()); quota.mockRestore();
+    let release!: (draft: EffectDraft) => void;
+    api.getEffectDraft.mockImplementationOnce(() => new Promise(done => { release = done; }));
+    hook.rerender({ projectId: 'p' });
+    let opening!: Promise<void>;
+    await act(async () => { opening = hook.result.current.open(); });
+    await waitFor(() => expect(hook.result.current.draft.restored).toBe(true));
+    hook.rerender({ projectId: 'q' });
+    await act(async () => { await hook.result.current.open({ newDraft: true }); });
+    vi.useFakeTimers();
+    act(() => hook.result.current.draft.edit({ name: 'Q', document: {
+      ...document, content: { title: '新项目输入', subtitle: '' } } }));
+    const writes = vi.spyOn(localStorage, 'setItem');
+    await act(async () => { release(saved(document)); await opening; });
+    expect(writes.mock.calls.filter(([key]) => key === 'ecliptrix:effects:save:v1:q'))
+      .toEqual([]);
+    writes.mockRestore(); log.mockRestore();
+  });
+  it('列表失败及草稿GET未返回时先回显working，恢复素材使用冻结体与working的并集', async () => {
+    const document = createEffectDocument(); document.content.title = '冻结内容';
+    const assetId = crypto.randomUUID(), draftId = crypto.randomUUID();
+    document.inputs = [{ slot: 'base', assetId, kind: 'image',
+      fit: 'cover', focalX: 0.5, focalY: 0.5 }];
+    const working = { name: '最新工作稿', document: { ...document, inputs: [],
+      content: { title: '待恢复的最新输入', subtitle: '' } } };
+    await writePending('p', 'save', { schemaVersion: 1, projectId: 'p', draftId,
+      recordRevision: 1, baseVersion: null, working,
+      pendingWrite: { kind: 'create', draftId, name: '已发送', document },
+      createdAt: new Date().toISOString() }, { kind: 'absent' });
+    api.listEffectDrafts.mockRejectedValue(new ApiError(503, 'unavailable', 'list failed'));
+    let fail!: (failure: Error) => void;
+    api.getEffectDraft.mockImplementation(() => new Promise((_done, reject) => { fail = reject; }));
+    api.getEffectAsset.mockRejectedValue(new ApiError(404, 'EFFECT_NOT_FOUND', 'missing'));
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+    let opening!: Promise<void>;
+    await act(async () => { opening = hook.result.current.open(); });
+    await waitFor(() => expect(hook.result.current.draft.document.content.title)
+      .toBe('待恢复的最新输入'));
+    expect(hook.result.current.busy).toBe(false);
+    expect(api.saveEffectDraft).not.toHaveBeenCalled();
+    await act(async () => {
+      fail(new ApiError(503, 'unavailable', 'draft failed')); await opening;
+    });
+    expect(api.getEffectAsset).toHaveBeenCalledWith('p', assetId);
+    expect(hook.result.current.draft.document.inputs).toEqual([]);
+  });
+  it('HTTP方法由kind决定，稳定ID的首次create仍POST且PUT不含draft_id', async () => {
+    const actual = await vi.importActual<typeof import('@/lib/api/effects')>(
+      '@/lib/api/effects');
+    const document = createEffectDocument();
+    const draftId = crypto.randomUUID();
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ success: true, data: { draft_id: draftId, project_id: 'p',
+        name: 'Draft', version: 1, document: actual.toWireEffectDocument(document) } }),
+      { status: 201, headers: { 'Content-Type': 'application/json' } }));
+    await actual.saveEffectDraft({ projectId: 'p', write: {
+      kind: 'create', draftId, name: 'Draft', document } });
+    expect(fetcher.mock.calls[0][1]?.method).toBe('POST');
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ draft_id: draftId });
+    fetcher.mockResolvedValue(new Response(JSON.stringify({ success: true,
+      data: { draft_id: draftId, project_id: 'p', name: 'Draft', version: 2,
+        document: actual.toWireEffectDocument(document) } }), { status: 200 }));
+    await actual.saveEffectDraft({ projectId: 'p', write: {
+      kind: 'update', draftId, name: 'Draft', document, expectedVersion: 1 } });
+    expect(fetcher.mock.calls[1][1]?.method).toBe('PUT');
+    const body = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
+    expect(body.expected_version).toBe(1); expect(body).not.toHaveProperty('draft_id');
+    fetcher.mockRestore();
+  });
   it.each([
     ['9:16', 1080, 1920], ['1:1', 1080, 1080], ['4:3', 1440, 1080],
     ['21:9', 1920, 822], ['invalid', 1920, 1080],
@@ -54,12 +379,12 @@ describe('工作台草稿的串行保存与关闭', () => {
       materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
     await act(async () => { await hook.result.current.open({ newDraft: true }); });
     if (slot === 'images') act(() => hook.result.current.selectTemplate('slides-stack'));
-    const a = { id: 'a', type: 'image', url: '/api/storage/files/a.png' } as MaterialItem;
-    const b = { id: 'b', type: 'image', url: '/api/storage/files/b.png' } as MaterialItem;
+    const a = { id: '11111111-1111-4111-8111-111111111111', type: 'image', url: '/api/storage/files/a.png' } as MaterialItem;
+    const b = { id: '22222222-2222-4222-8222-222222222222', type: 'image', url: '/api/storage/files/b.png' } as MaterialItem;
     let release!: (asset: EffectAsset) => void;
     api.attachEffectInput.mockImplementation((_project, source) =>
       source === a.url ? new Promise(done => { release = done; })
-        : Promise.resolve({ id: 'b', kind: 'input-image' }));
+        : Promise.resolve({ id: '22222222-2222-4222-8222-222222222222', kind: 'input-image' }));
     let first!: Promise<void>, second!: Promise<void>;
     await act(async () => {
       first = hook.result.current.attach(slot, a);
@@ -68,11 +393,11 @@ describe('工作台草稿的串行保存与关闭', () => {
     });
     expect(api.attachEffectInput).toHaveBeenCalledTimes(1);
     await act(async () => {
-      release({ id: 'a', kind: 'input-image' } as EffectAsset);
+      release({ id: '11111111-1111-4111-8111-111111111111', kind: 'input-image' } as EffectAsset);
       await Promise.all([first, second]);
     });
     expect(hook.result.current.draft.document.inputs.map(input => input.assetId))
-      .toEqual(slot === 'images' ? ['a', 'b'] : ['b']);
+      .toEqual(slot === 'images' ? ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'] : ['22222222-2222-4222-8222-222222222222']);
   });
 
   it('切换模板再切回时不接收旧模板迟到的素材', async () => {
@@ -83,7 +408,7 @@ describe('工作台草稿的串行保存与关闭', () => {
     api.attachEffectInput.mockImplementationOnce(() => new Promise(done => { release = done; }));
     let attaching!: Promise<void>;
     await act(async () => {
-      attaching = hook.result.current.attach('base', { id: 'a', type: 'image',
+      attaching = hook.result.current.attach('base', { id: '11111111-1111-4111-8111-111111111111', type: 'image',
         url: '/api/storage/files/a.png' } as MaterialItem);
       await Promise.resolve();
     });
@@ -92,7 +417,7 @@ describe('工作台草稿的串行保存与关闭', () => {
       hook.result.current.selectTemplate('title-rise');
     });
     await act(async () => {
-      release({ id: 'a', kind: 'input-image' } as EffectAsset); await attaching;
+      release({ id: '11111111-1111-4111-8111-111111111111', kind: 'input-image' } as EffectAsset); await attaching;
     });
     expect(hook.result.current.draft.document.inputs).toEqual([]);
   });
@@ -102,13 +427,13 @@ describe('工作台草稿的串行保存与关闭', () => {
       materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
     await act(async () => { await hook.result.current.open({ newDraft: true }); });
     api.attachEffectInput.mockRejectedValueOnce(new Error('failed'))
-      .mockResolvedValueOnce({ id: 'b', kind: 'input-image' });
+      .mockResolvedValueOnce({ id: '22222222-2222-4222-8222-222222222222', kind: 'input-image' });
     await act(async () => {
-      await Promise.all(['a', 'b'].map(id => hook.result.current.attach('base', {
+      await Promise.all(['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'].map(id => hook.result.current.attach('base', {
         id, type: 'image', url: `/api/storage/files/${id}.png`,
       } as MaterialItem)));
     });
-    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('b');
+    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('22222222-2222-4222-8222-222222222222');
     expect(hook.result.current.error).toBeUndefined();
   });
 
@@ -118,25 +443,25 @@ describe('工作台草稿的串行保存与关闭', () => {
     await act(async () => { await hook.result.current.open({ newDraft: true }); });
     let release!: (asset: EffectAsset) => void;
     api.attachEffectInput.mockImplementationOnce(() => new Promise(done => { release = done; }))
-      .mockResolvedValueOnce({ id: 'b', kind: 'input-image' });
+      .mockResolvedValueOnce({ id: '22222222-2222-4222-8222-222222222222', kind: 'input-image' });
     let old!: Promise<void>;
     await act(async () => {
-      old = hook.result.current.attach('base', { id: 'a', type: 'image',
+      old = hook.result.current.attach('base', { id: '11111111-1111-4111-8111-111111111111', type: 'image',
         url: '/api/storage/files/a.png' } as MaterialItem);
       await Promise.resolve();
     });
-    act(() => hook.result.current.close());
+    await act(async () => { await hook.result.current.close(); });
     await act(async () => { await hook.result.current.open({ newDraft: true }); });
     await act(async () => {
-      await hook.result.current.attach('base', { id: 'b', type: 'image',
+      await hook.result.current.attach('base', { id: '22222222-2222-4222-8222-222222222222', type: 'image',
         url: '/api/storage/files/b.png' } as MaterialItem);
     });
-    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('b');
+    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('22222222-2222-4222-8222-222222222222');
     await act(async () => {
-      release({ id: 'a', kind: 'input-image' } as EffectAsset); await old;
+      release({ id: '11111111-1111-4111-8111-111111111111', kind: 'input-image' } as EffectAsset); await old;
     });
-    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('b');
-    expect(hook.result.current.assets.map(asset => asset.id)).toEqual(['b']);
+    expect(hook.result.current.draft.document.inputs[0].assetId).toBe('22222222-2222-4222-8222-222222222222');
+    expect(hook.result.current.assets.map(asset => asset.id)).toEqual(['22222222-2222-4222-8222-222222222222']);
   });
 
   it('重新选择已应用的同一成品，再次替换为无副作用操作', async () => {
@@ -177,10 +502,10 @@ describe('工作台草稿的串行保存与关闭', () => {
     await act(async () => {
       submission = hook.result.current.render(); await Promise.resolve();
     });
-    act(() => hook.result.current.close());
+    await act(async () => { await hook.result.current.close(); });
     await act(async () => {
       await hook.result.current.open({ newDraft: true });
-      resolveJob({ id: 'late-job', projectId: 'p', status: 'queued' });
+      resolveJob({ ...api.submitEffectJob.mock.calls[0][0], id: 'late-job', draftVersion: 1, status: 'queued' });
       await submission;
     });
     expect(hook.result.current.jobs.jobs).toEqual([
@@ -253,7 +578,7 @@ describe('工作台草稿的串行保存与关闭', () => {
     await act(async () => { await hook.result.current.render(); });
     expect(api.submitEffectJob).toHaveBeenCalledTimes(1);
     await act(async () => {
-      resolveJob({ id: 'j', projectId: 'p', status: 'queued' }); await first;
+      resolveJob({ ...api.submitEffectJob.mock.calls[0][0], id: 'j', draftVersion: 1, status: 'queued' }); await first;
     });
   });
 
@@ -280,12 +605,12 @@ describe('工作台草稿的串行保存与关闭', () => {
     const latest = { ...initial, content: { ...initial.content, title: 'latest' } };
     act(() => result.current.edit({ document: latest, name: 'Draft' }));
     await act(async () => {
-      const flush = result.current.flush(); complete(saved(initial));
+      const flush = result.current.flush(); complete({ ...saved(initial), id: api.saveEffectDraft.mock.calls[0][0].write.draftId });
       await first; await flush;
     });
     expect(api.saveEffectDraft).toHaveBeenCalledTimes(2);
-    expect(api.saveEffectDraft.mock.calls[1][0]).toMatchObject({ expectedVersion: 1,
-      document: { content: { title: 'latest' } } });
+    expect(api.saveEffectDraft.mock.calls[1][0]).toMatchObject({ write: { kind: 'update', expectedVersion: 1,
+      document: { content: { title: 'latest' } } } });
     expect(result.current.draft?.version).toBe(2);
     expect(result.current.dirty).toBe(false);
   });
@@ -299,18 +624,18 @@ describe('工作台草稿的串行保存与关闭', () => {
     act(() => result.current.edit({ name: 'changed', document: createEffectDocument() }));
     await expect(result.current.save()).rejects.toThrow('EFFECT_VERSION_CONFLICT');
     expect(api.saveEffectDraft).toHaveBeenCalledTimes(1);
-    act(() => result.current.load(result.current.getCurrent()));
+    await act(async () => { await result.current.discard(); result.current.load(result.current.getCurrent()); });
     await act(async () => { await result.current.flush(); });
-    expect(api.saveEffectDraft.mock.calls[1][0].draftId).toBeUndefined();
+    expect(api.saveEffectDraft.mock.calls[1][0].write).toMatchObject({ kind: 'create', draftId: expect.any(String) });
   });
 
   it('保存冲突后重新加载会读取服务器版本并恢复编辑', async () => {
     const original = createEffectDocument(); original.content.title = '原稿';
-    api.listEffectDrafts.mockResolvedValue([{ id: 'd', name: 'Draft', version: 1 }]);
+    api.listEffectDrafts.mockResolvedValue([{ id: '0e931a68-f0a1-4abd-b530-23a377620ce7', name: 'Draft', version: 1 }]);
     api.getEffectDraft.mockResolvedValue(saved(original));
     const hook = renderHook(() => useEffectsController({ projectId: 'p',
       materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
-    await act(async () => { await hook.result.current.open({ draftId: 'd' }); });
+    await act(async () => { await hook.result.current.open({ draftId: '0e931a68-f0a1-4abd-b530-23a377620ce7' }); });
     act(() => hook.result.current.draft.edit({ name: 'Draft', document: {
       ...original, content: { title: '本地修改', subtitle: '' } } }));
     api.saveEffectDraft.mockRejectedValueOnce(new ApiError(409,

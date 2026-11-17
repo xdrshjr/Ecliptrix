@@ -4,6 +4,7 @@ import type { Model } from '@mariozechner/pi-ai';
 import { streamSimple } from '@mariozechner/pi-ai';
 import { ToolActivationState } from './registry/ToolActivationState';
 import { assertCanMutateEffectsTimeline } from './tools/effectsApplyTool';
+import { restoreEffectsRecovery } from './tools/effectsCatalogTools';
 import {
   CORE_TOOLKIT_TOOL_NAMES,
   GENERAL_RESIDENT_TOOL_NAMES,
@@ -179,6 +180,13 @@ contextWindow: config.contextWindowTokens ?? 128000,
   });
   restoreCapabilityFailures(toolContext, recoveryFacts);
   restoreEgressFailures(toolContext, recoveryFacts);
+  for (const message of config.conversationHistory) {
+    for (const call of extractAgentToolCalls(message)) {
+      if (['completed', 'error', 'cancelled'].includes(call.status)) {
+        restoreEffectsRecovery(toolContext, call);
+      }
+    }
+  }
 
   // 4. Create ToolRegistry and build tools
   const registry = createToolRegistry(toolContext);

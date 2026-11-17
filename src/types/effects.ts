@@ -203,6 +203,49 @@ export interface EffectPage<T> {
   nextCursor?: string;
 }
 
+/** A frozen write is replayed verbatim until its outcome is confirmed. */
+export type EffectDraftWrite = {
+  kind: 'create'; draftId: string; name: string;
+  document: EffectDocument;
+} | {
+  kind: 'update'; draftId: string; expectedVersion: number;
+  name: string; document: EffectDocument;
+};
+
+export interface EffectPendingSubmission {
+  schemaVersion: 1;
+  projectId: string;
+  requestId: string;
+  draftId: string;
+  expectedVersion: number;
+  profile: 'mp4-1080p' | 'mp4-720p';
+  createdAt: string;
+  state: 'submitting' | 'uncertain' | 'accepted';
+  jobId?: string;
+}
+
+export interface EffectWorkingDraft {
+  name: string;
+  document: EffectDocument;
+}
+
+export interface EffectPendingSave {
+  schemaVersion: 1;
+  projectId: string;
+  draftId: string;
+  recordRevision: number;
+  baseVersion: number | null;
+  pendingWrite?: EffectDraftWrite;
+  working?: EffectWorkingDraft;
+  createdAt: string;
+}
+
+export interface EffectJobQueryError {
+  error: Error;
+  missing: boolean;
+  retryAt: number;
+}
+
 /** Stable domain codes are shared by UI, Agent and timeline transactions. */
 export class EffectError extends Error {
   constructor(readonly code: string, message = code) {
