@@ -1,10 +1,11 @@
+import { useEffectsDraftList } from './useEffectsDraftList';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MaterialItem } from '@/types';
 import type { EffectAsset, EffectTargetSnapshot } from '@/types/effects';
 import { EffectError } from '@/types/effects';
 import { useLocale } from '@/contexts/LocaleContext';
 import { attachEffectInput, getEffectAsset, getEffectCapabilities,
-  getEffectDraft, listEffectDrafts } from '@/lib/api/effects';
+  getEffectDraft } from '@/lib/api/effects';
 import { createEffectDocument, getEffectTemplate } from '@/lib/effects/catalog';
 import { fingerprintEffectTarget } from '@/lib/effects/provenance';
 import { useTimelineStore } from '../timeline/store/useTimelineStore';
@@ -132,7 +133,8 @@ export function useEffectsController(options: ControllerOptions) {
   const [error, setError] = useState<Error>();
   const [assets, setAssets] = useState<EffectAsset[]>([]);
   const [target, setTarget] = useState<EffectTargetSnapshot>();
-  const [drafts, setDrafts] = useState<{ id: string; name: string; version: number }[]>([]);
+  const draftList = useEffectsDraftList(options.projectId, isOpen);
+  const observedDrafts = useRef(new Set<string>());
   const lease = useRef<EffectEditorLease | undefined>(undefined);
   const editorEpoch = useRef(0);
   const session = useRef<EditorSession>({ projectId: options.projectId });
@@ -167,6 +169,17 @@ export function useEffectsController(options: ControllerOptions) {
     dirty: draft.isDirty(), working: structuredClone(draft.getCurrent()),
     expectedIdentity: draft.getMemoryIdentity(), isConflicted: draft.hasMemoryConflict(),
   };
+  const { upsertSummary, refresh: refreshDraftList } = draftList;
+  useEffect(() => {
+    const saved = draft.draft;
+    if (!saved || saved.projectId !== options.projectId || !isOpen) return;
+    upsertSummary({ id: saved.id, name: saved.name, version: saved.version });
+    const identity = `${saved.projectId}:${saved.id}`;
+    if (!observedDrafts.current.has(identity)) {
+      observedDrafts.current.add(identity);
+      if (saved.version === 1) void refreshDraftList();
+    }
+  }, [draft.draft, options.projectId, isOpen, upsertSummary, refreshDraftList]);
   const runtime = useEffectsCapability();
   const register = useCallback((asset: EffectAsset) => {
     if (asset.projectId !== owner.current.projectId) {
@@ -212,11 +225,6 @@ export function useEffectsController(options: ControllerOptions) {
     try {
       await failedEditorSessions.get(projectId)?.pendingExit;
       if (!isCurrent()) return;
-      const recentTask = listEffectDrafts(projectId).then(recent => {
-        if (isCurrent()) setDrafts(recent); return recent;
-      }).catch(failure => {
-        if (isCurrent()) setError(failure); return [];
-      });
       if (!lease.current?.isActive()) {
         const acquired = await acquireEffectEditor(projectId);
         if (!isCurrent()) { acquired?.release(); return; }
@@ -255,7 +263,9 @@ export function useEffectsController(options: ControllerOptions) {
         void submission.recover();
         return;
       }
-      const recent = await recentTask;
+      const hasExplicitEntry = entry.newDraft || entry.material || entry.clipId || entry.draftId;
+      const hasMemory = draft.draft?.projectId === projectId;
+      const recent = !hasExplicitEntry && !hasMemory ? await draftList.ensureFirstPage() : [];
       if (!isCurrent()) return;
       const chosen = !entry.newDraft && !entry.material && !entry.clipId
         && !entry.draftId ? { draftId: (draft.draft?.projectId === projectId
@@ -264,6 +274,7 @@ export function useEffectsController(options: ControllerOptions) {
         aspectRatioId: owner.current.aspectRatioId,
         materials: owner.current.materials, name: t.effects.labels.untitled });
       if (token !== generation.current) return;
+      if (prepared.persisted) observedDrafts.current.add(`${projectId}:${prepared.persisted.id}`);
       draft.load(prepared.working, prepared.persisted);
       setAssets(prepared.assets); setTarget(prepared.target);
       void submission.recover();
@@ -362,6 +373,7 @@ export function useEffectsController(options: ControllerOptions) {
     return pending;
   };
   const close = async (discardChanges = false) => {
+    draftList.invalidate();
     const token = generation.current;
     if (canWrite()) {
       if (discardChanges) await draft.discard();
@@ -374,7 +386,7 @@ export function useEffectsController(options: ControllerOptions) {
     failedEditorSessions.delete(owner.current.projectId ?? '');
   };
   return { isOpen, isEditor, editorEpoch: editorEpoch.current,
-    busy, error, assets, target, drafts, draft, jobs, submission, ...runtime,
+    busy, error, assets, target, drafts: draftList.items, draftList, draft, jobs, submission, ...runtime,
     open, close,
     forgetRecoveredDraft: () => failedEditorSessions.delete(owner.current.projectId ?? ''),
     selectTemplate, render, register, apply, reselect, attach, run };

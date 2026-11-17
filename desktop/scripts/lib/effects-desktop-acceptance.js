@@ -10,6 +10,7 @@ const { randomUUID } = require('node:crypto')
 const { connectCdp } = require('../smoke-test')
 const evidence = require('./effects-release-evidence')
 const visual = require('./effects-visual-acceptance')
+const fontUsage = require('./effects-font-usage')
 const { installFaultInjection, processSnapshot, killPid, waitForOwnedExit } = require('../effects-smoke')
 
 if (process.env.EFFECTS_ACCEPTANCE_FAULT_FILE) installFaultInjection()
@@ -225,7 +226,7 @@ async function seedProject(session, fixtures) {
 }
 
 /** Capture only the actual Player composition, after seek/font/media settling. */
-async function capturePlayer(session, project, document, inputs, jobDirectory, frame, target) {
+async function capturePlayer(session, project, document, inputs, jobDirectory, frame, target, fontBinding) {
   const documentCopy = structuredClone(document)
   for (const input of inputs) {
     const binding = documentCopy.inputs.find(entry => entry.assetId === input.assetId)
@@ -251,10 +252,13 @@ async function capturePlayer(session, project, document, inputs, jobDirectory, f
   })
   await session.cdp.evaluate(`(async()=>{await document.fonts.ready;await Promise.all([...document.querySelectorAll('.effects-preview img')].map(image=>image.decode()));await Promise.all([...document.querySelectorAll('.effects-preview video')].map(video=>video.seeking?new Promise(resolve=>video.addEventListener('seeked',resolve,{once:true})):Promise.resolve()));await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame)})()`)
   const layout = await session.cdp.evaluate(`(${visual.collectTextLayout.toString()})('.effects-preview .__remotion-player',${actualFrame.frame})`)
+  const usage = fontBinding && await fontUsage.collectFontUsage(session.cdp.send,
+    '.effects-preview .__remotion-player', { ...fontBinding, side: 'player', frame,
+      fontHash: session.context.report.font_hash })
   const screenshot = await session.cdp.send('Page.captureScreenshot', { format: 'png',
     clip: { ...layout.boundary, scale: 1 }, captureBeyondViewport: true })
   await fs.writeFile(target, Buffer.from(screenshot.data, 'base64'), { flag: 'wx' })
-  return { layout }
+  return { layout, fontUsage: usage }
 }
 function markCase(cases, caseId, input) {
   cases.push({ case_id: caseId, input_sha256: evidence.hash(JSON.stringify(input)), status: 'pass' })
@@ -296,6 +300,124 @@ async function exportProject(session, context, suffix) {
   const probe = JSON.parse(await visual.execute(context, context.ffprobe,
     ['-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', video]))
   return { request: captured, status, video, probe }
+}
+
+async function runDraftPageCase(context, fixtures) {
+  // 分页场景独占测试资料目录，重启时不会撤销调用方仍在使用的会话。
+  let session = await startSession(context)
+  const requests = []
+  try {
+    const project = await seedProject(session, fixtures)
+    const catalog = JSON.parse(await fs.readFile(path.join(context.resourceRoot, 'catalog.json'), 'utf8'))
+    const document = visual.fixtureDocument(catalog.templates.find(t => t.id === 'title-rise'), [1920, 1080])
+    const base = `${session.frontend}/api/effects/projects/${project.projectId}`
+    for (let index = 0; index < 13; index++) await jsonRequest(`${base}/drafts`, 'POST', {
+      draft_id: randomUUID(), name: `Paged ${index}`, document: toWire(document) })
+    const first = await jsonRequest(`${base}/drafts`)
+    const second = await jsonRequest(`${base}/drafts?cursor=${encodeURIComponent(first.next_cursor)}`)
+    if (first.items.length !== 12 || second.items.length !== 1) throw Error('真实草稿目录不是12+1分页')
+    const id = second.items[0].draft_id, before = await readTimeline(session, project.projectId)
+    await openEffects(session)
+    await clickText(session, '^Load more drafts$|加载更多草稿', '[data-effects-studio]')
+    await until('第13草稿option', () => session.cdp.evaluate(`!!document.querySelector('select[aria-label="Saved drafts"] option[value="${id}"]')`))
+    await setValue(session, 'select[aria-label="Saved drafts"]', id)
+    await until('第13草稿加载', () => session.cdp.evaluate(`document.querySelector('select[aria-label="Saved drafts"]')?.value===${JSON.stringify(id)}`))
+    const title = `Page 13 edited ${randomUUID()}`
+    await setValue(session, '.effects-inspector textarea', title)
+    await closeEffects(session); await openEffects(session)
+    const selected = await session.cdp.evaluate('document.querySelector(\'select[aria-label="Saved drafts"]\').value')
+    const persisted = await jsonRequest(`${base}/drafts/${id}`)
+    if (selected !== id || persisted.document.content.title !== title) throw Error('页外草稿保存重开丢失选择或内容')
+    await closeEffects(session)
+    if (JSON.stringify(await readTimeline(session, project.projectId)) !== JSON.stringify(before)) throw Error('草稿翻页修改了时间线')
+    const userData = session.userData
+    const priorProcess = { pid: session.child.pid, started_at: session.startedAt }
+    const closed = await session.close()
+    requests.push(...session.requests)
+    if (closed.residual_processes) throw Error('草稿分页重启前存在所属进程残留')
+    session = await startSession(context, userData)
+    await openProject(session, project.name); await openEffects(session)
+    const restartedBase = `${session.frontend}/api/effects/projects/${project.projectId}`
+    const restartFirst = await jsonRequest(`${restartedBase}/drafts`)
+    const restartSecond = await jsonRequest(`${restartedBase}/drafts?cursor=${encodeURIComponent(restartFirst.next_cursor)}`)
+    if (restartFirst.items.length !== 12 || restartSecond.items.length !== 1
+      || restartSecond.items[0].draft_id !== id) throw Error('应用重启后草稿分页或第13稿身份改变')
+    await clickText(session, '^Load more drafts$|加载更多草稿', '[data-effects-studio]')
+    await until('应用重启后第13草稿option', () => session.cdp.evaluate(`!!document.querySelector('select[aria-label="Saved drafts"] option[value="${id}"]')`))
+    await setValue(session, 'select[aria-label="Saved drafts"]', id)
+    await until('重启后旧稿内容', () => session.cdp.evaluate(`document.querySelector('.effects-inspector textarea')?.value===${JSON.stringify(title)}`))
+    const restartedId = await session.cdp.evaluate('document.querySelector(\'select[aria-label="Saved drafts"]\').value')
+    const restartedTitle = await session.cdp.evaluate("document.querySelector('.effects-inspector textarea').value")
+    await closeEffects(session)
+    if (JSON.stringify(await readTimeline(session, project.projectId)) !== JSON.stringify(before)) throw Error('应用重启后草稿翻页修改了时间线')
+    const proof = { first_count: 12, second_count: 1, selected_id: id, reopened_id: selected,
+      edited_title: title, persisted_title: persisted.document.content.title, timeline_unchanged: true,
+      restarted_id: restartedId, restarted_title: restartedTitle,
+      restart_first_count: restartFirst.items.length, restart_second_count: restartSecond.items.length,
+      restart_timeline_unchanged: true, restart: { before: priorProcess,
+        after: { pid: session.child.pid, started_at: session.startedAt },
+        exit_ms: closed.exit_ms, residual_processes: closed.residual_processes, same_user_data: session.userData === userData } }
+    evidence.assertDraftPageEvidence(proof)
+    return { proof, requests }
+  } finally {
+    requests.push(...session.requests)
+    if (session.child.exitCode === null) await session.close()
+  }
+}
+
+/** The baseline fixture is captured from the old app, never synthesized as a new job. */
+async function runLegacyDocumentCase(context) {
+  const fixtureRoot = path.join(context.workspaceRoot, 'desktop/build/effects/legacy-v1-fixture')
+  let fixture
+  try { fixture = JSON.parse(await fs.readFile(path.join(fixtureRoot, 'manifest.json'), 'utf8')) }
+  catch { throw new AcceptanceBlocked('缺少8d53a66d旧版本隔离数据夹具 legacy-v1-fixture/manifest.json，不能代领AC-66') }
+  if (fixture.source_head !== '8d53a66d137c95afe3d3e17d0bda5405f4f33f8e'
+      || fixture.document?.schemaVersion !== 1 || !fixture.files?.length
+      || fixture.document_sha256 !== evidence.hash(JSON.stringify(fixture.document))) throw Error('旧版本夹具身份不符')
+  const userData = path.join(context.evidenceRoot, 'legacy-user-data', randomUUID())
+  await fs.mkdir(userData, { recursive: true })
+  for (const file of fixture.files) {
+    const source = await evidence.checkedPath(path.join(fixtureRoot, 'user-data', file.path))
+    const target = path.join(userData, file.path)
+    if (!evidence.inside(path.join(fixtureRoot, 'user-data'), source) || !evidence.inside(userData, target)
+        || (await evidence.hashFile(source)).sha256 !== file.sha256) throw Error('旧版本夹具文件不符或越界')
+    await fs.mkdir(path.dirname(target), { recursive: true }); await fs.copyFile(source, target)
+  }
+  const session = await startSession(context, userData)
+  try {
+    await openProject(session, fixture.project_name)
+    const base = `${session.frontend}/api/effects/projects/${fixture.project_id}`
+    const old = await jsonRequest(`${base}/assets/${fixture.asset_id}`)
+    const oldIdentity = evidence.hash(JSON.stringify(old))
+    const localOutput = path.join(userData, 'storage', old.storage_key)
+    const before = await evidence.hashFile(localOutput)
+    if (before.sha256 !== fixture.output_sha256 || old.kind !== 'output-video') throw Error('旧输出fixture不匹配')
+    await session.cdp.evaluate(`(async()=>{const video=document.createElement('video');video.muted=true;video.src=${JSON.stringify(old.url)};
+      await new Promise((resolve,reject)=>{video.onloadeddata=resolve;video.onerror=reject});if(!video.videoWidth)throw Error('legacy decode');video.remove()})()`)
+    const timeline = await readTimeline(session, fixture.project_id)
+    await openEffects(session)
+    while (!await session.cdp.evaluate(`!!document.querySelector('select[aria-label="Saved drafts"] option[value="${fixture.draft_id}"]')`))
+      await clickText(session, '^Load more drafts$|加载更多草稿', '[data-effects-studio]')
+    await setValue(session, 'select[aria-label="Saved drafts"]', fixture.draft_id)
+    await until('旧草稿打开', () => session.cdp.evaluate(`document.querySelector('.effects-inspector textarea')?.value===${JSON.stringify(fixture.document.content.title)}`))
+    const title = [...fixture.document.content.title].slice(0, 100).join('') + ' R3'
+    await setValue(session, '.effects-inspector textarea', title)
+    await closeEffects(session); await openEffects(session)
+    await until('旧草稿保存重开', () => session.cdp.evaluate(`document.querySelector('.effects-inspector textarea')?.value===${JSON.stringify(title)}`))
+    const previous = new Set((await jsonRequest(`${base}/jobs`)).items.map(job => job.job_id))
+    await clickText(session, '^Generate video$|生成视频', '[data-effects-studio]')
+    const generated = await until('旧草稿重新制作独立成品', async () => (await jsonRequest(`${base}/jobs`)).items.find(job => !previous.has(job.job_id) && job.status === 'succeeded'), 180000)
+    if (generated.output_asset.asset_id === fixture.asset_id) throw Error('重新制作覆盖旧成品')
+    await clickText(session, '^Insert on a new video track$|插入新视频轨道', '[data-effects-studio]')
+    await closeEffects(session); await key(session, 'z', 2)
+    await until('旧项目插入后撤销', async () => JSON.stringify(await readTimeline(session, fixture.project_id)) === JSON.stringify(timeline))
+    const after = await evidence.hashFile(localOutput)
+    if (after.sha256 !== before.sha256 || evidence.hash(JSON.stringify(await jsonRequest(`${base}/assets/${fixture.asset_id}`))) !== oldIdentity) throw Error('旧成品或provenance改变')
+    return { source_head: fixture.source_head, fixture_hash: evidence.hash(JSON.stringify(fixture)),
+      document_sha256: fixture.document_sha256, old_output_before: before.sha256, old_output_after: after.sha256,
+      old_asset: fixture.asset_id, new_asset: generated.output_asset.asset_id, new_job: generated.job_id,
+      old_asset_identity: oldIdentity, saved_reopened: true, playback_decoded: true, undo_restored: true }
+  } finally { await session.close() }
 }
 
 /** Fixed desktop route. Every passed case corresponds to an observed UI result. */
@@ -360,7 +482,11 @@ async function runDesktop(context) {
       const lease = await runEditorLeaseCase(reopened, project)
       cases.push({ case_id: 'editor-lease', status: 'pass', input_sha256: evidence.hash(project.projectId), proof: lease })
       await exerciseUnavailableExports(reopened, context, project, cases, attachments)
-      attachments.push(await evidence.writeAttachment(context, 'network_log', 'desktop/network.json', evidence.bindRecord(context.report, { case_id: 'network', input_sha256: fixtures.videoHash.sha256, requests: reopened.requests })))
+      const paged = await runDraftPageCase(context, fixtures)
+      cases.push({ case_id: 'draft-page-13', status: 'pass', input_sha256: evidence.hash(JSON.stringify(paged.proof)), proof: paged.proof })
+      const legacy = await runLegacyDocumentCase(context)
+      cases.push({ case_id: 'legacy-effect-document', status: 'pass', input_sha256: legacy.document_sha256, proof: legacy })
+      attachments.push(await evidence.writeAttachment(context, 'network_log', 'desktop/network.json', evidence.bindRecord(context.report, { case_id: 'network', input_sha256: fixtures.videoHash.sha256, requests: [...reopened.requests, ...paged.requests] })))
     } finally { await reopened.close() }
     attachments.push(await evidence.writeAttachment(context, 'action_trace', 'desktop/actions.json', evidence.bindRecord(context.report, { cases, input_sha256: fixtures.videoHash.sha256 })))
     return { status: 'pass', acceptance_ids: evidence.acIds('desktop'),

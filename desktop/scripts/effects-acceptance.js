@@ -72,9 +72,11 @@ async function initialize(options, reservation) {
     projectsRoot: path.join(evidenceRoot, '中文 空格/projects'),
     report, processes: [], onProgress: phase => console.log(`[effects-acceptance] ${phase}`) }
   for (const executable of [context.electron, context.ffmpeg, context.ffprobe, context.python]) await evidence.checkedPath(executable)
+  await evidence.verifyPackagedEffectResources(context)
   return context
 }
 async function packageScenario(context) {
+  await evidence.verifyPackagedEffectResources(context)
   const attachments = []
   const before = await evidence.verifyIdentity(context)
   attachments.push(await evidence.writeAttachment(context, 'identity_before', 'package/identity-before.json', before))
@@ -116,7 +118,7 @@ async function visualScenario(context) {
     const fixtures = await visual.createFixtures({ ...context,
       evidenceRoot: path.join(context.evidenceRoot, 'player-fixtures') })
     const project = await desktop.seedProject(session, fixtures)
-    return await visual.runVisual({ ...context, projectId: project.projectId,
+    return await visual.runVisual({ ...context, playerSession: session, projectId: project.projectId,
       capturePlayer: (...args) => desktop.capturePlayer(session, project, ...args) })
   } finally { await session.close() }
 }
@@ -131,9 +133,9 @@ function regressionCommands(root, evidenceRoot) {
     { id: 'timeline', executable: node, argv: [npm, 'test', '--', 'src/components/video/timeline/store/actions/__tests__/applyEffects.test.ts', 'src/components/video/projects/__tests__/effectsPersistence.integration.test.tsx', 'src/components/video/projects/__tests__/VideoProjectListView.effects.test.tsx', '--reporter=json', '--outputFile=desktop/build/effects/regression-timeline.json'], cwd: root },
     { id: 'runtime-typecheck', executable: node, argv: [npm, '--prefix', 'effects-runtime', 'run', 'type-check'], cwd: root },
     { id: 'runtime-build', executable: node, argv: [npm, '--prefix', 'effects-runtime', 'run', 'build'], cwd: root },
-    { id: 'runtime-tests', executable: node, argv: ['--test', '--test-reporter=junit', '--test-reporter-destination=runtime-junit.xml', '--test-concurrency=1', ...['lifecycle', 'mediaServer', 'render.integration', 'stopReason'].map(name => `tests/${name}.test.mjs`)], cwd: path.join(root, 'effects-runtime'), env: { EFFECTS_REAL_RUNTIME_TEST: '1', EFFECTS_MANIFEST_STARTUP_TEST: '1' } },
-    { id: 'desktop-tests', executable: node, argv: ['--test', '--test-reporter=junit', '--test-reporter-destination=desktop-junit.xml', 'desktop/scripts/effects-smoke.test.js', 'desktop/scripts/lib/effects-release-evidence.test.js', 'desktop/main/effectsService.test.js'], cwd: root },
-    { id: 'backend', executable: path.join(backend, 'venv/Scripts/python.exe'), argv: ['-B', '-X', 'utf8', '-m', 'pytest', 'tests/test_effects_contract.py', 'tests/test_effects_draft_replay.py', 'tests/test_effects_jobs.py', 'tests/test_effects_assets.py', 'tests/test_effects_lifecycle.py', 'tests/test_effects_paths.py', 'tests/test_effects_runtime_client.py', '--junitxml=effects-junit.xml'], cwd: backend, env: { ECLIPTRIX_EFFECTS_RUNTIME_TEST: '1' } },
+    { id: 'runtime-tests', executable: node, argv: ['--test', '--test-reporter=junit', '--test-reporter-destination=runtime-junit.xml', '--test-concurrency=1', ...['lifecycle', 'mediaServer', 'render.integration', 'stopReason', 'fontResources'].map(name => `tests/${name}.test.mjs`)], cwd: path.join(root, 'effects-runtime'), env: { EFFECTS_REAL_RUNTIME_TEST: '1', EFFECTS_MANIFEST_STARTUP_TEST: '1' } },
+    { id: 'desktop-tests', executable: node, argv: ['--test', '--test-reporter=junit', '--test-reporter-destination=desktop-junit.xml', 'desktop/scripts/effects-smoke.test.js', 'desktop/scripts/lib/effects-release-evidence.test.js', 'desktop/scripts/lib/effects-font-usage.test.js', 'desktop/main/effectsService.test.js'], cwd: root },
+    { id: 'backend', executable: path.join(backend, 'venv/Scripts/python.exe'), argv: ['-B', '-X', 'utf8', '-m', 'pytest', 'tests/test_effects_contract.py', 'tests/test_effects_text_layout.py', 'tests/test_effects_draft_replay.py', 'tests/test_effects_jobs.py', 'tests/test_effects_assets.py', 'tests/test_effects_lifecycle.py', 'tests/test_effects_paths.py', 'tests/test_effects_runtime_client.py', '--junitxml=effects-junit.xml'], cwd: backend, env: { ECLIPTRIX_EFFECTS_RUNTIME_TEST: '1' } },
     { id: 'build', executable: node, argv: [npm, 'run', 'build'], cwd: root },
   ]
   for (const command of commands) command.argv = command.argv.map(argument => {

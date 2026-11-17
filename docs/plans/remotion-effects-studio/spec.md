@@ -1,23 +1,72 @@
 # Remotion 特效工作台设计方案
 
-版本：v2（第二轮评审修订，2026-11-17；设计通过，实现及发行验收待执行）
-适用仓库：Ecliptrix；首轮勘查 `9265179e`，本轮代码基线 `58dce2a7`
+版本：v2（第三轮设计评审修订，2026-11-17；输入为第三轮设计 v4，产品实现及发行验收待执行）
+适用仓库：Ecliptrix；首轮勘查 `9265179e`，本轮代码基线 `8d53a66d`
 方案目录：`docs/plans/remotion-effects-studio/`
-交付物：本文 `spec.md`；本节点只评审和修订设计，不修改实现、不安装依赖、不提交 Git。
+交付物：本文 `spec.md`；本节点只修改此方案，另仅按任务授权回退本节点任务状态；不修改实现、不安装依赖、不提交 Git。
 
-版本沿革：首轮 v1 → 首轮评审 v2 → 第二轮设计输入 v3 → 本节点
-第二轮评审交付 v2。最后一个 v2 是任务约定的评审阶段标识，不表示
-回退首轮实现。`plan-current.json`、`round-2-verification.md` 的 v3
-仍指前序设计输入；本节点按约束只改本文，不改写前序记录。
+版本沿革：首轮 v1 → 首轮评审 v2 → 第二轮设计 v3 → 第二轮评审
+v2 → 第三轮设计 v4 → 第三轮评审 v2。v2 是评审阶段标识，不表示回退实现。
+第二轮实际交付为 `8d53a66d`，包含 CR-13 / CR-14；第三轮从该提交
+继续。`round-2-verification.md` 保留原记录，当前定位见
+`plan-current.json`，本轮设计核查见 `round-3-verification.md`。
 
-**本轮阅读顺序**：先读 §14–19。§1–13、RV / IM 记录保留首轮架构、
-24 个模板及实施依据；§14–19 是基于已落地代码的第二轮执行契约，
-发生差异时以该增量为准。§10 的“新增”是首轮历史计划，不得据此重建
-已实现模块；本轮文件范围以 §17 为准。AC-01–34 保留，设计输入新增
-AC-35–46，本评审再补 AC-47–56。
-`acceptance.md` / `final-review.md` 是首轮实测记录，不能当成本轮执行结果。
+**本轮阅读顺序**：先读 §20–26；第三轮文件范围只以 §23 为准。
+§1–19、历次 RV / IM 记录保留架构及实施依据；冲突时 §20–26 优先，
+没有明确替代的原约束继续有效。§10、17 的新增 / 修改已经在前两轮
+落地，不得据此重建。保留 AC-01–56，新增 AC-57–66。
+`acceptance.md` / `final-review.md` 已含两轮历史实测，不能直接作为
+第三轮代码、字体资源或安装包通过的证据。
+
+**目标**：补齐离线 emoji 字形、多行文字处理、草稿分页和文字验收证据，
+使现有 12 库 / 24 模板可在真实安装环境继续完成可靠制作。
+**架构**：延续共享 Remotion composition、本地持久队列、MP4 入库及
+单次时间线事务；本轮只补强字体资源、文字边界与草稿查询。
+**技术栈**：Next.js 15 / React 19.1.1 / Remotion 4.0.544 / Electron 33 /
+FastAPI / SQLite / Pillow；不增加数据库表或新的渲染服务。
+
+下游按 §25 逐项执行，可使用 `superpowers:executing-plans`；本节点的
+交付边界为设计评审，既不执行实现，也不代替最终节点提交与发行验收。
 
 ## 评审记录
+
+本次评审输入为第三轮设计 v4，实际代码基线为 `8d53a66d`。按可行性、
+完整性、现有约定和范围逐节核对；发现 **6 项 P1、2 项 P2，无 P0**。
+以下各项均已在正文就地修订。这里的“已修订”仅表示设计问题闭合，
+不表示对应产品代码、资源导入或安装包验收已完成。
+
+| 编号 | 级别 | 问题、依据与影响 | 正文修订及验收 |
+|---|---|---|---|
+| R3-RV-01 | P1 | `stopReason.ts::normalizeChildErrorCode` 的 CHILD_ERRORS 不含文字溢出；只改 renderChild，controller 仍会将它改成媒体解码失败。对现有 dist 的只读调用已确认该映射 | §21.2、23、24、25.1 补齐 controller 白名单、端到端错误及停止优先级；AC-65；已修订 |
+| R3-RV-02 | P1 | `fitEffectText` 逐 grapheme 累加 canvas 宽度不等价于 DOM shaping / CSS 折行；`type-lines` 的空 div 会折叠空行。原方案声称浏览器最终守卫，却没定义实际测量、Player 错误和渲染等待 | §21.2 新增共享 EffectText 的实际 DOM 测量、空行与揭示布局契约；§23/24/25.1 补齐模块及真实浏览器用例；AC-59/60/65；已修订 |
+| R3-RV-03 | P1 | Callouts 文字在 y≤0.5 时 top=0.72H，再给 0.35H 会到 1.07H；只统一宽高仍越过 0.94H 安全边。Counters 的百分比 margin 也不能作为纵向像素预算 | §21.2 定义标注的锚点分支、组布局及明确像素间距；§24 增加边界向量；AC-60；已修订 |
+| R3-RV-04 | P1 | renderer 当前仅采 layout，capturePlayer 也只返回 layout；未规定两端字体来源交付和完整节点集合。CDP 返回名字与 CSS 的 Effects-* 别名也不能凭字符串推定为同一文件，空记录可能漏检 | §21.1/21.4、22.3 明确两端原始 CDP、离线字体探针、节点覆盖及独立匹配；§23/24/25.3 补齐 helper 和负向用例；AC-63/64；已修订 |
+| R3-RV-05 | P1 | 新 textLayoutHash 尚未定义资源包内生成副本的确切路径及 controller 的核验；仅后端核对不能证明运行时清单和字体更新所用 bundle 属于同一规则 | §21.2、22.2 固定三端字节身份及启动拒绝；§23/25.1 补齐 server 和真实清单回归；AC-58/60；已修订 |
+| R3-RV-06 | P1 | 目录 hook 只接 projectId，controller 在弹窗关闭后仍挂载；关闭缺失 active 身份。现有 open 会等待 recentTask，指定草稿也受慢列表阻塞；refresh 清页还需明确保留页外选项 | §21.3、22.2、23–25 定义 active/epoch、显式入口独立加载、页外选项和首次创建刷新；AC-61/62；已修订 |
+| R3-RV-07 | P2 | 原 prepare 顶层立即准备浏览器/原生资源，直接导入它做字体锁测试会受联网和真实目录副作用影响；“emoji 缺件均拒绝”又与允许固定源补配相冲突 | §21.1、23–25 增加无副作用字体准备模块和隔离临时目录测试，区分构建补配与安装时缺件；AC-58；已修订 |
+| R3-RV-08 | P2 | 顶部 v4 与节点要求 v2 不一致；§26 指向 Subtask #0，评审结束照抄会覆盖前序记录。前序定位与核查副本也不能冒充本评审版本 | 本文顶部、§26 及文末统一当前评审 v2 / Subtask #1，保留前序文件及历史；已修订 |
+
+| 章节 | 逐节评审结论 |
+|---|---|
+| §1–2 | 12 库 / 24 模板、本地烘焙 MP4、Electron / FastAPI / SQLite 架构与 CLAUDE 一致；保留已实现结构 |
+| §3–4 | 保留四入口、模板契约、帧单位与渐进披露；新增目录控制和实际文本布局以 §21 为准 |
+| §5–6 | 不增加数据库表、任务协议权限或渲染服务；补齐错误码、资源闭包及最终布局守卫，原幂等 / 生命周期保留 |
+| §7–9 | 保留来源校验、一次时间线事务、eventChain 和真实客户端回执；本轮不扩大自动上轨权限 |
+| §10–13、IM | 首轮文件计划和实施差异作为历史保留，不重建源码；既有性能 / 许可 / 实装门禁继续适用 |
+| §14–19 | 第二轮恢复、租约、停止原因和证据身份约束继续适用；报告根对象由 §22.3 升为 v2，附件 envelope 仍为 v1 |
+| §20 | 四项产品缺口与代码一致；维持增量范围，区分设计缺陷与产品缺陷 |
+| §21 | 按 R3-RV-01–07 修订字体、DOM 测量、安全区、分页与取证接线 |
+| §22 | 明确新增公开类型、生成副本和双端字体证据，不更改持久文档或 frozen 请求身份 |
+| §23 | 精确计划增至 68 个文件，另由 catalog 唯一决定 48 个预览；新增项均服务于上述缺口 |
+| §24 | 保持 AC-01–66 连续唯一，补强原 AC 的真实行为和证据要求，不以单测替代实包 |
+| §25 | 先复现后实施，先最小真实浏览器切片再完整矩阵，最终提交后重打包重验 |
+| §26 | 本节点仅交付评审文档；真实发行和调度器状态均有明确证据门禁 |
+
+未解决设计 P0/P1 为 **0**。本轮修订见 §20–26；前序
+`round-3-verification.md` / `plan-current.json` 保持设计 v4 的历史内容，
+当前评审核查结果以 §26 和本节点任务板为准。
+
+## 第二轮 v2 评审记录（历史）
 
 评审输入为第二轮设计 v3，代码基线为 `58dce2a7`。逐节核对可行性、
 完整性、项目约定和范围；保留 12 库 / 24 模板、SQLite 三表、既有
@@ -2741,7 +2790,7 @@ Python UUID 类型拒绝 wire 字符串，故采用 §16.2 的显式字符串校
 类型检查）。git diff --check 通过；工作区原有定位 / 核查文档和
 测试临时目录保留，本节点无源码编辑、无 Git 提交。
 
-## 评审结论
+## 第二轮 v2 评审结论（历史）
 
 **有条件通过**。第二轮评审 v2 已在正文修订 R2-RV-01–12，
 未解决设计 P0/P1 为 **0**，可按 §17 开始增量实现。
@@ -2755,3 +2804,961 @@ Python UUID 类型拒绝 wire 字符串，故采用 §16.2 的显式字符串校
    Subtask #1 completed；任务规定的本地回退不代表服务器已确认。
 
 这些条件是实现、发行和调度交接的证据门禁，不是未修复的设计阻塞。
+
+## 20. 第三轮概述与缺口清单
+
+本轮完善已经可用的特效工作台。素材面板「AI 混剪」旁的入口、携带
+素材 / 片段打开弹窗、12 库 / 24 模板、图片输入、实时预览和生成成品
+继续保留。主要目标是使中文多行标题与常见 emoji 在离线安装环境中
+稳定制作，并让使用过较多模板的用户能重新找到较早的草稿。界面继续
+使用现有主题、键盘和焦点规则，新增状态只出现在相关控件旁。
+
+技术方案延续前两轮的本地架构。补充一套随包单色 emoji 字体，统一
+文字安全区参数，修复换行符进入字体测量的问题；草稿查询复用已有
+服务端游标。文字验收补充真正的 Player / renderer / MP4 对照，避免
+只证明字体文件有字形，却没有证明用户实际得到的画面。Agent 沿用
+现有按需披露的九个工具和原键恢复，不再增加一组重复制作工具。
+
+本轮输入依次为任务板两轮摘要、`8d53a66d`、当前 README / CLAUDE、
+§1–19 与 IM-R2-01–10、`acceptance.md`、`final-review.md`、实际 UI /
+API / 后端 / runtime / 验收脚本。项目索引已过期的账号说明不覆盖
+当前 CLAUDE。下表均是本轮待实施项，不把历史修复重新标为开放。
+
+| 编号 | 级别 | 触发、已核对证据与影响 | 本轮处理 |
+|---|---|---|---|
+| R3-01 | P1 | IM-R2-06 保留 emoji 缺字。本轮对三个实际 TTF 运行现有 glyphs 命令，仍返回 U+1F3AC / U+1F600 / U+2728 缺失；`fonts.ts` 仅有三种字库，`prepare.mjs` 缺源文件时从可变 main 下载后重写 hash | §21.1：新增离线 Noto Emoji、固定资源锁与一致字体链；AC-57/58/64 |
+| R3-02 | P1 | `recovery.py::validate_text_layout` 第 58 行先 `getlength(letter)` 再判断换行；本机 Pillow 13.0.0 对 LF 确实抛 RuntimeError。该函数又固定使用 35% 高度，与 Slideshow / SplitScreen 的 25%、Counters / Countdown 的 20%、竖屏 Product 的 15% / 10% 不同；`renderChild.ts` 没有保留文字溢出错误码 | §21.2：换行先分支、共享安全区、有限预检及浏览器最终守卫；AC-59/60/65 |
+| R3-03 | P2 | 后端 `list_drafts` 返回 next_cursor，`api/effects.ts::listEffectDrafts` 只返回 items；控制器仅读取一次。第 13 个及更早草稿无下拉入口 | §21.3：分页 API、独立列表状态及可访问的加载按钮；AC-61/62 |
+| R3-04 | P1 | `runVisual` 补充文字向量虽然生成 MP4 和两份 still，只归档三张 a.png 与 glyph JSON；`assertVisualGlyphs` 不独立核对 b.png、MP4、Player、布局及字形实际来源，也没有核对固定文本集合 | §21.4：补充向量与主矩阵同强度取证、实际字体来源及负向 verifier；AC-63/64 |
+
+本轮共 **3 项 P1、1 项 P2、无已确认 P0**。R3-02 的换行故障为实际
+复现；安全区差异、分页和证据缺口为源码确认，尚未冒称完整 UI 或
+HTTP 复现。第三轮只执行这四项及关联回归，不重写队列、账号、相机、
+时间线导出或其它 Agent 能力。原有发行阻塞不会因写完本文自动解除。
+
+### 20.1 方案取舍
+
+| 方案 | 影响与决定 |
+|---|---|
+| 共享离线字体链、文字安全区和现有分页，补齐真实证据 | 复用已有服务和安装链，变更可独立回归；采用 |
+| 仅补一个 emoji 文件、跳过 LF 测量 | 不能保证 Player 实际使用新字体，也保留模板安全区差异和草稿不可达；不满足本轮验收 |
+| 引入完整原生排版引擎或独立文字预检渲染服务 | 引入新的进程 / 依赖 / 并发模型，本轮没有相应需求；不采用 |
+
+## 21. 第三轮技术设计
+
+### 21.1 字体资源闭包与一致加载
+
+使用官方 **Noto Emoji 单色可变 TTF**，目标文件
+`public/effects/fonts/NotoEmoji[wght].ttf`，与正文颜色一致；不增加彩色
+emoji、网络字体服务或用户字体上传。官方元数据明确给出该文件名及
+300–700 字重范围，单色类型由 Noto 官方说明确认：
+[字体元数据](https://github.com/google/fonts/blob/main/ofl/notoemoji/METADATA.pb)、
+[Noto 使用说明](https://github.com/notofonts/noto-docs/blob/main/docs/website/use.md)。
+这证明资源选择，不证明当前仓库已具备该文件或全部 Unicode 覆盖。
+
+1. 新增版本化 `public/effects/fonts/source-lock.json`。原有三个 TTF
+   和三个 OFL 文件直接采用当前已跟踪文件的确切 SHA-256 / bytes。
+   新 emoji 首次导入时，读取官方 google/fonts 对应路径的最后一次
+   提交 SHA，使用该完整 40 位 SHA 的 raw 地址下载 TTF / OFL /
+   METADATA.pb，计算真实 bytes / SHA-256 后一起写入锁。下载和写锁
+   是实施的第一步；禁止用 main / latest、占位 hash 或从旧报告抄值。
+   若官方源不可达，明确记录资源导入阻塞，不换系统字体或第三方镜像。
+2. 锁是输入，`manifest.json` 是生成结果。原六个已跟踪资源为
+   vendored-only，sourceUrl=null，缺失时提示恢复仓库文件并失败，
+   不尝试网络补配。正常 prepare 只校验锁；本地文件存在但 hash 错误
+   时立刻失败，不能按错误字节重写锁。只有新 emoji 三项缺失时可从
+   锁内固定 URL 下载，先写同目录唯一 .part、校验、再发布；错误 /
+   超时移除本次 part，保留原文件和锁。锁中非 null URL 限定官方
+   `raw.githubusercontent.com/google/fonts/<40hex>/ofl/`，最多 60s，
+   单文件最多 32MiB，响应必须成功。不要递归删除字体目录。
+3. manifest 保留现有 fonts 数组，并增加 schemaVersion=2、资源角色
+   `font | license | metadata`。每个 font 项包含 family、path、
+   bytes、sha256、weight；emoji 的 weight 为 `300 700`，其它仍为
+   `100 900`。source-lock 和四组字体 / 许可证纳入 fontHash 全树，
+   后端、资源包与前端 public 目录必须一致。OFL 原字节及原版权保留，
+   参照[官方许可证](https://github.com/google/fonts/blob/main/ofl/notoemoji/OFL.txt)，
+   不在制作流程中添加审批弹窗。
+4. `fontResources.ts` 直接导入 source-lock.json，按 role=font 提取
+   定义；prepare.mjs 读取同一 JSON，不再维护第二组文件名 / 字重。
+   `EffectCompositionProps.fontUrls` 增加必需 emoji 键，文档里的
+   typography.family 仍只允许 sans / serif / mono。定义唯一函数
+   `getEffectFontChain(family)`，顺序分别为 sans→emoji、
+   serif→sans→emoji、mono→sans→emoji，去重后供 CSS、canvas 测量
+   和加载共用。三端不能分别手写不同链，也不追加通用 sans-serif /
+   Segoe UI Emoji 作为产品依赖。
+5. `loadEffectFont` 保持现有两个参数可调用，增加可选字重描述；缓存键
+   包含 family、URL、weight。`useEffectFont` 必须等待链中所有字体，
+   每个 delayRender 句柄仍只释放一次；任一失败仍以
+   EFFECT_FONT_LOAD_FAILED 退出、删除失败缓存，用户点击原有重试可
+   重新加载。不会因为“emoji 不在当前文本里”而跳过资源验证。
+   沿用 [Remotion 的 FontFace 与等待字体机制](https://www.remotion.dev/docs/fonts)，
+   不新增 `@remotion/google-fonts` 运行依赖。
+6. `renderChild` 和视觉 helper 从 manifest 的 font 角色构造四键
+   fontUrls；前端由同一资源定义构造本地 URL。没有 emoji 项 / 字重
+   不合法时立即拒绝资源包，不偷偷回退。更新字体后重建 bundle、
+   48 个模板预览及全树 manifest；旧输出视频仍按自己的 asset 播放。
+
+**R3-RV-04 / R3-RV-07：资源核验与测试边界。** 字体锁中的 sans / serif /
+mono / emoji 是产品键，`Effects-*` 是 FontFace 注册别名，不是二进制
+内部 family / PostScript 名。实际名称与文件的对应由 §21.4 的离线探针
+从本次已核验字体取得，不从不受信的取证记录反向生成允许名单。
+glyph checker 的输入只取当前 family 的有序 fallback 链，不能用其它
+未加载字体的字形通过检查。
+
+将字体准备的校验 / 有界下载 / 原子发布提取到
+`effects-runtime/scripts/font-resources.mjs`，导入无副作用，显式接收
+锁与输入 / 输出目录；`prepare.mjs` 负责调用它和已有浏览器准备。
+不新增产品环境变量或任意路径配置。测试仅在工作区内唯一临时副本
+中执行，下载 transport 可注入固定字节、错误和超时；实际 prepare
+仍使用固定官方地址。测试不可写真实字体目录或安装目录，不能因导入
+模块下载浏览器。任何源文件存在但损坏均拒绝；正常构建的缺失 emoji
+可以按固定锁补配，离线且缺件或安装包缺件必须拒绝。AC-58 同时绑定
+这些源码回归与 package 对本次真实资源树的只读核验，不声称断网能
+从不存在的资源补配。
+
+字体范围是已验证的中文 / 拉丁 / 组合字符及本轮固定 emoji 向量，
+不声称一份 emoji 字体支持所有脚本和所有未来组合。未知组合不能通过
+替换固定验收字符串来隐藏；真实字体来源验证见 §21.4。
+
+### 21.2 多行文案、安全区与最终错误
+
+创建 `src/lib/effects/textLayout.json`，schemaVersion=1，按 catalog 的
+componentId 索引规则；build 导出后端 `text-layout.generated.json`，
+不得手工维护第二份参数。规则包括 renderedFields、widthRatio、
+heightRatio、lineHeight、sizeRatio、minScale；所有分支都是枚举，
+不接受可执行表达式或来自用户的 CSS。`getEffectTextBox(document, field)`
+只负责返回数字，不访问 DOM、网络或 store。
+
+| componentId | 实际渲染内容字段 | 宽高规则（W/H 为画布，S=min(W,H)） |
+|---|---|---|
+| Titles | title、subtitle | W×0.88 / H×0.35 |
+| Typewriter | title | W×0.88 / H×0.35 |
+| LowerThirds | title、subtitle | W×0.70 / H×0.35 |
+| ImageReveal | title | W×0.88 / H×0.35 |
+| Slideshow | title | W×0.88 / H×0.25 |
+| SplitScreen | title | W×0.88 / H×0.25 |
+| Product | title、subtitle | W≤1.5H 为竖排：宽 W×0.88，高分别 H×0.15 / H×0.10；否则见下式，高均 H×0.35 |
+| Callouts | title | W×0.38；pointY>0.5 高 H×0.35，否则高 H×0.22；锚点规则见下文 |
+| Counters | title | W×0.88 / H×0.20；数值及 suffix 的独立边界见后文，不纳入 content.subtitle |
+| Countdown | title | W×0.88 / H×0.20；倒计时数字沿用现有绘制 |
+| VideoLook | title | W×0.88 / H×0.35 |
+| Backgrounds | title、subtitle | W×0.88 / H×0.35 |
+
+Product 横排卡片边长 `min(cardScale*S, 0.85H)`，文字宽度
+`min(0.40W, 0.88W - cardSide - 0.03S)`；竖排卡片边长仍为
+`min(cardScale*S, 0.50H)`。无效或非正安全区返回受控文字溢出。
+title / subtitle 的 sizeRatio 分别为 0.07 / 0.035，minScale=0.6，
+lineHeight=1.3。Titles 移除覆盖到 1.25 / 1.4 的独立行高，所有调用
+统一使用规则输出，避免测量与 CSS 使用不同参数。
+
+**R3-RV-03：安全区包含摆放约束。** Callouts 保留原锚点：pointX>0.5
+时 left=0.06W，否则 left=0.55W；pointY>0.5 时 top=0.12H，否则
+top=0.72H。文字高上限为 `min(0.35H, 0.94H-top)`，因此下方为
+0.22H；JSON 增加 callout 枚举规则，TS / Python 同判 `>0.5`，不得
+只改前端高度。1080 高画布下，下方盒子为 top=777.6、height=237.6，
+bottom=1015.2，不再用 height=378 伸出画布。实际节点宽度明确设置
+为安全区宽，避免 flex / shrink-to-fit 在更窄容器里另行折行。
+
+同一组件中的媒体、数字、title / subtitle、padding 和间距须共同
+适配可用容器。Counters 的 marginTop 改为 `0.05*S` 像素，Countdown
+为 `0.04*S` 像素；数字 / 柱图固定盒子不因 flex-shrink 压缩，文字
+组按真实尺寸检查。其它组件保留现有布局，若真实边界检查仍溢出，
+缩小至既定下限后报文字溢出，不用 overflow:hidden、截断或扩大
+安全区通过。运动 transform / clip / opacity 施加于外层；安全区
+测量基于未施加运动的内容盒，不把正常入出场位移误判为排版溢出。
+Counter-up 的完整最终数字（最大 value 的字符串）与 params.suffix
+作为同一可见数值块参加浏览器宽高校验，初始字号仍为 0.19S，可缩至
+0.6 倍，不能只检查 title 而放过用户后缀；运行中较短数值复用最终值
+的排版，不逐帧跳字号。该块限制在 0.88W×0.55H，超限错误定位
+params.suffix / params.value，不误指隐藏 subtitle。柱图标签及
+Countdown 数字仍保留原字号，但纳入组的真实占用检查。此项不新增
+持久字段或 Pillow 逐码点预检。
+
+执行顺序如下：
+
+1. 读取原文档并保持字节语义：不对持久草稿自动 NFC、trim 或改换行，
+   不修改 frozen write / document_hash。仅在排版视图中将 CRLF 和孤立
+   CR 解释为 LF；制表符按四个 U+0020 展示，保存仍保留原字符。
+   界面字符计数继续是 Unicode code point，不能偷换为 UTF-16 长度。
+2. `layout.ts::fitEffectText` 使用同一字体链和安全区。先检查 LF，再
+   测量可绘制 grapheme；保留显式空行和末尾空行。浏览器的
+   Intl.Segmenter 继续负责打字揭示，不逐 code unit 切 emoji 或组合
+   字符。canvas 以完整候选行测宽，不能累加孤立 grapheme 的宽度
+   冒充 shaping。它只给出初始字号，不能作为最终 fit 成功或拒绝的
+   唯一依据。空字段不抛错，未绘制的 content 字段不参与布局判断。
+3. 后端预检先按 LF 分支计行，绝不把 LF / CR 传给 Pillow.getlength。
+   明确换行形成的最少行数乘 `minFontSize*1.3` 超出相同安全区时，
+   HTTP 422 EFFECT_TEXT_OVERFLOW，包含 content.title / subtitle 路径，
+   不创建 job。资源缺失为 503 EFFECT_RUNTIME_UNAVAILABLE。
+4. Pillow 的逐码点宽度不能等价于 Chromium 的 fallback / shaping。
+   本轮移除其基于逐码点自动折行的强制拒绝；Pillow 估算不作为渲染
+   授权、成功证明或精确排版承诺。其余折行由共享浏览器组件最终
+   校验，必要时任务以明确文字错误失败，输入和草稿保留。
+   这是对旧 §6 / §18 中“全部溢出均在入队前拒绝”的明确收窄：
+   结构、必填和必然超限在入队前拒绝，真实字体折行以 renderer 为准。
+5. 实际浏览器守卫确认最小字号仍不能容纳时抛带稳定码的 EffectError；
+   `renderChild` 在现有错误映射中保留 EFFECT_TEXT_OVERFLOW，位置在
+   通用 EFFECT_MEDIA_DECODE_FAILED 之前。停止原因仍优先，不能把
+   deadline / cancel / parent_lost 改成文字错误。控制器和服务端原样
+   保存该错误码，复用已有“缩短文字或减小字号”中英文案。
+   **R3-RV-01：** 同时将该码加入 `stopReason.ts::CHILD_ERRORS`，
+   经 normalizeChildErrorCode、controller 终态和后端 job API 逐跳
+   保留；未知子进程错误仍降为媒体解码失败，不开放任意错误字符串。
+   非用户停止的优先级和唯一终态规则不改，真实失败不发布 output asset。
+6. 检查器只显示当前 renderedFields 对应的文案控件；切模板后隐藏
+   字段的原值继续保留，可切回，不误称该模板会绘制副标题。保存与
+   自动保存仍允许未填完但结构合法的草稿，不因预览溢出丢弃输入。
+
+**R3-RV-02：实际浏览器守卫。** 12 个组件的 content 文案统一通过
+新增 `compositions/EffectText.tsx` 排版；纯 helper 仍放 textLayout /
+layout 中，不在每个模板重复测量算法。DOM 使用精确像素 width、无
+padding / border 的内层文字盒，完整字体链就绪后，以真实行盒及
+scrollWidth / scrollHeight 检查宽高；整数 scroll 度量只允许 1 个
+源像素舍入容差，不能直接用带 Player 缩放或动画的 viewport Rect。
+跨字段容器另核对实际占用总高度，且可选空字段不产生行或 margin。
+
+canvas 的初始候选不合格时，由同一浏览器节点在 `[base*0.6,base]`
+范围内最多 12 次二分确认可用字号；任何 canvas 估算失败均不能跳过
+实际最小字号 DOM 检查。对同一文案 / 画布 / 模板参数 / 字体资源键
+复用测量结果，不按每一帧重复搜索。文字内容或字体键变化使旧结果
+失效。最终无可用字号时才抛 EFFECT_TEXT_OVERFLOW，不把文本裁掉。
+
+每个显式 LF 切成独立行容器，空行及尾随空行保留一份 line-height；
+不用可见占位字符修改用户文字。CSS 折行只在行内容内进行，tab 先
+按四空格展示。Typewriter 测量完整文案，按 grapheme / 行改变可见性，
+未揭示部分仍保留排版占位；光标宽度计入可用宽，空行不因空 div
+折叠。测量用的隐藏节点与正式文字明确区分，取证仅采正式输出，
+不能以隐藏副本证明画面含字。
+
+渲染环境在本次布局尚未确定时持有 delayRender 句柄，用布局 effect
+读取实际节点，确认并提交稳定字号后再释放；失败调用 cancelRender。
+每个句柄在成功、失败、卸载或输入切换时恰释放一次，旧输入的异步
+完成不得放行新输入。Player 中 delayRender 不提供播放等待，必须以
+当前布局 ready 状态控制文案展示，并将失败写入 React 错误状态、在
+render 中抛出，交由现有 errorFallback 显示和重试；不能让 effect 的
+异步拒绝漏到全局。字体 / 布局异常仍不删除文案或更改草稿 / 历史。
+此方案复用现有渲染进程，不新增预检服务或测试专用产品 bridge。
+等待机制依据 [Remotion delayRender / continueRender](https://www.remotion.dev/docs/delay-render)，
+但可用性仍须在锁定 4.0.544 下以真实 browser / Player 验证。
+
+共享 JSON 的 SHA-256 增加为 runtime manifest 的 textLayoutHash。
+backend runtime_client 读取生成副本原字节并核对该 hash；缺失 / 不等
+即 EFFECT_RUNTIME_MISMATCH。JSON 被 bundle 使用，亦参与完整
+runtimeFingerprint；无需修改草稿 schema 或另增数据库列。该强约束
+只适用于新包；旧包内旧后端继续按旧协议运行，不跨版本拼装资源。
+
+**R3-RV-05：生成和启动闭包。** build 先读取源
+`src/lib/effects/textLayout.json` 原字节，一次写出后端
+`text-layout.generated.json` 及资源包的 `runtime/text-layout.json`，
+再 bundle / 计算文件树和 runtimeFingerprint；不能在计算身份后追加
+文件。两份生成文件与源文件 byte-for-byte 相等，textLayoutHash 是
+这些字节的 SHA-256。包内副本列入 manifest.files 的精确路径
+`runtime/text-layout.json`，同时参与 runtimeHash。
+`server.ts::verifyManifest` 在 ready 前校验 64 位 hex 的
+textLayoutHash、唯一清单项、对应文件 bytes/hash 与该字段相等；
+缺字段、缺项、错误副本均 EFFECT_RUNTIME_MISMATCH。后端还比较自身
+生成副本，避免旧后端拿新 runtime 自报的身份作为兼容证据。单独
+重打包或旧快照不复用旧指纹，原 hash 并行读取与启动期限保持不变。
+
+明确回归向量：1920×1080 的 slides-crossfade，title 为
+`一\n二\n三\n四\n五`，scale=1。最小字号 45.36px，五行需要 294.84px，
+超过该模板的 270px 安全区，应在提交前返回 422；同样五行在 Titles
+的 378px 区域不能仅因行数被拒绝。`First line\nSecond line` 则不应
+抛 raqm 异常。该差异无需新原生排版引擎即可确定地验证。
+
+### 21.3 草稿目录分页与交互
+
+服务端已有 keyset 顺序和 12 条默认页大小，继续使用。新增
+`listEffectDraftPage(projectId, cursor?, requestOptions?)` 返回
+`EffectPage<EffectDraftSummary>`，`listEffectDrafts(projectId)` 保留为
+兼容的第一页数组包装，不改其它调用者返回类型。
+
+控制器把目录请求委托给 `useEffectsDraftList(projectId, isOpen)`，返回
+items、nextCursor、loading、loadingMore、error、errorPhase、refresh、
+loadMore，以及同步撤销请求资格的 invalidate 和单调合并摘要的
+upsertSummary。invalidate 由 close / 项目切换先调用，再切 isOpen。
+初次打开 / 新稿首次确认后 refresh；普通重绘不重查。每次 refresh
+递增 listEpoch，清除旧 cursor 链，再获取第一页；保持当前已打开草稿
+的选中项直到新页成功，不能因目录局部失败清空编辑器。
+
+**R3-RV-06：目录生命周期与编辑入口分离。** isOpen=false 时 hook
+不发请求，并同步撤销当前 listEpoch / cursor 请求资格、abort 已有
+GET；关闭后 controller 仍挂载不代表目录仍 active。重新打开新建
+一条 epoch。指定 draftId / 素材 / clip 的入口独立读取其内容，不
+await 第一页；列表挂起或失败不延迟该编辑器及 dirty / unknown 恢复。
+只有无显式输入、无可恢复本地稿、无同项目内存稿的默认入口需要
+等待第一页确定最近稿，仍受 10 秒上限和当前 open generation 守卫。
+
+每次确认 create 用 `(projectId,draftId)` 只触发一次 refresh；普通
+update / 自动保存只同步同 ID 摘要，不每 500ms 重置已加载页面。
+摘要更新以版本单调合并，晚到列表不得覆盖更高版本的名称；目录错误
+与编辑错误分开，first-page / load-more 错误记录明确的重试动作。
+刷新开始令 nextCursor 暂不可用，保留旧可见项至第一页成功，失败时
+只能重试 refresh，不能拿旧 cursor 接入新链；项目变化立即清旧项。
+
+页外选中稿继续使用现有 select 的当前稿兜底 option，不混入有序
+items / 游标链；第一页成功也不能移除该选项或把 value 设为空。
+按完整 ID 去重、显示当前草稿名及短 ID。AC-61 的“重开”指本项目
+同一个 controller 生命周期内关闭再开弹窗；应用重启仍沿用现有
+恢复 / 最近稿规则，旧稿可通过分页重新选取，不引入持久“最近选择”
+记录。loadMore / refresh 不重载当前文档，也不取得写租约。
+
+每个 GET 使用 retries=0、timeoutMs=10000 和可取消 signal。项目变化、
+unmount、更新 epoch 时取消旧请求并清页状态；交付必须同时匹配
+projectId + listEpoch + 请求游标。loadMore 对相同 cursor 单飞，同步
+设置 ref 防连续点击。只接受当前链 nextCursor，按 id 去重并保留
+服务端顺序，更新同 ID 摘要时取新回包；失败保留旧列表和原 cursor，
+点重试仍请求原页，绝不递归拉完全部页面。
+
+下拉框旁增加 32px 高「加载更多草稿」，占位跟随 header 自适应换行。
+仅 nextCursor 存在时出现；加载时禁用并宣布“正在加载”，错误摘要与
+重试按钮只作用于目录。按钮不是 select 内的伪 option，支持 Tab /
+Enter；加载后仍有下一页时焦点留在按钮，最后一页按钮消失时回到
+草稿 select；若 select 因无写租约不可聚焦，则回标题容器，不能落到
+body。成功保留已选 draftId；草稿名
+重复时 option 显示名称与短 ID，值仍为完整 ID。更多页成功不触发
+draft.load / flush、素材 attach、生成、时间线上轨或历史记录。
+
+refresh / loadMore 是只读列表行为，可以在已有草稿编辑中执行；切换
+草稿继续经过现有 dirty / uncertain / 租约守卫。目录不会扩大编辑
+资格，也不会在恢复状态中重新授权旧 target。
+
+### 21.4 补充文字向量与实际字体来源
+
+保留主矩阵 24×3=72 组合、每组五帧和原容差。补充向量使用固定
+title-rise、1920×1080、durationFrames=60、seed=1、默认参数。保留
+原七组，再增加 CRLF 和 emoji 组合，共九种文案 × 三字体 = 27 组：
+
+| case_id | title | subtitle |
+|---|---|---|
+| text-zh | 中文排版测试 | 空 |
+| text-en | English layout | 空 |
+| text-newline | 第一行 + LF + Second line | 空 |
+| text-120 | 120 个「文」 | 空 |
+| text-300 | Subtitle | 300 个 a |
+| text-combining | `Cafe\u0301 A\u030a`（按转义生成） | 空 |
+| text-emoji | 效果 🎬✨😀 | 空 |
+| text-crlf | 第一行 + CRLF + Second line | 空 |
+| text-emoji-sequence | `👩‍💻 ❤️ 👍🏽` | 空 |
+
+case_id 保持上表稳定值，family 分别为 sans / serif / mono。上表最后
+一组的 ZWJ、VS16、肤色修饰符必须原样保留。单色显示是设计选择，
+不能用“Emoji 通常显示彩色”作为更换渲染链的理由。
+
+新增 `effects-text-vectors.js`，只导出冻结向量定义和已知 family，
+runner / verifier 共用输入值；verifier 仍独立读取附件、重算散列 /
+解码 / 布局，不能调用 runner 的“通过”结论。生成每组输入后重新
+计算 requestHash，不能复用 prepareSubmission 时旧 document 的 hash。
+
+固定补充文档不携带媒体输入，canvas 恰为 1920×1080 / 30fps、
+schemaVersion=1、templateVersion 为本次 catalog 中 title-rise 的版本，
+durationFrames=60、seed=1、palette 为 #15171A / #F5F4F1 / #C87758，
+typography.scale=1 / align=center、motion.speed=1 / intensity=1，
+params 为该模板 defaults。只有表内 content 和 family 发生变化。
+verifier 从冻结向量和目标 catalog 独立构造完整期望文档后比对，不能
+只检查 self-hash；否则把前景改成背景色也可能“同帧一致”而没有文字。
+报告的 document hash 使用既有 hash(JSON.stringify(document)) 规则，
+不与后端 canonical document_hash 混用。
+
+每组在 frame=[0,29,59] 调用已有 sampleFrame，归档两次真实 still、
+对应 MP4 解码帧、Player 截图、mask、metrics、双端 layout、实际
+font usage、fixture document、视频及 probe。复用主矩阵的像素阈值、
+独立 MP4 解码与 CSS 坐标归一化，不能只在字体检查后写一个 pass。
+frame 29 必须找到预期可见文本；淡入 / 淡出透明帧允许暂时无字形，
+但不能用这两帧代替中帧检查。新增 supplemental_sample_frames=81、
+supplemental_vector_count=27，原主矩阵 sample_frames=360 保持不变。
+
+supplemental_index 恰含 27 个 entry，各有 case_id、family、
+input_sha256、document / video / probe 路径及按 0、29、59 排列的
+frames。frame 的媒体、布局、mask、metrics 交叉引用复用主矩阵
+结构，另含 renderer_font_usage / player_font_usage 路径。两份字体
+记录不共用路径；全矩阵应有 81 组双端记录，归属错误或缺一端即失败。
+两个 still 路径必须不同且来自两次调用；校验不能因其内容 hash 相等
+就拒绝正确的确定性输出，也不能只看路径名宣称确实调用了两次。
+
+实际字体来源由测试 CDP 只读采集：启用 DOM / CSS、定位 composition
+内非空文本节点，对可见中帧调用
+[CSS.getPlatformFontsForNode](https://chromedevtools.github.io/devtools-protocol/tot/CSS/#method-getPlatformFontsForNode)。
+每个 glyphCount>0 的项必须 isCustomFont=true，familyName /
+postScriptName 必须属于该链实际随包字体名；记录原始返回及元素文字、
+帧号、document / fontHash。emoji 向量中必须实际使用 emoji face。
+不能仅用 getComputedStyle 的 fontFamily 声明证明最终字体。该 CDP
+能力仅用于测试浏览器和 Electron 调试会话，不新增生产 bridge。
+
+**R3-RV-04：双端采集与独立匹配。** 新增测试 helper
+`effects-font-usage.js`，renderer 在已有 renderStill 页关闭前通过
+`page._client()` 采集；Player 在 capturePlayer 的同一暂停帧截图前
+通过 `session.cdp.send` 采集并随结果返回。两端均先启用 DOM / CSS，
+从 composition 内每个正式非空文字节点取得所属元素 nodeId，再调用
+getPlatformFontsForNode，不能只查无直接 TextNode 的根容器。去重
+元素记录但保留节点 / 字段覆盖关系，排除控件、隐藏测量副本和探针。
+
+每端先在测试拥有的独立探针页中，逐一仅加载本次已核验的四个字体
+URL（无 local()、无外部来源），使用相同 Effects-* 别名、400/600
+字重及非空样文，取得原始 familyName / postScriptName。正文样文
+用 Aa01，emoji 用 😀；任何空结果、系统字体或不支持的字重都失败。
+参考记录绑定实际字体相对路径、sha256、字重和原始 CDP 返回，保存
+为 font_usage_reference。名称允许集合来自这些单字体探针与受信
+资源对应，不直接把 Effects-* 当 PostScript 名，也不要求两种浏览器
+报告相同的平台别名；各端各自对照。探针不能改变正式 composition。
+
+verifier 用本次目标资源、对应浏览器重新运行独立探针后核对参考，
+不相信附件自报的允许名单。glyphCount>0 的每个正式记录必须匹配
+当前有序字体链的一项、isCustomFont=true；glyphCount 为有限非负
+整数。每份记录绑定 case_id、family、side、frame、input_sha256、
+fontHash、字段及实际展示文本；逐节点覆盖集合与同帧 layout 及固定
+文案一致。frame 29 的每个非空字段都须有正数 glyph 记录，两个
+emoji case 还须观察到 emoji face，不能以空 fonts 数组通过。
+淡入 / 淡出帧仍保留双方采集记录，零可见字形只在预定义隐藏集合内
+成立。字体总 glyphCount 不要求等于 code point 数，合字不因此误拒。
+原始协议字段依据
+[Chrome DevTools CSS 协议](https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/master/pdl/domains/CSS.pdl)，
+实际命令可用性须先在随包 Headless Shell 和 Electron 33 各跑最小
+切片；不支持或取证失败应 fail / blocked，不能降为 CSS 声明检查。
+
+原 Pillow glyph checker 继续验证可绘制码点，字体集合改为四字体链；
+LF / CR / 空白以及 ZWJ、VS15、VS16 是布局或序列控制项，不单独
+比较 tofu；组合 marks 不再笼统跳过，应检查至少一个字体具有有效
+字形。码点检查与真实 shaping / 实帧对照共同成立，不能从前者推出
+任意 emoji sequence 都正确。实际组合向量需要中帧 PNG 可读复核。
+
+verifier 要求 27 个唯一 `(case_id,family)` 恰等于固定笛卡尔积；完整
+fixture 内容 / 模板 / 字体 / seed / 时长必须匹配，所有帧、角色和
+输入 hash 闭合。每一项必须重算双 PNG 等值、MP4 解码、Player /
+renderer 像素与布局、glyph checker 及字体来源。任何少帧、空文案、
+错误 family、重复文件顶替 b.png、同一 PNG 伪作 MP4 帧、删 emoji
+fallback 或系统字体回退均不能通过。公共素材和已有报告不得修改。
+
+## 22. 第三轮接口与数据模型
+
+### 22.1 REST 与前端签名
+
+不增加制作 REST 路由或 WebSocket；BFF 路由继续转发原 envelope。
+
+```text
+GET /api/effects/projects/{project_id}/drafts
+    ?page_size=12&cursor={opaque_cursor}
+200 BaseResponse.data = {items: EffectDraftSummaryWire[], next_cursor: string|null}
+
+listEffectDraftPage(projectId: string, cursor?: string,
+  requestOptions?: RequestOptions): Promise<EffectPage<EffectDraftSummary>>
+listEffectDrafts(projectId: string): Promise<EffectDraftSummary[]>
+```
+
+EffectDraftSummary 只含 id、name、version；UI 不依赖目前未展示的
+last_succeeded_job_id。cursor 用 URLSearchParams 编码，永不解码
+或推测下一页。next_cursor=null / 缺省统一为 nextCursor=undefined。
+保留现有 400 非法 cursor、404 跨项目 / 已删除项目及错误 envelope。
+
+制作请求形状、UUID、expected_version、request_id、CAS、幂等与
+unknown 恢复完全沿用 §16。多行输入的布局检查只改变结果分类：
+明确过高返回 422 与字段；运行期实际折行失败成为终态 failed /
+EFFECT_TEXT_OVERFLOW，绝不伪造提交 unknown，也不自动换 requestId。
+
+### 22.2 新增内存及资源形状
+
+```typescript
+interface EffectDraftSummary {
+  id: string;
+  name: string;
+  version: number;
+}
+interface EffectTextBox {
+  width: number;
+  height: number;
+  sizeRatio: number;
+  minScale: 0.6;
+  lineHeight: 1.3;
+}
+interface EffectDraftListState {
+  projectId?: string;
+  active: boolean;
+  listEpoch: number;
+  items: EffectDraftSummary[];
+  nextCursor?: string;
+  loading: boolean;
+  loadingMore: boolean;
+  error?: Error;
+  errorPhase?: 'first-page' | 'load-more';
+}
+interface EffectPage<T> {
+  items: T[];
+  nextCursor?: string;
+}
+```
+
+字体锁 schemaVersion=1，resources 为按 path 排序的数组，每项包含
+family、role、path、sourceUrl、sourceRevision、bytes、sha256；font
+项另含 weight。前六项 sourceUrl=null，sourceRevision 为 `repository-baseline`
+并记录实际已跟踪 hash，新 emoji 三项必须使用同一个官方完整 commit。
+role 为 font 的 family 恰为 sans / serif / mono / emoji 各一次。
+锁不进入草稿或用户配置，不携带运行时 token 或本机绝对路径。
+
+文字规则 JSON 同样为 schemaVersion=1、固定 12 个 componentId；使用
+普通规则、product 和 callout 枚举三类。后端生成副本的原字节 hash 必须等于
+manifest.textLayoutHash。fontHash 仍为完整字体资源树 hash，不能改成
+只散列新 TTF。report 内继续使用该 fontHash 与 runtimeFingerprint。
+新增资源包文件固定为 `runtime/text-layout.json`，在 manifest.files
+恰有一项且 sha256=textLayoutHash；不把它归入字体角色或字体 hash。
+backend 生成副本、该包内文件及 bundle 使用的源 JSON 必须来自同一次
+build。manifest 的协议仍为 1，不用静默默认值兼容缺规则的新包。
+
+不新增 / 删除 / ALTER 业务表。既有草稿 schemaVersion=1、template
+ID / version、正式资产和历史成品 provenance 都保留；字体变化只影响
+后续新渲染。恢复旧任务继续使用不可变旧快照，遇引擎指纹不匹配按
+现有规则中断，不拿新资源伪装旧任务成功，也不覆盖已有完成清单。
+
+### 22.3 Agent 与证据兼容
+
+Agent 不新增常驻工具或全模板 schema。create / update / render /
+get-job 共用后端多行和字体规则；已接受任务仍返回 jobId、之后查询
+真实结果。字体缺件是 runtime unavailable，文字溢出是可修改草稿的
+明确失败；恢复原 frozen recovery 时不可重新 attach 或更换 body。
+apply 继续走 eventChain、有效回合租约和真实客户端回执。
+
+验收报告升级 schema_version=2，保留原字段，在 visual measurements
+增加上述两项计数，补充附件固定为新的 supplemental_index 和
+font_usage / font_usage_reference 角色。这里升级的是报告根对象；独占预留 marker 和已有
+bindRecord 附件 envelope 仍为 schema_version=1，不混改两个契约。
+旧 schema_version=1 报告仍可作为历史阅读，不可为
+本轮签发 release_ready。`ALL_ACS` 扩至 1–66，固定归属如下：
+
+| 新 AC | 证据归属 |
+|---|---|
+| 57、63、64 | visual：补充输入、实帧与字体来源 |
+| 58 | package：固定源锁、hash 与实包资源；all 另强制绑定 source regression 的篡改 / 缺件 / 固定下载测试 |
+| 59、60、62、65 | source regression：§24 指定的真实测试用例名及报告 |
+| 61、66 | desktop：第 13 个草稿、旧稿 / 旧成品完整流程 |
+
+报告验证器同时保留 AC-01–56 的原归属，不把新 AC 放到任何无关场景
+自报通过。单场景仅验证自己的集合，all 才要求全部 66 项。源码回归
+测试名必须存在于本次 Vitest / pytest / Node 原始结果中，缺用例或
+跳过不算通过；原有源码、包与附件身份门禁继续有效。
+
+单 package 场景只证明当前包资源闭合，在 all 的原始回归附件也具备
+`rejects_changed_font_bytes`、`rejects_missing_vendored_font`、
+`downloads_missing_emoji_from_pinned_source`、
+`rejects_missing_emoji_offline` 四个完整测试名后，才可为发行确认
+AC-58 的故障分支。该要求直接写入 verifier 的复合门禁，不通过
+给同一 AC 重复登记两个 acceptance_result 来拼凑。其它源码绑定
+按 §24 增加 R3-RV 回归名，缺失或跳过仍不可 release_ready。
+
+## 23. 第三轮文件 / 模块变更计划
+
+下表每行都是精确文件路径；“修改”路径在本轮基线已经存在，“新增”
+由下游创建。生成副本必须由 build 写出，不手改。此表覆盖实现、
+测试、文档和资源，不能据 §10 / §17 重建前两轮代码。
+
+| 文件 | 动作与单一意图 |
+|---|---|
+| `public/effects/fonts/NotoEmoji[wght].ttf` | 新增：官方固定提交的原始单色 emoji 字体 |
+| `public/effects/fonts/notoemoji-OFL.txt` | 新增：对应原始许可证，保留原字节 |
+| `public/effects/fonts/notoemoji-METADATA.pb` | 新增：对应原始字体元数据，记录来源和字重 |
+| `public/effects/fonts/source-lock.json` | 新增：原有及新增字体资源的固定来源 / SHA-256 / bytes |
+| `public/effects/fonts/manifest.json` | 生成更新：四字体角色、描述符和资源清单 |
+| `src/lib/effects/fontResources.ts` | 新增：字体资源定义、CSS 链和加载描述符唯一入口 |
+| `src/lib/effects/fonts.ts` | 修改：四字体按链加载、含字重缓存和失败重试 |
+| `src/types/effects.ts` | 修改：四键 fontUrls、草稿摘要和必要文字公开类型 |
+| `src/lib/effects/textLayout.json` | 新增：12 组件安全区和 renderedFields 唯一参数表 |
+| `src/lib/effects/textLayout.ts` | 新增：纯安全区 / 展示文本规范化函数 |
+| `src/lib/effects/compositions/layout.ts` | 修改：统一字体链、换行优先和文字安全区 |
+| `src/lib/effects/compositions/EffectText.tsx` | 新增：实际 DOM 排版、空行 / 揭示占位及渲染等待和受控错误 |
+| `src/lib/effects/compositions/EffectComposition.tsx` | 修改：共享字体链和规范化后的展示文档，不改输入持久身份 |
+| `src/lib/effects/compositions/Titles.tsx` | 修改：共用标题 / 副标题规则，移除独立行高 |
+| `src/lib/effects/compositions/Typewriter.tsx` | 修改：保留完整 grapheme 的揭示和统一安全区 |
+| `src/lib/effects/compositions/LowerThirds.tsx` | 修改：以共享规则确定两字段安全区 |
+| `src/lib/effects/compositions/ImageReveal.tsx` | 修改：统一 title 安全区调用 |
+| `src/lib/effects/compositions/Slideshow.tsx` | 修改：25% 高度来自共享规则 |
+| `src/lib/effects/compositions/SplitScreen.tsx` | 修改：25% 高度来自共享规则 |
+| `src/lib/effects/compositions/Product.tsx` | 修改：共用竖横布局公式和两字段安全区 |
+| `src/lib/effects/compositions/Callouts.tsx` | 修改：38% 宽度来自共享规则 |
+| `src/lib/effects/compositions/Counters.tsx` | 修改：20% title 高度来自共享规则 |
+| `src/lib/effects/compositions/Countdown.tsx` | 修改：20% title 高度来自共享规则 |
+| `src/lib/effects/compositions/VideoLook.tsx` | 修改：统一 title 安全区调用 |
+| `src/lib/effects/compositions/Backgrounds.tsx` | 修改：统一两字段安全区调用 |
+| `effects-runtime/scripts/prepare.mjs` | 修改：固定锁下载 / 校验、生成四字体清单，不覆盖错误资源 |
+| `effects-runtime/scripts/font-resources.mjs` | 新增：无导入副作用的字体锁校验 / 有界准备，供 prepare 和隔离测试共用 |
+| `effects-runtime/scripts/build.mjs` | 修改：导出安全区 JSON、textLayoutHash 和字体全树身份 |
+| `effects-runtime/scripts/generate-previews.mjs` | 修改：四键 fontUrls，重新生成现有预览资源 |
+| `effects-runtime/src/protocol.ts` | 修改：声明 textLayoutHash 的清单类型，任务文档协议不扩权 |
+| `effects-runtime/src/renderChild.ts` | 修改：四字体角色解析及文字溢出稳定错误码 |
+| `effects-runtime/src/stopReason.ts` | 修改：白名单保留文字溢出，未知错误与停止优先级不变 |
+| `effects-runtime/src/server.ts` | 修改：ready 前核对规则副本及 textLayoutHash / files 的唯一对应 |
+| `backend-services/basic-service/app/services/effects/text-layout.generated.json` | 新增生成：与前端安全区参数字节一致 |
+| `backend-services/basic-service/app/services/effects/text_layout.py` | 新增：读取生成参数、只做必然超限预检及换行分支 |
+| `backend-services/basic-service/app/services/effects/recovery.py` | 修改：validate_text_layout 委托纯预检，不测量换行符 |
+| `backend-services/basic-service/app/services/effects/runtime_client.py` | 修改：核对生成规则与 manifest.textLayoutHash |
+| `src/lib/api/effects.ts` | 修改：新增有界草稿分页，保留原数组包装 |
+| `src/components/video/effects/useEffectsDraftList.ts` | 新增：草稿目录分页、epoch、单飞及局部失败 |
+| `src/components/video/effects/useEffectsController.ts` | 修改：委托目录 hook，打开 / 保存确认后刷新 |
+| `src/components/video/effects/EffectsStudioModal.tsx` | 修改：加载更多草稿、目录错误及焦点状态 |
+| `src/components/video/effects/EffectsInspector.tsx` | 修改：仅展示实际绘制的文案字段 |
+| `src/lib/i18n.ts` | 修改：中英文目录加载 / 重试 / 短 ID 辅助文案 |
+| `desktop/scripts/lib/effects-text-vectors.js` | 新增：固定九组文案和字体集合 |
+| `desktop/scripts/lib/effects-font-usage.js` | 新增：双端只读 CDP 采集、单字体探针及受信资源名称匹配 |
+| `desktop/scripts/lib/effects-visual-acceptance.js` | 修改：27 组完整实帧、重新计算输入 hash、实际字体采集 |
+| `desktop/scripts/lib/effects_metrics.py` | 修改：四字体检查与明确的控制字符处理 |
+| `desktop/scripts/lib/effects-release-evidence.js` | 修改：报告 v2、66 AC、补充帧 / 固定向量 / 字体来源独立校验 |
+| `desktop/scripts/lib/effects-desktop-acceptance.js` | 修改：13 草稿和旧稿 / 旧输出闭环的实机证据 |
+| `desktop/scripts/effects-acceptance.js` | 修改：新源码回归命令、报告 / AC 集合接线 |
+| `effects-runtime/tests/fontResources.test.mjs` | 新增：锁篡改、缺件、离线复制和角色规则的真实文件测试 |
+| `effects-runtime/tests/render.integration.test.mjs` | 修改：真实换行 / emoji / 溢出错误码与迟到停止原因 |
+| `effects-runtime/tests/stopReason.test.mjs` | 修改：文字码白名单、未知错误降级、controller 终态及规则清单负向 |
+| `src/lib/effects/__tests__/fonts.test.tsx` | 修改：四字体依赖、链 / 字重及失败后重试 |
+| `src/lib/effects/__tests__/textLayout.test.ts` | 新增：全组件盒子、换行、临界参数及不改原文档 |
+| `src/lib/effects/__tests__/EffectText.test.tsx` | 新增：布局等待 / 输入切换 / 失败 / 空行的生命周期，不冒充真实 DOM 几何证据 |
+| `src/lib/effects/__fixtures__/text-layout-vectors.json` | 新增：TS / Python 共读的独立预期安全区 golden 数值 |
+| `src/components/video/effects/__tests__/effectsDraftList.test.tsx` | 新增：分页、失败同页、刷新与项目交错 |
+| `src/components/video/effects/__tests__/EffectsStudioModal.test.tsx` | 修改：第 13 草稿选择、保留 dirty / unknown / 焦点与隐藏字段 |
+| `backend-services/basic-service/tests/test_effects_text_layout.py` | 新增：两行 LF / CRLF、五行安全区、未绘制字段及生成副本 hash |
+| `backend-services/basic-service/tests/test_effects_contract.py` | 修改：真实草稿分页响应与文字提交 HTTP 状态 / 行数 |
+| `desktop/scripts/lib/effects-release-evidence.test.js` | 修改：补充帧与固定文案 / 系统字体等负向报告 |
+| `desktop/scripts/lib/effects-font-usage.test.js` | 新增：双端节点覆盖、原始记录缺失、错误字体链及参考探针匹配负向 |
+| `docs/plans/remotion-effects-studio/spec.md` | 修改：记录本轮实现差异与评审结果，不抹掉历史 |
+| `docs/plans/remotion-effects-studio/acceptance.md` | 修改：本轮实测、AC-57–66 和仍待验项 |
+| `docs/plans/remotion-effects-studio/final-review.md` | 修改：最终节点的本轮审查证据 |
+| `desktop/README.md` | 修改：字体锁导入、报告 v2、66 项验收及新源码命令 |
+| `CLAUDE.md` | 修改：共享文字规则、离线 emoji 与固定源字体构建约定 |
+
+预览生成脚本原位生成的 `public/effects/previews/*` 属已有生成目录；
+具体成员必须与 catalog 的 thumbnail / demoPreview 集合完全相等，
+共 48 个。该集合是唯一允许的计划目录表达式，实施时须在
+acceptance.md 列出实际 48 路径及 hash，不扩展到其它 public 文件。
+原六个字体 / OFL 原字节保持，只在源锁首次建立时登记，不重下载。
+
+`plan-current.json`、`round-3-verification.md` 为本设计节点定位和
+核查交付；实现 / 最终节点不重写这两个文件冒充设计节点。本轮也
+不更新 README 中与本任务无关的账号说明。
+
+## 24. 第三轮测试与验收标准
+
+AC-01–56 的既有契约继续有效，但必须按新源码 / 资源 / 安装包重新
+取得本轮所需证据。下列 AC-57–66 当前均为**未执行**；字体缺字和
+换行复现是设计依据，不是修复通过报告。
+
+| 编号 | 必须满足的行为 | 证据及关联 |
+|---|---|---|
+| AC-57 | 三个正文字体链均离线显示 🎬✨😀 和组合向量；Player、renderer、MP4 中帧与固定输入一致；不得依赖系统字体 | 完整 visual 的 27 组附件；R3-01 |
+| AC-58 | 已存在 TTF 改一个字节 / 锁错误、vendored 缺件及离线 emoji 缺件均拒绝；构建中缺失 emoji 可按固定锁下载且 hash / 许可证闭合；缺开发依赖仍从本次包加载；规则文件身份也必须闭合 | 真实文件负向 + package 实包 + all 的复合回归门禁；R3-01、R3-RV-05/07 |
+| AC-59 | LF、CRLF、孤立 CR、连续空行和尾随换行按规则显示，Typewriter 揭示不挤掉空行；不触发 raqm 500；五行 slides 返回 422 / title 路径且无 job；两行普通标题可提交 | pytest `test_multiline_submit_uses_layout_breaks`、`test_slideshow_explicit_lines_rejected_before_job` 及真实 browser；R3-02、R3-RV-02 |
+| AC-60 | 12 组件 / 三画布、Product 竖横及 Callouts 锚点在 TS / Python 一致；原文 / hash 不变；canvas 与实际 DOM 折行不同时以 DOM 为准，组和长数值均不溢出；规则缺项 / 错副本在 ready 前拒绝 | textLayout golden、真实 renderer、`test_text_layout_manifest_mismatch` 和 R3-RV-02/03/05 回归 |
+| AC-61 | 13 个稿从第二页选最旧稿，编辑→保存→关闭→同项目同 controller 重开仍是同一 draftId；刷新第一页也保留页外选项；应用重启后仍可分页选回；不新增时间线历史 | desktop case `draft-page-13`；R3-03、R3-RV-06 |
+| AC-62 | 连点仅一个 GET，页二 503 保留旧项 / 原 cursor，refresh 失败不接旧链；A→B→A / 关闭的旧回包不能交付；显式入口不等待目录，普通保存不反复刷新；最后一页按钮消失后焦点可达，dirty / unknown 守卫成立 | `effectsDraftList.test.tsx` 固定语义用例及 modal；R3-03、R3-RV-06 |
+| AC-63 | 删除补充 b.png / Player / MP4 / 中帧、替换固定文本为空、重复一个 family 或改 requestHash，verifier 逐项失败；完整 27 组才通过 | Node 报告负向 + 独立真实重算；R3-04 |
+| AC-64 | 双端字体节点覆盖完整；系统字体、未知 face、空中帧记录、少一端、错误探针 / fontHash、缺 emoji face 均失败；平台名称按本端受信探针对照，不用 CSS 别名或透明帧通过 | font_usage / font_usage_reference 原始 CDP、独立探针重算及真实文案附件；R3-01/04、R3-RV-04 |
+| AC-65 | 正常文字、字体失败和真实溢出分别保留正确终态；文字码经 child→normalizeChildErrorCode→controller→后端 GET 不变，未知码仍降级；用户取消 / deadline 优先；失败不发布、不换键、不上轨，草稿可编辑，错误不泄露路径 / token | runtime `reports_text_overflow_without_publishing_output`、`preserves_text_overflow_from_child` 及 Agent unknown / Stop / 回执回归 |
+| AC-66 | 从基线制作的 schemaVersion=1 草稿和既有 output asset 能在新包打开 / 播放；重新制作得到新 job / asset；旧输出、历史、provenance 不被覆盖；保存重开和撤销仍成立 | desktop case `legacy-effect-document`，固定旧 fixture hash |
+
+固定源码回归测试名还包括 `loads_next_draft_page_once`、
+`keeps_cursor_after_page_failure`、`rejects_previous_project_page`；
+下游实现以这些完整标识绑定 reporter 中的实际用例，不能只填文件名。
+TS / Python 的安全区共用 golden 表必须逐项覆盖全部 12 个组件的
+title / 已绘制 subtitle，画布 1920×1080 / 1080×1920 / 1080×1080，
+Product 的 W=1.5H 两侧、cardScale 最小 / 最大值及 scale=0.6/1/1.4；
+Callouts 的 pointX / pointY=0.05、0.5、0.500001、0.95 及上下文字盒。
+向量固定放在 §23 的 text-layout-vectors.json，每项含 componentId、
+templateId、canvas、params、field 和 expectedBox；expectedBox 必须
+按 §21.2 公式独立计算后写成数值，不能在测试时调用被测 helper 生成。
+没有绘制副标题的组件要证明副标题不触发入队拒绝，原内容仍保存。
+
+R3-RV 的固定源码回归名另包括：`preserves_text_overflow_from_child`、
+`rejects_missing_text_layout_manifest_entry`、
+`invalidates_draft_pages_on_close`、
+`does_not_wait_for_directory_to_open_explicit_draft`、
+`keeps_selected_draft_outside_first_page`、
+`rejects_incomplete_font_usage`。它们进入相应 AC 的原始回归绑定；
+字体锁四用例见 §22.3。纯 jsdom 不具备真实排版能力，布局结果不得
+通过硬编码 scrollHeight 来证明成功；DOM 生命周期单测与几何实测
+分开记录。
+
+真实 browser / renderer 回归固定增加 `uses_browser_bounds_for_text`、
+`preserves_explicit_empty_lines`、`keeps_callout_text_inside_safe_area`：
+覆盖组合字符 / 宽窄中英混排、tab、孤立 CR、尾随及连续空行、空字段、
+type-lines / type-cursor 完整揭示与未揭示占位、Callouts 上下锚点、
+Counters 最大 value+8 码点后缀、Countdown 与 Product 最大合法盒子。
+同时比较正常缩放与 Player CSS 缩放，证明排版判断不受外层 transform
+影响；先定位 frame 29 的可见文字，再验证入出场合法隐藏。两端 CDP
+最小切片记录为 `collects_fonts_from_both_renderers`，缺任一端不得
+展开或宣称完整矩阵通过。上述真实回归由 render.integration 和已有
+桌面验收 helper 执行并产出附件，所需命令纳入 source-regression，
+不能只有用例名而没有实际调用。
+
+视觉向量的 font usage 可用确定性伪记录测试 verifier 的拒绝分支，
+但正向通过必须来自真实 Chromium / Electron。普通 DOM 单测不证明
+字体离线、真实 shaping、逐帧或最终导出通过。72 组矩阵、27 组补充、
+真实安装、最终导出和真实 LLM 若缺环境，应单独标 blocked，保留
+原因；脚本有代码但没执行仍是未执行。
+
+## 25. 第三轮实施顺序与验证命令
+
+下游每项先增加本轮缺陷的有效复现，再修复并运行对应回归；保持
+§23 范围。命令均从仓库根执行，单独调用，不用 PowerShell 5.1
+不支持的 && 或 bash 换行。占位路径执行时替换为本次真实绝对路径。
+
+### 25.1 任务 A：资源、规则与最小错误链
+
+1. 新增字体锁篡改 / 缺件测试，确认现有 prepare 没有固定锁而失败。
+   先提取无副作用 font-resources 模块，在隔离副本跑四个固定用例；
+   按 §21.1 实际导入官方字体与许可证，登记所有确切字节，不猜 hash。
+2. 增加五行 slides 和两行 LF 测试，观察当前 raqm 异常；新增共享
+   安全区 JSON / helper、生成导出与 textLayoutHash 核对。
+3. 更新 12 个 composition、EffectText 实际测量、展示文本视图和
+   fontUrls；修复 Python 换行检查、Callouts 锚点 / 数值块边界，
+   将文字码加入 child 及 controller 白名单。接线 server 的规则副本
+   / textLayoutHash / files 核验，更新真实 manifest 夹具。只为纯文字
+   helper 使用新结构，不修改 frozen request 和原有草稿 version。
+4. 运行字体 / 安全区测试和两端类型检查。先通过资源锁和规则生成，
+   再运行正常 effects:prepare；生成文件须进入实际交付范围。
+
+```powershell
+node --test effects-runtime/tests/fontResources.test.mjs
+node node_modules/vitest/vitest.mjs run src/lib/effects/__tests__/fonts.test.tsx src/lib/effects/__tests__/textLayout.test.ts src/lib/effects/__tests__/EffectText.test.tsx --maxWorkers=2
+npm run effects:prepare
+npm run type-check
+npm --prefix effects-runtime run type-check
+npm --prefix effects-runtime run build
+node --test effects-runtime/tests/stopReason.test.mjs
+```
+
+Python 专项从 `backend-services/basic-service` 工作目录单独运行：
+
+```powershell
+python -B -m pytest tests/test_effects_text_layout.py tests/test_effects_contract.py -q --disable-warnings --basetemp M:/takoAI/Ecliptrix/.pytest-workspace-import/effects-r3-text
+```
+
+首次缺件 / 错误 hash 是预期红测，不得通过跳过资源检查改绿。后端
+HTTP 测试使用独立 SQLite、真实 router 和队列入库计数，不能仅用
+Pillow 函数 mock 证明提交路径已修复。
+
+### 25.2 任务 B：草稿分页与工作台
+
+1. 增加第 13 草稿、页二失败及过期回包测试，确认当前列表无法到达。
+2. 新增分页函数与目录 hook，接线 controller / modal / i18n，更新
+   第一次草稿保存确认后的目录刷新，保留旧数组 API 包装。
+3. 测试 Ctrl / IME、dirty、unknown 和失去编辑租约时的选择守卫；
+   本轮不重写保存 hook 或项目生命周期，也不通过延迟用户输入规避竞态。
+   关闭先 invalidate；显式入口与目录分别故障注入，刷新和首次 create
+   确认分别核对请求数量、页外选项及最后一页焦点。
+
+```powershell
+node node_modules/vitest/vitest.mjs run src/components/video/effects/__tests__/effectsDraftList.test.tsx src/components/video/effects/__tests__/EffectsStudioModal.test.tsx --maxWorkers=2
+```
+
+### 25.3 任务 C：证据生成及独立验证
+
+1. 为 R3-04 的空文字 / 缺帧 / 系统字体伪记录增加准确失败测试。
+2. 实现固定向量、27 组 sampleFrame、双端字体来源 / 参考探针采集、
+   source regression 绑定及报告 v2；保持同名报告独占封存规则。
+   先各跑一次真实 Headless Shell / Electron CDP 及文字 DOM 切片，
+   再验证独立重算能拒绝空记录、少节点、错误名称及少一端附件。
+3. 单独验证新字体三字符和组合中帧，再运行完整矩阵；开发切片通过
+   不能写成全矩阵通过。未运行的场景保持未执行。
+
+```powershell
+node --test desktop/scripts/lib/effects-font-usage.test.js desktop/scripts/lib/effects-release-evidence.test.js desktop/scripts/effects-smoke.test.js
+```
+
+真实 runtime 测试须显式设置 `EFFECTS_REAL_RUNTIME_TEST=1`；若执行
+清单冷启动项另设置原有 `EFFECTS_MANIFEST_STARTUP_TEST=1`。变量只对
+本次测试 shell 生效。执行 `npm --prefix effects-runtime test` 后核对
+没有把默认跳过项算为通过。保留现有 30s 启动、8s reaper / 12s 所属
+进程退出预算，新增字体不能靠调大阈值蒙混通过。
+
+### 25.4 任务 D：回归、提交后的实装与交接
+
+根项目 type-check / build、后端 effects 全专项、已有 Agent 回执 /
+停止 / unknown、时间线身份 / 一步撤销、桌面监管及凭据扫描均按
+§18.5 重跑；构建跳过 lint 不代表 lint 已通过。只检查本轮相关 lint，
+全仓既有失败记录清楚，不为消除它扩大修改范围。
+
+最终节点完成审核与精确提交后，按最终 source_head 重建 installer，
+在新证据目录实际安装；随后运行原 CLI：
+
+```powershell
+node desktop/scripts/effects-acceptance.js --unpacked <本次win-unpacked绝对路径> --installed <本次真实安装目录绝对路径> --manifest <本次research-build-manifest.json绝对路径> --report <工作区内新建证据目录/report.json> --scenario all
+```
+
+该占位命令是使用说明，不可直接把尖括号传入 PowerShell。保留真实
+install-record、NSIS hash、干净源码身份、全部附件及回归测试名。
+all 的 66 项、六场景及旧发行门禁全部成立才可 release_ready=true。
+实现节点不得为本设计节点做 commit；本节点同样不提交任何文件。
+
+## 26. 第三轮风险、完成标准与调度交接
+
+| 风险 | 处理及可观察结果 |
+|---|---|
+| 新字体改变正文排版、安装体积或冷启动时间 | 三字体 / 三画布实帧重验；四字体固定链；完整资源 hash；保持原性能阈值 |
+| 供应源 main 变化或本地损坏被当新基线 | 官方固定 commit + 源锁，prepare 不可更新锁，损坏立刻失败 |
+| 误以为 Pillow 等价于浏览器 shaping | Python 仅拒绝必然超限，最终浏览器守卫和稳定错误码；不承诺逐码点估算精确 |
+| emoji 组合存在但实际使用系统字体 | 原始 CDP font usage + 四字体字形检查 + 中帧实图，缺任一证据不能通过 |
+| 安全区生成副本过期或新旧包混装 | textLayoutHash / fontHash / runtimeFingerprint 联合检查，错误包不可就绪 |
+| 分页刷新影响未保存输入或旧项目 | 独立目录 hook、三重交付身份、单飞、原 cursor 重试；保存和目标权限不扩展 |
+| 新报告能读却偷用旧 56 项数据 | schema v2、固定 66 项与新增角色，旧报告只归档，不推导本轮发行状态 |
+| 真安装、模型、官方字体源暂不可用 | 对具体场景标 blocked，已有实测单独保留，不宣称当前安装包或真实 LLM 通过 |
+| 字体与 Remotion 分发证据未完成 | 保留原版权 / OFL、来源与第三方清单；原 Remotion 发行核对继续保留，不作法律结论 |
+
+### 26.1 前序设计交付（历史）
+
+本设计节点完成标准：v4 明确当前基线、四个缺口、实现文件、全部
+接口及兼容边界、AC-57–66、精确测试命令；文档与定位 JSON 已落盘，
+git status 可见，所有修改局限在本方案目录，另仅允许任务授权的
+Subtask #0 状态回退。文档结构 / 路径 / JSON / 空白检查均实际运行，
+详细结果记入 round-3-verification.md。它不证明新增字体或产品修复
+已经实施，也不把历史 911 项通过重新计作本节点测试。
+
+本轮起始已执行任务目录下工具的 history、get(plan)、put(plan/current)
+与 progress，均因缺 TASK_SERVER_URL 在发 HTTP 前退出。已从本次
+task-board.md 读取两轮明确历史，沿用其确认的方案目录，不猜测另一个
+历史功能。plan-current.json 已在本轮刷新 iteration=3 / v4 /
+baseline=8d53a66d / 当前 prompt，并明确 blackboard_write_status=
+unavailable；本地文件不等于共享黑板写入成功。
+
+收尾必须实际调用 structured complete，检查输出，最多三次；仍失败
+则只修改本任务板的 Subtask #0 为 completed，填中文 output / notes。
+随后实际调用 status；仍不可用时核验本地回退 section 的完整内容。
+不修改其它节点，不伪造服务器地址、凭据或“success:true”。调度器
+恢复后先重放 plan/current，再重放该节点 complete 并运行 status；
+只有服务端 tasks[index=0].status=completed 才算远端状态确认。
+
+**第三轮交付结论**：本文为可交下游评审实施的增量设计。前两轮功能
+与历史证据保留；R3-01–04、AC-57–66 和完整发行矩阵均待真实实施 /
+执行。当前不能据本文宣布特效工作台可正式发行。
+
+### 26.2 当前评审交付、核查与调度
+
+**R3-RV-08：版本与节点身份。**
+当前节点为 Subtask #1，输入为第三轮设计 v4，交付标记为评审 v2。
+保持前序四项缺口及 AC-01–66；R3-RV-01–08 均已落实到正文设计、
+精确文件计划和验证步骤，未解决设计 P0/P1 为 0。68 个计划路径
+覆盖本轮实现与测试，不改动既有 12 库 / 24 模板数量，不增加业务表、
+通用排版服务、生产 CDP bridge 或新配置页。
+
+本评审只修改 spec.md，原有 plan-current.json / round-3-verification.md
+和测试临时目录保留，不提交 Git。收尾核查从磁盘重新读取 UTF-8
+文档，检查主章节 1–26、顶部评审记录 / 文末评审结论、8 项评审及
+其正文落点、AC-01–66 连续唯一、§23 精确路径的现有 / 新增分类、
+全部代码围栏和 TypeScript 示例语法，并执行 git diff --check、
+工作区边界及前序定位 / 核查文件 hash 比对。结果仅证明设计闭合，
+不证明新增字体、DOM 测量、分页或实包矩阵已实现 / 通过。
+
+实际文档检查结果：26 个主章节、8 项评审记录、AC-01–66 连续且
+唯一；68 个计划路径无重复，其中 47 个现有、21 个待新增，分类
+与磁盘一致；24 个模板 / 12 库和 48 个已有预览路径匹配；48 条
+代码围栏成对，5 个 TypeScript 示例语法诊断为 0；git diff --check
+通过，前序定位与核查文件的 SHA-256 保持不变。最初一次检查命令
+遇 PowerShell 引号 / 管道编码问题，改用显式 UTF-8 here-string
+后重跑；编号追踪检查还促使正文补全 R3-RV-07 / 08 的完整标识，
+没有跳过失败或把语法转译称为产品类型检查。
+
+实际只读探针已确认：现有 dist 的 normalizeChildErrorCode 将
+EFFECT_TEXT_OVERFLOW 变为 EFFECT_MEDIA_DECODE_FAILED，与源码
+白名单一致；1080 高画布的下方 Callouts 原盒子 bottom=1155.6，
+超过画布和 1015.2 的安全边，修订高度为 237.6。前者不是修复后
+测试，后者是源码公式复算，均不冒称端到端渲染证据。查阅官方
+Remotion 字体 / 等待机制、Noto Emoji 元数据和 CDP 协议，并核对
+本地锁定 renderer 的 Page._client / evaluate / close 类型；没有
+据此声称 Electron 和 Headless Shell 实际字体采集已通过。
+
+本轮实际尝试 history、get(plan)、put(plan/current)、progress，均因
+缺 TASK_SERVER_URL 在 HTTP 前退出；共享记录是不可访问，不能判为
+不存在。定位由本次任务板前序输出与其 plan-current.json 交叉确认，
+未扫描猜目录。前序定位文件仍为设计 v4，不修改它冒充本评审版本。
+调度器恢复后先执行 §19.3 的本任务目录 put / get，再重放当前节点
+complete 并核验 tasks[index=1].status=completed；不使用历史
+§13.1 的旧任务目录，不回写 Subtask #0。
+
+上报是本节点最后一步：实际运行 structured complete、逐次检查输出，
+最多三次；失败时只修改指定 task-board.md 的 Subtask #1 状态、
+Output 和 Completion Notes。随后实际运行 status；若仍缺注入，
+重新读取核验本地回退，并核对其它节点区段完全不变。本地 completed
+仅表示文档交付完成，**不表示共享黑板或服务端状态已确认**。当前节点
+的实际核查及上报结果最终写入该 Completion Notes，不套用历史记录。
+
+## 评审结论
+
+**有条件通过**。第三轮评审 v2 已在正文修订 R3-RV-01–08，未解决
+设计 P0/P1 为 **0**，可按 §23 / §25 进入增量实现。
+
+1. 下游逐项实施字体资源、实际 DOM 排版、完整错误码、草稿分页与
+   双端字体取证；先复现本文固定故障，再取得真实 browser / Player
+   最小切片及 AC-57–66 的证据。历史源码测试不能替代本轮执行。
+2. 正式发行仍须在最终提交后重建、真实安装并执行完整 72 组主矩阵、
+   27 组文字补充、离线闭环 / 最终导出、性能、真实 LLM 与原许可
+   门禁；以绑定新 source_head / installer 的 all 报告确认 66 AC，
+   缺环境按场景标 blocked，不将单测或本次评审当作 release_ready。
+3. 调度器环境恢复后重放 plan/current 和 Subtask #1 完成报告，读取
+   服务端 status 核验。任务授权的本地回退不能代替远端确认。
+
+这些条件是实施、发行及调度交接的证据门禁，当前设计问题均已闭合。
+
+## 实施过程发现的方案缺陷（第三轮）
+
+### IM-R3-01：真实 SQLite 游标未规范化时间精度
+
+新增 13 草稿的真实 HTTP 测试发现：SQLite 的 CURRENT_TIMESTAMP 保存
+整秒字符串，而 ORM 日期参数绑定为六位微秒；原 `< / ==` 比较令同秒的
+第一页记录在下一页重复出现。仅接通前端游标无法满足 AC-61/62。
+因此将 `backend-services/basic-service/app/services/effects/draft_service.py`
+纳入本轮修复：对排序和游标谓词使用同一无损的六位微秒字符串表达式，
+保留现有时间 / UUID keyset、页大小和 opaque cursor。不得降低精度、
+依赖测试 sleep 或变更表结构。回归仍落在已规划的 test_effects_contract.py。
+
+### IM-R3-02：运行时清单正向夹具需要新文字身份
+
+原 `tests/test_effects_runtime_client.py` 的有效清单没有 textLayoutHash
+和 runtime/text-layout.json 项，新增强校验后它不再是有效输入。
+将 `backend-services/basic-service/tests/test_effects_runtime_client.py`
+纳入最小夹具更新，使用生成副本的真实 bytes/hash；原负向测试保留。
+这不放宽新包必须拥有规则身份的要求。
+
+### IM-R3-03：预览工作路径与测试证据的打包边界
+
+旧预览脚本固定猜测 smoke/projects，而当前 smoke.configure 已使用独占
+证据目录与中文路径，真实生成在第二张输入处失败；预览脚本改用 configure
+返回的 projectsRoot，仍只生成 catalog 指定的 48 个预览。测试会在
+desktop/build/effects 中产生证据，原 electron-builder 的 **/* 映射可能
+将它们带入安装包。将 `desktop/electron-builder.yml` 纳入本轮最小修复，
+effects extraResources 仅允许 bundle/browser/native/fonts/runtime 及根
+manifest.json/catalog.json；不清理或覆盖历史测试证据。
+
+### IM-R3-04：AC-66 需要真实旧版本夹具
+
+方案未指定旧稿/旧输出的实际输入制品。验收增加固定工作区位置
+desktop/build/effects/legacy-v1-fixture，由基线 8d53a66d 的隔离应用
+正常关闭后捕获测试 userData 与逐文件 hash；格式见 desktop/README。
+工具先验身份、复制到本次证据目录再运行新包。缺件明确 blocked，不能
+用新包现场生成输出冒充兼容性证据。本轮尚未取得该发行夹具。
+
+### IM-R3-05：小文件校验缓冲造成冷启动累计分配负担
+
+重跑标准 prepare 后，controller 冷启动再次触及原 30s 上限。检查现有
+流式校验发现：12091 个文件一律使用 256KiB 缓冲，首块累计预约约
+3.17GB，而按实际文件尺寸封顶只需约 98MB。这里是累计预约量，不是
+同时驻留内存或全部耗时的归因。新增真实小文件回归先失败：200 个
+16-byte 模块的预约量为 53.7MB。校验改为按声明尺寸设置有界缓冲，
+大文件仍保留 256KiB 分块、8 个并行 worker、每文件 realpath 与全量
+SHA-256；实际字节超过声明立即拒绝。没有加缓存、减少校验、扩大
+30s / 8s / 12s 门限或新增配置。修复后须再从完整 prepare 生成的新
+资源身份重跑真实回归；最终安装性能门禁仍需独立执行。
+
+### IM-R3-06：共享文字迁移应保留原打字光标行为
+
+收尾对照基线时发现，共享布局迁移遗漏原 30 帧周期的光标闪烁及尚未
+揭示文字时的起始光标。补回展示层可见性与行首锚点；光标显隐不进入
+全文测量缓存键，不重新开启布局等待。新增空帧 / 半程闪烁回归先失败
+后通过，并重新生成 type-cursor 的视频与海报。
+
+### CR-15：应用重启验收不能由页面刷新代领
+
+最终审查发现，原 `runDraftPageCase` 使用 Page.reload，却将其视为
+AC-61 的“应用重启后仍可分页选回”。页面刷新不会重启后端或重新读取
+SQLite，不能证明该要求。修复沿用 §23 已批准的桌面 runner、独立
+verifier 和测试路径，不扩大业务功能。
+
+分页场景现独占测试资料目录；确认同 controller 的保存重开后，真实关闭
+Electron、等待所属进程退出，再用同一 userData 启动新进程。重新核对
+HTTP 的 12+1 页、UI 第二页选择、草稿 ID / 文案和未变时间线，完整归档
+两次启动身份、退出耗时、零残留与网络记录。verifier 拒绝仅有 reload
+的旧证据以及缺少重启身份、丢失文字、错误页或进程残留的记录。
+负测已观察到原实现未拒绝刷新证据的红测，修复后通过；真实最终安装
+场景仍须在干净提交重新打包后运行，不能据源码测试确认 AC-61。

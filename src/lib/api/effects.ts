@@ -1,7 +1,7 @@
 import { http, type RequestOptions } from './http-client';
 import type {
   EffectAsset, EffectCapabilities, EffectDocument, EffectDraft,
-  EffectLibrary, EffectPage, EffectRenderJob, EffectTemplate, EffectDraftWrite,
+  EffectLibrary, EffectPage, EffectRenderJob, EffectTemplate, EffectDraftWrite, EffectDraftSummary,
 } from '@/types/effects';
 
 type Wire = Record<string, unknown>;
@@ -121,11 +121,20 @@ export async function getEffectDraft(projectId: string, draftId: string) {
   return fromWireEffectDraft(response.data);
 }
 
-export async function listEffectDrafts(projectId: string) {
+export async function listEffectDraftPage(projectId: string, cursor?: string,
+  requestOptions: RequestOptions = {}): Promise<EffectPage<EffectDraftSummary>> {
+  const query = new URLSearchParams({ page_size: '12' });
+  if (cursor) query.set('cursor', cursor);
   const response = await http.get<Envelope<{ items: Wire[]; next_cursor?: string }>>(
-    `${projectPath(projectId)}/drafts`);
-  return response.data.items.map(wire => ({ id: read<string>(wire, 'draft_id'),
-    name: read<string>(wire, 'name'), version: read<number>(wire, 'version') }));
+    `${projectPath(projectId)}/drafts?${query}`, { timeoutMs: 10000,
+      ...requestOptions, retries: 0 });
+  return { items: response.data.items.map(wire => ({ id: read<string>(wire, 'draft_id'),
+    name: read<string>(wire, 'name'), version: read<number>(wire, 'version') })),
+    nextCursor: response.data.next_cursor || undefined };
+}
+
+export async function listEffectDrafts(projectId: string) {
+  return (await listEffectDraftPage(projectId)).items;
 }
 
 export async function saveEffectDraft(options: {

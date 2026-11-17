@@ -1,4 +1,6 @@
 import type { CSSProperties } from 'react';
+import { getEffectFontChain } from '../fontResources';
+import { getEffectTextBox, normalizeEffectDisplayText } from '../textLayout';
 import { useCurrentFrame } from 'remotion';
 import type {
   EffectCompositionProps, EffectDocument, EffectInputBinding,
@@ -53,26 +55,27 @@ export function fitEffectText(options: {
   const { document, text, subtitle } = options;
   const base = Math.min(document.canvas.width, document.canvas.height)
     * (subtitle ? 0.035 : 0.07) * document.typography.scale;
-  const width = options.width ?? document.canvas.width * 0.88;
-  const height = options.height ?? document.canvas.height * 0.35;
+  const box = getEffectTextBox(document, subtitle ? 'subtitle' : 'title');
+  const width = options.width ?? box.width;
+  const height = options.height ?? box.height;
   const canvas = window.document.createElement('canvas');
   const context = canvas.getContext('2d')!;
   const fits = (size: number) => {
-    context.font = `${subtitle ? 400 : 600} ${size}px
-      Effects-${document.typography.family}, Effects-sans`;
-    let lines = 1;
-    let current = 0;
-    for (const letter of getGraphemes(text)) {
-      const measure = context.measureText(letter).width;
-      if (letter === '\n' || current + measure > width) {
-        lines++; current = letter === '\n' ? 0 : measure;
-      } else current += measure;
+    if (!context) return true;
+    context.font = `${subtitle ? 400 : 600} ${size}px ${getEffectFontChain(document.typography.family)}`;
+    let lines = 1, current = '';
+    for (const letter of getGraphemes(normalizeEffectDisplayText(text))) {
+      if (letter === '\n') { lines++; current = ''; continue; }
+      const candidate = current + letter;
+      if (current && context.measureText(candidate).width > width) {
+        lines++; current = letter;
+      } else current = candidate;
     }
     return lines * size * 1.3 <= height;
   };
   let low = base * 0.6;
   let high = base;
-  if (!fits(low)) throw new Error('EFFECT_TEXT_OVERFLOW');
+  if (!text || !fits(low)) return { fontSize: low }; // DOM decides final fit.
   for (let i = 0; i < 12; i++) {
     const middle = (low + high) / 2;
     if (fits(middle)) low = middle; else high = middle;

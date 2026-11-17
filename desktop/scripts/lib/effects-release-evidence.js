@@ -32,25 +32,29 @@ const SCENARIOS = ['package', 'visual', 'desktop', 'process', 'performance', 'ag
 const HEX = /^[a-f0-9]{64}$/
 const ROLES = {
   package: ['identity_before', 'identity_after', 'runtime_smoke'],
-  visual: ['matrix_index', 'frame_pair', 'player_frame', 'layout', 'media_probe', 'audio_metrics'],
+  visual: ['supplemental_index', 'font_usage', 'font_usage_reference', 'matrix_index', 'frame_pair', 'player_frame', 'layout', 'media_probe', 'audio_metrics'],
   desktop: ['action_trace', 'save_reopen', 'export_request', 'video', 'media_probe', 'network_log'],
   process: ['process_trace'], performance: ['raw_samples', 'device_record'],
   agent: ['tool_trace', 'provider_record', 'apply_receipt', 'undo_record'],
 }
 const CASES = {
   package: ['tree-before', 'tree-after', 'runtime-render', 'runtime-cancel', 'runtime-parent-loss', 'dependency-boundary'],
-  desktop: ['entry-main', 'entry-material', 'entry-toolbar', 'entry-clip', 'cancel', 'undo', 'redo', 'save-reopen', 'replace-preserves-edits', 'detached-audio', 'locked-track', 'cover', 'multi-select', 'project-switch', 'lost-save', 'lost-submit', 'close-keyboard', 'font-retry', 'editor-lease', 'final-export', 'runtime-unavailable-export', 'deleted-draft-export'],
+  desktop: ['entry-main', 'entry-material', 'entry-toolbar', 'entry-clip', 'cancel', 'undo', 'redo', 'save-reopen', 'replace-preserves-edits', 'detached-audio', 'locked-track', 'cover', 'multi-select', 'project-switch', 'lost-save', 'lost-submit', 'close-keyboard', 'font-retry', 'editor-lease', 'final-export', 'runtime-unavailable-export', 'deleted-draft-export', 'draft-page-13', 'legacy-effect-document'],
   process: ['close', 'kill-main', 'kill-controller', 'restart-backend'],
   performance: ['cold', 'warm', 'previews-48', 'player-first-frame', 'input', 'render-30s', 'working-set'],
   agent: ['provider', 'progressive-schema', 'unknown-replay', 'stop', 'apply-receipt', 'undo'],
 }
 const ACS = {
-  package: [22, 23, 42, 45, 55, 56],
-  visual: [1, 2, 3, 5, 11, 43, 54],
-  desktop: [6, 7, 8, 14, 15, 16, 17, 19, 24, 28, 35, 36, 39, 40, 44, 47, 48, 49, 52],
+  package: [22, 23, 42, 45, 55, 56, 58],
+  visual: [1, 2, 3, 5, 11, 43, 54, 57, 63, 64],
+  desktop: [6, 7, 8, 14, 15, 16, 17, 19, 24, 28, 35, 36, 39, 40, 44, 47, 48, 49, 52, 61, 66],
   process: [25, 31, 41, 53], performance: [], agent: [20, 21, 29, 46, 50],
 }
 const REGRESSION_BINDINGS = {
+  'AC-59': ['test_multiline_submit_uses_layout_breaks', 'test_slideshow_explicit_lines_rejected_before_job', 'preserves_explicit_empty_lines'],
+  'AC-60': ['test_text_layout_manifest_mismatch', 'rejects_missing_text_layout_manifest_entry', 'uses_browser_bounds_for_text', 'keeps_callout_text_inside_safe_area'],
+  'AC-62': ['loads_next_draft_page_once', 'keeps_cursor_after_page_failure', 'rejects_previous_project_page', 'invalidates_draft_pages_on_close', 'does_not_wait_for_directory_to_open_explicit_draft', 'keeps_selected_draft_outside_first_page'],
+  'AC-65': ['reports_text_overflow_without_publishing_output', 'preserves_text_overflow_from_child'],
   'AC-04': ['invalid_structure_is_rejected_even_for_draft', '拒绝未知参数、额外字段和非有限数值'],
   'AC-09': ['project_quota_and_replay_order', 'concurrent_duplicate_and_cross_project_global_quota'],
   'AC-10': ['concurrent_duplicate_and_cross_project_global_quota', 'cancel_between_select_and_claim'],
@@ -140,7 +144,7 @@ async function reserveReport(target, runId = crypto.randomUUID()) {
 /** Reports may start blocked; pass is derived later from independently read evidence. */
 function createAcceptanceReport(options) {
   const now = new Date().toISOString()
-  return { schema_version: 1, run_id: options.runId || crypto.randomUUID(),
+  return { schema_version: 2, run_id: options.runId || crypto.randomUUID(),
     requested_scenario: options.scenario, source_head: options.sourceHead || '0'.repeat(40),
     package_id: options.packageId || '0'.repeat(64),
     manifest_sha256: options.manifestSha256 || '0'.repeat(64),
@@ -249,6 +253,20 @@ function assertScenarioMetrics(name, step, records) {
     && measurements.progressive_schema === true && measurements.stop_applied === false
     && measurements.undo_restored === true, '缺少真实 Agent 交互证据')
 }
+function assertDraftPageEvidence(page) {
+  requireThat(page?.first_count === 12 && page.second_count === 1 && page.selected_id === page.reopened_id
+    && typeof page.selected_id === 'string' && page.selected_id.length > 0
+    && typeof page.edited_title === 'string' && page.edited_title.length > 0
+    && page.edited_title === page.persisted_title && page.timeline_unchanged === true, '缺少第13草稿真实分页/保存/重开证据')
+  const restart = page.restart
+  requireThat(restart && page.restarted_id === page.selected_id && page.restarted_title === page.edited_title
+    && page.restart_first_count === 12 && page.restart_second_count === 1 && page.restart_timeline_unchanged === true
+    && restart.same_user_data === true && restart.residual_processes === 0
+    && Number.isFinite(restart.exit_ms) && restart.exit_ms >= 0 && restart.exit_ms <= 12000
+    && Number.isInteger(restart.before?.pid) && restart.before.pid > 0
+    && Number.isInteger(restart.after?.pid) && restart.after.pid > 0, '缺少第13草稿应用重启后的分页/内容/进程证据')
+  requireThat(utc(restart.after.started_at) > utc(restart.before.started_at), '第13草稿应用重启进程身份未更新')
+}
 async function assertDesktopEvidence(step, records, context) {
   const actions = records.get('action_trace')[0].cases
   const proof = id => actions.find(entry => entry.case_id === id)?.proof
@@ -263,6 +281,13 @@ async function assertDesktopEvidence(step, records, context) {
   const lease = proof('editor-lease')
   requireThat(lease?.page_count === 2 && lease.held_before === 1 && lease.denied_writes === 0
     && lease.reacquired && lease.accepted_writes >= 1, '缺少真实双页Web Locks租约/交接用例')
+  const page = proof('draft-page-13'), legacy = proof('legacy-effect-document')
+  assertDraftPageEvidence(page)
+  requireThat(legacy?.source_head === '8d53a66d137c95afe3d3e17d0bda5405f4f33f8e'
+    && HEX.test(legacy.fixture_hash) && HEX.test(legacy.document_sha256)
+    && HEX.test(legacy.old_output_before) && legacy.old_output_before === legacy.old_output_after
+    && legacy.old_asset !== legacy.new_asset && legacy.new_job && legacy.saved_reopened
+    && legacy.playback_decoded && legacy.undo_restored, '缺少基线旧稿/旧成品的真实兼容性证据')
   requireThat(records.get('network_log')[0].requests.every(request => request.local), '安装场景尝试访问非本地资源')
   const exported = records.get('export_request')[0]
   const declared = records.get('media_probe').find(record => record.case_id === 'final-export')
@@ -425,21 +450,111 @@ async function assertVisual(records, step, attachments, context) {
   await assertVisualAudio(records, files, context)
   await assertVisualGlyphs(records, files, context)
   requireNumber(step.measurements, 'sample_frames', value => value === 360)
+  requireNumber(step.measurements, 'supplemental_vector_count', value => value === 27)
+  requireNumber(step.measurements, 'supplemental_sample_frames', value => value === 81)
 }
 async function assertVisualGlyphs(records, files, context) {
+  await assertSupplemental(records, files, context)
+}
+
+/** Fixed inputs are reconstructed independently; self-consistent empty renders fail. */
+function validateSupplementalVectors(entries, template) {
+  const { TEXT_VECTORS, FAMILIES, createTextVectorDocument } = require('./effects-text-vectors')
+  requireThat(Array.isArray(entries) && entries.length === 27, '补充矩阵必须有27个向量')
+  const seen = new Set()
+  for (const entry of entries) {
+    const vector = TEXT_VECTORS.find(item => item.case_id === entry.case_id)
+    const key = `${entry.case_id}:${entry.family}`
+    requireThat(vector && FAMILIES.includes(entry.family) && !seen.has(key), '固定补充向量缺少或重复')
+    seen.add(key)
+    const expected = createTextVectorDocument(template, vector, entry.family)
+    requireThat(JSON.stringify(entry.document) === JSON.stringify(expected)
+      && entry.input_sha256 === hash(JSON.stringify(expected)), '补充文案、参数或输入hash与固定向量不符')
+    requireThat(JSON.stringify(entry.frames?.map(frame => frame.frame)) === '[0,29,59]', '补充首中末帧不完整')
+    for (const frame of entry.frames) {
+      for (const role of ['png_a', 'png_b', 'mp4_frame', 'player_frame', 'renderer_font_usage', 'player_font_usage'])
+        requireThat(typeof frame[role] === 'string' && frame[role], `补充采样缺少${role}`)
+      requireThat(frame.png_a !== frame.png_b && frame.png_a !== frame.mp4_frame
+        && frame.png_b !== frame.mp4_frame && frame.renderer_font_usage !== frame.player_font_usage, '补充附件角色重复')
+    }
+  }
+}
+async function assertSupplemental(records, files, context) {
+  const index = records.get('supplemental_index')?.[0]
+  requireThat(index && records.get('supplemental_index').length === 1, '缺少唯一补充矩阵')
+  const catalog = JSON.parse(await fs.readFile(path.join(context.resourceRoot, 'catalog.json'), 'utf8'))
   const fonts = JSON.parse(await fs.readFile(path.join(context.resourceRoot, 'fonts/manifest.json'), 'utf8'))
-  const glyphs = (records.get('layout') || []).filter(record => record.glyphs)
-  requireThat(glyphs.length === 21 && new Set(glyphs.map(record => `${record.case_id}:${record.family}`)).size === 21, '七组文字乘三种离线字体用例不完整')
-  for (const record of glyphs) {
-    requireThat(hash(record.text) === record.input_sha256
-      && JSON.stringify(record.frames) === '[0,29,59]' && record.pngs.length === 3
-      && record.pngs.every(ref => files.has(ref)), '文字输入或首中末帧身份错误')
-    const paths = fonts.fonts.filter(font => font.path.endsWith('.ttf') && [record.family, 'sans'].includes(font.family))
-      .map(font => path.join(context.resourceRoot, 'fonts', font.path))
+  const usage = require('./effects-font-usage')
+  const entries = []
+  for (const entry of index.entries || []) {
+    for (const role of ['document', 'video', 'probe']) requireThat(files.has(entry[role]), `补充向量缺少${role}`)
+    const fixture = await readAttachment(context, files.get(entry.document))
+    requireThat(fixture.case_id === entry.case_id && fixture.family === entry.family
+      && fixture.input_sha256 === entry.input_sha256 && fixture.inputs.length === 0, '补充文档绑定错误')
+    entries.push({ ...entry, document: fixture.document })
+  }
+  validateSupplementalVectors(entries, catalog.templates.find(item => item.id === 'title-rise'))
+  const references = {}
+  for (const side of ['renderer', 'player']) {
+    const ref = index.reference_paths?.[side]
+    requireThat(files.get(ref)?.role === 'font_usage_reference', '缺少本端字体参考')
+    references[side] = await readAttachment(context, files.get(ref))
+    const independent = await usage.probeTargetFonts(context, side)
+    const { case_id, input_sha256 } = references[side]
+    const raw = { side: references[side].side, fontHash: references[side].fontHash, fonts: references[side].fonts }
+    requireThat(case_id === 'font-reference' && input_sha256 === context.report.font_hash, '字体参考输入错误')
+    requireThat(JSON.stringify(raw) === JSON.stringify(independent), '独立字体探针与参考不符')
+    references[side] = independent
+  }
+  const usedPaths = new Set()
+  for (const entry of entries) {
+    const probe = await readAttachment(context, files.get(entry.probe))
+    const stream = probe.probe?.streams?.find(item => item.codec_type === 'video')
+    requireThat(probe.case_id === entry.case_id && probe.input_sha256 === entry.input_sha256
+      && stream?.codec_name === 'h264' && stream.pix_fmt === 'yuv420p'
+      && stream.width === 1920 && stream.height === 1080 && Number(stream.nb_read_frames) === 60
+      && stream.r_frame_rate === '30/1', '补充视频探测与文档不符')
+    for (const frame of entry.frames) {
+      for (const role of ['png_a', 'png_b', 'mp4_frame', 'player_frame', 'layout', 'metrics', 'mask', 'player_mask', 'renderer_font_usage', 'player_font_usage']) {
+        requireThat(files.has(frame[role]) && !usedPaths.has(frame[role]), `补充附件缺失或跨角色复用: ${role}`)
+        usedPaths.add(frame[role])
+      }
+      const layout = await readAttachment(context, files.get(frame.layout))
+      const metrics = await readAttachment(context, files.get(frame.metrics))
+      for (const record of [layout, metrics]) requireThat(record.case_id === entry.case_id
+        && record.input_sha256 === entry.input_sha256 && record.frame === frame.frame, '补充帧绑定错误')
+      requireThat(JSON.stringify(await readPngDimensions(context, frame.png_a)) === '[1920,1080]', '补充帧尺寸错误')
+      const measured = await verifyImageMetrics(context, frame.png_a, frame.png_b, frame.mp4_frame, frame.mask)
+      const player = await verifyImageMetrics(context, frame.png_a, frame.png_b, frame.player_frame, frame.player_mask, true)
+      await verifyDecodedFrame(context, entry.video, frame.frame, files.get(frame.mp4_frame))
+      const compared = require('./effects-visual-acceptance').compareLayouts(layout.renderer, layout.player, entry.document.canvas)
+      requireThat(measured.png_equal && measured.rgba_equal && measured.flat_mae <= 6 && player.flat_mae <= 6
+        && compared.linesMatch && compared.error <= 1, '补充实帧像素或布局门禁失败')
+      requireThat(metrics.mp4.flat_mae === measured.flat_mae && metrics.player.flat_mae === player.flat_mae
+        && metrics.mp4.mask_sha256 === files.get(frame.mask).sha256
+        && metrics.player.mask_sha256 === files.get(frame.player_mask).sha256
+        && frame.mp4_flat_mae === measured.flat_mae && frame.player_flat_mae === player.flat_mae
+        && frame.png_equal === measured.png_equal && frame.rgba_equal === measured.rgba_equal
+        && frame.layout_lines_match === compared.linesMatch && frame.layout_error_css_px === compared.error,
+      '补充索引或metrics与实际重算不符')
+      for (const side of ['renderer', 'player']) {
+        const record = await readAttachment(context, files.get(frame[`${side}_font_usage`]))
+        usage.validateFontUsage({ usage: record, reference: references[side], expectedReference: references[side],
+          binding: { case_id: entry.case_id, family: entry.family, side, frame: frame.frame,
+            input_sha256: entry.input_sha256, fontHash: context.report.font_hash },
+          fields: entry.document.content, layout: layout[side] })
+      }
+    }
+    const glyphs = (records.get('layout') || []).filter(record => record.glyphs
+      && record.case_id === entry.case_id && record.family === entry.family)
+    requireThat(glyphs.length === 1 && glyphs[0].input_sha256 === entry.input_sha256
+      && glyphs[0].text === entry.document.content.title + '\n' + entry.document.content.subtitle, '补充字形输入错误')
+    const paths = usage.fontKeys(entry.family).map(key => path.join(context.resourceRoot, 'fonts',
+      fonts.fonts.find(font => font.role === 'font' && font.family === key).path))
     const result = await runProgram(context.python, ['-B', '-X', 'utf8', path.join(__dirname, 'effects_metrics.py'),
-      'glyphs', ...paths.flatMap(file => ['--font', file]), '--text', record.text], { cwd: context.evidenceRoot, timeoutMs: 30000 })
-    requireThat(result.exit_code === 0 && JSON.stringify(JSON.parse(result.stdout)) === JSON.stringify(record.glyphs)
-      && record.glyphs.offline_glyphs_complete === true, '离线字体实际缺字，不能借系统字体通过')
+      'glyphs', ...paths.flatMap(file => ['--font', file]), '--text', glyphs[0].text], { cwd: context.evidenceRoot, timeoutMs: 30000 })
+    requireThat(result.exit_code === 0 && JSON.stringify(JSON.parse(result.stdout)) === JSON.stringify(glyphs[0].glyphs)
+      && glyphs[0].glyphs.offline_glyphs_complete === true, '补充离线字体缺字')
   }
 }
 async function assertVisualAudio(records, files, context) {
@@ -501,6 +616,7 @@ async function validateStep(name, step, report, context) {
   if (name === 'desktop') await assertDesktopEvidence(step, records, context)
   if (name === 'agent') assertAgentEvidence(records)
   if (name === 'package') {
+    await verifyPackagedEffectResources(context)
     for (const role of ['identity_before', 'identity_after']) {
       const identity = records.get(role)?.[0]
       requireThat(identity?.input_sha256 === report.manifest_sha256
@@ -533,6 +649,70 @@ async function validateStep(name, step, report, context) {
     }
   }
 }
+
+/** Read-only closure check: a self-consistent package hash cannot replace a source lock. */
+async function verifyPackagedEffectResources(context) {
+  const root = context.resourceRoot
+  const runtime = JSON.parse(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'))
+  const lock = JSON.parse(await fs.readFile(path.join(root, 'fonts/source-lock.json'), 'utf8'))
+  const fonts = JSON.parse(await fs.readFile(path.join(root, 'fonts/manifest.json'), 'utf8'))
+  requireThat(lock.schemaVersion === 1 && lock.resources?.length === 9 && fonts.schemaVersion === 2, '字体锁或角色版本错误')
+  const paths = new Set(), roles = new Set(), revisions = new Set()
+  const expectedFonts = []
+  for (const resource of lock.resources) {
+    requireThat(['sans', 'serif', 'mono', 'emoji'].includes(resource.family)
+      && ['font', 'license', 'metadata'].includes(resource.role)
+      && (resource.role !== 'metadata' || resource.family === 'emoji')
+      && /^[a-zA-Z0-9][a-zA-Z0-9[\],._-]*$/.test(resource.path)
+      && !paths.has(resource.path) && !roles.has(`${resource.family}:${resource.role}`)
+      && Number.isInteger(resource.bytes) && resource.bytes > 0 && resource.bytes <= 32 * 1024 * 1024
+      && HEX.test(resource.sha256), '字体锁条目缺失、重复或越界')
+    if (resource.family === 'emoji') {
+      requireThat(/^[a-f0-9]{40}$/.test(resource.sourceRevision)
+        && typeof resource.sourceUrl === 'string'
+        && resource.sourceUrl.startsWith(`https://raw.githubusercontent.com/google/fonts/${resource.sourceRevision}/ofl/notoemoji/`)
+        && !/[?#]/.test(resource.sourceUrl), 'emoji来源没有固定官方提交')
+      revisions.add(resource.sourceRevision)
+    } else requireThat(resource.sourceUrl === null && resource.sourceRevision === 'repository-baseline', '原字体必须使用仓库原字节')
+    if (resource.role === 'font') requireThat(resource.weight === (resource.family === 'emoji' ? '300 700' : '100 900'), '字体字重错误')
+    paths.add(resource.path); roles.add(`${resource.family}:${resource.role}`)
+    expectedFonts.push({ family: resource.family, role: resource.role, path: resource.path,
+      bytes: resource.bytes, sha256: resource.sha256,
+      ...(resource.role === 'font' ? { weight: resource.weight } : {}) })
+    const actual = await hashFile(path.join(root, 'fonts', resource.path))
+    requireThat(actual.bytes === resource.bytes && actual.sha256 === resource.sha256, '字体锁与实际资源不一致')
+  }
+  requireThat(revisions.size === 1 && ['sans', 'serif', 'mono', 'emoji'].every(family =>
+    roles.has(`${family}:font`) && roles.has(`${family}:license`)) && roles.has('emoji:metadata'), '字体闭包不完整')
+  requireThat(JSON.stringify(fonts.fonts) === JSON.stringify(expectedFonts), '字体manifest与源锁角色不一致')
+  const fontEntries = runtime.files.filter(file => file.path.startsWith('fonts/'))
+  const expectedPaths = [...paths, 'source-lock.json', 'manifest.json'].map(name => `fonts/${name}`).sort()
+  requireThat(JSON.stringify(fontEntries.map(file => file.path)) === JSON.stringify(expectedPaths)
+    && hash(JSON.stringify(fontEntries)) === runtime.fontHash, 'fontHash或字体完整树不闭合')
+  for (const file of fontEntries) {
+    const actual = await hashFile(path.join(root, file.path))
+    requireThat(actual.bytes === file.bytes && actual.sha256 === file.sha256, '字体资源未绑定运行清单')
+  }
+  const layout = await fs.readFile(path.join(root, 'runtime/text-layout.json'))
+  const entries = runtime.files.filter(file => file.path === 'runtime/text-layout.json')
+  requireThat(HEX.test(runtime.textLayoutHash) && hash(layout) === runtime.textLayoutHash
+    && entries.length === 1 && entries[0].sha256 === runtime.textLayoutHash && entries[0].bytes === layout.length, '文字规则清单不闭合')
+  if (context.manifest) {
+    const frontend = context.manifest.files.filter(file => file.path.startsWith('resources/frontend/public/effects/fonts/'))
+    requireThat(frontend.length === fontEntries.length, 'Player字体资源闭包缺失')
+    for (const file of fontEntries) {
+      const name = `resources/frontend/public/effects/${file.path}`
+      const player = frontend.filter(entry => entry.path === name)
+      requireThat(player.length === 1 && player[0].sha256 === file.sha256
+        && player[0].size === file.bytes && (await hashFile(path.join(context.targetRoot, name))).sha256 === file.sha256,
+      'Player与renderer的字体资源不同步')
+    }
+    const backend = context.manifest.files.filter(file => file.path.endsWith('/app/services/effects/text-layout.generated.json'))
+    requireThat(backend.length === 1 && backend[0].sha256 === runtime.textLayoutHash
+      && (await hashFile(path.join(context.targetRoot, backend[0].path))).sha256 === runtime.textLayoutHash, '包内后端文字规则不同步')
+  }
+  return true
+}
 async function validateRegression(report, context) {
   fields(report.regression, ['status', 'source_head', 'attachment'])
   requireThat(report.regression.source_head === report.source_head, '源码回归来自其它提交')
@@ -555,6 +735,8 @@ async function validateRegression(report, context) {
   }
   fields(regression.acceptance_bindings, Object.keys(REGRESSION_BINDINGS))
   const actualCases = regression.commands.flatMap(command => command.cases || [])
+  for (const required of ['rejects_changed_font_bytes', 'rejects_missing_vendored_font', 'downloads_missing_emoji_from_pinned_source', 'rejects_missing_emoji_offline', 'collects_fonts_from_both_renderers', 'rejects_incomplete_font_usage'])
+    requireThat(actualCases.some(test => test.name.includes(required) && test.status === 'pass'), `Missing actual source regression: ${required}`)
   for (const [id, patterns] of Object.entries(REGRESSION_BINDINGS)) {
     const binding = regression.acceptance_bindings[id]
     requireThat(Array.isArray(binding) && binding.length > 0, `${id} 缺少源码用例绑定`)
@@ -568,7 +750,7 @@ async function validateRegression(report, context) {
 async function validateAcceptanceReport(report, context = {}) {
   try {
     fields(report, REPORT_KEYS, REPORT_KEYS.filter(key => key !== 'regression'))
-    requireThat(report.schema_version === 1 && typeof report.run_id === 'string', '报告版本或运行 ID 无效')
+    requireThat(report.schema_version === 2 && typeof report.run_id === 'string', '报告版本或运行 ID 无效')
     requireThat([...SCENARIOS, 'all'].includes(report.requested_scenario), '未知场景')
     requireThat(['unpacked', 'installed'].includes(report.mode), '报告模式无效')
     for (const key of ['package_id', 'manifest_sha256', 'runtime_fingerprint', 'catalog_hash', 'font_hash', 'bundle_hash']) requireThat(HEX.test(report[key]), `报告 ${key} 散列无效`)
@@ -581,11 +763,12 @@ async function validateAcceptanceReport(report, context = {}) {
       requireThat(context.workspaceRoot && context.unpackedRoot && context.manifestPath,
         '缺少独立包身份验证上下文')
       await verifyIdentity({ ...context, report })
+      await verifyPackagedEffectResources(context)
     }
     for (const name of selected) await validateStep(name, report.steps[name], report, context)
     requireThat(object(report.acceptance_results), 'AC 结果无效')
     for (const [id, result] of Object.entries(report.acceptance_results)) {
-      requireThat(/^AC-(0[1-9]|[1-4][0-9]|5[0-6])$/.test(id), '未知 AC')
+      requireThat(/^AC-(0[1-9]|[1-5][0-9]|6[0-6])$/.test(id), '未知 AC')
       fields(result, ['status', 'case_ids', 'attachment_refs'])
       requireThat(['pass', 'fail', 'blocked'].includes(result.status) && Array.isArray(result.case_ids) && Array.isArray(result.attachment_refs), 'AC 结果结构错误')
       if (result.status === 'pass') requireThat(result.case_ids.length > 0 && result.attachment_refs.length > 0, 'AC 缺少实际用例与附件')
@@ -616,7 +799,7 @@ async function validateAcceptanceReport(report, context = {}) {
     }
     for (const name of selected) if (report.steps[name].status === 'pass') for (const id of acIds(name)) requireThat(
       report.acceptance_results[id]?.status === 'pass', '通过场景缺少关联 AC 实际结果')
-    if (report.requested_scenario === 'all') requireThat(Object.keys(report.acceptance_results).length === 56, 'all 必须逐项记录全部56个 AC')
+    if (report.requested_scenario === 'all') requireThat(Object.keys(report.acceptance_results).length === 66, 'all 必须逐项记录全部66个 AC')
     if (context.manifest) {
       requireThat(report.source_head === context.manifest.source_head && report.package_id === context.manifest.package_id && report.installer_sha256 === (context.manifest.installer?.sha256 || null), '报告与实际包/安装器身份不同')
     }
@@ -634,7 +817,7 @@ function deriveReleaseReady(report, context) {
     && report.installer_sha256 !== null && context.manifest?.dirty === false
     && SCENARIOS.every(name => report.steps[name]?.status === 'pass')
     && report.regression?.status === 'pass'
-    && Array.from({ length: 56 }, (_, index) => `AC-${String(index + 1).padStart(2, '0')}`).every(id => report.acceptance_results[id]?.status === 'pass')
+    && Array.from({ length: 66 }, (_, index) => `AC-${String(index + 1).padStart(2, '0')}`).every(id => report.acceptance_results[id]?.status === 'pass')
 }
 
 /** Compare the selected installed files, allowing only separately recorded NSIS files. */
@@ -703,4 +886,4 @@ module.exports = { SCENARIOS, ROLES, CASES, ACS, inside, hash, checkedPath,
   validateAcceptanceReport, verifyInstalledTree, verifyIdentity,
   cleanEnvironment, rejectOverrides, runProgram, selectedScenarios,
   installModuleBoundary, REGRESSION_BINDINGS, acIds, deriveReleaseReady,
-  assertScenarioMetrics, assertAgentEvidence, assertVisual }
+  assertScenarioMetrics, assertAgentEvidence, assertVisual, validateSupplementalVectors, assertSupplemental, verifyPackagedEffectResources, assertDraftPageEvidence }

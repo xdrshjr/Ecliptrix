@@ -57,6 +57,8 @@ for (const name of await readdir(join(runtimeRoot, 'src'))) {
   await writeFile(join(runtimeRoot, 'dist', name.replace(/\.ts$/, '.js')),
     compiled.outputText);
 }
+const textLayout = await readFile(join(projectRoot, 'src/lib/effects/textLayout.json'));
+await writeFile(join(projectRoot, 'backend-services/basic-service/app/services/effects/text-layout.generated.json'), textLayout);
 await bundle({
   entryPoint: join(projectRoot,
     'src/lib/effects/compositions/EffectRoot.tsx'),
@@ -80,6 +82,7 @@ await cp(join(runtimeRoot, 'package.json'),
   join(outputRoot, 'runtime/package.json'));
 await cp(join(runtimeRoot, 'package-lock.json'),
   join(outputRoot, 'runtime/package-lock.json'));
+await writeFile(join(outputRoot, 'runtime/text-layout.json'), textLayout);
 const groups = {};
 const browserVersion = execFileSync(join(outputRoot,
   'browser/chrome-headless-shell.exe'), ['--version', '--disable-logging',
@@ -113,6 +116,7 @@ const manifest = {
   platform: process.platform, arch: process.arch,
   bundleHash: groups.bundle.hash,
   catalogHash: createHash('sha256').update(catalog).digest('hex'),
+  textLayoutHash: createHash('sha256').update(textLayout).digest('hex'),
   fontHash: groups.fonts.hash, browserHash: groups.browser.hash,
   nativeHash: groups.native.hash,
   runtimeHash: groups.runtime.hash,

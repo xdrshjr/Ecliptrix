@@ -1,6 +1,7 @@
+import { EffectText } from './EffectText';
 import React from 'react';
 import { Img } from 'remotion';
-import { fitEffectText, getInputStyle, useEffectScene,
+import { getInputStyle, useEffectScene,
   type SceneProps } from './layout';
 
 export function ImageReveal({ document, assets }: SceneProps) {
@@ -13,9 +14,8 @@ export function ImageReveal({ document, assets }: SceneProps) {
     clipPath: isWipe ? `circle(${scene.enter * 150}% at 50% 50%)` : undefined,
     transform: isWipe ? undefined : `scale(${zoom})` }}>
     {hero && <Img src={assets[hero.assetId]} style={getInputStyle(hero)} />}
-    <div style={{ position: 'absolute', left: '6%', bottom: '8%',
-      ...fitEffectText({ document, text: document.content.title }) }}>
-      {document.content.title}
+    <div style={{ position: 'absolute', left: '6%', bottom: '8%' }}>
+      <EffectText document={document} />
     </div>
   </div>;
 }

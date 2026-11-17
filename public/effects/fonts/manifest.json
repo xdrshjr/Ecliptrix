@@ -1,46 +1,72 @@
 {
+  "schemaVersion": 2,
   "fonts": [
     {
-      "family": "sans",
-      "path": "NotoSansSC[wght].ttf",
-      "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
-      "bytes": 17772300,
-      "weight": "100 900"
-    },
-    {
-      "family": "sans",
-      "path": "notosanssc-OFL.txt",
-      "sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
-      "bytes": 4388,
-      "weight": "100 900"
-    },
-    {
-      "family": "serif",
-      "path": "NotoSerifSC[wght].ttf",
-      "sha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
-      "bytes": 25125512,
-      "weight": "100 900"
-    },
-    {
-      "family": "serif",
-      "path": "notoserifsc-OFL.txt",
-      "sha256": "5e0da210fb04058a8c0087985d2d456b931c2579811a49655721d3cf0c36b6d6",
-      "bytes": 4350,
-      "weight": "100 900"
+      "family": "emoji",
+      "role": "font",
+      "path": "NotoEmoji[wght].ttf",
+      "bytes": 1982596,
+      "sha256": "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551",
+      "weight": "300 700"
     },
     {
       "family": "mono",
+      "role": "font",
       "path": "NotoSansMono[wdth,wght].ttf",
-      "sha256": "2cb2adb378a8f574213e23df697050b83c54c27df465a2015552740b2769a081",
       "bytes": 1708408,
+      "sha256": "2cb2adb378a8f574213e23df697050b83c54c27df465a2015552740b2769a081",
       "weight": "100 900"
     },
     {
-      "family": "mono",
-      "path": "notosansmono-OFL.txt",
-      "sha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a",
-      "bytes": 4396,
+      "family": "sans",
+      "role": "font",
+      "path": "NotoSansSC[wght].ttf",
+      "bytes": 17772300,
+      "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
       "weight": "100 900"
+    },
+    {
+      "family": "serif",
+      "role": "font",
+      "path": "NotoSerifSC[wght].ttf",
+      "bytes": 25125512,
+      "sha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
+      "weight": "100 900"
+    },
+    {
+      "family": "emoji",
+      "role": "metadata",
+      "path": "notoemoji-METADATA.pb",
+      "bytes": 12386,
+      "sha256": "88d5f22b863f40f1e0f14484e018cd93c5e0d899e80523d84351483b2bd3d993"
+    },
+    {
+      "family": "emoji",
+      "role": "license",
+      "path": "notoemoji-OFL.txt",
+      "bytes": 4330,
+      "sha256": "500bb1ccf43df7bbb522112f9133a52b16e1c35e809632f5d8609b179152de5b"
+    },
+    {
+      "family": "mono",
+      "role": "license",
+      "path": "notosansmono-OFL.txt",
+      "bytes": 4396,
+      "sha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a"
+    },
+    {
+      "family": "sans",
+      "role": "license",
+      "path": "notosanssc-OFL.txt",
+      "bytes": 4388,
+      "sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9"
+    },
+    {
+      "family": "serif",
+      "role": "license",
+      "path": "notoserifsc-OFL.txt",
+      "bytes": 4350,
+      "sha256": "5e0da210fb04058a8c0087985d2d456b931c2579811a49655721d3cf0c36b6d6"
     }
   ]
 }

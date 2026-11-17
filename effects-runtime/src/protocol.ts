@@ -21,6 +21,7 @@ export interface RuntimeManifest {
   engineVersion: string;
   runtimeFingerprint: string;
   catalogHash: string;
+  textLayoutHash: string;
   browserExecutable: string;
   binariesDirectory: string;
   supportedTemplates: number;

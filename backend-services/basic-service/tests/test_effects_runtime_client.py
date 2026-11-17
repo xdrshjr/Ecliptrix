@@ -1,6 +1,8 @@
 """Damaged optional runtime resources must not stop the editing backend."""
 
 import json
+import hashlib
+from pathlib import Path
 
 import pytest
 
@@ -10,10 +12,14 @@ from app.services.effects.runtime_client import EffectsRuntimeClient
 
 
 def valid_manifest():
+    layout = Path(__file__).resolve().parents[1] / "app/services/effects/text-layout.generated.json"
+    content = layout.read_bytes()
+    identity = hashlib.sha256(content).hexdigest()
     return {"protocolVersion": 1, "engineVersion": "4.0.544",
             "catalogHash": CATALOG_HASH, "supportedTemplates": 24,
             "runtimeFingerprint": "a" * 64, "fontHash": "b" * 64,
-            "bundleHash": "c" * 64}
+            "bundleHash": "c" * 64, "textLayoutHash": identity,
+            "files": [{"path": "runtime/text-layout.json", "bytes": len(content), "sha256": identity}]}
 
 
 @pytest.mark.asyncio

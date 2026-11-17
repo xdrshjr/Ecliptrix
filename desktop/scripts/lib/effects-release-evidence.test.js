@@ -11,6 +11,122 @@ const { randomUUID } = require('node:crypto')
 const evidence = require('./effects-release-evidence')
 const root = path.resolve(__dirname, '../../build/effects/evidence-tests')
 
+test('第13草稿仅页面刷新不能代领应用重启验收', () => {
+  const page = { first_count: 12, second_count: 1, selected_id: 'oldest', reopened_id: 'oldest',
+    edited_title: '保留文字', persisted_title: '保留文字', timeline_unchanged: true, reachable_after_reload: true }
+  assert.throws(() => evidence.assertDraftPageEvidence(page), /应用重启/)
+  const complete = { ...page, restarted_id: 'oldest', restarted_title: '保留文字',
+    restart_first_count: 12, restart_second_count: 1, restart_timeline_unchanged: true,
+    restart: { before: { pid: 101, started_at: '2026-11-17T12:00:00.000Z' },
+      after: { pid: 102, started_at: '2026-11-17T12:00:10.000Z' },
+      exit_ms: 100, residual_processes: 0, same_user_data: true } }
+  delete complete.reachable_after_reload
+  assert.doesNotThrow(() => evidence.assertDraftPageEvidence(complete))
+  for (const mutate of [
+    proof => { delete proof.restart },
+    proof => { proof.restart.after = { ...proof.restart.before } },
+    proof => { proof.restart.residual_processes = 1 },
+    proof => { proof.restart.same_user_data = false },
+    proof => { proof.restart.exit_ms = 12001 },
+    proof => { delete proof.restart.after.pid },
+    proof => { proof.restarted_id = 'another' },
+    proof => { proof.restarted_title = '丢失文字' },
+    proof => { proof.restart_second_count = 0 },
+    proof => { proof.restart_timeline_unchanged = false },
+  ]) { const proof = structuredClone(complete); mutate(proof); assert.throws(() => evidence.assertDraftPageEvidence(proof)) }
+})
+
+test('报告v2保留独占marker与附件v1，旧报告不能签发', async () => {
+  const report = evidence.createAcceptanceReport({ scenario: 'package', mode: 'unpacked' })
+  assert.equal(report.schema_version, 2)
+  assert.equal(evidence.bindRecord(report, {}).schema_version, 1)
+  report.schema_version = 1
+  assert.equal((await evidence.validateAcceptanceReport(report)).valid, false)
+})
+test('新AC在相应blocked报告中可被整体校验，不能错误归为未知', async () => {
+  for (const scenario of ['package', 'visual', 'desktop']) {
+    const report = evidence.createAcceptanceReport({ scenario, mode: 'unpacked' })
+    report.steps[scenario] = { status: 'blocked', acceptance_ids: [], measurements: {}, attachments: [], reason: '待本次安装' }
+    for (const id of evidence.acIds(scenario)) report.acceptance_results[id] = { status: 'blocked', case_ids: [], attachment_refs: [] }
+    const result = await evidence.validateAcceptanceReport(report, { evidenceRoot: root })
+    assert.equal(result.valid, true, result.errors.join('\n')); assert.equal(result.exitCode, 2)
+  }
+})
+
+async function resourceFixture() {
+  const resourceRoot = path.join(root, randomUUID()); await fs.mkdir(path.join(resourceRoot, 'fonts'), { recursive: true })
+  await fs.mkdir(path.join(resourceRoot, 'runtime'))
+  const resources = []
+  for (const family of ['sans', 'serif', 'mono', 'emoji']) for (const role of family === 'emoji' ? ['font', 'license', 'metadata'] : ['font', 'license']) {
+    const bytes = Buffer.from(`${family}-${role}`), name = `${family}-${role}.bin`
+    await fs.writeFile(path.join(resourceRoot, 'fonts', name), bytes)
+    resources.push({ family, role, path: name, bytes: bytes.length, sha256: evidence.hash(bytes),
+      sourceRevision: family === 'emoji' ? 'a'.repeat(40) : 'repository-baseline',
+      sourceUrl: family === 'emoji' ? `https://raw.githubusercontent.com/google/fonts/${'a'.repeat(40)}/ofl/notoemoji/${name}` : null,
+      ...(role === 'font' ? { weight: family === 'emoji' ? '300 700' : '100 900' } : {}) })
+  }
+  resources.sort((a, b) => a.path.localeCompare(b.path))
+  await fs.writeFile(path.join(resourceRoot, 'fonts/source-lock.json'), JSON.stringify({ schemaVersion: 1, resources }))
+  await fs.writeFile(path.join(resourceRoot, 'fonts/manifest.json'), JSON.stringify({ schemaVersion: 2,
+    fonts: resources.map(({ sourceRevision, sourceUrl, ...item }) => item) }))
+  const fonts = []
+  for (const name of (await fs.readdir(path.join(resourceRoot, 'fonts'))).sort()) fonts.push({ path: `fonts/${name}`, ...await evidence.hashFile(path.join(resourceRoot, 'fonts', name)) })
+  const layout = Buffer.from('{"schemaVersion":1,"components":{}}')
+  await fs.writeFile(path.join(resourceRoot, 'runtime/text-layout.json'), layout)
+  const manifest = { fontHash: evidence.hash(JSON.stringify(fonts)), textLayoutHash: evidence.hash(layout),
+    files: [...fonts, { path: 'runtime/text-layout.json', bytes: layout.length, sha256: evidence.hash(layout) }] }
+  await fs.writeFile(path.join(resourceRoot, 'manifest.json'), JSON.stringify(manifest))
+  return { resourceRoot }
+}
+test('包字体锁闭包核对拒绝缺源锁、改字节和错误规则', async () => {
+  const valid = await resourceFixture(); assert.equal(await evidence.verifyPackagedEffectResources(valid), true)
+  for (const mutate of [
+    async context => fs.unlink(path.join(context.resourceRoot, 'fonts/source-lock.json')),
+    async context => fs.writeFile(path.join(context.resourceRoot, 'fonts/sans-font.bin'), 'changed'),
+    async context => fs.unlink(path.join(context.resourceRoot, 'fonts/emoji-license.bin')),
+    async context => fs.writeFile(path.join(context.resourceRoot, 'runtime/text-layout.json'), '{}'),
+  ]) { const context = await resourceFixture(); await mutate(context); await assert.rejects(evidence.verifyPackagedEffectResources(context)) }
+})
+test('包内Player旧字体即使全包清单自洽仍拒绝与renderer混装', async () => {
+  const context = await resourceFixture(); context.targetRoot = path.join(root, randomUUID())
+  const frontend = 'resources/frontend/public/effects/fonts'
+  await fs.cp(path.join(context.resourceRoot, 'fonts'), path.join(context.targetRoot, frontend), { recursive: true })
+  const backend = 'resources/backend/app/services/effects/text-layout.generated.json'
+  await fs.mkdir(path.dirname(path.join(context.targetRoot, backend)), { recursive: true })
+  await fs.copyFile(path.join(context.resourceRoot, 'runtime/text-layout.json'), path.join(context.targetRoot, backend))
+  const files = []
+  for (const name of await fs.readdir(path.join(context.targetRoot, frontend))) {
+    const identity = await evidence.hashFile(path.join(context.targetRoot, frontend, name))
+    files.push({ path: `${frontend}/${name}`, sha256: identity.sha256, size: identity.bytes })
+  }
+  const layout = await evidence.hashFile(path.join(context.targetRoot, backend))
+  files.push({ path: backend, sha256: layout.sha256, size: layout.bytes }); context.manifest = { files }
+  assert.equal(await evidence.verifyPackagedEffectResources(context), true)
+  const entry = files.find(file => file.path.endsWith('emoji-font.bin'))
+  await fs.writeFile(path.join(context.targetRoot, entry.path), 'old bytes')
+  const changed = await evidence.hashFile(path.join(context.targetRoot, entry.path))
+  Object.assign(entry, { sha256: changed.sha256, size: changed.bytes })
+  await assert.rejects(evidence.verifyPackagedEffectResources(context), /Player与renderer/)
+})
+test('补充向量拒绝缺帧、空文案、重复family及旧输入hash', () => {
+  const { TEXT_VECTORS, FAMILIES, createTextVectorDocument } = require('./effects-text-vectors')
+  const template = { id: 'title-rise', version: 1, defaults: { distance: 0.08 } }
+  const entries = TEXT_VECTORS.flatMap(vector => FAMILIES.map(family => {
+    const document = createTextVectorDocument(template, vector, family)
+    return { case_id: vector.case_id, family, input_sha256: evidence.hash(JSON.stringify(document)),
+      document, frames: [0, 29, 59].map(frame => ({ frame, png_a: `${vector.case_id}/${family}/${frame}-a.png`,
+        png_b: `${vector.case_id}/${family}/${frame}-b.png`, mp4_frame: 'mp4.png', player_frame: 'player.png',
+        renderer_font_usage: `r-${frame}.json`, player_font_usage: `p-${frame}.json` })) }
+  }))
+  assert.doesNotThrow(() => evidence.validateSupplementalVectors(entries, template))
+  for (const change of [e => e.pop(), e => { e[0].frames.pop() }, e => { e[0].document.content.title = '' },
+    e => { e[0].family = 'serif' }, e => { e[0].input_sha256 = '0'.repeat(64) },
+    e => { delete e[0].frames[0].png_b }, e => { delete e[0].frames[0].player_frame },
+    e => { delete e[0].frames[0].mp4_frame }, e => { e[0].frames[0].png_b = e[0].frames[0].png_a },
+    e => { delete e[0].frames[1].renderer_font_usage },
+  ]) { const mutated = structuredClone(entries); change(mutated); assert.throws(() => evidence.validateSupplementalVectors(mutated, template)) }
+})
+
 test('同一报告仅允许一个真实进程独占预留，终态也不可覆盖', async () => {
   const report = path.join(root, randomUUID(), 'report.json')
   await fs.mkdir(path.dirname(report), { recursive: true })
@@ -87,11 +203,11 @@ test('封存只替换本次 running 预留，异体篡改不能封存', async ()
   assert.equal(await fs.readFile(target, 'utf8'), 'another owner')
 })
 
-test('固定映射覆盖全部56项且没有重复或未知 AC', () => {
+test('固定映射覆盖全部66项且没有重复或未知 AC', () => {
   const ids = [...Object.keys(evidence.REGRESSION_BINDINGS), ...Object.keys(evidence.ACS).flatMap(evidence.acIds)]
-  assert.equal(ids.length, 56)
-  assert.equal(new Set(ids).size, 56)
-  for (let number = 1; number <= 56; number++) assert.ok(ids.includes(`AC-${String(number).padStart(2, '0')}`))
+  assert.equal(ids.length, 66)
+  assert.equal(new Set(ids).size, 66)
+  for (let number = 1; number <= 66; number++) assert.ok(ids.includes(`AC-${String(number).padStart(2, '0')}`))
   assert.ok(evidence.acIds('agent').includes('AC-46'))
   assert.ok(!evidence.acIds('performance').includes('AC-46'))
   assert.ok(evidence.acIds('visual').includes('AC-54'))
@@ -100,11 +216,11 @@ test('固定映射覆盖全部56项且没有重复或未知 AC', () => {
   assert.ok(evidence.REGRESSION_BINDINGS['AC-51'].some(name => name.includes('十秒独立超时')))
 })
 
-test('发行派生能接受全部56项完成的干净安装验收，缺任一门禁即拒绝', () => {
+test('发行派生能接受全部66项完成的干净安装验收，缺任一门禁即拒绝', () => {
   const report = evidence.createAcceptanceReport({ scenario: 'all', mode: 'installed', installerSha256: 'a'.repeat(64) })
   report.steps = Object.fromEntries(evidence.SCENARIOS.map(name => [name, { status: 'pass' }]))
   report.regression = { status: 'pass' }
-  report.acceptance_results = Object.fromEntries(Array.from({ length: 56 }, (_, index) => [`AC-${String(index + 1).padStart(2, '0')}`, { status: 'pass' }]))
+  report.acceptance_results = Object.fromEntries(Array.from({ length: 66 }, (_, index) => [`AC-${String(index + 1).padStart(2, '0')}`, { status: 'pass' }]))
   assert.equal(evidence.deriveReleaseReady(report, { manifest: { dirty: false } }), true)
   assert.equal(evidence.deriveReleaseReady(report, { manifest: { dirty: true } }), false)
   report.acceptance_results['AC-13'].status = 'blocked'

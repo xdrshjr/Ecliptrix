@@ -15,7 +15,7 @@ const STOP_ERRORS: Record<StopReason, string> = {
 const CHILD_ERRORS = new Set([
   ...Object.values(STOP_ERRORS), 'EFFECT_DISK_FULL',
   'EFFECT_INPUT_NOT_LOCAL', 'EFFECT_MEDIA_DECODE_FAILED',
-  'EFFECT_FONT_LOAD_FAILED', 'EFFECT_RUNTIME_UNAVAILABLE',
+  'EFFECT_TEXT_OVERFLOW', 'EFFECT_FONT_LOAD_FAILED', 'EFFECT_RUNTIME_UNAVAILABLE',
 ]);
 
 /** Record one cause exactly once; later races cannot replace it. */

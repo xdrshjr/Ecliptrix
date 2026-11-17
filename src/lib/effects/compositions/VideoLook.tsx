@@ -1,5 +1,6 @@
+import { EffectText } from './EffectText';
 import React from 'react';
-import { fitEffectText, useEffectScene, type SceneProps } from './layout';
+import { useEffectScene, type SceneProps } from './layout';
 
 export function VideoLook({ document }: SceneProps) {
   const scene = useEffectScene(document);
@@ -17,9 +18,8 @@ export function VideoLook({ document }: SceneProps) {
       <div style={{ position: 'absolute', inset: 'auto 0 0',
         height: `${strength * 12}%`, background: '#000' }} /></>}
     <div style={{ position: 'absolute', left: '6%', bottom: '18%',
-      opacity: scene.opacity,
-      ...fitEffectText({ document, text: document.content.title }) }}>
-      {document.content.title}
+      opacity: scene.opacity }}>
+      <EffectText document={document} />
     </div>
   </div>;
 }

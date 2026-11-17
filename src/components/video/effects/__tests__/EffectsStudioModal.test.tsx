@@ -16,7 +16,7 @@ import { acquireEffectEditor, readPending, writePending } from '@/lib/effects/pe
 
 const api = vi.hoisted(() => ({ saveEffectDraft: vi.fn(),
   getEffectCapabilities: vi.fn(), listEffectJobs: vi.fn(),
-  listEffectDrafts: vi.fn(), getEffectDraft: vi.fn(),
+  listEffectDrafts: vi.fn(), listEffectDraftPage: vi.fn(), getEffectDraft: vi.fn(),
   getEffectAsset: vi.fn(), getEffectJob: vi.fn(), cancelEffectJob: vi.fn(),
   attachEffectInput: vi.fn(), submitEffectJob: vi.fn(), getEffectJobByRequest: vi.fn() }));
 vi.mock('@/lib/api/effects', () => api);
@@ -45,11 +45,64 @@ beforeEach(() => {
     id: write.draftId, name: write.name }));
   api.getEffectCapabilities.mockResolvedValue({ ready: true });
   api.listEffectDrafts.mockResolvedValue([]);
+  api.listEffectDraftPage.mockImplementation(async () => ({ items: await api.listEffectDrafts() }));
   api.listEffectJobs.mockResolvedValue({ items: [] });
   api.getEffectJobByRequest.mockRejectedValue(new ApiError(404,
     'EFFECT_NOT_FOUND', 'missing'));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+it('does_not_wait_for_directory_to_open_explicit_draft', async () => {
+  api.listEffectDraftPage.mockReturnValue(new Promise(() => {}));
+  const document = createEffectDocument(); document.content.title = 'Explicit';
+  api.getEffectDraft.mockResolvedValue(saved(document));
+  const hook = renderHook(() => useEffectsController({ projectId: 'p-explicit',
+    materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open({ draftId: saved(document).id }); });
+  expect(hook.result.current.busy).toBe(false);
+  expect(hook.result.current.draft.document.content.title).toBe('Explicit');
+  expect(hook.result.current.draftList.loading).toBe(true);
+});
+
+it('keeps_selected_draft_outside_first_page', async () => {
+  const id = crypto.randomUUID();
+  const document = createEffectDocument(); document.content.title = 'Oldest';
+  const record = { ...saved(document), id, projectId: 'p-selected' };
+  api.listEffectDraftPage.mockResolvedValue({ items: [{ id: 'newest', name: 'New', version: 1 }] });
+  api.getEffectDraft.mockResolvedValue(record);
+  const hook = renderHook(() => useEffectsController({ projectId: 'p-selected',
+    materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open({ draftId: id }); });
+  const view = render(<LocaleProvider><EffectsStudioModal controller={hook.result.current} materials={[]} /></LocaleProvider>);
+  const select = screen.getByRole('combobox', { name: /Saved drafts|已保存草稿/ });
+  expect(select).toHaveValue(id);
+  await act(async () => { await hook.result.current.draftList.refresh(); });
+  view.rerender(<LocaleProvider><EffectsStudioModal controller={hook.result.current} materials={[]} /></LocaleProvider>);
+  expect(select).toHaveValue(id);
+  await act(async () => { await hook.result.current.close(); await hook.result.current.open(); });
+  expect(hook.result.current.draft.draft?.id).toBe(id);
+  expect(api.saveEffectDraft).not.toHaveBeenCalled();
+});
+
+it('第13草稿可选择，加载末页后焦点返回select，隐藏副标题保留原值', async () => {
+  const ids = Array.from({ length: 13 }, () => crypto.randomUUID());
+  api.listEffectDraftPage.mockResolvedValueOnce({ items: ids.slice(0, 12).map((id, index) => ({ id, name: `Draft ${index}`, version: 1 })), nextCursor: 'second' })
+    .mockResolvedValue({ items: [{ id: ids[12], name: 'Oldest', version: 1 }] });
+  const document = createEffectDocument('type-lines'); document.content.title = 'Oldest'; document.content.subtitle = 'Hidden';
+  api.getEffectDraft.mockImplementation(async (_project, id) => ({ ...saved(document), id, projectId: 'p-thirteen' }));
+  const hook = renderHook(() => useEffectsController({ projectId: 'p-thirteen', materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open({ draftId: ids[0] }); });
+  const view = render(<LocaleProvider><EffectsStudioModal controller={hook.result.current} materials={[]} /></LocaleProvider>);
+  const more = screen.getByRole('button', { name: /Load more drafts|加载更多草稿/ });
+  more.focus(); await act(async () => { fireEvent.click(more); });
+  view.rerender(<LocaleProvider><EffectsStudioModal controller={hook.result.current} materials={[]} /></LocaleProvider>);
+  const select = screen.getByRole('combobox', { name: /Saved drafts|已保存草稿/ });
+  expect(select).toHaveFocus();
+  await act(async () => { fireEvent.change(select, { target: { value: ids[12] } }); });
+  expect(hook.result.current.draft.draft?.id).toBe(ids[12]);
+  expect(hook.result.current.draft.document.content.subtitle).toBe('Hidden');
+  expect(screen.getAllByRole('textbox').filter(node => node.tagName === 'TEXTAREA')).toHaveLength(1);
+});
 
 describe('工作台草稿的串行保存与关闭', () => {
   it('首次创建丢回包后保留冻结体与新文案，重挂载仅确认旧体再PUT最新文案', async () => {

@@ -447,3 +447,17 @@ effects 正式资产不可被普通素材删除或通用 GC 物理回收；所�
 Agent 应用必须复用 eventChain、有效回合租约和真实客户端回执；unknown
 时阻止后续时间线修改。runtime token 不进入客户端或持久用户配置。
 任务与发行验收记录在 `docs/plans/remotion-effects-studio/acceptance.md`。
+
+文字规则以 `src/lib/effects/textLayout.json` 为唯一参数表；build 原字节导出
+后端 `text-layout.generated.json` 与资源包 `runtime/text-layout.json`，三端
+SHA-256 必须等于 manifest.textLayoutHash。只在展示视图解释 CR/LF/tab，
+不能改持久文档、请求散列或恢复冻结体。Python 仅预检必然超高的显式行；
+真实折行由共享 EffectText 的源像素 DOM 守卫判断，溢出保留稳定错误码。
+
+四套离线字体来自 `public/effects/fonts/source-lock.json`；原六个资源只
+使用仓库原字节，新 Noto Emoji 的 TTF/OFL/元数据使用锁内官方完整提交。
+prepare 只能校验锁，禁止从本地损坏字节重写锁或使用 main/latest 下载。
+CSS/canvas/加载统一使用 fontResources.ts 定义的正文→sans→emoji 链；
+字体失败可显式重试，不能依赖系统字体。包内 frontend/public 与 effects
+两份字体资源必须逐字节相同。报告根对象 v2 覆盖 AC-01–66，附件 envelope
+和独占预留仍为 v1；源码测试或开发 payload 不能替代最终安装包 all 门禁。

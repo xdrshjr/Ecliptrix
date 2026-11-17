@@ -1,6 +1,7 @@
+import { EffectText } from './EffectText';
 import React from 'react';
 import { random } from 'remotion';
-import { fitEffectText, useEffectScene, type SceneProps } from './layout';
+import { useEffectScene, type SceneProps } from './layout';
 
 export function Backgrounds({ document }: SceneProps) {
   const scene = useEffectScene(document);
@@ -22,14 +23,12 @@ export function Backgrounds({ document }: SceneProps) {
         transform: isGrid ? `rotate(${Math.sin(phase) * 10
           * document.motion.intensity}deg)` : undefined }} />;
     })}
-    <div style={{ position: 'absolute', inset: '6%', display: 'flex',
+    <div data-effects-text-group data-effects-group-height={scene.height * 0.88}
+      style={{ position: 'absolute', inset: '6%', display: 'flex',
       flexDirection: 'column', justifyContent: 'center',
       opacity: scene.opacity }}>
-      <div style={fitEffectText({ document, text: document.content.title })}>
-        {document.content.title}
-      </div>
-      <div style={fitEffectText({ document, subtitle: true,
-        text: document.content.subtitle })}>{document.content.subtitle}</div>
+      <EffectText document={document} />
+      <EffectText document={document} field="subtitle" />
     </div>
   </div>;
 }

@@ -103,12 +103,20 @@ const MANIFEST_READERS = 8;
 const HASH_CHUNK_BYTES = 256 * 1024;
 
 /** Stream large browser/native files without retaining them in memory. */
-async function hashRuntimeFile(target: string) {
+async function hashRuntimeFile(target: string, expectedBytes?: number) {
   const hash = createHash('sha256');
   let bytes = 0;
-  const stream = createReadStream(target, { highWaterMark: HASH_CHUNK_BYTES });
+  // Thousands of tiny modules must not each allocate a 256KiB read buffer.
+  const highWaterMark = expectedBytes === undefined ? HASH_CHUNK_BYTES
+    : Math.max(1, Math.min(HASH_CHUNK_BYTES, expectedBytes));
+  const stream = createReadStream(target, { highWaterMark });
   try {
-    for await (const chunk of stream) { bytes += chunk.length; hash.update(chunk); }
+    for await (const chunk of stream) {
+      bytes += chunk.length;
+      if (expectedBytes !== undefined && bytes > expectedBytes)
+        throw new Error('EFFECT_RUNTIME_MISMATCH');
+      hash.update(chunk);
+    }
     return { bytes, sha256: hash.digest('hex') };
   } finally {
     stream.destroy();
@@ -118,12 +126,14 @@ async function hashRuntimeFile(target: string) {
 
 async function verifyManifestFile(canonicalRoot: string,
   file: RuntimeManifest['files'][number]): Promise<void> {
+  if (!Number.isSafeInteger(file.bytes) || file.bytes < 0)
+    throw new Error('EFFECT_RUNTIME_MISMATCH');
   const target = await realpath(resolve(canonicalRoot, file.path));
   const suffix = relative(canonicalRoot, target);
   if (suffix.startsWith(`..${sep}`) || suffix === '..' || suffix.includes(':')) {
     throw new Error('EFFECT_RUNTIME_MISMATCH');
   }
-  const actual = await hashRuntimeFile(target);
+  const actual = await hashRuntimeFile(target, file.bytes);
   if (actual.bytes !== file.bytes || actual.sha256 !== file.sha256) {
     throw new Error('EFFECT_RUNTIME_MISMATCH');
   }
@@ -154,10 +164,22 @@ export async function verifyManifest(root: string): Promise<RuntimeManifest> {
   if (manifest.protocolVersion !== 1 || manifest.engineVersion !== '4.0.544') {
     throw new Error('EFFECT_RUNTIME_MISMATCH');
   }
+  const layoutEntries = manifest.files.filter(file => file.path === 'runtime/text-layout.json');
+  if (!/^[a-f0-9]{64}$/.test(manifest.textLayoutHash ?? '')
+      || layoutEntries.length !== 1 || layoutEntries[0].sha256 !== manifest.textLayoutHash) {
+    throw new Error('EFFECT_RUNTIME_MISMATCH');
+  }
   const { runtimeFingerprint, ...identity } = manifest;
   if (createHash('sha256').update(JSON.stringify(identity)).digest('hex')
       !== runtimeFingerprint) throw new Error('EFFECT_RUNTIME_MISMATCH');
   await verifyManifestFiles(canonicalRoot, manifest.files);
+  try {
+    const rules = JSON.parse(await readFile(join(root, 'runtime/text-layout.json'), 'utf8'));
+    const catalog = JSON.parse(await readFile(join(root, 'catalog.json'), 'utf8'));
+    const expected = [...new Set(catalog.templates.map((item: { componentId: string }) => item.componentId))].sort();
+    if (rules.schemaVersion !== 1 || JSON.stringify(Object.keys(rules.components).sort()) !== JSON.stringify(expected))
+      throw new Error('incomplete text layout');
+  } catch { throw new Error('EFFECT_RUNTIME_MISMATCH'); }
   if ((await hashRuntimeFile(join(root, 'catalog.json'))).sha256
       !== manifest.catalogHash) throw new Error('EFFECT_RUNTIME_MISMATCH');
   await access(join(root, manifest.browserExecutable));

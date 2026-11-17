@@ -112,7 +112,7 @@ def check_glyphs(options: argparse.Namespace) -> dict[str, Any]:
     fonts = [ImageFont.truetype(filename, 48) for filename in options.font]
     missing = []
     for character in set(options.text):
-        if character.isspace() or unicodedata.category(character).startswith("M"):
+        if character.isspace() or ord(character) in (0x200D, 0xFE0E, 0xFE0F):
             continue
         supported = False
         for font in fonts:

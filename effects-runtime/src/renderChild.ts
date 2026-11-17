@@ -187,9 +187,11 @@ async function run(submission: RuntimeSubmission): Promise<void> {
     const fontManifest = JSON.parse(await readFile(
       join(resourceRoot, 'fonts/manifest.json'), 'utf8'));
     const fontUrls = Object.fromEntries(fontManifest.fonts
-      .filter((font: { path: string }) => font.path.endsWith('.ttf'))
+      .filter((font: { role: string }) => font.role === 'font')
       .map((font: { family: string; path: string }) => [font.family,
         `${media!.baseUrl}fonts/${encodeURIComponent(font.path)}`]));
+    if (fontManifest.schemaVersion !== 2 || ['sans', 'serif', 'mono', 'emoji'].some(key => !fontUrls[key]))
+      throw new Error('EFFECT_RUNTIME_MISMATCH');
     const inputProps = { document: submission.document, assets, fontUrls };
     const serveUrl = `${media.baseUrl}bundle/index.html`;
     const composition = await selectComposition({ serveUrl,
@@ -228,6 +230,7 @@ async function run(submission: RuntimeSubmission): Promise<void> {
       : /ENOSPC|no space/i.test(message) ? 'EFFECT_DISK_FULL'
       : /EFFECT_INPUT_NOT_LOCAL/.test(message) ? 'EFFECT_INPUT_NOT_LOCAL'
       : /EFFECT_FONT_LOAD_FAILED/.test(message) ? 'EFFECT_FONT_LOAD_FAILED'
+      : /EFFECT_TEXT_OVERFLOW/.test(message) ? 'EFFECT_TEXT_OVERFLOW'
       : 'EFFECT_MEDIA_DECODE_FAILED';
     // Browser errors can contain short-lived media capabilities and local paths.
     send({ type: 'error', errorCode });

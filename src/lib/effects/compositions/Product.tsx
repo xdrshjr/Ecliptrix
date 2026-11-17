@@ -1,7 +1,8 @@
 import React from 'react';
 import { Img } from 'remotion';
-import { fitEffectText, getInputStyle, useEffectScene,
+import { getInputStyle, useEffectScene,
   type SceneProps } from './layout';
+import { EffectText } from './EffectText';
 
 export function Product({ document, assets }: SceneProps) {
   const scene = useEffectScene(document);
@@ -26,16 +27,12 @@ export function Product({ document, assets }: SceneProps) {
         ${document.palette.accent}80` : '0 20px 60px #0005' }}>
       {hero && <Img src={assets[hero.assetId]} style={getInputStyle(hero)} />}
     </div>
-    <div style={{ width: textWidth, flexShrink: 0 }}>
-      <div style={fitEffectText({ document, text: document.content.title,
-        width: textWidth, height: scene.height * (isVertical ? 0.15 : 0.35),
-      })}>{document.content.title}</div>
-      <div style={{ ...fitEffectText({ document, subtitle: true,
-        text: document.content.subtitle, width: textWidth,
-        height: scene.height * (isVertical ? 0.1 : 0.35) }),
-      marginTop: scene.short * 0.03, opacity: 0.75 }}>
-        {document.content.subtitle}
-      </div>
+    <div data-effects-text-group
+      data-effects-group-height={scene.height * (isVertical ? 0.28 : 0.88)}
+      style={{ width: textWidth, flexShrink: 0 }}>
+      <EffectText document={document} />
+      <EffectText document={document} field="subtitle"
+        style={{ marginTop: scene.short * 0.03, opacity: 0.75 }} />
     </div>
   </div>;
 }

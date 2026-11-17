@@ -2,6 +2,7 @@ import React from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { EffectDocument } from '@/types/effects';
 import { getEffectTemplate } from '@/lib/effects/catalog';
+import { getRenderedEffectFields } from '@/lib/effects/textLayout';
 import { getEffectRenderability } from '@/lib/effects/validation';
 import type { EffectsController } from './useEffectsController';
 import type { MaterialItem } from '@/types';
@@ -22,7 +23,7 @@ export function EffectsInspector(options: {
     className="h-full overflow-y-auto p-4 space-y-5 text-sm">
     <section className="space-y-2">
       <h3 className="font-medium">{labels.content}</h3>
-      {(['title', 'subtitle'] as const).map(key => <label key={key}
+      {getRenderedEffectFields(document).map(key => <label key={key}
         className="block text-xs text-muted-foreground">
         {key === 'title' ? labels.titleText : labels.subtitle}
         <textarea rows={key === 'title' ? 2 : 3} value={document.content[key]}

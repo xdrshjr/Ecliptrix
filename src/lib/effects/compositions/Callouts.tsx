@@ -1,5 +1,6 @@
 import React from 'react';
-import { fitEffectText, useEffectScene, type SceneProps } from './layout';
+import { useEffectScene, type SceneProps } from './layout';
+import { EffectText } from './EffectText';
 
 export function Callouts({ document }: SceneProps) {
   const scene = useEffectScene(document);
@@ -19,10 +20,8 @@ export function Callouts({ document }: SceneProps) {
         pathLength="1" strokeDasharray="1" strokeDashoffset={1 - scene.enter} />}
     </svg>
     <div style={{ position: 'absolute', left: x > 50 ? '6%' : '55%',
-      top: y > 50 ? '12%' : '72%', maxWidth: '38%',
-      ...fitEffectText({ document, text: document.content.title,
-        width: scene.width * 0.38 }) }}>
-      {document.content.title}
+      top: y > 50 ? '12%' : '72%', width: scene.width * 0.38 }}>
+      <EffectText document={document} />
     </div>
   </div>;
 }

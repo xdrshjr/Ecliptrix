@@ -1,5 +1,9 @@
 # Remotion 特效工作台实施验收
 
+**当前轮次：第三轮实现交付，2026-11-17，基线 `8d53a66d`。**
+本轮源码和开发验证已完成；未提交 Git。最新结果见文末「第三轮实现验收」，
+以下前两轮实测保留为历史，不能替代新包的发行证据。
+
 环境：Windows 11（10.0.26200），Node 22.18.0，Electron 33.4.11，
 React / ReactDOM 19.1.1，Remotion 4.0.544。日期：2026-11-17。
 
@@ -230,3 +234,140 @@ CR-13 损坏工作稿模板结构导致恢复崩溃、CR-14 确认层撤销快�
 emoji 缺字继续为发行阻塞。此次工程通过不等于 `release_ready=true`。
 调度器仍缺 TASK_SERVER_URL，服务端完成状态不能确认，仅按任务授权
 更新 Subtask #3 的本地回退，不修改其它节点。
+
+## 第三轮实现验收（2026-11-17，开发验证）
+
+本轮严格沿用第三轮评审 v2 的 §23：68 个文件均已创建或更新，另按
+IM-R3-01–03 纳入 3 个必要修复路径（后端游标、有效清单夹具、打包允许
+清单）；48 个预览均由原生成脚本重新制作。没有增加依赖、业务表、
+生产 CDP bridge 或新的用户配置；没有提交 Git。前序 plan-current.json、
+round-3-verification.md 和原有 .pytest-workspace-import 保留。
+
+| 检查 | 本轮实际结果与证据 |
+|---|---|
+| 根项目 | `npm run build` 退出 0，90 个页面；构建后 `npm run type-check` 退出 0。构建仍跳过 lint，未据此替代 lint 检查 |
+| 标准资源准备 | 修复后重新执行完整 `npm run effects:prepare` 退出 0，包含依赖、浏览器 / native、固定字体、bundle 与全树校验；它会重新封存 runtime 身份，最终测试以本次指纹为准 |
+| 前端 / Agent / 时间线 | 23 个测试文件、147 项通过、0 失败 / 跳过；`desktop/build/effects/r3-frontend-current.json`。含保存 / unknown / 停止 / 回执 / 一步撤销，以及新目录、隐藏字段、布局生命周期与原有光标闪烁 |
+| 后端 effects 八专项 | 69 项通过、1 默认跳过；`r3-backend-final.xml`。默认跳过的真实 worker 另以 `ECLIPTRIX_EFFECTS_RUNTIME_TEST=1` 启用，1 项通过；没有将跳过算为通过 |
+| 真实 runtime | 最终串行 39 项通过、0 跳过；`r3-runtime-final-identity.xml`，63.35s。显式启用 REAL_RUNTIME 与 MANIFEST_STARTUP 开关，controller 约 6.676s、独立全树扫描约 3.701s；包含浏览器实排、文字溢出不发布、停止优先级、真实出片 / 取消 / IPC、全清单校验和小文件缓冲预算 |
+| 桌面工具与证据 verifier | 36 项通过、0 跳过；`r3-desktop-final.xml`。含源锁缺件 / 改字节、Player 旧字体混装、固定文案 / 帧拒绝、逐节点实际字体和 66 项映射 |
+| 规则 golden | TS 与 Python 共读 333 个独立数值向量，覆盖 12 组件、三画布、Product 临界比例 / cardScale / scale 和 Callouts 锚点；三端规则原字节及 textLayoutHash 一致 |
+| 字体 | Noto Emoji 来自官方完整提交 `8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5`；三种正文链的 emoji / ZWJ / 变体选择符 / 肤色 / combining 字形检查均无缺字。Headless Shell 与 Electron 33 的 4 字体×400/600 原始 CDP 探针均确认 isCustomFont；这不等于完整 27 组 Player 实帧验收 |
+| 预览 | 24 对真实 MP4 / JPG 重制；逐个 ffprobe 确认 MP4 为 60 帧 / 30fps；目录恰为 catalog 的 48 路径。已查看本轮联系表，没有默认文案明显裁切；三画布完整视觉门禁仍待验 |
+| lint / 静态检查 | 49 个本轮 JS/TS 文件的 ESLint 退出 0、0 错误 / 5 提示；使用项目既有 eslintrc 模式。7 个 Python AST、diff 空白检查通过。未修改全仓既有 lint 问题 |
+| 凭据 / 打包范围 | 已跟踪 3119 文件扫描及所有本轮新增 / 修改文本另扫均为 0 finding；7 项 effects 打包允许模式覆盖实际 12091 个运行资源，测试媒体、profile、请求和旧版本夹具目录均被排除 |
+
+本轮 runtime 身份：
+
+```text
+runtimeFingerprint=3d3a999da5f67eaa1d46cd815dea488a320144c7ccd3ba6830eb470f32cfb025
+textLayoutHash=d684525e979730e2283870893760b14696782d1da7e98f019b935031f9954b8a
+fontHash=9c8e3d6e1835ad6dc2a319a4296eedd6c0455a878df0b9d669e90abd5ac43611
+```
+
+本轮先红后绿复现了 LF / CR 的 raqm 异常、缺规则身份不被拒绝、文字
+溢出被降级、缺分页模块及报告 v1 等问题。真实 13 稿 HTTP 又发现并修复
+SQLite 整秒 / 微秒游标重复页。独立只读评审补充修复了计数器完整数值
+测量、同字段单行空 glyph 漏检、AC 上限未升级、目录摘要回退、包内两份
+字体混装和测试证据被打包的问题；具体边界见 final-review.md。
+
+保留失败记录：第一次 prepare 的新 import 层级错误、首次 build 的 Map
+迭代与 ES5 target 不兼容已修复；首次预览脚本的工作目录猜测已修复。
+jsdom 测试最初误用空标题、真实空行断言误以 glyph Rect 高等于行高，均
+纠正夹具 / 度量，未伪造浏览器几何。Remotion 错误事件会不 await cleanup，
+已使取证 close 在错误路径只记录观测错误，正常路径仍严格重抛，最终无
+unhandled rejection。完整 prepare 后曾再次出现 controller 首次启动触及
+30s；按文件尺寸限制缓冲后，第一次冷启动仍超时，不能把缓冲修复视为
+全部耗时的根因。该失败保留于 `r3-size-aware-cold-start.xml`；后续完整
+39 项两次同预算通过，最后一次以本段新身份为准。仅诊断进程设置线程池
+为 8 的一次全树扫描约 22.28s，也不能证明冷启动问题已修复；产品没有
+修改线程池、缓存或启动期限。重负载冷启动仍列入发行性能门禁。
+字体测试初次从 runtime cwd 生成的
+临时目录已移入 ignored evidence 保留，并改为基于测试文件的绝对路径。
+
+| 新 AC | 当前证据边界 |
+|---|---|
+| 57、63、64 | 三正文链字形、双端单字体 CDP、实际 renderer 与 verifier 负测通过；完整 27 组×3 帧的双端实帧与独立重算尚未执行 |
+| 58 | 固定源 / 损坏 / 缺件 / 离线回归及当前开发 payload 的只读闭包通过；真实最终安装包及其前后资源身份仍待验 |
+| 59、60 | HTTP 显式行、333 golden、Headless 实排 / 空行 / Callouts / 组 / 数值边界通过；真实安装 Player 三画布与外层 CSS 缩放矩阵仍待验 |
+| 61、62 | 真实 HTTP 13 稿分页、hook 竞态、modal 选择 / 页外保留 / 末页焦点 / 保存重开通过；安装应用完整重启流程尚未执行 |
+| 65 | 真实 child 文字失败不发布、controller 保码、取消 / deadline 优先及既有 Agent 屏障回归通过；正式安装闭环仍需重验 |
+| 66 | 旧稿 / 旧输出回归工具与夹具身份门禁已接线；缺基线真实隔离夹具，当前 blocked，未以新生成视频代替 |
+
+正式发行仍需最终节点审查与提交后，按新的 source_head 重建、真实安装，
+执行 72 组主矩阵、27 组文字补充、校准音频、最终导出、性能、真实 LLM、
+旧稿 / 旧输出及原许可门禁。当前 `release_ready=false`，本节点的完成仅
+表示实现交付完成，不表示 66 个发行 AC 已全部通过。
+
+### 第三轮实际预览路径与 SHA-256
+
+下表由本次生成后重新读取字节得到；原始机器记录为
+`desktop/build/effects/r3-preview-hashes.json`。
+
+| path | bytes | SHA-256 |
+|---|---:|---|
+| `public/effects/previews/title-rise.jpg` | 8356 | `c1b4cfd029e106707073a25e23ae519a4dad2c8ece2067841c7a4895896c6ade` |
+| `public/effects/previews/title-rise.mp4` | 10719 | `8596dc53ac73be9d6ad11809d60e097a4590a8bbc188b0650beb49792de0ee9f` |
+| `public/effects/previews/title-mask.jpg` | 8347 | `65a489f2aba88a39e481a21c046a10366d55c50423fbaffe7a7e098e3bfbf117` |
+| `public/effects/previews/title-mask.mp4` | 9921 | `9762275c857bd59898d23093bd8431de752b7a38d2488ecba5d9eee7ce80e215` |
+| `public/effects/previews/type-cursor.jpg` | 6951 | `5c99c6977007f49944b4253db796a43055c4584f9b76e6c387fea2bf0ec9c656` |
+| `public/effects/previews/type-cursor.mp4` | 9480 | `7f6328a3f1fc95f2aa6a2e3088a55af5fddd8c3f4ec02d59fffdb1e1a580a2f4` |
+| `public/effects/previews/type-lines.jpg` | 6550 | `b4cacf061383acc3270a784c41a97424564931c7c636926f0d7247edc707a5ce` |
+| `public/effects/previews/type-lines.mp4` | 7099 | `15159b77e2859e3d1c1eef20cdc865d68dc5ea1f50ad7789bfda7d42a968f9c2` |
+| `public/effects/previews/lower-clean.jpg` | 8925 | `d04226b7dbf117d701b88d327add3adcc4c9f97c227bd8e1f2b7e6f13ca52851` |
+| `public/effects/previews/lower-clean.mp4` | 15496 | `d1cf5091ccf51eab9645beaa18ec93ac0662d9f4aeef5c32f133ab52a41f9001` |
+| `public/effects/previews/lower-block.jpg` | 9512 | `7704c031bcb1639f0161cf3bad846c52e2a3371cc0c451cc17d46b216eb06245` |
+| `public/effects/previews/lower-block.mp4` | 14593 | `369a4a875f1d935f98a48c3d3e04471be843f93813ef8b25c11e49308e566289` |
+| `public/effects/previews/image-zoom.jpg` | 5987 | `2bd42ea5a8e9f3939f65cf76cc437ad8c4b32a4a7849e0ad41ed1904e02a42e6` |
+| `public/effects/previews/image-zoom.mp4` | 28538 | `a6cc4d27475857cb3d897b9501190573cc11637428b83d686980290ba2249111` |
+| `public/effects/previews/image-wipe.jpg` | 5554 | `ae35935df61c4814df8eb9b2f64e4d1033561d700f1c7538e2f1de6789281d30` |
+| `public/effects/previews/image-wipe.mp4` | 13154 | `ad4edbf8544a6ca9c74c556dd5d6d6e514ea0ba960ae368f75906752f4c7714e` |
+| `public/effects/previews/slides-crossfade.jpg` | 5439 | `68b7cac86cf9aa35234e927092be2bf48b9790dcdf72755c342fc72363ac91c7` |
+| `public/effects/previews/slides-crossfade.mp4` | 15526 | `7bb417ad527747492a1ddbd1a490a84fe064222fce611f2e08d9697b5785b97f` |
+| `public/effects/previews/slides-stack.jpg` | 12231 | `fb2c151aaa82a42548022f775d5e16261df5ba6cce3c67ade54fc9185c72957f` |
+| `public/effects/previews/slides-stack.mp4` | 29637 | `fb0464cd03069fe9ba9b6d0557e9e619aacc4468171334cfa97cc4fad6519535` |
+| `public/effects/previews/split-horizontal.jpg` | 11911 | `6b660376cf8daf2f31bcd5958606a7d6ec7aad064462ca1b785a575ceb677daa` |
+| `public/effects/previews/split-horizontal.mp4` | 14383 | `ab9e6f71af88f63e024eb8b5886882b53d2d75a49e867e41faf47f105ac5b874` |
+| `public/effects/previews/split-vertical.jpg` | 11656 | `651caeb824a6a4b1c4b0b514ae3d08aadfb57b8979a7b84b31ac442aa4d2d250` |
+| `public/effects/previews/split-vertical.mp4` | 13557 | `9719bdf8fef17b52b40ea0f26d3cccec71b27b7e8e40853495d94feb1425d04f` |
+| `public/effects/previews/product-float.jpg` | 12243 | `2b682c24314caf17b943ae79137303e9dec21c8f0530d0e1b83091e44e03324d` |
+| `public/effects/previews/product-float.mp4` | 22474 | `52df78c876432d8cd7362e80f244991781b7460d17d974f031f2eb6cb614ba5b` |
+| `public/effects/previews/product-spotlight.jpg` | 13513 | `911915fd1baf4c6379b9cf23b35063ecc6f66e5cf7f900d411992b918c55a974` |
+| `public/effects/previews/product-spotlight.mp4` | 24526 | `e5625c95986c7bf6693389aab5cb7f5c23bcd43b188f9977c2bb79459cee92c1` |
+| `public/effects/previews/callout-line.jpg` | 6283 | `22b1c80b87efb075706d1e541e43d2dab50fc217b33eae3e367b39bfb4af23d3` |
+| `public/effects/previews/callout-line.mp4` | 10179 | `84e90e9209907529867d4734cb74c057094611109ddcff97ffbd7f311ada299f` |
+| `public/effects/previews/callout-ring.jpg` | 6099 | `f2c000b288360bbfecf83d04401a6142d1012ab5c93ae17f8fb0ec2168ef5c30` |
+| `public/effects/previews/callout-ring.mp4` | 10155 | `e8bf8c17d029795b332adf8cf15c19f662953f7faa09431c48a569ff9bad92fc` |
+| `public/effects/previews/counter-up.jpg` | 9426 | `0cfd02c0513ad5d2fa61eaf1d0157f38d1a642ac2f30786437e0cb9c2e3876e4` |
+| `public/effects/previews/counter-up.mp4` | 12255 | `e56e940431051a6a8aa29305cd09096e8f38683a4eb9a3f4378ce55abbd6e7b0` |
+| `public/effects/previews/counter-bars.jpg` | 10539 | `dc54aa5273e478bf51fb409d5d5cfbf95831a54df63851ea237cd15f1672f437` |
+| `public/effects/previews/counter-bars.mp4` | 12884 | `f2637b247e93d4bd59fa8910c212f70e51150f637c80b2b65556ed954c9d3bf1` |
+| `public/effects/previews/countdown-ring.jpg` | 10619 | `f793c087eecf0d3d84f9288997a09eb88c8fb07d875895f172270a6d0b720232` |
+| `public/effects/previews/countdown-ring.mp4` | 15946 | `295b72a1147fae2775a016a8c4bfe3f36548497de921be29f470cf296797e22f` |
+| `public/effects/previews/countdown-flip.jpg` | 8631 | `77e2c5e6f55888f75296dea3774ab884ab823105b80858465a8b041f6d8b8026` |
+| `public/effects/previews/countdown-flip.mp4` | 13775 | `62361bd0ec67f3e58fb49766c2f99b1e991a434da84af6a523e191dd297b21ea` |
+| `public/effects/previews/video-cinematic.jpg` | 28018 | `711a59f2a6e9241d7fa94c682f5f60165cf8191aa28a5f9add47ce85afe32b40` |
+| `public/effects/previews/video-cinematic.mp4` | 370334 | `b8a276c621cb902755c6e45363981ab3f6d04be199314025ed11a4b523be3f1a` |
+| `public/effects/previews/video-glitch.jpg` | 25738 | `62c89c30869038e07cef93de49ac3288e81e52bc319f4590ba4bf3a1da8058a8` |
+| `public/effects/previews/video-glitch.mp4` | 398376 | `ffe80823a2bc2b38b9d003c4c7610d3ca94c99ad4c4fe7cea04c1a53c1aa39b8` |
+| `public/effects/previews/background-orbit.jpg` | 10447 | `07b1ab029a508f3d91d9063004810f4b09c7f70597a1bb3ff7e184637ee56be5` |
+| `public/effects/previews/background-orbit.mp4` | 76372 | `d58b6e7a5e17fb70aa6ba16ad38466df94ac91f770e9b1c279683a7c41fd686a` |
+| `public/effects/previews/background-grid.jpg` | 11530 | `e267774491408096f71140243f2858a6b0bf6ff606458a146ce8ce68cf817fc9` |
+| `public/effects/previews/background-grid.mp4` | 55775 | `f8b7120265e65578df1fe4d3092db12b3ee5770c47f230f5511842a90c6ceb5d` |
+
+## 第三轮最终审查验证（2026-11-17）
+
+最终节点重新执行：前端与相邻回归 105 文件 / 892 项通过；后端 69
+通过 / 1 默认跳过，另显式真实 worker 1 通过；真实 runtime 37 + IPC 2
+通过；桌面 37 通过。除注明的默认 worker 外均无跳过。生产构建 90 页面、
+构建后类型检查、runtime 类型 / 构建、49 文件 lint（0 错误 / 5 提示）、
+8 Python AST、121 个功能文件凭据扫描、48 预览 hash 与 24 视频探测通过。
+原始 `review-r3-*` 报告、逐项路径清单及详细命令范围见 final-review.md。
+
+CR-15 已修复：第 13 草稿验收必须真实重启 Electron，验证相同资料目录、
+新进程、零残留、HTTP 12+1、UI 选择、文案和时间线；仅 Page.reload
+不能代领 AC-61。新增验证器负测已先红后绿，独立代码复核通过；该场景
+的最终安装实测仍待执行。精确提交范围为 68 个批准路径 + 3 个必要扩展
++ 48 个预览 + 2 个前序设计文档，共 121 文件。原有测试目录与新运行
+证据保持未暂存。代码审查交付完成不改变上文发行门禁，仍为
+`release_ready=false`。

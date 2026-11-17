@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from PIL import ImageFont
 from sqlalchemy import select
 
 from app.models.effects_db_models import EffectAsset, EffectRenderJob
@@ -19,6 +18,7 @@ from app.models.effects_models import EffectError
 from . import asset_service as assets
 from .catalog import ACTIVE, document_hash
 from .project_locks import project_lock, require_project
+from .text_layout import validate_text_layout
 
 
 def file_hash(path: Path) -> str:
@@ -29,41 +29,6 @@ def file_hash(path: Path) -> str:
     return checksum.hexdigest()
 
 
-def validate_text_layout(document: dict, resource_root: Path) -> None:
-    """Check the minimum accepted font size before admitting a render."""
-    files = {"sans": "NotoSansSC[wght].ttf",
-             "serif": "NotoSerifSC[wght].ttf",
-             "mono": "NotoSansMono[wdth,wght].ttf"}
-    width, height = (document["canvas"][key] for key in ("width", "height"))
-    for key, ratio in (("title", 0.07), ("subtitle", 0.035)):
-        text = document["content"][key]
-        if not text:
-            continue
-        size = (min(width, height) * ratio
-                * document["typography"]["scale"] * 0.6)
-        try:
-            font = ImageFont.truetype(str(resource_root / "fonts" /
-                 files[document["typography"]["family"]]), max(1, int(size)))
-        except OSError as exc:
-            raise EffectError("EFFECT_RUNTIME_UNAVAILABLE", status=503) from exc
-        text_width = width * 0.88
-        if document["template_id"].startswith("product-") and width >= height:
-            text_width = width * 0.4
-        elif document["template_id"].startswith("callout-"):
-            text_width = width * 0.38
-        elif document["template_id"].startswith("lower-"):
-            text_width = width * 0.7
-        lines, length = 1, 0.0
-        for letter in text:
-            measure = font.getlength(letter)
-            if letter == "\n" or length + measure > text_width:
-                lines += 1
-                length = 0 if letter == "\n" else measure
-            else:
-                length += measure
-        if lines * size * 1.3 > height * 0.35:
-            raise EffectError("EFFECT_TEXT_OVERFLOW", "文字超出安全区", 422,
-                              {"fields": [{"path": f"content.{key}"}]})
 
 
 def validate_snapshot_inputs(document: dict, rows: list) -> list[dict]:

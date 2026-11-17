@@ -1,6 +1,7 @@
+import { EffectText } from './EffectText';
 import React from 'react';
 import { Img } from 'remotion';
-import { fitEffectText, getInputStyle, useEffectScene, type SceneProps } from './layout';
+import { getInputStyle, useEffectScene, type SceneProps } from './layout';
 
 export function Slideshow({ document, assets }: SceneProps) {
   const scene = useEffectScene(document);
@@ -24,7 +25,6 @@ export function Slideshow({ document, assets }: SceneProps) {
       <Img src={assets[image.assetId]} style={getInputStyle(image)} />
     </div>)}
     <div style={{ position: 'absolute', left: '6%', bottom: '6%',
-      zIndex: 10, ...fitEffectText({ document, text: document.content.title,
-        height: scene.height * 0.25 }) }}>{document.content.title}</div>
+      zIndex: 10 }}><EffectText document={document} /></div>
   </div>;
 }

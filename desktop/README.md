@@ -346,7 +346,7 @@ desktop/
 ## 特效运行资源与验证
 
 仓库根执行 `npm run effects:prepare`，安装独立 runtime 的锁定依赖并准备
-专用 Chrome Headless Shell、Remotion native、三套离线字体和 manifest。
+专用 Chrome Headless Shell、Remotion native、四套离线字体和 manifest。
 准备阶段需要网络；桌面运行时只使用 `resources/effects/` 内资源，禁止下载。
 `npm --prefix effects-runtime run build` 在已有资源上重编译并重新封存 hash。
 `node effects-runtime/scripts/generate-previews.mjs` 生成 24 对真实视频 / 海报。
@@ -407,3 +407,37 @@ tracked 文件不变；实现节点的开发验证应在最终提交后重建、
 ```powershell
 node --test desktop/scripts/effects-smoke.test.js desktop/scripts/lib/effects-release-evidence.test.js
 ```
+
+第三轮使用报告根对象 v2 和 AC-01–66，独占 marker / 附件仍为 v1。
+visual 保持 72 组、360 主采样帧，另有固定九组文字×三字体的 27 组、
+81 补充采样帧；每帧归档双 still、MP4 解码、Player、布局和两端原始
+CDP 字体记录。独立单字体探针核验实际字体来源，不用 CSS 声明替代。
+
+desktop 的 `draft-page-13` 使用独立测试资料目录：先确认第二页草稿的
+编辑、保存与弹窗重开，再真正退出 Electron，以同一 userData 启动新
+进程，重新分页选回并核对文案和时间线。原始记录包含两次进程启动身份、
+退出耗时和零残留；仅有页面刷新记录不能确认 AC-61。
+
+字体准备以 `public/effects/fonts/source-lock.json` 为输入。原三套字体及
+OFL 不联网补配；Noto Emoji 的 TTF/OFL/METADATA 固定官方提交
+`8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5`。已有文件不符即失败；
+缺 emoji 时仅可按源锁补配，离线缺件明确失败。manifest 是生成结果，
+不得反过来覆盖源锁。排版规则由 build 同步到后端及包内并计算
+textLayoutHash；包验收同时核对 Player 与 renderer 两份字体闭包。
+
+```powershell
+node --test effects-runtime/tests/fontResources.test.mjs
+node node_modules/vitest/vitest.mjs run src/lib/effects src/components/video/effects --maxWorkers=2
+node --test desktop/scripts/lib/effects-font-usage.test.js desktop/scripts/lib/effects-release-evidence.test.js
+```
+
+AC-66 的旧稿 / 旧成品必须来自基线 `8d53a66d` 的隔离数据夹具，不能
+用新版本现场生成的视频冒充。发行前把旧版本正常关闭后的测试 userData
+副本放在工作区 `desktop/build/effects/legacy-v1-fixture/user-data/`，同级
+manifest.json 记录 source_head（完整基线提交）、project_id、project_name、
+draft_id、asset_id、schemaVersion=1 的 camelCase document、
+document_sha256（JSON.stringify）、output_sha256 和 files 数组
+（user-data 相对 path、sha256）。仅复制测试工程与必要 SQLite/存储文件，
+不携带账号凭据。验收核对所有字节，复制到本次证据目录后才启动；
+缺夹具时该场景 blocked。真实安装、完整视觉/音频、导出和真实 LLM
+仍需最终提交后重建并执行，不能因上述源码测试通过而宣布可发行。

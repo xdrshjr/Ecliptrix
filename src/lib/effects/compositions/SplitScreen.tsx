@@ -1,6 +1,7 @@
+import { EffectText } from './EffectText';
 import React from 'react';
 import { Img } from 'remotion';
-import { fitEffectText, getInputStyle, useEffectScene, type SceneProps } from './layout';
+import { getInputStyle, useEffectScene, type SceneProps } from './layout';
 
 export function SplitScreen({ document, assets }: SceneProps) {
   const scene = useEffectScene(document);
@@ -19,8 +20,7 @@ export function SplitScreen({ document, assets }: SceneProps) {
           style={getInputStyle(input)} />}
       </div>;
     })}
-    <div style={{ position: 'absolute', left: 0, bottom: 0,
-      ...fitEffectText({ document, text: document.content.title,
-        height: scene.height * 0.25 }) }}>{document.content.title}</div>
+    <div style={{ position: 'absolute', left: 0, bottom: 0 }}>
+      <EffectText document={document} /></div>
   </div>;
 }

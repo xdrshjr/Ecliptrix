@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import String, and_, case, cast, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -176,7 +176,7 @@ async def list_records(db: AsyncSession, model, project_id: str,
         query = query.where(model.status.in_(options["statuses"]))
     if options.get("cursor"):
         query = _after_cursor(query, model, options["cursor"])
-    rows = list((await db.execute(query.order_by(model.created_at.desc(), model.id.desc())
+    rows = list((await db.execute(query.order_by(_created_sort(model).desc(), model.id.desc())
                                  .limit(limit + 1))).scalars())
     cursor = None
     if len(rows) > limit:
@@ -186,14 +186,26 @@ async def list_records(db: AsyncSession, model, project_id: str,
     return rows[:limit], cursor
 
 
+def _created_sort(model):
+    """SQLite defaults omit fractions; preserve all six ORM microseconds."""
+    text = cast(model.created_at, String)
+    return case((func.length(text) == 19, text + ".000000"), else_=text)
+
+
 def _after_cursor(query, model, cursor: str):
     try:
         timestamp, identifier = json.loads(
             base64.urlsafe_b64decode(cursor).decode())
+        if not isinstance(timestamp, str) or not isinstance(identifier, str):
+            raise ValueError("invalid cursor identity")
         created = datetime.fromisoformat(timestamp)
         row_id = UUID(identifier)
     except (ValueError, TypeError, UnicodeError) as exc:
         raise EffectError("EFFECT_INVALID_ARGUMENT", "cursor") from exc
-    return query.where(or_(model.created_at < created,
-                           and_(model.created_at == created,
+    if created.tzinfo:
+        created = created.astimezone(timezone.utc).replace(tzinfo=None)
+    value = created.strftime("%Y-%m-%d %H:%M:%S.%f")
+    order = _created_sort(model)
+    return query.where(or_(order < value,
+                           and_(order == value,
                                 model.id < row_id)))

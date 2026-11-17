@@ -24,6 +24,17 @@ export function EffectsStudioModal(options: {
   const [applicationMode, setApplicationMode] = useState<'insert' | 'replace'>();
   const [confirmClose, setConfirmClose] = useState(false);
   const composing = useRef(false);
+  const draftSelect = useRef<HTMLSelectElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+  const moreDrafts = useRef<HTMLButtonElement>(null);
+  const hadMoreFocus = useRef(false);
+  useEffect(() => {
+    if (!controller.draftList.nextCursor && hadMoreFocus.current) {
+      hadMoreFocus.current = false;
+      if (draftSelect.current && !draftSelect.current.disabled) draftSelect.current.focus();
+      else title.current?.focus();
+    }
+  }, [controller.draftList.nextCursor]);
   useEffect(() => {
     setApplicationMode(undefined);
     setConfirmClose(false);
@@ -69,21 +80,31 @@ export function EffectsStudioModal(options: {
       }}>
       <div inert={confirmClose}
         className="flex flex-col flex-1 min-h-0">
-      <header className="flex items-center gap-3 border-b border-border px-5 py-3">
-        <h2 id="effects-studio-title" className="font-medium whitespace-nowrap">
+      <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
+        <h2 ref={title} tabIndex={-1} id="effects-studio-title" className="font-medium whitespace-nowrap">
           {labels.title}
         </h2>
-        <select aria-label={labels.drafts} value={draft.draft?.id ?? ''}
+        <select ref={draftSelect} aria-label={labels.drafts} value={draft.draft?.id ?? ''}
           disabled={!controller.isEditor}
           className="max-w-40 rounded border border-border bg-background p-1 text-xs"
           onChange={event => void controller.open(event.target.value
             ? { draftId: event.target.value } : { newDraft: true })}>
           <option value="">{labels.newDraft}</option>
           {controller.drafts.map(item => <option key={item.id} value={item.id}>
-            {item.name}</option>)}
+            {item.id === draft.draft?.id ? draft.name : item.name} · {item.id.slice(0, 8)}</option>)}
           {draft.draft && !controller.drafts.some(item => item.id === draft.draft!.id)
-            && <option value={draft.draft.id}>{draft.name}</option>}
+            && <option value={draft.draft.id}>{draft.name} · {draft.draft.id.slice(0, 8)}</option>}
         </select>
+        {controller.draftList.nextCursor && <button ref={moreDrafts} type="button"
+          className="h-8 rounded border border-border px-2 text-xs disabled:opacity-50"
+          disabled={controller.draftList.loadingMore}
+          onFocus={() => { hadMoreFocus.current = true; }}
+          onBlur={event => { if (event.relatedTarget) hadMoreFocus.current = false; }}
+          onClick={() => void controller.draftList.loadMore()}>
+          {controller.draftList.loadingMore ? labels.loadingDrafts : labels.loadMoreDrafts}
+        </button>}
+        <span aria-live="polite" className="text-xs text-muted-foreground">
+          {controller.draftList.loadingMore ? labels.loadingDrafts : ''}</span>
         <input aria-label={labels.name} value={draft.name}
           readOnly={draft.draft?.readOnly || !controller.isEditor}
           className="min-w-0 flex-1 bg-transparent text-sm outline-none focus:ring-1 focus:ring-ring rounded px-2 py-1"
@@ -99,6 +120,12 @@ export function EffectsStudioModal(options: {
         <button type="button" aria-label={labels.close}
           className="px-2 text-xl" onClick={close}>×</button>
       </header>
+      {controller.draftList.error && <div role="status" className="flex gap-3 px-5 py-2 text-xs">
+        <span>{labels.draftListFailed}</span>
+        <button type="button" className="underline" onClick={() => void (
+          controller.draftList.errorPhase === 'load-more'
+            ? controller.draftList.loadMore() : controller.draftList.refresh())}>{labels.retryDrafts}</button>
+      </div>}
       {draft.restored && <p role="status" className="px-5 py-2 text-xs">
         {labels.restored}</p>}
       {(controller.submission.pending || draft.status === 'uncertain') &&

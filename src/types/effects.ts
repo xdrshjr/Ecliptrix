@@ -36,7 +36,21 @@ export interface EffectDocument {
 export interface EffectCompositionProps extends Record<string, unknown> {
   document: EffectDocument;
   assets: Record<string, string>;
-  fontUrls: Record<'sans' | 'serif' | 'mono', string>;
+  fontUrls: Record<'sans' | 'serif' | 'mono' | 'emoji', string>;
+}
+
+export interface EffectDraftSummary {
+  id: string;
+  name: string;
+  version: number;
+}
+
+export interface EffectTextBox {
+  width: number;
+  height: number;
+  sizeRatio: number;
+  minScale: 0.6;
+  lineHeight: 1.3;
 }
 
 export interface EffectRenderability {

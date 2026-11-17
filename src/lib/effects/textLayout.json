@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "components": {
+    "Titles": {
+      "kind": "normal",
+      "renderedFields": [
+        "title",
+        "subtitle"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "Typewriter": {
+      "kind": "normal",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "LowerThirds": {
+      "kind": "normal",
+      "renderedFields": [
+        "title",
+        "subtitle"
+      ],
+      "widthRatio": 0.7,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "ImageReveal": {
+      "kind": "normal",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "Slideshow": {
+      "kind": "normal",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.25,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "SplitScreen": {
+      "kind": "normal",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.25,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "Product": {
+      "kind": "product",
+      "renderedFields": [
+        "title",
+        "subtitle"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "Callouts": {
+      "kind": "callout",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.38,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "Counters": {
+      "kind": "normal",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.2,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "Countdown": {
+      "kind": "normal",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.2,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "VideoLook": {
+      "kind": "normal",
+      "renderedFields": [
+        "title"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    },
+    "Backgrounds": {
+      "kind": "normal",
+      "renderedFields": [
+        "title",
+        "subtitle"
+      ],
+      "widthRatio": 0.88,
+      "heightRatio": 0.35,
+      "lineHeight": 1.3,
+      "sizeRatio": {
+        "title": 0.07,
+        "subtitle": 0.035
+      },
+      "minScale": 0.6
+    }
+  }
+}

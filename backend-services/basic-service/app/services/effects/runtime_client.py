@@ -1,6 +1,7 @@
 """Authenticated private loopback protocol with bounded I/O and no retries."""
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -37,8 +38,19 @@ class EffectsRuntimeClient:
                 or any(not isinstance(manifest.get(key), str)
                        or re.fullmatch(r"[0-9a-f]{64}", manifest[key]) is None
                        for key in ("runtimeFingerprint", "fontHash",
-                                   "bundleHash"))):
+                                   "bundleHash", "textLayoutHash"))):
             raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503)
+        try:
+            layout = Path(__file__).with_name("text-layout.generated.json").read_bytes()
+            entries = [entry for entry in manifest["files"]
+                       if entry["path"] == "runtime/text-layout.json"]
+            if (hashlib.sha256(layout).hexdigest() != manifest["textLayoutHash"]
+                    or len(entries) != 1
+                    or entries[0]["sha256"] != manifest["textLayoutHash"]
+                    or entries[0]["bytes"] != len(layout)):
+                raise ValueError("layout mismatch")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503) from exc
         return manifest
 
     async def request(self, method: str, path: str,

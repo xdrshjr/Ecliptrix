@@ -41,13 +41,13 @@ extraResources:
   - from: build/effects
     to: effects
     filter:
-      - '**/*'
-      - '!smoke/**'
-      - '!backend-smoke/**'
-      - '!contracts/**'
-      - '!**/debug.log'
-      - '!*-report.json'
-      - '!browser-build.log'
+      - 'bundle/**'
+      - 'browser/**'
+      - 'native/**'
+      - 'fonts/**'
+      - 'runtime/**'
+      - 'manifest.json'
+      - 'catalog.json'
   - from: build/frontend
     to: frontend
   - from: build/backend

@@ -123,3 +123,89 @@ async def test_http_stable_draft_uuid_and_legacy_create_are_compatible(db_sessio
         })
         assert invalid.status_code == 400
         assert invalid.json()["error_code"] == "EFFECT_INVALID_ARGUMENT"
+
+
+async def text_http_client(db_session, monkeypatch, tmp_path):
+    import httpx
+    from fastapi import FastAPI
+    from app.database import get_db_session
+    from app.routers import effects_router
+    from tests.test_effects_jobs import create_project, dormant_service
+    project_id = await create_project(db_session, monkeypatch, tmp_path)
+    service = await dormant_service(db_session)
+    monkeypatch.setattr(effects_router, "effect_render_service", service)
+    app = FastAPI()
+    app.include_router(effects_router.router, prefix="/api")
+    app.add_exception_handler(EffectError, effects_router.effect_error_handler)
+    async def database():
+        yield db_session
+    app.dependency_overrides[get_db_session] = database
+    return project_id, service, httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["First line\nSecond line", "第一行\r\nSecond line", "第一行\rSecond line"])
+async def test_multiline_submit_uses_layout_breaks(db_session, monkeypatch, tmp_path, text):
+    from uuid import uuid4
+    from sqlalchemy import select, func
+    from app.models.effects_db_models import EffectRenderJob
+    project_id, service, client = await text_http_client(db_session, monkeypatch, tmp_path)
+    try:
+        async with client:
+            document = create_document(); document["content"]["title"] = text
+            path = f"/api/effects/projects/{project_id}"
+            draft = (await client.post(path + "/drafts", json={"document": document})).json()["data"]
+            response = await client.post(path + "/jobs", json={"request_id": str(uuid4()),
+                "draft_id": draft["draft_id"], "expected_version": draft["version"]})
+            assert response.status_code == 202, response.text
+            assert await db_session.scalar(select(func.count()).select_from(EffectRenderJob)) == 1
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_slideshow_explicit_lines_rejected_before_job(db_session, monkeypatch, tmp_path):
+    from uuid import uuid4
+    from PIL import Image
+    from sqlalchemy import select, func
+    from app.models.effects_db_models import EffectRenderJob
+    project_id, service, client = await text_http_client(db_session, monkeypatch, tmp_path)
+    try:
+        async with client:
+            path = f"/api/effects/projects/{project_id}"
+            document = create_document("slides-crossfade")
+            document["content"]["title"] = "一\n二\n三\n四\n五"
+            for index, color in enumerate(["orange", "blue"]):
+                Image.new("RGB", (80, 80), color).save(tmp_path / f"image-{index}.png")
+                asset = (await client.post(path + "/inputs", json={
+                    "source_ref": f"/api/storage/files/image-{index}.png"})).json()["data"]["asset"]
+                document["inputs"].append({"slot": "images", "index": index,
+                    "asset_id": asset["asset_id"], "kind": "image", "fit": "cover", "focal_x": 0.5, "focal_y": 0.5})
+            draft = (await client.post(path + "/drafts", json={"document": document})).json()["data"]
+            result = await client.post(path + "/jobs", json={"request_id": str(uuid4()),
+                "draft_id": draft["draft_id"], "expected_version": draft["version"]})
+            assert result.status_code == 422, result.text
+            assert result.json()["error_code"] == "EFFECT_TEXT_OVERFLOW"
+            assert result.json()["error_details"]["fields"][0]["path"] == "content.title"
+            assert await db_session.scalar(select(func.count()).select_from(EffectRenderJob)) == 0
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_real_draft_pages_keep_cursor_and_project_boundary(db_session, monkeypatch, tmp_path):
+    project_id, service, client = await text_http_client(db_session, monkeypatch, tmp_path)
+    try:
+        async with client:
+            path = f"/api/effects/projects/{project_id}/drafts"
+            ids = []
+            for index in range(13):
+                response = await client.post(path, json={"name": f"Draft {index}", "document": create_document()})
+                ids.append(response.json()["data"]["draft_id"])
+            first = (await client.get(path)).json()["data"]
+            assert len(first["items"]) == 12 and first["next_cursor"]
+            second = (await client.get(path, params={"cursor": first["next_cursor"]})).json()["data"]
+            assert len(second["items"]) == 1 and second["next_cursor"] is None
+            assert {item["draft_id"] for item in first["items"] + second["items"]} == set(ids)
+    finally:
+        await service.close()

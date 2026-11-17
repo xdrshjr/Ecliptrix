@@ -7,13 +7,19 @@ import { spawnSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const { createSubmission, runChild } = require(
+const { createSubmission, runChild, configure } = require(
   '../../desktop/scripts/effects-smoke.js',
 );
-const projectsRoot = join(root, 'desktop/build/effects/smoke/projects');
+const { projectsRoot } = configure({ packaged: true, report: join(root,
+  'desktop/build/effects/preview-evidence', randomUUID(), 'report.json') });
 const previewsRoot = join(root, 'public/effects/previews');
 const catalog = JSON.parse(await readFile(join(root,
   'src/lib/effects/catalog.json'), 'utf8'));
+const fontManifest = JSON.parse(await readFile(join(root, 'desktop/build/effects/fonts/manifest.json'), 'utf8'));
+if (fontManifest.schemaVersion !== 2 || ['sans', 'serif', 'mono', 'emoji'].some(family =>
+  !fontManifest.fonts.some(font => font.role === 'font' && font.family === family))) {
+  throw new Error('Previews require the four verified offline fonts');
+}
 const projectId = randomUUID();
 const fixture = await createSubmission(projectId);
 const fixtureRoot = join(projectsRoot, projectId, '.work', fixture.jobId);

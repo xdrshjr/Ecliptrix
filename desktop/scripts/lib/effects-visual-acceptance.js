@@ -7,6 +7,8 @@ const net = require('node:net')
 const { createRequire } = require('node:module')
 const { randomUUID } = require('node:crypto')
 const evidence = require('./effects-release-evidence')
+const fontUsage = require('./effects-font-usage')
+const { TEXT_VECTORS, FAMILIES, createTextVectorDocument } = require('./effects-text-vectors')
 const FRAMES = [0, 14, 29, 44, 59]
 const CANVASES = [[1920, 1080], [1080, 1920], [1080, 1080]]
 
@@ -19,7 +21,7 @@ function collectTextLayout(selector, frame) {
   const lines = []
   while (walker.nextNode()) {
     const node = walker.currentNode
-    if (!node.textContent.trim()) continue
+    if (!node.textContent.trim() || node.parentElement.closest('[data-effects-measure]')) continue
     let visible = true
     let parent = node.parentElement
     while (parent && parent !== root.parentElement) {
@@ -31,11 +33,17 @@ function collectTextLayout(selector, frame) {
     const range = document.createRange(); range.selectNodeContents(node)
     const style = getComputedStyle(node.parentElement)
     for (const rect of range.getClientRects()) if (rect.width && rect.height) lines.push({
-      text: node.textContent, font: style.fontFamily,
+      text: node.textContent, field: node.parentElement.closest('[data-effects-text]')?.dataset.effectsText,
+      line_height: parseFloat(style.lineHeight), font_size: parseFloat(style.fontSize),
+      font: style.fontFamily,
       x: rect.x - boundary.x, y: rect.y - boundary.y,
       width: rect.width, height: rect.height })
   }
-  return { frame, boundary: { x: boundary.x, y: boundary.y,
+  const text_boxes = [...root.querySelectorAll('[data-effects-text]')].map(node => ({
+    field: node.dataset.effectsText, line_count: node.querySelectorAll('[data-effects-line]').length,
+    height: node.offsetHeight, width: node.clientWidth, scroll_width: node.scrollWidth,
+    font_size: parseFloat(getComputedStyle(node).fontSize), line_height: parseFloat(getComputedStyle(node).lineHeight) }))
+  return { frame, text_boxes, boundary: { x: boundary.x, y: boundary.y,
     width: boundary.width, height: boundary.height },
   device_scale_factor: window.devicePixelRatio, lines }
 }
@@ -116,12 +124,13 @@ async function renderStillsWorker(requestPath) {
     browser = await renderer.openBrowser('chrome', { browserExecutable:
       path.join(request.resourceRoot, manifest.browserExecutable), logLevel: 'error' })
     const fonts = JSON.parse(await fs.readFile(path.join(request.resourceRoot, 'fonts/manifest.json'), 'utf8'))
-    const fontUrls = Object.fromEntries(fonts.fonts.filter(font => font.path.endsWith('.ttf'))
+    const fontUrls = Object.fromEntries(fonts.fonts.filter(font => font.role === 'font')
       .map(font => [font.family, `${server.baseUrl}fonts/${encodeURIComponent(font.path)}`]))
+    if (fonts.schemaVersion !== 2 || ['sans', 'serif', 'mono', 'emoji'].some(key => !fontUrls[key])) throw Error('Font resources incomplete')
     const inputProps = { document: request.submission.document, fontUrls,
       assets: Object.fromEntries(request.submission.inputs.map(input => [input.assetId, `${server.baseUrl}inputs/${input.assetId}`])) }
     const original = browser.newPage.bind(browser)
-    let currentFrame = 0; const layouts = []
+    let currentFrame = 0; const layouts = []; const usages = []
     browser.newPage = async (...args) => {
       const page = await original(...args)
       const client = page._client(); const command = client.send.bind(client)
@@ -142,12 +151,24 @@ async function renderStillsWorker(requestPath) {
     browser.newPage = restricted
     for (const frame of request.frames) for (const repetition of ['a', 'b']) {
       currentFrame = frame
-      let captured
+      let captured, captureFailure
       browser.newPage = async (...args) => {
         const page = await restricted(...args); const close = page.close.bind(page)
+        let closing
         page.close = async (...closeArgs) => {
+          if (closing) return closing
+          closing = (async () => {
+          try {
           captured = await page.evaluate(collectTextLayout, '#remotion-canvas', currentFrame)
-          return close(...closeArgs)
+          if (request.fontBinding && repetition === 'a') usages.push(await fontUsage.collectFontUsage(
+            (...args) => page._client().send(...args).then(result => result.value), '#remotion-canvas', { ...request.fontBinding,
+              side: 'renderer', frame: currentFrame, fontHash: manifest.fontHash }))
+          } catch (error) { captureFailure = error }
+          // Remotion also calls cleanup from its error event without awaiting it.
+          // Record observation errors here and reject the awaited happy path below.
+          try { await close(...closeArgs) } catch (error) { captureFailure ||= error }
+          })()
+          return closing
         }
         return page
       }
@@ -155,10 +176,12 @@ async function renderStillsWorker(requestPath) {
         inputProps, puppeteerInstance: browser, frame, imageFormat: 'png', port,
         binariesDirectory: path.join(request.resourceRoot, manifest.binariesDirectory),
         output: path.join(request.outputDirectory, `${frame}-${repetition}.png`) })
+      if (captureFailure) throw captureFailure
       if (!captured || captured.frame !== frame) throw new Error('Renderer frame layout was not observed')
       if (repetition === 'a') layouts.push(captured)
     }
     await fs.writeFile(path.join(request.outputDirectory, 'layouts.json'), JSON.stringify(layouts), { flag: 'wx' })
+    if (request.fontBinding) await fs.writeFile(path.join(request.outputDirectory, 'font-usage.json'), JSON.stringify(usages), { flag: 'wx' })
   } finally { await browser?.close({ silent: true }); await server.close() }
 }
 
@@ -216,7 +239,7 @@ async function sampleFrame(context, entry, frame, directory) {
   await execute(context, context.ffmpeg, ['-v', 'error', '-i', entry.video,
     '-vf', `select=eq(n\\,${frame})`, '-frames:v', '1', '-pix_fmt', 'rgb24', decoded])
   const player = await context.capturePlayer(entry.submission.document, entry.submission.inputs,
-    entry.jobDirectory, frame, path.join(directory, `${frame}-player.png`))
+    entry.jobDirectory, frame, path.join(directory, `${frame}-player.png`), entry.fontBinding)
   const mp4 = await metric(context, ['compare', '--reference', pngA,
     '--repeated', pngB, '--candidate', decoded, '--mask', path.join(directory, `${frame}-mask.png`)])
   const playerMetrics = await metric(context, ['compare', '--reference', pngA,
@@ -236,6 +259,13 @@ async function sampleFrame(context, entry, frame, directory) {
     ['frame_pair', `${frame}-mask.png`], ['frame_pair', `${frame}-player-mask.png`],
     ['layout', `${frame}-layout.json`, layoutRecord], ['layout', `${frame}-metrics.json`, metricsRecord],
   ]) attachments.push(await evidence.writeAttachment(context, role, `${prefix}/${filename}`, value))
+  if (entry.fontBinding) {
+    const usage = entry.usages?.find(item => item.frame === frame)
+    if (!usage || !player.fontUsage) throw Error('缺少双端字体来源')
+    for (const [side, raw] of [['renderer', usage], ['player', player.fontUsage]])
+      attachments.push(await evidence.writeAttachment(context, 'font_usage', `${prefix}/${frame}-${side}-fonts.json`,
+        evidence.bindRecord(context.report, raw)))
+  }
   return { attachments, frame: { frame, png_a: `${prefix}/${frame}-a.png`,
     png_b: `${prefix}/${frame}-b.png`, mp4_frame: `${prefix}/${frame}-mp4.png`,
     player_frame: `${prefix}/${frame}-player.png`, layout: `${prefix}/${frame}-layout.json`,
@@ -243,7 +273,9 @@ async function sampleFrame(context, entry, frame, directory) {
     player_mask: `${prefix}/${frame}-player-mask.png`, png_equal: mp4.png_equal,
     rgba_equal: mp4.rgba_equal, mp4_flat_mae: mp4.flat_mae,
     player_flat_mae: playerMetrics.flat_mae, layout_lines_match: compared.linesMatch,
-    layout_error_css_px: Number.isFinite(compared.error) ? compared.error : 1000000 } }
+    layout_error_css_px: Number.isFinite(compared.error) ? compared.error : 1000000,
+    ...(entry.fontBinding ? { renderer_font_usage: `${prefix}/${frame}-renderer-fonts.json`,
+      player_font_usage: `${prefix}/${frame}-player-fonts.json` } : {}) } }
 }
 
 /** Run 72 production MP4 renders and 720 stills, plus real Player comparisons. */
@@ -252,6 +284,13 @@ async function runVisual(context) {
   const catalog = JSON.parse(await fs.readFile(path.join(context.resourceRoot, 'catalog.json'), 'utf8'))
   if (catalog.templates.length !== 24) throw new Error('Catalog must contain 24 templates')
   const entries = []; const attachments = []; const cases = []
+  const referencePaths = {}
+  for (const side of ['renderer', 'player']) {
+    const reference = await fontUsage.probeTargetFonts(context, side)
+    referencePaths[side] = `visual/${side}-font-reference.json`
+    attachments.push(await evidence.writeAttachment(context, 'font_usage_reference', referencePaths[side],
+      evidence.bindRecord(context.report, { case_id: 'font-reference', input_sha256: context.report.font_hash, ...reference })))
+  }
   for (const template of catalog.templates) for (const canvas of CANVASES) {
     const caseId = `${template.id}:${canvas.join('x')}`
     context.onProgress?.(`visual ${caseId}`)
@@ -282,31 +321,50 @@ async function runVisual(context) {
       document: documentPath, video: videoPath,
       probe: `visual/${caseId.replaceAll(':', '-')}/probe.json`, frames })
   }
-  // Supplemental vectors are real independent renders, not extrapolated matrix rows.
-  for (const [name, text] of Object.entries({ zh: '中文排版测试', en: 'English layout',
-    newline: '第一行\nSecond line', '120': '文'.repeat(120), '300': 'a'.repeat(300),
-    combining: 'Cafe\u0301 A\u030a', emoji: '效果 🎬✨😀' })) {
-    for (const family of ['sans', 'serif', 'mono']) {
-      const prepared = await prepareSubmission(context, catalog.templates.find(t => t.id === 'title-rise'), CANVASES[0], fixtures)
-      prepared.submission.document.content = { title: name === '300' ? 'Subtitle' : text,
-        subtitle: name === '300' ? text : '' }
-      prepared.submission.document.typography.family = family
-      await renderMp4(context, prepared.submission)
-      const directory = path.join(context.evidenceRoot, 'visual', `text-${name}-${family}`)
-      await renderStills(context, prepared, directory, [0, 29, 59])
-      const fonts = JSON.parse(await fs.readFile(path.join(context.resourceRoot, 'fonts/manifest.json'), 'utf8'))
-      const paths = fonts.fonts.filter(font => font.path.endsWith('.ttf')
-        && [family, 'sans'].includes(font.family)).map(font => path.join(context.resourceRoot, 'fonts', font.path))
-      const glyphs = await metric(context, ['glyphs', ...paths.flatMap(file => ['--font', file]), '--text', text])
-      for (const frame of [0, 29, 59]) attachments.push(await evidence.writeAttachment(context,
-        'frame_pair', `visual/text-${name}-${family}/${frame}-a.png`))
-      attachments.push(await evidence.writeAttachment(context, 'layout', `visual/text-${name}-${family}/glyphs.json`,
-        evidence.bindRecord(context.report, { case_id: `text-${name}`, input_sha256: evidence.hash(text), family, text,
-          frames: [0, 29, 59], pngs: [0, 29, 59].map(frame => `visual/text-${name}-${family}/${frame}-a.png`), glyphs })))
-      if (!glyphs.offline_glyphs_complete) throw new Error(`离线字体缺字 ${name}/${family}: ${glyphs.missing.join(',')}`)
+  // Every supplemental vector has the same independent still/MP4/Player gates.
+  const supplemental = []
+  for (const vector of TEXT_VECTORS) for (const family of FAMILIES) {
+    const template = catalog.templates.find(t => t.id === 'title-rise')
+    const prepared = await prepareSubmission(context, template, CANVASES[0], fixtures)
+    prepared.submission.document = createTextVectorDocument(template, vector, family)
+    prepared.submission.inputs = []
+    prepared.submission.requestHash = evidence.hash(JSON.stringify(prepared.submission.document))
+    prepared.fontBinding = { case_id: vector.case_id, family, input_sha256: prepared.submission.requestHash }
+    context.onProgress?.(`visual ${vector.case_id}/${family}`)
+    const directory = path.join(context.evidenceRoot, 'visual', `${vector.case_id}-${family}`)
+    await renderStills(context, prepared, directory, [0, 29, 59])
+    await renderMp4(context, prepared.submission)
+    const video = path.join(prepared.jobDirectory, 'video.part.mp4')
+    const layouts = JSON.parse(await fs.readFile(path.join(directory, 'layouts.json'), 'utf8'))
+    const usages = JSON.parse(await fs.readFile(path.join(directory, 'font-usage.json'), 'utf8'))
+    const frames = []
+    for (const frame of [0, 29, 59]) {
+      const sample = await sampleFrame(context, { ...prepared, video, layouts, usages, caseId: vector.case_id }, frame, directory)
+      frames.push(sample.frame); attachments.push(...sample.attachments)
     }
-    cases.push({ case_id: `text-${name}`, input_sha256: evidence.hash(text), status: 'pass' })
+    const prefix = `visual/${vector.case_id}-${family}`
+    const probe = JSON.parse(await execute(context, context.ffprobe, ['-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', video]))
+    const documentPath = `${prefix}/document.json`, probePath = `${prefix}/probe.json`
+    const videoPath = path.relative(context.evidenceRoot, video).replaceAll('\\', '/')
+    const binding = { case_id: vector.case_id, input_sha256: prepared.submission.requestHash, family }
+    attachments.push(await evidence.writeAttachment(context, 'fixture_document', documentPath,
+      evidence.bindRecord(context.report, { ...binding, document: prepared.submission.document, inputs: [] })))
+    attachments.push(await evidence.writeAttachment(context, 'media_probe', probePath,
+      evidence.bindRecord(context.report, { ...binding, probe })))
+    attachments.push(await evidence.writeAttachment(context, 'video', videoPath))
+    const fonts = JSON.parse(await fs.readFile(path.join(context.resourceRoot, 'fonts/manifest.json'), 'utf8'))
+    const paths = fontUsage.fontKeys(family).map(key => path.join(context.resourceRoot, 'fonts', fonts.fonts.find(font => font.role === 'font' && font.family === key).path))
+    const text = vector.title + '\n' + vector.subtitle
+    const glyphs = await metric(context, ['glyphs', ...paths.flatMap(file => ['--font', file]), '--text', text])
+    if (!glyphs.offline_glyphs_complete) throw Error(`Offline glyphs missing: ${vector.case_id}/${family}`)
+    attachments.push(await evidence.writeAttachment(context, 'layout', `${prefix}/glyphs.json`,
+      evidence.bindRecord(context.report, { ...binding, text, glyphs })))
+    supplemental.push({ ...binding, document: documentPath, video: videoPath, probe: probePath, frames })
   }
+  for (const vector of TEXT_VECTORS) cases.push({ case_id: vector.case_id,
+    input_sha256: evidence.hash(JSON.stringify(vector)), status: 'pass' })
+  attachments.push(await evidence.writeAttachment(context, 'supplemental_index', 'visual/supplemental.json',
+    evidence.bindRecord(context.report, { input_sha256: evidence.hash(JSON.stringify(supplemental)), entries: supplemental, reference_paths: referencePaths })))
   // Audio uses the same calibrated source and the renderer's real output.
   const audio = await runAudioVectors(context, catalog, fixtures)
   cases.push(...audio.cases); attachments.push(...audio.attachments)
@@ -314,7 +372,7 @@ async function runVisual(context) {
   attachments.push(await evidence.writeAttachment(context, 'matrix_index', 'visual/matrix.json',
     evidence.bindRecord(context.report, { entries, cases, input_sha256: evidence.hash(JSON.stringify(fixtures)) })))
   return { status: 'pass', acceptance_ids: evidence.acIds('visual'),
-    measurements: { combinations: 72, sample_frames: 360 }, attachments }
+    measurements: { combinations: 72, sample_frames: 360, supplemental_vector_count: 27, supplemental_sample_frames: 81 }, attachments }
 }
 async function runAudioVectors(context, catalog, fixtures) {
   const cases = []; const attachments = []

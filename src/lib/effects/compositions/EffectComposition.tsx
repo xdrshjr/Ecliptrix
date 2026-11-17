@@ -14,8 +14,11 @@ import { Countdown } from './Countdown';
 import { VideoLook } from './VideoLook';
 import { Backgrounds } from './Backgrounds';
 import { getEffectTemplate } from '../catalog';
+import { getEffectFontChain } from '../fontResources';
+import { normalizeEffectDisplayText } from '../textLayout';
 import { useEffectFont } from '../fonts';
 import { getInputStyle } from './layout';
+import { EffectTextResources } from './EffectText';
 
 const COMPONENTS: Record<string, React.ComponentType<EffectCompositionProps>> = {
   Titles, Typewriter, LowerThirds, ImageReveal, Slideshow, SplitScreen,
@@ -33,7 +36,7 @@ export function EffectComposition(props: EffectCompositionProps) {
     <AbsoluteFill style={{
       backgroundColor: document.palette.background,
       color: document.palette.foreground,
-      fontFamily: `Effects-${document.typography.family}, Effects-sans`,
+      fontFamily: getEffectFontChain(document.typography.family),
     }}>
       {base?.kind === 'video' && (
         <OffthreadVideo src={assets[base.assetId]}
@@ -43,7 +46,12 @@ export function EffectComposition(props: EffectCompositionProps) {
       {base?.kind === 'image' && (
         <Img src={assets[base.assetId]} style={getInputStyle(base)} />
       )}
-      <Component {...props} />
+      <EffectTextResources.Provider value={JSON.stringify(props.fontUrls)}>
+      <Component {...props} document={{ ...document, content: {
+        title: normalizeEffectDisplayText(document.content.title),
+        subtitle: normalizeEffectDisplayText(document.content.subtitle),
+      } }} />
+      </EffectTextResources.Provider>
     </AbsoluteFill>
   );
 }
