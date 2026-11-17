@@ -29,6 +29,7 @@ import { computeItemStyles } from './timelineItemStyles';
 import { presetLabel } from '../components/CameraMotionModal/presetLabels';
 import { canApplyCameraMotion } from '../playback/camera/eligibility';
 import TimelineItemFilmstrip from './TimelineItemFilmstrip';
+import { ClipContextMenu } from './ClipContextMenu';
 import TimelineItemDownloadOverlay, {
   type LocalProxyMaskState,
 } from './TimelineItemDownloadOverlay';
@@ -77,6 +78,7 @@ interface TimelineItemProps {
    * Wired by the parent; omitted → double-click and the badge are inert.
    */
   onOpenCameraMotion?: (itemId: string) => void;
+  onOpenEffects?: (itemId: string) => void;
   /** The clip's material is gone from the library: preview skips it, export refuses it (N-01). */
   isMaterialMissing?: boolean;
 }
@@ -229,6 +231,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   onRetryLocalDownload,
   onDetachAudio,
   onOpenCameraMotion,
+  onOpenEffects,
   isMaterialMissing = false,
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
@@ -523,16 +526,17 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     !isTrackLocked;
 
   const [coverMenu, setCoverMenu] = useState<{ x: number; y: number } | null>(null);
+  const [clipMenu, setClipMenu] = useState<{ x: number; y: number } | null>(null);
   const handleContextMenu = (e: React.MouseEvent) => {
     if (item.metadata?.role === 'video-cover') {
       e.preventDefault(); e.stopPropagation();
       setCoverMenu({ x: e.clientX, y: e.clientY });
       return;
     }
-    if (!canDetachAudio) return;
+    if (item.type !== 'video') return;
     e.preventDefault();
     e.stopPropagation();
-    onDetachAudio?.(item.id);
+    setClipMenu({ x: e.clientX, y: e.clientY });
   };
 
   // ---------------------------------------------------------------------------
@@ -820,6 +824,15 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
       data-clip-id={item.id}
       title={clipSummary ?? `${item.name} ${startLabel} - ${endLabel}`}
     >
+      {clipMenu && <ClipContextMenu {...clipMenu}
+        onClose={() => setClipMenu(null)} actions={[
+          { label: t.effects.labels.title,
+            disabled: isTrackLocked || !onOpenEffects,
+            run: () => onOpenEffects?.(item.id) },
+          ...(canDetachAudio && item.originalMaterialType !== 'image'
+            ? [{ label: t.effects.labels.detach,
+              run: () => onDetachAudio?.(item.id) }] : []),
+        ]} />}
       {coverMenu && createPortal(
         <div role="menu" className="ws-preflight" style={{ position: 'fixed', left: coverMenu.x, top: coverMenu.y, zIndex: 1000 }}
           onMouseDown={event => event.stopPropagation()} onMouseLeave={() => setCoverMenu(null)}

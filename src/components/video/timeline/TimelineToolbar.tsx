@@ -338,8 +338,8 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({
       ),
       label: t.timeline.toolbar.effects,
       shortcut: t.timeline.shortcuts.effectsShortcut,
-      comingSoon: true,
-      disabled: true,
+      disabled: isEditLocked || isInteracting,
+      disabledHint: editLockedHint,
     },
     {
       id: 'transitions',

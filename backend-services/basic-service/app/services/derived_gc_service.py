@@ -116,6 +116,10 @@ class DerivedGcService:
             ``{deleted: {source: bool, thumbnails: int, waveform: bool}}``.
             ``thumbnails`` is the total frame count removed across all keys.
         """
+        if self._is_effects_resource(material_id, source_path):
+            return {"deleted": {"source": False, "thumbnails": 0,
+                                "waveform": False},
+                    "retained": "effects_project_owned"}
         source_deleted = False
         if source_path:
             try:
@@ -152,6 +156,16 @@ class DerivedGcService:
                 "waveform": waveform_removed,
             }
         }
+
+    def _is_effects_resource(self, material_id: str,
+                             source_path: Optional[str]) -> bool:
+        if material_id.startswith("effect-material:"):
+            return True
+        if not source_path:
+            return False
+        root = self._root.resolve()
+        path = (root / source_path.replace("\\", "/")).resolve()
+        return path.is_relative_to(root / "effects")
 
     def _delete_thumbnail_dir(self, key: str) -> int:
         """Delete one thumbnail dir, returning the frame count removed."""

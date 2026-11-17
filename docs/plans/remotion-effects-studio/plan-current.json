@@ -1,0 +1,10 @@
+{
+  "kind": "plan",
+  "id": "current",
+  "path": "docs/plans/remotion-effects-studio",
+  "slug": "remotion-effects-studio",
+  "doc": "spec.md",
+  "deliverable": "docs/plans/remotion-effects-studio/spec.md",
+  "blackboard_write_status": "unavailable",
+  "reason": "TASK_SERVER_URL is not set; this local locator does not represent a successful shared-blackboard write."
+}

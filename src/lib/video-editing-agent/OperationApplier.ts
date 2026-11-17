@@ -30,7 +30,7 @@ import type {
   TimelineItem,
   Track,
 } from '@/types';
-import type { AgentOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
+import type { AgentOperation, EffectsOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import { useVideoEditingStore } from '@/stores';
 import { packOverlappingTracks, reconcileOverlapsAfterAgentOp } from './reconcile';
@@ -47,7 +47,7 @@ export interface OperationRecord {
   /** The toolCallId that produced this operation. */
   toolCallId: string;
   /** The operation that was applied (for a re-pack, the first of its moves). */
-  operation: AgentTimelineOperation;
+  operation: AgentTimelineOperation | EffectsOperation;
   /**
    * Tracks this operation changed (before/after, inline thumbnails dropped).
    * Never empty: operations without a timeline effect are not recorded.
@@ -121,6 +121,19 @@ export class OperationApplier {
 
   constructor(config: OperationApplierConfig) {
     this.config = config;
+  }
+
+  /** Register an already committed transaction; never execute it a second time. */
+  recordExternalTimelineChange(options: {
+    toolCallId: string; operation: EffectsOperation;
+    before: TimelineState; after: TimelineState;
+  }): boolean {
+    if (this.operations.some(record => record.toolCallId === options.toolCallId)) return false;
+    const patches = diffTimelineTracks(options.before, options.after);
+    if (!patches.length) return false;
+    this.operations.push({ toolCallId: options.toolCallId,
+      operation: options.operation, patches });
+    return true;
   }
 
   // -----------------------------------------------------------------------

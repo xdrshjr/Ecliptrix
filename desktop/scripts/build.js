@@ -9,6 +9,7 @@ const { parseArgs, resolveUrls, runPreflight } = require('./preflight')
 const { prepareFrontend } = require('./prepare-frontend')
 const { prepareBackend } = require('./prepare-backend')
 const { prepareFfmpeg } = require('./prepare-ffmpeg')
+const { prepareEffects } = require('./prepare-effects')
 const {
   prepareEnv,
   formatSecretFindings,
@@ -62,6 +63,15 @@ const TRANSIENT_LOCK_RE = /EBUSY|EPERM|EACCES|addWinAsarIntegrity|EnsureEmptyDir
 // package as extraResources (frontend/, backend/, python/, ffmpeg/) or are
 // copied into the asar from build/ (env.template.desktop).
 const BUILD_PAYLOADS = [
+  'effects/manifest.json',
+  'effects/catalog.json',
+  'effects/runtime/server.js',
+  'effects/runtime/renderChild.js',
+  'effects/runtime/node_modules/@remotion/renderer',
+  'effects/browser/chrome-headless-shell.exe',
+  'effects/native/remotion.exe',
+  'effects/fonts/manifest.json',
+  'effects/bundle/index.html',
   'frontend/server.js',
   'frontend/.next/static',
   'frontend/node_modules/@mariozechner',
@@ -87,6 +97,7 @@ const BUILD_PAYLOADS = [
 // main/agentBrowserHost.js against build/ failed every build from commit
 // 3b7b6ac6 ("feat: 为剪辑 Agent 补齐通用网络能力") onwards.
 const APP_PAYLOADS = [
+  'main/effectsService.js',
   'main/agentBrowserHost.js',
   'preload/preload.js',
   'assets/icon.ico',
@@ -426,6 +437,7 @@ async function main() {
   const startedAt = Date.now()
   runPreflight(args)
   const urls = resolveUrls(args.cnMirror)
+  prepareEffects()
 
   if (args.skipFrontend) console.log('[prepare-frontend] skipped (--skip-frontend)')
   else prepareFrontend()

@@ -7,6 +7,7 @@ import type { ToolkitTurnState } from '@/types/agentToolkit';
 import type { HostCapabilitySnapshot } from '@/types/agentHost';
 import type { SkillIndexEntry } from '@/types/agentSkills';
 import type { ScriptSegmentSnapshot } from './editorContextPrompt';
+import type { EffectTargets } from '@/types/effects';
 
 // --- Tool Context ---
 
@@ -20,6 +21,9 @@ import type { ScriptSegmentSnapshot } from './editorContextPrompt';
 export type AgentAutonomy = 'interactive' | 'yolo';
 
 export interface ToolContext {
+  effectsTargets?: EffectTargets;
+  effectsRunId?: string;
+  effectsApplyUncertain?: boolean;
   scriptSegments?: ScriptSegmentSnapshot[];
   researchRun?: ResearchRunClient;
   timelineState: TimelineState;
@@ -266,6 +270,49 @@ export interface CoverAgentBridge {
   }) => void;
 }
 
+export type EffectsOperation = {
+  type: 'effects_action'; projectId: string; operationId: string;
+} & (
+  | { action: 'watch_job'; jobId: string }
+  | { action: 'apply_asset'; assetId: string; mode: 'replace';
+      targetClipId: string; expectedTargetFingerprint: string }
+  | { action: 'apply_asset'; assetId: string; mode: 'insert'; startTime: number }
+);
+
+export interface EffectsApplyRequest {
+  type: 'effects_apply_request';
+  operation: EffectsOperation & { action: 'apply_asset' };
+  receiptId: string;
+  token: string;
+  runId: string;
+  expiresAt: number;
+}
+
+export interface EffectsApplyResult {
+  state: 'applied' | 'noop' | 'not_applied' | 'error' | 'dispatched_unknown';
+  assetId: string;
+  clipId?: string;
+  errorCode?: string;
+  before?: TimelineState;
+  after?: TimelineState;
+}
+
+export interface EffectsApplyAck {
+  token: string; run_id: string; project_id: string; operation_id: string;
+  state: 'applied' | 'noop' | 'not_applied' | 'error'; asset_id: string;
+  clip_id?: string; error_code?: string; timeline?: TimelineState;
+}
+
+export interface EffectsAgentBridge {
+  beginOperation: (event: Extract<SSEEvent, { type: 'tool_call' }>) => void;
+  watch: (operation: EffectsOperation & { action: 'watch_job' }) => void | Promise<void>;
+  registerMaterials: (materials: MaterialItem[]) => void;
+  apply: (request: EffectsApplyRequest,
+    isLeaseValid: () => boolean) => Promise<EffectsApplyResult>;
+  cancelOperations: (options: { cancelJobs: boolean;
+    operationIds?: string[] }) => void;
+}
+
 // --- Unified Agent Operation ---
 
 export type AgentOperation =
@@ -274,7 +321,8 @@ export type AgentOperation =
   | ScriptOperation
   | StoryboardOperation
   | AsyncTaskOperation
-  | CoverOperation;
+  | CoverOperation
+  | EffectsOperation;
 
 // --- SSE Events (sent from API route to frontend) ---
 
@@ -304,6 +352,7 @@ export type AgentStreamErrorCode =
   | 'agent_error';
 
 export type SSEEvent =
+  | EffectsApplyRequest
   | { type: 'thinking_start' }
   | { type: 'thinking_delta'; content: string }
   | { type: 'thinking_end' }
@@ -362,7 +411,8 @@ export type CrewMemberState =
 
 /** The four SSE events a tool may emit through `ToolContext.emit`. */
 export type ToolSideEvent = Extract<SSEEvent, {
-  type: 'tool_progress' | 'crew_start' | 'crew_member' | 'crew_end';
+  type: 'tool_progress' | 'crew_start' | 'crew_member' | 'crew_end'
+    | 'effects_apply_request';
 }>;
 
 export type SkillSkipReason = 'not_found' | 'disabled' | 'invalid' | 'unavailable';

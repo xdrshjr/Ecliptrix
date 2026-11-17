@@ -37,6 +37,8 @@ type ClickEvent = React.MouseEvent<HTMLElement>;
 
 /** Handlers the panel owns; the card only routes user gestures to them. */
 export interface MaterialCardActions {
+  onEffects?(material: MaterialItem): void;
+  onEditEffectDraft?(draftId: string): void;
   onAddToTimeline?(material: MaterialItem): void;
   onPreview(material: MaterialItem): void;
   onAnalyze(material: MaterialItem, event: ClickEvent): void;
@@ -185,6 +187,9 @@ function useCardMenuItems(props: MaterialCardProps): MaterialMenuItem[] {
   const { material, actions, analysisStatus } = props;
   const m = t.workbench.materials;
   const isVisual = material.type === 'video' || material.type === 'image';
+  const isLocal = [material.url, material.serverUrl, material.cacheUrl,
+    material.metadata?.localResolvedUrl].some(url =>
+    typeof url === 'string' && url.startsWith('/api/storage/files/'));
   const analysisLabel: Record<MaterialAnalysisStatus, string> = {
     waiting: m.analysisWaiting,
     analyzing: t.materialsPanel.aiAnalyzing,
@@ -211,6 +216,16 @@ function useCardMenuItems(props: MaterialCardProps): MaterialMenuItem[] {
       icon: props.isConvertingToVideo ? 'spinner' : 'film',
       disabled: props.isConvertingToVideo,
       onSelect: (event) => actions.onImageToVideo(material, event),
+    },
+    isVisual && !!actions.onEffects && {
+      key: 'effects', label: isLocal ? t.effects.labels.title
+        : t.effects.labels.downloadFirst, icon: 'sparkles', disabled: !isLocal,
+      onSelect: () => actions.onEffects?.(material),
+    },
+    !!material.metadata?.effects && !!actions.onEditEffectDraft && {
+      key: 'edit-effects', label: t.effects.labels.edit,
+      icon: 'sparkles', onSelect: () =>
+        actions.onEditEffectDraft?.(material.metadata!.effects!.draftId),
     },
     material.type === 'video' && {
       key: 'cut', label: m.cut, icon: 'scissors',

@@ -34,6 +34,10 @@ import {
   createUpdateVideoCoverTool, createApplyVideoCoverTool,
 } from './coverTools';
 import { createGenerateAiVideoTool } from './generateAiVideo';
+import { createEffectsCatalogTools } from './effectsCatalogTools';
+import { createEffectsDraftTools } from './effectsDraftTools';
+import { createEffectsJobTools } from './effectsJobTools';
+import { createEffectsApplyTools } from './effectsApplyTool';
 import { createImageToVideoTool } from './imageToVideo';
 import { createBatchImageToVideoTool } from './batchImageToVideo';
 import { createGenerateStoryboardTool } from './generateStoryboard';
@@ -468,6 +472,10 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     createGetVideoCoverTool(context), createCreateVideoCoverTool(context),
     createUpdateVideoCoverTool(context), createApplyVideoCoverTool(context),
   ]);
+  registry.registerToolsForCategory(CATEGORY_IDS.EFFECTS_TOOLS, [
+    ...createEffectsCatalogTools(context), ...createEffectsDraftTools(context),
+    ...createEffectsJobTools(context), ...createEffectsApplyTools(context),
+  ]);
 
   registry.registerToolsForCategory(CATEGORY_IDS.MATERIAL_TOOLS, [
     createAddMaterialToLibraryTool(context),
@@ -516,6 +524,19 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
     createInspectExportTool(context),
   ]);
 
+  const timelineWriters = new Set(['add_to_track', 'trim_clip', 'delete_clip',
+    'move_clip', 'resize_clip', 'compose_storyboard', 'auto_fix_overlaps',
+    'add_subtitles', 'create_video_cover', 'apply_video_cover', 'apply_effect']);
+  for (const tool of registry.getAllTools()) {
+    if (!timelineWriters.has(tool.name)) continue;
+    const execute = tool.execute;
+    tool.execute = async (...args: Parameters<typeof execute>) => {
+      if (context.effectsApplyUncertain) return toolErrorResponse({
+        success: false, error_code: 'EFFECT_TIMELINE_RESYNC_REQUIRED',
+        error: 'EFFECT_TIMELINE_RESYNC_REQUIRED' });
+      return execute(...args);
+    };
+  }
   return registry;
 }
 

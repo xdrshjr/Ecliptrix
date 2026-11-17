@@ -432,3 +432,18 @@ Primary languages: **TypeScript, Python**.
 
 Template and marker version match. Say "regenerate index" or "更新索引" to rebuild this section; say "disable cleancode" to drop it.
 <!-- project-indexer:cleancode:end -->
+
+## 特效工作台开发约定
+
+共享目录 `src/lib/effects/catalog.json` 是 12 库 / 24 模板的唯一来源，
+runtime build 导出后端 `catalog.generated.json`；不得手改生成副本。
+前端 / runtime 共用 compositions 与离线字体，严格区分草稿可保存和可渲染。
+独立 `effects-runtime/tsconfig.json` 检查 worker，根项目排除其构建目录。
+依赖锁定 Remotion 4.0.544 / React 19.1.1，开发先 `npm run effects:prepare`。
+
+effects 正式资产不可被普通素材删除或通用 GC 物理回收；所有输出播放身份
+从新 asset 重建，不能复制源片缓存。应用走同步 planner / store action，
+保留源空间区间、校验不可变 provenance 与最新目标指纹，一次历史事务。
+Agent 应用必须复用 eventChain、有效回合租约和真实客户端回执；unknown
+时阻止后续时间线修改。runtime token 不进入客户端或持久用户配置。
+任务与发行验收记录在 `docs/plans/remotion-effects-studio/acceptance.md`。

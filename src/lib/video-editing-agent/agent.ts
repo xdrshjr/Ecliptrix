@@ -3,6 +3,7 @@ import type { AgentEvent } from '@mariozechner/pi-agent-core';
 import type { Model } from '@mariozechner/pi-ai';
 import { streamSimple } from '@mariozechner/pi-ai';
 import { ToolActivationState } from './registry/ToolActivationState';
+import { assertCanMutateEffectsTimeline } from './tools/effectsApplyTool';
 import {
   CORE_TOOLKIT_TOOL_NAMES,
   GENERAL_RESIDENT_TOOL_NAMES,
@@ -94,6 +95,9 @@ contextWindow: config.contextWindowTokens ?? 128000,
 
   // 3. Create shared tool context
   const toolContext: ToolContext = {
+    effectsRunId: crypto.randomUUID(),
+    effectsTargets: { drafts: new Map(), outputs: new Map() },
+    effectsApplyUncertain: false,
     researchRun: config.researchRun,
     timelineState: localTimelineState,
     materials: config.materials,
@@ -108,6 +112,7 @@ contextWindow: config.contextWindowTokens ?? 128000,
       if (toolContext.abortSignal?.aborted) {
         return { applied: false as const, reason: 'cancelled' };
       }
+      assertCanMutateEffectsTimeline(toolContext);
       // An operation the local copy refuses is never forwarded: the client
       // would refuse it too, after the tool already reported success. The
       // receipt (agent-subtitles spec D-4 / P0-2) is how the tool learns that —
@@ -120,6 +125,11 @@ contextWindow: config.contextWindowTokens ?? 128000,
     },
     recordOperation: (toolCallId: string, operation: AgentOperation) => {
       if (toolContext.abortSignal?.aborted) return;
+      if (['add_clip', 'trim_clip', 'delete_clip', 'move_clip', 'resize_clip',
+        'add_subtitle_clips', 'cover_action'].includes(operation.type)
+        || (operation.type === 'effects_action' && operation.action === 'apply_asset')) {
+        assertCanMutateEffectsTimeline(toolContext);
+      }
       toolContext.operations.set(toolCallId, operation);
     },
     // Fresh per request: `ask_user`'s one-per-turn rule and the live plan must

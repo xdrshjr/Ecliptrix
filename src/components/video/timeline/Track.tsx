@@ -72,6 +72,7 @@ interface TrackProps {
   onRetryLocalDownload?: (materialId: string) => void;
   /** Open the camera-motion panel for a clip (camera-motion-2d-3d §4.5.1). */
   onOpenCameraMotion?: (itemId: string) => void;
+  onOpenEffects?: (itemId: string) => void;
   /**
    * A material from the materials panel was dropped here. The panel resolves
    * the id against the library so a drop builds the same clip as "add to
@@ -98,6 +99,7 @@ const Track: React.FC<TrackProps> = ({
   localPreviewEnabled,
   onRetryLocalDownload,
   onOpenCameraMotion,
+  onOpenEffects,
   onMaterialDrop,
   isMaterialMissing,
   projectId,
@@ -694,6 +696,7 @@ const Track: React.FC<TrackProps> = ({
             localPreviewEnabled={localPreviewEnabled}
             onRetryLocalDownload={onRetryLocalDownload}
             onOpenCameraMotion={onOpenCameraMotion}
+                  onOpenEffects={onOpenEffects}
             isMaterialMissing={isMaterialMissing?.(item) ?? false}
           />
         ))}

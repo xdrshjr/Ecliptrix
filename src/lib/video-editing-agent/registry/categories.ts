@@ -1,14 +1,14 @@
 import type { ToolCategory } from './ToolRegistry';
 
 /**
- * Every tool category definition for the video editing agent (21 today:
- * 3 always-available + 18 on-demand).
+ * Every tool category definition for the video editing agent (22 today:
+ * 3 always-available + 19 on-demand).
  *
  * Categories are split into two groups:
  * - Always available: workflow_tools, query_tools and editing_tools — their
  *   tools are populated by createToolRegistry() in tools/index.ts at agent
  *   creation time.
- * - On-demand: the other 18 categories start with an empty tools array and are
+ * - On-demand: the other 19 categories start with an empty tools array and are
  *   populated via registry.registerToolsForCategory().
  *
  * The category IDs here are the canonical identifiers used by explore_tools
@@ -44,6 +44,7 @@ export const CATEGORY_IDS = {
   STORYBOARD_TOOLS: 'storyboard_tools',
   MATERIAL_TOOLS: 'material_tools',
   COVER_TOOLS: 'cover_tools',
+  EFFECTS_TOOLS: 'effects_tools',
 } as const;
 
 export type CategoryId = (typeof CATEGORY_IDS)[keyof typeof CATEGORY_IDS];
@@ -53,6 +54,7 @@ export type CategoryId = (typeof CATEGORY_IDS)[keyof typeof CATEGORY_IDS];
  * These are the valid enum values for explore_tools' `category` parameter.
  */
 export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
+  CATEGORY_IDS.EFFECTS_TOOLS,
   CATEGORY_IDS.WORKSPACE_TOOLS,
   CATEGORY_IDS.DOCUMENT_TOOLS,
   CATEGORY_IDS.ANALYSIS_TOOLS,
@@ -87,12 +89,19 @@ export const REVIEW_TOOLS = CATEGORY_IDS.REVIEW_TOOLS;
 // --- Category definitions (metadata only; tools[] populated later) ---
 
 /**
- * Returns all 21 category definitions with empty tools arrays.
+ * Returns all 22 category definitions with empty tools arrays.
  * Call this to seed the ToolRegistry, then populate tools via
  * registry.registerToolsForCategory() or by passing tools directly.
  */
 export function createDefaultCategories(): ToolCategory[] {
   return [
+    {
+      id: CATEGORY_IDS.EFFECTS_TOOLS,
+      name: '特效与动画',
+      description: 'Remotion FX.',
+      alwaysAvailable: false,
+      tools: [],
+    },
     {
       id: CATEGORY_IDS.WORKFLOW_TOOLS,
       name: '执行计划',

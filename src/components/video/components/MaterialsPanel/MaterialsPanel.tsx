@@ -49,6 +49,9 @@ import {
 } from './materialFilter';
 
 interface MaterialsPanelProps extends UseMaterialManagementReturn {
+  onEffects?: (material?: MaterialItem) => void;
+  onEditEffectDraft?: (draftId: string) => void;
+  effectsActiveCount?: number;
   onSearchVideos: () => void;
   onSearchAudios: () => void; // 新增：搜索音频回调
   onSearchImages: () => void; // 新增：搜索图片回调
@@ -77,6 +80,7 @@ interface MaterialsPanelProps extends UseMaterialManagementReturn {
 }
 
 const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
+  onEffects, onEditEffectDraft, effectsActiveCount = 0,
   materials,
   allMaterials,
   selectedMaterialType,
@@ -1738,6 +1742,8 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
   ];
 
   const cardActions: MaterialCardActions = {
+    onEffects,
+    onEditEffectDraft,
     onAddToTimeline: onAddToTimeline ? handleAddToTimelineClick : undefined,
     onPreview: handlePreviewFromLibrary,
     onAnalyze: handleVideoAnalysis,
@@ -1993,6 +1999,13 @@ const MaterialsPanel: React.FC<MaterialsPanelProps> = ({
           >
             <MaterialIcon name="film" size={14} />
             <span>{t.materialsPanel.aiMixing}</span>
+          </button>
+          <button type="button" onClick={() => onEffects?.()}
+            disabled={!projectId || !onEffects}
+            className="ws-btn ws-btn--sm" title={t.effects.labels.title}>
+            <MaterialIcon name="sparkles" size={14} />
+            <span>{t.effects.labels.title}</span>
+            {effectsActiveCount > 0 && <span aria-live="polite">{effectsActiveCount}</span>}
           </button>
           <span className="ws-tabular">
             {materials.length}{t.materialsPanel.materialsCount}

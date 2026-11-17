@@ -123,6 +123,7 @@ interface TimelinePanelProps {
   coverSchemaVersion?: 2;
   onEditCover?: (itemId: string) => void;
   onCoverSchemaActivated?: () => void;
+  onOpenEffects?: (itemId?: string) => void;
   onImportComplete?: (importedMaterials: MaterialItem[], importedTimelineState: TimelineState) => void;
   externalTimelineState?: TimelineState;
   externalTimelineUpdateId?: string;
@@ -173,6 +174,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
   coverSchemaVersion,
   onEditCover,
   onCoverSchemaActivated,
+  onOpenEffects,
   onImportComplete,
   externalTimelineState,
   externalTimelineUpdateId,
@@ -1056,8 +1058,18 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
   );
 
   const handleAddEffect = useCallback(() => {
-    showInfo(t.timeline.messages.featureComingSoon, 3000);
-  }, [showInfo, t]);
+    const state = useTimelineStore.getState();
+    if (state.selectedItems.length > 1) {
+      showWarning(t.effects.labels.invalidTarget); return;
+    }
+    const id = state.selectedItems[0];
+    const item = state.exportToData().tracks.flatMap(track => track.items)
+      .find(item => item.id === id);
+    if (id && (!item || item.type !== 'video' || item.metadata?.role)) {
+      showWarning(t.effects.labels.invalidTarget); return;
+    }
+    onOpenEffects?.(id);
+  }, [onOpenEffects, showWarning, t]);
 
   const handleAddTransition = useCallback(() => {
     showInfo(t.timeline.messages.featureComingSoon, 3000);
@@ -1509,6 +1521,7 @@ const TimelinePanel = React.forwardRef<TimelinePanelHandle, TimelinePanelProps>(
         localPreviewEnabled={localPreviewEnabled}
         onRetryLocalDownload={onRetryLocalDownload}
         onOpenCameraMotion={handleOpenCameraMotion}
+        onOpenEffects={onOpenEffects}
         onMaterialDrop={handleMaterialDropById}
         isMaterialMissing={isMaterialMissing} projectId={taskId}
         footerLeading={footerLeading}

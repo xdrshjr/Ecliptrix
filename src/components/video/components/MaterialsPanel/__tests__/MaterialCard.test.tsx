@@ -79,6 +79,20 @@ beforeEach(() => focusStore.useEditorFocusStore.getState().reset());
 afterEach(cleanup);
 
 describe('MaterialCard', () => {
+  it('local_visual_effects_entry_and_published_draft_entry_are_explicit', () => {
+    const actions = { ...makeActions(), onEffects: vi.fn(), onEditEffectDraft: vi.fn() };
+    const material = makeMaterial({ metadata: { effects: { schemaVersion: 1,
+      projectId: 'p', draftId: 'draft', draftVersion: 1, jobId: 'j',
+      assetId: 'a', templateId: 'title-rise', templateVersion: 1,
+      documentHash: 'hash' } } });
+    renderCard(material, actions);
+    fireEvent.click(screen.getByRole('button', { name: zh.workbench.materials.more }));
+    fireEvent.click(screen.getByRole('menuitem', { name: zh.effects.labels.title }));
+    expect(actions.onEffects).toHaveBeenCalledWith(material);
+    fireEvent.click(screen.getByRole('button', { name: zh.workbench.materials.more }));
+    fireEvent.click(screen.getByRole('menuitem', { name: zh.effects.labels.edit }));
+    expect(actions.onEditEffectDraft).toHaveBeenCalledWith('draft');
+  });
   it('single_click_selects_without_side_effects', () => {
     const { actions, card } = renderCard(makeMaterial());
     fireEvent.click(card);

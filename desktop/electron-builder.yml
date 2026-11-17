@@ -38,6 +38,16 @@ files:
 asar: true
 
 extraResources:
+  - from: build/effects
+    to: effects
+    filter:
+      - '**/*'
+      - '!smoke/**'
+      - '!backend-smoke/**'
+      - '!contracts/**'
+      - '!**/debug.log'
+      - '!*-report.json'
+      - '!browser-build.log'
   - from: build/frontend
     to: frontend
   - from: build/backend

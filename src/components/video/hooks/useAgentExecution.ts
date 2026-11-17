@@ -34,6 +34,7 @@ import { readLastCompositionId } from '@/lib/api/agentVision';
 import { nextExternalUpdateId } from '@/components/video/timeline/lib/externalUpdateId';
 import { useTimelineStore } from '@/components/video/timeline/store/useTimelineStore';
 import { isEditLocked } from '@/components/video/timeline/store/editLock';
+import { replaceTimelineAction } from '@/components/video/timeline/store/actions/replaceTimeline';
 import { AgentEventRouter } from '@/lib/video-editing-agent/AgentEventRouter';
 import { AgentStateManager } from '@/lib/video-editing-agent/AgentStateManager';
 import {
@@ -47,7 +48,7 @@ import {
 import { createDefaultAgentTimelineState } from '@/lib/video-editing-agent/defaultTimeline';
 import type { StreamError } from '@/lib/video-editing-agent/errorRecovery';
 import type {
-  AgentAutonomy, LastAgentTurnEnd, SSEEvent, CoverAgentBridge,
+  AgentAutonomy, LastAgentTurnEnd, SSEEvent, CoverAgentBridge, EffectsAgentBridge,
 } from '@/lib/video-editing-agent/types';
 import type { CoverAspectRatio } from '@/types/videoCover';
 import type {
@@ -79,6 +80,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface UseAgentExecutionParams {
+  effectsAgentBridge?: EffectsAgentBridge;
   getScriptSegments?: () => readonly ScriptSegmentSnapshot[];
   coverAgentBridge?: CoverAgentBridge;
   coverAspectRatio?: CoverAspectRatio;
@@ -283,6 +285,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   //    of the agent message, waits for the previous one, so a delete_clip's
   //    animation delay can no longer let later operations land first. --
   const eventChainRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingTimelineImportRef = useRef(false);
 
   // -- The SSE stream is still open (tools may still be called) --
   const isStreamLive =
@@ -373,6 +376,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           timelineStateRef.current = state;
         },
         onTimelineUpdate: () => {
+          pendingTimelineImportRef.current = true;
           onTimelineUpdate?.(nextExternalUpdateId('agent-op'));
         },
         onTriggerAnimation: triggerClipAnimation,
@@ -406,6 +410,23 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
       const requestProjectId = paramsRef.current.projectId;
       liveTokenRef.current = token;
       return new AgentEventRouter({
+        effectsAgentBridge: paramsRef.current.effectsAgentBridge,
+        isLeaseValid: () => mounted.current && liveTokenRef.current === token
+          && paramsRef.current.projectId === requestProjectId,
+        acceptCommittedTimeline: state => {
+          pendingTimelineImportRef.current = false;
+          timelineStateRef.current = state;
+          setTimelineState(state);
+        },
+        prepareEffectsTimeline: () => {
+          const timeline = timelineStateRef.current;
+          if (!pendingTimelineImportRef.current || !timeline) return;
+          if (useTimelineStore.getState().isInteracting) {
+            throw new Error('EFFECT_ACTIVE_GESTURE');
+          }
+          replaceTimelineAction(useTimelineStore.getState, timeline, 'agent');
+          pendingTimelineImportRef.current = false;
+        },
         isCurrentProject: () => mounted.current && paramsRef.current.projectId === requestProjectId,
         getScriptSegments: () => paramsRef.current.getScriptSegments?.(),
         coverAgentBridge: coverBridgeRef.current,
@@ -433,7 +454,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         },
       });
     },
-    [notifyAgentError, describeServerError, liveEvents.sinks],
+    [notifyAgentError, describeServerError, liveEvents.sinks, setTimelineState],
   );
 
   // Over 60 lines: every callback closes over this turn's subscription and
@@ -459,7 +480,10 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         onEvent: (event: SSEEvent) => {
           if (stateManagerRef.current === stateManager
             && steeringBridgeRef.current.routeEvent(event)) return;
+          // Revoke before queued async work can commit after server abort.
+          if (event.type === 'cancelled') router.cancelEffectsOperations(false);
           if (event.type === 'tool_call') router.beginCoverOperation(event);
+          if (event.type === 'tool_call') router.beginEffectsOperation(event);
           runAfterQueuedEvents(() => router.handleEvent(event), 'handling event');
         },
         // A restart only happens before any tool call (the stream manager
@@ -476,6 +500,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         // operation has been applied.
         onComplete: () =>
           runAfterQueuedEvents(() => {
+            router.cancelEffectsOperations(false);
             stateManager.finalize();
             unsubscribe();
             writeFinalMessage();
@@ -487,6 +512,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           }, 'finalizing agent message'),
         onError: (error) => {
           router.cancelCoverOperations(true);
+          router.cancelEffectsOperations(false);
           const text = describeStreamError(error);
           notifyAgentError(text);
           return runAfterQueuedEvents(() => {
@@ -507,6 +533,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
         onFinishingTimeout: () => {
           finishingTimedOutRef.current = true;
           router.cancelCoverOperations(true);
+          router.cancelEffectsOperations(false);
           unsubscribe();
           writeAgentMessage({
             ...stateManager.toMessageUpdate(),
@@ -788,6 +815,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   // that tail must already contain the sealing write.
   const cancelByUser = useCallback(() => {
     currentRouterRef.current?.cancelCoverOperations(true);
+    currentRouterRef.current?.cancelEffectsOperations(true);
     sealMessage({ byUser: true });
     cancelExecState();
     console.log('[useAgentExecution] Execution cancelled by user');
@@ -795,6 +823,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
 
   const cancelByNavigation = useCallback(() => {
     coverRoutersRef.current.forEach(router => router.cancelCoverOperations(false));
+    coverRoutersRef.current.forEach(router => router.cancelEffectsOperations(false));
     coverRoutersRef.current.clear();
     sealMessage({ byUser: false });
     cancelExecState();
@@ -956,6 +985,7 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
     return () => {
       mounted.current = false;
       coverRoutersRef.current.forEach(router => router.cancelCoverOperations(false));
+      coverRoutersRef.current.forEach(router => router.cancelEffectsOperations(false));
       coverRoutersRef.current.clear();
       if (isStreamLiveNow()) {
         cancelByNavigationRef.current();

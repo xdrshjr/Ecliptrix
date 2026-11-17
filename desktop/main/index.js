@@ -11,6 +11,8 @@ const { pickPort } = require('./ports')
 const { ManagedService } = require('./processManager')
 const { createBackendDescriptor } = require('./backendService')
 const { createFrontendDescriptor } = require('./frontendService')
+const { createEffectsSupervisor } = require('./effectsService')
+const { randomBytes } = require('node:crypto')
 const { Logger, LogLevel } = require('./logger')
 const { APP_ICON_PATH, resolveAppUserModelId } = require('./appIcon')
 const { registerWindowControlIpc } = require('./windowControls')
@@ -60,6 +62,8 @@ const state = {
   frontendPort: 0,
   backendPort: 0,
   backend: null,
+  effects: null,
+  effectsConfig: null,
   frontend: null,
   browserHost: null,
   browserHostRestarts: 0,
@@ -513,6 +517,17 @@ async function restartResearchBrowserHost() {
 
 async function startServices() {
   const resourcesPath = process.resourcesPath
+  if (!state.effectsConfig) {
+    state.effectsConfig = {
+      effectsPort: (await pickPort(18323)).port,
+      runtimeToken: randomBytes(32).toString('hex'),
+    }
+  }
+  state.effects = createEffectsSupervisor({ ...state.effectsConfig,
+    resourcesPath, resourceRoot: path.join(resourcesPath, 'effects'),
+    electronExecPath: process.execPath,
+    storageRoot: path.join(state.userDataPath, 'storage'), logger: state.logger })
+  await state.effects.start()
 
   windows.setSplashStatus(state.splash, '正在启动后端服务…')
   state.backend = new ManagedService(
@@ -523,6 +538,7 @@ async function startServices() {
       frontendPort: state.frontendPort,
       userEnv: state.userEnv,
       researchBrowserEnv: state.researchBrowserEnv,
+      effectsRuntimeEnv: state.effects.env,
     }),
     { logger: state.logger, onUnexpectedExit: handleUnexpectedExit }
   )
@@ -683,6 +699,11 @@ async function restartServices() {
 }
 
 async function stopChildren() {
+  if (state.effects) {
+    await state.effects.drain(`http://127.0.0.1:${state.backendPort}`)
+    await state.effects.close()
+    state.effects = null
+  }
   const children = [state.frontend, state.backend, state.browserHost].filter(Boolean)
   await Promise.all(
     children.map((service) =>

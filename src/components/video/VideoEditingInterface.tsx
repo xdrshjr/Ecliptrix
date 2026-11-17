@@ -70,6 +70,9 @@ import type { CoverAspectRatio } from '@/types/videoCover';
 import { CoverStudio } from './cover/CoverStudio';
 import { CoverRenderHost, type CoverRenderHostRef } from './cover/CoverRenderHost';
 import { useCoverController } from './cover/useCoverController';
+import { useEffectsController } from './effects/useEffectsController';
+import { EffectsStudioModal } from './effects/EffectsStudioModal';
+import { createEffectsAgentBridge } from './effects/effectsAgentBridge';
 import { coverDeadline } from './cover/renderCover';
 import { COVER_CARD_ACTION_EVENT, type CoverCardActionDetail } from '@/lib/video-editing-agent/types';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -313,6 +316,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   const [coverOpen, setCoverOpen] = useState(false);
   const [coverFrame, setCoverFrame] = useState<Blob>();
   const coverOpenRef = useRef(false); coverOpenRef.current = coverOpen;
+  const effectsOpenRef = useRef(false);
+  const effectsProjectRef = useRef(projectId); effectsProjectRef.current = projectId;
   const coverTrigger = useRef<HTMLElement | null>(null);
   const coverEntry = useRef({ projectId, sequence: 0, active: true });
   if (coverEntry.current.projectId !== projectId) {
@@ -482,7 +487,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     // is swallowed so playback does not flicker (UI3-11).
     const disposeModalityTracking = installInputModalityTracking(document);
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (coverOpenRef.current) return;
+      if (coverOpenRef.current || effectsOpenRef.current) return;
       const action = resolveGlobalSpaceAction(event, getInputModality());
       if (action === 'yield') return;
       if (action === 'swallow') {
@@ -1899,6 +1904,18 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     aspectRatio: (content?.canvasSettings?.aspectRatioId ?? '16:9') as CoverAspectRatio,
     renderer: coverRenderRef, registerMaterial: materialManagement.addOrReplaceMaterial,
     onApplied: activateCoverSchema });
+  const effects = useEffectsController({ projectId,
+    materials: materialManagement.allMaterials,
+    registerMaterial: materialManagement.addOrReplaceMaterial });
+  effectsOpenRef.current = effects.isOpen;
+  const effectsMaterialsRef = useRef(materialManagement.allMaterials);
+  effectsMaterialsRef.current = materialManagement.allMaterials;
+  const effectsAgentBridge = useMemo(() => createEffectsAgentBridge({ projectId,
+    getProjectId: () => effectsProjectRef.current,
+    getMaterials: () => effectsMaterialsRef.current,
+    registerMaterial: materialManagement.addOrReplaceMaterial,
+    onWatchJob: job => effects.jobs.watch(job, true) }),
+  [projectId, materialManagement.addOrReplaceMaterial, effects.jobs.watch]);
   const openCover = useCallback(async () => {
     const entry = coverEntry.current;
     const sequence = ++entry.sequence;
@@ -1950,6 +1967,7 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
   }, [projectId, openCover, cover.applyExisting]);
   const yoloMode = useAgentYoloMode({ onSaveFailed: () => showError(t.videoChatWindow.yoloSaveFailed) });
   const agent = useAgentExecution({
+    effectsAgentBridge,
     coverAgentBridge: cover.bridge,
     coverAspectRatio: (content?.canvasSettings?.aspectRatioId ?? '16:9') as CoverAspectRatio,
     conversations: sessions.conversations,
@@ -2194,6 +2212,8 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     <PlayingSegmentContext.Provider value={playingSegmentId}>
     <div className={`flex-1 flex min-h-0 overflow-hidden relative${coverOpen ? ' cover-workspace-open' : ''}`}>
       {projectId && <CoverRenderHost key={projectId} ref={coverRenderRef} projectId={projectId} />}
+      {projectId && <EffectsStudioModal key={`effects:${projectId}`}
+        controller={effects} materials={materialManagement.allMaterials} />}
       {/* 以「视频段落」为核心的工作台：顶栏｜脚本·成片预览·素材/属性｜可拖高时间轴（底部栏左端为面板开关） */}
       <EditorWorkbench
         layout={workbench.layout}
@@ -2261,6 +2281,13 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
               onSearchVideos={videoSearch.openSearchModal} onSearchAudios={audioSearch.openSearchModal}
               onSearchImages={imageSearch.openSearchModal}
               onAIMixedEditing={aiMix.openModeModal} onAutoMixAudio={scriptAutoMix.requestAutoMix}
+              onEffects={material => {
+                workbench.pauseComposition(); void effects.open({ material });
+              }}
+              onEditEffectDraft={draftId => {
+                workbench.pauseComposition(); void effects.open({ draftId });
+              }}
+              effectsActiveCount={effects.jobs.activeCount}
               onVideoAnalysis={handleVideoAnalysis} onBatchVideoAnalysis={handleBatchVideoAnalysis}
               getVideoAnalysisStatus={videoAnalysis.getAnalysisStatus}
               onRetryDownload={videoSearch.retryVideoDownload}
@@ -2283,6 +2310,9 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
         timeline={
           <TimelinePanel
             projectId={projectId} onEditCover={() => void openCover()}
+            onOpenEffects={clipId => {
+              workbench.pauseComposition(); void effects.open({ clipId });
+            }}
             onCoverSchemaActivated={activateCoverSchema}
             coverSchemaVersion={content?.coverSchemaVersion}
             ref={workbench.timelinePanelRef} className="h-full" taskId={taskId}

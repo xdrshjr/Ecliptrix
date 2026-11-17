@@ -476,10 +476,44 @@ class VideoProjectService:
 
     async def delete_project(self, db, user_id, project_id):
         from app.services.video_cover_asset_service import project_locks
+        from app.services.effects.project_locks import (
+            deletion_lock, mark_closing, project_lock,
+        )
+        from app.services.effects.job_service import effect_render_service
         if _as_uuid(project_id) is None:
             return False
         async with project_locks(project_id):
-            return await self._delete_project(db, user_id, project_id)
+            async with deletion_lock(project_id):
+                try:
+                    async with project_lock(project_id):
+                        row = await db.get(VideoProject, _as_uuid(project_id),
+                                           populate_existing=True)
+                        if row is None or row.user_id != user_id:
+                            return False
+                        mark_closing(project_id, True)
+                        await self._mark_effects_cancelling(db, project_id)
+                    await effect_render_service.cancel_project(project_id)
+                    async with project_lock(project_id):
+                        return await self._delete_project(db, user_id, project_id)
+                except Exception:
+                    await db.rollback()
+                    raise
+                finally:
+                    mark_closing(project_id, False)
+
+    async def _mark_effects_cancelling(self, db, project_id: str) -> None:
+        from sqlalchemy import case, update
+        from app.models.effects_db_models import EffectRenderJob
+        from app.services.effects.catalog import ACTIVE
+        await db.execute(update(EffectRenderJob).where(
+            EffectRenderJob.project_id == UUID(project_id),
+            EffectRenderJob.status.in_(ACTIVE),
+        ).values(cancel_requested=True,
+                 phase=case((EffectRenderJob.status == "queued", "cancelled"),
+                            else_=EffectRenderJob.phase),
+                 status=case((EffectRenderJob.status == "queued", "cancelled"),
+                             else_="cancelling")))
+        await db.commit()
 
     async def _delete_project(
         self,
@@ -531,10 +565,18 @@ class VideoProjectService:
                       ProjectCoverDocument, ProjectCoverAsset):
             await db.execute(delete(model).where(model.project_id == proj_uuid))
 
+        from app.models.effects_db_models import (
+            EffectAsset, EffectDraft, EffectRenderJob,
+        )
+        for model in (EffectRenderJob, EffectDraft, EffectAsset):
+            await db.execute(delete(model).where(model.project_id == proj_uuid))
+
         await db.delete(row)
         await db.flush()
         await db.commit()
 
+        from app.services.effects.asset_service import cleanup_project_files as effects_cleanup
+        await effects_cleanup(project_id)
         from app.services.video_cover_asset_service import cleanup_project_files
         cleanup_project_files(project_id)
 

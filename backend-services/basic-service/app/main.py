@@ -21,6 +21,7 @@ from app.logger import get_logger, setup_logging
 from app.routers import api_router
 from app.models import ErrorResponse
 from app.database import init_db, close_db
+from app.models import effects_db_models  # Register before create_all.
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.security.log_redact import redact_headers
 
@@ -184,6 +185,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.services.video_cover_job_service import cover_job_service
     await cover_job_service.start()
+    from app.services.effects.job_service import effect_render_service
+    await effect_render_service.start()
     # Web research is an OPTIONAL capability: an unwritable artifact directory or a
     # missing browser host degrades research only and must never block boot for the
     # pure editing product (spec §13-3 / AC-25).
@@ -249,6 +252,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down application")
+    await effect_render_service.close()
     from app.services.storyboard_video_queue import storyboard_video_queue
     await storyboard_video_queue.close()
     await video_task_contexts.close()
@@ -736,6 +740,13 @@ from app.services.credential_errors import (
 )
 
 app.include_router(video_cover_v2_router.router, prefix="/api")
+
+from app.routers import effects_router, effects_internal_router
+from app.models.effects_models import EffectError
+
+app.include_router(effects_router.router, prefix="/api")
+app.include_router(effects_internal_router.router, prefix="/api")
+app.add_exception_handler(EffectError, effects_router.effect_error_handler)
 
 # Agent web research tools (web_search / web_fetch / extract-images /
 # download / research) — docs/plans/agent-general-capabilities/spec.md §4.

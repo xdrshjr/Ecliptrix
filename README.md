@@ -744,3 +744,18 @@ This project is licensed under the ISC License.
 
 **Ecliptrix · 灵蚀创影** — an open-source, local-first AI video editing desktop app.
 Transforming ideas into reality through the collision of light and shadow.
+
+## 本地特效工作台
+
+素材面板「AI 混剪」旁的「特效」打开制作弹窗；本地图片、视频的素材菜单、
+时间线工具栏和片段右键菜单也可进入。内置 12 库、24 个 Remotion 模板，
+支持中文文字、图片适配与焦点、实时预览、草稿自动保存、本地任务取消，
+成品可入库、新轨插入或经来源校验原位替换，支持撤销和重做。
+Agent 通过按需激活的 effects 工具制作，应用结果以客户端真实回执为准。
+
+开发资源先在仓库根运行 `npm run effects:prepare`，再按
+[桌面开发说明](desktop/README.md)启动。浏览器、native renderer 和字体随
+桌面资源分发，用户机运行时无需 npm 安装或首次下载。第三方字体保留 OFL；
+Remotion 的分发许可由负责人在正式发行前按实际场景核对。
+实测范围及尚待完成的发行验收见
+[验收记录](docs/plans/remotion-effects-studio/acceptance.md)。

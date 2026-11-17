@@ -38,6 +38,7 @@ interface TrackContainerProps {
   onRetryLocalDownload?: (materialId: string) => void;
   /** Open the camera-motion panel for a clip (camera-motion-2d-3d §4.5.1). */
   onOpenCameraMotion?: (itemId: string) => void;
+  onOpenEffects?: (itemId: string) => void;
   /** A material dragged from the materials panel was dropped on a lane. */
   onMaterialDrop: (materialId: string, trackId: string) => void;
   /** Whether a clip's material is gone; omitted until the library has loaded (N-01). */
@@ -60,6 +61,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
   localPreviewEnabled,
   onRetryLocalDownload,
   onOpenCameraMotion,
+  onOpenEffects,
   onMaterialDrop,
   isMaterialMissing,
   projectId,
@@ -319,6 +321,7 @@ const TrackContainer: React.FC<TrackContainerProps> = ({
                   localPreviewEnabled={localPreviewEnabled}
                   onRetryLocalDownload={onRetryLocalDownload}
                   onOpenCameraMotion={onOpenCameraMotion}
+                  onOpenEffects={onOpenEffects}
                   onMaterialDrop={onMaterialDrop}
                   isMaterialMissing={isMaterialMissing}
                   projectId={projectId}

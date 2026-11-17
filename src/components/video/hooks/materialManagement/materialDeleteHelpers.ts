@@ -21,10 +21,12 @@ export function sourcePathForDelete(
   siblings?: readonly MaterialItem[],
 ): string | undefined {
   if (!material) return undefined;
+  if (material.metadata?.effects) return undefined;
   const kind = material.metadata?.storageKind;
   if (kind === 'cached_remote' || kind === 'legacy_remote') return undefined;
   const key = storageKeyOf(material);
   if (!key) return undefined;
+  if (key.replace(/\\/g, '/').startsWith('effects/')) return undefined;
   const isShared = siblings?.some((other) => other.id !== material.id && storageKeyOf(other) === key);
   return isShared ? undefined : key;
 }

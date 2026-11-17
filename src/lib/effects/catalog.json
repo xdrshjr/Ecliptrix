@@ -1,0 +1,1204 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": 1,
+  "libraries": [
+    {
+      "id": "titles",
+      "nameKey": "effects.libraries.titles",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/title-rise.jpg"
+    },
+    {
+      "id": "typewriter",
+      "nameKey": "effects.libraries.typewriter",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/type-cursor.jpg"
+    },
+    {
+      "id": "lower-thirds",
+      "nameKey": "effects.libraries.lower-thirds",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/lower-clean.jpg"
+    },
+    {
+      "id": "image-reveal",
+      "nameKey": "effects.libraries.image-reveal",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/image-zoom.jpg"
+    },
+    {
+      "id": "slideshow",
+      "nameKey": "effects.libraries.slideshow",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/slides-crossfade.jpg"
+    },
+    {
+      "id": "split-screen",
+      "nameKey": "effects.libraries.split-screen",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/split-horizontal.jpg"
+    },
+    {
+      "id": "product",
+      "nameKey": "effects.libraries.product",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/product-float.jpg"
+    },
+    {
+      "id": "callouts",
+      "nameKey": "effects.libraries.callouts",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/callout-line.jpg"
+    },
+    {
+      "id": "counters",
+      "nameKey": "effects.libraries.counters",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/counter-up.jpg"
+    },
+    {
+      "id": "countdown",
+      "nameKey": "effects.libraries.countdown",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/countdown-ring.jpg"
+    },
+    {
+      "id": "video-look",
+      "nameKey": "effects.libraries.video-look",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/video-cinematic.jpg"
+    },
+    {
+      "id": "backgrounds",
+      "nameKey": "effects.libraries.backgrounds",
+      "templateCount": 2,
+      "thumbnail": "/effects/previews/background-orbit.jpg"
+    }
+  ],
+  "templates": [
+    {
+      "id": "title-rise",
+      "libraryId": "titles",
+      "version": 1,
+      "componentId": "Titles",
+      "variant": "rise",
+      "nameKey": "effects.templates.title-rise",
+      "descriptionKey": "effects.descriptions.titles",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "distance": 0.08
+      },
+      "parameterSchema": {
+        "distance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.2
+        }
+      },
+      "thumbnail": "/effects/previews/title-rise.jpg",
+      "demoPreview": "/effects/previews/title-rise.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "title-mask",
+      "libraryId": "titles",
+      "version": 1,
+      "componentId": "Titles",
+      "variant": "mask",
+      "nameKey": "effects.templates.title-mask",
+      "descriptionKey": "effects.descriptions.titles",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "distance": 0.08
+      },
+      "parameterSchema": {
+        "distance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.2
+        }
+      },
+      "thumbnail": "/effects/previews/title-mask.jpg",
+      "demoPreview": "/effects/previews/title-mask.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "type-cursor",
+      "libraryId": "typewriter",
+      "version": 1,
+      "componentId": "Typewriter",
+      "variant": "cursor",
+      "nameKey": "effects.templates.type-cursor",
+      "descriptionKey": "effects.descriptions.typewriter",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "revealFraction": 0.5
+      },
+      "parameterSchema": {
+        "revealFraction": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 0.7
+        }
+      },
+      "thumbnail": "/effects/previews/type-cursor.jpg",
+      "demoPreview": "/effects/previews/type-cursor.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "type-lines",
+      "libraryId": "typewriter",
+      "version": 1,
+      "componentId": "Typewriter",
+      "variant": "lines",
+      "nameKey": "effects.templates.type-lines",
+      "descriptionKey": "effects.descriptions.typewriter",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "revealFraction": 0.5
+      },
+      "parameterSchema": {
+        "revealFraction": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 0.7
+        }
+      },
+      "thumbnail": "/effects/previews/type-lines.jpg",
+      "demoPreview": "/effects/previews/type-lines.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "lower-clean",
+      "libraryId": "lower-thirds",
+      "version": 1,
+      "componentId": "LowerThirds",
+      "variant": "clean",
+      "nameKey": "effects.templates.lower-clean",
+      "descriptionKey": "effects.descriptions.lower-thirds",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "anchor": "bottom-left"
+      },
+      "parameterSchema": {
+        "anchor": {
+          "type": "string",
+          "enum": [
+            "bottom-left",
+            "bottom-right"
+          ]
+        }
+      },
+      "thumbnail": "/effects/previews/lower-clean.jpg",
+      "demoPreview": "/effects/previews/lower-clean.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "lower-block",
+      "libraryId": "lower-thirds",
+      "version": 1,
+      "componentId": "LowerThirds",
+      "variant": "block",
+      "nameKey": "effects.templates.lower-block",
+      "descriptionKey": "effects.descriptions.lower-thirds",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "anchor": "bottom-left"
+      },
+      "parameterSchema": {
+        "anchor": {
+          "type": "string",
+          "enum": [
+            "bottom-left",
+            "bottom-right"
+          ]
+        }
+      },
+      "thumbnail": "/effects/previews/lower-block.jpg",
+      "demoPreview": "/effects/previews/lower-block.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "image-zoom",
+      "libraryId": "image-reveal",
+      "version": 1,
+      "componentId": "ImageReveal",
+      "variant": "zoom",
+      "nameKey": "effects.templates.image-zoom",
+      "descriptionKey": "effects.descriptions.image-reveal",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "hero",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "zoom": 1.08
+      },
+      "parameterSchema": {
+        "zoom": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1.3
+        }
+      },
+      "thumbnail": "/effects/previews/image-zoom.jpg",
+      "demoPreview": "/effects/previews/image-zoom.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "image-wipe",
+      "libraryId": "image-reveal",
+      "version": 1,
+      "componentId": "ImageReveal",
+      "variant": "wipe",
+      "nameKey": "effects.templates.image-wipe",
+      "descriptionKey": "effects.descriptions.image-reveal",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "hero",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "zoom": 1.08
+      },
+      "parameterSchema": {
+        "zoom": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1.3
+        }
+      },
+      "thumbnail": "/effects/previews/image-wipe.jpg",
+      "demoPreview": "/effects/previews/image-wipe.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "slides-crossfade",
+      "libraryId": "slideshow",
+      "version": 1,
+      "componentId": "Slideshow",
+      "variant": "crossfade",
+      "nameKey": "effects.templates.slides-crossfade",
+      "descriptionKey": "effects.descriptions.slideshow",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "images",
+          "kinds": [
+            "image"
+          ],
+          "min": 2,
+          "max": 8,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "transitionFraction": 0.15
+      },
+      "parameterSchema": {
+        "transitionFraction": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.3
+        }
+      },
+      "thumbnail": "/effects/previews/slides-crossfade.jpg",
+      "demoPreview": "/effects/previews/slides-crossfade.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "slides-stack",
+      "libraryId": "slideshow",
+      "version": 1,
+      "componentId": "Slideshow",
+      "variant": "stack",
+      "nameKey": "effects.templates.slides-stack",
+      "descriptionKey": "effects.descriptions.slideshow",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "images",
+          "kinds": [
+            "image"
+          ],
+          "min": 2,
+          "max": 8,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "transitionFraction": 0.15
+      },
+      "parameterSchema": {
+        "transitionFraction": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.3
+        }
+      },
+      "thumbnail": "/effects/previews/slides-stack.jpg",
+      "demoPreview": "/effects/previews/slides-stack.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "split-horizontal",
+      "libraryId": "split-screen",
+      "version": 1,
+      "componentId": "SplitScreen",
+      "variant": "horizontal",
+      "nameKey": "effects.templates.split-horizontal",
+      "descriptionKey": "effects.descriptions.split-screen",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "left",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        },
+        {
+          "id": "right",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "divider": 0.5
+      },
+      "parameterSchema": {
+        "divider": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 0.8
+        }
+      },
+      "thumbnail": "/effects/previews/split-horizontal.jpg",
+      "demoPreview": "/effects/previews/split-horizontal.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "split-vertical",
+      "libraryId": "split-screen",
+      "version": 1,
+      "componentId": "SplitScreen",
+      "variant": "vertical",
+      "nameKey": "effects.templates.split-vertical",
+      "descriptionKey": "effects.descriptions.split-screen",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "left",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        },
+        {
+          "id": "right",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "divider": 0.5
+      },
+      "parameterSchema": {
+        "divider": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 0.8
+        }
+      },
+      "thumbnail": "/effects/previews/split-vertical.jpg",
+      "demoPreview": "/effects/previews/split-vertical.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "product-float",
+      "libraryId": "product",
+      "version": 1,
+      "componentId": "Product",
+      "variant": "float",
+      "nameKey": "effects.templates.product-float",
+      "descriptionKey": "effects.descriptions.product",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "hero",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "cardScale": 0.75
+      },
+      "parameterSchema": {
+        "cardScale": {
+          "type": "number",
+          "minimum": 0.4,
+          "maximum": 0.9
+        }
+      },
+      "thumbnail": "/effects/previews/product-float.jpg",
+      "demoPreview": "/effects/previews/product-float.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "product-spotlight",
+      "libraryId": "product",
+      "version": 1,
+      "componentId": "Product",
+      "variant": "spotlight",
+      "nameKey": "effects.templates.product-spotlight",
+      "descriptionKey": "effects.descriptions.product",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        },
+        {
+          "id": "hero",
+          "kinds": [
+            "image"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "cardScale": 0.75
+      },
+      "parameterSchema": {
+        "cardScale": {
+          "type": "number",
+          "minimum": 0.4,
+          "maximum": 0.9
+        }
+      },
+      "thumbnail": "/effects/previews/product-spotlight.jpg",
+      "demoPreview": "/effects/previews/product-spotlight.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "callout-line",
+      "libraryId": "callouts",
+      "version": 1,
+      "componentId": "Callouts",
+      "variant": "line",
+      "nameKey": "effects.templates.callout-line",
+      "descriptionKey": "effects.descriptions.callouts",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "pointX": 0.5,
+        "pointY": 0.5
+      },
+      "parameterSchema": {
+        "pointX": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.95
+        },
+        "pointY": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.95
+        }
+      },
+      "thumbnail": "/effects/previews/callout-line.jpg",
+      "demoPreview": "/effects/previews/callout-line.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "callout-ring",
+      "libraryId": "callouts",
+      "version": 1,
+      "componentId": "Callouts",
+      "variant": "ring",
+      "nameKey": "effects.templates.callout-ring",
+      "descriptionKey": "effects.descriptions.callouts",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [
+        "title"
+      ],
+      "defaults": {
+        "pointX": 0.5,
+        "pointY": 0.5
+      },
+      "parameterSchema": {
+        "pointX": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.95
+        },
+        "pointY": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.95
+        }
+      },
+      "thumbnail": "/effects/previews/callout-ring.jpg",
+      "demoPreview": "/effects/previews/callout-ring.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "counter-up",
+      "libraryId": "counters",
+      "version": 1,
+      "componentId": "Counters",
+      "variant": "up",
+      "nameKey": "effects.templates.counter-up",
+      "descriptionKey": "effects.descriptions.counters",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "value": 100,
+        "suffix": "",
+        "bars": [
+          30,
+          60,
+          90
+        ]
+      },
+      "parameterSchema": {
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "suffix": {
+          "type": "string",
+          "maxLength": 8
+        },
+        "bars": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "thumbnail": "/effects/previews/counter-up.jpg",
+      "demoPreview": "/effects/previews/counter-up.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "counter-bars",
+      "libraryId": "counters",
+      "version": 1,
+      "componentId": "Counters",
+      "variant": "bars",
+      "nameKey": "effects.templates.counter-bars",
+      "descriptionKey": "effects.descriptions.counters",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "value": 100,
+        "suffix": "",
+        "bars": [
+          30,
+          60,
+          90
+        ]
+      },
+      "parameterSchema": {
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "suffix": {
+          "type": "string",
+          "maxLength": 8
+        },
+        "bars": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "thumbnail": "/effects/previews/counter-bars.jpg",
+      "demoPreview": "/effects/previews/counter-bars.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "countdown-ring",
+      "libraryId": "countdown",
+      "version": 1,
+      "componentId": "Countdown",
+      "variant": "ring",
+      "nameKey": "effects.templates.countdown-ring",
+      "descriptionKey": "effects.descriptions.countdown",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "from": 5
+      },
+      "parameterSchema": {
+        "from": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
+      },
+      "thumbnail": "/effects/previews/countdown-ring.jpg",
+      "demoPreview": "/effects/previews/countdown-ring.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "countdown-flip",
+      "libraryId": "countdown",
+      "version": 1,
+      "componentId": "Countdown",
+      "variant": "flip",
+      "nameKey": "effects.templates.countdown-flip",
+      "descriptionKey": "effects.descriptions.countdown",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "from": 5
+      },
+      "parameterSchema": {
+        "from": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
+      },
+      "thumbnail": "/effects/previews/countdown-flip.jpg",
+      "demoPreview": "/effects/previews/countdown-flip.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "video-cinematic",
+      "libraryId": "video-look",
+      "version": 1,
+      "componentId": "VideoLook",
+      "variant": "cinematic",
+      "nameKey": "effects.templates.video-cinematic",
+      "descriptionKey": "effects.descriptions.video-look",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "video"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "strength": 0.35
+      },
+      "parameterSchema": {
+        "strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "thumbnail": "/effects/previews/video-cinematic.jpg",
+      "demoPreview": "/effects/previews/video-cinematic.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "video-glitch",
+      "libraryId": "video-look",
+      "version": 1,
+      "componentId": "VideoLook",
+      "variant": "glitch",
+      "nameKey": "effects.templates.video-glitch",
+      "descriptionKey": "effects.descriptions.video-look",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "video"
+          ],
+          "min": 1,
+          "max": 1,
+          "required": true
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "strength": 0.35
+      },
+      "parameterSchema": {
+        "strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "thumbnail": "/effects/previews/video-glitch.jpg",
+      "demoPreview": "/effects/previews/video-glitch.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "background-orbit",
+      "libraryId": "backgrounds",
+      "version": 1,
+      "componentId": "Backgrounds",
+      "variant": "orbit",
+      "nameKey": "effects.templates.background-orbit",
+      "descriptionKey": "effects.descriptions.backgrounds",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "density": 12
+      },
+      "parameterSchema": {
+        "density": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 24
+        }
+      },
+      "thumbnail": "/effects/previews/background-orbit.jpg",
+      "demoPreview": "/effects/previews/background-orbit.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    },
+    {
+      "id": "background-grid",
+      "libraryId": "backgrounds",
+      "version": 1,
+      "componentId": "Backgrounds",
+      "variant": "grid",
+      "nameKey": "effects.templates.background-grid",
+      "descriptionKey": "effects.descriptions.backgrounds",
+      "allowedInputKinds": [
+        "image",
+        "video"
+      ],
+      "slots": [
+        {
+          "id": "base",
+          "kinds": [
+            "image",
+            "video"
+          ],
+          "min": 0,
+          "max": 1,
+          "required": false
+        }
+      ],
+      "requiredContent": [],
+      "defaults": {
+        "density": 12
+      },
+      "parameterSchema": {
+        "density": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 24
+        }
+      },
+      "thumbnail": "/effects/previews/background-grid.jpg",
+      "demoPreview": "/effects/previews/background-grid.mp4",
+      "minFrames": 15,
+      "maxFrames": 1800
+    }
+  ]
+}

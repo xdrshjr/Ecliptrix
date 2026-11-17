@@ -32,6 +32,7 @@ export type { AgentTrackPatch } from '@/types';
 
 /** Tool names whose timeline changes can be undone one step at a time. */
 export const UNDOABLE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'apply_effect',
   'add_to_track',
   'trim_clip',
   'delete_clip',

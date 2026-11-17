@@ -447,6 +447,12 @@ export const useMaterialManagement = (taskId: string, initialMaterials: Material
 
   // 添加或替换单个素材
   const addOrReplaceMaterial = useCallback((newMaterial: MaterialItem) => {
+    if (newMaterial.metadata?.effects) {
+      const store = useVideoEditingStore.getState();
+      if (store.materials.some(item => item.id === newMaterial.id)) {
+        store.updateMaterial(newMaterial.id, newMaterial);
+      } else store.addMaterial(newMaterial);
+    }
     logger.info('添加或替换素材', {
       materialId: newMaterial.id,
       materialName: newMaterial.name,

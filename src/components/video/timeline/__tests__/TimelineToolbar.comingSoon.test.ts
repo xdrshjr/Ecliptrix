@@ -17,9 +17,11 @@ const toolbarSrc = readFileSync(TOOLBAR, 'utf-8');
 const panelSrc = readFileSync(PANEL, 'utf-8');
 
 describe('TimelineToolbar — coming-soon flag', () => {
-  it('marks the effects entry comingSoon + disabled', () => {
-    expect(toolbarSrc).toMatch(/id:\s*'effects',[\s\S]{0,800}?comingSoon:\s*true,/);
-    expect(toolbarSrc).toMatch(/id:\s*'effects',[\s\S]{0,800}?disabled:\s*true,/);
+  it('activates effects while preserving the live edit/gesture guard', () => {
+    const effects = toolbarSrc.split("id: 'effects'")[1]
+      .split("id: 'transitions'")[0];
+    expect(effects).not.toContain('comingSoon: true');
+    expect(effects).toContain('disabled: isEditLocked || isInteracting');
   });
 
   it('marks the transitions entry comingSoon + disabled', () => {
@@ -33,8 +35,11 @@ describe('TimelineToolbar — coming-soon flag', () => {
 });
 
 describe('TimelinePanel — handler toast unifies on featureComingSoon', () => {
-  it('handleAddEffect uses featureComingSoon', () => {
-    expect(panelSrc).toMatch(/handleAddEffect[\s\S]{0,200}?featureComingSoon/);
+  it('handleAddEffect routes a validated selection to the effects studio', () => {
+    const handler = panelSrc.split('const handleAddEffect =')[1]
+      .split('const handleAddTransition')[0];
+    expect(handler).toContain('onOpenEffects?.(id)');
+    expect(handler).not.toContain('featureComingSoon');
   });
 
   it('handleAddTransition uses featureComingSoon', () => {

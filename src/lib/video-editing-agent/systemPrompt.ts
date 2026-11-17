@@ -86,7 +86,7 @@ export function formatToolOverview(
   }
 
   lines.push('\n## 按需能力目录',
-    'Use explore_tools(category, tool_names?) to load up to four tools. Loaded tools become callable in the next response.');
+    'explore_tools(category, tool_names?) loads ≤4 tools, callable next response.');
   lines.push(utf8Slice(categorySummaries.filter(category => !category.alwaysAvailable)
     .map(category => utf8Slice(`- ${category.id}: ${category.description}` +
       availabilitySuffix(availability[category.id]), 160))

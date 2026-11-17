@@ -24,9 +24,9 @@ function killTree(pid) {
   }
 }
 
-function httpOk(url, timeoutMs = 3000) {
+function httpOk(url, timeoutMs = 3000, headers = {}) {
   return new Promise((resolve) => {
-    const request = http.get(url, { timeout: timeoutMs }, (response) => {
+    const request = http.get(url, { timeout: timeoutMs, headers }, (response) => {
       response.resume()
       resolve(response.statusCode >= 200 && response.statusCode < 400)
     })
@@ -50,6 +50,7 @@ class ManagedService {
     this.child = null
     this.stopping = false
     this.spawnError = null
+    this.spawnCleanup = null
   }
 
   start() {
@@ -62,16 +63,19 @@ class ManagedService {
     this.child = spawn(command, args, {
       cwd,
       env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: this.descriptor.stdio || ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
     this.logger.attachChild(this.child, name)
+    this.spawnCleanup = this.descriptor.onSpawn?.(this.child) || null
     // ENOENT / EACCES / EPERM arrive as an async 'error' event and never as
     // 'exit', so without this listener a spawn that could not even start left
     // no trace at all and the health wait ran to its full timeout (incident:
     // agent-browser-host cwd inside app.asar). See recordSpawnError.
     this.child.on('error', (error) => this.recordSpawnError(error))
     this.child.on('exit', (code, signal) => {
+      this.spawnCleanup?.()
+      this.spawnCleanup = null
       this.child = null
       // A spawn failure already rejected waitHealthy() — never escalate twice.
       if (this.spawnError) return
@@ -92,6 +96,8 @@ class ManagedService {
    * @param {Error & {code?: string}} error The payload Node emitted.
    */
   recordSpawnError(error) {
+    this.spawnCleanup?.()
+    this.spawnCleanup = null
     const { name, command, args, cwd } = this.descriptor
     const message =
       `${name} failed to spawn (code=${error.code || 'unknown'}): ${command} ` +
@@ -118,7 +124,7 @@ class ManagedService {
     const deadline = Date.now() + healthTimeoutMs
     while (Date.now() < deadline) {
       this.assertChildRunning()
-      if (await httpOk(healthUrl)) {
+      if (await httpOk(healthUrl, 3000, this.descriptor.healthHeaders)) {
         this.logger.info('process', `${name} healthy at ${healthUrl}`)
         return
       }
@@ -133,6 +139,8 @@ class ManagedService {
     const child = this.child
     if (!child) return
     this.stopping = true
+    this.spawnCleanup?.()
+    this.spawnCleanup = null
     const name = this.descriptor.name
     this.logger.info('process', `${name} stopping...`)
     const exited = new Promise((resolve) => child.once('exit', resolve))

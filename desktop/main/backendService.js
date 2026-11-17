@@ -30,6 +30,7 @@ function createBackendDescriptor({
   frontendPort,
   userEnv,
   researchBrowserEnv,
+  effectsRuntimeEnv,
 }) {
   const pythonExe = path.join(resourcesPath, 'python', 'python.exe')
   const backendEntry = path.join(resourcesPath, 'backend', 'run.py')
@@ -49,6 +50,7 @@ function createBackendDescriptor({
     // CDP 浏览器宿主端点与系统代理由主进程在启动后端前探测注入
     // （spec §3.6）；缺失时后端把浏览器能力降级，静态研究不受影响。
     ...(researchBrowserEnv || {}),
+    ...(effectsRuntimeEnv || {}),
     DEBUG: 'false',
     // Chinese-locale Windows defaults to GBK; backend logs/paths are UTF-8.
     // NOTE: the bundled runtime's ._pth forces ignore_environment=1, so these

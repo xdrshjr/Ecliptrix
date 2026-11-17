@@ -9,7 +9,8 @@
  * @module AgentEventRouter
  */
 
-import type { AgentClientApplyError } from '@/types';
+import type { AgentClientApplyError, TimelineState } from '@/types';
+import { http } from '@/lib/api/http-client';
 import { getTtsFailure } from '@/lib/ttsErrors';
 import type { TtsFailure } from '@/lib/ttsErrors';
 import type {
@@ -22,6 +23,10 @@ import type {
   AsyncTaskOperation,
   CoverAgentBridge,
   CoverOperationStatus,
+  EffectsAgentBridge,
+  EffectsApplyRequest,
+  EffectsApplyAck,
+  EffectsApplyResult,
 } from './types';
 import type { AgentStateManager } from './AgentStateManager';
 import type { ApplyOutcome, OperationApplier } from './OperationApplier';
@@ -33,6 +38,10 @@ import type { ScriptSegmentSnapshot } from './editorContextPrompt';
 // ---------------------------------------------------------------------------
 
 export interface AgentEventRouterConfig {
+  effectsAgentBridge?: EffectsAgentBridge;
+  isLeaseValid?: () => boolean;
+  acceptCommittedTimeline?: (timeline: TimelineState) => void;
+  prepareEffectsTimeline?: () => void;
   getScriptSegments?: () => readonly ScriptSegmentSnapshot[] | undefined;
   isCurrentProject?: () => boolean;
   coverAgentBridge?: CoverAgentBridge;
@@ -79,6 +88,14 @@ export type CrewLiveEvent = SSEEvent & {
 // ---------------------------------------------------------------------------
 
 export class AgentEventRouter {
+  private readonly effects: Pick<AgentEventRouterConfig,
+    'effectsAgentBridge' | 'isLeaseValid' | 'acceptCommittedTimeline'
+    | 'prepareEffectsTimeline'>;
+  private readonly startedEffectsCalls = new Set<string>();
+  private readonly deliveredEffectsCalls = new Set<string>();
+  private readonly effectsAcks = new Map<string, EffectsApplyAck>();
+  private readonly effectsResults = new Map<string, EffectsApplyResult>();
+  private effectsCancelled = false;
   private readonly getScriptSegments?: AgentEventRouterConfig['getScriptSegments'];
   private readonly isCurrentProject?: AgentEventRouterConfig['isCurrentProject'];
   private readonly coverAgentBridge?: CoverAgentBridge;
@@ -96,6 +113,7 @@ export class AgentEventRouter {
     'onContextUsage' | 'onToolProgress' | 'onCrewEvent'>;
 
   constructor(config: AgentEventRouterConfig) {
+    this.effects = config;
     this.getScriptSegments = config.getScriptSegments;
     this.isCurrentProject = config.isCurrentProject;
     this.coverAgentBridge = config.coverAgentBridge;
@@ -130,6 +148,9 @@ export class AgentEventRouter {
   async handleEvent(event: SSEEvent): Promise<void> {
     if (this.isCurrentProject && !this.isCurrentProject()) return;
     switch (event.type) {
+      case 'effects_apply_request':
+        await this.handleEffectsApply(event);
+        break;
       case 'thinking_start':
         this.stateManager.setThinkingPhase('thinking');
         break;
@@ -147,6 +168,7 @@ export class AgentEventRouter {
         break;
 
       case 'tool_call':
+        this.beginEffectsOperation(event);
         this.beginCoverOperation(event);
         this.stateManager.addToolCall({
           id: event.toolCallId,
@@ -180,6 +202,7 @@ export class AgentEventRouter {
 
       case 'cancelled':
         this.cancelCoverOperations(true);
+        this.cancelEffectsOperations(false);
         // Server-side abort propagated through SSE — seal the in-flight
         // tool calls as `cancelled`. A server timeout was not the user's
         // choice: its `error` event (sent first) explains it, and the turn
@@ -227,6 +250,29 @@ export class AgentEventRouter {
   private async handleToolResult(
     event: SSEEvent & { type: 'tool_result' },
   ): Promise<void> {
+    if (event.operation?.type === 'effects_action') {
+      this.stateManager.updateToolStatus(event.toolCallId, 'completed', event.result);
+      if (event.operation.action === 'watch_job'
+        && !this.deliveredEffectsCalls.has(event.toolCallId)) {
+        this.deliveredEffectsCalls.add(event.toolCallId);
+        void Promise.resolve(this.effects.effectsAgentBridge?.watch(event.operation))
+          .catch(() => this.stateManager.updateToolStatus(event.toolCallId, 'error', {
+            success: false, error_code: 'EFFECT_JOB_WATCH_FAILED',
+          }));
+      }
+      return;
+    }
+    const actualEffect = this.effectsResults.get(event.toolCallId);
+    if (event.toolName === 'apply_effect' && actualEffect
+      && ['applied', 'noop'].includes(actualEffect.state)) {
+      this.stateManager.updateToolStatus(event.toolCallId, 'completed', {
+        ...((event.result ?? {}) as Record<string, unknown>),
+        success: true,
+        state: actualEffect.state, assetId: actualEffect.assetId,
+        clipId: actualEffect.clipId,
+      });
+      return;
+    }
     if (event.operation?.type === 'cover_action') {
       this.handleCoverResult(event);
       return;
@@ -310,6 +356,79 @@ export class AgentEventRouter {
     this.startedCoverCalls.add(event.toolCallId);
     this.coverAgentBridge?.beginOperation(event.toolCallId, event.toolName,
       status => this.updateCoverStatus(event.toolCallId, status));
+  }
+
+  beginEffectsOperation(event: Extract<SSEEvent, { type: 'tool_call' }>): void {
+    if (this.effectsCancelled || this.startedEffectsCalls.has(event.toolCallId)) return;
+    this.startedEffectsCalls.add(event.toolCallId);
+    this.effects.effectsAgentBridge?.beginOperation(event);
+  }
+
+  cancelEffectsOperations(cancelJobs: boolean): void {
+    this.effectsCancelled = true;
+    this.effects.effectsAgentBridge?.cancelOperations({ cancelJobs,
+      operationIds: Array.from(this.startedEffectsCalls) });
+  }
+
+  private async handleEffectsApply(event: EffectsApplyRequest): Promise<void> {
+    const previous = this.effectsAcks.get(event.receiptId);
+    if (previous) { await this.sendEffectsAck(event.receiptId, previous); return; }
+    const isValid = () => !this.effectsCancelled
+      && this.effects.isLeaseValid?.() === true
+      && this.isCurrentProject?.() !== false && Date.now() < event.expiresAt;
+    let result: EffectsApplyResult = { state: 'not_applied',
+      assetId: event.operation.assetId, errorCode: 'EFFECT_TARGET_CHANGED' };
+    if (isValid() && this.effects.acceptCommittedTimeline
+      && this.effects.effectsAgentBridge) {
+      try {
+        this.effects.prepareEffectsTimeline?.();
+        result = await this.effects.effectsAgentBridge.apply(event, isValid);
+      } catch {
+        result = { state: 'not_applied', assetId: event.operation.assetId,
+          errorCode: 'EFFECT_TARGET_CHANGED' };
+      }
+    }
+    this.acceptEffectsCommit(event, result);
+    this.effectsResults.set(event.operation.operationId, result);
+    this.stateManager.updateToolStatus(event.operation.operationId,
+      ['applied', 'noop'].includes(result.state) ? 'completed' : 'error', {
+        success: ['applied', 'noop'].includes(result.state), state: result.state,
+        assetId: result.assetId, clipId: result.clipId, error_code: result.errorCode,
+      });
+    const ack: EffectsApplyAck = { token: event.token, run_id: event.runId,
+      project_id: event.operation.projectId, operation_id: event.operation.operationId,
+      state: result.state === 'dispatched_unknown' ? 'not_applied' : result.state,
+      asset_id: result.assetId, clip_id: result.clipId, error_code: result.errorCode,
+      timeline: result.after };
+    this.effectsAcks.set(event.receiptId, ack);
+    await this.sendEffectsAck(event.receiptId, ack);
+  }
+
+  private acceptEffectsCommit(event: EffectsApplyRequest, result: EffectsApplyResult) {
+    if (result.after && (result.state === 'applied' || result.state === 'noop')) {
+      // This is the exact action result, synchronized before the ack and before
+      // the next ordinary operation; no second import/history step is created.
+      this.effects.acceptCommittedTimeline!(result.after);
+      if (result.state === 'applied' && result.before
+        && this.operationApplier.recordExternalTimelineChange({
+          toolCallId: event.operation.operationId, operation: event.operation,
+          before: result.before, after: result.after })) {
+        this.stateManager.markTimelineChanged(event.operation.operationId);
+      }
+    }
+  }
+
+  private async sendEffectsAck(id: string, acknowledgement: EffectsApplyAck) {
+    const body = JSON.parse(JSON.stringify(acknowledgement, (key, value) =>
+      /thumbnail|proxy/i.test(key) && typeof value === 'string'
+        && /^(blob|data):/.test(value) ? undefined : value));
+    try {
+      await http.post(`/api/effects-apply-receipts/${encodeURIComponent(id)}`,
+        body, { timeoutMs: 3000, retries: 1 });
+    } catch {
+      // The local commit remains visible. Only the server can call the
+      // unacknowledged result unknown; it must not trigger a second commit.
+    }
   }
 
   cancelCoverOperations(cancelJobs: boolean): void {
@@ -440,9 +559,11 @@ export class AgentEventRouter {
     switch (op.type) {
       case 'add_material':
         store.addMaterial(op.material);
+        this.effects.effectsAgentBridge?.registerMaterials([op.material]);
         break;
       case 'add_materials':
         store.addMaterials(op.materials);
+        this.effects.effectsAgentBridge?.registerMaterials(op.materials);
         break;
       case 'update_material':
         store.updateMaterial(op.materialId, op.patch);

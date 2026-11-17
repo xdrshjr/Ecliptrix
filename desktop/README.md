@@ -342,3 +342,29 @@ desktop/
 ├─ cache/                  # (生成)python/ffmpeg 下载缓存
 └─ release/                # (生成)NSIS 安装包与 win-unpacked/
 ```
+
+## 特效运行资源与验证
+
+仓库根执行 `npm run effects:prepare`，安装独立 runtime 的锁定依赖并准备
+专用 Chrome Headless Shell、Remotion native、三套离线字体和 manifest。
+准备阶段需要网络；桌面运行时只使用 `resources/effects/` 内资源，禁止下载。
+`npm --prefix effects-runtime run build` 在已有资源上重编译并重新封存 hash。
+`node effects-runtime/scripts/generate-previews.mjs` 生成 24 对真实视频 / 海报。
+
+主进程独立监管 effects controller，使用随机端口、Bearer token 与 IPC
+心跳；配置仅注入后端，不进入 Next 客户端。输入快照、成品与工作目录位于
+用户存储根的 `effects/projects/`；SQLite 保存草稿、资产与任务。缺少资源
+只降级特效能力，普通编辑仍可用。关闭时先 drain 后端，再 reset / 停止自己
+持有的 worker，禁止按进程名关闭用户浏览器。
+
+快速检查：`node --test desktop/main/effectsService.test.js` 和
+`npm --prefix effects-runtime test`。真实 Electron 测试需先准备资源：
+PowerShell 中设置 `$env:EFFECTS_REAL_RUNTIME_TEST='1'` 后运行后者，验证
+五秒文字 / 图片 / 视频源渲染、中文空格路径、取消、IPC 断开和 controller
+强杀清理。也可单独运行 `node desktop/scripts/effects-smoke.js --render --packaged`
+与 `--controller --packaged`。默认不启用重型测试时两项集成检查明确跳过。
+
+`build:dir` 会准备并复制 effects extraResources；发布前还需实际安装包的
+离线、只读安装目录、退出 / 崩溃、导出人工验收，不能用资源目录 smoke
+代替 installer。Remotion 锁定 4.0.544，React 19.1.1；保留字体 OFL，
+分发许可由负责人核对。[完整记录](../docs/plans/remotion-effects-studio/acceptance.md)。

@@ -20,6 +20,10 @@ const net = require('net')
 const path = require('path')
 const { spawn, spawnSync } = require('child_process')
 const { withoutElectronRunAsNode } = require('./lib/electron-env')
+const { createEffectsSupervisor } = require('../main/effectsService')
+const { pickPort } = require('../main/ports')
+const { randomBytes } = require('node:crypto')
+const { loadUserEnv } = require('../main/envCheck')
 
 const DESKTOP_DIR = path.resolve(__dirname, '..')
 const REPO_ROOT = path.resolve(DESKTOP_DIR, '..')
@@ -50,6 +54,8 @@ const DEV_DATABASE_URL = `sqlite+aiosqlite:///${DEV_DB_FILE.split(path.sep).join
 // we merely attached to are never added here, so shutdown never kills them.
 const started = []
 let shuttingDown = false
+let effectsService
+let effectsRuntimeEnv = {}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -167,6 +173,32 @@ function spawnChild(name, command, args, options) {
   return child
 }
 
+async function startDevEffects() {
+  const resourceRoot = path.join(DESKTOP_DIR, 'build', 'effects')
+  if (!fs.existsSync(path.join(resourceRoot, 'manifest.json'))) {
+    log('dev', 'Effects renderer not prepared; run npm run effects:prepare')
+    return
+  }
+  const loaded = loadUserEnv(path.join(BACKEND_DIR, '.env')).env
+  const storageRoot = path.resolve(BACKEND_DIR,
+    process.env.STORAGE_ROOT || loaded.STORAGE_ROOT || 'static/uploads')
+  const logger = {
+    info: (_, message) => log('dev', message),
+    warn: (_, message) => log('dev', message),
+    error: (_, message) => log('dev', message),
+    attachChild: child => {
+      child.stdout?.on('data', chunk => log('dev', chunk.toString()))
+      child.stderr?.on('data', chunk => log('dev', chunk.toString()))
+    },
+  }
+  effectsService = createEffectsSupervisor({ resourceRoot,
+    electronExecPath: require('electron'),
+    effectsPort: (await pickPort(18323)).port,
+    runtimeToken: randomBytes(32).toString('hex'), storageRoot, logger })
+  effectsRuntimeEnv = { ...effectsService.env, STORAGE_ROOT: storageRoot }
+  await effectsService.start()
+}
+
 function startBackend() {
   const python = resolvePython()
   const databaseUrl = process.env.DATABASE_URL || DEV_DATABASE_URL
@@ -179,6 +211,7 @@ function startBackend() {
     cwd: BACKEND_DIR,
     env: {
       ...process.env,
+      ...effectsRuntimeEnv,
       // Self-contained like the packaged app: SQLite by default, no PostgreSQL.
       DATABASE_URL: databaseUrl,
       // Browser talks to Next (:3000) which proxies server-side, but allow the
@@ -269,9 +302,13 @@ function killChild(name, child) {
   }
 }
 
-function shutdown(code) {
+async function shutdown(code) {
   if (shuttingDown) return
   shuttingDown = true
+  if (effectsService) {
+    await effectsService.drain(`http://127.0.0.1:${BACKEND_PORT}`)
+    await effectsService.close()
+  }
   for (const { name, child } of started) killChild(name, child)
   for (const stream of devLogStreams.values()) {
     try {
@@ -302,6 +339,7 @@ async function main() {
       log('dev', `         Attaching to it for now - login and API calls will likely fail.`)
     }
   } else {
+    await startDevEffects()
     startBackend()
   }
 

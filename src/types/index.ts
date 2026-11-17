@@ -747,6 +747,7 @@ export interface MaterialItem {
       sourceId?: string;
       provenance?: import('./webResearch').WebMaterialProvenance;
       cover?: import('./videoCover').CoverClipMetadata['cover'];
+      effects?: import('./effects').EffectMaterialMetadata;
       role?: 'video-cover';
     storageKind?: 'local' | 'cached_remote' | 'legacy_remote';
     storageKey?: string;
