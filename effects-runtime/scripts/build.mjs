@@ -25,10 +25,31 @@ execFileSync(process.execPath, [require.resolve('typescript/lib/tsc.js'),
   stdio: 'inherit', windowsHide: true,
 });
 
-/** Include every packaged byte, with stable relative paths in the manifest. */
+/**
+ * Names electron-builder NEVER copies, whatever the filter says.
+ *
+ * `extraResources` is copied through builder-util's `walk()`
+ * (`desktop/node_modules/builder-util/out/fs.js`), which returns null for
+ * `.DS_Store` and `.gitkeep`; `app-builder-lib`'s `excludedNames` repeats
+ * `.gitkeep`. Hashing one of them writes a manifest entry the installed
+ * package can never satisfy: the runtime gate then fails on ENOENT,
+ * `/v1/health` loses `catalogHash`, and the backend reports
+ * EFFECT_RUNTIME_MISMATCH for a perfectly good installation. Pinned
+ * regression: `@xtuc/ieee754/dist/.gitkeep` and `terser/dist/.gitkeep` were
+ * listed but never shipped, so 特效 failed in every packaged build while
+ * `desktop/build/effects` stayed green. Revisit if electron-builder ever
+ * starts copying them.
+ */
+const PACKAGING_SKIPPED_NAMES = new Set(['.DS_Store', '.gitkeep']);
+
+/**
+ * Include every packaged byte, with stable relative paths in the manifest.
+ * Only files packaging actually installs may enter `manifest.files`.
+ */
 async function hashTree(directory) {
   const files = [];
   for (const name of (await readdir(directory)).sort()) {
+    if (PACKAGING_SKIPPED_NAMES.has(name)) continue;
     const target = join(directory, name);
     if ((await stat(target)).isDirectory()) {
       files.push(...await hashTree(target));

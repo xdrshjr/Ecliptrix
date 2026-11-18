@@ -30,16 +30,10 @@ class EffectsRuntimeClient:
                                   .read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise EffectError("EFFECT_RUNTIME_UNAVAILABLE", status=503) from exc
-        if (not isinstance(manifest, dict)
-                or manifest.get("protocolVersion") != 1
-                or manifest.get("engineVersion") != "4.0.544"
-                or manifest.get("catalogHash") != CATALOG_HASH
-                or manifest.get("supportedTemplates") != 24
-                or any(not isinstance(manifest.get(key), str)
-                       or re.fullmatch(r"[0-9a-f]{64}", manifest[key]) is None
-                       for key in ("runtimeFingerprint", "fontHash",
-                                   "bundleHash", "textLayoutHash"))):
-            raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503)
+        problems = self._manifest_problems(manifest)
+        if problems:
+            raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503,
+                              details={"manifest": problems})
         try:
             layout = Path(__file__).with_name("text-layout.generated.json").read_bytes()
             entries = [entry for entry in manifest["files"]
@@ -50,8 +44,44 @@ class EffectsRuntimeClient:
                     or entries[0]["bytes"] != len(layout)):
                 raise ValueError("layout mismatch")
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503) from exc
+            raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503,
+                              details={"text_layout": "mismatch"}) from exc
         return manifest
+
+    @staticmethod
+    def _manifest_problems(manifest) -> dict:
+        """Name every disagreeing field so a stale payload is identifiable."""
+        if not isinstance(manifest, dict):
+            return {"manifest": "not-an-object"}
+        problems: dict = {}
+        if manifest.get("protocolVersion") != 1:
+            problems["protocol_version"] = manifest.get("protocolVersion")
+        if manifest.get("engineVersion") != "4.0.544":
+            problems["engine_version"] = manifest.get("engineVersion")
+        if manifest.get("catalogHash") != CATALOG_HASH:
+            problems["catalog_hash"] = manifest.get("catalogHash")
+        if manifest.get("supportedTemplates") != 24:
+            problems["supported_templates"] = manifest.get("supportedTemplates")
+        for key in ("runtimeFingerprint", "fontHash", "bundleHash",
+                    "textLayoutHash"):
+            value = manifest.get(key)
+            if (not isinstance(value, str)
+                    or re.fullmatch(r"[0-9a-f]{64}", value) is None):
+                problems[key] = "invalid"
+        return problems
+
+    @staticmethod
+    def _payload_failure_details(health: dict) -> dict:
+        """Forward the runtime's own diagnosis; never its install root."""
+        detail = health.get("errorDetail") or {}
+        forwarded = {}
+        if isinstance(detail.get("stage"), str):
+            forwarded["stage"] = detail["stage"]
+        if isinstance(detail.get("path"), str):
+            forwarded["payload_path"] = detail["path"]
+        if isinstance(detail.get("fileCode"), str):
+            forwarded["file_code"] = detail["fileCode"]
+        return {"runtime": forwarded} if forwarded else {}
 
     async def request(self, method: str, path: str,
                        body: dict | None = None, *,
@@ -77,11 +107,20 @@ class EffectsRuntimeClient:
     async def health(self) -> dict:
         manifest = await asyncio.to_thread(self.load_manifest)
         health = await self.request("GET", "/v1/health", timeout=3)
+        if health.get("catalogHash") is None:
+            # The runtime answers without a catalog hash only while its own
+            # payload gate is rejecting the installation. Calling that a version
+            # mismatch sent users to reinstall for any start-up failure; report
+            # what the runtime actually said and keep the advice honest.
+            raise EffectError(health.get("errorCode")
+                              or "EFFECT_RUNTIME_UNAVAILABLE", status=503,
+                              details=self._payload_failure_details(health))
         if (health.get("protocolVersion") != 1
                 or health.get("catalogHash") != CATALOG_HASH
                 or health.get("runtimeFingerprint")
                 != manifest["runtimeFingerprint"]):
-            raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503)
+            raise EffectError("EFFECT_RUNTIME_MISMATCH", status=503,
+                              details={"health": "manifest-mismatch"})
         if not health.get("ready") or health.get("restartRequired"):
             raise EffectError("EFFECT_RUNTIME_UNAVAILABLE", status=503)
         return health

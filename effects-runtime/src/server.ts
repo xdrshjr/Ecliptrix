@@ -68,6 +68,46 @@ class RuntimeHttpError extends Error {
   }
 }
 
+/**
+ * A payload gate rejection that remembers WHERE it failed.
+ *
+ * The message stays `EFFECT_RUNTIME_MISMATCH` (an existing public contract), but
+ * the stage and the offending path are what make the failure diagnosable: the
+ * packaged app used to answer `/v1/health` with `ready: false` and no reason, so
+ * a single uninstalled `.gitkeep` looked like a wholesale version mismatch.
+ */
+class RuntimeVerificationError extends Error {
+  constructor(readonly stage: string, readonly target?: string,
+    readonly fileCode?: string) {
+    super('EFFECT_RUNTIME_MISMATCH');
+  }
+}
+
+interface VerificationFailure {
+  code: 'EFFECT_RUNTIME_MISMATCH' | 'EFFECT_RUNTIME_UNAVAILABLE';
+  stage: string;
+  path?: string;
+  fileCode?: string;
+}
+
+/** Map any verification throw onto a stable code plus a reportable detail. */
+function describeVerificationFailure(error: unknown): VerificationFailure {
+  if (error instanceof RuntimeVerificationError) {
+    return { code: 'EFFECT_RUNTIME_MISMATCH', stage: error.stage,
+      path: error.target, fileCode: error.fileCode };
+  }
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return { code: 'EFFECT_RUNTIME_UNAVAILABLE', stage: 'startup',
+    ...(code ? { fileCode: code } : {}) };
+}
+
+/** One stderr line per failure; the desktop shell tees it to effects.log. */
+function reportVerificationFailure(root: string, trigger: string,
+  failure: VerificationFailure): void {
+  console.error('[effects-runtime] payload verification failed',
+    JSON.stringify({ resourceRoot: root, trigger, ...failure }));
+}
+
 /** Kill only a child handle owned by this controller, including descendants. */
 function killOwnedChild(child: ChildProcess): void {
   if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
@@ -113,8 +153,11 @@ async function hashRuntimeFile(target: string, expectedBytes?: number) {
   try {
     for await (const chunk of stream) {
       bytes += chunk.length;
-      if (expectedBytes !== undefined && bytes > expectedBytes)
-        throw new Error('EFFECT_RUNTIME_MISMATCH');
+      // Over-long files fail the caller's size comparison instead of throwing,
+      // so every gate rejection can carry the path it came from.
+      if (expectedBytes !== undefined && bytes > expectedBytes) {
+        return { bytes, sha256: '' };
+      }
       hash.update(chunk);
     }
     return { bytes, sha256: hash.digest('hex') };
@@ -127,16 +170,29 @@ async function hashRuntimeFile(target: string, expectedBytes?: number) {
 async function verifyManifestFile(canonicalRoot: string,
   file: RuntimeManifest['files'][number]): Promise<void> {
   if (!Number.isSafeInteger(file.bytes) || file.bytes < 0)
-    throw new Error('EFFECT_RUNTIME_MISMATCH');
-  const target = await realpath(resolve(canonicalRoot, file.path));
+    throw new RuntimeVerificationError('declared-size', file.path);
+  let target: string;
+  try {
+    target = await realpath(resolve(canonicalRoot, file.path));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    throw new RuntimeVerificationError('missing', file.path, code);
+  }
   const suffix = relative(canonicalRoot, target);
   if (suffix.startsWith(`..${sep}`) || suffix === '..' || suffix.includes(':')) {
-    throw new Error('EFFECT_RUNTIME_MISMATCH');
+    throw new RuntimeVerificationError('outside-root', file.path);
   }
-  const actual = await hashRuntimeFile(target, file.bytes);
-  if (actual.bytes !== file.bytes || actual.sha256 !== file.sha256) {
-    throw new Error('EFFECT_RUNTIME_MISMATCH');
+  let actual: { bytes: number; sha256: string };
+  try { actual = await hashRuntimeFile(target, file.bytes); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
+    throw new RuntimeVerificationError('missing', file.path, code);
   }
+  if (actual.bytes !== file.bytes)
+    throw new RuntimeVerificationError('size', file.path);
+  if (actual.sha256 !== file.sha256)
+    throw new RuntimeVerificationError('sha256', file.path);
 }
 
 /** Fixed workers cover every entry before readiness, including pending reads. */
@@ -162,16 +218,16 @@ export async function verifyManifest(root: string): Promise<RuntimeManifest> {
   const manifest: RuntimeManifest = JSON.parse(await readFile(
     join(root, 'manifest.json'), 'utf8'));
   if (manifest.protocolVersion !== 1 || manifest.engineVersion !== '4.0.544') {
-    throw new Error('EFFECT_RUNTIME_MISMATCH');
+    throw new RuntimeVerificationError('engine', manifest.engineVersion);
   }
   const layoutEntries = manifest.files.filter(file => file.path === 'runtime/text-layout.json');
   if (!/^[a-f0-9]{64}$/.test(manifest.textLayoutHash ?? '')
       || layoutEntries.length !== 1 || layoutEntries[0].sha256 !== manifest.textLayoutHash) {
-    throw new Error('EFFECT_RUNTIME_MISMATCH');
+    throw new RuntimeVerificationError('text-layout', 'manifest.textLayoutHash');
   }
   const { runtimeFingerprint, ...identity } = manifest;
   if (createHash('sha256').update(JSON.stringify(identity)).digest('hex')
-      !== runtimeFingerprint) throw new Error('EFFECT_RUNTIME_MISMATCH');
+      !== runtimeFingerprint) throw new RuntimeVerificationError('fingerprint');
   await verifyManifestFiles(canonicalRoot, manifest.files);
   try {
     const rules = JSON.parse(await readFile(join(root, 'runtime/text-layout.json'), 'utf8'));
@@ -179,9 +235,14 @@ export async function verifyManifest(root: string): Promise<RuntimeManifest> {
     const expected = [...new Set(catalog.templates.map((item: { componentId: string }) => item.componentId))].sort();
     if (rules.schemaVersion !== 1 || JSON.stringify(Object.keys(rules.components).sort()) !== JSON.stringify(expected))
       throw new Error('incomplete text layout');
-  } catch { throw new Error('EFFECT_RUNTIME_MISMATCH'); }
+  } catch {
+    throw new RuntimeVerificationError('text-layout-coverage',
+      'runtime/text-layout.json');
+  }
   if ((await hashRuntimeFile(join(root, 'catalog.json'))).sha256
-      !== manifest.catalogHash) throw new Error('EFFECT_RUNTIME_MISMATCH');
+      !== manifest.catalogHash) {
+    throw new RuntimeVerificationError('catalog', 'catalog.json');
+  }
   await access(join(root, manifest.browserExecutable));
   await access(join(root, manifest.binariesDirectory, 'remotion.exe'));
   return manifest;
@@ -192,6 +253,7 @@ export class EffectsRuntimeController {
   private readonly instanceId = randomUUID();
   private readonly jobs = new Map<string, RuntimeJob>();
   private manifest?: RuntimeManifest;
+  private verification?: VerificationFailure;
   private activeJob?: RuntimeJob;
   private isResetting = false;
   private isClosing = false;
@@ -213,12 +275,7 @@ export class EffectsRuntimeController {
     if (!process.send || !this.options.parentNonce) {
       throw new Error('Effects runtime requires a supervised IPC parent');
     }
-    try { this.manifest = await verifyManifest(this.options.resourceRoot); }
-    catch (error) {
-      this.errorCode = error instanceof Error
-        && error.message === 'EFFECT_RUNTIME_MISMATCH'
-        ? error.message : 'EFFECT_RUNTIME_UNAVAILABLE';
-    }
+    await this.loadResources('startup');
     process.on('disconnect', () => { void this.close(); });
     process.on('message', (message: unknown) => this.acceptParentMessage(message));
     this.parentTimer = setInterval(() => {
@@ -232,6 +289,28 @@ export class EffectsRuntimeController {
       this.server!.listen(this.options.port, '127.0.0.1', done);
     });
     process.send({ type: 'listening', instanceId: this.instanceId }, () => {});
+  }
+
+  /**
+   * Verify the payload and remember WHY it was rejected.
+   *
+   * Called on startup and again from `reset()`, so a repaired installation (or
+   * a file an antivirus had locked) can recover through 「重试渲染组件」 instead
+   * of requiring an app restart.
+   */
+  private async loadResources(trigger: string): Promise<boolean> {
+    try {
+      this.manifest = await verifyManifest(this.options.resourceRoot);
+      this.verification = undefined;
+      this.errorCode = undefined;
+      return true;
+    } catch (error) {
+      this.verification = describeVerificationFailure(error);
+      this.errorCode = this.verification.code;
+      reportVerificationFailure(this.options.resourceRoot, trigger,
+        this.verification);
+      return false;
+    }
   }
 
   private acceptParentMessage(message: unknown): void {
@@ -307,6 +386,7 @@ export class EffectsRuntimeController {
       resetState: this.isResetting ? 'resetting' : 'idle',
       restartRequired: this.isRestartRequired,
       errorCode: this.errorCode,
+      ...(this.verification ? { errorDetail: this.verification } : {}),
     };
   }
 
@@ -532,7 +612,11 @@ export class EffectsRuntimeController {
         throw new RuntimeHttpError(503, 'EFFECT_RUNTIME_UNAVAILABLE');
       }
       this.jobs.clear();
-      return { reset: true, runtimeInstanceId: this.instanceId };
+      // Only a rejected payload is retried: a runtime that already verified must
+      // not re-hash 500MB just because a draft was reopened.
+      const reverified = this.manifest ? false
+        : await this.loadResources('reset');
+      return { reset: true, runtimeInstanceId: this.instanceId, reverified };
     } finally { this.isResetting = false; }
   }
 

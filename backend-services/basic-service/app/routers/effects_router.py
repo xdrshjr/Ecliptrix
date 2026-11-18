@@ -81,7 +81,9 @@ async def capabilities():
 @router.post("/capabilities/refresh")
 async def refresh_capabilities(request: Request):
     await parse_body(request, StrictModel)
-    result = await effect_render_service.refresh_runtime()
+    # An explicit user retry re-runs the runtime's payload gate through
+    # /v1/reset, so a repaired installation recovers without an app restart.
+    result = await effect_render_service.refresh_runtime(retry_payload=True)
     if not result["ready"]:
         raise EffectError(result["unavailable_reason"], status=503)
     return response(result)

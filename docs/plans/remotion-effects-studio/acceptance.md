@@ -371,3 +371,55 @@ CR-15 已修复：第 13 草稿验收必须真实重启 Electron，验证相同�
 + 48 个预览 + 2 个前序设计文档，共 121 文件。原有测试目录与新运行
 证据保持未暂存。代码审查交付完成不改变上文发行门禁，仍为
 `release_ready=false`。
+
+## 第四轮：安装版特效不可用根因与打包身份门禁（2026-11-18）
+
+打包后的应用里【特效】恒为「本地渲染组件不可用」，点「重试渲染组件」
+稳定 503 `EFFECT_RUNTIME_MISMATCH`，界面显示「渲染组件版本不符，
+请修复安装」。dev 正常。
+
+**根因（必然复现）**：`effects-runtime/scripts/build.mjs` 的 `hashTree()`
+把 payload 内每个文件都写进 `manifest.files`，而 electron-builder 复制
+`extraResources` 走 builder-util 的 `walk()`，对 `.DS_Store` 与
+`.gitkeep` 无条件返回 null。于是清单里多出两条 0 字节条目：
+`runtime/node_modules/@xtuc/ieee754/dist/.gitkeep`、
+`runtime/node_modules/terser/dist/.gitkeep`。安装版启动校验 ENOENT，
+运行端只记私有 errorCode、不写日志，`/v1/health` 因此 `ready:false`
+且无 `catalogHash`；后端 `runtime_client.health()` 把「没有 catalogHash」
+当成「版本不一致」抛出 MISMATCH，supervisor 又只在探活失败时重启，
+校验失败被永久锁定，所以「重试渲染组件」永远不可能成功。
+
+**证据**：新增离线探针对包内 payload 报出恰好这两条 `missing`；对
+`desktop/build/effects` 则 0 drift（12091 文件）。包内
+`effects/catalog.json`、`runtime/text-layout.json` 与包内后端
+`catalog.generated.json`、`text-layout.generated.json` 的 SHA-256 一致，
+排除版本差异；进程日志无 restart 循环，`effects.log` 为空（旧版不上报）。
+
+**修复**
+
+1. `build.mjs` 的 `PACKAGING_SKIPPED_NAMES` 把打包必然丢弃的两个文件名
+   排除出 `manifest.files`（清单现在 12089 项）。
+2. 运行端校验抛带 `stage`/`path` 的错误，stderr 打一行，`/v1/health`
+   增加 `errorDetail`；`/v1/reset` 对已被拒绝的 payload 重新校验（健康
+   实例不重算，避免每次重试哈希整个安装）。
+3. 后端 `health()` 透传运行端自报的 `errorCode`，仅在运行端真的给出
+   不同 `catalogHash` 时才判 MISMATCH；`load_manifest()` 与 capability
+   状态变化写日志（只转发 payload 相对路径，绝不暴露安装根目录）。
+4. `/capabilities/refresh` 显式 `retry_payload=True`，让「重试渲染组件」
+   真正触发重新校验；5 秒监控不触发，避免循环哈希。
+5. `desktop/scripts/effects-payload-verify.js` + `build.js` 两道门禁：
+   打包前校验 `build/effects` 自洽、拒绝清单里的 `.gitkeep`/`.DS_Store`、
+   比对后端生成副本；打包后对 `release/win-unpacked/resources/effects`
+   再验一次，不一致直接构建失败。
+
+**回归测试**：`effects-runtime/tests/manifestGate.test.mjs`（篡改→
+stage/path、health 带原因、reset 修复后恢复 ready、健康实例不重算）；
+`tests/test_effects_runtime_client.py`（缺 catalogHash 不误报、不同
+catalogHash 才 MISMATCH、details 不含安装根、显式重试才 reset）；
+`desktop/scripts/lib/effects-payload-verify.test.js`（缺席/篡改/
+不可打包条目/后端副本陈旧/两份跳过清单一致）。
+
+**验收**：runtime 32 通过（10 跳过为真实渲染集成套件，见下）；后端
+effects 73 通过 / 1 跳过；前端 effects 70 通过；`npm run build:dir`
+后包内探针 0 drift，`effects-smoke.js --unpacked` 通过；修复前
+包内探针在同一台机器上复现 2 条 drift。

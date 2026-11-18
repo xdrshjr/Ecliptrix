@@ -20,6 +20,8 @@ const { sha256File } = require('./lib/download')
 const { processesUnder, killPids } = require('./lib/process-cleanup')
 const { checkPayloads, formatMissingPayloads } =
   require('./lib/build-payload-checks')
+const { verifyPayload, formatFailure } =
+  require('./effects-payload-verify')
 const { createPackageManifest } = require('./lib/research-release-evidence')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
@@ -330,6 +332,46 @@ function assertEnvTemplateIsPublicSafe(options = {}) {
   console.log('[assert] env.template.desktop: 0 secret-shaped values')
 }
 
+const EFFECTS_PAYLOAD_DIR = path.join(BUILD_DIR, 'effects')
+const EFFECTS_BACKEND_DIR = path.join(BUILD_DIR, 'backend/app/services/effects')
+
+/**
+ * Fail the build when the effects payload cannot verify on a user machine.
+ *
+ * The runtime gate hashes every listed file before it accepts a job
+ * (`effects-runtime/src/server.ts`). Nothing used to check that the manifest
+ * only lists files packaging actually installs, so a single `.gitkeep` was
+ * listed but never shipped: 特效 then answered EFFECT_RUNTIME_MISMATCH
+ * ("渲染组件版本不符") on every install while dev stayed green.
+ * `phase: 'packaged'` re-checks the copied tree, which is the only evidence
+ * that matters; the source phase fails fast before a long build.
+ *
+ * @param {'source'|'packaged'} phase Which tree to verify.
+ * @returns {Promise<void>} Resolves when the payload is self-consistent.
+ * @throws {Error} On the first payload that does not verify.
+ */
+async function assertEffectsPayloadIdentity(phase) {
+  const packaged = phase === 'packaged'
+  const root = packaged ? path.join(UNPACKED_DIR, 'resources/effects')
+    : EFFECTS_PAYLOAD_DIR
+  const backendDir = packaged
+    ? path.join(UNPACKED_DIR, 'resources/backend/app/services/effects')
+    : EFFECTS_BACKEND_DIR
+  console.log(`[assert] effects payload (${phase}): ${root}`)
+  const result = await verifyPayload(root, { backendEffectsDir: backendDir })
+  if (!result.ok) {
+    const detail = result.error
+      ? `manifest.json unreadable (${result.error})`
+      : result.failures.map((item) => formatFailure(item)).join('\n')
+    throw new Error(
+      `effects payload does not verify (${phase}):\n${detail}`
+    )
+  }
+  console.log(
+    `[assert] effects payload identity ok (${result.checked} files)`
+  )
+}
+
 function dirSizeBytes(dir) {
   let total = 0
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -458,12 +500,14 @@ async function main() {
   assertEnvTemplateIsPublicSafe()
 
   assertBuildOutputs()
+  await assertEffectsPayloadIdentity('source')
 
   console.log(`[electron-builder] packaging${args.dir ? ' (win-unpacked only)' : ' (NSIS + win-unpacked)'}...`)
   const builderArgs = ['electron-builder', '--win', '--x64', '--config', 'electron-builder.yml']
   if (args.dir) builderArgs.push('--dir')
   const packagingStartedAt = Date.now()
   await runElectronBuilder(builderArgs)
+  await assertEffectsPayloadIdentity('packaged')
   await writeResearchManifest(args.dir, packagingStartedAt)
 
   printArtifacts()

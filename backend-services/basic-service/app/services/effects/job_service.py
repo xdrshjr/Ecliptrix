@@ -111,13 +111,13 @@ class EffectRenderService:
                            "max_input_bytes": assets.MAX_BYTES,
                            "max_project_jobs": 5, "max_global_jobs": 20}}
 
-    async def refresh_runtime(self) -> dict:
+    async def refresh_runtime(self, *, retry_payload: bool = False) -> dict:
         """A healthy instance is probed, never reset during an active job."""
         if self._closed:
             return await self.capabilities()
         async with self._refresh_lock:
             try:
-                health = await self.runtime.health()
+                health = await self._probe_runtime(retry_payload)
                 if (self._ready and health["runtimeInstanceId"]
                         == self.runtime_info.get("runtimeInstanceId")):
                     return await self.capabilities()
@@ -132,11 +132,39 @@ class EffectRenderService:
                 await recovery.cleanup_stale(self)
                 self._startup_pending = False
                 self._ready = True
-                self._reason = ""
+                self._mark_available()
                 self.wake()
             except EffectError as exc:
-                self._ready, self._reason = False, exc.code
+                self._ready = False
+                self._mark_unavailable(exc)
         return await self.capabilities()
+
+    async def _probe_runtime(self, retry_payload: bool) -> dict:
+        """Probe the runtime, optionally re-running its payload gate first.
+
+        Only an explicitly requested retry (「重试渲染组件」) resets, because a
+        reset of a rejected payload re-hashes the whole installation; the 5s
+        monitor must not do that in a loop.
+        """
+        try:
+            return await self.runtime.health()
+        except EffectError:
+            if not retry_payload:
+                raise
+            await self.runtime.reset()
+            return await self.runtime.health()
+
+    def _mark_unavailable(self, error: EffectError) -> None:
+        """Log one line per capability state change; silence hid this bug."""
+        if self._reason != error.code:
+            logger.warning("Effects renderer unavailable", {
+                "code": error.code, "details": error.details})
+        self._reason = error.code
+
+    def _mark_available(self) -> None:
+        if self._reason:
+            logger.info("Effects renderer available", {"previous": self._reason})
+        self._reason = ""
 
     async def _monitor_runtime(self) -> None:
         sweeps = 0
@@ -279,7 +307,8 @@ class EffectRenderService:
                 try:
                     identifier = await self._claim_next()
                 except EffectError as exc:
-                    self._ready, self._reason = False, exc.code
+                    self._ready = False
+                    self._mark_unavailable(exc)
                     break
                 if identifier is None:
                     break
