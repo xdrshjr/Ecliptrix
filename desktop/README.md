@@ -161,6 +161,28 @@ node scripts/smoke-test.js [--unpacked <path>]   # 默认 release/win-unpacked
 (同一条断言证明「无鉴权层」与「SQLite 链路可读」)→ 正常退出 →
 断言无残留进程、SQLite 文件已生成。
 
+截图是**证据**，不是判据。门禁在每个视口/比例块里调用
+`scripts/lib/cdp-screenshot.js` 的 `captureEvidence()`：先按原来的 30s 直取表面；
+取不到就把页面拉回 active 生命周期、开启焦点模拟、重新下发 device metrics 再
+从渲染进程取一次；两次都失败时先问渲染进程是否还在应答 ——
+
+- **还在但给不出帧**（Windows 把窗口判为被遮挡、会话锁屏、显示切换后未合成）：
+  记为 `status: "degraded"`，日志打出 `[smoke-test] screenshot evidence degraded
+  (<作用域>): <label> — <原因>`，`cover-report.json` / `cover-readiness-report.json`
+  的 `screenshots` 里留下两次尝试与恢复步骤，**不判失败** —— 该块的功能断言
+  （画布像素、字体、文字 Range、布局收敛）已经在截图之前逐条判过；
+- **不再应答**（渲染进程死了/挂了）：仍然抛错让门禁变红，这正是门禁存在的理由。
+
+背景：2026-11-17 20:38 的打包门禁全绿跑到封面矩阵后，
+`[smoke-test] screenshot surface {"visibility":"hidden"}` 紧接着
+`CDP timeout: Page.captureScreenshot` 变红（窗口被遮挡时 Chromium 不产帧）。
+同时启动参数加了 `--disable-backgrounding-occluded-windows`、
+`--disable-renderer-backgrounding`、`--disable-background-timer-throttling`，
+让无人值守跑批时渲染进程保持出帧；不改动门禁所断言的任何应用行为。
+这两条路径的单测：`node --test scripts/smoke-test.screenshot-evidence.test.js`
+（8 条：首取成功、一次恢复后成功、遮挡降级、渲染进程无应答仍失败、
+空载荷计入失败、目标缺失、捕获保留 label、降级日志文案）。
+
 > **「空 `.env`」不等于「零凭证」。** 打包应用把**继承来的进程环境**当作配置层:
 > `main/backendService.js` 把 `process.env` 展开给后端子进程,后端按
 > 「数据库 > 环境变量 > 默认值」解析凭证。所以冒烟在拉起 exe 之前先调用

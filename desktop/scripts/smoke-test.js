@@ -16,6 +16,7 @@ const { describeFocusFailure, evaluateFocusSamples } =
   require('./lib/preview-focus')
 const { validateReleaseEvidence, verifyPackageManifest } =
   require('./lib/research-release-evidence')
+const { captureEvidence } = require('./lib/cdp-screenshot')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
@@ -119,6 +120,18 @@ function readPorts(userDataDir) {
     return { frontend: config.frontendPort || 18320, backend: config.backendPort || 18321 }
   } catch {
     return { frontend: 18320, backend: 18321 }
+  }
+}
+
+// Screenshot evidence is an artifact, not a criterion: when the renderer provably cannot
+// produce a frame (occluded window, locked session) the PNG is missing and the run
+// says so through the [smoke-test] log line below. A renderer that stopped answering
+// is still fatal — captureEvidence() throws for that case and never returns here.
+function reportScreenshotNotes(scope, screenshots) {
+  for (const shot of screenshots) {
+    if (shot.status !== 'degraded') continue
+    console.log(`[smoke-test] screenshot evidence degraded (${scope}): ` +
+      `${shot.label} — ${shot.reason}`)
   }
 }
 
@@ -286,9 +299,12 @@ async function connectCdp(url) {
     }
     pending.clear()
   })
-  const send = (method, params = {}) => new Promise((resolve, reject) => {
+  // timeoutMs is a parameter so evidence capture can carry its own budget
+  // (lib/cdp-screenshot.js) instead of the fixed 30s deadline that the
+  // 2026-11-17 build died on.
+  const send = (method, params = {}, timeoutMs = 30000) => new Promise((resolve, reject) => {
     const id = ++sequence
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)) }, 30000)
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)) }, timeoutMs)
     pending.set(id, { resolve, reject, timer })
     socket.send(JSON.stringify({ id, method, params }))
   })
@@ -627,6 +643,7 @@ async function portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject,
   await click('.ws-canvas-trigger')
   await openStudio()
   const layouts = []
+  const screenshots = []
   for (const [width, height] of [[900, 640], [960, 600]]) {
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width, height, deviceScaleFactor: 1, mobile: false,
@@ -670,9 +687,9 @@ async function portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject,
       fail(`portrait preview overflow: ${JSON.stringify(bounds)}`)
     }
     layouts.push(bounds)
-    const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
-    fs.writeFileSync(path.join(artifacts, `cover-portrait-${width}x${height}.png`),
-      Buffer.from(screenshot.data, 'base64'))
+    screenshots.push(await captureEvidence(cdp, { directory: artifacts,
+      fileName: `cover-portrait-${width}x${height}.png`,
+      label: `portrait ${width}x${height}` }))
     await pressKey(cdp, 'Escape', 27)
     // Same commit-sized path on the way out: CoverPreviewDialog closes
     // the layer and refocuses the trigger in its effect cleanup, so the
@@ -708,9 +725,11 @@ async function portraitCoverSmoke({ cdp, click, reopen, openStudio, readProject,
     return revision.width === 1080 && revision.height === 1920 && revision
   }, 90000)
   await saveDownload(new URL(portrait.url, frontend), path.join(artifacts, 'cover-portrait.png'))
+  reportScreenshotNotes('portrait cover', screenshots)
   return { revisionId: portrait.id, width: portrait.width, height: portrait.height,
     nativeTabFocusTrapped: true, escapeFocusRestored: true,
-    propertiesFocusTrapped: true, narrowSettingsReturnsFocus: true, layouts }
+    propertiesFocusTrapped: true, narrowSettingsReturnsFocus: true, layouts,
+    screenshots }
 }
 
 async function coverEntryRaceSmoke({ cdp, click, backend }) {
@@ -832,6 +851,7 @@ async function coverReadinessSmoke({ cdp, click, reopen, openStudio,
   artifacts, pngPath, blockImages, writes }) {
   await reopen()
   const matrix = []
+  const screenshots = []
   const sizes = { '16:9': [1920, 1080], '9:16': [1080, 1920],
     '1:1': [1080, 1080], '4:3': [1440, 1080], '21:9': [2560, 1080] }
   const edit = fields => cdp.evaluate(`(() => {
@@ -883,8 +903,9 @@ async function coverReadinessSmoke({ cdp, click, reopen, openStudio,
       visibility: document.visibilityState, focus: document.hasFocus(),
       status: document.querySelector('.cover-readiness')?.dataset.status,
       width: innerWidth, height: innerHeight })`))
-    fs.writeFileSync(path.join(artifacts, `cover-matrix-${ratio.replace(':', '-')}.png`),
-      Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+    screenshots.push(await captureEvidence(cdp, { directory: artifacts,
+      fileName: `cover-matrix-${ratio.replace(':', '-')}.png`, label: `matrix ${ratio}`,
+      metrics: { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false } }))
     await click('.cover-header > button')
     await until('matrix studio closes after draft flush', () => cdp.evaluate("!document.querySelector('.cover-studio')"))
   }
@@ -922,8 +943,11 @@ async function coverReadinessSmoke({ cdp, click, reopen, openStudio,
     layouts.push({ width, height, frames: verdict.frames,
       settledAtFrame: verdict.convergedAt, stateCounts: verdict.stateCounts,
       ...geometry })
-    fs.writeFileSync(path.join(artifacts, `cover-blocked-${width}x${height}.png`),
-      Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'))
+    // No metrics override on this one: sampleReadinessLayout() owns the
+    // viewport for the sample, so recovery must not re-arm it behind its back.
+    screenshots.push(await captureEvidence(cdp, { directory: artifacts,
+      fileName: `cover-blocked-${width}x${height}.png`,
+      label: `blocked ${width}x${height}` }))
     await click('.cover-readiness li button')
     if (!await cdp.evaluate("document.activeElement?.id.endsWith('-field-title') && document.activeElement.getAttribute('aria-invalid') === 'true'")) fail('overflow correction lost focus/aria')
     if (width < 1024) {
@@ -959,7 +983,9 @@ async function coverReadinessSmoke({ cdp, click, reopen, openStudio,
     select.value = 'solid'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`)
   await ready()
   const environment = await cdp.send('Browser.getVersion')
-  const report = { matrix, layouts, retry, retryWriteDelta, blurWrites, environment }
+  const report = { matrix, layouts, retry, retryWriteDelta, blurWrites, environment,
+    screenshots }
+  reportScreenshotNotes('cover readiness', screenshots)
   fs.writeFileSync(path.join(artifacts, 'cover-readiness-report.json'), JSON.stringify(report, null, 2))
   return report
 }
@@ -986,6 +1012,7 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
   let nativeDownloads = 0
   let pageLoads = 0
   let blockAssetImages = false
+  const screenshots = []
   try {
     await cdp.send('Page.enable')
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
@@ -1173,8 +1200,10 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
       })()`))
       if (bounds.previewBottom > bounds.footerTop + 1 || bounds.footerBottom > bounds.viewportHeight + 1) fail(`cover layout overflow at ${width}x${height}: ${JSON.stringify(bounds)}`)
       layouts.push({ width, height, equivalentScalePercent, systemDpiChanged: false, ...bounds })
-      const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
-      fs.writeFileSync(path.join(artifacts, `cover-studio-${width}x${height}.png`), Buffer.from(screenshot.data, 'base64'))
+      screenshots.push(await captureEvidence(cdp, { directory: artifacts,
+        fileName: `cover-studio-${width}x${height}.png`,
+        label: `studio ${width}x${height}`,
+        metrics: { width, height, deviceScaleFactor: 1, mobile: false } }))
     }
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
     const darkBackground = await cdp.evaluate("getComputedStyle(document.querySelector('.cover-studio')).backgroundColor")
@@ -1183,8 +1212,9 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     const lightBackground = await cdp.evaluate("getComputedStyle(document.querySelector('.cover-studio')).backgroundColor")
     const lightChannels = lightBackground.match(/[\d.]+/g)?.slice(0, 3).map(Number)
     if (darkBackground === lightBackground || !lightChannels || lightChannels.some(channel => channel < 180)) fail(`light theme did not activate: ${darkBackground} -> ${lightBackground}`)
-    const lightScreenshot = await cdp.send('Page.captureScreenshot', { format: 'png' })
-    fs.writeFileSync(path.join(artifacts, 'cover-studio-light-1440x900.png'), Buffer.from(lightScreenshot.data, 'base64'))
+    screenshots.push(await captureEvidence(cdp, { directory: artifacts,
+      fileName: 'cover-studio-light-1440x900.png', label: 'studio light theme',
+      metrics: { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false } }))
     await cdp.evaluate("document.documentElement.classList.remove('light'); document.documentElement.classList.add('dark'); document.documentElement.style.colorScheme = 'dark'")
     await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
     const reducedMotion = await cdp.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches && getComputedStyle(document.querySelector('.cover-apply')).transitionDuration === '0s'")
@@ -1305,7 +1335,8 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
       readProject, frontend, projectId, artifacts, ensureSetupWizardClosed })
     const entryRace = await coverEntryRaceSmoke({ cdp, click, backend })
     if (generationPosts !== 0 || errors.length) fail(`HTML path generated AI requests (${generationPosts}) or renderer errors: ${errors.join('\n')}`)
-    fs.writeFileSync(path.join(artifacts, 'cover-report.json'), JSON.stringify({ projectId, revisionId: metadata.revisionId, sha256: metadata.sha256, offlineRenderer: true, generationPosts, coverWrites, nativeDownloads, blockedRequests: blocked, expiredInterceptions, probe, differences, bodyFrame: 30, bodyMeanRgbError, audioOnset: onset, history, draftDownload, portrait, entryRace, layouts, themes, keyboard, timings, readiness }, null, 2))
+    reportScreenshotNotes('cover studio', screenshots)
+    fs.writeFileSync(path.join(artifacts, 'cover-report.json'), JSON.stringify({ projectId, revisionId: metadata.revisionId, sha256: metadata.sha256, offlineRenderer: true, generationPosts, coverWrites, nativeDownloads, blockedRequests: blocked, expiredInterceptions, probe, differences, bodyFrame: 30, bodyMeanRgbError, audioOnset: onset, history, draftDownload, portrait, entryRace, layouts, themes, keyboard, timings, readiness, screenshots }, null, 2))
     console.log(`[smoke-test] cover history, portrait and 90-frame body/audio MP4 verified: ${artifacts}`)
   } catch (error) {
     try {
@@ -1476,7 +1507,15 @@ async function runDesktopSmoke(research) {
   if (strippedCredentials.length) {
     console.log(`[smoke-test] stripped ${strippedCredentials.length} credential-shaped env var(s) inherited from this shell (names only): ${strippedCredentials.join(', ')}`)
   }
-  const child = spawn(exePath, [`--user-data-dir=${userDataDir}`, `--remote-debugging-port=${debugPort}`, '--remote-debugging-address=127.0.0.1'], {
+  // Chromium produces no frames for a window Windows reports as occluded, and
+  // Page.captureScreenshot then has no frame to hand back: the 2026-11-17 build
+  // printed `screenshot surface {"visibility":"hidden"}` and died on
+  // `CDP timeout: Page.captureScreenshot`. These three switches keep the
+  // renderer painting while the gate runs unattended; they change nothing the
+  // gate asserts about the app.
+  const child = spawn(exePath, [`--user-data-dir=${userDataDir}`, `--remote-debugging-port=${debugPort}`, '--remote-debugging-address=127.0.0.1',
+    '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling'], {
     stdio: 'ignore',
     detached: false,
     windowsHide: true,
@@ -1704,7 +1743,7 @@ async function main() {
 }
 
 module.exports = { createResearchReport, runResearchBrowserSmoke,
-  untilFocusSettled, connectCdp }
+  untilFocusSettled, connectCdp, reportScreenshotNotes }
 if (require.main === module) main().catch((err) => {
   console.error(`[smoke-test] FAIL: ${(err && err.stack) || String(err)}`)
   process.exitCode = 1

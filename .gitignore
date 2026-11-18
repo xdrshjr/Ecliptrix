@@ -123,3 +123,7 @@ coverage/
 # from a past baseline-diagnosis session: a full mirror of this repo that holds
 # pre-sanitization credential-shaped literals and must never be committed.
 /.baseline-check/
+
+# pytest workspace fixtures write per-case scratch trees into the repo root
+# (sqlite files, generated PNGs, manifests). That is test output, never source.
+/.pytest-workspace-import/
