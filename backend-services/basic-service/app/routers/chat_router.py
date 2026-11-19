@@ -53,8 +53,9 @@ async def video_editing_chat(request: VideoChatRequest):
         logger.info(f"Processing video editing chat request for task: {request.taskId}")
         
         # Initialize chat service
+        chat_service = ChatService()
         try:
-            chat_service = ChatService()
+            await chat_service.resolve_config()
         except ValueError as e:
             logger.error(f"Chat service initialization failed: {str(e)}")
             raise HTTPException(

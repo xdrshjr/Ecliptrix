@@ -7,7 +7,9 @@ Two-layer architecture:
   - Config resolution: get effective config (DB or env fallback)
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
+
+from app.services.skillrouter.errors import RouterError
 
 from app.models.model_settings_models import (
     ModelFunctionType,
@@ -189,11 +191,17 @@ async def delete_assignment(function_type: ModelFunctionType):
 # ── Config Resolution (UNCHANGED — critical integration point) ──
 
 @router.get("/resolve/{function_type}", response_model=ResolvedConfigResponse)
-async def resolve_config(function_type: ModelFunctionType):
+async def resolve_config(function_type: ModelFunctionType, response: Response):
     """Get the effective configuration for a function type (DB assignment or env fallback)."""
+    # Switching the capability source must take effect on the very next call.
+    response.headers["Cache-Control"] = "no-store"
     try:
         config = await model_settings_service.get_effective_config(function_type)
         return config
+    except RouterError:
+        # Actionable gateway failures (e.g. no models available) keep their
+        # structured envelope via the app-level handler instead of a bare 500.
+        raise
     except Exception as e:
         logger.error(f"Error resolving config for {function_type}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

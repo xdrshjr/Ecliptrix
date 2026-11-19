@@ -13,7 +13,7 @@ import shutil
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
 import re
@@ -31,7 +31,12 @@ from app.services.integration_credentials_service import (
     ark_image_api_key,
 )
 from app.logger import get_logger
-from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
+from app.models.model_settings_models import ModelFunctionType
+from app.services.llm_call_config import resolve_llm_call_config, resolve_vision_target
+from app.services.llm_client import call_chat
+from app.services.skillrouter.config import is_routed
+from app.services.skillrouter.errors import RouterError
+from app.services.skillrouter.image_adapter import RemoteImage
 from app.models.ark_video_models import ArkVideoGenerateRequest
 from app.models.storyboard_models import (
     STORYBOARD_BATCH_SIZE,
@@ -307,12 +312,7 @@ async def _call_llm_for_shots(
     max_tokens: Optional[int] = None,
 ) -> tuple[List[ScriptShot], str]:
     """Call the general LLM (OpenAI- or Anthropic-compatible) and parse shots."""
-    llm_config = LLMCallConfig(
-        api_url=settings.llm_api_url,
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        api_type=normalize_api_type(settings.llm_api_type),
-    )
+    llm_config = await resolve_llm_call_config(ModelFunctionType.CHAT)
 
     async with _get_script_semaphore():
         raw_text = await call_chat(
@@ -488,17 +488,39 @@ def _build_batch_prompt(
     return build_storyboard_prompt(effective_prompt, 2, 2, aspect_ratio)
 
 
+async def _call_router_image(
+    *, prompt: str, reference_image: Optional[str],
+) -> Tuple["RemoteImage", Optional[str]]:
+    """One 2x2 grid image through SkillRouter (spec §4.4 / IM-03).
+
+    The POST is sent once: ``_generate_batch`` does not retry a ``RouterError``
+    because the gateway has no idempotency key.
+    """
+    from app.services.skillrouter import image_adapter
+
+    result = await image_adapter.generate_via_router(
+        prompt=prompt, size=STORYBOARD_IMAGE_SIZE, count=1,
+        reference=reference_image, watermark=False,
+    )
+    return result.images[0], None
+
+
 async def _call_ark_seedream(
     *,
     prompt: str,
     reference_image: Optional[str],
-) -> Tuple[str, Optional[str]]:
-    """POST to ARK Seedream and return (remote_image_url, seedream_task_id).
+) -> Tuple[Union[str, "RemoteImage"], Optional[str]]:
+    """POST to ARK Seedream and return (remote_image, seedream_task_id).
+
+    In router mode ``remote_image`` is a gateway ``RemoteImage`` (its download
+    needs the key); otherwise a plain CDN URL string.
 
     Seedream currently does not expose a cancel endpoint, so a timeout here
     only abandons the local wait — the remote task still runs to completion
     and the URL we would have received is discarded.
     """
+    if is_routed("ai_image"):
+        return await _call_router_image(prompt=prompt, reference_image=reference_image)
     payload: dict = {
         "model": ARK_IMAGE_MODEL,
         "prompt": prompt,
@@ -544,9 +566,21 @@ async def _call_ark_seedream(
     return remote_url, task_id
 
 
-async def _download_batch_original(remote_url: str, dest_path: str) -> None:
-    """Download a Seedream-generated grid PNG to a local path."""
+async def _download_batch_original(
+    remote_url: Union[str, "RemoteImage"], dest_path: str,
+) -> None:
+    """Download a Seedream-generated grid PNG to a local path.
+
+    A router ``RemoteImage`` goes through ``assets.download_asset`` (same-origin,
+    key attached, atomic ``.part`` rename); a plain URL keeps the original path.
+    """
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    if not isinstance(remote_url, str):
+        from app.services.skillrouter import image_adapter
+        from app.services.skillrouter.assets import download_asset
+        await download_asset(remote_url.router, remote_url.url, Path(dest_path),
+                             max_bytes=image_adapter.MAX_IMAGE_BYTES)
+        return
     async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as dl:
         dl_resp = await dl.get(remote_url)
         dl_resp.raise_for_status()
@@ -703,6 +737,8 @@ async def _generate_single_2x2_batch(
                 task_id,
             )
             return frame_dicts, task_id
+        except RouterError:
+            raise  # paid gateway call: never auto-retried (AC-13), error code preserved
         except httpx.HTTPStatusError as http_exc:
             status = http_exc.response.status_code
             if status in (401, 403):
@@ -763,7 +799,7 @@ async def _generate_storyboard_core(
     (module-level entry point) so tests can call this function directly with
     a mocked Seedream stub.
     """
-    if not ark_image_api_key():
+    if not is_routed("ai_image") and not ark_image_api_key():
         raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
 
     # Validator guarantees grid_size == "2x2" and 1 <= frame_count <= 16.
@@ -1286,16 +1322,15 @@ async def generate_frame_descriptions(
     if not target_frames:
         return []
 
-    # Validate VL LLM configuration
-    if not settings.vl_llm_api_key or not settings.vl_llm_api_url:
+    # Resolve the vision model at call time (assignment, env, router)
+    vision = await resolve_vision_target()
+    if vision is None:
         raise ValueError(
-            "VL_LLM_API_KEY and VL_LLM_API_URL must be configured for frame descriptions"
+            "A vision model (VL_LLM_API_KEY and VL_LLM_API_URL, or a model "
+            "assignment) must be configured for frame descriptions"
         )
 
-    vl_client = OpenAI(
-        api_key=settings.vl_llm_api_key,
-        base_url=settings.vl_llm_api_url,
-    )
+    vl_client = OpenAI(api_key=vision.api_key, base_url=vision.api_url)
 
     semaphore = asyncio.Semaphore(STORYBOARD_MAX_CONCURRENT_DESCRIBE)
     results: List[dict] = []
@@ -1320,7 +1355,7 @@ async def generate_frame_descriptions(
                 # Call VL_LLM (synchronous OpenAI client in a thread)
                 completion = await asyncio.to_thread(
                     vl_client.chat.completions.create,
-                    model=settings.vl_llm_model,
+                    model=vision.model_name,
                     messages=[
                         {"role": "system", "content": VL_SYSTEM_PROMPT},
                         {

@@ -24,6 +24,10 @@ class TTSErrorDetails(BaseModel):
     attempts: Optional[int] = Field(None, strict=True, ge=0)
     retryable: bool = Field(..., strict=True)
     voice_fallback: Optional[bool] = Field(None, strict=True)
+    # 面向 UI 的下一步提示，例如 manual_capability:tts（SkillRouter 不支持克隆音色）。
+    suggest: Optional[str] = Field(
+        None, max_length=64, pattern=r'^[A-Za-z0-9_.:-]+$',
+    )
 
     class Config:
         frozen = True
@@ -337,6 +341,10 @@ class VoiceTypesResponse(BaseModel):
     success: bool = Field(True, description="Request success status")
     message: str = Field(default="获取音色列表成功", description="Response message")
     data: Dict[str, VoiceTypeInfo] = Field(..., description="Available voice types")
+    stale: bool = Field(
+        False, description="True when the voices come from the static fallback table "
+        "because the SkillRouter catalogue was unavailable",
+    )
     
     class Config:
         json_schema_extra = {

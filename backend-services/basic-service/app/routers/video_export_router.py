@@ -8,14 +8,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List, Union, Dict, Any
 from app.logger import get_logger
-from app.config import get_settings
-from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
+from app.models.model_settings_models import ModelFunctionType
+from app.services.llm_call_config import LLMNotConfiguredError, resolve_llm_call_config
+from app.services.llm_client import call_chat
 import json
 
 logger = get_logger(__name__)
 
 router = APIRouter()
-settings = get_settings()
 
 
 class VideoExportRequest(BaseModel):
@@ -67,13 +67,10 @@ async def enhance_video_metadata_with_llm(video_url: str, filename: str) -> Dict
         Dict with enhanced metadata including description, tags, and inferred properties
     """
     try:
-        # Get Fast LLM configuration from Settings (single source of truth).
-        fast_llm_api_key = settings.fast_llm_api_key
-        fast_llm_api_url = settings.fast_llm_api_url
-        fast_llm_model = settings.fast_llm_model
-        fast_llm_api_type = normalize_api_type(settings.fast_llm_api_type)
-
-        if not fast_llm_api_key or not fast_llm_api_url:
+        # Fast-slot config at call time (assignment, env fallback, router overlay).
+        try:
+            fast_config = await resolve_llm_call_config(ModelFunctionType.FAST)
+        except LLMNotConfiguredError:
             logger.warning(
                 "[Video Export] Fast LLM credentials not configured, using basic metadata",
                 extra={"video_url": video_url[:100]}
@@ -114,8 +111,8 @@ Provide metadata in JSON format."""
             extra={
                 "video_url": video_url[:100],
                 "video_filename": filename,
-                "llm_model": fast_llm_model,
-                "llm_api_type": fast_llm_api_type,
+                "llm_model": fast_config.model,
+                "llm_api_type": fast_config.api_type,
             }
         )
 
@@ -124,12 +121,7 @@ Provide metadata in JSON format."""
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            config=LLMCallConfig(
-                api_url=fast_llm_api_url,
-                api_key=fast_llm_api_key,
-                model=fast_llm_model,
-                api_type=fast_llm_api_type,
-            ),
+            config=fast_config,
             temperature=0.3,
             max_tokens=500,
             timeout=30.0,

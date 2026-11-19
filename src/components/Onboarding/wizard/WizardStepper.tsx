@@ -13,6 +13,10 @@ interface WizardStepperProps {
 
 const STEP_LABEL_KEY = {
   overview: 'stepOverview',
+  source: 'stepSource',
+  router: 'stepRouter',
+  routerModels: 'stepRouterModels',
+  manualOnly: 'stepManualOnly',
   provider: 'stepProvider',
   models: 'stepModels',
   voice: 'stepVoice',

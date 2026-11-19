@@ -21,6 +21,7 @@ from PIL import Image
 
 from app.config import settings
 from app.logger import get_logger
+from app.services.llm_call_config import resolve_vision_target
 from app.models.video_analysis import (
     FrameAnalysis, 
     VideoAnalysisResponse,
@@ -48,31 +49,10 @@ class VideoAnalysisService:
     
     def __init__(self):
         """Initialize the video analysis service."""
-        # VL path speaks OpenAI-compatible protocol only (qwen-vl, gpt-4o, etc.).
-        # If someone mis-configures VL_LLM_API_TYPE=anthropic we warn loudly but
-        # still fall through the OpenAI SDK path so the service can boot.
-        vl_api_type = (settings.vl_llm_api_type or "openai").strip().lower()
-        if vl_api_type == "anthropic":
-            logger.warning(
-                "VL_LLM_API_TYPE=anthropic is not supported — VL endpoints "
-                "speak the OpenAI protocol in this codebase. Falling back to "
-                "OpenAI client; ensure VL_LLM_API_URL points at an OpenAI-"
-                "compatible vision endpoint (e.g. qwen-vl) or switch the type "
-                "back to 'openai'."
-            )
+        # The vision endpoint is resolved per call (see ``_vision_client``): a saved
+        # assignment or a mode switch must apply without restarting the service.
+        self._vision_clients: Dict[tuple, OpenAI] = {}
 
-        if not settings.vl_llm_api_key or not settings.vl_llm_api_url:
-            logger.warning("VL LLM configuration not found, video analysis may not work properly")
-            self.client = None
-        else:
-            # Configure OpenAI client with minimal logging
-            self.client = OpenAI(
-                api_key=settings.vl_llm_api_key,
-                base_url=settings.vl_llm_api_url,
-            )
-
-            logger.info("VideoAnalysisService initialized with VL_LLM configuration")
-        
         # Load configuration
         self.config = self._load_config()
         logger.info(f"VideoAnalysisService initialized with config: concurrent_threads={self.config['vlm_processing']['concurrent_threads']}, default_frame_interval={self.config['frame_extraction']['default_frame_interval_seconds']}s")
@@ -425,6 +405,27 @@ class VideoAnalysisService:
             logger.error(f"Failed to process thumbnail from {url_preview}: {str(e)}")
             raise
     
+    async def _vision_client(self) -> Optional[tuple]:
+        """``(OpenAI client, model)`` for the current vision config, else ``None``.
+
+        The VL path speaks the OpenAI protocol only (qwen-vl, gpt-4o, ...). An
+        ``anthropic`` api_type is warned about loudly and still goes through the
+        OpenAI SDK, exactly as before; clients are cached per (url, key).
+        """
+        target = await resolve_vision_target()
+        if target is None:
+            return None
+        if target.api_type == "anthropic":
+            logger.warning(
+                "Vision api_type=anthropic is not supported: VL endpoints speak "
+                "the OpenAI protocol here. Using the OpenAI client; point the "
+                "vision slot at an OpenAI-compatible model."
+            )
+        key = (target.api_url, target.api_key)
+        if key not in self._vision_clients:
+            self._vision_clients[key] = OpenAI(api_key=target.api_key, base_url=target.api_url)
+        return self._vision_clients[key], target.model_name
+
     async def analyze_frame_with_llm(self, frame_path: str, custom_prompt: Optional[str] = None, semaphore: Optional[asyncio.Semaphore] = None) -> str:
         """
         Analyze a single frame using VL LLM with optional concurrency control.
@@ -437,18 +438,22 @@ class VideoAnalysisService:
         Returns:
             Analysis description from LLM
         """
-        if not self.client:
+        vision = await self._vision_client()
+        if vision is None:
             return "VL LLM not configured"
-        
+        client, model = vision
+
         # Use semaphore if provided for concurrency control
         if semaphore:
             async with semaphore:
-                return await self._analyze_frame_internal(frame_path, custom_prompt)
+                return await self._analyze_frame_internal(frame_path, client, model, custom_prompt)
         else:
-            return await self._analyze_frame_internal(frame_path, custom_prompt)
+            return await self._analyze_frame_internal(frame_path, client, model, custom_prompt)
     
-    async def _analyze_frame_internal(self, frame_path: str, custom_prompt: Optional[str] = None) -> str:
-        """Internal method for frame analysis."""
+    async def _analyze_frame_internal(
+        self, frame_path: str, client: OpenAI, model: str, custom_prompt: Optional[str] = None,
+    ) -> str:
+        """Internal method for frame analysis against the resolved vision endpoint."""
         frame_start_time = time.time()
         logger.debug(f"Analyzing frame: {frame_path}")
         
@@ -463,7 +468,7 @@ class VideoAnalysisService:
             # Log request info without BASE64 content
             logger.debug(f"Calling VL LLM API for frame analysis", extra={
                 "frame_path": frame_path,
-                "model": settings.vl_llm_model,
+                "model": model,
                 "prompt_length": len(prompt),
                 "image_base64_length": len(image_base64),
                 "has_custom_prompt": bool(custom_prompt)
@@ -471,8 +476,8 @@ class VideoAnalysisService:
             
             # Call VL LLM API with suppressed logging to prevent BASE64 content leakage
             with self._suppress_openai_logging():
-                completion = self.client.chat.completions.create(
-                    model=settings.vl_llm_model,
+                completion = client.chat.completions.create(
+                    model=model,
                     messages=[{
                         "role": "user",
                         "content": [
@@ -512,7 +517,7 @@ class VideoAnalysisService:
             logger.error(f"Failed to analyze frame {frame_path}: {str(e)}", extra={
                 "frame_path": frame_path,
                 "error_type": type(e).__name__,
-                "model": settings.vl_llm_model
+                "model": model
             })
             return f"分析失败: {str(e)}"
     

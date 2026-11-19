@@ -21,6 +21,7 @@ interface OverviewStepProps {
   onOpenModelSettings: () => void;
   /** Mute every optional gap in one go and keep only the model steps. */
   onSkipOptional: () => void;
+  onUseOwnConfig?: (capability: CapabilityId) => Promise<void>;
 }
 
 const OverviewStep: React.FC<OverviewStepProps> = ({
@@ -31,6 +32,7 @@ const OverviewStep: React.FC<OverviewStepProps> = ({
   onLater,
   onOpenModelSettings,
   onSkipOptional,
+  onUseOwnConfig,
 }) => {
   const { t } = useLocale();
   const copy = t.setupWizard;
@@ -43,7 +45,11 @@ const OverviewStep: React.FC<OverviewStepProps> = ({
       <StepHeading title={copy.title} description={`${copy.subtitle} ${copy.privacyNote}`} />
 
       <div className="mt-6">
-        <CapabilityChecklist capabilities={capabilities} optOuts={optOuts} />
+        <CapabilityChecklist
+          capabilities={capabilities}
+          optOuts={optOuts}
+          onUseOwnConfig={onUseOwnConfig}
+        />
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">{copy.duration}</p>

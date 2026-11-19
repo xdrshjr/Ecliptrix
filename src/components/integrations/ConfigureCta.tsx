@@ -2,23 +2,27 @@
 
 import React from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
-import type { IntegrationId } from '@/lib/api/integrations';
-import { openSetupWizard } from '@/lib/setupEvents';
+import { openSetupWizard, type SetupWizardFocus } from '@/lib/setupEvents';
 import { TEXT_LINK } from '@/components/Onboarding/wizard/wizardStyles';
 
 interface ConfigureCtaProps {
-  integrationId: IntegrationId;
+  /** An integration card, or `skillrouter` for the AI relay step. */
+  integrationId: SetupWizardFocus;
   className?: string;
 }
 
 /**
  * "Go configure" button for a failure caused by missing credentials. It opens
- * the setup wizard (manual mode) on that integration's card, which is what
+ * the setup wizard (manual mode) on that integration's card (or, for a routed
+ * capability without a gateway key, on the SkillRouter step), which is what
  * makes choosing "not now" in the wizard a safe, reversible decision.
  */
 const ConfigureCta: React.FC<ConfigureCtaProps> = ({ integrationId, className = '' }) => {
   const { t } = useLocale();
-  const name = t.integrations[integrationId].name;
+  const name =
+    integrationId === 'skillrouter'
+      ? t.setupWizard.routerStep.name
+      : t.integrations[integrationId].name;
   return (
     <button
       type="button"

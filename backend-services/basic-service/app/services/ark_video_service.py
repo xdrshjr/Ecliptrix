@@ -17,10 +17,14 @@ from app.services.ark_video_payload import build_payload, encode_payload, valida
 from app.services.ark_video_task_context import video_task_contexts, validate_task_id, VideoTaskContext
 from app.services import ark_video_artifacts as artifacts
 from app.services.credential_errors import VideoError, classify_generation_error
+from app.services.skillrouter import video_adapter
 
 ARK_API_BASE = "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"
 _recovery_lock = asyncio.Lock()
 _ARTIFACT_ERRORS = {"video_download_failed", "invalid_video_artifact", "video_cache_failed"}
+# A revoked gateway key must not end the task: polling stops (non-retryable), the
+# context and its artifact stay, and a new key lets the same task id resume.
+_KEEP_TASK_CODES = frozenset({"router_key_invalid"})
 
 
 @dataclass(frozen=True)
@@ -30,8 +34,42 @@ class VideoSubmission:
     config_revision: str
 
 
+def _ensure_context_alive(context_handle: str) -> None:
+    ctx = video_task_contexts.context(context_handle)
+    if ctx.finished_at is not None or time.monotonic() - ctx.created_at >= video_task_contexts.ttl:
+        raise VideoError("video_task_expired", status_code=410)
+
+
+async def _submit_to_ark(request: ArkVideoGenerateRequest, config, context_handle: str) -> str:
+    payload = await build_payload(request, config)
+    _ensure_context_alive(context_handle)
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.post(ARK_API_BASE, content=encode_payload(payload), headers={
+            "Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json",
+        })
+        response.raise_for_status()
+        try:
+            return validate_task_id(response.json().get("id", ""))
+        except (ValueError, AttributeError, TypeError, VideoError):
+            raise VideoError("generation_submission_unknown", status_code=502, retryable=False, sticky=True) from None
+
+
+async def _submit_to_router(request: ArkVideoGenerateRequest, context_handle: str) -> tuple[str, str]:
+    _ensure_context_alive(context_handle)
+    return await video_adapter.submit_job(request)
+
+
+def _is_router_config(config) -> bool:
+    return getattr(config, "integration_id", "ark_video") == "skillrouter"
+
+
 async def create_task(request: ArkVideoGenerateRequest, context_handle: str | None = None) -> VideoSubmission:
-    """容量先原子预留；创建永不重试，不在响应时重新读设置。"""
+    """容量先原子预留；创建永不重试，不在响应时重新读设置。
+
+    A task is routed or direct according to the config frozen at reservation
+    (``integration_id``), so a mode switch between reserve and submit cannot
+    send an empty Ark key or a stale gateway one.
+    """
     if context_handle:
         config = video_task_contexts.config_for(context_handle)
         if config is None:
@@ -41,23 +79,14 @@ async def create_task(request: ArkVideoGenerateRequest, context_handle: str | No
         context_handle = (await video_task_contexts.reserve(config))[0]
     bound = False
     try:
-        payload = await build_payload(request, config)
-        ctx = video_task_contexts.context(context_handle)
-        if ctx.finished_at is not None or time.monotonic() - ctx.created_at >= video_task_contexts.ttl:
-            raise VideoError("video_task_expired", status_code=410)
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(ARK_API_BASE, content=encode_payload(payload), headers={
-                "Authorization": f"Bearer {config.api_key}", "Content-Type": "application/json",
-            })
-            response.raise_for_status()
-            try:
-                data = response.json()
-                task_id = validate_task_id(data.get("id", ""))
-            except (ValueError, AttributeError, TypeError, VideoError):
-                raise VideoError("generation_submission_unknown", status_code=502, retryable=False, sticky=True) from None
-        await video_task_contexts.bind(context_handle, task_id)
+        if _is_router_config(config):
+            task_id, model_id = await _submit_to_router(request, context_handle)
+        else:
+            task_id, model_id = await _submit_to_ark(request, config, context_handle), config.model_id
+        ctx = await video_task_contexts.bind(context_handle, task_id)
+        ctx.model = model_id
         bound = True
-        return VideoSubmission(task_id, config.model_id, config.config_revision)
+        return VideoSubmission(task_id, model_id, config.config_revision)
     except httpx.HTTPStatusError as error:
         raise classify_generation_error(
             error, "ark_video:contents/generations/tasks",
@@ -100,6 +129,8 @@ def status_error(response: httpx.Response | None = None) -> VideoError:
 
 
 async def _read_provider(task_id: str, api_key: str) -> dict:
+    if video_adapter.is_router_task(task_id):
+        return await video_adapter.read_job(task_id)
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(f"{ARK_API_BASE}/{task_id}", headers={"Authorization": f"Bearer {api_key}"})
@@ -124,7 +155,30 @@ def _response(ctx: VideoTaskContext) -> ArkVideoStatusResponse:
     )
 
 
-def _start_artifact(ctx: VideoTaskContext, url: str | None, cached_path: Path | None = None, *, refresh_invalid_original: bool = False) -> None:
+def _provider_key(task_id: str) -> str:
+    """Ark key for a direct task; routed tasks authenticate inside the adapter."""
+    if video_adapter.is_router_task(task_id):
+        return ""
+    return resolve_video_config().api_key
+
+
+def _success_source(data: dict):
+    """``(url, source_fetcher)`` of a succeeded provider response.
+
+    Router URLs are same-origin gateway assets fetched with the key (and may be
+    ``http://localhost`` in development, which ``validate_remote_url`` refuses).
+    """
+    content = data.get("content")
+    url = content.get("video_url") if isinstance(content, dict) else None
+    if data.get("_router"):
+        if not isinstance(url, str) or not url:
+            raise VideoError("invalid_provider_response", status_code=502)
+        return url, video_adapter.make_fetcher(url)
+    validate_remote_url(url)
+    return url, None
+
+
+def _start_artifact(ctx: VideoTaskContext, url: str | None, cached_path: Path | None = None, *, refresh_invalid_original: bool = False, source_fetcher=None) -> None:
     if ctx.finished_at is not None:
         # 已完成文件的复验有独立本地期限，不继承旧生成任务的年龄。
         ctx.created_at = time.monotonic()
@@ -138,19 +192,19 @@ def _start_artifact(ctx: VideoTaskContext, url: str | None, cached_path: Path | 
             try:
                 ctx.result = await artifacts.collect_artifact(
                     ctx.task_id, url, cached_path, phase=lambda value: setattr(ctx, "phase", value),
+                    **({"source_fetcher": source_fetcher} if source_fetcher else {}),
                 )
             except VideoError as error:
                 if not refresh_invalid_original or error.code != "invalid_video_artifact":
                     raise
                 # 显式重新收取时，坏原件不能永久遮挡原任务的有效产物。
-                data = await _read_provider(ctx.task_id, resolve_video_config().api_key)
-                content = data.get("content")
-                refreshed_url = content.get("video_url") if isinstance(content, dict) else None
+                data = await _read_provider(ctx.task_id, _provider_key(ctx.task_id))
                 if data.get("status") != "succeeded":
                     raise VideoError("invalid_provider_response", status_code=502)
-                validate_remote_url(refreshed_url)
+                refreshed_url, fetcher = _success_source(data)
                 ctx.result = await artifacts.collect_artifact(
                     ctx.task_id, refreshed_url, phase=lambda value: setattr(ctx, "phase", value),
+                    **({"source_fetcher": fetcher} if fetcher else {}),
                 )
             video_task_contexts.finish(ctx, "succeeded")
         except asyncio.CancelledError:
@@ -170,7 +224,12 @@ async def _recover_context(task_id: str) -> VideoTaskContext:
         if existing:
             return existing
         cached = await artifacts.lookup_cached(task_id)
-        config = None if cached else resolve_video_config()
+        if cached:
+            config = None
+        elif video_adapter.is_router_task(task_id):
+            config = video_adapter.router_runtime_config()
+        else:
+            config = resolve_video_config()
         handle = (await video_task_contexts.reserve(config))[0]
         ctx = await video_task_contexts.bind(handle, task_id)
         if cached:
@@ -187,19 +246,17 @@ async def _apply_provider(ctx: VideoTaskContext, data: dict) -> None:
         ctx.phase = "queued" if status == "queued" else "generating"
         return
     if status == "succeeded":
-        content = data.get("content")
-        url = content.get("video_url") if isinstance(content, dict) else None
         try:
-            validate_remote_url(url)
+            url, fetcher = _success_source(data)
         except (VideoError, TypeError):
             video_task_contexts.finish(ctx, "failed", "invalid_provider_response")
             return
-        _start_artifact(ctx, url)
+        _start_artifact(ctx, url, source_fetcher=fetcher)
         return
     if status in ("expired", "timeout"):
         video_task_contexts.finish(ctx, "timeout", "video_task_expired")
     elif status in ("failed", "cancelled", "canceled", "error"):
-        video_task_contexts.finish(ctx, "failed", "video_generation_failed")
+        video_task_contexts.finish(ctx, "failed", data.get("_error_code") or "video_generation_failed")
     else:
         video_task_contexts.finish(ctx, "failed", "invalid_provider_response")
 
@@ -238,8 +295,7 @@ async def get_status(ark_task_id: str, retry_artifact: bool = False) -> ArkVideo
                 _start_artifact(ctx, None, original, refresh_invalid_original=True)
                 return _response(ctx)
             # 只读取同一个原生任务以刷新 URL，绝不创建新任务。
-            config = resolve_video_config()
-            data = await _read_provider(ark_task_id, config.api_key)
+            data = await _read_provider(ark_task_id, _provider_key(ark_task_id))
             ctx.finished_at = None
             await _apply_provider(ctx, data)
             return _response(ctx)
@@ -250,7 +306,7 @@ async def get_status(ark_task_id: str, retry_artifact: bool = False) -> ArkVideo
         try:
             data = await _read_provider(ark_task_id, config.api_key)
         except VideoError as error:
-            if not error.details.get("retryable"):
+            if not error.details.get("retryable") and error.code not in _KEEP_TASK_CODES:
                 video_task_contexts.finish(ctx, "failed", error.code)
             raise
         await _apply_provider(ctx, data)

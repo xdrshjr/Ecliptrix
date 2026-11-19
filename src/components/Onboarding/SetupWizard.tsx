@@ -4,19 +4,27 @@ import React, { useCallback, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import Modal from '@/components/ui/Modal';
 import type { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
-import type { IntegrationId } from '@/lib/api/integrations';
 import type { CapabilityId, CapabilityStatus } from '@/lib/api/setupStatus';
+import { openSetupWizard, type SetupWizardFocus } from '@/lib/setupEvents';
 import DoneStep from './wizard/DoneStep';
 import IntegrationGroupStep from './wizard/IntegrationGroupStep';
+import ManualOnlyStep from './wizard/ManualOnlyStep';
 import ModelsStep from './wizard/ModelsStep';
 import OverviewStep from './wizard/OverviewStep';
 import ProviderStep from './wizard/ProviderStep';
+import RouterModelsStep from './wizard/RouterModelsStep';
+import RouterStep from './wizard/RouterStep';
 import SearchStep from './wizard/SearchStep';
+import SourceStep from './wizard/SourceStep';
 import WizardStepper from './wizard/WizardStepper';
 import { useSetupWizard } from './wizard/useSetupWizard';
 import { BUTTON_GHOST, BUTTON_PRIMARY } from './wizard/wizardStyles';
-import { INTEGRATION_GROUP_ORDER } from './wizard/integrationGroups';
-import type { WizardMode } from './wizard/wizardSteps';
+import {
+  INTEGRATION_GROUP_ORDER,
+  integrationOfCapability,
+} from './wizard/integrationGroups';
+import { switchCapabilityToOwn } from './wizard/switchCapabilityToOwn';
+import type { SourceModeState, WizardMode } from './wizard/wizardSteps';
 
 export interface SetupWizardProps {
   /** `auto`: startup gap-filler. `manual`: re-run from Settings (all capabilities). */
@@ -27,8 +35,13 @@ export interface SetupWizardProps {
   /** `later` → the page remembers a session-level dismiss (auto mode only). */
   onClose: (reason: 'finished' | 'later') => void;
   onOpenSettings: (item: SettingsMenuItem) => void;
-  /** Manual re-run from a "go configure" button: open on this integration. */
-  focus?: IntegrationId;
+  /** Manual re-run from a "go configure" button: open on this card or step. */
+  focus?: SetupWizardFocus;
+  /**
+   * Saved capability source (`SetupWizardHost` reads it). Omitted = the wizard
+   * as it was before the relay existed: no source step, manual steps only.
+   */
+  sourceMode?: SourceModeState;
 }
 
 /**
@@ -43,9 +56,10 @@ const SetupWizard: React.FC<SetupWizardProps> = ({
   onClose,
   onOpenSettings,
   focus,
+  sourceMode,
 }) => {
   const copy = useLocale().t.setupWizard;
-  const wizard = useSetupWizard({ capabilities, optOuts, mode, focus });
+  const wizard = useSetupWizard({ capabilities, optOuts, mode, focus, sourceMode });
   const [confirmingClose, setConfirmingClose] = useState(false);
 
   // Esc and "later" both land here. Unsubmitted input asks first (inline bar,
@@ -59,6 +73,17 @@ const SetupWizard: React.FC<SetupWizardProps> = ({
   }, [wizard.hasDraft, confirmingClose, onClose]);
 
   const openModelSettings = () => onOpenSettings('model');
+
+  /**
+   * The relay switched a capability off: move it to the user's own setup, then
+   * land where that setup lives (its integration card, or the model settings).
+   */
+  const handleUseOwnConfig = async (capability: CapabilityId) => {
+    await switchCapabilityToOwn(capability);
+    const integration = integrationOfCapability(capability);
+    if (integration) openSetupWizard(integration);
+    else if (capability !== 'web_search') openModelSettings();
+  };
 
   return (
     <Modal
@@ -105,7 +130,14 @@ const SetupWizard: React.FC<SetupWizardProps> = ({
               onLater={requestClose}
               onOpenModelSettings={openModelSettings}
               onSkipOptional={wizard.skipOptional}
+              onUseOwnConfig={handleUseOwnConfig}
             />
+          )}
+          {wizard.current === 'source' && <SourceStep wizard={wizard} />}
+          {wizard.current === 'router' && <RouterStep wizard={wizard} />}
+          {wizard.current === 'routerModels' && <RouterModelsStep wizard={wizard} />}
+          {wizard.current === 'manualOnly' && (
+            <ManualOnlyStep wizard={wizard} capabilities={capabilities} />
           )}
           {wizard.current === 'provider' && <ProviderStep wizard={wizard} />}
           {wizard.current === 'models' && <ModelsStep wizard={wizard} />}
@@ -122,6 +154,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({
               optOuts={wizard.optOuts}
               onFinish={() => onClose('finished')}
               onOpenModelSettings={openModelSettings}
+              onUseOwnConfig={handleUseOwnConfig}
             />
           )}
         </div>

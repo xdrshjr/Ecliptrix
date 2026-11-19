@@ -185,6 +185,36 @@ async def _download(url: str, target: Path) -> None:
                 part.unlink(missing_ok=True)
 
 
+async def _download_via_fetcher(source_fetcher, target: Path) -> None:
+    """Fetch through a caller-supplied downloader (gateway assets need the key).
+
+    Same envelope as ``_download``: ``.part`` file, full decode validation before
+    the atomic rename, one retry for transient transport faults (a GET is safe to
+    repeat). Router faults surface as ``video_download_failed``; the caller's
+    ``VideoError`` (e.g. an invalid artifact) passes through unchanged.
+    """
+    from app.services.skillrouter.errors import RouterError
+
+    async with _download_semaphore:
+        for attempt in range(2):
+            part = target.with_name(f"{target.name}.{uuid4().hex}.part")
+            try:
+                await source_fetcher(part)
+                await validate_video(part)
+                part.replace(target)
+                return
+            except (asyncio.CancelledError, VideoError):
+                raise
+            except RouterError as error:
+                if attempt == 1 or not error.is_retryable:
+                    raise VideoError("video_download_failed", status_code=502) from None
+            except OSError:
+                if attempt == 1:
+                    raise VideoError("video_download_failed", status_code=502) from None
+            finally:
+                part.unlink(missing_ok=True)
+
+
 async def _thumbnail(path: Path, task_id: str) -> str | None:
     target = path.with_name(f"thumb_{task_id}.jpg")
     try:
@@ -197,7 +227,16 @@ async def _thumbnail(path: Path, task_id: str) -> str | None:
         return None
 
 
-async def collect_artifact(task_id: str, remote_url: str | None, cached_path: Path | None = None, phase=None) -> dict:
+async def collect_artifact(
+    task_id: str, remote_url: str | None, cached_path: Path | None = None, phase=None,
+    source_fetcher=None,
+) -> dict:
+    """Validate (and, if needed, download) the video, then register the cache copy.
+
+    ``source_fetcher(dest: Path)`` replaces the anonymous SafeHttpClient download
+    for sources that need their own authenticated transport (SkillRouter assets);
+    everything after the download is identical.
+    """
     validate_task_id(task_id)
     root = Path(settings.storage.root).resolve()
     target = cached_path or root / "video" / "ark" / date.today().strftime("%Y%m%d") / f"{task_id}.mp4"
@@ -216,7 +255,10 @@ async def collect_artifact(task_id: str, remote_url: str | None, cached_path: Pa
             raise VideoError("invalid_video_artifact", status_code=502)
         if phase:
             phase("downloading")
-        await _download(remote_url, target)
+        if source_fetcher is not None:
+            await _download_via_fetcher(source_fetcher, target)
+        else:
+            await _download(remote_url, target)
         if phase:
             phase("validating")
         metadata = await validate_video(target)

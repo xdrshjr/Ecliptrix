@@ -2,36 +2,14 @@
 
 import React from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import SearchKeyField from './SearchKeyField';
 import Spinner from './Spinner';
 import StepHeading from './StepHeading';
-import type { SearchFeedback } from './useSearchStep';
 import type { SetupWizardState } from './useSetupWizard';
-import {
-  BUTTON_GHOST,
-  BUTTON_PRIMARY,
-  ERROR_TEXT,
-  FIELD_INPUT,
-} from './wizardStyles';
-import { MAX_SEARCH_KEYS } from './modelHints';
-import GetCredentialLink from '@/components/integrations/GetCredentialLink';
+import { BUTTON_GHOST, BUTTON_PRIMARY } from './wizardStyles';
 
 interface SearchStepProps {
   wizard: SetupWizardState;
-}
-
-function useFeedbackText(feedback: SearchFeedback | null): string | null {
-  const { t } = useLocale();
-  if (!feedback) return null;
-  switch (feedback.kind) {
-    case 'placeholder':
-      return t.setupWizard.err.keyPlaceholder;
-    case 'tooMany':
-      return t.setupWizard.err.tooManyKeys.replace('{max}', String(MAX_SEARCH_KEYS));
-    case 'saveFailed':
-      return t.setupWizard.err.generic;
-    case 'unreachable':
-      return `${t.setupWizard.err.searchUnreachable} ${String(t.webResearch[feedback.copyKey])}`;
-  }
 }
 
 // Over the 50-line function guideline on purpose: one wizard step is one <form>;
@@ -39,7 +17,6 @@ function useFeedbackText(feedback: SearchFeedback | null): string | null {
 const SearchStep: React.FC<SearchStepProps> = ({ wizard }) => {
   const copy = useLocale().t.setupWizard;
   const { search } = wizard;
-  const feedbackText = useFeedbackText(search.feedback);
   const unreachable = search.feedback?.kind === 'unreachable';
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -52,37 +29,8 @@ const SearchStep: React.FC<SearchStepProps> = ({ wizard }) => {
       <StepHeading title={copy.searchTitle} description={copy.searchDesc} />
 
       <div className="mt-5">
-        <label htmlFor="setup-search-keys" className="block text-sm font-medium text-foreground">
-          {copy.searchKeys}
-        </label>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {copy.searchKeysHint.replace('{max}', String(MAX_SEARCH_KEYS))}
-        </p>
-        <textarea
-          id="setup-search-keys"
-          rows={3}
-          value={search.draft}
-          onChange={(event) => search.edit(event.target.value)}
-          disabled={search.busy}
-          autoComplete="off"
-          spellCheck={false}
-          autoFocus
-          placeholder="tvly-…"
-          aria-describedby={feedbackText ? 'setup-search-feedback' : undefined}
-          className={`mt-1.5 font-mono ${FIELD_INPUT}`}
-        />
-        <GetCredentialLink id="tavily" label={copy.getKey} className="mt-2" />
+        <SearchKeyField search={search} autoFocus />
       </div>
-
-      {feedbackText && (
-        <p
-          id="setup-search-feedback"
-          role={unreachable ? 'status' : 'alert'}
-          className={unreachable ? 'mt-2 text-sm text-amber-700 dark:text-amber-400' : ERROR_TEXT}
-        >
-          {feedbackText}
-        </p>
-      )}
 
       <div className="mt-6 flex items-center justify-between gap-2">
         <button type="button" onClick={wizard.goBack} disabled={search.busy} className={BUTTON_GHOST}>

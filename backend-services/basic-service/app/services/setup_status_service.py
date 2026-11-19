@@ -21,6 +21,7 @@ from app.services.integration_credentials_service import integration_credentials
 from app.services.integration_registry import INTEGRATION_CAPABILITIES, REGISTRY
 from app.services.model_settings_service import model_settings_service
 from app.services.secret_values import is_usable_secret
+from app.services.skillrouter import status as skillrouter_status
 from app.services.system_settings_service import system_settings_service
 from app.services.web_research.web_search_service import get_web_search_service
 
@@ -170,6 +171,10 @@ async def _safe_probe(
     capability: str, probe: Callable[[], Awaitable[CapabilityStatusItem]]
 ) -> CapabilityStatusItem:
     try:
+        routed = await skillrouter_status.routed_item(
+            capability, _TIERS.get(capability, "core"))
+        if routed is not None:
+            return routed
         return await probe()
     except Exception:
         logger.exception("capability probe failed: %s", capability)
@@ -182,6 +187,7 @@ async def _safe_probe(
 
 async def compute_capability_status() -> CapabilityStatusData:
     """Probe every registered capability; a probe fault only taints its row."""
+    await skillrouter_status.prime()
     items = [await _safe_probe(name, probe) for name, probe in _REGISTRY]
     missing_core = [
         item.id

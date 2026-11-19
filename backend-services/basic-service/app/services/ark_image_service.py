@@ -16,6 +16,7 @@ The service has two shapes:
 import json
 import os
 import logging
+from pathlib import Path
 from datetime import date, datetime, timezone
 from typing import List, Optional, Tuple
 from uuid import uuid4
@@ -49,6 +50,10 @@ from app.services.reference_compositor import (
     position_labels,
     replace_mention_tags,
 )
+from app.services.skillrouter import image_adapter
+from app.services.skillrouter.assets import download_asset
+from app.services.skillrouter.config import is_routed, require_ready
+from app.services.skillrouter.image_adapter import RemoteImage
 
 logger = logging.getLogger(__name__)
 
@@ -126,8 +131,8 @@ async def _resolve_multi_references(
     return None, prompt
 
 
-async def _call_ark(payload: dict) -> str:
-    """POST to ARK Seedream and return the first result URL."""
+async def _post_ark(payload: dict) -> list:
+    """POST to ARK Seedream and return the raw ``data`` items."""
     headers = {
         "Authorization": f"Bearer {ark_image_api_key()}",
         "Content-Type": "application/json",
@@ -136,11 +141,47 @@ async def _call_ark(payload: dict) -> str:
         response = await client.post(ARK_IMAGE_API, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
+    return data.get("data", [])
 
-    items = data.get("data", [])
-    if not items or not items[0].get("url"):
-        raise ValueError(f"ARK Seedream returned no image data: {data}")
-    return items[0]["url"]
+
+async def _provider_generate(payload: dict) -> Tuple[List[RemoteImage], List[str]]:
+    """The single provider exit of both generation paths (spec §4.4).
+
+    Manual mode posts to ARK and returns public CDN URLs; router mode asks the
+    SkillRouter gateway and returns key-protected asset references. The second
+    element holds user-facing notes (size mapping, partial failure).
+    """
+    if is_routed("ai_image"):
+        generated = await image_adapter.generate_via_router(
+            prompt=payload["prompt"], size=payload["size"], count=payload["n"],
+            reference=payload.get("image"), watermark=payload["watermark"],
+        )
+        return generated.images, generated.notes
+    items = await _post_ark(payload)
+    return [RemoteImage(url=item["url"]) for item in items if item.get("url")], []
+
+
+async def _call_ark(payload: dict) -> RemoteImage:
+    """Generate through the provider exit and return the first result."""
+    images, _notes = await _provider_generate(payload)
+    if not images:
+        raise ValueError("Image provider returned no image data")
+    return images[0]
+
+
+async def _download_remote_image(remote: RemoteImage, destination: str) -> None:
+    """Fetch one result into ``destination`` (gateway assets need the key)."""
+    if remote.router is not None:
+        await download_asset(remote.router, remote.url, Path(destination),
+                             max_bytes=image_adapter.MAX_IMAGE_BYTES)
+        return
+    # Use the locally imported httpx so tests that monkey-patch
+    # ``ark_image_service.httpx.AsyncClient`` can intercept the download too.
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as dl_client:
+        dl_resp = await dl_client.get(remote.url)
+        dl_resp.raise_for_status()
+        async with aiofiles.open(destination, "wb") as f:
+            await f.write(dl_resp.content)
 
 
 async def _generate_grid_pack(
@@ -198,7 +239,7 @@ async def _generate_grid_pack(
         f"Ark grid pack generation: pack_type={pack_type}, prompt='{request.prompt[:50]}...'"
     )
 
-    remote_url = await _call_ark(payload)
+    remote = await _call_ark(payload)
 
     # Persist the pack on disk.
     pack_id = uuid4().hex[:16]
@@ -209,13 +250,7 @@ async def _generate_grid_pack(
     os.makedirs(pack_dir, exist_ok=True)
 
     original_path = os.path.join(pack_dir, "original.png")
-    # Use the locally imported httpx so tests that monkey-patch
-    # ``ark_image_service.httpx.AsyncClient`` can intercept the download too.
-    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as dl_client:
-        dl_resp = await dl_client.get(remote_url)
-        dl_resp.raise_for_status()
-        async with aiofiles.open(original_path, "wb") as f:
-            await f.write(dl_resp.content)
+    await _download_remote_image(remote, original_path)
 
     frame_dicts = grid_pack_service.crop_grid(
         image_path=original_path,
@@ -339,31 +374,24 @@ async def _generate_legacy_images(
     if request.mode in ("character", "scene"):
         payload["n"] = 1
 
-    headers = {
-        "Authorization": f"Bearer {ark_image_api_key()}",
-        "Content-Type": "application/json",
-    }
-
     logger.info(
         f"Ark image generation (legacy): prompt='{final_prompt[:50]}...', "
         f"size={request.size}, count={request.count}"
     )
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(ARK_IMAGE_API, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-    items = data.get("data", [])
-    if not items:
-        logger.warning(f"Ark image API returned empty data: {data}")
+    remotes, notes = await _provider_generate(payload)
+    if not remotes:
+        logger.warning("Ark image API returned empty data")
         return []
 
-    if defer_download:
-        return [ArkImageResult(image_url=item["url"], width=width,
+    routed = is_routed("ai_image")
+    if defer_download and not routed:
+        return [ArkImageResult(image_url=remote.url, width=width,
                                height=height)
-                for item in items if item.get("url")]
+                for remote in remotes]
 
+    # Gateway assets need the key, so a deferred (anonymous) consumer could not
+    # fetch them: in router mode the download always happens here (spec §4.4).
     today_str = date.today().strftime("%Y%m%d")
     storage_root = settings.storage.root
     local_dir = os.path.join(storage_root, "images", "ark", today_str)
@@ -371,32 +399,26 @@ async def _generate_legacy_images(
 
     results: List[ArkImageResult] = []
 
-    for item in items:
-        remote_url = item.get("url", "")
-        if not remote_url:
-            continue
-
+    for remote in remotes:
         file_id = uuid4().hex[:12]
         local_filename = f"{file_id}.png"
         local_path = os.path.join(local_dir, local_filename)
+        image_width = remote.width or width
+        image_height = remote.height or height
 
         try:
-            async with httpx.AsyncClient(
-                timeout=60.0, follow_redirects=True
-            ) as dl_client:
-                dl_resp = await dl_client.get(remote_url)
-                dl_resp.raise_for_status()
-                async with aiofiles.open(local_path, "wb") as f:
-                    await f.write(dl_resp.content)
+            await _download_remote_image(remote, local_path)
             logger.info(f"Ark image downloaded to {local_path}")
         except Exception as exc:
+            if remote.router is not None:
+                raise
             logger.warning(f"Failed to download Ark image: {exc}, using CDN URL")
             results.append(
                 ArkImageResult(
-                    image_url=remote_url,
+                    image_url=remote.url,
                     local_url=None,
-                    width=width,
-                    height=height,
+                    width=image_width,
+                    height=image_height,
                 )
             )
             continue
@@ -409,8 +431,9 @@ async def _generate_legacy_images(
             ArkImageResult(
                 image_url=final_url,
                 local_url=local_url,
-                width=width,
-                height=height,
+                width=image_width,
+                height=image_height,
+                notes=list(notes),
             )
         )
 
@@ -439,7 +462,9 @@ async def generate_images_with_pack(
     Returns (images, pack). In grid mode, ``images`` contains exactly one
     entry (the composite) and ``pack`` carries the 9 cropped frames.
     """
-    if not ark_image_api_key():
+    if is_routed("ai_image"):
+        require_ready()
+    elif not ark_image_api_key():
         raise ValueError(ARK_NOT_CONFIGURED_MESSAGE)
 
     if _should_generate_grid_pack(request):

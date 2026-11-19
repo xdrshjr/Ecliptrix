@@ -26,6 +26,9 @@ def resolve_video_config(
     from app.services.credential_errors import VideoError, require_configured
 
     require_configured("ark_video")
+    from app.services.skillrouter.config import is_routed
+    if is_routed("ai_video"):
+        return _resolve_router_config(model_override, expected_config_revision)
     resolved = integration_credentials.resolve("ark_video")
     values = {item.name: item.value for item in resolved.fields}
     selected = validate_model_configuration(values)
@@ -45,6 +48,24 @@ def resolve_video_config(
             raise VideoError("video_parameters_unsupported", 422, field="model",
                              allowed=[spec.id for spec in VIDEO_MODELS])
     return VideoRuntimeConfig(values["api_key"], selected.id, selected, revision)
+
+
+def _resolve_router_config(
+    model_override: str | None, expected_config_revision: str | None,
+) -> VideoRuntimeConfig:
+    """Router mode: no Ark key or model validation; the gateway decides (spec §4.5).
+
+    The revision is the routing snapshot's, so a changed key / base URL / override
+    list still answers 409 ``video_configuration_changed`` without a re-POST.
+    """
+    from app.services.credential_errors import VideoError
+    from app.services.skillrouter.video_adapter import router_runtime_config
+
+    config = router_runtime_config(model_override)
+    if expected_config_revision and str(expected_config_revision) != config.config_revision:
+        raise VideoError("video_configuration_changed", 409, integration_id="skillrouter",
+                         failure_class="validation", sticky=False, retryable=False)
+    return config
 
 
 def video_models_response() -> dict:

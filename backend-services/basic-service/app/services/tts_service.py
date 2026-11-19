@@ -22,6 +22,7 @@ from app.logger import get_logger
 from app.models.tts_models import VoiceType, VoiceTypeInfo
 from app.services.integration_credentials_service import credential_property
 from app.services.local_media_resolver import audio_generated_dir
+from app.services.skillrouter.config import get_snapshot, is_routed
 from app.services.storage_service import storage_service
 from app.services.tts_errors import (
     TTSServiceError, ProviderFailureContext, make_tts_error,
@@ -333,6 +334,11 @@ class TTSService:
         return estimated_duration
     
     def validate_config(self) -> None:
+        if is_routed('tts'):
+            # 路由模式下凭据是中转站 Key，火山 TTS Key 不再必需。
+            if not get_snapshot().has_key:
+                raise make_tts_error('TTS_CONFIG_MISSING', attempts=0)
+            return
         if not self.api_key or not self.api_key.strip():
             raise make_tts_error('TTS_CONFIG_MISSING', attempts=0)
 
@@ -396,9 +402,17 @@ class TTSService:
             raise make_tts_error('TTS_LOCAL_IO_ERROR',
                                  attempts=attempts) from None
 
+    def make_tts_client(self):
+        """供应商出口：路由模式走 SkillRouter，否则沿用火山 TTSClient。"""
+        if is_routed('tts'):
+            from app.services.skillrouter.tts_adapter import RouterTTSClient
+
+            return RouterTTSClient()
+        return TTSClient(self.api_key, self.resource_id)
+
     def _synthesize_with_retries(self, text: str, output_path: str,
                                 options: dict, retries: int) -> int:
-        client = TTSClient(self.api_key, self.resource_id)
+        client = self.make_tts_client()
         for attempt in range(1, retries + 1):
             try:
                 if not client.synthesize_speech(

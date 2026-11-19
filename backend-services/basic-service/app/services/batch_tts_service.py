@@ -10,6 +10,7 @@ from app.logger import get_logger
 from app.models.tts_models import (
     BatchTTSRequest, BatchTTSResponse, BatchTTSSegmentResult,
 )
+from app.services.skillrouter.tts_adapter import cap_tts_concurrency
 from app.services.tts_errors import TTSServiceError, make_tts_error
 from app.services.tts_service import TTSService
 
@@ -143,10 +144,10 @@ class BatchTTSService:
         try:
             self._validate_batch_request(request)
             self.tts_service.validate_config()
-            threads = min(
+            threads = cap_tts_concurrency(min(
                 request.concurrent_threads or self.config.concurrent_threads,
                 self.config.max_concurrent_threads, len(request.segments),
-            )
+            ))
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 futures = {}
                 try:

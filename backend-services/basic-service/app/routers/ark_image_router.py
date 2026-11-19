@@ -11,6 +11,7 @@ from app.models.ark_image_models import (
     ArkImageGenerateResponse,
 )
 from app.services import ark_image_service
+from app.services.skillrouter.errors import RouterError
 
 logger = get_logger(__name__)
 
@@ -38,6 +39,9 @@ async def generate_images(request: ArkImageGenerateRequest) -> ArkImageGenerateR
             images=images,
             pack=pack,
         )
+    except RouterError:
+        # 中转站错误由应用级处理器转成结构化错误信封（含 Retry-After、重置时间）。
+        raise
     except Exception as e:
         logger.error(f"Failed to generate Ark images: {e}", exc_info=True)
         return generation_error_response(

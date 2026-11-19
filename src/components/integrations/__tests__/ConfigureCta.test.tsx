@@ -7,7 +7,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/http-client';
 import { notConfiguredIntegration } from '@/lib/api/integrations';
-import { reportCredentialMissing } from '@/lib/credentialMissing';
+import { notConfiguredTarget, reportCredentialMissing } from '@/lib/credentialMissing';
 import { OPEN_SETUP_WIZARD_EVENT } from '@/lib/setupEvents';
 import { translations } from '@/lib/i18n';
 import ConfigureCta from '../ConfigureCta';
@@ -40,6 +40,34 @@ describe('ConfigureCta', () => {
     render(<ConfigureCta integrationId="pexels" />);
     fireEvent.click(screen.getByRole('button', { name: new RegExp(copy.pexels.name) }));
     expect(opened).toEqual([{ focus: 'pexels' }]);
+  });
+});
+
+describe('ConfigureCta for the AI relay', () => {
+  it('opens the wizard on the relay step', () => {
+    render(<ConfigureCta integrationId="skillrouter" />);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `${copy.cta.configure}: ${translations.en.setupWizard.routerStep.name}`,
+      }),
+    );
+    expect(opened).toEqual([{ focus: 'skillrouter' }]);
+  });
+
+  it('is what a routed capability without a gateway key reports', () => {
+    expect(notConfiguredTarget(missing('skillrouter'))).toBe('skillrouter');
+    expect(notConfiguredTarget(missing('pexels'))).toBe('pexels');
+    expect(notConfiguredTarget(missing('evil'))).toBeNull();
+    expect(notConfiguredTarget(new Error('x'))).toBeNull();
+  });
+
+  it('prompts by the relay name and opens the relay step on confirm', () => {
+    render(<CredentialMissingListener />);
+    act(() => void reportCredentialMissing(missing('skillrouter')));
+    const [message, onConfirm] = showConfirm.mock.calls[0];
+    expect(message).toBe(copy.cta.missing.replace('{name}', translations.en.setupWizard.routerStep.name));
+    onConfirm();
+    expect(opened).toEqual([{ focus: 'skillrouter' }]);
   });
 });
 

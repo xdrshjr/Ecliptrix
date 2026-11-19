@@ -726,6 +726,10 @@ from app.routers import integrations_router
 
 app.include_router(integrations_router.router, prefix="/api")
 
+from app.routers import skillrouter_router
+
+app.include_router(skillrouter_router.router, prefix="/api")
+
 # Import and include Video Cover router (per-project thumbnail/cover authoring)
 from app.routers import video_cover as video_cover_router
 
@@ -816,6 +820,14 @@ async def credential_not_configured_handler(
         success=False, message=exc.message, error_code=CREDENTIAL_NOT_CONFIGURED,
         error_details={"integration_id": exc.integration_id},
     ).model_dump(mode="json"))
+
+
+from app.services.skillrouter.errors import RouterError
+
+
+@app.exception_handler(RouterError)
+async def router_error_handler(request: Request, exc: RouterError):
+    return skillrouter_router.router_error_response(exc)
 
 
 @app.exception_handler(CoverError)

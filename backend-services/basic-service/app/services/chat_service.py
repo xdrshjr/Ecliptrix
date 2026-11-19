@@ -5,9 +5,10 @@ Handles LLM API calls with streaming support.
 
 import json
 from typing import AsyncGenerator, Dict, List
-from app.config import settings
 from app.logger import get_logger
-from app.services.llm_client import LLMCallConfig, normalize_api_type, stream_chat
+from app.models.model_settings_models import ModelFunctionType
+from app.services.llm_call_config import resolve_llm_call_config
+from app.services.llm_client import LLMCallConfig, stream_chat
 
 logger = get_logger(__name__)
 
@@ -15,16 +16,15 @@ logger = get_logger(__name__)
 class ChatService:
     """Service for handling video editing chat with LLM."""
     
-    def __init__(self):
-        """Initialize the chat service."""
-        self.api_key = settings.llm_api_key
-        self.api_url = settings.llm_api_url
-        self.model = settings.llm_model
-        self.api_type = normalize_api_type(settings.llm_api_type)
+    async def resolve_config(self) -> LLMCallConfig:
+        """Resolve the chat model at call time (assignment, env fallback, router).
 
-        if not self.api_key or not self.api_url:
-            raise ValueError("LLM API key and URL must be configured")
-    
+        Raises:
+            LLMNotConfiguredError: no endpoint/key is configured (a ``ValueError``).
+        """
+        return await resolve_llm_call_config(ModelFunctionType.CHAT)
+
+
     def _format_messages(self, message: str, current_content: str) -> List[Dict[str, str]]:
         """
         Format messages for LLM API call.
@@ -62,7 +62,9 @@ class ChatService:
             {"role": "user", "content": message}
         ]
     
-    def _log_request(self, message: str, current_content: str, task_id: str) -> None:
+    def _log_request(
+        self, message: str, current_content: str, task_id: str, model: str,
+    ) -> None:
         """
         Log the incoming request details.
         
@@ -70,12 +72,13 @@ class ChatService:
             message: User message
             current_content: Current project content
             task_id: Task identifier
+            model: Resolved model name
         """
         logger.info(
             f"Video editing chat request - Task ID: {task_id}",
             extra={
                 "task_id": task_id,
-                "model": self.model,
+                "model": model,
                 "message_length": len(message),
                 "message_preview": message[:100] + "..." if len(message) > 100 else message,
                 "content_length": len(current_content),
@@ -120,24 +123,20 @@ class ChatService:
         Raises:
             Exception: If API call fails
         """
-        self._log_request(message, current_content, task_id)
+        config = await self.resolve_config()
+        self._log_request(message, current_content, task_id, config.model)
 
         messages = self._format_messages(message, current_content)
 
         logger.info(
-            f"Calling LLM API (api_type={self.api_type}) base={self.api_url} "
+            f"Calling LLM API (api_type={config.api_type}) base={config.api_url} "
             f"for task: {task_id}"
         )
 
         try:
             async for piece in stream_chat(
                 messages,
-                config=LLMCallConfig(
-                    api_url=self.api_url,
-                    api_key=self.api_key,
-                    model=self.model,
-                    api_type=self.api_type,
-                ),
+                config=config,
                 temperature=0.7,
                 max_tokens=2000,
                 timeout=60.0,

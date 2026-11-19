@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import SettingsSidebar, { SettingsMenuItem } from './SettingsSidebar';
 import GeneralSettingsPanel from './GeneralSettingsPanel';
 import ModelSettingsPanel from './ModelSettingsPanel';
@@ -15,6 +15,19 @@ import YouTubeSettingsPanel from './YouTubeSettingsPanel';
 import UploadSettingsPanel from './UploadSettingsPanel';
 import WatermarkSettingsPanel from './WatermarkSettingsPanel';
 import VideoAnalysisSettingsPanel from './VideoAnalysisSettingsPanel';
+
+// Loaded on demand: most sessions never open the AI-source screen.
+const SkillRouterSettingsPanel = lazy(() => import('./SkillRouterSettingsPanel'));
+
+const PanelFallback: React.FC = () => (
+  <div className="sr-scope h-full p-4 sm:p-8" style={{ background: 'var(--sr-bg)' }} aria-busy="true">
+    <div className="mx-auto max-w-3xl space-y-4">
+      <div className="sr-skeleton h-7 w-40" />
+      <div className="sr-skeleton h-28" />
+      <div className="sr-skeleton h-36" />
+    </div>
+  </div>
+);
 
 interface SettingsPageProps {
   onClose: () => void;
@@ -61,6 +74,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     switch (activeItem) {
       case 'general':
         return <GeneralSettingsPanel onRerunSetupWizard={onRerunSetupWizard} />;
+      case 'skillrouter':
+        return (
+          <Suspense fallback={<PanelFallback />}>
+            <SkillRouterSettingsPanel />
+          </Suspense>
+        );
       case 'model':
         return <ModelSettingsPanel />;
       case 'webResearch':

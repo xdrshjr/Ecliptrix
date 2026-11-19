@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 from app.models.audio_search_models import AudioSearchResponse, AudioInfo
 from app.logger import get_logger
 from app.services.integration_credentials_service import credential_property
+from app.services.skillrouter.config import is_routed
 
 logger = get_logger(__name__)
 
@@ -157,6 +158,13 @@ class AudioSearchService:
             'audio_type': audio_type,
             'sort_by': sort_by
         })
+        
+        if is_routed("audio_library"):
+            # 路由模式：失败抛 RouterError，绝不返回空结果伪装成功。
+            from app.services.skillrouter import search_adapter
+            return search_adapter.search_audios(
+                query, max_audios, search_adapter.AudioSearchOptions(
+                    duration_min, duration_max, audio_type, sort_by))
         
         if not self.api_key:
             error_message = "Freesound API key not configured"

@@ -43,6 +43,13 @@ export function groupOfCapability(capability: CapabilityId): IntegrationGroupId 
   return null;
 }
 
+/** The integration whose credentials unlock `capability`, or null (model slots, search). */
+export function integrationOfCapability(capability: CapabilityId): IntegrationId | null {
+  const entry = (Object.entries(INTEGRATION_CAPABILITIES) as [IntegrationId, readonly CapabilityId[]][])
+    .find(([, capabilities]) => capabilities.includes(capability));
+  return entry ? entry[0] : null;
+}
+
 export function groupOfIntegration(id: IntegrationId): IntegrationGroupId {
   const group = INTEGRATION_GROUP_ORDER.find((candidate) =>
     INTEGRATION_GROUPS[candidate].includes(id),

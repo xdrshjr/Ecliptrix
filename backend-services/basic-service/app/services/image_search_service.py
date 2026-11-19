@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 from app.models.image_search_models import ImageSearchResponse, ImageInfo
 from app.logger import get_logger
 from app.services.integration_credentials_service import credential_property
+from app.services.skillrouter.config import is_routed
 
 logger = get_logger(__name__)
 
@@ -206,6 +207,12 @@ class ImageSearchService:
             'color': color,
             'order_by': order_by
         })
+        
+        if is_routed("image_library"):
+            # 路由模式：整个检索交给适配器；失败抛 RouterError，绝不返回空结果伪装成功。
+            from app.services.skillrouter import search_adapter
+            return search_adapter.search_images(
+                query, max_images, orientation, color, order_by)
         
         if not self.api_keys:
             error_message = "Unsplash API keys not configured"

@@ -300,11 +300,23 @@ def validate_patch(spec: IntegrationSpec, patch: Dict[str, Any]) -> Dict[str, An
             cleaned[name] = raw
         elif spec_field.kind == "secret_list":
             cleaned[name] = _validate_list(raw, spec_field)
+        elif spec.id == "skillrouter" and spec_field.kind in ("text", "secret"):
+            cleaned[name] = _validate_skillrouter_field(spec_field, raw)
         elif spec_field.kind == "text":
             cleaned[name] = validate_custom_model(raw) if spec.id == "ark_video" and name == "custom_model" else _validate_text(raw, name)
         else:
             cleaned[name] = _validate_secret(raw, name)
     return cleaned
+
+
+def _validate_skillrouter_field(spec_field: FieldSpec, raw: Any) -> str:
+    """Field rules of the gateway row live in ``skillrouter.validation``
+    (lazy import: that package imports this module)."""
+    from app.services.skillrouter import validation
+
+    if spec_field.kind == "secret":
+        return validation.validate_api_key(raw)
+    return validation.validate_text_field(spec_field.name, raw)
 
 
 class IntegrationCredentialsService:
@@ -453,6 +465,9 @@ class IntegrationCredentialsService:
                     merged[name] = value
             if integration_id == "ark_video":
                 validate_model_configuration({item.name: _resolve_field(item, merged).value for item in spec.fields})
+            if integration_id == "skillrouter" and merged.get("mode") == "router":
+                if not is_usable_secret(merged.get("api_key")):
+                    raise CredentialValidationError("router_key_required", "mode")
             await self._commit(integration_id, merged)
         return self.resolve(integration_id)
 

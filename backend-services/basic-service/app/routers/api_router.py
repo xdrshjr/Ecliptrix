@@ -91,13 +91,18 @@ async def get_config() -> BaseResponse:
     """
     logger.info("Configuration endpoint accessed")
     
+    # The chat endpoint URL as actually in effect (assignment / env / router).
+    from app.models.model_settings_models import ModelFunctionType
+    from app.services.model_settings_service import model_settings_service
+    chat_config = await model_settings_service.get_effective_config(ModelFunctionType.CHAT)
+
     # Return only non-sensitive configuration
     config_info = {
         "app_name": settings.app_name,
         "app_version": settings.app_version,
         "log_level": settings.log_level,
         "debug": settings.debug,
-        "llm_api_url": settings.llm_api_url,  # URL is generally safe to expose
+        "llm_api_url": chat_config.api_url,  # URL is generally safe to expose
         "host": settings.host,
         "port": settings.port,
         "youtube": {

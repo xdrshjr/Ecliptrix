@@ -226,3 +226,39 @@ async def integration_db(monkeypatch):
         yield factory
     finally:
         await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# SkillRouter gateway fixtures (docs/plans/skillrouter-capability-gateway)
+# ---------------------------------------------------------------------------
+@pytest_asyncio.fixture
+async def fake_gateway(integration_db):
+    """Fake gateway on 127.0.0.1 with the app configured in ROUTER mode against it."""
+    from tests.skillrouter_fake import start_gateway
+    from app.services.integration_credentials_service import integration_credentials
+    from app.services.skillrouter import catalog
+
+    state, server, thread = start_gateway()
+    catalog.reset()
+    await integration_credentials.save("skillrouter", {
+        "mode": "router", "api_key": state.api_key, "base_url": state.base_url,
+    })
+    try:
+        yield state
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        catalog.reset()
+
+
+@pytest_asyncio.fixture
+async def fake_gateway_manual(integration_db):
+    """Fake gateway running, app left in its default (manual / unset) mode."""
+    from tests.skillrouter_fake import start_gateway
+
+    state, server, thread = start_gateway()
+    try:
+        yield state
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)

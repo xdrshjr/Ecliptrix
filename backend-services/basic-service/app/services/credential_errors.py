@@ -26,6 +26,7 @@ _MESSAGES = {
     "pexels": "The Pexels video library is not configured.",
     "unsplash": "The Unsplash image library is not configured.",
     "freesound": "The Freesound sound library is not configured.",
+    "skillrouter": "AI 能力中转站尚未配置 API Key。",
 }
 
 
@@ -34,11 +35,31 @@ class CredentialNotConfigured(Exception):
 
     def __init__(self, integration_id: str) -> None:
         self.integration_id = integration_id
+        where = ("Settings -> Capability source" if integration_id == "skillrouter"
+                 else "Settings -> Services & asset libraries")
         self.message = (
             f"{_MESSAGES.get(integration_id, 'This service is not configured.')} "
-            "Open Settings -> Services & asset libraries to set it up."
+            f"Open {where} to set it up."
         )
         super().__init__(self.message)
+
+
+def _is_routed_integration(integration_id: str) -> bool:
+    from app.services.skillrouter.config import is_routed
+    from app.services.skillrouter.constants import INTEGRATION_TO_CAPABILITY
+
+    capability = INTEGRATION_TO_CAPABILITY.get(integration_id)
+    return bool(capability) and is_routed(capability)
+
+
+def _require_router_or_continue(integration_id: str) -> None:
+    """Raise ``CredentialNotConfigured('skillrouter')`` when routed without a key."""
+    if not _is_routed_integration(integration_id):
+        return
+    from app.services.skillrouter.config import get_snapshot
+
+    if not get_snapshot().has_key:
+        raise CredentialNotConfigured("skillrouter")
 
 
 def require_configured(integration_id: str) -> None:
@@ -47,7 +68,15 @@ def require_configured(integration_id: str) -> None:
     Raises:
         CredentialNotConfigured: a required field has no usable value.
         UnknownIntegrationError: ``integration_id`` is not in the registry.
+
+    When the matching capability is routed through SkillRouter the gate checks
+    the gateway key instead (spec §3.6). Integrations without a routable
+    capability (asr / voice clone) and capabilities the user pinned to manual
+    always take the original manual check.
     """
+    _require_router_or_continue(integration_id)
+    if _is_routed_integration(integration_id):
+        return
     integration_credentials.require_loaded(integration_id)
     if integration_id == "ark_video":
         resolved = integration_credentials.resolve(integration_id)
@@ -80,8 +109,16 @@ def video_error_response(error: VideoError):
 
 
 def generation_error_response(error, capability):
-    """生成提交的受控错误信封；供应商正文及签名地址不返回模型。"""
-    return video_error_response(classify_generation_error(error, capability))
+    """生成提交的受控错误信封；供应商正文及签名地址不返回模型。
+
+    A ``RouterError`` is re-raised untouched so the application-level handler in
+    ``main.py`` renders its structured envelope (code, Retry-After, resets_at)
+    instead of it being flattened into ``generation_submission_unknown``.
+    """
+    classified = classify_generation_error(error, capability)
+    if not isinstance(classified, VideoError):
+        raise classified
+    return video_error_response(classified)
 
 
 def classify_generation_error(error: Exception, capability: str) -> VideoError:
@@ -91,8 +128,10 @@ def classify_generation_error(error: Exception, capability: str) -> VideoError:
     from uuid import uuid4
     import httpx
 
-    if isinstance(error, VideoError):
-        return error
+    from app.services.skillrouter.errors import RouterError
+
+    if isinstance(error, (VideoError, RouterError)):
+        return error  # RouterError keeps its own structured code (spec §5.3)
     if isinstance(error, IntegrationLoadFailed):
         return VideoError("integration_load_failed", 503,
                           integration_id=error.integration_id)

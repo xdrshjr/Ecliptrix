@@ -16,7 +16,9 @@ from app.models.video_understanding_script_models import (
     ScriptSentence,
     VideoItem
 )
-from app.services.llm_client import LLMCallConfig, call_chat, normalize_api_type
+from app.models.model_settings_models import ModelFunctionType
+from app.services.llm_call_config import resolve_llm_call_config
+from app.services.llm_client import LLMCallConfig, call_chat
 from app.services.video_analysis_storage_service import video_analysis_storage
 
 logger = get_logger(__name__)
@@ -25,16 +27,15 @@ logger = get_logger(__name__)
 class VideoUnderstandingScriptService:
     """Service for handling video understanding script generation with LLM."""
     
-    def __init__(self):
-        """Initialize the video understanding script service."""
-        self.api_key = settings.video_cut_llm_api_key
-        self.api_url = settings.video_cut_llm_api_url
-        self.model = settings.video_cut_llm_model
-        self.api_type = normalize_api_type(settings.video_cut_llm_api_type)
+    async def resolve_llm_config(self) -> LLMCallConfig:
+        """Video-cut model at call time (assignment, env fallback, router).
 
-        if not self.api_key or not self.api_url:
-            raise ValueError("Video Cut LLM API key and URL must be configured")
-    
+        Raises:
+            LLMNotConfiguredError: no endpoint/key is configured (a ``ValueError``).
+        """
+        return await resolve_llm_call_config(ModelFunctionType.VIDEO_CUT)
+
+
     async def generate_script(
         self,
         request: VideoUnderstandingScriptRequest,
@@ -468,17 +469,17 @@ class VideoUnderstandingScriptService:
         logger.info(f"LLM prompt generated: length={len(prompt)}, includes_user_requirements={'<user_requirements>' in prompt}")
 
         messages = [{"role": "user", "content": prompt}]
+        llm_config = await self.resolve_llm_config()
 
         logger.info(
-            f"Calling LLM API for script generation (api_type={self.api_type}) "
-            f"base={self.api_url} for task: {task_id}"
+            f"Calling LLM API for script generation (api_type={llm_config.api_type}) "
+            f"base={llm_config.api_url} for task: {task_id}"
         )
 
         if settings.debug:
             print(f"\n=== DEBUG: Script Generation LLM API Request for task {task_id} ===")
-            print(f"api_type: {self.api_type}")
-            print(f"Base URL: {self.api_url}")
-            print(f"Headers: Authorization: Bearer {self.api_key[:10]}...{self.api_key[-4:]}")
+            print(f"api_type: {llm_config.api_type}")
+            print(f"Base URL: {llm_config.api_url}")
             print("Messages:")
             print(json.dumps(messages, indent=2, ensure_ascii=False))
             print("=" * 50)
@@ -486,12 +487,7 @@ class VideoUnderstandingScriptService:
         try:
             generated_content = await call_chat(
                 messages,
-                config=LLMCallConfig(
-                    api_url=self.api_url,
-                    api_key=self.api_key,
-                    model=self.model,
-                    api_type=self.api_type,
-                ),
+                config=llm_config,
                 temperature=0.3,
                 max_tokens=6000,
                 timeout=120.0,

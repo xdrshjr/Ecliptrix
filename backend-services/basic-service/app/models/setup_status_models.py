@@ -11,9 +11,9 @@ CapabilityId = Literal[
 ]
 CapabilityTier = Literal["core", "extended"]
 CapabilityState = Literal[
-    "ready", "inherited", "missing", "invalid", "indeterminate"
+    "ready", "inherited", "missing", "invalid", "indeterminate", "unavailable"
 ]
-CapabilitySource = Literal["database", "environment", "inherited", "none"]
+CapabilitySource = Literal["database", "environment", "inherited", "router", "none"]
 
 
 class CapabilityStatusItem(BaseModel):

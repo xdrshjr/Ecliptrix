@@ -51,6 +51,9 @@ class IntegrationSpec:
     fields: Tuple[FieldSpec, ...]
     capabilities: Tuple[str, ...]
     verify_level: str
+    # ``internal`` integrations have a dedicated API (e.g. /api/skillrouter) and
+    # never appear in the generic /api/integrations surface or the fixture.
+    internal: bool = False
 
     def field(self, name: str) -> Optional[FieldSpec]:
         for spec in self.fields:
@@ -195,6 +198,25 @@ REGISTRY: Tuple[IntegrationSpec, ...] = (
         capabilities=("audio_library",),
         verify_level="free",
     ),
+    IntegrationSpec(
+        id="skillrouter",
+        name="AI 能力中转站（SkillRouter）",
+        fields=(
+            FieldSpec("mode", "choice", default="manual", choices=("manual", "router")),
+            FieldSpec("api_key", "secret", required=True),
+            FieldSpec("base_url", "text"),  # default applied in skillrouter.config
+            FieldSpec("manual_capabilities", "text"),
+            FieldSpec("model_chat", "text"),
+            FieldSpec("model_fast", "text"),
+            FieldSpec("model_video_cut", "text"),
+            FieldSpec("model_vision", "text"),
+            FieldSpec("model_research", "text"),
+            FieldSpec("slot_protocols", "text"),
+        ),
+        capabilities=(),
+        verify_level="free",
+        internal=True,
+    ),
 )
 
 INTEGRATIONS_BY_ID: Dict[str, IntegrationSpec] = {spec.id: spec for spec in REGISTRY}
@@ -268,6 +290,7 @@ def serialize_registry(provider_preset_ids: List[str]) -> Dict[str, Any]:
                 ],
             }
             for spec in REGISTRY
+            if not spec.internal
         ],
         "extendedCapabilities": list(INTEGRATION_CAPABILITIES),
         "providerPresetIds": list(provider_preset_ids),

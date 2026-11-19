@@ -6,6 +6,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { http, ApiError } from '@/lib/api/http-client';
 import { notifySetupConfigUpdated } from '@/lib/setupEvents';
 import ModelQuickStartCard from './components/ModelQuickStartCard';
+import RoutedNotice from '../skillrouter/RoutedNotice';
 
 // ── API response envelope types (loose-typed because the backend response
 //    shapes vary across the model-settings endpoints) ──
@@ -42,7 +43,7 @@ interface ResolveConfigResponse {
     provider_name?: string | null;
     api_url?: string | null;
     model_name?: string | null;
-    source?: 'database' | 'environment' | 'none' | 'error';
+    source?: 'database' | 'environment' | 'none' | 'error' | 'skillrouter';
   };
 }
 
@@ -126,7 +127,7 @@ interface ResolvedConfig {
   provider_name: string | null;
   api_url: string | null;
   model_name: string | null;
-  source: 'database' | 'environment' | 'none' | 'error';
+  source: 'database' | 'environment' | 'none' | 'error' | 'skillrouter';
 }
 
 /* ── Icons ── */
@@ -662,6 +663,9 @@ const ModelSettingsPanel: React.FC = () => {
     return url.substring(0, maxLen) + '...';
   };
 
+  // The resolve endpoint also returns `api_key` for server-side callers. This
+  // panel only copies the display fields below, so the key (including the AI
+  // relay's `ar-` key) never enters component state (spec RV-01).
   const fetchEffectiveConfigs = useCallback(async () => {
     setLoadingEffectiveConfig(true);
     try {
@@ -1473,6 +1477,7 @@ const ModelSettingsPanel: React.FC = () => {
                   const config = effectiveConfigs[ft];
                   const isDb = config?.source === 'database';
                   const isEnv = config?.source === 'environment';
+                  const isRouter = config?.source === 'skillrouter';
                   const isError = config?.source === 'error';
                   return (
                     <tr key={ft} className="border-b border-border last:border-b-0">
@@ -1496,6 +1501,8 @@ const ModelSettingsPanel: React.FC = () => {
                           className={`px-1.5 py-0.5 rounded text-xs ${
                             isDb
                               ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                              : isRouter
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                               : isEnv
                                 ? 'bg-muted text-muted-foreground'
                                 : isError
@@ -1506,6 +1513,8 @@ const ModelSettingsPanel: React.FC = () => {
                         >
                           {isDb
                             ? t.adminSettings.configFromDb
+                            : isRouter
+                              ? t.skillrouter.sourceBadge
                             : isEnv
                               ? t.adminSettings.configFromEnv
                               : isError
@@ -1537,6 +1546,8 @@ const ModelSettingsPanel: React.FC = () => {
     <div className="h-full overflow-y-auto bg-background">
       <div className="p-8 flex justify-center">
         <div className="w-full max-w-2xl space-y-6">
+
+          <RoutedNotice capability="chat" />
 
           {/* Tab Navigation */}
           <div className="flex border-b border-border">

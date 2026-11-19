@@ -35,6 +35,7 @@ from app.models.db_models import ModelProvider, ModelAssignment
 from app.database import async_session_factory
 from app.config import Settings, get_settings
 from app.logger import get_logger
+from app.services.skillrouter import llm_overlay as skillrouter_llm_overlay
 
 logger = get_logger(__name__)
 
@@ -602,6 +603,9 @@ class ModelSettingsService:
         """
         if function_type == ModelFunctionType.RESEARCH:
             return await self.resolve_research_config()
+        routed = await skillrouter_llm_overlay.resolve(function_type)
+        if routed is not None:
+            return routed
         # Try database first: join assignments with providers
         async with async_session_factory() as session:
             stmt = (
@@ -748,6 +752,10 @@ class ModelSettingsService:
         from app.models.web_research_models import WebResearchError
         settings = get_settings()
         for function_type, prefix in stages:
+            routed = await skillrouter_llm_overlay.resolve(
+                function_type, temperature=0.2, max_tokens=1800)
+            if routed is not None:
+                return function_type, routed
             assigned = await self._research_assignment(function_type)
             environment = tuple(getattr(settings, prefix + suffix)
                                 for suffix in ("_api_url", "_api_key",

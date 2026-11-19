@@ -148,10 +148,15 @@ function makeRateLimitError(
   const message = parsed.message ?? 'Too many requests';
   const details: Record<string, unknown> = {
     ...(parsed.details ?? {}),
+    ...(parsed.errorCode ? { errorCode: parsed.errorCode } : {}),
     retryAfter,
   };
+  // SkillRouter quota / busy answers are rendered by the feature itself with
+  // an actionable message; the generic countdown toast would only mislead.
+  const isGatewayLimit =
+    typeof parsed.errorCode === 'string' && parsed.errorCode.startsWith('router_');
   try {
-    window.dispatchEvent(
+    if (!isGatewayLimit) window.dispatchEvent(
       new CustomEvent('ecliptrix:rate-limited', {
         detail: { retryAfter, message },
       }),

@@ -18,6 +18,10 @@ import { BUTTON_GHOST, BUTTON_PRIMARY, TEXT_LINK } from './wizardStyles';
 interface IntegrationGroupStepProps {
   wizard: SetupWizardState;
   group: IntegrationGroupId;
+  /** Show only these integrations instead of the whole group (relay flow). */
+  ids?: readonly IntegrationId[];
+  /** Embedded in another step: no heading and no navigation row. */
+  bare?: boolean;
 }
 
 type RowState = 'ready' | 'missing' | 'invalid' | 'optedOut';
@@ -206,13 +210,18 @@ const RowActions: React.FC<RowActionsProps> = ({ item, state, expanded, wizard, 
  * Over the 50-line function guideline on purpose: the derived row states and the
  * accordion handlers share one closure over the loaded list.
  */
-const IntegrationGroupStep: React.FC<IntegrationGroupStepProps> = ({ wizard, group }) => {
+const IntegrationGroupStep: React.FC<IntegrationGroupStepProps> = ({
+  wizard,
+  group,
+  ids,
+  bare = false,
+}) => {
   const { t } = useLocale();
   const copy = t.integrations;
   const { integrations, loadState, reload } = useIntegrations();
   const [expanded, setExpanded] = useState<IntegrationId | null | undefined>(undefined);
 
-  const items = INTEGRATION_GROUPS[group]
+  const items = (ids ?? INTEGRATION_GROUPS[group])
     .map((id) => integrations.find((candidate) => candidate.id === id))
     .filter((item): item is IntegrationStatus => item !== undefined);
   const states = new Map(items.map((item) => [item.id, rowState(item, wizard.optOuts)]));
@@ -240,7 +249,7 @@ const IntegrationGroupStep: React.FC<IntegrationGroupStepProps> = ({ wizard, gro
 
   return (
     <div>
-      <StepHeading title={info.title} description={info.desc} />
+      {!bare && <StepHeading title={info.title} description={info.desc} />}
 
       {loadState === 'loading' && (
         <p role="status" className="mt-6 text-sm text-muted-foreground">
@@ -256,7 +265,7 @@ const IntegrationGroupStep: React.FC<IntegrationGroupStepProps> = ({ wizard, gro
         </div>
       )}
 
-      <ul className="mt-5 space-y-3">
+      <ul className={bare ? 'space-y-3' : 'mt-5 space-y-3'}>
         {items.map((item) => (
           <GroupRow
             key={item.id}
@@ -271,21 +280,23 @@ const IntegrationGroupStep: React.FC<IntegrationGroupStepProps> = ({ wizard, gro
         ))}
       </ul>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-        <button type="button" onClick={wizard.goBack} className={BUTTON_GHOST}>
-          {t.setupWizard.back}
-        </button>
-        <div className="flex flex-wrap items-center gap-2">
-          {unresolved.length > 0 && (
-            <button type="button" onClick={skipGroup} className={BUTTON_GHOST}>
-              {copy.action.skipGroup}
-            </button>
-          )}
-          <button type="button" onClick={wizard.goNext} className={BUTTON_PRIMARY}>
-            {unresolved.length > 0 ? copy.action.continueLater : copy.action.continueNext}
+      {!bare && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+          <button type="button" onClick={wizard.goBack} className={BUTTON_GHOST}>
+            {t.setupWizard.back}
           </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {unresolved.length > 0 && (
+              <button type="button" onClick={skipGroup} className={BUTTON_GHOST}>
+                {copy.action.skipGroup}
+              </button>
+            )}
+            <button type="button" onClick={wizard.goNext} className={BUTTON_PRIMARY}>
+              {unresolved.length > 0 ? copy.action.continueLater : copy.action.continueNext}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

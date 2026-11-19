@@ -5,6 +5,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 
 export type SettingsMenuItem =
   | 'general'
+  | 'skillrouter'
   | 'model'
   | 'webResearch'
   | 'agentToolkit'
@@ -69,6 +70,12 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
       id: 'ai',
       title: t.adminSettings.groupAi,
       items: [
+        {
+          id: 'skillrouter',
+          label: t.skillrouter.title,
+          description: t.skillrouter.sidebarDesc,
+          icon: <span aria-hidden="true">◈</span>,
+        },
         {
           id: 'webResearch',
           label: t.webResearch.title,

@@ -19,6 +19,7 @@ from app.models import (
     SentenceTTSRequest
 )
 from app.services.local_media_resolver import audio_generated_dir
+from app.services.skillrouter.tts_adapter import cap_tts_concurrency
 from app.services.tts_service import TTSService
 from app.services.tts_errors import (
     TTSServiceError, make_tts_error, safe_identifier,
@@ -445,6 +446,7 @@ class SentenceTTSService:
             concurrent_threads = request.concurrent_threads or self.config.concurrent_threads
             concurrent_threads = min(concurrent_threads, self.config.max_concurrent_threads)
             concurrent_threads = min(concurrent_threads, len(request.sentences))
+            concurrent_threads = cap_tts_concurrency(concurrent_threads)
             
             logger.info("开始并发处理句子", {
                 "concurrent_threads": concurrent_threads,

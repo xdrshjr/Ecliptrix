@@ -426,3 +426,35 @@ describe('error classification', () => {
     expect(classifyIntegrationError(new Error('x'))).toEqual({ kind: 'saveFailed' });
   });
 });
+
+describe('routed capabilities', () => {
+  const relayStatus = (manualCapabilities: string[] = []) => ({
+    success: true,
+    data: {
+      mode: 'router', modeState: 'router', baseUrl: 'https://www.skillrouter.net',
+      keyConfigured: true, keyHint: 'ar-…****3456', enabled: true, manualCapabilities,
+      slotModels: {}, defaults: {}, lastVerified: null, revision: 'r1',
+    },
+  });
+  const notice = translations.en.skillrouter.notice;
+
+  it('keeps the form and adds the relay banner while the relay serves the capability', async () => {
+    api.get.mockResolvedValue(relayStatus());
+    renderCard(status('ark_image'));
+    expect(await screen.findByText(new RegExp(notice.routed))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: notice.useOwn })).toBeInTheDocument();
+    expect(screen.getByLabelText(copy.field.apiKey)).toBeInTheDocument();
+  });
+
+  it('shows no banner once the capability is on the user\'s own configuration', async () => {
+    api.get.mockResolvedValue(relayStatus(['ai_image']));
+    renderCard(status('ark_image'));
+    await waitFor(() => expect(api.get).toHaveBeenCalled());
+    expect(screen.queryByText(new RegExp(notice.routed))).toBeNull();
+  });
+
+  it('never asks the relay about capabilities it cannot serve', () => {
+    renderCard(status('volcano_asr'));
+    expect(api.get).not.toHaveBeenCalled();
+  });
+});

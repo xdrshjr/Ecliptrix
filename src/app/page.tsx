@@ -7,7 +7,7 @@ import VerticalTaskbar from '@/components/VerticalTaskbar';
 import Container from '@/components/Container';
 import SettingsPage from '@/components/settings/SettingsPage';
 import { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
-import SetupWizard from '@/components/Onboarding/SetupWizard';
+import SetupWizardHost from '@/components/Onboarding/SetupWizardHost';
 import CredentialMissingListener from '@/components/integrations/CredentialMissingListener';
 import {
   settingsAttentionItems,
@@ -16,8 +16,11 @@ import {
 import { useTasks } from '@/hooks/useTasks';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useDesktopCloseGuard } from '@/hooks/useDesktopCloseGuard';
-import type { IntegrationId } from '@/lib/api/integrations';
-import { OPEN_SETUP_WIZARD_EVENT, type OpenSetupWizardDetail } from '@/lib/setupEvents';
+import {
+  OPEN_SETUP_WIZARD_EVENT,
+  type OpenSetupWizardDetail,
+  type SetupWizardFocus,
+} from '@/lib/setupEvents';
 
 // Session-scoped (not localStorage): re-prompt on next launch if still
 // unconfigured, but never twice in one session.
@@ -82,7 +85,7 @@ export default function HomePage() {
   // 'complete' mid-flow, and the done page must not be yanked away.
   const [wizardMode, setWizardMode] = useState<WizardMode | null>(null);
   // Set by "go configure" buttons next to a missing-credentials error.
-  const [wizardFocus, setWizardFocus] = useState<IntegrationId | undefined>(undefined);
+  const [wizardFocus, setWizardFocus] = useState<SetupWizardFocus | undefined>(undefined);
   useEffect(() => {
     const openRequested = (event: Event) => {
       const detail = (event as CustomEvent<OpenSetupWizardDetail>).detail;
@@ -189,7 +192,7 @@ export default function HomePage() {
       <CredentialMissingListener />
 
       {wizardMode && (
-        <SetupWizard
+        <SetupWizardHost
           key={wizardFocus ?? 'default'}
           mode={wizardMode}
           focus={wizardFocus}

@@ -7,7 +7,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.config import settings
 from app.logger import get_logger
 from app.models.ai_mixed_editing_models import (
     MaterialItemModel,
@@ -68,21 +67,16 @@ class AIMixPlanUnparseableError(AIMixError):
 class AIMixedEditingService:
     """Service for handling AI mixed editing with Video Cut LLM."""
 
-    def __init__(self, llm_config: Optional[LLMCallConfig] = None) -> None:
+    def __init__(self, llm_config: LLMCallConfig) -> None:
         """
         Initialize the AI mixed editing service.
 
         Args:
-            llm_config: Resolved model config. ``None`` keeps the legacy
-                behaviour of reading ``VIDEO_CUT_LLM_*`` settings; request
-                handlers use :meth:`create`, which honours 模型设置.
-
-        Raises:
-            ValueError: ``llm_config`` is None and VIDEO_CUT_LLM_* is unset
+            llm_config: Resolved model config. Request handlers build it with
+                :meth:`create`, which resolves 模型设置 / env / SkillRouter at
+                call time; the service never reads ``settings`` itself.
         """
         self.timeline_parser = TimelineParserService()
-        if llm_config is None:
-            llm_config = self._config_from_settings()
         self.llm_config: LLMCallConfig = llm_config
 
     @classmethod
@@ -112,20 +106,6 @@ class AIMixedEditingService:
             f"api_type={config.api_type} model={config.model}"
         )
         return cls(config)
-
-    @staticmethod
-    def _config_from_settings() -> LLMCallConfig:
-        """Legacy VIDEO_CUT_LLM_* config; raises ValueError when unset."""
-        api_key = settings.video_cut_llm_api_key
-        api_url = settings.video_cut_llm_api_url
-        if not api_key or not api_url:
-            raise ValueError("Video Cut LLM API key and URL must be configured")
-        return LLMCallConfig(
-            api_url=api_url,
-            api_key=api_key,
-            model=settings.video_cut_llm_model,
-            api_type=normalize_api_type(settings.video_cut_llm_api_type),
-        )
 
     def _create_simplified_example(self) -> str:
         """

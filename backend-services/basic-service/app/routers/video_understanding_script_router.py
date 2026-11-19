@@ -61,8 +61,9 @@ async def _generate_video_script_handler(request: VideoUnderstandingScriptReques
             )
         
         # Initialize service
+        script_service = VideoUnderstandingScriptService()
         try:
-            script_service = VideoUnderstandingScriptService()
+            await script_service.resolve_llm_config()
         except ValueError as e:
             logger.error(f"Video understanding script service initialization failed: {str(e)}")
             raise HTTPException(

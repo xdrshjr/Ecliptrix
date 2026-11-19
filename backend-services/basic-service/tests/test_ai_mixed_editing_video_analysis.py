@@ -147,13 +147,9 @@ class TestAIMixedEditingVideoAnalysisIntegration:
     
     def setup_method(self):
         """Set up test fixtures."""
-        with patch('app.services.ai_mixed_editing_service.settings') as mock_settings:
-            mock_settings.video_cut_llm_api_key = "test-api-key"
-            mock_settings.video_cut_llm_api_url = "https://test-api.com"
-            mock_settings.video_cut_llm_model = "test-model"
-            mock_settings.debug = False
-            
-            self.service = AIMixedEditingService()
+        from app.services.llm_client import LLMCallConfig
+        self.service = AIMixedEditingService(LLMCallConfig(
+            api_url="https://test-api.com", api_key="test-api-key", model="test-model"))
         
         # Sample materials
         self.video_material_with_analysis = MaterialItemModel(

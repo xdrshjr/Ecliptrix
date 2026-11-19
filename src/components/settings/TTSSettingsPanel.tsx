@@ -3,6 +3,7 @@
 import React from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
+import RoutedNotice from '@/components/skillrouter/RoutedNotice';
 import SettingsSectionCard from './components/SettingsSectionCard';
 import ResetDefaultsButton from './components/ResetDefaultsButton';
 import VoiceListEditor, { VoiceItem } from './components/VoiceListEditor';
@@ -95,6 +96,8 @@ const TTSSettingsPanel: React.FC = () => {
             </button>
           </div>
         </div>
+
+        <RoutedNotice capability="tts" />
 
         {/* Section 1: Concurrency */}
         <SettingsSectionCard title={t.adminSettings.ttsConcurrency} description={t.adminSettings.ttsConcurrencyDesc}>

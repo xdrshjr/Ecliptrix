@@ -23,13 +23,9 @@ class TestVideoAnalysisDataFlow:
     def setup_method(self):
         """Set up test fixtures."""
         # Mock settings
-        with patch('app.services.ai_mixed_editing_service.settings') as mock_settings:
-            mock_settings.video_cut_llm_api_key = "test-api-key"
-            mock_settings.video_cut_llm_api_url = "https://test-api.com"
-            mock_settings.video_cut_llm_model = "test-model"
-            mock_settings.debug = True  # Enable debug logging
-            
-            self.service = AIMixedEditingService()
+        from app.services.llm_client import LLMCallConfig
+        self.service = AIMixedEditingService(LLMCallConfig(
+            api_url="https://test-api.com", api_key="test-api-key", model="test-model"))
     
     def test_frontend_data_structure_compatibility(self):
         """Test that frontend video analysis data structure is compatible with backend models."""

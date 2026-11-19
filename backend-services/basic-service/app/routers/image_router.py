@@ -10,6 +10,7 @@ from app.models.image_search_models import ImageSearchRequest, ImageSearchRespon
 from app.services.image_search_service import ImageSearchService
 from app.logger import get_logger
 from app.services.credential_errors import require_configured
+from app.services.skillrouter.errors import RouterError
 
 # Initialize router and logger
 router = APIRouter(prefix="/image", tags=["Image Search"])
@@ -112,6 +113,9 @@ async def search_images(request: ImageSearchRequest) -> ImageSearchResponse:
         
     except HTTPException:
         # Re-raise HTTP exceptions
+        raise
+    except RouterError:
+        # 中转站错误交给应用级处理器（结构化错误码/Retry-After），不降级成通用 500。
         raise
     except Exception as e:
         error_message = f"Unexpected error during image search: {str(e)}"

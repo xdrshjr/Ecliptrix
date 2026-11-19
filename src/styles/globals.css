@@ -869,3 +869,197 @@ html, body {
   pointer-events: none;
 }
 
+
+/* ───────────────────────────────────────────────────────────────────────────
+   AI relay (SkillRouter) surfaces — skillrouter-capability-gateway spec §7.1.
+   Scoped to `.sr-scope` on purpose: the green accent and the Supabase-style
+   neutrals belong to the relay screens only; the app's own primary colour is
+   not changed. Accent text colours keep a contrast ratio of at least 4.5:1.
+   ─────────────────────────────────────────────────────────────────────────── */
+.sr-scope {
+  --sr-bg: #fcfcfc;
+  --sr-surface: #ffffff;
+  --sr-border: #e6e6e6;
+  --sr-fg: #171717;
+  --sr-muted: #6b6b6b;
+  --sr-accent: #1f9d6b;
+  --sr-on-accent: #ffffff;
+  --sr-danger: #dc2626;
+  --sr-warn: #b45309;
+  --sr-radius: 8px;
+  --sr-radius-card: 12px;
+  color: var(--sr-fg);
+}
+
+.dark .sr-scope {
+  --sr-bg: #1c1c1c;
+  --sr-surface: #232323;
+  --sr-border: #2e2e2e;
+  --sr-fg: #ededed;
+  --sr-muted: #a0a0a0;
+  --sr-accent: #3ecf8e;
+  --sr-on-accent: #04251a;
+  --sr-danger: #f87171;
+  --sr-warn: #fbbf24;
+}
+
+.sr-scope .sr-card {
+  background: var(--sr-surface);
+  border: 1px solid var(--sr-border);
+  border-radius: var(--sr-radius-card);
+  padding: 20px;
+}
+
+.sr-scope .sr-card--selected {
+  border-color: var(--sr-accent);
+  box-shadow: 0 0 0 1px var(--sr-accent);
+}
+
+.sr-scope .sr-muted { color: var(--sr-muted); }
+.sr-scope .sr-text-sm { font-size: 13px; line-height: 20px; }
+.sr-scope .sr-text-xs { font-size: 12px; line-height: 16px; }
+.sr-scope .sr-heading { font-size: 16px; font-weight: 600; line-height: 24px; }
+
+.sr-scope .sr-btn,
+.sr-scope .sr-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: var(--sr-radius);
+  border: 1px solid var(--sr-border);
+  background: transparent;
+  color: var(--sr-fg);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+.sr-scope .sr-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--sr-fg) 6%, transparent); }
+.sr-scope .sr-btn-primary {
+  background: var(--sr-accent);
+  border-color: var(--sr-accent);
+  color: var(--sr-on-accent);
+}
+.sr-scope .sr-btn-primary:hover:not(:disabled) { filter: brightness(0.95); }
+.sr-scope .sr-btn:disabled,
+.sr-scope .sr-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+.sr-scope .sr-btn--danger { color: var(--sr-danger); }
+
+.sr-scope .sr-link {
+  color: var(--sr-accent);
+  font-size: 13px;
+  font-weight: 500;
+  text-underline-offset: 4px;
+}
+.sr-scope .sr-link:hover { text-decoration: underline; }
+
+.sr-scope .sr-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--sr-radius);
+  border: 1px solid var(--sr-border);
+  background: var(--sr-bg);
+  color: var(--sr-fg);
+  font-size: 13px;
+}
+.sr-scope .sr-input::placeholder { color: var(--sr-muted); }
+.sr-scope .sr-input:disabled { opacity: 0.6; }
+.sr-scope .sr-input--invalid { border-color: var(--sr-danger); }
+
+.sr-scope .sr-btn:focus-visible,
+.sr-scope .sr-btn-primary:focus-visible,
+.sr-scope .sr-input:focus-visible,
+.sr-scope .sr-link:focus-visible,
+.sr-scope [role='radio']:focus-visible,
+.sr-scope .sr-seg button:focus-visible {
+  outline: 2px solid var(--sr-accent);
+  outline-offset: 2px;
+}
+
+.sr-scope .sr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.sr-scope .sr-pill--ok { color: var(--sr-accent); }
+.sr-scope .sr-pill--warn { color: var(--sr-warn); }
+.sr-scope .sr-pill--danger { color: var(--sr-danger); }
+.sr-scope .sr-pill--neutral { color: var(--sr-muted); }
+
+.sr-scope .sr-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--sr-radius);
+  border: 1px solid var(--sr-border);
+  background: var(--sr-bg);
+}
+.sr-scope .sr-seg button {
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--sr-muted);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.sr-scope .sr-seg button[aria-checked='true'] {
+  background: var(--sr-accent);
+  color: var(--sr-on-accent);
+  font-weight: 600;
+}
+.sr-scope .sr-seg button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.sr-scope .sr-meter {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sr-border);
+  overflow: hidden;
+}
+.sr-scope .sr-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--sr-accent);
+  transition: width 150ms ease-out;
+}
+.sr-scope .sr-meter--low > span { background: var(--sr-warn); }
+.sr-scope .sr-meter--empty > span { background: var(--sr-danger); }
+
+.sr-scope .sr-skeleton {
+  border-radius: var(--sr-radius);
+  background: linear-gradient(
+    90deg,
+    var(--sr-border) 0%,
+    color-mix(in srgb, var(--sr-border) 55%, var(--sr-surface)) 50%,
+    var(--sr-border) 100%
+  );
+  background-size: 200% 100%;
+  animation: sr-shimmer 1.4s ease-in-out infinite;
+}
+
+.sr-scope .sr-fade-in { animation: sr-fade-in 150ms ease-out both; }
+
+@keyframes sr-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sr-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-scope .sr-fade-in,
+  .sr-scope .sr-skeleton { animation: none; }
+  .sr-scope .sr-btn,
+  .sr-scope .sr-btn-primary,
+  .sr-scope .sr-seg button,
+  .sr-scope .sr-meter > span { transition: none; }
+}

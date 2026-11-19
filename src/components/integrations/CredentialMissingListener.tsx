@@ -30,8 +30,12 @@ const CredentialMissingListener: React.FC = () => {
       if (last && last.id === integrationId && now - last.at < PROMPT_COOLDOWN_MS) return;
       lastShownRef.current = { id: integrationId, at: now };
       const copy = t.integrations;
+      const name =
+        integrationId === 'skillrouter'
+          ? t.setupWizard.routerStep.name
+          : copy[integrationId].name;
       showConfirm(
-        copy.cta.missing.replace('{name}', copy[integrationId].name),
+        copy.cta.missing.replace('{name}', name),
         () => openSetupWizard(integrationId),
         { confirmLabel: copy.cta.configure },
       );

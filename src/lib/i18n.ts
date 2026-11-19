@@ -3410,6 +3410,15 @@ export interface Translations {
     stepVoice: string;
     stepGeneration: string;
     stepMedia: string;
+    stepSource: string;
+    stepRouter: string;
+    stepRouterModels: string;
+    stepManualOnly: string;
+    sourceStep: { title: string; desc: string; saveFailed: string };
+    routerStep: { name: string; title: string; desc: string; continueConnected: string; needsKey: string };
+    routerModelsStep: { title: string; desc: string };
+    manualOnlyStep: { title: string; desc: string; skipAll: string; notRouterNote: string };
+    routedByRouter: { unavailableDesc: string; useOwn: string; useOwnBusy: string; useOwnFailed: string };
     group: Record<'models' | 'voice' | 'generation' | 'media' | 'search', { title: string; desc: string }>;
     stepCounter: string;
     start: string;
@@ -3476,9 +3485,11 @@ export interface Translations {
       missing: string;
       invalid: string;
       indeterminate: string;
+      unavailable: string;
+      readyRouter: string;
       optedOut: string;
     };
-    source: { database: string; environment: string; inherited: string };
+    source: { database: string; environment: string; inherited: string; router: string };
     err: {
       keyRequired: string;
       keyPlaceholder: string;
@@ -3491,6 +3502,110 @@ export interface Translations {
       tooManyKeys: string;
       generic: string;
     };
+  };
+  skillrouter: {
+    title: string;
+    description: string;
+    sidebarDesc: string;
+    sourceBadge: string;
+    chooser: {
+      label: string;
+      recommended: string;
+      hint: string;
+      router: { title: string; desc: string; points: string[] };
+      manual: { title: string; desc: string; points: string[] };
+    };
+    connect: {
+      title: string;
+      noAccount: string;
+      register: string;
+      registerHint: string;
+      keyLabel: string;
+      keyPlaceholder: string;
+      keyHint: string;
+      prefixHint: string;
+      savedKey: string;
+      advanced: string;
+      baseUrlLabel: string;
+      baseUrlHint: string;
+      verify: string;
+      verifySaved: string;
+      verifying: string;
+      saveAndUse: string;
+      saving: string;
+      saveLater: string;
+      coverageTitle: string;
+      privacy: string;
+      result: {
+        ok: string;
+        stillManual: string;
+        invalid_credentials: { title: string; hint: string };
+        unreachable: { title: string; hint: string };
+        upstream_error: { title: string; hint: string };
+        unverifiable: { title: string; hint: string };
+      };
+    };
+    coverage: {
+      sourceLabel: string;
+      source: { router: string; manual: string };
+      viaRouter: string;
+      usingOwn: string;
+      unavailable: string;
+      manualOnlyNote: string;
+    };
+    quota: {
+      label: string;
+      remaining: string;
+      resetsAt: string;
+      resetHint: string;
+      low: string;
+      exhausted: string;
+    };
+    slots: {
+      hint: string;
+      staleAt: string;
+      refresh: string;
+      choose: string;
+      recommended: string;
+      test: string;
+      testing: string;
+      testOk: string;
+      testFailed: string;
+      loadFailed: string;
+      loadFailedHint: string;
+      emptyTitle: string;
+      emptyHint: string;
+      retry: string;
+    };
+    notice: { routed: string; useOwn: string; switching: string };
+    panel: {
+      loadFailed: string;
+      retry: string;
+      connectionTitle: string;
+      keyLabel: string;
+      state: { connected: string; unverified: string; invalid: string; unreachable: string };
+      checkedAt: string;
+      reverify: string;
+      verifying: string;
+      replaceKey: string;
+      clearKey: string;
+      openConsole: string;
+      clearConfirmTitle: string;
+      clearConfirmBody: string;
+      clearConfirmAction: string;
+      keyCleared: string;
+      keyReplaced: string;
+      switchedToRouter: string;
+      switchedToManual: string;
+      coverageTitle: string;
+      coverageDesc: string;
+      slotsTitle: string;
+      slotsDesc: string;
+    };
+  };
+  /** Gateway error codes -> wording; `{time}` / `{seconds}` templates fall back to `hintFallback`. */
+  routerErrors: Record<string, { title: string; hint: string; hintFallback?: string }> & {
+    unknown: { title: string; hint: string };
   };
   integrations: Record<'volcano_tts' | 'volcano_asr' | 'volcano_voice_clone' | 'ark_image' | 'ark_video' | 'pexels' | 'unsplash' | 'freesound', { name: string; desc: string; pitfall: string }> & {
     field: {
@@ -7762,6 +7877,38 @@ export const translations: Record<string, Translations> = {
       stepVoice: 'Voice & subtitles',
       stepGeneration: 'AI image & video',
       stepMedia: 'Material libraries',
+      stepSource: 'Choose a source',
+      stepRouter: 'Connect SkillRouter',
+      stepRouterModels: 'Relay models',
+      stepManualOnly: 'Set up by hand',
+      sourceStep: {
+        title: 'Where should your AI come from?',
+        desc: 'Pick one source for chat, voice-over, images, video and material libraries. Switching never deletes what you set up on the other side.',
+        saveFailed: 'Could not save your choice. Please try again.',
+      },
+      routerStep: {
+        name: 'AI relay (SkillRouter)',
+        title: 'Connect the AI relay',
+        desc: 'One SkillRouter key covers chat, voice-over, images, video and the three material libraries.',
+        continueConnected: 'Continue with the saved key',
+        needsKey: 'Verify the key to continue, or save it now and verify it later.',
+      },
+      routerModelsStep: {
+        title: 'Choose relay models',
+        desc: 'Every slot is pre-filled with a recommended model. Change any of them, or keep the defaults.',
+      },
+      manualOnlyStep: {
+        title: 'Still set up by hand',
+        desc: 'The relay does not provide web search, subtitle recognition or voice cloning. Add your own keys, or skip them and come back in Settings.',
+        skipAll: 'Skip these',
+        notRouterNote: 'Not offered by the relay',
+      },
+      routedByRouter: {
+        unavailableDesc: 'The relay has this switched off for your account.',
+        useOwn: 'Use my own setup for this',
+        useOwnBusy: 'Switching…',
+        useOwnFailed: 'Could not switch. Please try again.',
+      },
       group: {
         models: { title: 'AI models', desc: 'Chat, mixed editing and visual review.' },
         voice: { title: 'Voice & subtitles', desc: 'Credentials for voice-over, subtitle recognition and voice cloning.' },
@@ -7849,9 +7996,12 @@ export const translations: Record<string, Translations> = {
         missing: 'Needs setup',
         invalid: 'Incomplete',
         indeterminate: 'Can\'t tell',
+        unavailable: 'Unavailable',
+        readyRouter: 'Ready · via SkillRouter',
         optedOut: 'Not using',
       },
       source: {
+        router: 'via SkillRouter',
         database: 'Settings',
         environment: 'Environment',
         inherited: 'Inherited',
@@ -7868,6 +8018,134 @@ export const translations: Record<string, Translations> = {
         tooManyKeys: 'Up to {max} keys are supported.',
         generic: 'Something went wrong.',
       },
+    },
+    skillrouter: {
+      title: 'AI source',
+      description: 'Choose where AI capabilities come from: the AI relay with a single key, or your own provider settings per capability. Both configurations are kept.',
+      sidebarDesc: 'Relay or your own providers',
+      sourceBadge: 'Relay',
+      chooser: {
+        label: 'AI source',
+        recommended: 'Recommended',
+        hint: 'You can switch any time in Settings → AI source. Both configurations are kept.',
+        router: {
+          title: 'AI relay',
+          desc: 'One key for chat, voice, image, video and media libraries.',
+          points: ['Ready in 2 minutes', 'No separate sign-ups'],
+        },
+        manual: {
+          title: 'Manual setup',
+          desc: "Enter each provider's key yourself and stay in full control.",
+          points: ['Any provider you like'],
+        },
+      },
+      connect: {
+        title: 'Connect the AI relay',
+        noAccount: 'No account yet? Sign up at the relay, then create a key under "My keys".',
+        register: 'Sign up at skillrouter.net',
+        registerHint: 'Opens in your system browser.',
+        keyLabel: 'API key',
+        keyPlaceholder: 'ar-…',
+        keyHint: 'It is verified automatically after you paste it. Verifying uses no quota.',
+        prefixHint: 'This does not look like a relay key (they usually start with ar-). You can still verify it.',
+        savedKey: 'Saved key:',
+        advanced: 'Advanced: custom relay address',
+        baseUrlLabel: 'Relay address',
+        baseUrlHint: 'Default https://www.skillrouter.net. http://localhost is allowed for local debugging only.',
+        verify: 'Verify',
+        verifySaved: 'Verify saved key',
+        verifying: 'Verifying…',
+        saveAndUse: 'Save and use the relay',
+        saving: 'Saving…',
+        saveLater: 'Save now, verify later',
+        coverageTitle: 'The relay will provide',
+        privacy: 'With the relay, your prompts and media requests are forwarded through skillrouter.net. The key stays in the local backend and never appears in the interface or logs.',
+        result: {
+          ok: 'Connected · {ms} ms',
+          stillManual: 'Still manual:',
+          invalid_credentials: { title: 'Key is invalid or revoked', hint: 'Check "My keys" at the relay, or create a new one.' },
+          unreachable: { title: 'Cannot reach the relay', hint: 'Check your network and the relay address, then try again.' },
+          upstream_error: { title: 'The relay is temporarily unavailable', hint: 'It answered with an error. Try again later, or save now and verify later.' },
+          unverifiable: { title: 'Could not verify right now', hint: 'No clear answer this time. Try again, or save now and verify later.' },
+        },
+      },
+      coverage: {
+        sourceLabel: 'source',
+        source: { router: 'Relay', manual: 'My own' },
+        viaRouter: 'Provided by the relay',
+        usingOwn: 'Using your own configuration',
+        unavailable: 'Not enabled at the relay',
+        manualOnlyNote: 'Not offered by the relay; configure it manually',
+      },
+      quota: {
+        label: "Today's quota",
+        remaining: '{remaining} / {limit} {unit} left',
+        resetsAt: 'resets {time}',
+        resetHint: 'Quota resets at 00:00 UTC; the time shown is converted to your local time.',
+        low: 'Quota almost used up',
+        exhausted: "Today's quota is used up",
+      },
+      slots: {
+        hint: 'Each slot is pre-filled with the recommended model. You can pick another.',
+        staleAt: 'Showing a cached list · updated {time}',
+        refresh: 'Refresh model list',
+        choose: 'Choose a model',
+        recommended: 'Recommended',
+        test: 'Test',
+        testing: 'Testing…',
+        testOk: 'Working · {ms} ms · {model}',
+        testFailed: 'Test failed:',
+        loadFailed: 'Could not load the model list',
+        loadFailedHint: 'Check your network and try again.',
+        emptyTitle: 'The relay has no models available',
+        emptyHint: 'Ask the relay operator, or switch chat to your own configuration.',
+        retry: 'Retry',
+      },
+      notice: { routed: 'Currently provided by the AI relay', useOwn: 'Use my own configuration', switching: 'Switching…' },
+      panel: {
+        loadFailed: 'Could not read the AI source settings',
+        retry: 'Retry',
+        connectionTitle: 'Relay connection',
+        keyLabel: 'Key',
+        state: { connected: 'Connected', unverified: 'Not verified', invalid: 'Key invalid', unreachable: 'Unreachable' },
+        checkedAt: 'Verified {time}',
+        reverify: 'Verify again',
+        verifying: 'Verifying…',
+        replaceKey: 'Replace key',
+        clearKey: 'Clear key',
+        openConsole: 'Open relay console',
+        clearConfirmTitle: 'Clear the relay key?',
+        clearConfirmBody: 'The app returns to manual setup and every capability uses your own provider configuration (your manual settings are not touched).',
+        clearConfirmAction: 'Clear and use manual',
+        keyCleared: 'Key cleared. Back to manual setup.',
+        keyReplaced: 'Relay key updated',
+        switchedToRouter: 'Switched to the relay. Your manual settings are kept.',
+        switchedToManual: 'Switched to manual setup. Your relay settings are kept.',
+        coverageTitle: 'Coverage',
+        coverageDesc: 'Choose per capability whether the relay or your own configuration provides it. Web search, subtitle recognition and voice cloning are not offered by the relay.',
+        slotsTitle: 'Chat models',
+        slotsDesc: 'The relay model used by each of the five chat slots.',
+      },
+    },
+    routerErrors: {
+      credential_not_configured: { title: 'No relay key yet', hint: 'Connect the relay in Settings → AI source, or switch this capability to your own configuration.' },
+      router_key_required: { title: 'A key is required', hint: 'Enter and save a key before turning the relay on.' },
+      router_key_invalid: { title: 'Key is invalid or revoked', hint: 'Check "My keys" at the relay and enter the key again.' },
+      router_capability_denied: { title: 'This account cannot use that capability', hint: 'Ask the relay operator to enable it, or switch the capability to your own configuration.' },
+      router_capability_unavailable: { title: 'The relay has not enabled that capability', hint: 'Try again later, or switch the capability to your own configuration.' },
+      router_quota_exceeded: { title: "Today's quota is used up", hint: 'The quota resets at {time}.', hintFallback: 'The quota comes back after it resets.' },
+      router_busy: { title: 'The relay is busy', hint: 'Try again in about {seconds} seconds.', hintFallback: 'Please try again shortly.' },
+      content_rejected: { title: 'Content was rejected', hint: 'The prompt did not pass review. Edit it and try again.' },
+      router_invalid_request: { title: 'The request was not accepted', hint: 'Adjust it according to the reason below and try again.' },
+      router_upstream_error: { title: "The relay's upstream is temporarily unavailable", hint: 'This is usually temporary. Try again later.' },
+      router_unreachable: { title: 'Cannot reach the relay', hint: 'Check your network connection and the relay address.' },
+      router_models_unavailable: { title: 'The relay has no models available', hint: 'Ask the relay operator, or switch to manual setup.' },
+      generation_submission_unknown: { title: 'Submission result unknown', hint: 'The job may have been accepted. Check your usage at the relay first and do not submit it again.' },
+      invalid_base_url: { title: 'Invalid relay address', hint: 'Use an https address (http://localhost for local debugging) without credentials, query or fragment.' },
+      credential_malformed: { title: 'Key format is not valid', hint: 'A key has 8–256 characters and no whitespace.' },
+      unknown_capability: { title: 'Unknown capability', hint: 'The relay cannot provide this capability. Refresh the page and try again.' },
+      unknown_slot: { title: 'Unknown model slot', hint: 'Refresh the page and try again.' },
+      unknown: { title: 'Something went wrong', hint: 'Please try again later.' },
     },
     integrations: {
       volcano_tts: {
@@ -12261,6 +12539,38 @@ export const translations: Record<string, Translations> = {
       stepVoice: '语音与字幕',
       stepGeneration: 'AI 图片与视频',
       stepMedia: '素材库',
+      stepSource: '选择来源',
+      stepRouter: '连接中转站',
+      stepRouterModels: '中转站模型',
+      stepManualOnly: '手动配置项',
+      sourceStep: {
+        title: '你想怎样配置 AI 能力？',
+        desc: '为对话、配音、生图、视频与素材库选择一个能力来源。切换时不会删除另一边已有的配置。',
+        saveFailed: '保存选择失败，请重试。',
+      },
+      routerStep: {
+        name: 'AI 能力中转站（SkillRouter）',
+        title: '连接 AI 能力中转站',
+        desc: '一把 SkillRouter Key 即可覆盖对话、配音、生图、视频与三类素材库。',
+        continueConnected: '使用已保存的 Key 继续',
+        needsKey: '验证通过后才能继续，也可以先保存、稍后再验证。',
+      },
+      routerModelsStep: {
+        title: '选择中转站模型',
+        desc: '每个槽位已预选推荐模型，可逐个调整，也可直接保留默认。',
+      },
+      manualOnlyStep: {
+        title: '仍需手动配置',
+        desc: '中转站暂不提供联网搜索、字幕识别与声音复刻，需要你自己的 Key。也可以先跳过，之后在设置里补上。',
+        skipAll: '先跳过这些',
+        notRouterNote: '中转站暂不提供',
+      },
+      routedByRouter: {
+        unavailableDesc: '中转站已对你的账号关闭该能力。',
+        useOwn: '该能力改用自己的配置',
+        useOwnBusy: '正在切换…',
+        useOwnFailed: '切换失败，请重试。',
+      },
       group: {
         models: { title: 'AI 模型', desc: '对话、AI 混剪与视觉审阅。' },
         voice: { title: '语音与字幕', desc: '配音合成、字幕识别和声音克隆所需的凭证。' },
@@ -12348,9 +12658,12 @@ export const translations: Record<string, Translations> = {
         missing: '待配置',
         invalid: '配置不完整',
         indeterminate: '无法确认',
+        unavailable: '暂不可用',
+        readyRouter: '就绪 · 由 SkillRouter 提供',
         optedOut: '不使用',
       },
       source: {
+        router: '由 SkillRouter 提供',
         database: '设置',
         environment: '环境变量',
         inherited: '沿用',
@@ -12367,6 +12680,134 @@ export const translations: Record<string, Translations> = {
         tooManyKeys: '最多支持 {max} 个 Key。',
         generic: '出了点问题。',
       },
+    },
+    skillrouter: {
+      title: '能力来源',
+      description: '选择 AI 能力从哪里来：用一把 Key 的「AI 能力中转站」，或逐项使用你自己的服务商配置。两边的配置都会保留。',
+      sidebarDesc: '中转站或自己的服务商',
+      sourceBadge: '中转站',
+      chooser: {
+        label: '能力来源',
+        recommended: '推荐',
+        hint: '之后可随时在「设置 → 能力来源」切换，两边的配置都会保留。',
+        router: {
+          title: 'AI 能力中转站',
+          desc: '一把 Key，搞定对话、配音、生图、视频与素材库。',
+          points: ['2 分钟完成', '无需分别注册各家服务'],
+        },
+        manual: {
+          title: '手动配置',
+          desc: '逐个填写各家服务商的 Key，完全自己掌控。',
+          points: ['可选任意服务商'],
+        },
+      },
+      connect: {
+        title: '连接 AI 能力中转站',
+        noAccount: '还没有账号？先去中转站注册，再在「我的密钥」里创建一把 Key。',
+        register: '前往 skillrouter.net 注册',
+        registerHint: '会在系统浏览器中打开。',
+        keyLabel: 'API Key',
+        keyPlaceholder: 'ar-…',
+        keyHint: '粘贴后会自动验证；验证本身不消耗额度。',
+        prefixHint: '这看起来不像中转站的 Key（通常以 ar- 开头），仍可继续验证。',
+        savedKey: '已保存的 Key：',
+        advanced: '高级：自定义中转站地址',
+        baseUrlLabel: '中转站地址',
+        baseUrlHint: '默认 https://www.skillrouter.net。仅本机调试可使用 http://localhost。',
+        verify: '验证',
+        verifySaved: '验证已保存的 Key',
+        verifying: '正在验证…',
+        saveAndUse: '保存并使用中转站',
+        saving: '正在保存…',
+        saveLater: '先保存，稍后验证',
+        coverageTitle: '中转站将提供以下能力',
+        privacy: '选择中转站后，你的提示词与素材请求将经由 skillrouter.net 转发；Key 只保存在本机后端，不会出现在界面或日志中。',
+        result: {
+          ok: '已连接 · {ms} ms',
+          stillManual: '仍需手动配置：',
+          invalid_credentials: { title: 'Key 无效或已被吊销', hint: '请到中转站「我的密钥」确认，或重新创建一把。' },
+          unreachable: { title: '无法连接中转站', hint: '请检查网络与中转站地址后重试。' },
+          upstream_error: { title: '中转站暂时不可用', hint: '服务端返回了异常，请稍后再试；也可以先保存，稍后验证。' },
+          unverifiable: { title: '暂时无法验证', hint: '这次没能得到明确结果，可以重试，或先保存稍后验证。' },
+        },
+      },
+      coverage: {
+        sourceLabel: '来源',
+        source: { router: '中转站', manual: '自己的配置' },
+        viaRouter: '由中转站提供',
+        usingOwn: '使用你自己的配置',
+        unavailable: '中转站暂未开通',
+        manualOnlyNote: '中转站暂不提供，需手动配置',
+      },
+      quota: {
+        label: '今日额度',
+        remaining: '剩余 {remaining} / {limit} {unit}',
+        resetsAt: '{time} 重置',
+        resetHint: '额度按 UTC 零点重置，此处已换算为本地时间。',
+        low: '额度即将用完',
+        exhausted: '今日额度已用完',
+      },
+      slots: {
+        hint: '已为每个槽位预填推荐模型，也可以手动指定。',
+        staleAt: '显示的是缓存列表 · 上次更新 {time}',
+        refresh: '刷新模型列表',
+        choose: '选择模型',
+        recommended: '推荐',
+        test: '测试',
+        testing: '测试中…',
+        testOk: '连接正常 · {ms} ms · {model}',
+        testFailed: '测试未通过：',
+        loadFailed: '无法加载模型列表',
+        loadFailedHint: '请检查网络后重试。',
+        emptyTitle: '中转站暂无可用模型',
+        emptyHint: '请联系中转站运营方，或把对话能力改用你自己的配置。',
+        retry: '重试',
+      },
+      notice: { routed: '当前由 AI 能力中转站提供', useOwn: '改用自己的配置', switching: '正在切换…' },
+      panel: {
+        loadFailed: '无法读取能力来源设置',
+        retry: '重试',
+        connectionTitle: '中转站连接',
+        keyLabel: 'Key',
+        state: { connected: '已连接', unverified: '未验证', invalid: 'Key 无效', unreachable: '无法连接' },
+        checkedAt: '上次验证 {time}',
+        reverify: '重新验证',
+        verifying: '验证中…',
+        replaceKey: '更换 Key',
+        clearKey: '清除 Key',
+        openConsole: '打开中转站控制台',
+        clearConfirmTitle: '清除中转站 Key？',
+        clearConfirmBody: '清除后将回到手动配置，所有能力改用你自己的服务商配置（手动配置本身不会被改动）。',
+        clearConfirmAction: '清除并回到手动',
+        keyCleared: '已清除 Key，已回到手动配置',
+        keyReplaced: '已更新中转站 Key',
+        switchedToRouter: '已切换到中转站，手动配置已保留',
+        switchedToManual: '已切换到手动配置，中转站设置已保留',
+        coverageTitle: '能力覆盖',
+        coverageDesc: '逐项选择由中转站还是你自己的配置提供。联网搜索、字幕识别、声音复刻中转站暂不提供。',
+        slotsTitle: '对话模型',
+        slotsDesc: '五个对话槽位各自使用的中转站模型。',
+      },
+    },
+    routerErrors: {
+      credential_not_configured: { title: '还没有填写中转站 Key', hint: '请先在「设置 → 能力来源」连接中转站，或把该能力改用自己的配置。' },
+      router_key_required: { title: '需要先填写 Key', hint: '启用中转站前，请先填写并保存 Key。' },
+      router_key_invalid: { title: 'Key 无效或已被吊销', hint: '请到中转站「我的密钥」确认后重新填写。' },
+      router_capability_denied: { title: '当前账号无权使用该能力', hint: '请联系中转站运营方开通，或把该能力改用自己的配置。' },
+      router_capability_unavailable: { title: '中转站暂未开通该能力', hint: '可以稍后再试，或把该能力改用自己的配置。' },
+      router_quota_exceeded: { title: '今日额度已用完', hint: '额度将于 {time} 重置。', hintFallback: '额度将在重置后恢复。' },
+      router_busy: { title: '中转站正忙', hint: '请约 {seconds} 秒后再试。', hintFallback: '请稍候再试。' },
+      content_rejected: { title: '内容被拒绝', hint: '提示词未通过审核，请修改后重试。' },
+      router_invalid_request: { title: '请求不符合要求', hint: '请根据下面的原因调整后重试。' },
+      router_upstream_error: { title: '中转站上游暂时不可用', hint: '这通常是临时问题，请稍后重试。' },
+      router_unreachable: { title: '无法连接中转站', hint: '请检查网络连接和中转站地址。' },
+      router_models_unavailable: { title: '中转站暂无可用模型', hint: '请联系中转站运营方，或切换为手动配置。' },
+      generation_submission_unknown: { title: '提交结果未知', hint: '任务可能已被受理。请先到中转站查看用量，不要重复提交。' },
+      invalid_base_url: { title: '中转站地址无效', hint: '需要 https 地址（本机调试可用 http://localhost），且不含账号、参数或锚点。' },
+      credential_malformed: { title: 'Key 格式不正确', hint: 'Key 应为 8–256 个字符且不含空白。' },
+      unknown_capability: { title: '未知的能力', hint: '这个能力不能由中转站提供，请刷新页面后重试。' },
+      unknown_slot: { title: '未知的模型槽位', hint: '请刷新页面后重试。' },
+      unknown: { title: '出了点问题', hint: '请稍后重试。' },
     },
     integrations: {
       volcano_tts: {

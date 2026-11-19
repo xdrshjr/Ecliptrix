@@ -13,6 +13,7 @@ interface DoneStepProps {
   optOuts: readonly CapabilityId[];
   onFinish: () => void;
   onOpenModelSettings: () => void;
+  onUseOwnConfig?: (capability: CapabilityId) => Promise<void>;
 }
 
 /**
@@ -24,6 +25,7 @@ const DoneStep: React.FC<DoneStepProps> = ({
   optOuts,
   onFinish,
   onOpenModelSettings,
+  onUseOwnConfig,
 }) => {
   const copy = useLocale().t.setupWizard;
   const remaining = countRemainingGaps(capabilities, optOuts);
@@ -41,7 +43,12 @@ const DoneStep: React.FC<DoneStepProps> = ({
       />
 
       <div className="mt-6">
-        <CapabilityChecklist capabilities={capabilities} optOuts={optOuts} showDetails />
+        <CapabilityChecklist
+          capabilities={capabilities}
+          optOuts={optOuts}
+          showDetails
+          onUseOwnConfig={onUseOwnConfig}
+        />
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-2">

@@ -67,6 +67,11 @@ class ArkImageResult(BaseModel):
     local_url: Optional[str] = Field(default=None, description="Local storage URL")
     width: int = Field(default=0, description="Image width in pixels")
     height: int = Field(default=0, description="Image height in pixels")
+    notes: List[str] = Field(
+        default_factory=list,
+        description="Remarks about this generation, e.g. the size was mapped to "
+        "one the SkillRouter gateway offers",
+    )
 
 
 class ArkImagePackFrame(BaseModel):

@@ -23,6 +23,8 @@ from app.models.tts_models import (
 )
 from app.models.voice_clone_models import AIAudioSynthesizeRequest
 from app.services.tts_service import tts_service
+from app.services.skillrouter.config import is_routed
+from app.services.skillrouter.tts_adapter import router_voice_types
 from app.services.batch_tts_service import (
     BatchTTSService, batch_response, failed_segment,
 )
@@ -216,7 +218,14 @@ async def get_voice_types(locale: str = "zh-CN") -> VoiceTypesResponse:
     try:
         logger.info("收到获取音色列表请求", {"locale": locale})
 
-        voice_types = tts_service.get_available_voice_types(locale=locale)
+        stale = False
+        if is_routed("tts"):
+            # 路由模式以中转站 limits.voices 为准，不可达时回退静态表并标记 stale。
+            voice_types, stale = await router_voice_types(
+                lambda: tts_service.get_available_voice_types(locale=locale)
+            )
+        else:
+            voice_types = tts_service.get_available_voice_types(locale=locale)
 
         logger.info(
             "获取音色列表成功",
@@ -229,6 +238,7 @@ async def get_voice_types(locale: str = "zh-CN") -> VoiceTypesResponse:
             if locale == "zh-CN"
             else "Voice types retrieved successfully",
             data=voice_types,
+            stale=stale,
         )
 
     except Exception as e:

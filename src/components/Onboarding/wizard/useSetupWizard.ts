@@ -1,15 +1,17 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import type { IntegrationId } from '@/lib/api/integrations';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { isGap, type CapabilityId, type CapabilityStatus } from '@/lib/api/setupStatus';
-import { notifySetupConfigUpdated } from '@/lib/setupEvents';
+import { notifySetupConfigUpdated, type SetupWizardFocus } from '@/lib/setupEvents';
 import { addOptOut, removeOptOut } from '@/lib/setupOptOut';
 import { groupOfIntegration } from './integrationGroups';
 import {
   deriveWizardSteps,
   selectableSlots,
+  type SourceChoice,
+  type SourceModeState,
   type WizardMode,
+  type WizardSourceOptions,
   type WizardStepId,
 } from './wizardSteps';
 import { useModelsStep } from './useModelsStep';
@@ -20,19 +22,43 @@ interface SetupWizardArgs {
   capabilities: CapabilityStatus[];
   optOuts: CapabilityId[];
   mode: WizardMode;
-  /** Manual re-runs from a "go configure" button: jump to this integration. */
-  focus?: IntegrationId;
+  /** Manual re-runs from a "go configure" button: jump to this step. */
+  focus?: SetupWizardFocus;
+  /**
+   * Saved capability source. Omitted = the pre-SkillRouter wizard (no source
+   * step), which is what a backend without the router endpoint gets.
+   */
+  sourceMode?: SourceModeState;
 }
 
-/** Where to start: the overview, or the group step holding `focus`. */
+/** Where to start: the overview, the router step, or the group step of `focus`. */
 function initialStepIndex(
   steps: readonly WizardStepId[],
   mode: WizardMode,
-  focus: IntegrationId | undefined,
+  focus: SetupWizardFocus | undefined,
 ): number {
   if (mode !== 'manual' || !focus) return 0;
-  const target = steps.indexOf(groupOfIntegration(focus));
+  const target = steps.indexOf(
+    focus === 'skillrouter' ? 'router' : groupOfIntegration(focus),
+  );
   return target >= 0 ? target : 0;
+}
+
+/** The card pre-selected on the source step: the saved source, else the router. */
+function initialChoice(
+  sourceMode: SourceModeState | undefined,
+  focus: SetupWizardFocus | undefined,
+): SourceChoice {
+  if (focus === 'skillrouter') return 'router';
+  return sourceMode === 'manual' ? 'manual' : 'router';
+}
+
+function sourceOptions(
+  sourceMode: SourceModeState | undefined,
+  choice: SourceChoice,
+  focus: SetupWizardFocus | undefined,
+): WizardSourceOptions | undefined {
+  return sourceMode ? { sourceMode, choice, focus } : undefined;
 }
 
 /**
@@ -71,12 +97,28 @@ function useLocalOptOuts(optOuts: CapabilityId[]) {
  * State for the whole wizard: step list, navigation, and one hook per
  * data-bearing step. No UI here — see the step components.
  */
-export function useSetupWizard({ capabilities, optOuts, mode, focus }: SetupWizardArgs) {
+export function useSetupWizard({
+  capabilities,
+  optOuts,
+  mode,
+  focus,
+  sourceMode,
+}: SetupWizardArgs) {
   const local = useLocalOptOuts(optOuts);
+  const [choice, setChoice] = useState<SourceChoice>(() =>
+    initialChoice(sourceMode, focus),
+  );
   // Frozen at open: a status refetch after the first write must not reshuffle
-  // the stepper while the user is mid-flow (skipOptional is the one exception).
+  // the stepper while the user is mid-flow (skipOptional and the source card
+  // are the exceptions: both are the user's own, immediate choice).
   const [steps, setSteps] = useState<WizardStepId[]>(() =>
-    deriveWizardSteps(capabilities, optOuts, mode),
+    deriveWizardSteps(
+      capabilities,
+      optOuts,
+      mode,
+      undefined,
+      sourceOptions(sourceMode, choice, focus),
+    ),
   );
   const [slots] = useState(() => selectableSlots(capabilities, optOuts, mode));
   const [stepIndex, setStepIndex] = useState(() => initialStepIndex(steps, mode, focus));
@@ -101,9 +143,34 @@ export function useSetupWizard({ capabilities, optOuts, mode, focus }: SetupWiza
       .filter((id) => !local.optOuts.includes(id));
     local.optOut(targets);
     const next = Array.from(new Set([...local.optOuts, ...targets]));
-    setSteps(deriveWizardSteps(capabilities, next, mode, false));
+    setSteps(
+      deriveWizardSteps(
+        capabilities,
+        next,
+        mode,
+        false,
+        sourceOptions(sourceMode, choice, focus),
+      ),
+    );
     setStepIndex(1);
-  }, [capabilities, local, mode]);
+  }, [capabilities, local, mode, sourceMode, choice, focus]);
+
+  /** Flip the source card: the stepper previews the branch it leads to. */
+  const selectChoice = useCallback(
+    (next: SourceChoice) => {
+      setChoice(next);
+      setSteps(
+        deriveWizardSteps(
+          capabilities,
+          local.optOuts,
+          mode,
+          undefined,
+          sourceOptions(sourceMode, next, focus),
+        ),
+      );
+    },
+    [capabilities, local.optOuts, mode, sourceMode, focus],
+  );
 
   const reportIntegrationDraft = useCallback((id: string, hasDraft: boolean) => {
     setDraftingIntegrations((current) => {
@@ -121,9 +188,16 @@ export function useSetupWizard({ capabilities, optOuts, mode, focus }: SetupWiza
     capabilities,
     onSaved: goNext,
   });
-  const search = useSearchStep(goNext);
+  // Saving the key on the "set up by hand" step must not leave that step: the
+  // user may still have the other two cards to go through.
+  const currentRef = useRef<WizardStepId | undefined>(undefined);
+  const onSearchDone = useCallback(() => {
+    if (currentRef.current !== 'manualOnly') goNext();
+  }, [goNext]);
+  const search = useSearchStep(onSearchDone);
 
   const current = steps[stepIndex];
+  currentRef.current = current;
   const hasDraft =
     provider.hasKeyDraft || search.hasDraft || draftingIntegrations.length > 0;
 
@@ -134,6 +208,9 @@ export function useSetupWizard({ capabilities, optOuts, mode, focus }: SetupWiza
     current,
     mode,
     focus,
+    sourceMode: sourceMode ?? 'manual',
+    choice,
+    selectChoice,
     optOuts: local.optOuts,
     optOut: local.optOut,
     reenable: local.reenable,

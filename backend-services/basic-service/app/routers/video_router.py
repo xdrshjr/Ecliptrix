@@ -3,6 +3,7 @@ Video-related API routes for the Basic Service application.
 """
 
 from fastapi import APIRouter, HTTPException, Request, status
+from app.services.skillrouter.errors import RouterError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -135,6 +136,10 @@ async def search_videos(request: VideoSearchRequest) -> VideoSearchResponse:
         # Re-raise HTTP exceptions as-is
         raise
         
+    except RouterError:
+        # 中转站错误交给应用级处理器（结构化错误码/Retry-After），不降级成通用 500。
+        raise
+
     except Exception as e:
         logger.error(f"Unexpected error during video search: {str(e)}", exc_info=True)
         raise HTTPException(

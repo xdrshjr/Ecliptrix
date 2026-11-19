@@ -18,6 +18,7 @@ from app.services.audio_transcription_service import audio_transcription_service
 from app.services.audio_search_service import AudioSearchService
 from app.logger import get_logger
 from app.services.credential_errors import require_configured
+from app.services.skillrouter.errors import RouterError
 
 # Initialize router and logger
 router = APIRouter(prefix="/audio", tags=["Audio Transcription", "Audio Search"])
@@ -528,6 +529,9 @@ async def search_audios(request: AudioSearchRequest) -> AudioSearchResponse:
         
     except HTTPException:
         # Re-raise HTTP exceptions as-is
+        raise
+    except RouterError:
+        # 中转站错误交给应用级处理器（结构化错误码/Retry-After），不降级成通用 500。
         raise
     except Exception as e:
         # Handle unexpected errors

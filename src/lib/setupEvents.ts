@@ -32,11 +32,18 @@ export function notifySetupConfigUpdated(): void {
  */
 export const OPEN_SETUP_WIZARD_EVENT = 'ecliptrix-open-setup-wizard';
 
+/**
+ * Where "go configure" lands: one manual integration's card, or the SkillRouter
+ * step (`skillrouter` is not an `IntegrationId`: the router has no wizard card
+ * group and no generic `/api/integrations` entry).
+ */
+export type SetupWizardFocus = IntegrationId | 'skillrouter';
+
 export interface OpenSetupWizardDetail {
-  focus?: IntegrationId;
+  focus?: SetupWizardFocus;
 }
 
-export function openSetupWizard(focus?: IntegrationId): void {
+export function openSetupWizard(focus?: SetupWizardFocus): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(
     new CustomEvent<OpenSetupWizardDetail>(OPEN_SETUP_WIZARD_EVENT, { detail: { focus } }),

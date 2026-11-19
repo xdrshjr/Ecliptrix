@@ -21,12 +21,22 @@ export interface CredentialLink {
   activationUrl?: string;
 }
 
-export type LinkTarget = IntegrationId | 'tavily';
+/**
+ * `skillrouter` is the relay's key page + docs; `skillrouter_register` is its
+ * sign-up page. Both are registry ids (not integrations), so the one renderer
+ * `GetCredentialLink` can show either without taking a URL.
+ */
+export type LinkTarget = IntegrationId | 'tavily' | 'skillrouter' | 'skillrouter_register';
 
 const VOLCANO_SPEECH_CONSOLE = 'https://console.volcengine.com/speech/app';
 const VOLCANO_SPEECH_DOCS = 'https://docs.volcengine.com/docs/6561';
 
 export const INTEGRATION_LINKS: Record<LinkTarget, CredentialLink> = {
+  skillrouter: {
+    consoleUrl: 'https://www.skillrouter.net/console/my-keys',
+    docsUrl: 'https://www.skillrouter.net/console/docs',
+  },
+  skillrouter_register: { consoleUrl: 'https://www.skillrouter.net/login' },
   tavily: {
     consoleUrl: 'https://app.tavily.com/home',
     docsUrl: 'https://docs.tavily.com/',
@@ -97,6 +107,7 @@ export const ALLOWED_LINK_HOSTS: readonly string[] = [
   'platform.claude.com',
   'aistudio.google.com',
   'www.kimi.com',
+  'www.skillrouter.net',
 ];
 
 /**

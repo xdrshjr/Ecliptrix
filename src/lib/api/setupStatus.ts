@@ -34,8 +34,43 @@ export type CapabilityState =
   | 'inherited'
   | 'missing'
   | 'invalid'
+  /** Served by the AI relay, but the relay reports the capability as off. */
+  | 'unavailable'
   | 'indeterminate';
-export type CapabilitySource = 'database' | 'environment' | 'inherited' | 'none';
+export type CapabilitySource = 'database' | 'environment' | 'inherited' | 'router' | 'none';
+
+const KNOWN_STATES: readonly CapabilityState[] = [
+  'ready',
+  'inherited',
+  'missing',
+  'invalid',
+  'unavailable',
+  'indeterminate',
+];
+const KNOWN_SOURCES: readonly CapabilitySource[] = [
+  'database',
+  'environment',
+  'inherited',
+  'router',
+  'none',
+];
+
+/**
+ * Forward compatibility (spec RV-05): a value this build does not know must
+ * not crash the UI or raise a gap. An unknown state degrades to
+ * `indeterminate` and an unknown source to `none` — both fail-open.
+ */
+function normalizeState(value: unknown): CapabilityState {
+  return KNOWN_STATES.includes(value as CapabilityState)
+    ? (value as CapabilityState)
+    : 'indeterminate';
+}
+
+function normalizeSource(value: unknown): CapabilitySource {
+  return KNOWN_SOURCES.includes(value as CapabilitySource)
+    ? (value as CapabilitySource)
+    : 'none';
+}
 
 export interface CapabilityStatus {
   id: CapabilityId;
@@ -77,15 +112,23 @@ export async function fetchCapabilityStatus(): Promise<CapabilityStatus[]> {
   return body.data.capabilities.map((item) => ({
     id: item.id,
     tier: item.tier,
-    state: item.state,
-    source: item.source ?? 'none',
+    state: normalizeState(item.state),
+    source: normalizeSource(item.source),
     providerName: item.provider_name ?? undefined,
     modelName: item.model_name ?? undefined,
     inheritedFrom: item.inherited_from ?? undefined,
   }));
 }
 
-/** A capability that still needs the user (missing / invalid). */
+/**
+ * A capability that still needs the user (missing / invalid / switched off at
+ * the relay). Any other value — including ones this build has never seen —
+ * is not a gap (fail-open).
+ */
 export function isGap(capability: CapabilityStatus): boolean {
-  return capability.state === 'missing' || capability.state === 'invalid';
+  return (
+    capability.state === 'missing' ||
+    capability.state === 'invalid' ||
+    capability.state === 'unavailable'
+  );
 }

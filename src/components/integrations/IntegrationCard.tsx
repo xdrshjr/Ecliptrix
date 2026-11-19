@@ -8,6 +8,8 @@ import type {
   ProbeOutcome,
 } from '@/lib/api/integrations';
 import Spinner from '@/components/Onboarding/wizard/Spinner';
+import RoutedNotice from '@/components/skillrouter/RoutedNotice';
+import { ROUTED_CAPABILITIES } from '@/lib/api/skillrouter';
 import {
   BUTTON_GHOST,
   BUTTON_PRIMARY,
@@ -94,6 +96,10 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
   const errorId = `integration-${integration.id}-error`;
   const outcomeId = `integration-${integration.id}-outcome`;
   const info = copy[integration.id];
+  // Only capabilities the relay can serve get the banner (and its status read).
+  const routedCapability = integration.capabilities.find((id) =>
+    (ROUTED_CAPABILITIES as readonly string[]).includes(id),
+  );
   const hasStored = integration.fields.some((field) => field.source === 'database');
   const loadFailed = integration.configurationWarning === 'integration_load_failed';
   const model = card.drafts.default_model ?? integration.fields.find((field) => field.name === 'default_model')?.value;
@@ -123,6 +129,8 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({
           </span>
         </div>
       )}
+
+      {routedCapability && <RoutedNotice capability={routedCapability} />}
 
       <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
         {info.pitfall}

@@ -12,6 +12,10 @@ CAPABILITY = "ark_video:contents/generations/tasks"
 
 @router.get("/models")
 async def get_video_models() -> dict:
+    from app.services.skillrouter.config import is_routed
+    if is_routed("ai_video"):
+        from app.services.skillrouter import video_adapter
+        return {"success": True, "data": await video_adapter.models_response()}
     return {"success": True, "data": video_models_response()}
 
 

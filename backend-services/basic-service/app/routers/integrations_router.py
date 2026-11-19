@@ -109,10 +109,23 @@ def _unknown(error: UnknownIntegrationError) -> JSONResponse:
                   {"integration_id": error.integration_id})
 
 
+def _internal_guard(integration_id: str) -> Optional[JSONResponse]:
+    """``internal`` integrations (skillrouter) own a dedicated API; answer 404
+    here so there is exactly one write channel for them."""
+    spec = get_spec(integration_id)
+    if spec is not None and spec.internal:
+        return _unknown(UnknownIntegrationError(integration_id))
+    return None
+
+
 @router.get("", response_model=IntegrationListResponse)
 async def list_integrations() -> IntegrationListResponse:
     """Public state of every integration (no secrets)."""
-    items = [to_public(integration_credentials.resolve(spec.id)) for spec in REGISTRY]
+    items = [
+        to_public(integration_credentials.resolve(spec.id))
+        for spec in REGISTRY
+        if not spec.internal
+    ]
     return IntegrationListResponse(success=True, data=IntegrationListData(
         integrations=items, load_failed=integration_credentials.load_failed,
     ))
@@ -123,6 +136,9 @@ async def save_integration(
     integration_id: str, body: IntegrationSaveRequest, request: Request
 ):
     """Validate and store a partial update; the new value is live immediately."""
+    internal = _internal_guard(integration_id)
+    if internal is not None:
+        return internal
     rejected = _check_origin(request)
     if rejected is not None:
         return rejected
@@ -146,6 +162,9 @@ async def save_integration(
 @router.delete("/{integration_id}", response_model=IntegrationResponse)
 async def clear_integration(integration_id: str, request: Request):
     """Remove the app-level value; the environment baseline applies again."""
+    internal = _internal_guard(integration_id)
+    if internal is not None:
+        return internal
     rejected = _check_origin(request)
     if rejected is not None:
         return rejected
@@ -165,6 +184,9 @@ async def clear_integration(integration_id: str, request: Request):
 async def test_integration(integration_id: str, request: Request):
     """Probe the saved credentials. ``success`` means the probe ran, not that
     the credentials are valid - read ``data.outcome`` for that."""
+    internal = _internal_guard(integration_id)
+    if internal is not None:
+        return internal
     rejected = _check_origin(request)
     if rejected is not None:
         return rejected

@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from app.logger import get_logger
 from app.models.video_models import VideoInfo, VideoSearchResponse
 from app.services.integration_credentials_service import credential_property
+from app.services.skillrouter.config import is_routed
 
 logger = get_logger(__name__)
 
@@ -184,6 +185,11 @@ class VideoSearchService:
             VideoSearchResponse: Search results
         """
         logger.info(f"Starting video search - Query: '{query}', Max: {max_videos}, Orientation: {orientation}")
+        
+        if is_routed("video_library"):
+            # 路由模式：失败抛 RouterError，绝不返回空结果伪装成功。
+            from app.services.skillrouter import search_adapter
+            return search_adapter.search_videos(query, max_videos, orientation)
         
         if not self.api_keys:
             error_message = "PEXELS API keys not configured"

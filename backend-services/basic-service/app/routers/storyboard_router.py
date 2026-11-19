@@ -18,6 +18,7 @@ from app.constants import LOCAL_OWNER_ID
 from app.database import get_db_session
 from app.logger import get_logger
 from app.services.credential_errors import require_configured
+from app.services.skillrouter.errors import RouterError
 from app.models.base_models import BaseResponse
 from app.models.storyboard_models import (
     GenerateScriptRequest,
@@ -117,6 +118,8 @@ async def generate_storyboard(
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
+    except RouterError:
+        raise  # structured gateway error -> main.py handler (IM-01)
     except Exception as e:
         logger.error(f"Failed to generate storyboard: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate storyboard: {str(e)}")
@@ -155,6 +158,8 @@ async def generate_storyboard_script(
     except ValueError as e:
         logger.warning(f"generate-script validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+    except RouterError:
+        raise  # structured gateway error -> main.py handler (IM-01)
     except Exception as e:
         logger.error(f"Failed to generate storyboard script: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate script: {e}")
@@ -186,6 +191,8 @@ async def revise_storyboard_script(
     except ValueError as e:
         logger.warning(f"revise-script validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+    except RouterError:
+        raise  # structured gateway error -> main.py handler (IM-01)
     except Exception as e:
         logger.error(f"Failed to revise storyboard script: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to revise script: {e}")
@@ -354,6 +361,8 @@ async def describe_frames(
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
+    except RouterError:
+        raise  # structured gateway error -> main.py handler (IM-01)
     except Exception as e:
         logger.error(f"Failed to generate descriptions for pack {request.pack_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate descriptions: {str(e)}")
@@ -388,6 +397,8 @@ async def batch_generate_videos(
         raise HTTPException(status_code=404, detail=f"Storyboard pack not found: {request.pack_id}")
     except HTTPException:
         raise
+    except RouterError:
+        raise  # structured gateway error -> main.py handler (IM-01)
     except Exception as e:
         from app.services.credential_errors import generation_error_response
         return generation_error_response(e, "ark_video:contents/generations/tasks")
