@@ -647,7 +647,7 @@ export class AgentEventRouter {
     // （字幕就是 `add_subtitle_clips`，spec §4.2 第 5 步 / RK-13）。
     return [
       'add_clip', 'trim_clip', 'delete_clip', 'move_clip', 'resize_clip',
-      'add_subtitle_clips',
+      'add_subtitle_clips', 'update_clip_effects',
     ].includes(op.type);
   }
 

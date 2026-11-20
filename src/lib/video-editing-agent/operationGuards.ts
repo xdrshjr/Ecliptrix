@@ -21,6 +21,11 @@ import type {
 } from '@/types';
 import type { TimelineOperation } from './types';
 import { subtitleStyleProblem } from './subtitleClips';
+import {
+  clipEffectsPayloadProblem,
+  findClipWithTrack,
+  isClipEffectsEligible,
+} from './clipEffectsOperation';
 
 export type { OperationRejectReason } from '@/types';
 
@@ -33,6 +38,7 @@ type AddClip = Extract<GuardedOperation, { type: 'add_clip' }>;
 type MoveClip = Extract<GuardedOperation, { type: 'move_clip' }>;
 type TrimClip = Extract<GuardedOperation, { type: 'trim_clip' }>;
 type ResizeClip = Extract<GuardedOperation, { type: 'resize_clip' }>;
+type UpdateClipEffects = Extract<GuardedOperation, { type: 'update_clip_effects' }>;
 
 const VALID: OperationValidation = { ok: true };
 
@@ -129,6 +135,26 @@ function validateResize(state: TimelineState, operation: ResizeClip): OperationV
 }
 
 /**
+ * 片段特效（运镜 / 转场）：目标片段必须存在、在视频轨上且是视频类片段；载荷必须
+ * 结构合法。**不新增拒绝原因码**：非视觉目标复用 `target-track-missing`（这条轨
+ * 不是可写的目标），载荷问题复用 `invalid-time`（UI 文案表无需改动）。
+ */
+function validateUpdateClipEffects(
+  state: TimelineState,
+  operation: UpdateClipEffects,
+): OperationValidation {
+  const { clipId } = operation;
+  const found = findClipWithTrack(state, clipId);
+  if (!found) return { ok: false, reason: 'clip-not-found', clipId };
+  if (clipEffectsPayloadProblem(operation) !== null) return invalidTime(clipId);
+  // 锁定轨由 findLockedTrackId 另行处理，这里只判轨道与片段类型。
+  const typeOk = isClipEffectsEligible({ ...found.track, isLocked: false }, found.item);
+  return typeOk
+    ? VALID
+    : { ok: false, reason: 'target-track-missing', trackId: found.track.id, clipId };
+}
+
+/**
  * 字幕批量载荷的边界防御（spec §6.4）。
  *
  * **必须显式加 case**：`validateOperationTargets` 的 `default` 分支返回 VALID，
@@ -191,6 +217,8 @@ export function validateOperationTargets(
       return validateResize(state, operation);
     case 'add_subtitle_clips':
       return validateAddSubtitleClips(state, operation);
+    case 'update_clip_effects':
+      return validateUpdateClipEffects(state, operation);
     default:
       return VALID;
   }
@@ -217,7 +245,8 @@ export function touchedTrackIds(
     case 'move_clip':
       return [operation.fromTrackId, operation.toTrackId];
     case 'trim_clip':
-    case 'resize_clip': {
+    case 'resize_clip':
+    case 'update_clip_effects': {
       const track = state.tracks.find(t =>
         t.items.some(i => i.id === operation.clipId),
       );

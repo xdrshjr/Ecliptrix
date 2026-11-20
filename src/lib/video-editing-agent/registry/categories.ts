@@ -1,14 +1,14 @@
 import type { ToolCategory } from './ToolRegistry';
 
 /**
- * Every tool category definition for the video editing agent (22 today:
- * 3 always-available + 19 on-demand).
+ * Every tool category definition for the video editing agent (23 today:
+ * 3 always-available + 20 on-demand).
  *
  * Categories are split into two groups:
  * - Always available: workflow_tools, query_tools and editing_tools — their
  *   tools are populated by createToolRegistry() in tools/index.ts at agent
  *   creation time.
- * - On-demand: the other 19 categories start with an empty tools array and are
+ * - On-demand: the other 20 categories start with an empty tools array and are
  *   populated via registry.registerToolsForCategory().
  *
  * The category IDs here are the canonical identifiers used by explore_tools
@@ -45,6 +45,8 @@ export const CATEGORY_IDS = {
   MATERIAL_TOOLS: 'material_tools',
   COVER_TOOLS: 'cover_tools',
   EFFECTS_TOOLS: 'effects_tools',
+  /** 按需：片段级参数型特效（运镜、淡入淡出/溶解），即时生效、零渲染。 */
+  CLIP_EFFECTS: 'clip_effects',
 } as const;
 
 export type CategoryId = (typeof CATEGORY_IDS)[keyof typeof CATEGORY_IDS];
@@ -55,6 +57,7 @@ export type CategoryId = (typeof CATEGORY_IDS)[keyof typeof CATEGORY_IDS];
  */
 export const ON_DEMAND_CATEGORY_IDS: CategoryId[] = [
   CATEGORY_IDS.EFFECTS_TOOLS,
+  CATEGORY_IDS.CLIP_EFFECTS,
   CATEGORY_IDS.WORKSPACE_TOOLS,
   CATEGORY_IDS.DOCUMENT_TOOLS,
   CATEGORY_IDS.ANALYSIS_TOOLS,
@@ -89,7 +92,7 @@ export const REVIEW_TOOLS = CATEGORY_IDS.REVIEW_TOOLS;
 // --- Category definitions (metadata only; tools[] populated later) ---
 
 /**
- * Returns all 22 category definitions with empty tools arrays.
+ * Returns all 23 category definitions with empty tools arrays.
  * Call this to seed the ToolRegistry, then populate tools via
  * registry.registerToolsForCategory() or by passing tools directly.
  */
@@ -98,9 +101,19 @@ export function createDefaultCategories(): ToolCategory[] {
     {
       id: CATEGORY_IDS.EFFECTS_TOOLS,
       name: '特效与动画',
-      description: 'Remotion FX.',
+      // 描述 ≤100 字节：L0 目录整体只有 2400 字节预算（systemPrompt.formatToolOverview），
+      // 超出的末尾类别会被静默截掉。用法流程在 CATEGORY_USAGE_HINTS，不在这里。
+      description: 'Rendered title/lower-third/counter/slideshow templates; render, then apply.',
       alwaysAvailable: false,
-      tools: [],
+      tools: [], // tools/index.ts: effectsCatalog/Draft/Job/Apply tools
+    },
+    {
+      id: CATEGORY_IDS.CLIP_EFFECTS,
+      name: '片段特效',
+      // 描述 ≤90 字节，紧邻 effects_tools：参数型（运镜/转场，即时）与渲染型（模板成片）互补。
+      description: 'Camera motion and fade/dissolve on placed clips; instant, no render.',
+      alwaysAvailable: false,
+      tools: [], // tools/index.ts: createClipEffectsTools
     },
     {
       id: CATEGORY_IDS.WORKFLOW_TOOLS,

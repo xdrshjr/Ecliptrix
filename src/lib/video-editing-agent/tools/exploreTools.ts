@@ -70,7 +70,10 @@ export function createExploreToolsTool(
       if (activation) {
         try {
           const loaded = activation.load(categoryId, params.tool_names);
+          // 流程说明随本次响应一起到达，而不是等后续轮次的 Layer B 回放；
+          // 800 字节上限，计入下面的 8000 字节整体截断。
           const result = { success: true, categoryId, ...loaded,
+            usage_hints: utf8Slice(getCategoryUsageHints(categoryId), 800),
             truncated_tools: [] as string[],
             tools: info.tools.map(tool => ({ name: tool.name,
               description: utf8Slice(tool.description, 180) })) };

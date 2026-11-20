@@ -39,6 +39,7 @@ import { computeTimelineEnd, diffTimelineTracks, revertTrackPatches } from './tr
 import { findLockedTrackId, touchedTrackIds, validateOperationTargets, type OperationValidation } from './operationGuards';
 import { createDefaultAgentTimelineState } from './defaultTimeline';
 import { applySubtitleClipsToState } from './subtitleClips';
+import { applyClipEffectsToState } from './clipEffectsOperation';
 import { scriptHash } from './editorContextPrompt';
 
 export type ScriptProjectState = Pick<VideoEditingTaskContent, 'scriptSegments' | 'aiVideoScriptSegments'>;
@@ -693,6 +694,9 @@ function applyOperationToState(
     case 'add_subtitle_clips':
       // 字幕的唯一实现（含建轨、upsert、totalDuration），不在这里再写一份。
       applySubtitleClipsToState(state, operation);
+      break;
+    case 'update_clip_effects':
+      applyClipEffectsToState(state, operation);
       break;
   }
 }

@@ -237,6 +237,19 @@ export interface AddSubtitleClipsOperation {
   clips: AgentSubtitleClipData[];
 }
 
+/**
+ * 片段级参数型特效（运镜 / 转场）的时间线操作。三个字段各自三态：
+ * 缺省 = 不改动，`null` = 清除，对象 = 写入。一次操作只改一个片段；多片段调用走
+ * 工具结果里的 `operations` 批次（整批校验、整批落地）。
+ */
+export interface UpdateClipEffectsOperation {
+  type: 'update_clip_effects';
+  clipId: string;
+  cameraMotion?: CameraMotion | null;
+  transitionIn?: ClipTransition | null;
+  transitionOut?: ClipTransition | null;
+}
+
 /** Why the client could not apply an agent timeline operation. */
 export type OperationRejectReason =
   | 'clip-not-found'
@@ -260,7 +273,8 @@ export type AgentTimelineOperation =
   | { type: 'delete_clip'; clipId: string; trackId: string }
   | { type: 'move_clip'; clipId: string; fromTrackId: string; toTrackId: string; newStartTime: number }
   | { type: 'resize_clip'; clipId: string; newDuration: number; clipEnd?: number }
-  | AddSubtitleClipsOperation;
+  | AddSubtitleClipsOperation
+  | UpdateClipEffectsOperation;
 
 export interface Conversation {
   id: string;

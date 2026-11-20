@@ -13,6 +13,8 @@ const ANIMATION_CLASS: Record<AgentTimelineOperation['type'], string> = {
   resize_clip: 'agent-clip-resized',
   // 字幕一次落一批条目：逐条闪一下没有信息量，反而会盖住刚写上去的文字。
   add_subtitle_clips: '',
+  // 只改属性、不改位置：没有可闪的几何变化，预览本身就会刷新。
+  update_clip_effects: '',
 };
 const ANIMATION_MS = 700;
 

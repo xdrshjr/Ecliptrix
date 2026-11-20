@@ -47,6 +47,7 @@ import type { TtsFailure } from '@/lib/ttsErrors';
 import { isStillGuardRejection } from './tools/stillGuard';
 import { isSubtitleGuardRejection } from './tools/subtitleGuard';
 import { applySubtitleClipsToState } from './subtitleClips';
+import { applyClipEffectsToState } from './clipEffectsOperation';
 
 export type { AgentStreamErrorCode } from './types';
 
@@ -772,6 +773,11 @@ function applyOperationLocally(
       // 与浏览器 OperationApplier 同一份纯函数（含建轨、upsert、
       // totalDuration），见 spec §6.3 / D-4。
       applySubtitleClipsToState(state, operation);
+      break;
+
+    case 'update_clip_effects':
+      // 与浏览器 OperationApplier 同一份纯函数。
+      applyClipEffectsToState(state, operation);
       break;
   }
 

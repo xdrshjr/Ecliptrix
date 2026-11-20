@@ -1,4 +1,4 @@
-import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage, AgentMaterialData, AgentSubtitleClipData, SubtitleStyle } from '@/types';
+import type { TimelineState, TimelineItem, Track, MaterialItem, ChatMessage, AgentMaterialData, AgentSubtitleClipData, SubtitleStyle, UpdateClipEffectsOperation } from '@/types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
 import type { AsyncTask } from '@/stores/slices/asyncTaskSlice';
 import type { TtsFailure } from '@/lib/ttsErrors';
@@ -249,7 +249,8 @@ export type TimelineOperation =
       /** 已由工具规范化，必填（D-3）。 */
       style: SubtitleStyle;
       clips: AgentSubtitleClipData[];
-    };
+    }
+  | UpdateClipEffectsOperation;
 
 // --- Material Operations ---
 

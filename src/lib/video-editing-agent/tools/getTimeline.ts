@@ -1,6 +1,6 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
-import type { ClipTransition, TimelineItem } from '@/types';
+import type { CameraMotion, ClipTransition, TimelineItem } from '@/types';
 import type { ToolContext } from '../types';
 import { ItemPlacementService } from '@/components/video/timeline/domain/services/ItemPlacementService';
 import { findMaterial, checkTrackDurationConstraint, describeOverlaps } from './index';
@@ -13,6 +13,11 @@ const SUBTITLE_TEXT_MAX_CHARS = 200;
 
 function describeTransition(transition: ClipTransition) {
   return { type: transition.type, duration: transition.duration };
+}
+
+/** Summary only: keyframes would bloat a 40-clip replay and are never model-editable. */
+function describeCameraMotion(motion: CameraMotion) {
+  return { presetId: motion.presetId, mode: motion.mode, intensity: motion.intensity };
 }
 
 /**
@@ -36,6 +41,7 @@ function describeClip(item: TimelineItem, materialName: string) {
     ...(item.audioDetached ? { audioDetached: true } : {}),
     ...(item.transitionIn ? { transitionIn: describeTransition(item.transitionIn) } : {}),
     ...(item.transitionOut ? { transitionOut: describeTransition(item.transitionOut) } : {}),
+    ...(item.cameraMotion ? { cameraMotion: describeCameraMotion(item.cameraMotion) } : {}),
     ...(item.opacity !== undefined && item.opacity !== 1 ? { opacity: item.opacity } : {}),
   };
 }
@@ -46,7 +52,7 @@ export function createGetTimelineTool(context: ToolContext): AgentTool<typeof pa
     label: 'Get Timeline',
     description:
       'Get the current timeline state including all tracks, clips, and their properties (IDs, timing, volume). Returns the clip and track IDs needed by other tools (trim_clip, delete_clip, move_clip, resize_clip, add_to_track). ' +
-      'Each track reports locked / muted / visible. Each clip reports kind (video, image, audio or subtitle), plus text (subtitles), audioDetached, transitionIn / transitionOut and opacity when set. ' +
+      'Each track reports locked / muted / visible. Each clip reports kind (video, image, audio or subtitle), plus text (subtitles), audioDetached, transitionIn / transitionOut, cameraMotion (presetId/mode/intensity) and opacity when set. ' +
       'overlapCheck marks overlaps auto_fix_overlaps cannot repair (subtitle or locked tracks) with autoFixable=false.',
     parameters,
 

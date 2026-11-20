@@ -40,6 +40,8 @@ export const UNDOABLE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'resize_clip',
   'compose_storyboard',
   'auto_fix_overlaps',
+  'set_camera_motion',
+  'set_clip_transition',
 ]);
 
 export type RevertResult =

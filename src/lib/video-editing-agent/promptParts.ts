@@ -246,6 +246,20 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
     'queued 只能回答“已开始制作，完成后会显示结果”，draft_ready 也不代表已经应用。' +
     'get_video_cover 的时间轴是本轮请求快照，不是实时编辑器。' +
     'update 不重新生图，apply 不重复生成；不要改用 generate_ai_image 制作封面。',
+  [CATEGORY_IDS.EFFECTS_TOOLS]:
+    'Rendered motion graphics (titles, lower-thirds, counters, slideshows), slow and billed in time. ' +
+    'Flow: list_effect_templates -> get_effect_template (ONE template) -> create_effect_draft -> ' +
+    'render_effect(requestId=new UUID) -> poll get_effect_job until succeeded -> [get_effect_target ->] apply_effect. ' +
+    'Only the first 4 tools load at once; then explore_tools(effects_tools, tool_names:' +
+    '[render_effect,get_effect_job,get_effect_target,apply_effect]). ' +
+    'Never say "generated" before succeeded; an unknown result is never retried blindly. ' +
+    'Set camera motion/transitions (clip_effects) AFTER apply_effect: a changed clip invalidates get_effect_target.',
+  [CATEGORY_IDS.CLIP_EFFECTS]:
+    'Instant, free, no render: set_camera_motion(clipIds<=12, presetId, intensity?, easing?) ' +
+    'and set_clip_transition(clipId, in?/out?: {type:fade|dissolve, duration} or null). ' +
+    'Works on clips you already placed on an unlocked video track (stills too); presetId none clears. ' +
+    'get_timeline echoes the result. Use effects_tools for rendered titles/animations, not for fades or pushes. ' +
+    'Do this after the cut is final: later resize/split re-bases the motion window.',
   [CATEGORY_IDS.SEARCH_TOOLS]:
     'Search tools query external APIs (Pexels, Unsplash, Freesound). ' +
     'Results are automatically added to the material library. ' +

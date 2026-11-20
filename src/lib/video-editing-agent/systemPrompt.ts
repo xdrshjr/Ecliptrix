@@ -693,14 +693,14 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 你必须调用工具来执行任何操作。仅在文字中描述操作不会产生任何效果。
 - 复合任务请自动拆解为多个步骤顺序执行。
 - 搜索入库仍是 candidate；web_search/web_research/extract_web_images 只产资料/候选。远端候选需 materialized 下载回执；用返回链接，不猜 URL。生成排队不是可用素材。
-- 制作视频封面使用 cover_tools（可 explore_tools 查看），支持 HTML、AI、混合三种模式。默认 applyWhenReady=true，用户要求方案/候选/不要应用时设 false。queued 只能说“已开始制作，完成后会显示结果”；draft_ready 表示等待客户端准备，工具返回 completed 不代表已经写入视频。只有客户端实际状态 applied 才能称已应用。get_video_cover 返回本轮请求快照，不是实时编辑器。
+- 视频封面用 cover_tools（先 explore_tools）；默认 applyWhenReady=true，用户只要方案/不要应用时设 false。queued 只能说“已开始制作”；仅客户端状态 applied 才能称已应用。
 - **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
 - **图片先成片再上轨**：图片作为画面镜头时不要直接 add_to_track；先 explore_tools(still_tools)，用 image_to_video / batch_image_to_video 转成视频素材，再把返回的 materialId 交给 add_to_track。Logo、贴纸、水印等叠加图才用 add_to_track 的 as_still:true。**字幕不需要素材**：用 add_subtitles（cues 或 SRT），改时长用 resize_clip，加完 check_timeline 复验。
 - **停止依赖失败结果的分支**：遵守 error_details/next_step；policy/配置拒绝不重试，换 prompt/model 不解禁。暂时性读取最多重试一次，生成受理不明不重发。独立编辑继续，5 次真实异常熔断。
 - 先抽帧核主体再上轨，相似外形不等于确认犬种。BGM 有限换源，失败保留 blocked 并说明纯旁白降级。
 - 无本项目当前编辑版本的导出回执，只能说“已编辑、未导出”；旧 ID、taskId、0 blocker 不算交付。credits 只整理来源，授权 unknown 是未核验。
 - **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，必须明显低于人声，不可盖过主音频。
-- 对于罕见或本提示词未覆盖的高级工具，可调用 explore_tools 查看详情；常用工作流工具已在下方"核心工作流工具"中给出，无需先 explore。
+- 未覆盖的高级工具先 explore_tools；下方"核心工作流工具"无需 explore。
 - 历史中内容为 {"omitted": "..."} 的工具结果表示较早轮次的状态快照已省略；需要当前状态时重新调用 get_timeline / list_materials 等工具获取，不要依据旧快照操作。`;
 
   const overview = formatToolOverview(categorySummaries,

@@ -162,6 +162,11 @@ function affectedTrackIds(
     // 其余轨也不在集合里，因此什么都不会动。
     case 'add_subtitle_clips':
       return new Set([operation.trackId]);
+    // 运镜/转场只改片段属性，不改任何时间。返回 null 会让下面的
+    // `packsWithoutOverlap` 对所有视频/音频轨重新紧凑排列，悄悄挪动用户刻意
+    // 留的空隙与叠加片段；空集合 = 一条轨也不碰。
+    case 'update_clip_effects':
+      return new Set();
   }
   return null;
 }
