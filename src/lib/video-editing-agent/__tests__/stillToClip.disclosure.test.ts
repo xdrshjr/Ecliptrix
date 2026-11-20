@@ -67,7 +67,7 @@ describe('still_tools category', () => {
 
 describe('L0 cost', () => {
   it('moves image_to_video out of the resident toolkit', () => {
-    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(18);
+    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(19);
     expect(CORE_TOOLKIT_TOOL_NAMES).not.toContain('image_to_video');
     expect(CORE_TOOLKIT_TOOL_NAMES).not.toContain('batch_image_to_video');
     expect(prompt).not.toContain('### image_to_video');

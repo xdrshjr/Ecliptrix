@@ -198,7 +198,7 @@ export function createDefaultCategories(): ToolCategory[] {
     {
       id: CATEGORY_IDS.SEARCH_TOOLS,
       name: '搜索获取',
-      description: 'Search external video/image/audio resources from Pexels, Unsplash, Freesound',
+      description: 'Search video/image/audio resources; materialize_video downloads selected video-library candidates.',
       alwaysAvailable: false,
       tools: [], // Populated by tools/index.ts (Task 03: search_video, search_image, search_audio)
     },

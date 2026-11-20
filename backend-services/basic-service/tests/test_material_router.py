@@ -23,6 +23,7 @@ Coverage:
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -49,7 +50,7 @@ def _make_row(
     row_id="00000000-0000-0000-0000-000000000001",
 ):
     """Build a duck-typed CachedMaterial row for the router contract."""
-    row = MagicMock()
+    row = SimpleNamespace(file_size=12345, width=640, height=360, duration=1.)
     row.id = row_id
     row.source = source
     row.source_id = source_id
@@ -69,6 +70,8 @@ def _patched_service(*, enqueue_result=None, lookup_row=None, local_url=None):
     )
     svc.lookup_async = AsyncMock(return_value=lookup_row)
     svc.local_url_for = MagicMock(return_value=local_url)
+    svc.validate_cached_video = AsyncMock(return_value={
+        'size': 12345, 'width': 640, 'height': 360, 'duration': 1., 'format': 'mp4'})
     return svc
 
 

@@ -3,7 +3,8 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import type { MaterialItem } from '@/types';
 import { toolFetch, parseToolResponse } from './apiHelper';
-import { CANDIDATE_NEXT_STEP } from './stillClip';
+import { VIDEO_CANDIDATE_NEXT_STEP } from './materializeVideo';
+import { storageKeyForMaterial } from './storageKey';
 
 const parameters = Type.Object({
   query: Type.String({ description: 'Search keywords (English or Chinese — Chinese auto-translated)' }),
@@ -56,6 +57,9 @@ interface VideoSearchResult {
   duration?: number;
   thumbnail?: string;
   video_url?: string;
+  candidate_ref?: string;
+  download_mode?: 'manual' | 'router';
+  config_revision?: string;
 }
 
 function mapVideoToMaterial(video: VideoSearchResult, query: string): MaterialItem | null {
@@ -80,6 +84,9 @@ function mapVideoToMaterial(video: VideoSearchResult, query: string): MaterialIt
       materialized: false,
       source: 'pexels',
       sourceId: String(video.id),
+      candidateRef: video.candidate_ref,
+      downloadMode: video.download_mode,
+      configRevision: video.config_revision,
     },
   };
 }
@@ -95,11 +102,12 @@ export function createSearchVideoTool(context: ToolContext): AgentTool<typeof pa
     label: 'Search Video',
     description:
       'Search the Pexels video library. Returns matching videos and automatically adds them to the material library. ' +
-      'Results are metadata-only candidates (size 0, no local bytes) until download_url writes them: check `materialized` before use. ' +
+      'Results are metadata-only candidates (size 0, no local bytes) until materialize_video downloads them through the configured video library: check `materialized` before use. ' +
       'Use list_materials or search_materials afterwards to see them, or add_to_track to place them on the timeline.',
     parameters,
 
     execute: async (toolCallId, params: Params) => {
+      const projectId = context.projectId;
       const count = Math.min(Math.max(params.count ?? 5, 1), 15);
 
       // Auto-translate Chinese keywords
@@ -169,10 +177,23 @@ export function createSearchVideoTool(context: ToolContext): AgentTool<typeof pa
           return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
         }
 
-        // Map to MaterialItem and record operation for client + push to context
-        const materials = filtered.map(v => mapVideoToMaterial(v, searchQuery)).filter((m): m is MaterialItem => m !== null);
-        context.recordOperation(toolCallId, { type: 'add_materials', materials });
-        // Also push to live context so subsequent tools in the same turn can see them
+        context.abortSignal?.throwIfAborted();
+        if (context.projectId !== projectId) {
+          const result = { success: false, error_code: 'video_project_changed',
+            message: 'The project changed while searching for videos.' };
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
+        }
+        const candidates = filtered.map(v => mapVideoToMaterial(v, searchQuery)).filter((m): m is MaterialItem => m !== null);
+        // Only new candidates are added, so undo cannot remove an older item.
+        const materials = candidates.map(candidate => {
+          const existing = context.materials.find(m => m.id === candidate.id);
+          if (!existing) return candidate;
+          if (existing.metadata?.materialized === true && storageKeyForMaterial(existing)) return existing;
+          existing.metadata = { ...existing.metadata, ...candidate.metadata };
+          return existing;
+        });
+        const added = materials.filter(m => !context.materials.some(existing => existing.id === m.id));
+        if (added.length) context.recordOperation(toolCallId, { type: 'add_materials', materials: added });
         for (const m of materials) {
           if (!context.materials.some(existing => existing.id === m.id)) {
             context.materials.push(m);
@@ -183,13 +204,15 @@ export function createSearchVideoTool(context: ToolContext): AgentTool<typeof pa
           success: true,
           materials: materials.map(m => ({ id: m.id, name: m.name, type: m.type,
             duration: m.duration, width: m.width, height: m.height, url: m.url,
-            availability: 'candidate', materialized: false })),
+            availability: m.metadata?.materialized === true ? 'ready' : 'candidate',
+            materialized: m.metadata?.materialized === true,
+            candidate_ref: m.metadata?.candidateRef })),
           total_found: materials.length,
           // False means at least one hit still has no bytes on disk.
-          materialized: false,
+          materialized: materials.every(m => m.metadata?.materialized === true),
           message: `Found ${materials.length} video(s) for '${searchQuery}'`,
           searchQuery,
-          next_step: CANDIDATE_NEXT_STEP,
+          next_step: VIDEO_CANDIDATE_NEXT_STEP,
         };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
 

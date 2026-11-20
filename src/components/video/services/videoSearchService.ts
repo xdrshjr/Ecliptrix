@@ -3,6 +3,7 @@ import { reportCredentialMissing } from '@/lib/credentialMissing';
 import { VideoEditingLogger } from '../utils';
 import { SearchOrientation } from '../types';
 import { http, ApiError } from '@/lib/api/http-client';
+import { normalizeStorageKey, relativeStorageKey } from '@/lib/video-editing-agent/tools/storageKey';
 
 /**
  * Video Search Service Interface
@@ -17,6 +18,7 @@ export interface VideoSearchService {
   
   validateSearchQuery(query: string): boolean;
   convertToMaterials(videos: VideoSearchResult[]): MaterialItem[];
+  materializeVideo(material: MaterialItem, signal: AbortSignal): Promise<MaterialItem>;
 }
 
 /**
@@ -31,6 +33,9 @@ export interface VideoSearchResult {
   duration?: number;
   thumbnail?: string;
   video_url?: string;
+  candidate_ref?: string;
+  download_mode?: 'manual' | 'router';
+  config_revision?: string;
 }
 
 /**
@@ -373,7 +378,10 @@ export class VideoSearchServiceImpl implements VideoSearchService {
           height: video.height,
           duration: typeof video.duration === 'number' ? video.duration : undefined,
           thumbnail: typeof video.thumbnail === 'string' ? video.thumbnail : undefined,
-          video_url: typeof video.video_url === 'string' ? video.video_url : undefined
+          video_url: typeof video.video_url === 'string' ? video.video_url : undefined,
+          candidate_ref: typeof video.candidate_ref === 'string' ? video.candidate_ref : undefined,
+          download_mode: video.download_mode === 'manual' || video.download_mode === 'router' ? video.download_mode : undefined,
+          config_revision: typeof video.config_revision === 'string' ? video.config_revision : undefined,
         });
       } else {
         this.logger.warn('视频数据验证失败', { 
@@ -436,7 +444,9 @@ export class VideoSearchServiceImpl implements VideoSearchService {
         url: video.video_url!, // 已经通过filter确保存在
         createdAt: new Date(),
         tags: ['PEXELS', '在线素材', video.author],
-        description: `来自PEXELS的视频素材，作者：${video.author}`
+        description: `来自PEXELS的视频素材，作者：${video.author}`,
+        metadata: { source: 'pexels', sourceId: String(video.id), candidate: true, materialized: false,
+          candidateRef: video.candidate_ref, downloadMode: video.download_mode, configRevision: video.config_revision },
       };
 
       this.logger.debug('单个视频转换完成', {
@@ -469,6 +479,34 @@ export class VideoSearchServiceImpl implements VideoSearchService {
 
     return materials;
   }
+
+  /** Only explicit selection may create a gateway asset; retries stay manual. */
+  async materializeVideo(material: MaterialItem, signal: AbortSignal): Promise<MaterialItem> {
+    signal.throwIfAborted();
+    const receipt = await http.post<{
+      success: boolean; material_id: string; source: string; source_id: string;
+      local_url: string; storage_key?: string; size: number; format?: string;
+      duration: number; width: number; height: number; download_mode?: string;
+    }>('/api/material/materialize-video', { material_id: material.id,
+      ...(typeof material.metadata?.candidateRef === 'string' ? { candidate_ref: material.metadata.candidateRef } : {}),
+    }, { signal, timeoutMs: 180_000, retries: 0 });
+    signal.throwIfAborted();
+    const storageKey = normalizeStorageKey(receipt.storage_key)
+      ?? (receipt.local_url?.startsWith('/api/storage/files/')
+        ? normalizeStorageKey(relativeStorageKey(receipt.local_url)) : undefined);
+    if (!receipt.success || receipt.material_id !== material.id || receipt.source !== 'pexels'
+      || String(receipt.source_id) !== material.id.slice(7) || !storageKey
+      || !receipt.local_url?.startsWith('/api/storage/') || !Number.isFinite(receipt.size) || receipt.size <= 0
+      || ![receipt.duration, receipt.width, receipt.height].every(value => Number.isFinite(value) && value > 0)) {
+      throw new Error('The video library did not return a usable local video.');
+    }
+    return { ...material, size: receipt.size, format: receipt.format || material.format,
+      duration: receipt.duration, width: receipt.width, height: receipt.height,
+      cacheUrl: receipt.local_url, storageKey, cacheStatus: 'ready', downloadProgress: 100,
+      metadata: { ...material.metadata, candidate: false, materialized: true,
+        ...(receipt.download_mode ? { downloadMode: receipt.download_mode } : {}) },
+    };
+  }
 }
 
 /**
@@ -478,4 +516,4 @@ export class VideoSearchServiceImpl implements VideoSearchService {
  */
 export const createVideoSearchService = (taskId: string): VideoSearchService => {
   return new VideoSearchServiceImpl(taskId);
-}; 
+};

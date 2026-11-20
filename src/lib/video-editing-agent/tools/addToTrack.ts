@@ -3,6 +3,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import { checkStillGuard } from './stillGuard';
 import { isMetadataOnlyMaterial, materialNotMaterializedFailure } from './stillClip';
+import { VIDEO_CANDIDATE_NEXT_STEP } from './materializeVideo';
 import { findMaterial, findTrack, getDefaultTrackForType, getTrackEndTime, generateClipId, materialTrackMismatchError, toolErrorResponse, checkTrackDurationConstraint, formatDurationWarning, runOverlapPostCheck, formatOverlapWarning, collectClipStarts, diffClipStarts, findClip, toAgentClipMaterial, POSITION_EPSILON } from './index';
 
 const parameters = Type.Object({
@@ -108,8 +109,14 @@ export function createAddToTrackTool(context: ToolContext): AgentTool<typeof par
       const editingCandidate = !!context.turnState.editingGoal
         && material.metadata?.candidate === true
         && material.metadata?.materialized !== true;
-      if (editingCandidate || (material.type === 'image' && isMetadataOnlyMaterial(material))) {
+      const videoCandidate = material.type === 'video' && /^pexels-\d+$/.test(material.id)
+        && isMetadataOnlyMaterial(material);
+      if (videoCandidate || editingCandidate || (material.type === 'image' && isMetadataOnlyMaterial(material))) {
         const failure = materialNotMaterializedFailure(material);
+        if (videoCandidate) {
+          failure.hint = VIDEO_CANDIDATE_NEXT_STEP;
+          failure.next_step = VIDEO_CANDIDATE_NEXT_STEP;
+        }
         return { content: [{ type: 'text', text: JSON.stringify(failure) }],
           details: failure };
       }

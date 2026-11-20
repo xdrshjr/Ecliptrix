@@ -39,6 +39,9 @@ class VideoInfo(BaseModel):
     thumbnail: str = Field(description="Video thumbnail URL")
     width: int = Field(description="Video width in pixels")
     height: int = Field(description="Video height in pixels")
+    candidate_ref: Optional[str] = None
+    download_mode: Optional[Literal['manual', 'router']] = None
+    config_revision: Optional[str] = None
     
     model_config = ConfigDict(
         json_schema_extra={

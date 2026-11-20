@@ -10,7 +10,9 @@ Fields the gateway does not provide are left at the model's neutral value
 returning an empty result would be rendered as "no results" and hide the
 outage. Only a failure AFTER the first page keeps the pages already fetched.
 Result ``source`` stays unsplash / pexels / freesound (cache-key compatible)
-and downloads still go straight to the upstream CDN, not through the gateway.
+and cache keys remain compatible. Video selections are materialized through
+video_library_service (gateway ingest in router mode); image/audio downloads
+retain their existing CDN workflow.
 """
 
 from __future__ import annotations

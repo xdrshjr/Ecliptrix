@@ -173,6 +173,12 @@ class VideoSearchService:
             return None
     
     def search_videos(self, query: str, max_videos: int = 20, orientation: str = "mixed") -> VideoSearchResponse:
+        from app.services.video_library_service import capture_config, get_video_library_service
+        config = capture_config()
+        result = self._search_videos(query, max_videos, orientation)
+        return get_video_library_service().register_results(result, config)
+
+    def _search_videos(self, query: str, max_videos: int = 20, orientation: str = "mixed") -> VideoSearchResponse:
         """
         Search for videos using PEXELS API.
         
@@ -292,4 +298,4 @@ class VideoSearchService:
             videos=video_results,
             total_found=len(video_results),
             query=query
-        ) 
+        )

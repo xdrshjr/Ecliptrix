@@ -12,6 +12,7 @@ That removes the CDN round-trip from the timeline preview hot path.
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.logger import get_logger
@@ -19,6 +20,34 @@ from app.services.material_download_service import get_material_download_service
 
 router = APIRouter(prefix="/material", tags=["Material"])
 logger = get_logger(__name__)
+
+
+class VideoMaterializeRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    material_id: str = Field(..., pattern=r'^pexels-[1-9][0-9]{0,17}$')
+    candidate_ref: Optional[str] = Field(default=None, max_length=128)
+
+
+@router.post('/materialize-video')
+async def materialize_video(request: VideoMaterializeRequest):
+    from app.services.video_library_service import get_video_library_service
+    from app.services.video_library_transfer import VideoTransferError
+    from app.services.skillrouter.errors import RouterError
+    try:
+        return await get_video_library_service().materialize(request.material_id, request.candidate_ref)
+    except VideoTransferError as error:
+        headers = {'Retry-After': str(error.retry_after)} if error.retry_after is not None else None
+        return JSONResponse(status_code=error.status_code, headers=headers, content={
+            'success': False, 'error_code': error.error_code, 'message': error.message,
+            'retryable': error.retryable,
+            'next_step': 'Resolve the reported issue or search again before explicitly retrying materialize_video.',
+        })
+    except RouterError as error:
+        headers = {'Retry-After': str(error.retry_after)} if error.retry_after is not None else None
+        return JSONResponse(status_code=error.response_status, headers=headers, content={
+            'success': False, 'error_code': error.error_code,
+            'message': 'The video gateway request failed.', **error.public_details(),
+        })
 
 
 class MaterialIngestItem(BaseModel):
@@ -41,6 +70,10 @@ class MaterialIngestResultEntry(BaseModel):
     # when status == "ready" and the cache file exists on disk. See
     # MaterialDownloadService.local_url_for for the derivation rule.
     local_url: Optional[str] = None
+    file_size: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    duration: Optional[float] = None
     # Backend cache failure message (e.g. ffmpeg stderr tail). Surfaced so the
     # frontend can show a retry tooltip without an extra round-trip.
     error_message: Optional[str] = None
@@ -97,6 +130,17 @@ async def ingest_materials(request: MaterialIngestRequest) -> MaterialIngestResp
                 )
                 if row is not None:
                     local_url = svc.local_url_for(row)
+                    if row.source == 'pexels' and row.status == 'ready':
+                        metadata = await svc.validate_cached_video(row)
+                        if metadata is None:
+                            local_url = None
+                            current_status = 'failed'
+                            local_path = None
+                            error_message = 'cached_video_invalid'
+                        else:
+                            row.file_size = metadata['size']
+                            row.width, row.height, row.duration = (
+                                metadata['width'], metadata['height'], metadata['duration'])
                     if (row.status or "") == "failed":
                         error_message = row.error_message
                     proxy_fields = _proxy_fields_from_row(row)
@@ -160,15 +204,28 @@ async def lookup_material(
         )
 
     local_url = svc.local_url_for(row)
+    response_status = row.status or ''
+    invalid_video = False
+    if row.source == 'pexels' and row.status == 'ready':
+        metadata = await svc.validate_cached_video(row)
+        if metadata is None:
+            local_url = None
+            response_status = 'failed'
+            invalid_video = True
+        else:
+            row.file_size = metadata['size']
+            row.width, row.height, row.duration = (
+                metadata['width'], metadata['height'], metadata['duration'])
     proxy_fields = _proxy_fields_from_row(row)
     return MaterialIngestResultEntry(
         source=row.source or "",
         source_id=row.source_id or "",
         material_id=str(row.id),
-        status=row.status or "",
-        local_path=row.local_path,
+        status=response_status,
+        local_path=None if invalid_video else row.local_path,
         local_url=local_url,
-        error_message=row.error_message if (row.status or "") == "failed" else None,
+        error_message='cached_video_invalid' if invalid_video else (
+            row.error_message if (row.status or "") == "failed" else None),
         **proxy_fields,
     )
 
@@ -180,6 +237,10 @@ def _proxy_fields_from_row(row) -> dict:
     (Pydantic serialises them out).
     """
     return {
+        'file_size': getattr(row, 'file_size', None),
+        'width': getattr(row, 'width', None),
+        'height': getattr(row, 'height', None),
+        'duration': getattr(row, 'duration', None),
         "proxy_status": getattr(row, "proxy_status", None) or None,
         "proxy_bytes_cached": int(getattr(row, "proxy_bytes_cached", 0) or 0) or None,
         "preview_proxy_status": getattr(row, "preview_proxy_status", None) or None,

@@ -55,7 +55,7 @@ Ecliptrix 现有 14 项能力：LLM 五个槽位（chat / fast / video_cut / vis
 - 不改中转站代码，不在 Ecliptrix 内实现中转站的管理后台。
 - 不做自动回退到手动 Key（见 §3.7：静默回退会造成计费与隐私混淆；改用「按能力单独选择来源」）。
 - 不把 `ar-` Key 暴露给渲染进程；不改变「业务表 `user_id = LOCAL_OWNER_ID`」「后端无鉴权」等既有不变量。
-- 不通过中转站 `ingest` 保存检索结果（检索结果的素材 CDN 链接由 Ecliptrix 沿用现有下载/缓存路径直接取，见 §4.6）。
+- Video-library selections now use gateway `ingest` in router mode (2026-11-20 fix); searches and automatic prefetch never create paid assets. Image/audio catalogue downloads retain the existing CDN workflow; see §4.6.
 
 ---
 
@@ -330,7 +330,7 @@ if skillrouter.is_routed("image_library"):
 - 同步/异步：现有三个服务是同步 `requests` 风格；适配器提供同步包装（`httpx.Client`），不改变调用方签名。
 - 分页聚合：现 API 的 `max_images/max_videos/max_audios`（如 60）大于中转站 `perPage` 上限（30/80/150）时，按 `nextCursor` 循环取页直至满额或 `hasMore=false`；**每页消耗 1 次检索额度**，设置硬上限 `MAX_PAGES=4`，防止刷额度。
 - 字段映射（缺失字段保持 `None`，不伪造）：`thumbUrl/previewUrl/downloadUrl/width/height/durationMs/color/description/tags/license/author{name,url}/pageUrl/waveformUrl`→ 对应 `ImageInfo/VideoInfo/AudioInfo`；`attribution` 写入各条的署名字段（Unsplash/Pexels 要求署名，UI 现有署名展示沿用）。
-- **素材下载不经中转站**：`downloadUrl/previewUrl` 是上游 CDN 公开 URL，Ecliptrix 现有“缓存素材”流程（`cached_materials/<source>/…`）继续直接下载，行为与手动模式一致；不调用中转站 `ingest`（它占并发槽、重复存储且 256 MiB 限制）。`source` 标签保持 `unsplash/pexels/freesound` 以保持缓存键兼容。
+- **Video-library download routing (2026-11-20)**: `search_video` returns a trusted candidate reference. Explicit `materialize_video` selection uses the sole `is_routed('video_library')` decision: manual mode consumes Pexels API file metadata, router mode submits `media/ingest` once and downloads its authenticated same-origin asset. Both validate bytes and update the existing `pexels-<id>` entry under `cached_materials/pexels/`. Ready files are reused; concurrent selections share work. Ingest receipts persist asset identity or an uncertain submission outcome so retries/restarts cannot blindly create another billable asset. Search and automatic routed prefetch never ingest. Image/audio CDN downloads and `unsplash/pexels/freesound` cache identities are preserved.
 - 过滤：Ecliptrix 的 `orientation`、`duration_min/max` 等映射到中转站字段（`orientation` 的取值集合以 `limits` 为准；不支持的值忽略并记日志，不报错）。
 - 错误：路由失败要抛出结构化 `RouterError`（不可返回 `None`，否则前端会渲染成“无搜索结果”——这是 `require_configured` 设计时已记录的陷阱）。
 

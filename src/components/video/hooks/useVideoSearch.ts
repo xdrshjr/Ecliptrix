@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { MaterialItem, MaterialType, ScriptSegment } from '@/types';
 import { UseVideoSearchReturn, SearchOrientation, VideoLibraryType, YoutubeVideoSearchResult, YoutubeDurationRange, YoutubeDurationPreset } from '../types';
 import { VideoEditingLogger } from '../utils';
@@ -26,6 +26,11 @@ export const useVideoSearch = (
 
   const videoSearchService = useMemo(() => createVideoSearchService(taskId), [taskId]);
   const youtubeVideoSearchService = useMemo(() => createYoutubeVideoSearchService(taskId), [taskId]);
+  const selectionDownloadRef = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    selectionDownloadRef.current?.abort();
+    selectionDownloadRef.current = null;
+  }, [taskId]);
 
   // 加载YouTube配置
   useEffect(() => {
@@ -242,6 +247,7 @@ export const useVideoSearch = (
   }, [logger, activeLibrary]);
 
   const closeSearchModal = useCallback(() => {
+    selectionDownloadRef.current?.abort();
     setIsModalOpen(false);
     setSearchQuery('');
     
@@ -407,7 +413,8 @@ export const useVideoSearch = (
     });
   }, [youtubeSelectedResults.size, logger]);
 
-  const handleAddSelectedVideos = useCallback(() => {
+  const handleAddSelectedVideos = useCallback(async () => {
+    if (selectionDownloadRef.current) return;
     if (activeLibrary === 'official') {
       const selectedVideos = searchResults.filter(video => selectedResults.has(video.id));
       
@@ -432,7 +439,27 @@ export const useVideoSearch = (
         return; // 验证失败，不继续添加
       }
 
-      const success = onAddMaterials(materials);
+      const controller = new AbortController();
+      selectionDownloadRef.current = controller;
+      setIsSearching(true);
+      const readyMaterials: MaterialItem[] = [];
+      try {
+        for (const material of materials) {
+          controller.signal.throwIfAborted();
+          readyMaterials.push(material.metadata?.downloadMode === 'manual' ? material
+            : await videoSearchService.materializeVideo(material, controller.signal));
+        }
+        controller.signal.throwIfAborted();
+      } catch (error) {
+        if (!controller.signal.aborted) showError(error instanceof Error ? error.message : t.videoSearch.networkError);
+        return;
+      } finally {
+        if (selectionDownloadRef.current === controller) {
+          selectionDownloadRef.current = null;
+          setIsSearching(false);
+        }
+      }
+      const success = onAddMaterials(readyMaterials);
 
       if (success) {
         logger.info('官方视频添加成功', {

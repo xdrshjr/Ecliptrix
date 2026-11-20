@@ -49,6 +49,7 @@ from app.services.composition.cover_contract import (
 from app.services.simple_queue_decorator import with_simple_queue
 from app.logger import get_logger
 from app.services.credential_errors import require_configured
+from app.services.video_library_transfer import VideoTransferError
 from app.utils import client_disconnect
 from typing import Union
 
@@ -115,20 +116,8 @@ async def search_videos(request: VideoSearchRequest) -> VideoSearchResponse:
         
         logger.info(f"Successfully found {len(result.videos)} videos for query: '{request.query}'")
 
-        # Pre-download every Pexels result so subsequent video composition can
-        # skip the slow synchronous download step. Fire-and-forget — failures
-        # here must not block search responses.
-        try:
-            material_svc = get_material_download_service()
-            for video in result.videos:
-                if video.video_url and video.id is not None:
-                    material_svc.enqueue_threadsafe(
-                        source="pexels",
-                        source_id=str(video.id),
-                        url=video.video_url,
-                    )
-        except Exception as enqueue_exc:
-            logger.warning(f"Failed to enqueue predownload for search results: {enqueue_exc}")
+        # Search returns trusted candidates. Explicit selection materializes
+        # them; automatically ingesting every gateway result would be billable.
 
         return result
         
@@ -136,6 +125,12 @@ async def search_videos(request: VideoSearchRequest) -> VideoSearchResponse:
         # Re-raise HTTP exceptions as-is
         raise
         
+    except VideoTransferError as error:
+        return JSONResponse(status_code=error.status_code, content={
+            'success': False, 'error_code': error.error_code, 'message': error.message,
+            'retryable': error.retryable,
+        })
+
     except RouterError:
         # 中转站错误交给应用级处理器（结构化错误码/Retry-After），不降级成通用 500。
         raise

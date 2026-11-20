@@ -131,6 +131,11 @@ export interface RemoteMaterialResult {
   local_path?: string | null;
   /** Same-origin URL the browser can play directly. */
   local_url?: string | null;
+  file_size?: number | null;
+  duration?: number | null;
+  width?: number | null;
+  height?: number | null;
+  storage_key?: string | null;
   error_message?: string | null;
   // Preview-proxy mirror fields, serialised by `material_router.py`
   // (`_proxy_fields_from_row`). Hydrating these on ingest/lookup lets a page

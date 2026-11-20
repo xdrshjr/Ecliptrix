@@ -158,6 +158,9 @@ class MaterialDownloadService:
         source_id: str,
         url: str,
     ) -> Dict[str, str]:
+        if source == 'pexels':
+            from app.services.video_library_service import get_video_library_service
+            return await get_video_library_service().enqueue(str(source_id))
         return await self._dispatch(self._enqueue_impl(source, source_id, url))
 
     async def _enqueue_impl(
@@ -336,6 +339,23 @@ class MaterialDownloadService:
         # have routed an unsourced enqueue.
         source = (row.source or "url").strip() or "url"
         return f"/api/storage/files/cached_materials/{source}/{file_name}"
+
+    async def validate_cached_video(self, row):
+        """A legacy ready flag is insufficient to expose a Pexels local file."""
+        from app.services.video_library_transfer import validate_video, VideoTransferError
+        if row is None or row.source != 'pexels' or row.status != 'ready' or not row.local_path:
+            return None
+        path = Path(row.local_path)
+        directory = self.cache_dir / 'pexels'
+        root = directory.resolve()
+        if directory.is_symlink() or not root.is_relative_to(self.cache_dir.resolve()):
+            return None
+        if not path.resolve().is_relative_to(root) or path.is_symlink():
+            return None
+        try:
+            return await validate_video(path)
+        except VideoTransferError:
+            return None
 
     def lookup_by_url(self, url: str) -> Optional[str]:
         """Sync helper for use inside ThreadPoolExecutor download workers.

@@ -20,7 +20,7 @@ import httpx
 from app.services.skillrouter import client as client_module
 from app.services.skillrouter.client import (
     TIMEOUT_ASSET, absolute_url, env_kwargs, is_same_origin, request_headers,
-    transport_error,
+    retry_after_seconds, transport_error,
 )
 from app.services.skillrouter.config import RouterSnapshot
 from app.services.skillrouter.errors import RouterError
@@ -86,9 +86,11 @@ async def _stream_to(snapshot: RouterSnapshot, url: str, part: Path, max_bytes: 
 
 async def _write_body(response: httpx.Response, part: Path, max_bytes: int) -> int:
     if response.status_code != 200:
-        code = "authentication_error" if response.status_code == 401 else (
-            "not_found" if response.status_code == 404 else "upstream_unavailable")
-        raise RouterError(code, response.status_code, "Asset download failed.")
+        code = {401: "authentication_error", 404: "not_found",
+                429: "upstream_rate_limited"}.get(
+                    response.status_code, "upstream_unavailable")
+        raise RouterError(code, response.status_code, "Asset download failed.",
+                          retry_after=retry_after_seconds(response))
     expected: Optional[int] = None
     header = response.headers.get("content-length", "")
     if header.isdigit():

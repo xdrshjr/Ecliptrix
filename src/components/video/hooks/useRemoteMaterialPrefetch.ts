@@ -42,6 +42,7 @@ import type { PreviewProxyStatus } from '../timeline/infrastructure/MediaProxyCl
 import { isPreviewProxyEnabled } from '@/lib/playbackFlags';
 import { materialCompositeKey } from '../lib/materialKey';
 import { canPreviewDirectLocalMaterial } from '../lib/localMaterial';
+import { normalizeStorageKey, relativeStorageKey } from '@/lib/video-editing-agent/tools/storageKey';
 
 // ---------------------------------------------------------------------------
 // Phase-3 heuristics (spec §3.2.1 H1/H2/H3) + v2 eligibility convergence
@@ -105,8 +106,16 @@ function _previewProxySourceUrl(material: MaterialItem): string | undefined {
   return material.cacheUrl || material.serverUrl || material.url || undefined;
 }
 
+function isPexelsVideo(material: MaterialItem): boolean {
+  return material.type === 'video'
+    && (material.metadata?.source === 'pexels' || /^pexels-\d+$/.test(material.id));
+}
+
 function _previewProxyEligible(material: MaterialItem): boolean {
   if (material.type !== 'video') return false;
+  if (isPexelsVideo(material)
+    && material.metadata?.materialized !== true
+    && (material.metadata?.candidate === true || material.size === 0)) return false;
   if (canPreviewDirectLocalMaterial(material)) return false;
   const status = material.previewProxyStatus;
   if (status === 'cached' || status === 'queued' || status === 'running') return false;
@@ -204,7 +213,8 @@ export interface UseRemoteMaterialPrefetchOptions {
 export type RemoteMaterialPatch = Partial<
   Pick<
     MaterialItem,
-    'cacheStatus' | 'cacheUrl' | 'cacheError' | 'downloadProgress'
+    'cacheStatus' | 'cacheUrl' | 'cacheError' | 'downloadProgress' | 'size' | 'duration'
+    | 'width' | 'height' | 'storageKey' | 'metadata'
   >
 >;
 
@@ -239,6 +249,10 @@ function keyFor(material: MaterialItem): RemoteMaterialKey {
 
 function shouldPrefetch(material: MaterialItem, isRemote: (u: string) => boolean): boolean {
   if (canPreviewDirectLocalMaterial(material)) return false;
+  // Rendering routed candidates must never create paid gateway assets.
+  // Legacy candidates require explicit selection because their mode is unknown.
+  if (isPexelsVideo(material)
+    && material.metadata?.downloadMode !== 'manual') return false;
   if (material.type !== 'video' && material.type !== 'audio') return false;
   if (!material.url) return false;
   // Already finished / in-flight on a previous render — skip.
@@ -347,6 +361,7 @@ export function useRemoteMaterialPrefetch(
       });
 
       const handleProgress = (r: RemoteMaterialResult) => {
+        if (ctrl.signal.aborted) return;
         const targetId = keyToMaterialIdRef.current.get(dedupKey) ?? material.id;
         const nextStatus = statusToCacheStatus(r.status);
         const patch: RemoteMaterialPatch = {
@@ -354,6 +369,21 @@ export function useRemoteMaterialPrefetch(
           downloadProgress: progressFor(r.status),
         };
         if (r.local_url) patch.cacheUrl = r.local_url;
+        if (r.source === 'pexels' && nextStatus === 'ready' && r.local_url
+          && typeof r.file_size === 'number' && r.file_size > 0) {
+          const storageKey = normalizeStorageKey(r.storage_key ?? undefined)
+            ?? (r.local_url.startsWith('/api/storage/files/')
+              ? normalizeStorageKey(relativeStorageKey(r.local_url)) : undefined);
+          if (storageKey) {
+            patch.size = r.file_size;
+            patch.storageKey = storageKey;
+            patch.metadata = { ...material.metadata, candidate: false, materialized: true };
+            for (const field of ['duration', 'width', 'height'] as const) {
+              const value = r[field];
+              if (typeof value === 'number' && Number.isFinite(value) && value > 0) patch[field] = value;
+            }
+          }
+        }
         if (nextStatus === 'failed') {
           patch.cacheError = r.error_message ?? 'cache failed';
         }
@@ -374,6 +404,7 @@ export function useRemoteMaterialPrefetch(
           handleProgress(r);
         })
         .catch((err: unknown) => {
+          if (ctrl.signal.aborted) return;
           // Aborted (unmount) or network failure: surface as cacheError so
           // the UI can show retry. Don't crash on AbortError.
           const targetId = keyToMaterialIdRef.current.get(dedupKey) ?? material.id;

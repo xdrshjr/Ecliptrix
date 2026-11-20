@@ -20,6 +20,7 @@ import { createMoveClipTool } from './moveClip';
 import { createResizeClipTool } from './resizeClip';
 import { createExploreToolsTool } from './exploreTools';
 import { createSearchVideoTool } from './searchVideo';
+import { createMaterializeVideoTool } from './materializeVideo';
 import { createSearchImageTool } from './searchImage';
 import { createSearchAudioTool } from './searchAudio';
 import { createAddMaterialToLibraryTool } from './addMaterialToLibrary';
@@ -431,6 +432,7 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
   // Populate search_tools category
   registry.registerToolsForCategory(CATEGORY_IDS.SEARCH_TOOLS, [
     createSearchVideoTool(context),
+    createMaterializeVideoTool(context),
     createSearchImageTool(context),
     createSearchAudioTool(context),
   ]);

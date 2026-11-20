@@ -1,0 +1,213 @@
+{
+  "description": "Post-fix offline verification; vendor HTTP uses fixtures.",
+  "real_media_fixture": {
+    "size": 1704,
+    "format": "mp4",
+    "duration": 0.5,
+    "width": 32,
+    "height": 48
+  },
+  "observations": [
+    {
+      "case": "search-manual",
+      "requests": [
+        {
+          "method": "GET",
+          "url": "https://api.pexels.com/videos/search",
+          "pexels_authentication_present": true
+        }
+      ],
+      "video_url": "https://videos.pexels.com/video-files/10814082/10814082-hd_720_1280_25fps.mp4",
+      "trusted_candidate_issued": true
+    },
+    {
+      "case": "search-router",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/media/search/videos",
+          "gateway_authentication_present": true
+        }
+      ],
+      "video_url": "https://videos.pexels.com/video-files/10814082/10814082-hd_720_1280_25fps.mp4",
+      "trusted_candidate_issued": true
+    },
+    {
+      "case": "general-web-policy-manual",
+      "expected_preserved_policy": true,
+      "errors": [
+        {
+          "error_code": "robots_disallowed",
+          "robots_scope": "origin",
+          "robots_origin": "https://videos.pexels.com",
+          "robots_failure_stage": "http",
+          "upstream_status": 403,
+          "robots_cache_hit": false,
+          "layer": "robots"
+        },
+        {
+          "error_code": "robots_disallowed",
+          "robots_scope": "origin",
+          "robots_origin": "https://videos.pexels.com",
+          "robots_failure_stage": "http",
+          "upstream_status": 403,
+          "robots_cache_hit": true,
+          "layer": "robots"
+        }
+      ],
+      "requests": [
+        "https://videos.pexels.com/robots.txt"
+      ],
+      "video_byte_requests": 0,
+      "commits": 0,
+      "fixture_file_control_http_status": 200
+    },
+    {
+      "case": "general-web-policy-router",
+      "expected_preserved_policy": true,
+      "errors": [
+        {
+          "error_code": "robots_disallowed",
+          "robots_scope": "origin",
+          "robots_origin": "https://videos.pexels.com",
+          "robots_failure_stage": "http",
+          "upstream_status": 403,
+          "robots_cache_hit": false,
+          "layer": "robots"
+        },
+        {
+          "error_code": "robots_disallowed",
+          "robots_scope": "origin",
+          "robots_origin": "https://videos.pexels.com",
+          "robots_failure_stage": "http",
+          "upstream_status": 403,
+          "robots_cache_hit": true,
+          "layer": "robots"
+        }
+      ],
+      "requests": [
+        "https://videos.pexels.com/robots.txt"
+      ],
+      "video_byte_requests": 0,
+      "commits": 0,
+      "fixture_file_control_http_status": 200
+    },
+    {
+      "case": "provider-materialization-manual",
+      "search_requests": [
+        {
+          "method": "GET",
+          "url": "https://api.pexels.com/videos/search",
+          "pexels_authentication_present": true
+        },
+        {
+          "method": "GET",
+          "url": "https://api.pexels.com/videos/search",
+          "pexels_authentication_present": true
+        }
+      ],
+      "cdn_requests": [
+        {
+          "url": "https://videos.pexels.com/video-files/10814082/10814082-hd_720_1280_25fps.mp4",
+          "authorization_present": false
+        }
+      ],
+      "gateway_requests": [],
+      "receipt": {
+        "success": true,
+        "material_id": "pexels-10814082",
+        "source": "pexels",
+        "source_id": "10814082",
+        "local_url": "/api/storage/files/cached_materials/pexels/10814082.mp4",
+        "storage_key": "cached_materials/pexels/10814082.mp4",
+        "download_mode": "manual",
+        "size": 1704,
+        "format": "mp4",
+        "duration": 0.5,
+        "width": 32,
+        "height": 48
+      },
+      "cache_status": "ready",
+      "cache_file_size": 1704,
+      "renewed_candidate_ref_unchanged": true,
+      "second_download_reused_cache": true,
+      "robots_requests": 0,
+      "paid_ingest_posts": 0,
+      "authenticated_asset_gets": 0,
+      "durable_asset_receipt_saved": false,
+      "local_reference_saved_and_reloaded": true,
+      "real_ffmpeg_local_export": {
+        "size": 1704,
+        "format": "mp4",
+        "duration": 0.5,
+        "width": 32,
+        "height": 48
+      }
+    },
+    {
+      "case": "provider-materialization-router",
+      "search_requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/media/search/videos",
+          "gateway_authentication_present": true
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/media/search/videos",
+          "gateway_authentication_present": true
+        }
+      ],
+      "cdn_requests": [],
+      "gateway_requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/media/ingest",
+          "gateway_authentication_present": true
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/media/assets/offline-asset-1",
+          "gateway_authentication_present": true
+        }
+      ],
+      "receipt": {
+        "success": true,
+        "material_id": "pexels-10814082",
+        "source": "pexels",
+        "source_id": "10814082",
+        "local_url": "/api/storage/files/cached_materials/pexels/10814082.mp4",
+        "storage_key": "cached_materials/pexels/10814082.mp4",
+        "download_mode": "router",
+        "size": 1704,
+        "format": "mp4",
+        "duration": 0.5,
+        "width": 32,
+        "height": 48
+      },
+      "cache_status": "ready",
+      "cache_file_size": 1704,
+      "renewed_candidate_ref_unchanged": true,
+      "second_download_reused_cache": true,
+      "robots_requests": 0,
+      "paid_ingest_posts": 1,
+      "authenticated_asset_gets": 1,
+      "durable_asset_receipt_saved": true,
+      "local_reference_saved_and_reloaded": true,
+      "real_ffmpeg_local_export": {
+        "size": 1704,
+        "format": "mp4",
+        "duration": 0.5,
+        "width": 32,
+        "height": 48
+      }
+    }
+  ],
+  "limitations": [
+    "No live vendor request, saved user credential, or application database was used.",
+    "General-web robots refusals are expected preserved policy.",
+    "Saved local receipt and FFmpeg copy export are filesystem/codec smoke checks.",
+    "Packaged desktop UI, editor project save/reopen and full timeline export were not exercised.",
+    "Temporary media and the in-memory cache database are removed after the run."
+  ]
+}

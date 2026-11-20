@@ -19,7 +19,7 @@ function makeMaterial(over: Partial<MaterialItem> = {}): MaterialItem {
     size: 1234,
     url: 'https://videos.pexels.com/v.mp4',
     createdAt: new Date(),
-    metadata: { source: 'pexels', id: '12345' },
+    metadata: { source: 'pexels', id: '12345', downloadMode: 'manual' },
     ...over,
   } as MaterialItem;
 }
@@ -52,6 +52,30 @@ function makeAdapter(
 }
 
 describe('useRemoteMaterialPrefetch', () => {
+  it('hydrates actual local bytes and candidate flags after manual library download', async () => {
+    const local = '/api/storage/files/cached_materials/pexels/12345.mp4';
+    const adapter = makeAdapter({ source: 'pexels', source_id: '12345', material_id: 'uuid',
+      status: 'ready', local_url: local, file_size: 4096, duration: 12, width: 720, height: 1280 });
+    const onPatch = vi.fn();
+    renderHook(() => useRemoteMaterialPrefetch([makeMaterial({ size: 0,
+      metadata: { source: 'pexels', sourceId: '12345', downloadMode: 'manual', candidate: true,
+        materialized: false, linkedSegmentId: 'segment-1' } })], onPatch, { adapter }));
+    await waitFor(() => expect(onPatch).toHaveBeenCalledWith('m1', expect.objectContaining({
+      size: 4096, cacheUrl: local, storageKey: 'cached_materials/pexels/12345.mp4', duration: 12,
+      width: 720, height: 1280, metadata: expect.objectContaining({ candidate: false,
+        materialized: true, linkedSegmentId: 'segment-1' }),
+    })));
+  });
+  it.each(['router', undefined])('does not automatically download Pexels candidates in %s mode', (mode) => {
+    const adapter = makeAdapter({ source: 'pexels', source_id: '12345', material_id: '', status: 'pending' });
+    const spy = vi.spyOn(adapter, 'pollUntilReady');
+    const onPatch = vi.fn();
+    renderHook(() => useRemoteMaterialPrefetch([makeMaterial({ size: 0,
+      metadata: { source: 'pexels', sourceId: '12345', candidate: true, downloadMode: mode } })], onPatch, { adapter }));
+    expect(spy).not.toHaveBeenCalled();
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
   it('skips when material has no URL', () => {
     const adapter = makeAdapter({
       source: 'pexels',
@@ -221,7 +245,7 @@ describe('useRemoteMaterialPrefetch', () => {
     const onPatch = vi.fn();
     renderHook(() =>
       useRemoteMaterialPrefetch(
-        [makeMaterial({ metadata: { source: 'pexels', sourceId: '98765' } })],
+        [makeMaterial({ metadata: { source: 'pexels', sourceId: '98765', downloadMode: 'manual' } })],
         onPatch,
         { adapter },
       ),

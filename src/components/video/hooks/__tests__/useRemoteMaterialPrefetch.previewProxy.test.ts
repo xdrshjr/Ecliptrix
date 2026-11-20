@@ -61,6 +61,15 @@ afterEach(() => {
 });
 
 describe('useRemoteMaterialPrefetch — preview-proxy branch', () => {
+  it('does not transcode an unmaterialized Pexels candidate with a stale cache URL', async () => {
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    renderHook(() => useRemoteMaterialPrefetch([makeMaterial({ id: 'pexels-123', size: 0,
+      cacheUrl: '/api/storage/files/cached_materials/pexels/stale.mp4', bytes: 100 * 1024 * 1024,
+      metadata: { source: 'pexels', candidate: true, materialized: false, downloadMode: 'router' } })], () => {},
+    { mediaProxyClient: client, onPatchPreviewProxy: vi.fn(), timelineReferencedMaterialIds: new Set(['pexels-123']) }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(requestSpy).not.toHaveBeenCalled();
+  });
   it('does not call requestPreviewProxy when timelineReferencedMaterialIds is unset', async () => {
     const onPatchPP = vi.fn();
     const requestSpy = vi.spyOn(client, 'requestPreviewProxy');

@@ -152,6 +152,7 @@ export const CORE_TOOLKIT_TOOL_NAMES: readonly string[] = [
   'use_skill', // workflow_tools - load a skill's procedure; resident for the same reason as update_plan
   // search_tools
   'search_video',
+  'materialize_video',
   'search_image',
   'search_audio',
   // ai_gen_tools
@@ -248,7 +249,7 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
   [CATEGORY_IDS.SEARCH_TOOLS]:
     'Search tools query external APIs (Pexels, Unsplash, Freesound). ' +
     'Results are automatically added to the material library. ' +
-    'Videos and audio can go straight to add_to_track; IMAGES are stills and must be turned into video first ' +
+    'Video candidates require materialize_video before review or add_to_track; downloaded audio can use add_to_track. IMAGES are stills and must be turned into video first ' +
     '(explore_tools still_tools -> image_to_video) unless they are logo/sticker overlays.\n' +
     'Tip: English keywords yield better results; Chinese queries are auto-translated.',
   [CATEGORY_IDS.AI_GEN_TOOLS]:
