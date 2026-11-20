@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_models import ProjectCoverAsset, VideoProject
+from app.logger import get_logger
 from app.models.video_cover_v2_models import CoverError
 from app.services.storage_service import storage_service
 
@@ -359,6 +360,8 @@ def cleanup_project_files(project_id: str | UUID) -> None:
 
 
 async def recover_storage(db: AsyncSession) -> None:
+    from app.services.project_thumbnail_service import recover_project_thumbnails
+
     root = Path(storage_service.root).resolve() / "projects"
     if not root.exists():
         return
@@ -371,6 +374,12 @@ async def recover_storage(db: AsyncSession) -> None:
             key = project_key(path.name)
         except ValueError:
             continue
+        try:
+            await run_blocking(recover_project_thumbnails, key, key in projects)
+        except (OSError, ValueError):
+            get_logger(__name__).warning(
+                "启动时项目缩略图清理失败", {"project_id": key}
+            )
         if key not in projects:
             cleanup_project_files(key)
         else:

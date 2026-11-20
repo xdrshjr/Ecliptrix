@@ -7,15 +7,20 @@ it from the request. Request bodies **MUST NOT** contain ``user_id``
 (Pydantic models in ``app.models.video_project_models`` enforce that).
 """
 
+import asyncio
 from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import LOCAL_OWNER_ID
 from app.database import get_db_session
 from app.logger import get_logger
-from app.models import BaseResponse
+from app.models import BaseResponse, ErrorResponse
+from app.services.project_thumbnail_media import ProjectThumbnailError, settle_tasks
+from app.services.project_thumbnail_service import project_thumbnail_service
 from app.models.video_project_models import (
     CreateVideoProjectCategoryRequest,
     CreateVideoProjectRequest,
@@ -33,6 +38,44 @@ from app.services.video_project_service import video_project_service
 
 router = APIRouter(prefix="/video-projects", tags=["video-projects"])
 logger = get_logger(__name__)
+
+
+async def _watch_thumbnail_disconnect(request: Request, work: asyncio.Task) -> None:
+    while not work.done():
+        if await request.is_disconnected():
+            work.cancel()
+            return
+        await asyncio.sleep(0.2)
+
+
+@router.get("/{project_id}/thumbnail")
+async def get_project_thumbnail(
+    project_id: UUID, request: Request,
+    v: Optional[str] = Query(None, max_length=128),
+    retry: int = Query(0, ge=0, le=1),
+) -> Response:
+    work = asyncio.create_task(project_thumbnail_service.get_thumbnail(project_id, LOCAL_OWNER_ID))
+    watcher = asyncio.create_task(_watch_thumbnail_disconnect(request, work))
+    try:
+        data = await work
+        return Response(data, media_type="image/jpeg", headers={
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        })
+    except ProjectThumbnailError as exc:
+        error = ErrorResponse(success=False, message=str(exc), error_code=exc.code,
+                              error_details={"project_id": str(project_id)})
+        return JSONResponse(error.model_dump(mode="json"), status_code=exc.status,
+                            headers={"Cache-Control": "no-store"})
+    finally:
+        for task in (work, watcher):
+            if not task.done():
+                task.cancel()
+        cleanup = asyncio.create_task(settle_tasks(work, watcher))
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            await settle_tasks(cleanup)
+            raise
 
 
 # ---------------------------------------------------------------------------

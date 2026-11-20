@@ -4,22 +4,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { VideoProjectListItem } from '@/types';
 import { formatRelativeTime } from '@/lib/relativeTime';
+import ProjectThumbnail from './ProjectThumbnail';
 
 interface ProjectCardProps {
   project: VideoProjectListItem;
   onOpen: () => void;
   onRename: () => void;
   onDelete: () => void;
-}
-
-function gradientFromId(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) {
-    h = (h * 31 + id.charCodeAt(i)) & 0x7fffffff;
-  }
-  const hue1 = h % 360;
-  const hue2 = (hue1 + 60) % 360;
-  return `linear-gradient(135deg, hsl(${hue1} 60% 55%) 0%, hsl(${hue2} 60% 45%) 100%)`;
 }
 
 const ProjectCard: React.FC<ProjectCardProps> = ({
@@ -65,10 +56,6 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
     }
   };
 
-  const cover = project.cover_url
-    ? { backgroundImage: `url(${project.cover_url})` }
-    : { backgroundImage: gradientFromId(project.id) };
-
   return (
     <div
       onClick={onOpen}
@@ -78,15 +65,13 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
     >
       <div
         className="aspect-video bg-cover bg-center relative rounded-t-[5px] overflow-hidden"
-        style={cover}
       >
-        {!project.cover_url && (
-          <div className="absolute inset-0 flex items-center justify-center text-white/80">
-            <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-        )}
+        <ProjectThumbnail
+          key={JSON.stringify([project.id, project.cover_url, project.updated_at])}
+          projectId={project.id}
+          coverUrl={project.cover_url}
+          updatedAt={project.updated_at}
+        />
       </div>
 
       <div className="px-3 py-2.5 space-y-1">

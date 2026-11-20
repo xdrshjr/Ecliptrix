@@ -575,6 +575,13 @@ class VideoProjectService:
         await db.flush()
         await db.commit()
 
+        from app.services.project_thumbnail_service import cleanup_project_thumbnails
+        from app.services.video_cover_asset_service import run_blocking
+        try:
+            await run_blocking(cleanup_project_thumbnails, project_id)
+        except OSError:
+            logger.warning("项目删除后缩略图清理失败", {"project_id": project_id})
+
         from app.services.effects.asset_service import cleanup_project_files as effects_cleanup
         await effects_cleanup(project_id)
         from app.services.video_cover_asset_service import cleanup_project_files
