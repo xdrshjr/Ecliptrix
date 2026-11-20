@@ -145,6 +145,16 @@ def test_returns_none_when_no_progressive_format() -> None:
     assert youtube_service._pick_progressive_format(formats) is None
 
 
+def test_manifest_and_incompatible_codecs_are_not_direct_mp4() -> None:
+    """清单和不可解码编码必须进入本地准备，不能伪装成 mp4 字节。"""
+    for protocol, vcodec in [("m3u8_native", "avc1"), ("https", "hev1")]:
+        fmt = {"format_id": "hls", "ext": "mp4", "protocol": protocol,
+               "height": 720, "acodec": "mp4a", "vcodec": vcodec,
+               "url": "https://example.com/index.m3u8" if protocol != "https"
+               else "https://example.com/video.mp4"}
+        assert youtube_service._pick_progressive_format([fmt]) is None
+
+
 # ---------------------------------------------------------------------------
 # Range → 206 passthrough
 # ---------------------------------------------------------------------------
@@ -212,6 +222,59 @@ def test_plain_get_returns_200(monkeypatch) -> None:
     assert resp.content == b"hello"
 
 
+def test_local_prepared_media_preserves_range_identity_and_reader_release(tmp_path, monkeypatch):
+    """本地准备文件沿用现有 Range 契约；运行时切换不改变当前播放会话的字节。"""
+    path = tmp_path / 'preview.mp4'
+    path.write_bytes(b'0123456789')
+    job = dict(video_id='abcdefghijk', status='ready', code=None, readers=0,
+               stream=YoutubePreviewStream(url='', local_path=str(path)), sessions={'test'})
+    monkeypatch.setattr(youtube_service, '_preview_sessions', {'test': {'job': job, 'touched': 0}})
+    client = _build_app()
+    endpoint = '/api/youtube/preview/stream?video_id=abcdefghijk&session=test'
+    response = client.get(endpoint, headers={'Range': 'bytes=3-5'})
+    assert response.status_code == 206
+    assert response.content == b'345'
+    assert response.headers['content-range'] == 'bytes 3-5/10'
+    assert job['readers'] == 0
+    response = client.get(endpoint, headers={'Range': 'bytes=999-'})
+    assert response.status_code == 416
+    assert job['readers'] == 0
+
+
+@pytest.mark.asyncio
+async def test_timeout_cancellation_reaches_the_operation():
+    """超时/断连必须传导到 operation：再包一层 shield 或子任务就会泄漏 worker。
+
+    契约由 ``await task`` 的 _fut_waiter 传导保证，因此这里锁的是「保持直接 await」。
+    """
+    import asyncio
+
+    class _Request:
+        async def is_disconnected(self) -> bool:
+            return False
+
+    cancelled = []
+    async def slow():
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(youtube_router._until_disconnect(_Request(), slow()), timeout=0.2)
+    assert cancelled == [True]
+
+
+def test_preparation_state_and_cancel_are_readable(monkeypatch):
+    monkeypatch.setattr(youtube_service, 'prepare_preview', lambda video_id, retry: dict(status='preparing', session='test'))
+    client = _build_app()
+    assert client.post('/api/youtube/preview/prepare?video_id=abcdefghijk').json()['status'] == 'preparing'
+    assert client.post('/api/youtube/preview/prepare?video_id=../etc').status_code == 400
+    assert client.get('/api/youtube/preview/prepare?session=missing').status_code == 404
+    assert client.delete('/api/youtube/preview/prepare?session=missing').status_code == 204
+
+
 # ---------------------------------------------------------------------------
 # resolve failure → 502
 # ---------------------------------------------------------------------------
@@ -268,10 +331,13 @@ class _FakeYoutubeDL:
 
 def test_ttl_cache_reuses_resolution(monkeypatch) -> None:
     """Within the TTL, a second resolve reuses the cache (no extra extract_info)."""
-    import app.services.youtube_service as yt_svc_mod
-
     _FakeYoutubeDL.calls = 0
-    monkeypatch.setattr(yt_svc_mod.yt_dlp, "YoutubeDL", _FakeYoutubeDL)
+    def worker(operation, payload, **kwargs):
+        assert operation == 'preview'
+        assert 'player_client' not in payload['options']['extractor_args']['youtube']
+        _FakeYoutubeDL.calls += 1
+        return dict(url='https://g/prog360', ext='mp4', http_headers={'User-Agent': 'format-level'})
+    monkeypatch.setattr(youtube_service.runtime, 'run', worker)
 
     svc = YouTubeService()
 

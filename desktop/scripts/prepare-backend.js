@@ -161,6 +161,16 @@ async function preparePython(urls, backendDir) {
 
   prepareBrowser(pythonExe)
 
+  // Exercise the shipped Node and matching EJS scripts, in isolated Python.
+  const youtubeWorker = path.join(backendDir, 'app', 'services', 'youtube_worker.py')
+  const youtubeNode = path.join(pythonDir, 'Lib', 'site-packages', 'playwright', 'driver', 'node.exe')
+  run(pythonExe, ['-B', '-X', 'utf8', '-c',
+    'import runpy,sys; worker=runpy.run_path(sys.argv[1]); ' +
+    'result=worker["dispatch"]({"operation":"selftest","require_ejs":True,"node":sys.argv[2]}); ' +
+    'assert result["ejs_challenge_ok"]; print("YouTube JS self-test OK")',
+    youtubeWorker, youtubeNode,
+  ], { env: ISOLATED_PYTHON_ENV })
+
   // __pycache__ regenerates at runtime; dropping it trims the payload (risk 4).
   removePycacheDirs(pythonDir)
 }

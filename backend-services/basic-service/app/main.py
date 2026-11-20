@@ -248,10 +248,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.services.ark_video_task_context import video_task_contexts
     await video_task_contexts.start()
+    from app.services.youtube_service import youtube_service
+    youtube_service.start()
     yield
 
     # Shutdown
     logger.info("Shutting down application")
+    await youtube_service.close()
     await effect_render_service.close()
     from app.services.storyboard_video_queue import storyboard_video_queue
     await storyboard_video_queue.close()

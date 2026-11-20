@@ -43,6 +43,8 @@ function createBackendDescriptor({
     ...userEnv,
     DATABASE_URL: `sqlite+aiosqlite:///${dbFile}`,
     STORAGE_ROOT: path.join(userDataPath, 'storage'),
+    YOUTUBE_RUNTIME_ROOT: path.join(userDataPath, 'youtube-runtime'),
+    YOUTUBE_NODE_PATH: path.join(resourcesPath, 'python', 'Lib', 'site-packages', 'playwright', 'driver', 'node.exe'),
     HOST: '127.0.0.1',
     PORT: String(backendPort),
     CORS_ALLOWED_ORIGINS: `http://127.0.0.1:${frontendPort}`,

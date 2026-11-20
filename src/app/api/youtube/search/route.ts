@@ -1,3 +1,3 @@
 import { createPassthroughRoute } from '@/lib/api/server/backend-proxy'
 
-export const { POST } = createPassthroughRoute('/api/youtube/search')
+export const { POST } = createPassthroughRoute('/api/youtube/search', { abortOnClientDisconnect: true })

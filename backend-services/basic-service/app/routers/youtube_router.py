@@ -6,7 +6,9 @@ import re
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
+from pathlib import Path
+from app.services.youtube_runtime import cancellable_call
 from app.logger import get_logger
 from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse,
@@ -28,8 +30,79 @@ _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _PREVIEW_STREAM_CHUNK = 64 * 1024
 
 
+async def _until_disconnect(request, operation):
+    """执行 operation；客户端断连时终止它，调用方取消时由 await 自动传导。
+
+    operation 必须保持为被直接 await 的任务：再包一层 shield 或子任务会让
+    wait_for 超时只取消外层，worker 子进程与并发槽位继续占用。
+    """
+    task = asyncio.create_task(operation)
+    async def watch():
+        while not task.done():
+            if await request.is_disconnected():
+                task.cancel()
+                return
+            await asyncio.sleep(0.2)
+    watcher = asyncio.create_task(watch())
+    try:
+        return await task
+    finally:
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
+
+
+@router.get("/runtime")
+async def runtime_status():
+    return youtube_service.runtime.status()
+
+
+@router.post("/runtime/check", status_code=202)
+async def runtime_check():
+    return youtube_service.runtime.request_check()
+
+
+@router.post("/preview/prepare", status_code=202)
+async def prepare_preview(video_id: str, retry: bool = False):
+    if not _VIDEO_ID_RE.fullmatch(video_id):
+        raise HTTPException(400, "Invalid video_id")
+    try:
+        return youtube_service.prepare_preview(video_id, retry)
+    except YoutubePreviewError:
+        raise HTTPException(429, "PREVIEW_LIMIT")
+
+
+@router.get("/preview/prepare")
+async def preview_preparation_status(session: str):
+    try:
+        return youtube_service.preview_status(session)
+    except KeyError:
+        raise HTTPException(404, "Preview session expired")
+
+
+@router.delete("/preview/prepare", status_code=204)
+async def cancel_preview(session: str):
+    await youtube_service.cancel_preview(session)
+    return Response(status_code=204)
+
+
+class _LeasedMediaResponse(Response):
+    """给本地预览文件加读者租约，避免清理逻辑删掉正在播放的字节。"""
+
+    def __init__(self, response, job):
+        super().__init__(status_code=response.status_code, headers=dict(response.headers))
+        self.response, self.job = response, job
+
+    async def __call__(self, scope, receive, send):
+        # 计数器必须与实际发送同生命周期：在 __init__ 里加会在未发送时泄漏。
+        self.job["readers"] += 1
+        try:
+            await self.response(scope, receive, send)
+        finally:
+            self.job["readers"] -= 1
+
+
 @router.post("/search", response_model=YoutubeSearchResponse)
-async def search_youtube_videos(request: YoutubeSearchRequest) -> YoutubeSearchResponse:
+async def search_youtube_videos(request: YoutubeSearchRequest, http_request: Request) -> YoutubeSearchResponse:
     """
     搜索YouTube视频
     
@@ -55,10 +128,10 @@ async def search_youtube_videos(request: YoutubeSearchRequest) -> YoutubeSearchR
                 detail="搜索关键词不能为空"
             )
         
-        # 执行YouTube视频搜索（线程池运行 + 总超时，避免 yt-dlp 无限挂起）
+        # 交给版本固定的 worker 子进程执行；总超时 + 断连取消，避免 yt-dlp 挂起。
         logger.debug(f"调用YouTube搜索服务，参数: {request.model_dump()}")
         result = await asyncio.wait_for(
-            asyncio.to_thread(youtube_service.search_videos, request),
+            _until_disconnect(http_request, cancellable_call(youtube_service.search_videos, request)),
             timeout=45,
         )
 
@@ -89,7 +162,7 @@ async def search_youtube_videos(request: YoutubeSearchRequest) -> YoutubeSearchR
 
 
 @router.post("/info", response_model=YoutubeVideoInfoResponse)
-async def get_youtube_video_info(request: YoutubeVideoInfoRequest) -> YoutubeVideoInfoResponse:
+async def get_youtube_video_info(request: YoutubeVideoInfoRequest, http_request: Request) -> YoutubeVideoInfoResponse:
     """
     获取YouTube视频信息
     
@@ -122,10 +195,10 @@ async def get_youtube_video_info(request: YoutubeVideoInfoRequest) -> YoutubeVid
                 detail="请提供有效的YouTube视频URL"
             )
         
-        # 获取视频信息（线程池运行 + 总超时）
+        # 版本固定的 worker 子进程 + 总超时
         logger.debug(f"调用YouTube信息服务，URL: {request.url}")
         result = await asyncio.wait_for(
-            asyncio.to_thread(youtube_service.get_video_info, request),
+            _until_disconnect(http_request, cancellable_call(youtube_service.get_video_info, request)),
             timeout=30,
         )
 
@@ -155,7 +228,7 @@ async def get_youtube_video_info(request: YoutubeVideoInfoRequest) -> YoutubeVid
 
 
 @router.post("/download", response_model=YoutubeVideoDownloadResponse)
-async def download_youtube_video(request: YoutubeVideoDownloadRequest) -> YoutubeVideoDownloadResponse:
+async def download_youtube_video(request: YoutubeVideoDownloadRequest, http_request: Request) -> YoutubeVideoDownloadResponse:
     """
     下载YouTube视频
     
@@ -188,10 +261,10 @@ async def download_youtube_video(request: YoutubeVideoDownloadRequest) -> Youtub
                 detail="请提供有效的YouTube视频URL"
             )
         
-        # 执行视频下载（线程池运行 + 总超时）
+        # 版本固定的 worker 子进程 + 总超时（下载允许更长时间）
         logger.debug(f"调用YouTube下载服务，参数: {request.model_dump()}")
         result = await asyncio.wait_for(
-            asyncio.to_thread(youtube_service.download_video, request),
+            _until_disconnect(http_request, youtube_service.download_video_async(request)),
             timeout=300,  # 下载允许更长时间
         )
 
@@ -221,7 +294,7 @@ async def download_youtube_video(request: YoutubeVideoDownloadRequest) -> Youtub
 
 
 @router.post("/download-and-upload", response_model=YoutubeVideoDownloadAndUploadResponse)
-async def download_and_upload_youtube_video(request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
+async def download_and_upload_youtube_video(request: YoutubeVideoDownloadAndUploadRequest, http_request: Request) -> YoutubeVideoDownloadAndUploadResponse:
     """
     下载YouTube视频并上传到存储服务
 
@@ -256,7 +329,7 @@ async def download_and_upload_youtube_video(request: YoutubeVideoDownloadAndUplo
         
         # 执行下载并上传
         logger.debug(f"调用YouTube下载并上传服务，参数: {request.model_dump()}")
-        result = await youtube_service.download_and_upload_video(request)
+        result = await _until_disconnect(http_request, youtube_service.download_and_upload_video(request))
         
         # 记录操作结果
         logger.info(f"YouTube视频下载并上传完成 - 成功: {result.success}")
@@ -293,7 +366,7 @@ async def _open_preview_upstream(
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(connect=15, read=30, write=30, pool=15),
         follow_redirects=True,
-        proxy=(youtube_service.proxy or None),
+        proxy=stream.proxy,
     )
     upstream_headers = dict(stream.http_headers)
     if range_header:
@@ -309,7 +382,7 @@ async def _open_preview_upstream(
 
 
 @router.get("/preview/stream")
-async def preview_stream(video_id: str, request: Request):
+async def preview_stream(video_id: str, request: Request, session: str | None = None):
     """渐进式预览流：解析渐进式 mp4 直链并经代理回代字节（支持 Range 206）。
 
     前端左侧预览面板的同源 ``<video>`` 指向本端点（经 Next.js BFF），从而规避
@@ -333,24 +406,35 @@ async def preview_stream(video_id: str, request: Request):
             detail="无效的 video_id，需为 11 位 YouTube 视频 ID",
         )
 
-    # 1) 解析渐进式直链（线程池 + 超时，避免阻塞事件循环 / yt-dlp 无限挂起）。
-    try:
-        stream = await asyncio.wait_for(
-            asyncio.to_thread(youtube_service.resolve_preview_stream, video_id),
-            timeout=30,
-        )
-    except asyncio.TimeoutError:
-        logger.error(f"预览直链解析超时（30s） - video_id: {video_id}")
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="解析预览直链超时，请检查服务器网络/代理是否能访问 YouTube",
-        )
-    except YoutubePreviewError as exc:
-        logger.warning(f"预览直链解析失败 - video_id: {video_id}: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"无法解析预览直链: {exc}",
-        )
+    job = None
+    if session:
+        job = youtube_service.preview_job(session, video_id)
+        if job is None:
+            raise HTTPException(404, "Preview session expired")
+        if job["status"] != "ready":
+            raise HTTPException(409, "Preview is not ready")
+        stream = job["stream"]
+    else:
+        try:
+            stream = await asyncio.wait_for(
+                _until_disconnect(request, cancellable_call(youtube_service.resolve_preview_stream, video_id)), timeout=30)
+        except asyncio.TimeoutError:
+            raise HTTPException(504, "NETWORK_ERROR")
+        except YoutubePreviewError as exc:
+            raise HTTPException(502, str(exc))
+    if stream.local_path:
+        # 复用存储路由的 Range 实现（含 206/416 契约）；延迟导入避免路由间循环。
+        from app.routers.storage_files_router import _serve_safe_media
+        try:
+            response = _serve_safe_media(Path(stream.local_path), "youtube-preview." + stream.ext,
+                                         request, {"Cache-Control": "no-store"})
+        except FileNotFoundError:
+            # 文件已被回收：让前端按「重新加载」重试，而不是拿到 500。
+            youtube_service.invalidate_preview_cache(video_id)
+            if job:
+                job.update(status="error", code="MEDIA_RELOAD_REQUIRED")
+            raise HTTPException(409, "MEDIA_RELOAD_REQUIRED")
+        return _LeasedMediaResponse(response, job) if job else response
 
     range_header = request.headers.get("range")
 
@@ -369,12 +453,15 @@ async def preview_stream(video_id: str, request: Request):
                 await upstream.aclose()
                 await client.aclose()
                 youtube_service.invalidate_preview_cache(video_id)
+                previous = stream
                 stream = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        youtube_service.resolve_preview_stream, video_id, True
-                    ),
-                    timeout=30,
-                )
+                    _until_disconnect(request, cancellable_call(youtube_service.resolve_preview_stream, video_id, True)), timeout=30)
+                if stream.local_path or (session and (not previous.filesize or stream.identity != previous.identity)):
+                    if job:
+                        job.update(status="error", code="MEDIA_RELOAD_REQUIRED")
+                    raise HTTPException(409, "MEDIA_RELOAD_REQUIRED")
+                if job:
+                    job["stream"] = stream
                 client, upstream = await _open_preview_upstream(stream, range_header)
         except asyncio.TimeoutError:
             logger.error(f"预览重解析超时（30s） - video_id: {video_id}")
@@ -401,6 +488,14 @@ async def preview_stream(video_id: str, request: Request):
                 detail="预览上游连接失败",
             )
 
+        # 前端拖到文件尾之外的 416 原样回传，让播放器自己收敛，而不是变成 502。
+        if upstream.status_code == 416:
+            headers = {"Accept-Ranges": "bytes", "Cache-Control": "no-store"}
+            if upstream.headers.get("content-range"):
+                headers["Content-Range"] = upstream.headers["content-range"]
+            await upstream.aclose()
+            await client.aclose()
+            return Response(status_code=416, headers=headers)
         # 上游仍报错（非 2xx/206）→ 502，先关闭连接。
         if upstream.status_code >= 400:
             upstream_status = upstream.status_code
@@ -441,11 +536,8 @@ async def preview_stream(video_id: str, request: Request):
 
         # 信号量释放责任移交给生成器 finally。
         ownership_transferred = True
-        return StreamingResponse(
-            _body(),
-            status_code=upstream.status_code,
-            headers=response_headers,
-        )
+        response = StreamingResponse(_body(), status_code=upstream.status_code, headers=response_headers)
+        return _LeasedMediaResponse(response, job) if job else response
     finally:
         if not ownership_transferred:
             semaphore.release()
@@ -466,7 +558,7 @@ async def youtube_service_health():
         return {
             "status": "healthy",
             "service": "YouTube Service",
-            "yt_dlp_version": yt_dlp.version.__version__,
+            "yt_dlp_version": youtube_service.runtime.status()["active_version"],
             "message": "YouTube服务运行正常"
         }
     except ImportError:
@@ -480,4 +572,4 @@ async def youtube_service_health():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="YouTube服务不可用"
-        ) 
+        )

@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic_core import PydanticCustomError
+import re
+from urllib.parse import urlsplit, parse_qs
 from typing import Dict, List, Optional
 from enum import Enum
 from dataclasses import dataclass, field
@@ -47,7 +50,85 @@ class YoutubeSearchResponse(BaseModel):
     query: str = Field(default="", description="搜索关键词")
 
 
-class YoutubeVideoDownloadRequest(BaseModel):
+_YOUTUBE_HOSTS = ('youtube.com', 'www.youtube.com', 'm.youtube.com',
+                  'youtu.be', 'music.youtube.com')
+
+
+def _invalid_url(detail):
+    # 必须是 PydanticCustomError：裸 ValueError 会进 ctx.error，使 422 载荷不可
+    # JSON 序列化，最终被平台处理器变成 500。
+    return PydanticCustomError('youtube_invalid_url', detail)
+
+
+def youtube_watch_url(value):
+    """把任意 YouTube 入口收敛成固定 watch URL；拒绝其它主机、端口和凭据。"""
+    try:
+        parsed = urlsplit(value)
+        host, port = parsed.hostname, parsed.port
+    except ValueError:
+        # urlsplit 对非法 IPv6 直接抛错，越界端口在 .port 上抛错；都按非法入口处理。
+        raise _invalid_url('请提供有效的 YouTube 视频 URL') from None
+    if (parsed.scheme not in ('http', 'https') or host not in _YOUTUBE_HOSTS
+            or parsed.username or parsed.password or port not in (None, 80, 443)):
+        raise _invalid_url('请提供有效的 YouTube 视频 URL')
+    parts = parsed.path.strip('/').split('/')
+    video_id = parts[0] if parsed.hostname == 'youtu.be' else (
+        parts[1] if len(parts) == 2 and parts[0] in ('shorts', 'live', 'embed') else
+        parse_qs(parsed.query).get('v', [''])[0] if parsed.path == '/watch' else '')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{11}', video_id):
+        raise _invalid_url('请提供包含 11 位视频 ID 的 YouTube URL')
+    return f'https://www.youtube.com/watch?v={video_id}'
+
+
+class YoutubeMediaParameters(BaseModel):
+    @field_validator('url', check_fields=False)
+    @classmethod
+    def youtube_url(cls, value):
+        return youtube_watch_url(value)
+
+    @field_validator('video_quality', check_fields=False)
+    @classmethod
+    def video_quality_value(cls, value):
+        if value not in ('best', 'worst') and not re.fullmatch(r'[1-9][0-9]{1,3}p', value):
+            raise PydanticCustomError('youtube_invalid_video_quality', '无效的视频质量')
+        return value
+
+    @field_validator('audio_quality', check_fields=False)
+    @classmethod
+    def audio_quality_value(cls, value):
+        if value not in ('best', 'worst') and not re.fullmatch(r'[1-9][0-9]{1,2}k', value):
+            raise PydanticCustomError('youtube_invalid_audio_quality', '无效的音频质量')
+        return value
+
+    @field_validator('format_type', check_fields=False)
+    @classmethod
+    def format_value(cls, value):
+        if value not in ('mp4', 'webm', 'mkv'):
+            raise PydanticCustomError('youtube_invalid_format', '不支持的输出格式')
+        return value
+
+    @field_validator('start_time', 'end_time', 'duration', check_fields=False)
+    @classmethod
+    def time_value(cls, value):
+        if value is not None and not re.fullmatch(r'\d+(?::[0-5]\d){0,2}(?:\.\d+)?', value):
+            raise PydanticCustomError('youtube_invalid_time', '无效的时间参数')
+        return value
+
+    @model_validator(mode='after')
+    def time_range(self):
+        def seconds(value):
+            total = 0.0
+            for part in (value or '0').split(':'):
+                total = total * 60 + float(part)
+            return total
+        if getattr(self, 'end_time', None) and seconds(self.end_time) <= seconds(self.start_time):
+            raise PydanticCustomError('youtube_invalid_time', '结束时间必须大于开始时间')
+        if getattr(self, 'duration', None) and seconds(self.duration) <= 0:
+            raise PydanticCustomError('youtube_invalid_time', '持续时间必须大于零')
+        return self
+
+
+class YoutubeVideoDownloadRequest(YoutubeMediaParameters):
     """YouTube视频下载请求模型"""
     url: str = Field(..., description="YouTube视频URL")
     video_quality: str = Field(default="720p", description="视频质量")
@@ -66,9 +147,10 @@ class YoutubeVideoDownloadResponse(BaseModel):
     file_path: Optional[str] = Field(default=None, description="下载文件路径")
     file_size: Optional[int] = Field(default=None, description="文件大小（字节）")
     error: Optional[str] = Field(default=None, description="错误信息")
+    has_audio: Optional[bool] = Field(default=None, description="源视频及最终文件是否包含音轨")
 
 
-class YoutubeVideoInfoRequest(BaseModel):
+class YoutubeVideoInfoRequest(YoutubeMediaParameters):
     """YouTube视频信息获取请求模型"""
     url: str = Field(..., description="YouTube视频URL")
 
@@ -81,7 +163,7 @@ class YoutubeVideoInfoResponse(BaseModel):
     error: Optional[str] = Field(default=None, description="错误信息")
 
 
-class YoutubeVideoDownloadAndUploadRequest(BaseModel):
+class YoutubeVideoDownloadAndUploadRequest(YoutubeMediaParameters):
     """YouTube视频下载并上传请求模型"""
     url: str = Field(..., description="YouTube视频URL")
     task_id: Optional[str] = Field(default=None, description="任务ID")
@@ -104,6 +186,7 @@ class YoutubeVideoDownloadAndUploadResponse(BaseModel):
     height: Optional[int] = Field(default=None, description="视频高度")
     original_youtube_url: Optional[str] = Field(default=None, description="原始YouTube URL")
     error: Optional[str] = Field(default=None, description="错误信息")
+    has_audio: Optional[bool] = Field(default=None, description="源视频及最终文件是否包含音轨")
 
 
 @dataclass
@@ -120,4 +203,7 @@ class YoutubePreviewStream:
     content_type: str = "video/mp4"                   # 如 "video/mp4"
     ext: str = "mp4"                                   # "mp4" / "webm"
     filesize: Optional[int] = None                    # 可能为 None（approx）
-    expire_at: float = 0.0                             # time.time() + TTL，过期即重解析 
+    expire_at: float = 0.0                             # time.time() + TTL，过期即重解析
+    local_path: Optional[str] = None
+    identity: str = ""
+    proxy: Optional[str] = None

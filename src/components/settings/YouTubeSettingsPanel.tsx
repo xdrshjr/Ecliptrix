@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import SettingsSectionCard from './components/SettingsSectionCard';
@@ -21,11 +21,51 @@ const AUDIO_QUALITIES = [
 const OUTPUT_FORMATS = [
   { value: 'mp4', label: 'MP4' }, { value: 'webm', label: 'WebM' }, { value: 'mkv', label: 'MKV' },
 ];
+interface YoutubeRuntimeStatus {
+  active_version: string; available_version: string | null; status: string;
+  last_checked_at: string | null; last_updated_at: string | null;
+  last_result: string | null; error: string | null;
+  history: { old_version: string; new_version: string | null; result: string; checked_at: string | null; activated_at: string | null }[];
+}
 /* ── Main Panel ── */
 const YouTubeSettingsPanel: React.FC = () => {
   const { t } = useLocale();
   const { showSuccess, showError } = useNotification();
   const { settings, loading, saving, isDirty, updateSetting, saveSettings, resetToDefaults } = useSettingsPanel('youtube');
+  const [runtime, setRuntime] = useState<YoutubeRuntimeStatus | null>(null);
+  const [runtimeError, setRuntimeError] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkRevision, setCheckRevision] = useState(0);
+  useEffect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const response = await fetch('/api/youtube/runtime', { signal: controller.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error();
+        const data: YoutubeRuntimeStatus = await response.json();
+        if (disposed) return;
+        setRuntime(data);
+        setRuntimeError(false);
+        timer = setTimeout(() => void load(), ['checking', 'installing'].includes(data.status) ? 1500 : 15000);
+      } catch {
+        if (!disposed) { setRuntimeError(true); timer = setTimeout(() => void load(), 15000); }
+      }
+    };
+    void load();
+    return () => { disposed = true; controller.abort(); clearTimeout(timer); };
+  }, [checkRevision]);
+  const checkUpdates = async () => {
+    setChecking(true);
+    try {
+      const response = await fetch('/api/youtube/runtime/check', { method: 'POST' });
+      if (!response.ok) throw new Error();
+      setRuntime(await response.json());
+      setCheckRevision(value => value + 1);
+    } catch { setRuntimeError(true); }
+    finally { setChecking(false); }
+  };
 
   const getObj = <T extends Record<string, unknown>>(key: string, fallback: T): T => {
     const v = settings[key];
@@ -81,6 +121,21 @@ const YouTubeSettingsPanel: React.FC = () => {
             </button>
           </div>
         </div>
+
+        <SettingsSectionCard title={t.adminSettings.ytRuntime} description={t.adminSettings.ytRuntimeDesc}>
+          <p role="status" className="text-sm">{runtimeError ? t.adminSettings.ytStatusError : runtime ? t.adminSettings.ytRuntimeStates[runtime.status] : t.adminSettings.loading}</p>
+          {runtime && <>
+            <dl className="grid grid-cols-2 gap-2 text-sm">
+              <dt>{t.adminSettings.ytActiveVersion}</dt><dd>{runtime.active_version}</dd>
+              <dt>{t.adminSettings.ytAvailableVersion}</dt><dd>{runtime.available_version || '—'}</dd>
+              <dt>{t.adminSettings.ytLastChecked}</dt><dd>{runtime.last_checked_at ? new Date(runtime.last_checked_at).toLocaleString() : '—'}</dd>
+              <dt>{t.adminSettings.ytLastUpdated}</dt><dd>{runtime.last_updated_at ? new Date(runtime.last_updated_at).toLocaleString() : '—'}</dd>
+            </dl>
+            {runtime.error && <p className="text-sm text-destructive">{runtime.error}</p>}
+            <ul className="space-y-1 text-xs text-muted-foreground">{runtime.history.slice(-5).reverse().map((item, index) => <li key={index}>{item.old_version} → {item.new_version || '—'} · {t.adminSettings.ytRuntimeStates[item.result] || item.result} · {item.checked_at ? new Date(item.checked_at).toLocaleString() : '—'}</li>)}</ul>
+          </>}
+          <button type="button" onClick={checkUpdates} disabled={checking || runtime?.status === 'checking' || runtime?.status === 'installing'} className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50">{t.adminSettings.ytCheckUpdates}</button>
+        </SettingsSectionCard>
 
         <SettingsSectionCard title={t.adminSettings.ytDownload} description={t.adminSettings.ytDownloadDesc}>
           <NumberField label={t.adminSettings.ytMaxConcurrent} value={download.max_concurrent_downloads as number} onChange={(v) => updateNested('download', 'max_concurrent_downloads', v)} min={1} max={50} />

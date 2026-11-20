@@ -10,17 +10,19 @@ import asyncio
 import random
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from concurrent.futures import ThreadPoolExecutor
-import yt_dlp
+import shutil
+import uuid
+from .youtube_runtime import youtube_runtime, cancellable_call, YoutubeOperationError
+from .youtube_worker import progressive_format
 from app.logger import get_logger
 from app.config import get_settings
-from app.security.url_guard import URLGuardError, validate_external_url
 from app.models.youtube_models import (
     YoutubeSearchRequest, YoutubeSearchResponse, YoutubeVideoInfo,
     YoutubeVideoDownloadRequest, YoutubeVideoDownloadResponse,
     YoutubeVideoInfoRequest, YoutubeVideoInfoResponse,
     YoutubeVideoDownloadAndUploadRequest, YoutubeVideoDownloadAndUploadResponse,
     YoutubePreviewStream,
+    youtube_watch_url,
 )
 
 logger = get_logger(__name__)
@@ -88,6 +90,8 @@ async def retry_with_exponential_backoff(
             
         except Exception as e:
             last_exception = e
+            if any(code in str(e) for code in ("SIGN_IN_REQUIRED", "RATE_LIMITED", "PREVIEW_LIMIT", "UNSUPPORTED_MEDIA", "MERGE_FAILED", "CANCELLED")):
+                raise
             
             if attempt == max_retries:
                 logger.error(f"所有重试尝试失败，最终错误: {str(e)}", exc_info=True)
@@ -118,19 +122,24 @@ class YouTubeService:
     基于yt-dlp实现
     """
 
-    def __init__(self, output_dir: str = "./static/video/youtube"):
+    def __init__(self, output_dir: str = None):
         """
         初始化YouTube服务
 
         Args:
             output_dir: 下载文件保存目录
         """
-        self.output_dir = Path(output_dir)
+        self.runtime = youtube_runtime
+        self.output_dir = Path(output_dir) if output_dir else self.runtime.root / "downloads"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.proxy = _youtube_proxy or None
+        self.runtime.proxy = self.proxy
+        self._preview_jobs = {}
+        self._preview_sessions = {}
+        self._preview_reaper = None
         # video_id -> YoutubePreviewStream。进程内内存缓存，单用户本地应用无需分布式缓存。
         self._preview_stream_cache: Dict[str, YoutubePreviewStream] = {}
-        logger.info(f"YouTube服务初始化完成，下载目录: {self.output_dir}, 代理: {self.proxy or '无'}")
+        logger.info("YouTube服务初始化完成，下载目录: %s", self.output_dir)
 
     @property
     def preview_semaphore(self) -> asyncio.Semaphore:
@@ -160,8 +169,8 @@ class YouTubeService:
             'extract_flat': False,
             'no_warnings': False,
             'ignoreerrors': False,
-            'retries': 5,
-            'fragment_retries': 5,
+            'retries': 1,
+            'fragment_retries': 1,
             # Spec 03 §3.2 — keep TLS validation on (default in yt-dlp,
             # but pinned here for safety) and cap socket timeouts so a
             # malicious / slow upstream cannot stall the worker.
@@ -169,8 +178,6 @@ class YouTubeService:
             'socket_timeout': 30,
             'extractor_args': {
                 'youtube': {
-                    'skip': ['hls', 'dash'],  # 跳过可能有nsig问题的格式
-                    'player_client': ['android', 'web', 'ios'],  # 尝试多个客户端
                     'max_comments': [0],  # 不提取评论
                     'comment_sort': ['top'],  # 如果需要评论，只要热门的
                 }
@@ -207,131 +214,148 @@ class YouTubeService:
         Returns:
             选中的 format dict（含 ``url`` 与 ``http_headers``）；无可用渐进式则返回 None。
         """
-        if not formats:
-            return None
+        return progressive_format(formats)
 
-        def _is_progressive(fmt: Dict[str, Any]) -> bool:
-            return (
-                bool(fmt.get("url"))
-                and fmt.get("acodec") not in (None, "none")
-                and fmt.get("vcodec") not in (None, "none")
-            )
+    def _preview_key(self, video_id):
+        return (self.runtime.generation, hashlib.sha256((self.proxy or "").encode()).hexdigest(), video_id)
 
-        progressive = [fmt for fmt in formats if _is_progressive(fmt)]
-        if not progressive:
-            return None
-
-        def _height(fmt: Dict[str, Any]) -> int:
-            h = fmt.get("height")
-            return h if isinstance(h, (int, float)) else 0
-
-        # 1) mp4 渐进式且 height<=720，取其中分辨率最高者（有 720p=itag22 则用之，否则 360p=itag18）。
-        mp4_le_720 = [
-            fmt for fmt in progressive
-            if fmt.get("ext") == "mp4" and 0 < _height(fmt) <= 720
-        ]
-        if mp4_le_720:
-            return max(mp4_le_720, key=_height)
-
-        # 2) 显式回退到 itag 22 / 18（当分辨率元数据缺失时）。
-        by_id = {str(fmt.get("format_id")): fmt for fmt in progressive}
-        for itag in ("22", "18"):
-            if itag in by_id:
-                return by_id[itag]
-
-        # 3) 任意 mp4 渐进式（分辨率最高者）。
-        mp4_any = [fmt for fmt in progressive if fmt.get("ext") == "mp4"]
-        if mp4_any:
-            return max(mp4_any, key=_height)
-
-        # 4) 兜底：任意渐进式（分辨率最高者）。
-        return max(progressive, key=_height)
-
-    def resolve_preview_stream(
-        self, video_id: str, force_refresh: bool = False
-    ) -> YoutubePreviewStream:
-        """解析某 YouTube 视频的渐进式预览直链（yt-dlp + TTL 内存缓存）。
-
-        阻塞调用（内部跑 ``yt_dlp.extract_info``），路由层须用 ``asyncio.to_thread``
-        + 超时包裹。命中未过期缓存则直接复用，保证同一视频的多段 Range 请求指向
-        同一签名 URL（Content-Length/Content-Range 一致，spec §2.3 / R4）。
-
-        Args:
-            video_id: 已由调用方用 ``^[A-Za-z0-9_-]{11}$`` 校验过的 11 位视频 ID。
-            force_refresh: 为 True 时忽略缓存并重解析（上游直链 403/过期后重取一次）。
-
-        Returns:
-            YoutubePreviewStream: 渐进式直链 + 该 format 级 ``http_headers`` + 元信息。
-
-        Raises:
-            YoutubePreviewError: yt-dlp 抽取失败或无可用渐进式格式。
-        """
+    def resolve_preview_stream(self, video_id: str, force_refresh: bool = False) -> YoutubePreviewStream:
+        key = self._preview_key(video_id)
         if not force_refresh:
-            cached = self._preview_stream_cache.get(video_id)
+            cached = self._preview_stream_cache.get(key)
             if cached and cached.expire_at > time.time():
-                logger.info(f"预览直链缓存命中 - video_id: {video_id}")
                 return cached
-
-        watch_url = f"https://www.youtube.com/watch?v={video_id}"
-
-        # P1-1：preview 专用 opts。基于 _get_robust_ydl_options 结果「原地改写」
-        # player_client 为 web/ios（android 直链回代常 403、且日益需要 PO Token），
-        # 同时保留 skip=['hls','dash']（避免顶层浅 update 覆盖丢失）。
-        ydl_opts = self._get_robust_ydl_options({"quiet": True})
+        output = self.runtime.root / "previews" / uuid.uuid4().hex
         try:
-            ydl_opts["extractor_args"]["youtube"]["player_client"] = ["web", "ios"]
-        except (KeyError, TypeError):  # pragma: no cover - 结构恒存在，仅防御
-            ydl_opts.setdefault("extractor_args", {}).setdefault("youtube", {})[
-                "player_client"
-            ] = ["web", "ios"]
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(watch_url, download=False)
+            data = self.runtime.run("preview", dict(url=f"https://www.youtube.com/watch?v={video_id}",
+                options=self._get_robust_ydl_options({"quiet": True}), output_dir=str(output)),
+                timeout=180, byte_limit=384 * 1024**2)
         except Exception as exc:
-            # 含被 YouTube 反机器人拦截到 yt-dlp 层的情况（"Sign in to confirm..."）。
-            raise YoutubePreviewError(
-                f"yt-dlp 解析预览直链失败 (video_id={video_id}): {exc}"
-            ) from exc
-
-        if not info:
-            raise YoutubePreviewError(
-                f"yt-dlp 未返回视频信息 (video_id={video_id})"
-            )
-
-        fmt = self._pick_progressive_format(info.get("formats", []) or [])
-        if not fmt or not fmt.get("url"):
-            raise YoutubePreviewError(
-                f"无可用于内联预览的渐进式合流格式 (video_id={video_id})；"
-                f"可能为直播/年龄限制/仅 DASH 视频，前端应降级为缩略图 + 在浏览器打开"
-            )
-
-        # P1-1：回代请求头必须用「所选 format 的 http_headers」，缺省再退 info 顶层，
-        # 绝不用 _get_robust_ydl_options 的顶层桌面 UA（会导致字节回代阶段 403）。
-        http_headers = fmt.get("http_headers") or info.get("http_headers") or {}
-        ext = (fmt.get("ext") or "mp4").lower()
-        content_type = _PREVIEW_CONTENT_TYPES.get(ext, "video/mp4")
-        filesize = fmt.get("filesize") or fmt.get("filesize_approx")
-
-        stream = YoutubePreviewStream(
-            url=fmt["url"],
-            http_headers=dict(http_headers),
-            content_type=content_type,
-            ext=ext,
-            filesize=int(filesize) if isinstance(filesize, (int, float)) else None,
-            expire_at=time.time() + _PREVIEW_CACHE_TTL,
-        )
-        self._preview_stream_cache[video_id] = stream
-        logger.info(
-            f"预览直链解析成功 - video_id: {video_id}, "
-            f"format_id: {fmt.get('format_id')}, ext: {ext}, "
-            f"height: {fmt.get('height')}, filesize: {stream.filesize}"
-        )
+            if output.exists():
+                shutil.rmtree(output, ignore_errors=True)
+            raise YoutubePreviewError(str(exc)) from exc
+        ext = data.get("ext", "mp4")
+        identity = f"{data.get('format_id', '')}:{data.get('filesize', '')}:{ext}"
+        stream = YoutubePreviewStream(url=data.get("url", ""), local_path=data.get("local_path"),
+            proxy=self.proxy,
+            http_headers=data.get("http_headers", {}), content_type=_PREVIEW_CONTENT_TYPES.get(ext, "video/mp4"),
+            ext=ext, filesize=data.get("filesize") or data.get("file_size"), identity=identity,
+            expire_at=time.time() + _PREVIEW_CACHE_TTL)
+        # 旧代请求不能在更新或代理切换后写入新代缓存。
+        if key == self._preview_key(video_id):
+            self._preview_stream_cache[key] = stream
         return stream
 
     def invalidate_preview_cache(self, video_id: str) -> None:
-        """失效某视频的预览直链缓存（上游 403/过期后强制重解析前调用）。"""
-        self._preview_stream_cache.pop(video_id, None)
+        for key in list(self._preview_stream_cache):
+            if key[-1] == video_id:
+                self._preview_stream_cache.pop(key, None)
+
+    def reap_previews(self):
+        now = time.time()
+        # 无会话和读者的文件才可清理；同时限制排队任务数。
+        for token, entry in list(self._preview_sessions.items()):
+            if now - entry["touched"] > _PREVIEW_CACHE_TTL:
+                self.release_preview(token)
+        for key, job in list(self._preview_jobs.items()):
+            if not job["sessions"] and not job["readers"] and job["task"].done():
+                self._preview_jobs.pop(key, None)
+                stream = job.get("stream")
+                if stream and stream.local_path:
+                    shutil.rmtree(Path(stream.local_path).parent, ignore_errors=True)
+                    self.invalidate_preview_cache(job["video_id"])
+        # 重启后遗留的预览文件没有读者；只清理 TTL 外、未被当前会话引用的目录。
+        active_paths = {str(Path(j["stream"].local_path).parent) for j in self._preview_jobs.values()
+                        if j.get("stream") and j["stream"].local_path}
+        directory = self.runtime.root / "previews"
+        if directory.exists():
+            for path in directory.iterdir():
+                if path.is_dir() and str(path) not in active_paths and now - path.stat().st_mtime > _PREVIEW_CACHE_TTL:
+                    shutil.rmtree(path, ignore_errors=True)
+
+    def start(self):
+        self.runtime.start()
+        async def reap():
+            while True:
+                self.reap_previews()
+                await asyncio.sleep(60)
+        self._preview_reaper = asyncio.create_task(reap())
+
+    def prepare_preview(self, video_id, retry=False):
+        self.reap_previews()
+        now = time.time()
+        key = self._preview_key(video_id)
+        if len(self._preview_sessions) >= 24:
+            raise YoutubePreviewError("PREVIEW_LIMIT")
+        if retry:
+            self.invalidate_preview_cache(video_id)
+        job = None if retry else self._preview_jobs.get(key)
+        if job and (job["task"].cancelling() or job["task"].cancelled()):
+            job = None
+        if job is None:
+            job = dict(video_id=video_id, sessions=set(), readers=0, status="preparing", code=None, stream=None)
+            async def prepare():
+                try:
+                    job["stream"] = await cancellable_call(self.resolve_preview_stream, video_id, retry)
+                    job["status"] = "ready"
+                except asyncio.CancelledError:
+                    job.update(status="error", code="CANCELLED")
+                    raise
+                except Exception as error:
+                    from .youtube_worker import error_code
+                    code = next((code for code in ("SIGN_IN_REQUIRED", "RATE_LIMITED", "PREVIEW_LIMIT", "UNSUPPORTED_MEDIA", "MERGE_FAILED") if code in str(error)), None)
+                    job.update(status="error", code=code or error_code(error))
+            job["task"] = asyncio.create_task(prepare())
+            # 重试建立新身份，保留仍被旧播放器使用的字节。
+            self._preview_jobs[(key, uuid.uuid4().hex) if retry else key] = job
+        token = uuid.uuid4().hex
+        job["sessions"].add(token)
+        self._preview_sessions[token] = dict(job=job, touched=now)
+        return self.preview_status(token)
+
+    def preview_job(self, token, video_id):
+        """返回会话对应的准备任务；会话不存在或视频不匹配时返回 None。"""
+        entry = self._preview_sessions.get(token)
+        if not entry or entry["job"]["video_id"] != video_id:
+            return None
+        self.preview_status(token)  # 触碰 TTL：正在播放的会话不被回收
+        return entry["job"]
+
+    async def cancel_preview(self, token):
+        """释放会话；最后一个使用者离开后等待任务（含 worker 子进程）真正结束。"""
+        entry = self._preview_sessions.get(token)
+        task = entry["job"]["task"] if entry else None
+        self.release_preview(token)
+        if task is not None and not task.done():
+            await asyncio.gather(task, return_exceptions=True)
+
+    def preview_status(self, token):
+        from .youtube_runtime import ERRORS
+        entry = self._preview_sessions.get(token)
+        if not entry:
+            raise KeyError(token)
+        entry["touched"] = time.time()
+        job = entry["job"]
+        return dict(session=token, status=job["status"], code=job["code"], message=ERRORS.get(job["code"]),
+            stream_url=f"/api/youtube/preview-stream?video_id={job['video_id']}&session={token}" if job["status"] == "ready" else None)
+
+    def release_preview(self, token):
+        entry = self._preview_sessions.pop(token, None)
+        if entry:
+            job = entry["job"]
+            job["sessions"].discard(token)
+            if not job["sessions"] and not job["task"].done():
+                job["task"].cancel()
+
+    async def close(self):
+        if self._preview_reaper:
+            self._preview_reaper.cancel()
+            await asyncio.gather(self._preview_reaper, return_exceptions=True)
+        tasks = [j["task"] for j in self._preview_jobs.values()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await self.runtime.close()
 
     def sanitize_filename(self, title: str, max_length: int = 200) -> str:
         """
@@ -446,67 +470,66 @@ class YouTubeService:
             if self.proxy:
                 ydl_opts['proxy'] = self.proxy
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                search_results = ydl.extract_info(search_url, download=False)
-                
-                videos = []
-                if search_results and 'entries' in search_results:
-                    for entry in search_results['entries']:
-                        if entry:
-                            try:
-                                # 安全地处理可能为None的数值字段
-                                duration = entry.get('duration')
-                                if duration is None or not isinstance(duration, (int, float)):
-                                    duration = 0
-                                else:
-                                    duration = int(duration)
-                                
-                                view_count = entry.get('view_count')
-                                if view_count is None or not isinstance(view_count, (int, float)):
-                                    view_count = 0
-                                else:
-                                    view_count = int(view_count)
-                                
-                                video_id = entry.get('id', '')
-                                if not video_id:
-                                    logger.warning(f"跳过没有ID的视频条目: {entry.get('title', 'Unknown')}")
-                                    continue
-                                
-                                video_info = YoutubeVideoInfo(
-                                    id=video_id,
-                                    title=entry.get('title', 'Unknown'),
-                                    url=f"https://www.youtube.com/watch?v={video_id}",
-                                    duration=duration,
-                                    uploader=entry.get('uploader', 'Unknown'),
-                                    upload_date=entry.get('upload_date', 'Unknown'),
-                                    view_count=view_count,
-                                    thumbnail_url=entry.get('thumbnail', ''),
-                                    description=entry.get('description', '')[:200] if entry.get('description') else ''
-                                )
-                                videos.append(video_info)
-                                
-                            except Exception as e:
-                                logger.warning(f"处理视频条目时出错，跳过: {str(e)}, 条目: {entry.get('title', 'Unknown')}")
+            search_results = self.runtime.run("extract", dict(url=search_url, options=ydl_opts), timeout=40)
+
+            videos = []
+            if search_results and 'entries' in search_results:
+                for entry in search_results['entries']:
+                    if entry:
+                        try:
+                            # 安全地处理可能为None的数值字段
+                            duration = entry.get('duration')
+                            if duration is None or not isinstance(duration, (int, float)):
+                                duration = 0
+                            else:
+                                duration = int(duration)
+
+                            view_count = entry.get('view_count')
+                            if view_count is None or not isinstance(view_count, (int, float)):
+                                view_count = 0
+                            else:
+                                view_count = int(view_count)
+
+                            video_id = entry.get('id', '')
+                            if not video_id:
+                                logger.warning(f"跳过没有ID的视频条目: {entry.get('title', 'Unknown')}")
                                 continue
 
-                # 应用过滤条件
-                filtered_videos = self._filter_videos(
-                    videos, request.min_duration, request.max_duration, 
-                    request.min_views, request.max_views
-                )
-                
-                # 限制返回结果数量
-                final_videos = filtered_videos[:request.max_videos]
-                
-                logger.info(f"YouTube搜索完成 - 找到: {len(final_videos)} 个视频")
-                
-                return YoutubeSearchResponse(
-                    success=True,
-                    videos=final_videos,
-                    total_found=len(final_videos),
-                    message=f"成功找到 {len(final_videos)} 个视频",
-                    query=request.query
-                )
+                            video_info = YoutubeVideoInfo(
+                                id=video_id,
+                                title=entry.get('title', 'Unknown'),
+                                url=f"https://www.youtube.com/watch?v={video_id}",
+                                duration=duration,
+                                uploader=entry.get('uploader', 'Unknown'),
+                                upload_date=entry.get('upload_date', 'Unknown'),
+                                view_count=view_count,
+                                thumbnail_url=entry.get('thumbnail', ''),
+                                description=entry.get('description', '')[:200] if entry.get('description') else ''
+                            )
+                            videos.append(video_info)
+
+                        except Exception as e:
+                            logger.warning(f"处理视频条目时出错，跳过: {str(e)}, 条目: {entry.get('title', 'Unknown')}")
+                            continue
+
+            # 应用过滤条件
+            filtered_videos = self._filter_videos(
+                videos, request.min_duration, request.max_duration,
+                request.min_views, request.max_views
+            )
+
+            # 限制返回结果数量
+            final_videos = filtered_videos[:request.max_videos]
+
+            logger.info(f"YouTube搜索完成 - 找到: {len(final_videos)} 个视频")
+
+            return YoutubeSearchResponse(
+                success=True,
+                videos=final_videos,
+                total_found=len(final_videos),
+                message=f"成功找到 {len(final_videos)} 个视频",
+                query=request.query
+            )
 
         except Exception as e:
             error_msg = f"YouTube搜索失败: {str(e)}"
@@ -573,12 +596,11 @@ class YouTubeService:
         """
         logger.info(f"获取YouTube视频信息 - URL: {request.url}")
 
-        # Spec 03 §3.2 (V03-A) — block SSRF before handing the URL to
-        # yt-dlp's extractor chain (yt-dlp accepts file://, http://localhost,
-        # cloud-metadata IPs, etc. by default).
+        # 仅重建固定 YouTube 主机和合法视频 ID，拒绝任意 URL/重定向入口。
+        # 兼容 TUN 的 fake-IP DNS，不放宽通用 URL guard。
         try:
-            safe_url = validate_external_url(request.url)
-        except URLGuardError as guard_exc:
+            safe_url = youtube_watch_url(request.url)
+        except ValueError as guard_exc:
             logger.warning(f"YouTube info URL rejected by url_guard: {guard_exc}")
             return YoutubeVideoInfoResponse(
                 success=False,
@@ -589,44 +611,43 @@ class YouTubeService:
             base_opts = {'quiet': True}
             ydl_opts = self._get_robust_ydl_options(base_opts)
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(safe_url, download=False)
-                
-                # 安全地处理可能为None的数值字段
-                duration = info.get('duration')
-                if duration is None or not isinstance(duration, (int, float)):
-                    duration = 0
-                else:
-                    duration = int(duration)
-                
-                view_count = info.get('view_count')
-                if view_count is None or not isinstance(view_count, (int, float)):
-                    view_count = 0
-                else:
-                    view_count = int(view_count)
-                
-                video_info = YoutubeVideoInfo(
-                    id=info.get('id', ''),
-                    title=info.get('title', 'Unknown'),
-                    url=safe_url,
-                    duration=duration,
-                    uploader=info.get('uploader', 'Unknown'),
-                    upload_date=info.get('upload_date', 'Unknown'),
-                    view_count=view_count,
-                    thumbnail_url=info.get('thumbnail', ''),
-                    description=info.get('description', '')[:200] if info.get('description') else '',
-                    width=info.get('width'),
-                    height=info.get('height')
-                )
-                
-                logger.info(f"成功获取视频信息 - 标题: {video_info.title}")
-                
-                return YoutubeVideoInfoResponse(
-                    success=True,
-                    video=video_info,
-                    message="成功获取视频信息"
-                )
-                
+            info = self.runtime.run("extract", dict(url=safe_url, options=ydl_opts), timeout=25)
+
+            # 安全地处理可能为None的数值字段
+            duration = info.get('duration')
+            if duration is None or not isinstance(duration, (int, float)):
+                duration = 0
+            else:
+                duration = int(duration)
+
+            view_count = info.get('view_count')
+            if view_count is None or not isinstance(view_count, (int, float)):
+                view_count = 0
+            else:
+                view_count = int(view_count)
+
+            video_info = YoutubeVideoInfo(
+                id=info.get('id', ''),
+                title=info.get('title', 'Unknown'),
+                url=safe_url,
+                duration=duration,
+                uploader=info.get('uploader', 'Unknown'),
+                upload_date=info.get('upload_date', 'Unknown'),
+                view_count=view_count,
+                thumbnail_url=info.get('thumbnail', ''),
+                description=info.get('description', '')[:200] if info.get('description') else '',
+                width=info.get('width'),
+                height=info.get('height')
+            )
+
+            logger.info(f"成功获取视频信息 - 标题: {video_info.title}")
+
+            return YoutubeVideoInfoResponse(
+                success=True,
+                video=video_info,
+                message="成功获取视频信息"
+            )
+
         except Exception as e:
             error_msg = f"获取视频信息失败: {str(e)}"
             logger.error(error_msg, exc_info=True)
@@ -636,217 +657,24 @@ class YouTubeService:
             )
 
     def download_video(self, request: YoutubeVideoDownloadRequest) -> YoutubeVideoDownloadResponse:
-        """
-        下载YouTube视频
-        
-        Args:
-            request: 下载请求参数
-            
-        Returns:
-            YoutubeVideoDownloadResponse: 下载结果
-        """
-        logger.info(f"开始下载YouTube视频 - URL: {request.url}")
-
-        # Spec 03 §3.2 (V03-A) — gate the URL before any yt-dlp work.
         try:
-            safe_url = validate_external_url(request.url)
-        except URLGuardError as guard_exc:
-            logger.warning(f"YouTube download URL rejected by url_guard: {guard_exc}")
-            return YoutubeVideoDownloadResponse(
-                success=False,
-                message="URL rejected by security guard",
-                error=str(guard_exc),
-            )
-
+            safe_url = youtube_watch_url(request.url)
+        except ValueError as error:
+            return YoutubeVideoDownloadResponse(success=False, message="URL rejected", error=str(error))
+        output = self.output_dir.resolve() / uuid.uuid4().hex
         try:
-            # 首先获取视频信息用于文件名生成
-            info_request = YoutubeVideoInfoRequest(url=safe_url)
-            info_result = self.get_video_info(info_request)
-            
-            if not info_result.success or not info_result.video:
-                return YoutubeVideoDownloadResponse(
-                    success=False,
-                    message="获取视频信息失败",
-                    error="无法获取视频信息"
-                )
-                
-            # 生成规范化的文件名
-            original_title = info_result.video.title
-            sanitized_title = self.sanitize_filename(original_title)
-            
-            # 添加时间戳确保唯一性
-            timestamp = int(time.time())
-            unique_filename = f"{sanitized_title}_{timestamp}.%(ext)s"
-            
-            # 构建输出文件名模板
-            outtmpl = str(self.output_dir / unique_filename)
-
-            # 构建更灵活的格式选择器，支持多种回退选项
-            format_options = []
-            
-            if request.video_quality == "best":
-                format_options = [
-                    f"best[ext={request.format_type}]",
-                    f"best[ext={request.format_type}][protocol^=http]",
-                    "best[ext=mp4]",
-                    "best[ext=webm]", 
-                    "best",
-                    "worst"  # 最后的回退选项
-                ]
-            elif request.video_quality == "worst":
-                format_options = [
-                    f"worst[ext={request.format_type}]",
-                    f"worst[ext={request.format_type}][protocol^=http]",
-                    "worst[ext=mp4]",
-                    "worst[ext=webm]",
-                    "worst"
-                ]
-            else:
-                # 具体质量要求，如 720p, 1080p
-                height = request.video_quality.replace('p', '')
-                format_options = [
-                    f"best[height<={height}][ext={request.format_type}]",
-                    f"best[height<={height}][ext={request.format_type}][protocol^=http]",
-                    f"best[height<={height}][ext=mp4]",
-                    f"best[height<={height}][ext=webm]",
-                    f"best[height<={height}]",
-                    f"best[ext={request.format_type}]",
-                    "best[ext=mp4]",
-                    "best"
-                ]
-            
-            format_selector = "/".join(format_options)
-
-            # 使用增强的yt-dlp配置
-            base_opts = {
-                'format': format_selector,
-                'outtmpl': outtmpl,
-                'writesubtitles': request.subtitle,
-                'writeautomaticsub': request.subtitle,
-                'progress_hooks': [self.progress_hook],
-            }
-            ydl_opts = self._get_robust_ydl_options(base_opts)
-
-            # 时间范围处理（需要ffmpeg）
-            postprocessor_args = []
-            if request.start_time or request.end_time or request.duration:
-                if request.start_time:
-                    postprocessor_args.extend(['-ss', request.start_time])
-                if request.duration:
-                    postprocessor_args.extend(['-t', request.duration])
-                elif request.end_time:
-                    postprocessor_args.extend(['-to', request.end_time])
-
-                ydl_opts['postprocessors'] = [{
-                    'key': 'FFmpegVideoConvertor',
-                    'preferedformat': request.format_type,
-                    'postprocessor_args': postprocessor_args
-                }]
-
-            # 执行下载，支持格式回退重试
-            download_successful = False
-            last_error = None
-            
-            # 首先尝试完整的格式选择器
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([safe_url])
-                    download_successful = True
-            except Exception as e:
-                last_error = str(e)
-                logger.warning(f"主要格式下载失败，尝试回退格式: {last_error}")
-                
-                # 如果主要格式失败，尝试更简单的格式选择器
-                fallback_formats = [
-                    "best[ext=mp4]/best[ext=webm]/best",  # 只要mp4或webm
-                    "best[protocol^=http]",  # 只要http协议
-                    "best/worst"  # 任何可用格式
-                ]
-                
-                for fallback_format in fallback_formats:
-                    try:
-                        logger.info(f"尝试回退格式: {fallback_format}")
-                        fallback_opts = ydl_opts.copy()
-                        fallback_opts['format'] = fallback_format
-                        
-                        with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                            ydl.download([safe_url])
-                            download_successful = True
-                            logger.info(f"回退格式下载成功: {fallback_format}")
-                            break
-                    except Exception as fallback_error:
-                        last_error = str(fallback_error)
-                        logger.warning(f"回退格式 {fallback_format} 也失败: {last_error}")
-                        continue
-            
-            if download_successful:
-                # 查找下载的文件
-                downloaded_files = list(self.output_dir.glob(f"{sanitized_title}_{timestamp}.*"))
-                if downloaded_files:
-                    file_path = str(downloaded_files[0])
-                    file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-                    
-                    logger.info(f"视频下载成功 - 文件: {file_path}")
-                    
-                    return YoutubeVideoDownloadResponse(
-                        success=True,
-                        message="视频下载成功",
-                        file_path=file_path,
-                        file_size=file_size
-                    )
-                else:
-                    return YoutubeVideoDownloadResponse(
-                        success=False,
-                        message="下载完成但找不到文件",
-                        error="文件未找到"
-                    )
-            else:
-                return YoutubeVideoDownloadResponse(
-                    success=False,
-                    message="所有格式下载都失败",
-                    error=f"最后错误: {last_error}"
-                )
-
-        except Exception as e:
-            error_msg = f"视频下载失败: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            return YoutubeVideoDownloadResponse(
-                success=False,
-                message="视频下载失败",
-                error=error_msg
-            )
+            data = self.runtime.run("download", dict(url=safe_url, options=self._get_robust_ydl_options(),
+                request=request.model_dump(), output_dir=str(output)), timeout=280, byte_limit=4 * 1024**3)
+            return YoutubeVideoDownloadResponse(success=True,
+                message="视频下载成功（源视频无音轨）" if data.get("has_audio") is False else "视频下载成功",
+                file_path=data["file_path"], file_size=data["file_size"], has_audio=data.get("has_audio"))
+        except Exception as error:
+            if output.exists():
+                shutil.rmtree(output, ignore_errors=True)
+            return YoutubeVideoDownloadResponse(success=False, message="视频下载失败", error=str(error))
 
     async def download_video_async(self, request: YoutubeVideoDownloadRequest) -> YoutubeVideoDownloadResponse:
-        """
-        异步下载YouTube视频（使用线程池执行同步下载）
-        
-        Args:
-            request: 下载请求参数
-            
-        Returns:
-            YoutubeVideoDownloadResponse: 下载结果
-        """
-        logger.info(f"异步下载YouTube视频 - URL: {request.url}")
-        
-        # 使用线程池执行同步的下载操作
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            try:
-                # 在线程池中执行同步下载
-                download_result = await loop.run_in_executor(
-                    executor, 
-                    self.download_video, 
-                    request
-                )
-                return download_result
-            except Exception as e:
-                error_msg = f"异步视频下载失败: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                return YoutubeVideoDownloadResponse(
-                    success=False,
-                    message="异步视频下载失败",
-                    error=error_msg
-                )
+        return await cancellable_call(self.download_video, request)
 
     async def download_and_upload_video(self, request: YoutubeVideoDownloadAndUploadRequest) -> YoutubeVideoDownloadAndUploadResponse:
         """
@@ -898,18 +726,14 @@ class YouTubeService:
                 base_delay = float(_settings.youtube.download.retry_delay)
                 
                 result = await retry_with_exponential_backoff(
-                    download_and_upload_with_retry,
-                    max_retries=max_retries,
-                    base_delay=base_delay,
-                    max_delay=60.0
-                )
-                
+                    download_and_upload_with_retry, max_retries=max_retries, base_delay=base_delay, max_delay=60.0)
+
                 logger.info(f"YouTube视频下载并上传成功 - URL: {request.url}, "
                            f"视频URL: {result.video_url}")
                 return result
                 
             except Exception as e:
-                error_msg = f"YouTube视频下载并上传失败（所有重试均失败）: {str(e)}"
+                error_msg = f"YouTube视频下载并上传失败: {str(e)}"
                 logger.error(error_msg, exc_info=True)
                 return YoutubeVideoDownloadAndUploadResponse(
                     success=False,
@@ -979,7 +803,8 @@ class YouTubeService:
             video_metadata = {
                 "original_youtube_url": request.url,
                 "download_time": datetime.now().isoformat(),
-                "file_size": download_result.file_size
+                "file_size": download_result.file_size,
+                "has_audio": download_result.has_audio,
             }
             
             try:
@@ -1039,13 +864,15 @@ class YouTubeService:
                 sanitized_name = self.sanitize_filename(base_name)
                 custom_filename = f"youtube_{sanitized_name}.{request.format_type}"
 
+            custom_filename = f"{Path(custom_filename).stem}.{request.format_type}"
+
             with open(download_result.file_path, "rb") as f:
                 file_data = f.read()
 
             upload_result = await storage_service.upload_file(
                 file_data=file_data,
                 filename=custom_filename,
-                content_type="video/mp4",
+                content_type={"mp4": "video/mp4", "webm": "video/webm", "mkv": "video/x-matroska"}[request.format_type],
                 folder="video",
                 user_id="anonymous",
                 task_id=request.task_id,
@@ -1070,7 +897,6 @@ class YouTubeService:
                 try:
                     # 生成缩略图
                     thumbnail_filename = f"thumb_{os.path.splitext(custom_filename)[0]}.jpg"
-                    thumbnail_bucket_path = bucket_path.replace(custom_filename, thumbnail_filename)
                     
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as thumb_file:
                         thumbnail_path = thumb_file.name
@@ -1115,16 +941,20 @@ class YouTubeService:
             else:
                 logger.info("跳过缩略图生成（未启用或无时长信息）")
             
-            # 清理临时文件
+            # 每个任务独占一个输出目录；整个目录回收，避免空目录长期堆积。
             try:
-                if os.path.exists(download_result.file_path):
+                task_dir = Path(download_result.file_path).parent
+                output_root = self.output_dir.resolve()
+                if task_dir != output_root and task_dir.is_relative_to(output_root):
+                    shutil.rmtree(task_dir, ignore_errors=True)
+                elif os.path.exists(download_result.file_path):
                     os.remove(download_result.file_path)
-                    logger.info(f"已清理临时下载文件: {download_result.file_path}")
-                
+                logger.info(f"已清理任务下载目录: {task_dir}")
+
                 if thumbnail_path and os.path.exists(thumbnail_path):
                     os.remove(thumbnail_path)
                     logger.info(f"已清理临时缩略图文件: {thumbnail_path}")
-                    
+
             except Exception as cleanup_error:
                 logger.warning(f"清理临时文件失败: {cleanup_error}")
             
@@ -1143,7 +973,8 @@ class YouTubeService:
                 duration=duration,
                 width=width,
                 height=height,
-                original_youtube_url=request.url
+                original_youtube_url=request.url,
+                has_audio=download_result.has_audio,
             )
             
         except Exception as e:
@@ -1155,4 +986,4 @@ class YouTubeService:
 
 
 # 创建全局YouTube服务实例
-youtube_service = YouTubeService() 
+youtube_service = YouTubeService()

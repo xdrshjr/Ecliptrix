@@ -64,11 +64,56 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
 
   // YouTube 左侧预览：<video> 指向同源流端点，解析/上游失败时降级为缩略图 + 在浏览器打开。
   const [youtubePreviewError, setYoutubePreviewError] = useState(false);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
+  const [preparedPreview, setPreparedPreview] = useState<{
+    id: string; attempt: number; generation: number; status: string; session?: string; stream_url?: string; code?: string;
+  } | null>(null);
+  const previewGeneration = useRef(0);
 
   // 切换预览视频时重置错误态，避免上一条失败态残留到下一条。
   useEffect(() => {
+    if (!isModalOpen || activeLibrary !== 'youtube' || !youtubePreviewVideo?.id) return;
+    const id = youtubePreviewVideo.id;
+    const generation = ++previewGeneration.current;
+    let disposed = false;
+    let session: string | undefined;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
     setYoutubePreviewError(false);
-  }, [youtubePreviewVideo?.id]);
+    setPreparedPreview({ id, attempt: previewAttempt, generation, status: 'preparing' });
+    const release = (token: string) => void fetch(`/api/youtube/preview-prepare?session=${token}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+    const poll = async (first: boolean) => {
+      try {
+        const response = await fetch(first
+          ? `/api/youtube/preview-prepare?video_id=${encodeURIComponent(id)}&retry=${previewAttempt > 0}`
+          : `/api/youtube/preview-prepare?session=${session}`, {
+          method: first ? 'POST' : 'GET', cache: 'no-store',
+          ...(first ? {} : { signal: controller.signal }),
+        });
+        if (!response.ok) throw new Error(response.status === 429 ? 'PREVIEW_LIMIT' : 'NETWORK_ERROR');
+        const data = await response.json();
+        session = data.session;
+        if (disposed || generation !== previewGeneration.current) {
+          if (session) release(session);
+          return;
+        }
+        setPreparedPreview({ ...data, id, attempt: previewAttempt, generation });
+        if (data.status === 'preparing') timer = setTimeout(() => void poll(false), 750);
+      } catch (error) {
+        if (!disposed && generation === previewGeneration.current) {
+          setPreparedPreview({ id, attempt: previewAttempt, generation, status: 'error', code: error instanceof Error ? error.message : 'NETWORK_ERROR' });
+        }
+      }
+    };
+    void poll(true);
+    return () => {
+      disposed = true;
+      previewGeneration.current++;
+      clearTimeout(timer);
+      controller.abort();
+      if (session) release(session);
+    };
+  }, [isModalOpen, activeLibrary, youtubePreviewVideo?.id, previewAttempt]);
 
   useEffect(() => {
     if (isModalOpen) {
@@ -320,6 +365,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
 
         {/* 搜索控制区 - Apple风格 */}
         <div className="px-6 py-4 border-b border-border bg-card">
+          {activeLibrary === 'youtube' && <p role="note" className="mb-3 text-xs text-muted-foreground">{t.videoSearchModal.youtubeNetworkHint}</p>}
           <div className="flex items-center space-x-4">
             <div className="flex-1">
               <input
@@ -470,7 +516,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                         activeLibrary === 'youtube' ? (
                           // YouTube视频：改走后端渐进式流端点（同源 <video>），规避 iframe 内嵌
                           // 播放器触发的反机器人「请登录…」挑战；解析/上游失败时降级。
-                          youtubePreviewError ? (
+                          (youtubePreviewError || (preparedPreview?.id === currentPreviewVideo.id && preparedPreview?.attempt === previewAttempt && preparedPreview?.status === 'error')) ? (
                             <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
                               {(currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl) ? (
                                 <img
@@ -484,7 +530,8 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                 </svg>
                               )}
                               <p className="text-sm font-medium text-foreground">{t.videoSearchModal.previewUnavailable}</p>
-                              <p className="text-xs text-muted-foreground mt-1">{t.videoSearchModal.previewUnavailableHint}</p>
+                              <p className="text-xs text-muted-foreground mt-1">{t.videoSearchModal.previewErrors[preparedPreview?.code || 'NETWORK_ERROR'] || t.videoSearchModal.previewUnavailableHint}</p>
+                              <button type="button" className="mt-3 text-sm text-primary hover:underline" onClick={() => { setYoutubePreviewError(false); setPreviewAttempt(value => value + 1); }}>{t.videoSearchModal.retryPreview}</button>
                               <a
                                 href={currentPreviewVideo.videoUrl}
                                 target="_blank"
@@ -497,15 +544,18 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                 <span>{t.videoSearchModal.openInBrowser}</span>
                               </a>
                             </div>
+                          ) : preparedPreview?.id !== currentPreviewVideo.id || preparedPreview?.attempt !== previewAttempt || preparedPreview?.status !== 'ready' ? (
+                            <p role="status" className="p-4 text-sm text-muted-foreground">{t.videoSearchModal.preparingPreview}</p>
                           ) : (
                             <video
-                              key={currentPreviewVideo.id}
-                              src={`/api/youtube/preview-stream?video_id=${encodeURIComponent(currentPreviewVideo.id)}`}
+                              key={`${currentPreviewVideo.id}:${previewAttempt}`}
+                              src={preparedPreview.stream_url}
                               className="w-full h-full max-h-[320px] object-contain"
                               style={{ maxWidth: '100%', maxHeight: '320px' }}
                               controls
                               preload="metadata"
                               onLoadedData={() => {
+                                if (preparedPreview.generation !== previewGeneration.current) return;
                                 setYoutubePreviewError(false);
                                 logger.info('YouTube视频预览加载完成', {
                                   videoId: currentPreviewVideo.id,
@@ -518,7 +568,18 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                 });
                               }}
                               onError={() => {
+                                if (preparedPreview.generation !== previewGeneration.current) return;
                                 setYoutubePreviewError(true);
+                                if (preparedPreview.session) {
+                                  const generation = preparedPreview.generation;
+                                  void fetch(`/api/youtube/preview-prepare?session=${preparedPreview.session}`, { cache: 'no-store' })
+                                    .then(async response => response.ok ? response.json() : null)
+                                    .then(data => {
+                                      if (data?.code && generation === previewGeneration.current) {
+                                        setPreparedPreview(value => value ? { ...value, code: data.code } : value);
+                                      }
+                                    }).catch(() => {});
+                                }
                                 logger.error('YouTube视频预览加载失败', new Error('YouTube preview stream load error'), {
                                   videoId: currentPreviewVideo.id,
                                   activeLibrary
@@ -976,4 +1037,4 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   );
 };
 
-export default VideoSearchModal; 
+export default VideoSearchModal;

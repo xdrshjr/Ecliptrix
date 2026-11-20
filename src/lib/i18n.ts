@@ -1010,6 +1010,15 @@ export interface Translations {
     youtubeSettings: string;
     youtubeSettingsDesc: string;
     ytDownload: string;
+    ytRuntime: string;
+    ytRuntimeDesc: string;
+    ytCheckUpdates: string;
+    ytStatusError: string;
+    ytActiveVersion: string;
+    ytAvailableVersion: string;
+    ytLastChecked: string;
+    ytLastUpdated: string;
+    ytRuntimeStates: Record<string, string>;
     ytDownloadDesc: string;
     ytMaxConcurrent: string;
     ytTimeout: string;
@@ -1868,6 +1877,10 @@ export interface Translations {
     clickToPreview: string;
     clickToPreviewDesc: string;
     previewUnavailable: string;
+    youtubeNetworkHint: string;
+    preparingPreview: string;
+    retryPreview: string;
+    previewErrors: Record<string, string>;
     previewUnavailableHint: string;
     openInBrowser: string;
     selectedVideos: string;
@@ -3579,6 +3592,8 @@ export interface Translations {
       emptyTitle: string;
       emptyHint: string;
       retry: string;
+      chatOnly: string;
+      visionIncompatible: string;
     };
     notice: { routed: string; useOwn: string; switching: string };
     panel: {
@@ -3588,6 +3603,7 @@ export interface Translations {
       keyLabel: string;
       state: { connected: string; unverified: string; invalid: string; unreachable: string };
       checkedAt: string;
+      checkedAtStale: string;
       reverify: string;
       verifying: string;
       replaceKey: string;
@@ -5476,6 +5492,15 @@ export const translations: Record<string, Translations> = {
       youtubeSettings: 'YouTube Settings',
       youtubeSettingsDesc: 'Configure YouTube download, upload, quality, and file management',
       ytDownload: 'Download',
+      ytRuntime: 'YouTube downloader',
+      ytRuntimeDesc: 'Compatible official updates install automatically in the background. Active downloads keep their current version.',
+      ytCheckUpdates: 'Check for updates',
+      ytStatusError: 'Unable to load update status. Check your connection and try again.',
+      ytActiveVersion: 'Active version',
+      ytAvailableVersion: 'Available version',
+      ytLastChecked: 'Last checked',
+      ytLastUpdated: 'Last updated',
+      ytRuntimeStates: { checking: 'Checking', installing: 'Installing', ready: 'Ready', error: 'Update failed; current version retained', activated: 'Activated', no_update: 'Up to date', update_failed: 'Update failed', activation_failed: 'Activation failed' },
       ytDownloadDesc: 'Configure download concurrency and timeouts',
       ytMaxConcurrent: 'Max concurrent downloads',
       ytTimeout: 'Download timeout (s)',
@@ -6344,6 +6369,10 @@ export const translations: Record<string, Translations> = {
       clickToPreview: 'Click video to preview',
       clickToPreviewDesc: 'Select a video from the left to view details',
       previewUnavailable: 'Preview unavailable',
+      youtubeNetworkHint: 'Before searching, previewing or downloading, ensure your network can connect to YouTube. Some networks may require a working proxy.',
+      preparingPreview: 'Preparing video preview…',
+      retryPreview: 'Retry preview',
+      previewErrors: { SIGN_IN_REQUIRED: 'YouTube requires sign-in or verification. Check your network connection.', RATE_LIMITED: 'YouTube is limiting requests. Try again later.', NETWORK_ERROR: 'Unable to load YouTube media. Check your network or proxy, then retry.', PREVIEW_LIMIT: 'Preview preparation exceeded its duration, size or time limit. Choose a shorter video.', UNSUPPORTED_MEDIA: 'Live, protected or inaccessible videos cannot be previewed.', MERGE_FAILED: 'Media preparation failed. Check FFmpeg, then retry.', MEDIA_RELOAD_REQUIRED: 'The media changed. Retry to reload the preview.' },
       previewUnavailableHint: 'This video cannot be previewed here. Check your network/proxy, or open it in your browser.',
       openInBrowser: 'Open in browser',
       selectedVideos: 'Selected Videos',
@@ -8106,6 +8135,8 @@ export const translations: Record<string, Translations> = {
         emptyTitle: 'The relay has no models available',
         emptyHint: 'Ask the relay operator, or switch chat to your own configuration.',
         retry: 'Retry',
+        chatOnly: 'text slots only',
+        visionIncompatible: 'This model is not compatible with the vision slot. Pick another one.',
       },
       notice: { routed: 'Currently provided by the AI relay', useOwn: 'Use my own configuration', switching: 'Switching…' },
       panel: {
@@ -8115,6 +8146,7 @@ export const translations: Record<string, Translations> = {
         keyLabel: 'Key',
         state: { connected: 'Connected', unverified: 'Not verified', invalid: 'Key invalid', unreachable: 'Unreachable' },
         checkedAt: 'Verified {time}',
+        checkedAtStale: 'Last verified {hours} h ago · checking again',
         reverify: 'Verify again',
         verifying: 'Verifying…',
         replaceKey: 'Replace key',
@@ -10144,6 +10176,15 @@ export const translations: Record<string, Translations> = {
       youtubeSettings: 'YouTube 设置',
       youtubeSettingsDesc: '配置 YouTube 下载、上传、质量和文件管理',
       ytDownload: '下载配置',
+      ytRuntime: 'YouTube 下载组件',
+      ytRuntimeDesc: '后台自动安装兼容的官方更新；正在执行的下载继续使用原版本。',
+      ytCheckUpdates: '检查更新',
+      ytStatusError: '无法读取更新状态，请检查连接后重试。',
+      ytActiveVersion: '实际使用版本',
+      ytAvailableVersion: '发现的新版本',
+      ytLastChecked: '最近检查',
+      ytLastUpdated: '最近成功更新',
+      ytRuntimeStates: { checking: '正在检查', installing: '正在安装', ready: '可用', error: '更新失败，已保留当前版本', activated: '已激活', no_update: '已是最新版本', update_failed: '更新失败', activation_failed: '激活失败' },
       ytDownloadDesc: '配置下载并发数和超时',
       ytMaxConcurrent: '最大并发下载数',
       ytTimeout: '下载超时（秒）',
@@ -11010,6 +11051,10 @@ export const translations: Record<string, Translations> = {
       clickToPreview: '点击视频进行预览',
       clickToPreviewDesc: '在左侧选择一个视频来查看详情',
       previewUnavailable: '预览不可用',
+      youtubeNetworkHint: '使用 YouTube 搜索、预览和下载前，请确认当前网络环境能够正常连接 YouTube；部分网络可能需要配置可用代理。',
+      preparingPreview: '正在准备视频预览…',
+      retryPreview: '重试预览',
+      previewErrors: { SIGN_IN_REQUIRED: 'YouTube 要求登录或验证，请检查当前网络出口。', RATE_LIMITED: 'YouTube 请求受限，请稍后重试。', NETWORK_ERROR: '无法加载 YouTube 媒体，请检查网络及代理后重试。', PREVIEW_LIMIT: '预览准备超过时长、大小或时间上限，请选择较短的视频。', UNSUPPORTED_MEDIA: '暂不支持直播、受保护或不可访问的视频。', MERGE_FAILED: '视频合并或格式校验失败，请检查 FFmpeg 后重试。', MEDIA_RELOAD_REQUIRED: '媒体已变化，请重试以重新加载预览。' },
       previewUnavailableHint: '该视频无法在此内联预览。请检查网络/代理，或在浏览器中打开。',
       openInBrowser: '在浏览器中打开',
       selectedVideos: '已选择的视频',
@@ -12771,6 +12816,8 @@ export const translations: Record<string, Translations> = {
         emptyTitle: '中转站暂无可用模型',
         emptyHint: '请联系中转站运营方，或把对话能力改用你自己的配置。',
         retry: '重试',
+        chatOnly: '仅文本槽位',
+        visionIncompatible: '该模型与视觉槽位不兼容，请换一个模型。',
       },
       notice: { routed: '当前由 AI 能力中转站提供', useOwn: '改用自己的配置', switching: '正在切换…' },
       panel: {
@@ -12780,6 +12827,7 @@ export const translations: Record<string, Translations> = {
         keyLabel: 'Key',
         state: { connected: '已连接', unverified: '未验证', invalid: 'Key 无效', unreachable: '无法连接' },
         checkedAt: '上次验证 {time}',
+        checkedAtStale: '上次验证于 {hours} 小时前 · 正在重新检查',
         reverify: '重新验证',
         verifying: '验证中…',
         replaceKey: '更换 Key',

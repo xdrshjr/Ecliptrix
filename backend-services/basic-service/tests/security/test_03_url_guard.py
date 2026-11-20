@@ -256,27 +256,52 @@ def _looks_like_guard_rejection(text: str) -> bool:
 
 
 def test_youtube_service_get_video_info_rejects_file_scheme():
-    # Lazy import — youtube_service has heavy import-time side effects
-    # (yt-dlp banner, semaphore init) that we don't want at collection.
-    from app.services.youtube_service import YouTubeService
     from app.models.youtube_models import YoutubeVideoInfoRequest
 
-    svc = YouTubeService()
-    resp = svc.get_video_info(YoutubeVideoInfoRequest(url="file:///etc/passwd"))
-    assert resp.success is False
-    assert _looks_like_guard_rejection(resp.error or "")
+    with pytest.raises(ValueError):
+        YoutubeVideoInfoRequest(url="file:///etc/passwd")
 
 
 def test_youtube_service_download_rejects_metadata_ip():
-    from app.services.youtube_service import YouTubeService
     from app.models.youtube_models import YoutubeVideoDownloadRequest
 
-    svc = YouTubeService()
-    resp = svc.download_video(
+    with pytest.raises(ValueError):
         YoutubeVideoDownloadRequest(url="http://169.254.169.254/latest/meta-data/")
-    )
-    assert resp.success is False
-    assert _looks_like_guard_rejection(resp.error or "")
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.youtube.com/redirect?q=x",
+    "https://www.youtube.com:99999/watch?v=abcdefghijk",
+    "https://www.youtube.com:abc/watch?v=abcdefghijk",
+    "https://[::1/watch?v=abcdefghijk",
+])
+def test_youtube_invalid_url_validation_errors_stay_serializable(url):
+    """模型边界拒绝非法 URL 时，平台的 422 处理器必须能序列化响应（曾退化为 500）。
+
+    越界端口和非法 IPv6 曾让 ``urlsplit`` 的裸 ValueError 进入 ``ctx.error``，
+    使 ``exc.errors()`` 无法 JSON 序列化，用户拿到 500。
+    """
+    import asyncio
+    import json
+
+    from fastapi.exceptions import RequestValidationError
+    from pydantic import ValidationError
+    from starlette.requests import Request
+
+    from app.main import validation_exception_handler
+    from app.models.youtube_models import YoutubeVideoDownloadAndUploadRequest
+
+    with pytest.raises(ValidationError) as excinfo:
+        YoutubeVideoDownloadAndUploadRequest(url=url)
+    errors = excinfo.value.errors()
+    json.dumps(errors)  # 裸 ValueError 上下文会在这里 TypeError，最终变成 HTTP 500
+
+    request = Request({"type": "http", "method": "POST", "scheme": "http",
+                       "path": "/api/youtube/download-and-upload", "query_string": b"",
+                       "headers": [], "server": ("127.0.0.1", 8000)})
+    response = asyncio.run(validation_exception_handler(request, RequestValidationError(errors)))
+    assert response.status_code == 422
+    assert b"youtube_invalid_url" in response.body
 
 
 # ---------------------------------------------------------------------------
