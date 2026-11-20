@@ -256,7 +256,9 @@ export const CATEGORY_USAGE_HINTS: Record<string, string> = {
     'Set camera motion/transitions (clip_effects) AFTER apply_effect: a changed clip invalidates get_effect_target.',
   [CATEGORY_IDS.CLIP_EFFECTS]:
     'Instant, free, no render: set_camera_motion(clipIds<=12, presetId, intensity?, easing?) ' +
-    'and set_clip_transition(clipId, in?/out?: {type:fade|dissolve, duration} or null). ' +
+    'and set_clip_transition(clipIds<=12, in?/out?: {type:fade|dissolve, duration} or null). ' +
+    'fade and dissolve both only ramp the alpha of the clip itself (a dip through the layer below/black); ' +
+    'same-track neighbours never overlap, so this is NOT a cross-dissolve between two clips. ' +
     'Works on clips you already placed on an unlocked video track (stills too); presetId none clears. ' +
     'get_timeline echoes the result. Use effects_tools for rendered titles/animations, not for fades or pushes. ' +
     'Do this after the cut is final: later resize/split re-bases the motion window.',

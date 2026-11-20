@@ -29,6 +29,7 @@ import { computeItemStyles } from './timelineItemStyles';
 import { presetLabel } from '../components/CameraMotionModal/presetLabels';
 import { canApplyCameraMotion } from '../playback/camera/eligibility';
 import TimelineItemFilmstrip from './TimelineItemFilmstrip';
+import ClipTransitionBadge from './ClipTransitionBadge';
 import { ClipContextMenu } from './ClipContextMenu';
 import TimelineItemDownloadOverlay, {
   type LocalProxyMaskState,
@@ -892,6 +893,8 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
           </span>
         </button>
       )}
+
+      <ClipTransitionBadge itemId={item.id} transitionIn={item.transitionIn} transitionOut={item.transitionOut} widthPx={width} isTrackLocked={isTrackLocked} />
 
       <TimelineItemDownloadOverlay
         item={item}

@@ -240,7 +240,9 @@ export class TimelineItem {
   set cameraMotion(value: CameraMotionData | undefined) { this._cameraMotion = value; }
 
   get transitionIn(): SequenceTransitionData | undefined { return this._transitionIn; }
+  set transitionIn(value: SequenceTransitionData | undefined) { this._transitionIn = value; }
   get transitionOut(): SequenceTransitionData | undefined { return this._transitionOut; }
+  set transitionOut(value: SequenceTransitionData | undefined) { this._transitionOut = value; }
 
   // ------------------------------------------------------------------
   // Static factory methods

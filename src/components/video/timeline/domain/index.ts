@@ -129,4 +129,5 @@ export type {
   MaterialType,
   CameraMotion,
   CameraMotionData,
+  SequenceTransitionData,
 } from './types';

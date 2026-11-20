@@ -88,4 +88,14 @@ describe('按需加载', () => {
     expect(bytes(getCategoryUsageHints('effects_tools'))).toBeLessThanOrEqual(800);
     expect(bytes(getCategoryUsageHints('clip_effects'))).toBeLessThanOrEqual(800);
   });
+
+  it('转场用法提示写明批量 clipIds，并声明 fade/dissolve 都不是两个片段间的交叉溶解', () => {
+    const hint = getCategoryUsageHints('clip_effects');
+    expect(hint).toContain('set_clip_transition(clipIds<=12');
+    expect(hint).not.toContain('set_clip_transition(clipId,');
+    expect(hint).toContain('NOT a cross-dissolve');
+    const tool = registryOf().getCategoryToolInfo('clip_effects')!.tools
+      .find(item => item.name === 'set_clip_transition')!;
+    expect(tool.description).toContain('NOT a cross-dissolve');
+  });
 });

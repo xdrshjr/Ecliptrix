@@ -848,7 +848,10 @@ export interface ImagePosition {
 }
 
 // 转场元数据——预览(02 TransitionLayer)与导出(05 ffmpeg fade/xfade)共用契约。
-// 'fade' 自身淡入/淡出；'dissolve' 与相邻 clip 交叉溶解，重叠时长=duration（秒）。
+// 'fade' 与 'dissolve' 当前渲染完全相同：只对本 clip 做 alpha 淡入/淡出（预览 alphaFor、
+// 导出 _alpha_steps 都不读 type）。同轨相邻 clip 首尾相接不重叠，因此不会产生交叉溶解；
+// 'dissolve' 是为将来交叉溶解预留的语义。仅当后一个 clip 放在上层轨道并与前一个时间重叠时，
+// 两层各自的 alpha 斜坡叠加才会呈现叠化（构造上成立，尚无测试钉住）。
 export interface ClipTransition {
   type: 'fade' | 'dissolve';
   duration: number; // 转场时长（秒）

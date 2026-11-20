@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { validateToolArguments } from '@mariozechner/pi-ai';
 import type { TimelineItem, TimelineState, Track, UpdateClipEffectsOperation } from '@/types';
 import { createVideoEditingAgent } from '../agent';
 import { AgentEventRouter } from '../AgentEventRouter';
@@ -256,37 +257,110 @@ describe('set_camera_motion', () => {
 });
 
 describe('set_clip_transition', () => {
-  it('转场时长夹到片段一半并说明', async () => {
+  const transitionTool = (context: ToolContext) => toolOf(context, 'set_clip_transition');
+
+  it('多 clip 一次设淡入淡出：result.operations 逐 clip 一个，位置/时长逐位不变', async () => {
     const context = newContext();
-    const result = (await toolOf(context, 'set_clip_transition').execute('tc-1',
-      { clipId: 'a', transitionIn: { type: 'fade', duration: 10 } } as never)).details;
-    expect(result).toMatchObject({ success: true, note: expect.stringContaining('half') });
+    const before = layout(context.timelineState);
+    const result = (await transitionTool(context).execute('tc-1',
+      { clipIds: ['a', 'b', 'img'], transitionIn: FADE, transitionOut: FADE } as never)).details as
+      { success: boolean; operations: UpdateClipEffectsOperation[]; clips: { id: string }[] };
+    expect(result.success).toBe(true);
+    expect(result.operations.map(op => op.clipId)).toEqual(['a', 'b', 'img']);
+    expect(result.clips.map(item => item.id)).toEqual(['a', 'b', 'img']);
+    for (const id of ['a', 'b', 'img']) {
+      expect(findItem(context.timelineState, id).transitionIn).toEqual(FADE);
+      expect(findItem(context.timelineState, id).transitionOut).toEqual(FADE);
+    }
+    expect(layout(context.timelineState)).toEqual(before);
+  });
+
+  it('重复 clipId 去重，只产生一个 operation', async () => {
+    const context = newContext();
+    const result = (await transitionTool(context).execute('tc-1',
+      { clipIds: ['a', 'a'], transitionIn: FADE } as never)).details as
+      { operations: UpdateClipEffectsOperation[] };
+    expect(result.operations).toHaveLength(1);
+  });
+
+  it('夹取按各 clip 自己的时长独立计算，并在 note 里点名被夹取的 clip', async () => {
+    const context = newContext();
+    // a: 3s (cap 1.5), img: 4s (cap 2) — 1.8s only exceeds a's cap.
+    const result = (await transitionTool(context).execute('tc-1',
+      { clipIds: ['a', 'img'], transitionIn: { type: 'fade', duration: 1.8 } } as never)).details as
+      { success: boolean; note?: string };
+    expect(result.success).toBe(true);
+    expect(result.note).toContain('half');
+    expect(result.note).toContain('on: a.');
+    expect(result.note).not.toContain('img');
     expect(findItem(context.timelineState, 'a').transitionIn).toEqual({ type: 'fade', duration: 1.5 });
+    expect(findItem(context.timelineState, 'img').transitionIn).toEqual({ type: 'fade', duration: 1.8 });
+  });
+
+  it('没有 clip 被夹取时回执不带 note', async () => {
+    const context = newContext();
+    const result = (await transitionTool(context).execute('tc-1',
+      { clipIds: ['a', 'b'], transitionIn: FADE } as never)).details as object;
+    expect(result).not.toHaveProperty('note');
   });
 
   it('null 清除、未给的一侧不变', async () => {
     const context = newContext();
-    const tool = toolOf(context, 'set_clip_transition');
-    await tool.execute('tc-1', { clipId: 'a', transitionIn: FADE, transitionOut: FADE } as never);
-    const result = (await tool.execute('tc-2', { clipId: 'a', transitionOut: null } as never)).details;
+    const tool = transitionTool(context);
+    await tool.execute('tc-1', { clipIds: ['a'], transitionIn: FADE, transitionOut: FADE } as never);
+    const result = (await tool.execute('tc-2', { clipIds: ['a'], transitionOut: null } as never)).details;
     expect(result).toMatchObject({ success: true, transitionIn: 'unchanged', transitionOut: 'cleared' });
     const item = findItem(context.timelineState, 'a');
     expect(item.transitionIn).toEqual(FADE);
     expect(item.transitionOut).toBeUndefined();
   });
 
+  it('批内任一 clip 被拒 → 整批一个都不落地', async () => {
+    for (const bad of ['voice', 'frozen', 'ghost']) {
+      const context = newContext();
+      const before = JSON.stringify(context.timelineState);
+      const result = (await transitionTool(context).execute('tc-1',
+        { clipIds: ['a', bad, 'b'], transitionIn: FADE } as never)).details;
+      expect(result).toMatchObject({ success: false, error_code: 'clip_effects_refused' });
+      expect(JSON.stringify(result)).toContain(bad);
+      expect(JSON.stringify(context.timelineState)).toBe(before);
+    }
+  });
+
   it.each([
-    ['两侧都没给', { clipId: 'a' }, 'clip_effects_empty'],
-    ['时长为负', { clipId: 'a', transitionIn: { type: 'fade', duration: -1 } }, 'clip_effects_refused'],
-    ['音频片段', { clipId: 'voice', transitionIn: FADE }, 'clip_effects_refused'],
-    ['锁定轨', { clipId: 'frozen', transitionIn: FADE }, 'clip_effects_refused'],
-    ['不存在的片段', { clipId: 'ghost', transitionIn: FADE }, 'clip_effects_refused'],
+    ['两侧都没给', { clipIds: ['a'] }, 'clip_effects_empty'],
+    ['时长为负', { clipIds: ['a'], transitionIn: { type: 'fade', duration: -1 } }, 'clip_effects_refused'],
+    ['音频片段', { clipIds: ['voice'], transitionIn: FADE }, 'clip_effects_refused'],
+    ['锁定轨', { clipIds: ['frozen'], transitionIn: FADE }, 'clip_effects_refused'],
+    ['不存在的片段', { clipIds: ['ghost'], transitionIn: FADE }, 'clip_effects_refused'],
   ])('拒绝：%s', async (_label, params, code) => {
     const context = newContext();
     const before = JSON.stringify(context.timelineState);
-    const result = (await toolOf(context, 'set_clip_transition').execute('tc-1', params as never)).details;
+    const result = (await transitionTool(context).execute('tc-1', params as never)).details;
     expect(result).toMatchObject({ success: false, error_code: code });
     expect(JSON.stringify(context.timelineState)).toBe(before);
+  });
+
+  describe('参数校验（agent 循环在 execute 之前跑的同一个校验器）', () => {
+    const validate = (args: Record<string, unknown>) => validateToolArguments(
+      transitionTool(newContext()) as never,
+      { type: 'toolCall', id: 'tc', name: 'set_clip_transition', arguments: args });
+
+    it('接受 1..12 个 clipIds', () => {
+      expect(() => validate({ clipIds: ['a'], transitionIn: FADE })).not.toThrow();
+      const twelve = Array.from({ length: 12 }, (_, i) => `c${i}`);
+      expect(() => validate({ clipIds: twelve, transitionIn: FADE })).not.toThrow();
+    });
+
+    it('拒绝空 clipIds 与超过 12 个', () => {
+      expect(() => validate({ clipIds: [], transitionIn: FADE })).toThrow();
+      const thirteen = Array.from({ length: 13 }, (_, i) => `c${i}`);
+      expect(() => validate({ clipIds: thirteen, transitionIn: FADE })).toThrow();
+    });
+
+    it('旧形状 {clipId} 被拒，并给出点名 clipIds 的可读错误', () => {
+      expect(() => validate({ clipId: 'a', transitionIn: FADE })).toThrow(/clipIds/);
+    });
   });
 });
 
@@ -297,7 +371,7 @@ describe('与既有保护的交互', () => {
     const registry = createToolRegistry(context);
     for (const [name, params] of [
       ['set_camera_motion', { clipIds: ['a'], presetId: 'push-in' }],
-      ['set_clip_transition', { clipId: 'a', transitionIn: FADE }],
+      ['set_clip_transition', { clipIds: ['a'], transitionIn: FADE }],
     ] as const) {
       const tool = registry.getAllTools().find(item => item.name === name)!;
       const result = (await tool.execute('tc-1', params as never)).details;

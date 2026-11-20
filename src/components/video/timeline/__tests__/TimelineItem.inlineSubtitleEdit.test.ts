@@ -62,6 +62,8 @@ beforeAll(() => {
     '../playback/camera/eligibility': eligibility,
     './TimelineItemFilmstrip': Nothing,
     './TimelineItemDownloadOverlay': Nothing,
+    './ClipContextMenu': { ClipContextMenu: Nothing },
+    './ClipTransitionBadge': Nothing,
     '../lib/segments/SegmentLinksContext': segmentLinksContext,
   });
 });

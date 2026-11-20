@@ -26,6 +26,7 @@ import type {
   TimelineItemData,
   ImagePosition,
   CameraMotionData,
+  SequenceTransitionData,
 } from '../../domain';
 import type { TimelineStore } from '../useTimelineStore';
 
@@ -62,6 +63,11 @@ export interface TimelineSlice {
   updateItemImagePosition: (itemId: string, position: ImagePosition) => void;
   /** Persist (or clear, with `null`) a clip's 2D/3D camera motion. */
   updateItemCameraMotion: (itemId: string, motion: CameraMotionData | null) => void;
+  /** Set / clear (`null`) a clip's fade-in / fade-out; an omitted side is left as is. */
+  updateItemTransition: (
+    itemId: string,
+    patch: { in?: SequenceTransitionData | null; out?: SequenceTransitionData | null },
+  ) => void;
   /** Shift subsequent items on the same track to close gaps after a given item. */
   consolidateTrackAfterItem: (itemId: string) => void;
   /**
@@ -408,6 +414,19 @@ export const createTimelineSlice: StateCreator<
       }
 
       found.item.cameraMotion = motion ?? undefined;
+      state._syncDerivedState();
+    },
+
+    updateItemTransition: (itemId, patch) => {
+      const state = get();
+      const found = state._aggregate.findItem(itemId);
+      if (!found) {
+        console.warn(`[timelineSlice] updateItemTransition: item "${itemId}" not found.`);
+        return;
+      }
+
+      if (patch.in !== undefined) found.item.transitionIn = patch.in ?? undefined;
+      if (patch.out !== undefined) found.item.transitionOut = patch.out ?? undefined;
       state._syncDerivedState();
     },
 

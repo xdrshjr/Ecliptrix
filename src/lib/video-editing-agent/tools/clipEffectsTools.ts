@@ -54,13 +54,17 @@ const cameraParameters = Type.Object({
 const transitionSchema = Type.Union([
   Type.Object({
     type: Type.Unsafe<ClipTransition['type']>(literalUnion(TRANSITION_TYPES)),
-    duration: Type.Number({ description: 'Seconds, > 0; capped at half the clip.' }),
+    duration: Type.Number({ description: 'Seconds, > 0; capped at half of each clip.' }),
   }, { additionalProperties: false }),
   Type.Null(),
 ], { description: 'Object to set, null to clear, omit to leave unchanged.' });
 
 const transitionParameters = Type.Object({
-  clipId: Type.String({ description: 'ID of the video/image clip (from get_timeline).' }),
+  clipIds: Type.Array(Type.String(), {
+    minItems: 1,
+    maxItems: MAX_CLIPS_PER_CALL,
+    description: 'IDs of the video/image clips (from get_timeline) to fade in/out.',
+  }),
   transitionIn: Type.Optional(transitionSchema),
   transitionOut: Type.Optional(transitionSchema),
 }, { additionalProperties: false });
@@ -198,14 +202,46 @@ function clampTransition(transition: ClipTransition | null | undefined, clipDura
   };
 }
 
+interface TransitionPlan {
+  operations: UpdateClipEffectsOperation[];
+  clampedClipIds: string[];
+}
+
+/**
+ * One operation per clip. The cap is half of EACH clip's own duration, so it is
+ * computed per clip; a clip that is not on the timeline gets no cap here and is
+ * rejected by `findRefusals` before anything is built into a result.
+ */
+function planTransitions(context: ToolContext, clipIds: string[], params: TransitionParams): TransitionPlan {
+  const plan: TransitionPlan = { operations: [], clampedClipIds: [] };
+  for (const clipId of clipIds) {
+    const duration = findClipWithTrack(context.timelineState, clipId)?.item.duration ?? 0;
+    const transitionIn = clampTransition(params.transitionIn, duration);
+    const transitionOut = clampTransition(params.transitionOut, duration);
+    plan.operations.push({
+      type: 'update_clip_effects',
+      clipId,
+      ...(transitionIn.value !== undefined ? { transitionIn: transitionIn.value } : {}),
+      ...(transitionOut.value !== undefined ? { transitionOut: transitionOut.value } : {}),
+    });
+    if (transitionIn.clamped || transitionOut.clamped) plan.clampedClipIds.push(clipId);
+  }
+  return plan;
+}
+
+function describeTransition(value: ClipTransition | null | undefined) {
+  return value === undefined ? 'unchanged' : (value ?? 'cleared');
+}
+
 function createSetClipTransitionTool(context: ToolContext): AgentTool<typeof transitionParameters> {
   return {
     name: 'set_clip_transition',
     label: 'Set Clip Transition',
     description:
-      'Instant, no render: fade or dissolve a clip in and/or out (transitionIn / transitionOut = {type: fade|dissolve, duration}; null clears; omitted stays). ' +
-      'Both types fade the clip\'s own alpha at its start/end (no overlap with neighbours); duration is capped at half the clip. ' +
-      'Video/image clips on an unlocked video track only.',
+      'Instant, no render: fade or dissolve up to 12 existing video/image clips in and/or out in one call ' +
+      '(transitionIn / transitionOut = {type: fade|dissolve, duration}; null clears; omitted stays; the same values apply to every clip). ' +
+      'Both types ramp only the alpha of the clip itself at its start/end: neighbours on the same track never overlap, so this is NOT a cross-dissolve between two clips. ' +
+      'Duration is capped at half of each clip. All-or-nothing: if any clip is refused (missing, locked, audio/subtitle) none changes.',
     parameters: transitionParameters,
 
     execute: async (toolCallId: string, params: TransitionParams) => {
@@ -217,30 +253,25 @@ function createSetClipTransitionTool(context: ToolContext): AgentTool<typeof tra
           error: 'Give transitionIn and/or transitionOut ({type, duration} to set, null to clear).',
         });
       }
-      const found = findClipWithTrack(context.timelineState, params.clipId);
-      const duration = found?.item.duration ?? 0;
-      const transitionIn = clampTransition(params.transitionIn, duration);
-      const transitionOut = clampTransition(params.transitionOut, duration);
-      const operation: UpdateClipEffectsOperation = {
-        type: 'update_clip_effects',
-        clipId: params.clipId,
-        ...(transitionIn.value !== undefined ? { transitionIn: transitionIn.value } : {}),
-        ...(transitionOut.value !== undefined ? { transitionOut: transitionOut.value } : {}),
-      };
+      const clipIds = Array.from(new Set(params.clipIds));
+      const { operations, clampedClipIds } = planTransitions(context, clipIds, params);
 
-      const refusals = findRefusals(context, [operation]);
+      const refusals = findRefusals(context, operations);
       if (refusals.length > 0) return refusalResponse(refusals);
-      const failure = commit(context, toolCallId, [operation]);
+      const failure = commit(context, toolCallId, operations);
       if (failure) return toolErrorResponse(failure);
 
       return textResponse({
         success: true,
-        operations: [operation],
-        clip: { id: params.clipId, name: found?.item.name, duration },
-        transitionIn: operation.transitionIn === undefined ? 'unchanged' : (operation.transitionIn ?? 'cleared'),
-        transitionOut: operation.transitionOut === undefined ? 'unchanged' : (operation.transitionOut ?? 'cleared'),
-        ...(transitionIn.clamped || transitionOut.clamped
-          ? { note: 'Duration was capped at half the clip length.' } : {}),
+        operations,
+        clips: clipIds.map(id => {
+          const found = findClipWithTrack(context.timelineState, id);
+          return { id, name: found?.item.name, duration: found?.item.duration };
+        }),
+        transitionIn: describeTransition(params.transitionIn),
+        transitionOut: describeTransition(params.transitionOut),
+        ...(clampedClipIds.length > 0
+          ? { note: `Duration was capped at half the clip length on: ${clampedClipIds.join(', ')}.` } : {}),
       });
     },
   };

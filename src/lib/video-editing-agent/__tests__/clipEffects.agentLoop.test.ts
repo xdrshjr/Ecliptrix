@@ -43,7 +43,7 @@ it('Agent 经 explore_tools 发现 clip_effects，并真的给片段写入运镜
       { type: 'toolCall', id: 'cam', name: 'set_camera_motion',
         arguments: { clipIds: ['shot-1'], presetId: 'push-in', intensity: 0.6 } },
       { type: 'toolCall', id: 'fade', name: 'set_clip_transition',
-        arguments: { clipId: 'shot-2', transitionIn: { type: 'fade', duration: 0.5 } } },
+        arguments: { clipIds: ['shot-2'], transitionIn: { type: 'fade', duration: 0.5 } } },
     ],
     [{ type: 'text', text: 'done' }],
   ] as const;

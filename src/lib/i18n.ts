@@ -1331,6 +1331,14 @@ export interface Translations {
         subtitleExtractionUnknownError: string;
         swapHint: string;
     };
+    transition: {
+      badgeIn: string;
+      badgeOut: string;
+      clearIn: string;
+      clearOut: string;
+      clearAll: string;
+      lockedHint: string;
+    };
     cameraMotion: {
       title: string;
       openPanel: string;
@@ -6179,6 +6187,14 @@ export const translations: Record<string, Translations> = {
         subtitleExtractionUnknownError: 'Unknown error',
         swapHint: 'Drop to swap',
       },
+      transition: {
+        badgeIn: 'Fade in {seconds}s',
+        badgeOut: 'Fade out {seconds}s',
+        clearIn: 'Remove fade-in',
+        clearOut: 'Remove fade-out',
+        clearAll: 'Remove fade-in and fade-out',
+        lockedHint: 'Locked while the agent is editing',
+      },
       cameraMotion: {
         title: 'Camera Motion',
         openPanel: 'Camera Motion',
@@ -10863,6 +10879,14 @@ export const translations: Record<string, Translations> = {
           subtitleExtractionUnknownError: '未知错误',
           swapHint: '释放以交换位置',
         },
+      transition: {
+        badgeIn: '淡入 {seconds} 秒',
+        badgeOut: '淡出 {seconds} 秒',
+        clearIn: '移除淡入',
+        clearOut: '移除淡出',
+        clearAll: '移除淡入和淡出',
+        lockedHint: '智能体编辑期间已锁定',
+      },
       cameraMotion: {
         title: '运镜',
         openPanel: '运镜',

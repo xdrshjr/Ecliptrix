@@ -11,10 +11,12 @@
  *   - A clip occupies `[startTime, startTime + duration]`.
  *   - `transitionIn`  fades the clip up over its leading `duration` seconds.
  *   - `transitionOut` fades the clip down over its trailing `duration` seconds.
- *   - Cross-dissolve overlap is expressed by the previous clip's `transitionOut`
- *     overlapping the next clip's `transitionIn` in time: the compositor draws
- *     both clips (next on top) and each layer carries its own `alphaFor`, so
- *     the visual sum yields the dissolve. No special "pair" object is needed.
+ *   - `type` is NOT read here: `fade` and `dissolve` render identically (a
+ *     per-clip alpha ramp); `dissolve` is reserved for a future cross-dissolve.
+ *   - Clips on the same flush track never overlap, so they cannot cross-dissolve.
+ *     A dissolve-like look only appears when a clip on an upper track overlaps
+ *     the previous one in time: the compositor draws both layers, each with its
+ *     own `alphaFor`, and the visual sum yields it. No "pair" object is needed.
  *
  * The returned alpha is always clamped to [0,1] and is 1 outside any
  * transition window (the steady-state body of the clip).
