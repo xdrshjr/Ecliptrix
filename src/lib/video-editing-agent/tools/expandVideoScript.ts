@@ -1,7 +1,9 @@
 import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
-import type { ToolContext } from '../types';
+import type { ToolContext, ScriptOperation } from '../types';
 import { toolFetch, parseToolResponse } from './apiHelper';
+import { scriptHash, scriptWriteSegments } from '../editorContextPrompt';
+import { publishScript, scriptApiFailure } from './scriptTools';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -37,21 +39,11 @@ type Params = Static<typeof parameters>;
 function parseScriptToSegments(
   content: string,
 ): Array<{ index: number; title: string; scriptText: string }> {
-  const segments: Array<{ index: number; title: string; scriptText: string }> = [];
-  // Split on markdown headings: ## N. Title
-  const parts = content.split(/^##\s+\d+\.\s+/m).filter(Boolean);
-
-  for (let i = 0; i < parts.length; i++) {
-    const lines = parts[i].trim().split('\n');
-    const title = lines[0]?.trim() || `Scene ${i + 1}`;
-    const scriptText = lines.slice(1).join('\n').trim();
-    segments.push({ index: i, title, scriptText });
-  }
-
-  // Fallback: if no headings found, treat entire content as one segment
-  if (segments.length === 0 && content.trim()) {
-    segments.push({ index: 0, title: 'Script', scriptText: content.trim() });
-  }
+  if (!/^##\s+\d+\.\s+/m.test(content)) return [{ index: 0, title: 'Script', scriptText: content }];
+  const segments = content.split(/(?=^##\s+\d+\.\s+)/m).filter(s => s.trim()).map((part, index) => {
+    const heading = part.match(/^##\s+\d+\.\s+([^\n]*)\n?/);
+    return { index, title: heading?.[1].trim() || 'Script', scriptText: heading ? part.slice(heading[0].length).trim() : part };
+  });
 
   return segments;
 }
@@ -76,12 +68,11 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
       'Expand a brief script outline into a full, detailed video script. If no outline is provided, expands the current Script panel content. Results are written back to the Script panel.',
     parameters,
 
-    execute: async (toolCallId, params: Params) => {
-      // Resolve the source outline
-      // Note: Without client-side store access, we require the outline to be provided.
-      // The agent should pass the current script content from its context.
-      const outline = params.outline?.trim();
-      if (!outline) {
+    execute: async (toolCallId, params: Params, signal) => {
+      const baselineHash = scriptHash(_context.scriptSegments);
+      // 使用当前结构化快照，省略 outline 不会重新解析原稿身份或旁白。
+      const outline = params.outline ?? scriptWriteSegments(_context.scriptSegments).map((s, i) => `## ${i + 1}. ${s.title}\n\n${s.scriptText}`).join('\n\n');
+      if (!outline.trim()) {
         const err = {
           success: false,
           error: 'No outline provided. Please provide an outline or pass the current script content.',
@@ -91,14 +82,20 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
 
       try {
         // Parse the outline into segments for per-scene expansion
-        const segments = parseScriptToSegments(outline);
+        const current = scriptWriteSegments(_context.scriptSegments);
+        const parsed = parseScriptToSegments(outline);
+        const matchesCurrent = !params.outline || (parsed.length === current.length && parsed.every((s, i) => s.scriptText === current[i].scriptText || s.scriptText === current[i].narrationText));
+        const segments: Array<Extract<ScriptOperation, { type: 'set_script_with_narration' }>['segments'][number] & { id: string; index: number }> = matchesCurrent ? current.map((s, index) => ({ ...s, index }))
+          : parsed.map(s => ({ ...s, id: `agent-segment-${crypto.randomUUID()}`, narrationText: s.scriptText }));
 
         // Expand each segment via the expand API, tracking per-segment errors
-        const expandedSegments: Array<{ title: string; expandedText: string }> = [];
-        const segmentErrors: Array<{ index: number; title: string; reason: string }> = [];
+        const expandedSegments = [...segments];
+        const segmentErrors: Array<{ index: number; title: string; reason: string; error_code?: string; error_details?: Record<string, unknown> }> = [];
         let successCount = 0;
 
         for (let i = 0; i < segments.length; i++) {
+          signal?.throwIfAborted();
+          _context.abortSignal?.throwIfAborted();
           const seg = segments[i];
           const otherSegments = segments
             .filter((_, idx) => idx !== i)
@@ -107,7 +104,7 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
           try {
             const response = await toolFetch(_context, '/api/ai-video-script-expand', {
               method: 'POST',
-              timeout: 60_000,
+              timeout: 60_000, retry: false, signal,
               body: JSON.stringify({
                 taskId: `agent-expand-${Date.now()}-${i}`,
                 segmentIndex: seg.index,
@@ -118,14 +115,17 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
             });
 
             if (!response.ok) {
-              let detail = '';
-              try { detail = await response.text(); } catch { /* ignore */ }
+              const failure = await scriptApiFailure(response);
               segmentErrors.push({
                 index: i,
                 title: seg.title,
-                reason: `HTTP ${response.status}${detail ? `: ${detail.slice(0, 100)}` : ''}`,
+                reason: failure.error, error_code: failure.error_code, error_details: failure.error_details,
               });
-              expandedSegments.push({ title: seg.title, expandedText: seg.scriptText });
+              if (failure.error_details.failure_class === 'configuration' || response.status === 429) {
+                for (let j = i + 1; j < segments.length; j++) segmentErrors.push({ index: j, title: segments[j].title,
+                  reason: failure.error, error_code: failure.error_code, error_details: { ...failure.error_details, skipped: true } });
+                break;
+              }
               continue;
             }
 
@@ -135,7 +135,7 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
             }>(response);
 
             if (data.success && 'expandedText' in data && data.expandedText) {
-              expandedSegments.push({ title: seg.title, expandedText: data.expandedText });
+              expandedSegments[i] = { ...seg, scriptText: data.expandedText, sentences: undefined };
               successCount++;
             } else {
               segmentErrors.push({
@@ -143,30 +143,26 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
                 title: seg.title,
                 reason: 'Expansion returned empty or unsuccessful result',
               });
-              expandedSegments.push({ title: seg.title, expandedText: seg.scriptText });
             }
           } catch (error) {
+            if (signal?.aborted || _context.abortSignal?.aborted) throw error;
             const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
             segmentErrors.push({
               index: i,
               title: seg.title,
               reason: isTimeout ? 'Timed out after 60s' : (error instanceof Error ? error.message : String(error)),
             });
-            expandedSegments.push({ title: seg.title, expandedText: seg.scriptText });
           }
         }
 
         // Reassemble full script content
         const fullContent = expandedSegments
-          .map((seg, i) => `## ${i + 1}. ${seg.title}\n\n${seg.expandedText}`)
+          .map((seg, i) => `## ${i + 1}. ${seg.title}\n\n${seg.scriptText}`)
           .join('\n\n');
 
-        // Record operation for client-side store update
-        _context.recordOperation(toolCallId, {
-          type: 'set_script',
-          content: fullContent,
-          scriptType: 'ai_generated',
-        });
+        signal?.throwIfAborted();
+        _context.abortSignal?.throwIfAborted();
+        if (successCount > 0) publishScript(_context, toolCallId, expandedSegments, baselineHash);
 
         const wordCount = fullContent.length;
         const estimatedDur = estimateDuration(fullContent);
@@ -181,6 +177,8 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
 
         const result = {
           success: successCount > 0,
+          ...(successCount === 0 && segmentErrors[0]?.error_code ? { error_code: segmentErrors[0].error_code, error_details: segmentErrors[0].error_details } : {}),
+          ...(successCount > 0 ? { source: 'server_snapshot', persisted: false, application: 'pending_client', hash: scriptHash(_context.scriptSegments) } : {}),
           script: {
             content_preview:
               fullContent.length > 200 ? fullContent.slice(0, 200) + '...' : fullContent,
@@ -202,6 +200,7 @@ export function createExpandVideoScriptTool(_context: ToolContext): AgentTool<ty
         const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
         const err = {
           success: false,
+          error_code: signal?.aborted || _context.abortSignal?.aborted ? 'SCRIPT_CANCELLED' : error instanceof Error && error.message === 'SCRIPT_CONFLICT' ? 'SCRIPT_CONFLICT' : 'SCRIPT_EXPANSION_FAILED',
           error: isTimeout
             ? 'Script expansion timed out after 60s'
             : `Script expansion failed: ${error instanceof Error ? error.message : String(error)}`,

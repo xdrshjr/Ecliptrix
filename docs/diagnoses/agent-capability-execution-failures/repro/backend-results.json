@@ -1,0 +1,24 @@
+{
+  "通过": 3,
+  "结果": [
+    {
+      "用例": "P1",
+      "说明": "同源 robots 503 缓存跨文件生效",
+      "错误": [
+        "robots_unavailable",
+        "robots_unavailable"
+      ],
+      "实际抓取次数": 1
+    },
+    {
+      "用例": "P2",
+      "说明": "robots 获取超时也会归为 robots_unavailable，不能单凭此码判定源站 5xx",
+      "错误": "robots_unavailable"
+    },
+    {
+      "用例": "P3",
+      "说明": "能力不可用不会映射为音色不可用",
+      "错误": "TTS_PROVIDER_ERROR"
+    }
+  ]
+}

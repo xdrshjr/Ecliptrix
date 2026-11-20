@@ -26,6 +26,11 @@ function stoppedToolOnlyTurn(overrides: Partial<ChatMessage> = {}): ChatMessage 
 }
 
 describe('mapMessageToNodes — tool-only turns', () => {
+  it('仅写入脚本且没有回复文字时仍提供脚本操作节点', () => {
+    const nodes = mapMessageToNodes(stoppedToolOnlyTurn({ timelineTrackPatches: [],
+      agentToolCalls: [{ id: 'script', name: 'set_video_script', params: {}, status: 'completed', result: { client_applied: true } }] }), LABELS);
+    expect(nodes).toContainEqual(expect.objectContaining({ kind: 'response', canUndo: false }));
+  });
   it('a stopped tool-only turn with track patches still offers undo this turn', () => {
     const response = mapMessageToNodes(stoppedToolOnlyTurn(), LABELS).find(node => node.kind === 'response');
 

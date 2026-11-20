@@ -264,7 +264,7 @@ export type MaterialOperation =
 export type ScriptOperation =
   | { type: 'set_script'; content: string; scriptType: string }
   | { type: 'append_script'; content: string }
-  | { type: 'set_script_with_narration'; segments: Array<{ id?: string; title: string; scriptText: string; narrationText: string }>; scriptType: string };
+  | { type: 'set_script_with_narration'; segments: Array<{ id?: string; title: string; scriptText: string; narrationText: string; sentences?: Array<{ id: string; text: string }>; voiceId?: string; voiceSpeed?: number }>; scriptType: string; baselineHash?: string; projectId?: string };
 
 // --- Storyboard Operations ---
 

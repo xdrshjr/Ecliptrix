@@ -105,7 +105,8 @@ const DEFAULT_NEXT_STEP =
 /** 失败信封里原样透出的键（AC-G21 / REV-P1-12）。 */
 const VERBATIM_DETAIL_KEYS =
   ['reason', 'layer', 'sticky', 'remediation', 'upstream_status',
-    'local_status', 'request_id', 'provider_request_id', 'retry_after_seconds'] as const;
+    'local_status', 'request_id', 'provider_request_id', 'retry_after_seconds',
+    'robots_scope', 'robots_origin', 'robots_failure_stage', 'robots_failure_code', 'robots_cache_hit'] as const;
 
 /**
  * 组装失败结果：`failure_class` 与 `retryable` 恒有，`reason` / `layer` /
@@ -203,6 +204,7 @@ async function readEnvelope(response: Response): Promise<HostEnvelope> {
       success: false,
       error_code: response.status === 504
         ? 'upstream_timeout' : 'internal_error',
+      error_details: { failure_class: response.status === 504 ? 'transient' : 'internal', retryable: response.status === 504 },
     };
   }
 }
@@ -290,6 +292,7 @@ interface EgressBranch {
   requestVariant?: string;
 }
 const egressBranches = new WeakMap<object, Map<string, EgressBranch>>();
+const unavailableOrigins = new WeakMap<object, Map<string, ReturnType<typeof hostFailure>>>();
 
 interface EgressFailureRecord {
   branchId: string;
@@ -322,6 +325,15 @@ export function restoreEgressFailures(context: ToolContext, values: unknown[]) {
         cleared.revision === (context.generationConfigRevision ?? '')) branches.delete(String(cleared.branchId));
   }
   egressBranches.set(context.turnState, branches);
+  const origins = new Map<string, ReturnType<typeof hostFailure>>();
+  branches.forEach(branch => {
+    const failure = branch.failure;
+    const details = failure?.details.error_details as Record<string, unknown> | undefined;
+    if (failure?.details.error_code === 'robots_unavailable' && details?.robots_scope === 'origin' && typeof details.robots_origin === 'string') {
+      try { origins.set(new URL(details.robots_origin).origin, failure); } catch { /* 无有效 origin 不扩展拒绝范围。 */ }
+    }
+  });
+  unavailableOrigins.set(context.turnState, origins);
 }
 
 /** 去除片段/签名参数，规范化主机及默认端口，避免拼写重置预算。 */
@@ -389,6 +401,12 @@ function rememberEgressFailure(context: ToolContext, branch: EgressBranch | unde
   result: ReturnType<typeof hostFailure>) {
   if (!branch) return result;
   const details = result.details.error_details as Record<string, unknown>;
+  if (result.details.error_code === 'robots_unavailable' && details.robots_scope === 'origin'
+    && typeof details.robots_origin === 'string') {
+    const origins = unavailableOrigins.get(context.turnState) ?? new Map();
+    try { origins.set(new URL(details.robots_origin).origin, result); } catch { /* 无有效 origin 不扩展拒绝范围。 */ }
+    unavailableOrigins.set(context.turnState, origins);
+  }
   if (details.failure_class === 'cancelled') return result;
   branch.failure = result;
   branch.nextAttemptAt = Date.now()
@@ -432,8 +450,14 @@ export async function executeHostTool(
   if (context.abortSignal?.aborted || call.signal?.aborted) {
     return hostFailure('cancelled', { failure_class: 'cancelled' });
   }
-  const budget = call.egress ? takeEgressBudget(context) : null;
-  if (budget) return budget;
+  if (call.path === '/egress/download' || call.path === '/egress/request') {
+    try {
+      const url = new URL((call.body as { url: string }).url);
+      const refused = unavailableOrigins.get(context.turnState)?.get(url.origin);
+      if (refused) return toolResult({ ...refused.details, cached: true,
+        next_step: 'robots could not be fetched for this origin. Use another origin or existing media; do not infer an upstream HTTP status without diagnostics.' });
+    } catch { /* 参数验证由后端处理。 */ }
+  }
   const branch = branchFor(context, call);
   if (branch?.active) return hostFailure('branch_probe_pending', {
     failure_class: 'blocked', retryable: false,
@@ -445,9 +469,11 @@ export async function executeHostTool(
       && correction === readRequestVariant(call);
     if (branch.attempts >= 2 || Date.now() < branch.nextAttemptAt
       || (details.retryable !== true && !canCorrect)) {
-      return toolResult({ ...branch.failure.details, egress_failure: branch.record });
+      return toolResult({ ...branch.failure.details, egress_failure: branch.record, cached: true });
     }
   }
+  const budget = call.egress ? takeEgressBudget(context) : null;
+  if (budget) return budget;
   if (branch) {
     branch.active = true;
     branch.attempts++;
@@ -468,10 +494,13 @@ export async function executeHostTool(
       return hostFailure('cancelled', { failure_class: 'cancelled' });
     }
     if (!response.ok || envelope.success === false) {
+      const code = envelope.error_code ?? 'internal_error';
+      const advice = call.path === '/egress/download' && ['timeout', 'upstream_timeout', 'network_error'].includes(code)
+        ? 'Retry this branch at most once after the retry window; use smaller media, diagnose_url, another source, or existing materials.' : nextStepOf(envelope);
       return rememberEgressFailure(context, branch, hostFailure(
-        envelope.error_code ?? 'internal_error',
+        code,
         { ...envelope.error_details, local_status: response.status },
-        nextStepOf(envelope),
+        advice,
       ));
     }
     const data = (envelope.data ?? {}) as Record<string, unknown>;
@@ -505,11 +534,12 @@ export async function executeHostTool(
   } catch (error) {
     const name = error instanceof Error ? error.name : '';
     const code = context.abortSignal?.aborted || call.signal?.aborted ? 'cancelled'
-      : name === 'TimeoutError' ? 'timeout' : 'network_error';
+      : name === 'TimeoutError' ? 'timeout' : error instanceof TypeError ? 'network_error' : 'internal_error';
     return rememberEgressFailure(context, branch, hostFailure(code, {
-      failure_class: code === 'cancelled' ? 'cancelled' : 'transient',
-      retryable: code !== 'cancelled',
-    }));
+      failure_class: code === 'cancelled' ? 'cancelled' : code === 'internal_error' ? 'internal' : 'transient',
+      retryable: code === 'timeout' || code === 'network_error',
+    }, call.path === '/egress/download' && ['timeout', 'network_error'].includes(code)
+      ? 'Retry this branch at most once; use smaller media, diagnose_url, another source, or existing materials.' : undefined));
   } finally {
     if (branch) branch.active = false;
   }

@@ -86,12 +86,16 @@ export function createBatchGenerateTtsTool(
       }
       const defaultVoiceType = resolveVoiceType(undefined, context.defaultVoiceId);
       const payload = batchPayload(taskId, normalized, defaultVoiceType);
-      const identify = <T extends { input_index: number }>(row: T) => {
+      const identify = <T extends { input_index: number }>(row: T, generated: boolean) => {
         const id = prepared[row.input_index].segment?.id;
-        return { ...row, ...(id ? { script_segment_id: id } : {}) };
+        const voice = requests[row.input_index].voice_type;
+        return { ...row, requested_voice_type: voice,
+          ...(generated ? { actual_voice_type: voice, degraded: false } : {}),
+          ...(id ? { script_segment_id: id } : {}) };
       };
       return ttsToolResult({ ...payload,
-        results: payload.results.map(identify), failures: payload.failures.map(identify),
+        results: payload.results.map(row => identify(row, true)),
+        failures: payload.failures.map(row => identify(row, false)),
         message: payload.message + (prepared.some(p => p.segment)
           ? ' 上轨时使用 script_segment_id 作为 segment_id；结果中的 segment_id 是批次请求 ID。' : ''),
       });

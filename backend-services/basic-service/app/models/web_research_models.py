@@ -123,7 +123,7 @@ MODEL_ERRORS = frozenset(
 class WebResearchError(Exception):
     def __init__(self, error_code, message=None, status_code=None,
                  failure_class=None, reason=None, layer=None, sticky=True,
-                 remediation=None):
+                 remediation=None, details=None):
         self.error_code = error_code
         self.message = message or error_code
         self.status_code = status_code or STATUS.get(error_code, 422)
@@ -133,6 +133,7 @@ class WebResearchError(Exception):
         self.reason = reason
         self.layer = layer
         self.remediation = remediation
+        self.details = details or {}
         super().__init__(self.message)
 
     def sticky_failure(self):

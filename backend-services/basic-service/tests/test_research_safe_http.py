@@ -4,6 +4,89 @@ import socket
 import pytest
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [200, 401, 503])
+async def test_robots_waiters_keep_loaded_rules_after_cache_eviction(status):
+    from app.models.web_research_models import WebResearchError
+    from app.services.web_research.safe_http_client import (
+        HttpResult, SafeHttpClient)
+
+    async def transport(policy, request):
+        return HttpResult(request.url, status, {}, b'User-agent: *\n')
+
+    client = SafeHttpClient(
+        transport=transport, proxy_settings={'mode': 'direct'})
+
+    async def check(index):
+        try:
+            await client.check_robots(f'https://host{index}.invalid/a.mp3')
+            return 'allowed'
+        except WebResearchError as error:
+            return error.error_code
+
+    outcomes = await asyncio.gather(*(check(index) for index in range(257)))
+    expected = {200: 'allowed', 401: 'robots_disallowed',
+                503: 'robots_unavailable'}[status]
+    assert outcomes == [expected] * 257
+    assert len(client.robots) == 256
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [401, 403, 503])
+async def test_robots_cached_refusal_never_fetches_target(status):
+    from app.services.web_research.safe_http_client import SafeHttpClient, FetchPolicy, RequestSpec, HttpResult
+    from app.models.web_research_models import WebResearchError
+    requested = []
+    async def transport(policy, request):
+        requested.append(request.url)
+        await asyncio.sleep(0)
+        return HttpResult(request.url, status if request.url.endswith('/robots.txt') else 200, {}, b'')
+    client = SafeHttpClient(transport=transport, proxy_settings={'proxy_mode': 'direct'})
+    async def fetch(name):
+        with pytest.raises(WebResearchError) as error:
+            await client.fetch(FetchPolicy(), RequestSpec('https://fixture.invalid/' + name))
+        assert error.value.error_code == ('robots_unavailable' if status == 503 else 'robots_disallowed')
+    await fetch('one.mp3')
+    await asyncio.gather(fetch('two.mp3'), fetch('three.mp3'))
+    assert requested == ['https://fixture.invalid/robots.txt']
+
+
+@pytest.mark.asyncio
+async def test_robots_concurrent_first_fetch_paths_and_expiry(monkeypatch):
+    from app.services.web_research import safe_http_client as module
+    from app.models.web_research_models import WebResearchError
+    requested = []
+    async def transport(policy, request):
+        requested.append(request.url)
+        await asyncio.sleep(0)
+        return module.HttpResult(request.url, 200, {}, b'User-agent: *\nDisallow: /private\n')
+    client = module.SafeHttpClient(transport=transport, proxy_settings={'proxy_mode': 'direct'})
+    async def refused():
+        with pytest.raises(WebResearchError):
+            await client.check_robots('https://fixture.invalid/private.mp3')
+    await asyncio.gather(refused(), refused(), refused())
+    assert len(requested) == 1
+    await client.check_robots('https://fixture.invalid/public.mp3')
+    cached = client.robots['https://fixture.invalid']
+    client.robots['https://fixture.invalid'] = (cached[0] - module.ROBOTS_TTL - 1, *cached[1:])
+    await refused()
+    assert len(requested) == 2
+
+
+@pytest.mark.asyncio
+async def test_robots_fetch_timeout_diagnostics_do_not_claim_http_503():
+    from app.services.web_research.safe_http_client import SafeHttpClient
+    from app.models.web_research_models import WebResearchError
+    async def transport(policy, request):
+        raise WebResearchError('upstream_timeout')
+    client = SafeHttpClient(transport=transport, proxy_settings={'proxy_mode': 'direct'})
+    with pytest.raises(WebResearchError) as caught:
+        await client.check_robots('https://fixture.invalid/a.mp3')
+    assert caught.value.details['robots_failure_stage'] == 'fetch'
+    assert caught.value.details['robots_failure_code'] == 'upstream_timeout'
+    assert 'upstream_status' not in caught.value.details
+
+
 def test_preserves_query_and_rejects_private_literals():
     from app.services.web_research.safe_http_client import normalize_url
     from app.models.web_research_models import WebResearchError

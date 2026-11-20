@@ -97,7 +97,9 @@ def _web_error(error):
                           status_code=error.status_code,
                           failure_class=error.failure_class,
                           reason=getattr(error, "reason", None),
-                          remediation=getattr(error, "remediation", None))
+                          remediation=getattr(error, "remediation", None),
+                          details={**getattr(error, "details", {}),
+                                   **({"layer": error.layer} if error.layer else {})})
 
 
 # ── diagnose：只判定不发请求（robots 要显式开启才抓） ───────────────────────
@@ -188,7 +190,8 @@ async def _robots_check(url, check_robots):
         await get_safe_http_client().check_robots(url, 10)
         return _check("robots", True, "allowed")
     except WebResearchError as error:
-        return _check("robots", False, error.error_code)
+        return {**_check("robots", False, error.error_code),
+                "diagnostics": getattr(error, "details", {})}
 
 
 # ── http_request：GET/HEAD + 头部子集（REV-P0-3） ───────────────────────────

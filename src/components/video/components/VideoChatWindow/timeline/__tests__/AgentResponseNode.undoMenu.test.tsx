@@ -80,6 +80,15 @@ function openMenu(): HTMLElement {
 }
 
 describe('AgentResponseNode — undo step menu', () => {
+  it('没有时间线修改时，已应用脚本仍能通过真实单步撤销入口恢复', () => {
+    const onUndoSingle = vi.fn();
+    const script = { ...step('script-1', 'generate_video_script'), result: { success: true, client_applied: true, persisted: false } };
+    render(React.createElement(AgentResponseNode, {
+      node: { ...nodeWith([script]), canUndo: false }, onUndoSingle,
+    }));
+    fireEvent.click(screen.getByRole('button', { name: stepLabel(1, 'generate_video_script') }));
+    expect(onUndoSingle).toHaveBeenCalledWith('msg-1', 'script-1');
+  });
   it('the undo menu lists only steps that changed the timeline', () => {
     render(React.createElement(AgentResponseNode, {
       node: nodeWith([

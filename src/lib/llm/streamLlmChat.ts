@@ -29,12 +29,13 @@ export interface StreamLlmOptions {
   temperature?: number
   maxTokens?: number
   signal?: AbortSignal
+  timeoutMs?: number
 }
 
 export type StreamLlmEvent =
   | { kind: 'content'; text: string }
   | { kind: 'reasoning'; text: string }
-  | { kind: 'error'; status: number; message: string }
+  | { kind: 'error'; status: number; message: string; code?: string }
 
 export function normalizeApiType(value: string | null | undefined): LlmApiType {
   const v = (value ?? '').trim().toLowerCase()
@@ -68,19 +69,25 @@ function stripTrailingSlash(url: string): string {
 }
 
 export async function* streamLlmChat(opts: StreamLlmOptions): AsyncGenerator<StreamLlmEvent> {
-  const { config, messages, temperature = 0.7, maxTokens, signal } = opts
+  const { config, messages, temperature = 0.7, maxTokens } = opts
+  const signal = AbortSignal.any([AbortSignal.timeout(opts.timeoutMs ?? 120_000), ...(opts.signal ? [opts.signal] : [])])
   if (!config.apiKey || !config.apiUrl) {
     throw new Error('streamLlmChat: apiKey and apiUrl are required')
   }
 
-  if (config.apiType === 'anthropic') {
-    yield* streamAnthropic({ config, messages, temperature, maxTokens, signal })
-    return
+  try {
+    if (config.apiType === 'anthropic') {
+      yield* streamAnthropic({ config, messages, temperature, maxTokens, signal })
+    } else {
+      yield* streamOpenAI({ config, messages, temperature, maxTokens, signal })
+    }
+  } catch {
+    const code = signal.aborted ? (signal.reason?.name === 'TimeoutError' ? 'LLM_TIMEOUT' : 'LLM_CANCELLED') : 'LLM_NETWORK_ERROR'
+    yield { kind: 'error', code, status: code === 'LLM_TIMEOUT' ? 504 : code === 'LLM_CANCELLED' ? 499 : 502, message: code }
   }
-  yield* streamOpenAI({ config, messages, temperature, maxTokens, signal })
 }
 
-async function* streamOpenAI(opts: Required<Omit<StreamLlmOptions, 'signal' | 'maxTokens'>> & Pick<StreamLlmOptions, 'signal' | 'maxTokens'>): AsyncGenerator<StreamLlmEvent> {
+async function* streamOpenAI(opts: StreamLlmOptions): AsyncGenerator<StreamLlmEvent> {
   const { config, messages, temperature, maxTokens, signal } = opts
   const url = `${stripTrailingSlash(config.apiUrl)}/chat/completions`
   const body: Record<string, unknown> = {
@@ -101,57 +108,10 @@ async function* streamOpenAI(opts: Required<Omit<StreamLlmOptions, 'signal' | 'm
     signal,
   })
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    yield { kind: 'error', status: response.status, message: text.slice(0, 500) || `HTTP ${response.status}` }
-    return
-  }
-  if (!response.body) {
-    yield { kind: 'error', status: 0, message: 'No response body' }
-    return
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-
-      for (const rawLine of lines) {
-        const line = rawLine.trim()
-        if (!line || !line.startsWith('data:')) continue
-        const data = line.slice(5).trim()
-        if (!data) continue
-        if (data === '[DONE]') return
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(data)
-        } catch {
-          continue
-        }
-        const p = parsed as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> }
-        const delta = p.choices?.[0]?.delta
-        if (!delta) continue
-        if (delta.content) yield { kind: 'content', text: delta.content }
-        if (delta.reasoning_content) yield { kind: 'reasoning', text: delta.reasoning_content }
-      }
-    }
-  } finally {
-    try {
-      reader.releaseLock()
-    } catch {
-      // reader already released
-    }
-  }
+  yield* readStream(response, 'openai', signal)
 }
 
-async function* streamAnthropic(opts: Required<Omit<StreamLlmOptions, 'signal' | 'maxTokens'>> & Pick<StreamLlmOptions, 'signal' | 'maxTokens'>): AsyncGenerator<StreamLlmEvent> {
+async function* streamAnthropic(opts: StreamLlmOptions): AsyncGenerator<StreamLlmEvent> {
   const { config, messages, temperature, maxTokens, signal } = opts
   const url = `${stripTrailingSlash(config.apiUrl)}/v1/messages`
   const { system, rest } = splitSystemMessages(messages)
@@ -179,25 +139,43 @@ async function* streamAnthropic(opts: Required<Omit<StreamLlmOptions, 'signal' |
     signal,
   })
 
+  yield* readStream(response, 'anthropic', signal)
+}
+
+function streamError(status: number, code?: string): StreamLlmEvent {
+  code ??= status === 401 || status === 403 ? 'LLM_AUTHENTICATION_ERROR'
+    : status === 429 ? 'LLM_RATE_LIMITED' : 'LLM_UPSTREAM_ERROR'
+  return { kind: 'error', status, code, message: code }
+}
+
+async function* readStream(response: Response, apiType: LlmApiType, signal?: AbortSignal): AsyncGenerator<StreamLlmEvent> {
   if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    yield { kind: 'error', status: response.status, message: text.slice(0, 500) || `HTTP ${response.status}` }
+    await response.body?.cancel()
+    yield streamError(response.status)
     return
   }
-  if (!response.body) {
-    yield { kind: 'error', status: 0, message: 'No response body' }
+  if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+    await response.body?.cancel()
+    yield streamError(502, 'LLM_PROTOCOL_ERROR')
     return
   }
+  if (!response.body) { yield streamError(502, 'LLM_EMPTY_OUTPUT'); return }
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let sawText = false
+  const abort = () => { void reader.cancel().catch(() => undefined) }
+  signal?.addEventListener('abort', abort, { once: true })
 
   try {
     while (true) {
+      signal?.throwIfAborted()
       const { done, value } = await reader.read()
-      if (done) break
+      signal?.throwIfAborted()
+      if (done) { yield streamError(502, 'LLM_INCOMPLETE_STREAM'); return }
       buffer += decoder.decode(value, { stream: true })
+      if (buffer.length > 2_000_000) { yield streamError(502, 'LLM_PROTOCOL_ERROR'); return }
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
 
@@ -206,28 +184,58 @@ async function* streamAnthropic(opts: Required<Omit<StreamLlmOptions, 'signal' |
         if (!line || !line.startsWith('data:')) continue
         const data = line.slice(5).trim()
         if (!data) continue
+        if (apiType === 'openai' && data === '[DONE]') {
+          if (!sawText) yield streamError(502, 'LLM_EMPTY_OUTPUT')
+          return
+        }
         let parsed: unknown
         try {
           parsed = JSON.parse(data)
         } catch {
-          continue
+          yield streamError(502, 'LLM_PROTOCOL_ERROR')
+          return
         }
+        if (!parsed || typeof parsed !== 'object') { yield streamError(502, 'LLM_PROTOCOL_ERROR'); return }
         const p = parsed as {
           type?: string
-          delta?: { type?: string; text?: string; thinking?: string }
+          delta?: { type?: string; text?: string; thinking?: string; stop_reason?: string }
+          error?: { type?: string; code?: string; status?: number }
+          choices?: Array<{ delta?: { content?: string; reasoning_content?: string }; finish_reason?: string }>
+        }
+        if (apiType === 'anthropic' && p.type === 'message_delta' && p.delta?.stop_reason === 'max_tokens') {
+          yield streamError(502, 'LLM_INCOMPLETE_STREAM')
+          return
+        }
+        if (p.error || p.type === 'error') {
+          const type = p.error?.type ?? p.error?.code ?? ''
+          const status = /rate_limit|quota/.test(type) ? 429 : /authentication|permission/.test(type) ? 401
+            : /overloaded/.test(type) ? 503 : p.error?.status ?? 502
+          yield streamError(status)
+          return
+        }
+        if (apiType === 'openai') {
+          const choice = p.choices?.[0]
+          if (choice?.delta?.content) { sawText = true; yield { kind: 'content', text: choice.delta.content } }
+          if (choice?.delta?.reasoning_content) yield { kind: 'reasoning', text: choice.delta.reasoning_content }
+          if (choice?.finish_reason === 'length') { yield streamError(502, 'LLM_INCOMPLETE_STREAM'); return }
+          continue
         }
         if (p.type === 'content_block_delta') {
           if (p.delta?.type === 'text_delta' && p.delta.text) {
+            sawText = true
             yield { kind: 'content', text: p.delta.text }
           } else if (p.delta?.type === 'thinking_delta' && p.delta.thinking) {
             yield { kind: 'reasoning', text: p.delta.thinking }
           }
         } else if (p.type === 'message_stop') {
+          if (!sawText) yield streamError(502, 'LLM_EMPTY_OUTPUT')
           return
         }
       }
     }
   } finally {
+    signal?.removeEventListener('abort', abort)
+    await reader.cancel().catch(() => undefined)
     try {
       reader.releaseLock()
     } catch {

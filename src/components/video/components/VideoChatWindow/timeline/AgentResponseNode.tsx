@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import MarkdownRenderer from '@/components/chat/MarkdownRenderer';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { AgentResponseNodeData } from './types';
-import { formatTimestamp, getToolDisplayName } from './utils';
+import { formatTimestamp, getToolDisplayName, isAppliedScriptCall } from './utils';
 import TimelineNodeIcon from './TimelineNodeIcon';
 import TurnSummaryCard from '../TurnSummaryCard';
 import {
@@ -322,6 +322,16 @@ const AgentResponseNode: React.FC<AgentResponseNodeProps> = ({
             )}
           </div>
         )}
+
+        {canUndoSteps && !node.isUndone && node.toolCalls.map((call, index) => isAppliedScriptCall(call) && (
+          <button key={call.id} type="button" className={`${UNDO_BUTTON_CLASS} mt-2`}
+            disabled={undoDisabled} title={blockedTitle}
+            onClick={() => handleUndoSingle(call.id)}>
+            <UndoIcon className="w-3 h-3" />
+            {t.agentTimeline.undoStepItem.replace('{index}', String(index + 1))
+              .replace('{tool}', getToolDisplayName(call.name, t.agentTimeline.toolNames))}
+          </button>
+        ))}
 
         {node.summary && !node.isUndone && <TurnSummaryCard summary={node.summary} />}
 

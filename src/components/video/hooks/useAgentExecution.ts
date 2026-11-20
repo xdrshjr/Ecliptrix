@@ -80,6 +80,8 @@ import {
 // ---------------------------------------------------------------------------
 
 export interface UseAgentExecutionParams {
+  getScriptState?: () => import('@/lib/video-editing-agent/OperationApplier').ScriptProjectState;
+  setScriptState?: (state: import('@/lib/video-editing-agent/OperationApplier').ScriptProjectState) => void;
   effectsAgentBridge?: EffectsAgentBridge;
   getScriptSegments?: () => readonly ScriptSegmentSnapshot[];
   coverAgentBridge?: CoverAgentBridge;
@@ -368,8 +370,14 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
   );
 
   const createOperationApplier = useCallback(
-    (): OperationApplier =>
-      new OperationApplier({
+    (): OperationApplier => {
+      const requestProjectId = paramsRef.current.projectId;
+      return new OperationApplier({
+        isScriptProjectCurrent: () => mounted.current && paramsRef.current.projectId === requestProjectId,
+        ...(paramsRef.current.getScriptState && paramsRef.current.setScriptState ? {
+          getScriptState: () => paramsRef.current.getScriptState!(),
+          setScriptState: state => paramsRef.current.setScriptState!(state),
+        } : {}),
         getTimelineState: () => timelineStateRef.current,
         setTimelineState: (state) => {
           setTimelineState(state);
@@ -380,7 +388,8 @@ export function useAgentExecution(params: UseAgentExecutionParams): UseAgentExec
           onTimelineUpdate?.(nextExternalUpdateId('agent-op'));
         },
         onTriggerAnimation: triggerClipAnimation,
-      }),
+      });
+    },
     [setTimelineState, onTimelineUpdate],
   );
 

@@ -51,8 +51,7 @@ export function createCheckTimelineTool(
     name: 'check_timeline',
     label: 'Check Timeline',
     description:
-      'Check timeline and saved duration target, no network. Run after edits and '
-      + 'before export. Fix blockers; warning suggestions may only aid investigation.',
+      'Check export readiness and duration target, no network. Run after edits and before export. Script-only/material tasks use their receipts; this does not assess task completion.',
     parameters,
 
     execute: async (_toolCallId: string, params: Params) => {
@@ -66,7 +65,8 @@ export function createCheckTimelineTool(
         targetDurationSeconds: context.turnState?.editingGoal?.targetDurationSeconds,
         fps: context.turnState?.editingGoal?.fps,
       });
-      return toolkitResult({ success: true, ...report });
+      return toolkitResult({ success: true, ...report, scope: 'export_readiness',
+        task_completion: 'not_assessed', next_step: '文案或素材收集任务按对应回执验收；此检查仅表示导出就绪情况，不证明 BGM、指定口音或导出完成。' });
     },
   };
 }

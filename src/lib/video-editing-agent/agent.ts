@@ -588,6 +588,12 @@ export function subscribeAgentEvents(
           details?.error_code !== 'subtitle_apply_refused' &&
           ['configuration', 'blocked', 'cancelled', 'policy', 'validation', 'user_input']
             .includes(details?.error_details?.failure_class);
+        // 已分类的读取失败受出口分支/全轮预算约束，不能连带取消已有素材的编辑。
+        const isolatedReadFailure = softFailure && event.isError !== true
+          && ['download_url', 'http_request', 'diagnose_url'].includes(event.toolName)
+          && ((details?.cached === true)
+            || (details?.error_details?.failure_class === 'transient'
+              && ['timeout', 'network_error', 'upstream_timeout', 'upstream_error', 'download_failed', 'source_unavailable', 'egress_budget_exceeded'].includes(details?.error_code)));
         // A still-image refusal is a one-step self-correction, not a failing
         // tool: it neither counts toward the breaker nor resets it. Subtitle
         // validation refusals are the same shape (agent-subtitles spec D-8):
@@ -595,13 +601,13 @@ export function subscribeAgentEvents(
         const expectedGuardRejection = softFailure
           && (isStillGuardRejection(details) || isSubtitleGuardRejection(details));
         const failed = (event.isError === true || softFailure)
-          && !expectedClassifiedFailure && !expectedGuardRejection;
+          && !expectedClassifiedFailure && !expectedGuardRejection && !isolatedReadFailure;
 
         if (failed) {
           consecutiveFailures++;
           latestTtsFailure = ['generate_tts', 'batch_generate_tts']
             .includes(event.toolName) ? getTtsFailure(details) : undefined;
-        } else if (!expectedClassifiedFailure && !expectedGuardRejection) {
+        } else if (!expectedClassifiedFailure && !expectedGuardRejection && !isolatedReadFailure) {
           consecutiveFailures = 0;
           latestTtsFailure = undefined;
         }

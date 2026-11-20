@@ -4,6 +4,7 @@ import type { MaterialItem } from '@/types';
 import type { ToolContext } from '../types';
 import { FALLBACK_TTS_VOICE_ID, resolveVoiceType } from '../voiceDefaults';
 import { toolFetch } from './apiHelper';
+import { toolResult } from './webToolAdapter';
 import {
   assertTtsNotAborted, invalidTtsRequest, normalizeSingleTtsResponse,
   readTtsResponse, ttsRequestFailure, ttsToolResult,
@@ -62,6 +63,10 @@ export function createGenerateTtsTool(
           success: true,
           // 回显实际使用的音色：模型/用户/日志都能确认这一次到底用了哪个音色。
           voice_type: outcome.voiceType,
+          requested_voice_type: voiceType,
+          actual_voice_type: outcome.voiceType,
+          degraded: outcome.voiceType !== voiceType,
+          ...(outcome.voiceType !== voiceType ? { unmet_requirement: '请求音色未实现；回退音色不证明原语言、方言或风格要求已完成。' } : {}),
           ...(prepared.segment ? { segment_id: prepared.segment.id } : {}),
           material: {
             id: material.id, name: material.name, type: 'audio',
@@ -71,6 +76,39 @@ export function createGenerateTtsTool(
         });
       } catch (error) {
         return ttsToolResult({ success: false, ...ttsRequestFailure(error, context) });
+      }
+    },
+  };
+}
+
+const voiceParameters = Type.Object({
+  query: Type.Optional(Type.String({ maxLength: 80, description: '按目录的名称、语言、描述或风格筛选；不要从 ID 猜语言。' })),
+  limit: Type.Optional(Type.Number({ minimum: 1, maximum: 40, description: '最多返回 40 项，默认 20。' })),
+});
+
+export function createListTtsVoicesTool(context: ToolContext): AgentTool<typeof voiceParameters> {
+  return {
+    name: 'list_tts_voices', label: '查询音色目录',
+    description: '查询当前服务音色 ID、语言、性别、风格及 stale。目录包含提供方字段或静态回退值，不保证当前账号权限或方言支持；按证据选择，禁止猜 ID。',
+    parameters: voiceParameters,
+    execute: async (_callId, params, signal) => {
+      try {
+        const response = await toolFetch(context, '/api/tts/voice-types', { signal });
+        const body = await response.json();
+        if (!response.ok || body.success !== true || !body.data || typeof body.data !== 'object') {
+          return toolResult({ success: false, error_code: 'TTS_CATALOGUE_UNAVAILABLE', next_step: '报告目录不可用，不猜测音色或把能力级故障当成单音色故障。' });
+        }
+        const clean = (value: unknown) => typeof value === 'string' ? value.replace(/<[^>]*>/g, '').slice(0, 180) : '';
+        const query = (params.query ?? '').toLowerCase();
+        const voices = Object.values(body.data).filter((v): v is Record<string, unknown> => !!v && typeof v === 'object')
+          .map(v => ({ id: clean(v.id), name: clean(v.name), language: clean(v.language), gender: clean(v.gender), category: clean(v.category), description: clean(v.description) }))
+          .filter(v => v.id && (!query || Object.values(v).join(' ').toLowerCase().includes(query)));
+        return toolResult({ success: true, stale: body.stale === true, availability: 'catalogue_only',
+          language_evidence: 'provider_or_static_fallback', total_matches: voices.length,
+          voices: voices.slice(0, Math.max(1, Math.min(40, params.limit ?? 20))),
+          note: '目录不证明实时授权；缺失语言可能使用默认值。方言要求须核实，降级后仍报告原要求未完成。' });
+      } catch {
+        return toolResult({ success: false, error_code: context.abortSignal?.aborted || signal?.aborted ? 'TTS_CANCELLED' : 'TTS_CATALOGUE_UNAVAILABLE' });
       }
     },
   };

@@ -32,6 +32,7 @@ import type { AgentStateManager } from './AgentStateManager';
 import type { ApplyOutcome, OperationApplier } from './OperationApplier';
 import { useVideoEditingStore } from '@/stores';
 import type { ScriptSegmentSnapshot } from './editorContextPrompt';
+import { scriptHash } from './editorContextPrompt';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -96,6 +97,7 @@ export class AgentEventRouter {
   private readonly effectsAcks = new Map<string, EffectsApplyAck>();
   private readonly effectsResults = new Map<string, EffectsApplyResult>();
   private effectsCancelled = false;
+  private readonly deliveredScriptCalls = new Set<string>();
   private readonly getScriptSegments?: AgentEventRouterConfig['getScriptSegments'];
   private readonly isCurrentProject?: AgentEventRouterConfig['isCurrentProject'];
   private readonly coverAgentBridge?: CoverAgentBridge;
@@ -330,6 +332,27 @@ export class AgentEventRouter {
         this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
         this.handleMaterialOperation(op);
       } else if (this.isScriptOperation(op)) {
+        if (this.effectsCancelled) {
+          this.stateManager.updateToolStatus(event.toolCallId, 'error', { success: false, error_code: 'SCRIPT_CANCELLED' });
+          return;
+        }
+        if (this.deliveredScriptCalls.has(event.toolCallId)) {
+          this.stateManager.updateToolStatus(event.toolCallId, 'completed', { ...((event.result ?? {}) as Record<string, unknown>), client_applied: true, persisted: false });
+          return;
+        }
+        if (op.type === 'set_script_with_narration') {
+          const applied = this.operationApplier.applyStructuredScript?.(op, event.toolCallId) ?? 'legacy';
+          if (applied === 'conflict' || (applied === 'legacy' && op.baselineHash && this.getScriptSegments && scriptHash(this.getScriptSegments()) !== op.baselineHash)) {
+            this.stateManager.updateToolStatus(event.toolCallId, 'error', { success: false, error_code: 'SCRIPT_CONFLICT' });
+            return;
+          }
+          this.deliveredScriptCalls.add(event.toolCallId);
+          if (applied !== 'legacy') {
+            this.stateManager.updateToolStatus(event.toolCallId, 'completed', { ...((event.result ?? {}) as Record<string, unknown>), client_applied: true, persisted: false });
+            this.onOperationApplied?.(event);
+            return;
+          }
+        }
         this.operationApplier.recordNonTimelineOperation(op, event.toolCallId);
         this.handleScriptOperation(op);
       } else if (this.isStoryboardOperation(op)) {

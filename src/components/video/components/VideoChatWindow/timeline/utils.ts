@@ -26,6 +26,13 @@ import type {
 /** Localised tool names (`t.agentTimeline.toolNames`). */
 export type ToolNameLabels = Readonly<Record<string, string>>;
 
+/** 只有客户端实际应用的脚本步骤才提供撤销；服务端快照不算落地。 */
+export function isAppliedScriptCall(call: AgentToolCallRecord): boolean {
+  return call.status === 'completed' && ['set_video_script', 'generate_video_script', 'expand_video_script'].includes(call.name)
+    && !!call.result && typeof call.result === 'object'
+    && (call.result as Record<string, unknown>).client_applied === true;
+}
+
 /** Localised name of a tool; unknown tools (or no labels) show the raw name. */
 export function getToolDisplayName(toolName: string, toolNames?: ToolNameLabels): string {
   if (toolNames && Object.prototype.hasOwnProperty.call(toolNames, toolName)) {
@@ -257,7 +264,8 @@ export function mapMessageToNodes(
   // Only turns that recorded track patches can be reverted. Older messages
   // (whole-timeline snapshots) hide the button instead of wiping later edits.
   const patchCount = message.timelineTrackPatches?.length ?? 0;
-  const isToolOnlyTurn = !message.content && hasToolCalls && patchCount > 0;
+  const isToolOnlyTurn = !message.content && hasToolCalls
+    && (patchCount > 0 || message.agentToolCalls?.some(isAppliedScriptCall));
   if (!isStreaming && (message.content || isToolOnlyTurn)) {
     nodes.push({
       kind: 'response',

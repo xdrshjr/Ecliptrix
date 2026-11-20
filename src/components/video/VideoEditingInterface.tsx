@@ -1996,6 +1996,12 @@ const VideoEditingInterface: React.FC<VideoEditingInterfaceProps> = ({
     // 就是 `content?.defaultVoiceId`，见 useWorkbenchWiring:196；此处须读 content，
     // 因为 workbench 在下方才声明）。保证 Agent 配音不会另用一套默认值。
     defaultVoiceId: content?.defaultVoiceId ?? DEFAULT_VOICE_ID,
+    getScriptState: () => ({ scriptSegments: contentRef.current?.scriptSegments ?? [], aiVideoScriptSegments: contentRef.current?.aiVideoScriptSegments ?? [] }),
+    setScriptState: state => {
+      const next = { ...(contentRef.current ?? content), ...state } as VideoEditingTaskContent;
+      contentRef.current = next;
+      onUpdateContent(next);
+    },
     getScriptSegments: () => {
       // SSE 可能在 React 消费结构化脚本前继续返回配音。
       const pending = useVideoEditingStore.getState().scriptSegmentsData;

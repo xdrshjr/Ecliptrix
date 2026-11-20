@@ -1,74 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ScriptGenerationConfig, ChatMessage } from '@/types';
 import { truncateChatMessages } from '@/lib/utils/chatMessageUtils';
-import { backendConfig } from '@/lib/config/backend';
-import { normalizeApiType, streamLlmChat, type LlmApiType } from '@/lib/llm/streamLlmChat';
-
-type ResolvedConfig = {
-  apiUrl: string;
-  apiKey: string;
-  model: string;
-  apiType: LlmApiType;
-};
-
-// Actionable copy surfaced verbatim to the user when no model is configured.
-const LLM_NOT_CONFIGURED_MESSAGE =
-  '尚未配置 AI 模型凭证,请前往 设置 → 模型设置 完成配置 (AI model not configured — open Settings → Model Settings)';
-
-// Distinguishable error so the outer catch can return a structured 503 instead
-// of a generic 500. Identified by a stable `code`, never by message matching.
-class LlmNotConfiguredError extends Error {
-  readonly code = 'LLM_NOT_CONFIGURED';
-  constructor(message: string = LLM_NOT_CONFIGURED_MESSAGE) {
-    super(message);
-    this.name = 'LlmNotConfiguredError';
-  }
-}
-
-// Resolve LLM credentials the same way /api/chat and Agent inference do: the
-// DB-configured chat model first (via the FastAPI resolve endpoint), env vars
-// as fallback. Crucially this returns `apiType`, so the call site can pick the
-// correct OpenAI vs Anthropic transport. The previous direct `process.env`
-// read here was api_type-blind and 401'd against Anthropic-compatible endpoints
-// (e.g. the desktop default), because it always hit `/chat/completions`.
-const getConfig = async (): Promise<ResolvedConfig> => {
-  let backendNotConfiguredMessage: string | null = null;
-  try {
-    const res = await fetch(
-      backendConfig.joinPath('/api/model-settings/resolve/chat'),
-      { method: 'GET', headers: { 'Content-Type': 'application/json' } },
-    );
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.api_key) {
-        return {
-          apiUrl: data.api_url,
-          apiKey: data.api_key,
-          model: data.model_name,
-          apiType: normalizeApiType(data.api_type),
-        };
-      }
-    } else if (res.status === 503) {
-      const data = await res.json().catch(() => null);
-      if (data?.error_code === 'MODEL_NOT_CONFIGURED' && typeof data.message === 'string') {
-        backendNotConfiguredMessage = data.message;
-      }
-    }
-  } catch {
-    console.warn('[AI Video Script Generation API] Failed to fetch model settings from backend, falling back to env vars');
-  }
-
-  const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
-  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
-  const apiType = normalizeApiType(process.env.LLM_API_TYPE);
-
-  if (!apiKey) {
-    throw new LlmNotConfiguredError(backendNotConfiguredMessage ?? undefined);
-  }
-
-  return { apiUrl, apiKey, model, apiType };
-};
+import { streamLlmChat } from '@/lib/llm/streamLlmChat';
+import { resolveScriptConfig, ScriptLlmError, scriptFailure } from '@/lib/llm/scriptConfig';
 
 /**
  * VideoInfo type for selected videos passed from the frontend.
@@ -253,7 +187,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = await getConfig();
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(55_000)]);
+    const config = await resolveScriptConfig(signal);
 
     const inputSources: string[] = [];
     if (hasChatMessages) inputSources.push(`chatMessages(${chatMessages!.length})`);
@@ -282,7 +217,7 @@ export async function POST(request: NextRequest) {
     console.log(`[AI Video Script Generation API] Calling LLM API (api_type=${config.apiType}) base=${config.apiUrl} for task: ${taskId}`);
 
     let content = '';
-    let upstreamError: { status: number; message: string } | null = null;
+    let upstreamError: { status: number; message: string; code?: string } | null = null;
     for await (const event of streamLlmChat({
       config: {
         apiUrl: config.apiUrl,
@@ -293,28 +228,23 @@ export async function POST(request: NextRequest) {
       messages,
       temperature: 0.7,
       maxTokens: 3000,
+      signal,
     })) {
       if (event.kind === 'error') {
-        upstreamError = { status: event.status, message: event.message };
+        upstreamError = event;
         break;
       }
       if (event.kind === 'content') content += event.text;
     }
 
     if (upstreamError) {
-      // Preserve the upstream status (401/429/…) instead of collapsing to 500.
-      console.error(`[AI Video Script Generation API] LLM API error: ${upstreamError.status} - ${upstreamError.message}`);
-      const httpStatus = upstreamError.status >= 400 && upstreamError.status <= 599 ? upstreamError.status : 502;
-      return NextResponse.json(
-        { error: `LLM API error: ${upstreamError.status}` },
-        { status: httpStatus }
-      );
+      throw new ScriptLlmError(upstreamError.code ?? 'LLM_UPSTREAM_ERROR', upstreamError.status >= 400 && upstreamError.status <= 599 ? upstreamError.status : 502);
     }
 
     if (!content) {
       return NextResponse.json(
-        { error: 'No content received from LLM' },
-        { status: 500 }
+        scriptFailure(new ScriptLlmError('LLM_EMPTY_OUTPUT', 502)),
+        { status: 502 }
       );
     }
 
@@ -331,7 +261,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!scriptData.segments || !Array.isArray(scriptData.segments)) {
+    if (!Array.isArray(scriptData.segments) || !scriptData.segments.length || scriptData.segments.some((s: { scriptText?: string; narrationText?: string }) => !s || (!s.scriptText?.trim() && !s.narrationText?.trim()))) {
       return NextResponse.json(
         { error: 'Invalid script format received' },
         { status: 500 }
@@ -358,20 +288,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[AI Video Script Generation API] Request processing error:', error);
-
-    // 「未配置 AI 模型凭证」是设计内的可操作失败，返回可识别的结构化 503（与 /api/chat 一致），
-    // 而非塌缩成无信息量的 500；其余未知错误维持原有 500 契约不变。
-    if (error instanceof LlmNotConfiguredError) {
-      return NextResponse.json(
-        { success: false, error_code: error.code, message: error.message },
-        { status: 503 }
-      );
-    }
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json(scriptFailure(error), { status: error instanceof ScriptLlmError ? error.status : 502 });
   }
 }

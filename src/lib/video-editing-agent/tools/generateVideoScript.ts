@@ -2,6 +2,8 @@ import { Type, type Static } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { ToolContext } from '../types';
 import { toolFetch, parseToolResponse } from './apiHelper';
+import { scriptHash } from '../editorContextPrompt';
+import { publishScript, scriptApiFailure } from './scriptTools';
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -59,7 +61,8 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
       'Generate an AI video script from a topic/description. The script appears in the Script panel in real time. Returns a content preview, word count, and estimated duration.',
     parameters,
 
-    execute: async (toolCallId, params: Params) => {
+    execute: async (toolCallId, params: Params, signal) => {
+      const baselineHash = scriptHash(context.scriptSegments);
       const topic = params.topic?.trim();
       if (!topic) {
         const err = { success: false, error: 'Topic must not be empty' };
@@ -83,6 +86,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
         const response = await toolFetch(context, '/api/ai-video-script-generation', {
           method: 'POST',
           timeout: 60_000,
+          retry: false, signal,
           body: JSON.stringify({
             taskId: `agent-script-${Date.now()}`,
             customPrompt,
@@ -97,9 +101,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
         });
 
         if (!response.ok) {
-          let detail = '';
-          try { detail = await response.text(); } catch { /* ignore read errors */ }
-          const err = { success: false, error: `Script generation failed (HTTP ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}` };
+          const err = await scriptApiFailure(response);
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
 
@@ -109,7 +111,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           segments?: Array<{ title: string; scriptText: string; narrationText?: string }>;
         }>(response);
 
-        if (!data.success || !('segments' in data) || !data.segments) {
+        if (!data.success || !('segments' in data) || !data.segments?.length) {
           const err = { success: false, error: ('error' in data && data.error) || 'Script generation returned invalid data' };
           return { content: [{ type: 'text', text: JSON.stringify(err) }], details: err };
         }
@@ -127,20 +129,8 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           .map((seg, i) => `## ${i + 1}. ${seg.title}\n\n${seg.scriptText}`)
           .join('\n\n');
 
-        // NOTE: only one recordOperation per toolCallId — Map.set overwrites previous entries.
-        context.scriptSegments = segmentsForDisplay.map(seg => ({
-          id: seg.id, title: seg.title, narrationText: seg.narrationText,
-          sentences: seg.scriptText.split(/(?<=[。！？.!?])\s*/).filter(s => s.trim())
-            .map((text, i) => ({ id: `${seg.id}-s-${i}`, text: text.trim() })),
-        }));
-        // The AgentEventRouter handles building markdown content from structured segments.
-        // For UI display, we use scriptText fallback when narrationText is missing
-        // so the ScriptPanel always shows meaningful content.
-        context.recordOperation(toolCallId, {
-          type: 'set_script_with_narration',
-          segments: segmentsForDisplay,
-          scriptType: 'ai_generated',
-        });
+        signal?.throwIfAborted();
+        publishScript(context, toolCallId, segmentsForDisplay, baselineHash);
 
         const narrationContent = segmentsForDisplay.map(s => s.narrationText).join(' ');
         const wordCount = fullContent.length;
@@ -149,7 +139,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
           fullContent.length > 200 ? fullContent.slice(0, 200) + '...' : fullContent;
 
         const result = {
-          success: true,
+          success: true, source: 'server_snapshot', persisted: false, application: 'pending_client', hash: scriptHash(context.scriptSegments),
           script: {
             content_preview: preview,
             word_count: wordCount,
@@ -176,6 +166,7 @@ export function createGenerateVideoScriptTool(context: ToolContext): AgentTool<t
         const isTimeout = error instanceof DOMException && error.name === 'TimeoutError';
         const err = {
           success: false,
+          error_code: context.abortSignal?.aborted || signal?.aborted ? 'SCRIPT_CANCELLED' : error instanceof Error && error.message === 'SCRIPT_CONFLICT' ? 'SCRIPT_CONFLICT' : 'SCRIPT_GENERATION_FAILED',
           error: isTimeout
             ? 'Script generation timed out after 60s'
             : `Script generation failed: ${error instanceof Error ? error.message : String(error)}`,

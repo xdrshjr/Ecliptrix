@@ -1785,6 +1785,9 @@ export interface Translations {
       generate_storyboard: string;
       generate_tts: string;
       generate_video_script: string;
+      set_video_script: string;
+      get_video_script: string;
+      list_tts_voices: string;
       get_timeline: string;
       image_to_video: string;
       batch_image_to_video: string;
@@ -5956,6 +5959,9 @@ export const translations: Record<string, Translations> = {
         generate_storyboard: 'Generate storyboard',
         generate_tts: 'Generate voice-over',
         generate_video_script: 'Write video script',
+        set_video_script: 'Write narration script',
+        get_video_script: 'Read narration script',
+        list_tts_voices: 'List voices',
         get_timeline: 'Read timeline',
         image_to_video: 'Image to video',
         batch_image_to_video: 'Batch image to video',
@@ -10621,6 +10627,9 @@ export const translations: Record<string, Translations> = {
         generate_storyboard: '生成分镜',
         generate_tts: '生成配音',
         generate_video_script: '生成视频脚本',
+        set_video_script: '写入解说脚本',
+        get_video_script: '读取解说脚本',
+        list_tts_voices: '查询音色目录',
         get_timeline: '读取时间轴',
         image_to_video: '图片生成视频',
         batch_image_to_video: '批量图片转视频',

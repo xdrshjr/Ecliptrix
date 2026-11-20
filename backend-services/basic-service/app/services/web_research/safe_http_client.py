@@ -298,6 +298,7 @@ class SafeHttpClient:
         self.limiter = CapacityLimiter()
         self.origins = {}
         self.robots = OrderedDict()
+        self._robots_pending = {}
 
     def proxy_settings(self):
         if self.static_proxy_settings is not None:
@@ -436,42 +437,61 @@ class SafeHttpClient:
         origin = f"{parts.scheme}://{parts.netloc}"
         cached = self.robots.get(origin)
         now = time.monotonic()
-        if cached and now - cached[0] < ROBOTS_TTL:
-            state, parser = cached[1], cached[2]
+        cache_hit = bool(cached and now - cached[0] < ROBOTS_TTL)
+        if not cache_hit:
+            pending = self._robots_pending.get(origin)
+            if pending is None:
+                pending = asyncio.create_task(self._load_robots(origin, timeout))
+                self._robots_pending[origin] = pending
+                def finished(task):
+                    self._robots_pending.pop(origin, None)
+                    if not task.cancelled():
+                        task.exception()
+                pending.add_done_callback(finished)
+            # Other origins may evict this entry before waiters resume.
+            cached = await asyncio.shield(pending)
+        if origin in self.robots:
             self.robots.move_to_end(origin)
-            if state == "unavailable":
-                # fail-closed：缓存有效期内同 origin 同样拒绝（R-V2-07）。
-                raise WebResearchError("robots_unavailable", status_code=503)
-        else:
-            policy = FetchPolicy(256 * 1024, timeout, False, False)
-            state, parser = "ready", None
-            try:
-                result = await self.fetch(policy, RequestSpec(origin + "/robots.txt"))
-            except WebResearchError as error:
-                if error.error_code in {"url_forbidden", "proxy_config_invalid",
-                                        "dns_no_answer", "dns_answer_non_global",
-                                        "port_not_allowed"}:
-                    raise
-                self._remember_robot(origin, "unavailable", None)
-                raise WebResearchError(
-                    "robots_unavailable", status_code=503) from None
-            if result.status in {401, 403}:
-                self._remember_robot(origin, "disallowed", None)
-                raise WebResearchError("robots_disallowed")
-            if result.status >= 500:
-                self._remember_robot(origin, "unavailable", None)
-                raise WebResearchError("robots_unavailable", status_code=503)
-            parser = RobotFileParser()
-            parser.parse([] if result.status == 404 else
-                         result.body.decode("utf-8", "replace").splitlines())
-            self._remember_robot(origin, "ready", parser)
-        if state == "ready" and not parser.can_fetch(USER_AGENT, url):
-            raise WebResearchError("robots_disallowed")
+        state, parser = cached[1], cached[2]
+        diagnostics = {**(cached[3] if len(cached) > 3 else {}),
+                       "robots_cache_hit": cache_hit}
+        if state in {"unavailable", "disallowed"}:
+            raise WebResearchError("robots_" + state, layer="robots", details=diagnostics)
+        if not parser.can_fetch(USER_AGENT, url):
+            raise WebResearchError("robots_disallowed", layer="robots",
+                                   details={"robots_scope": "path", "robots_cache_hit": cache_hit})
 
-    def _remember_robot(self, origin, state, parser):
-        self.robots[origin] = (time.monotonic(), state, parser)
+    async def _load_robots(self, origin, timeout):
+        policy = FetchPolicy(256 * 1024, timeout, False, False)
+        try:
+            result = await self.fetch(policy, RequestSpec(origin + "/robots.txt"))
+        except WebResearchError as error:
+            if error.error_code in {"url_forbidden", "proxy_config_invalid",
+                                    "dns_no_answer", "dns_answer_non_global",
+                                    "port_not_allowed"}:
+                raise
+            return self._remember_robot(origin, "unavailable", None,
+                                 {"robots_scope": "origin", "robots_origin": origin,
+                                  "robots_failure_stage": "fetch", "robots_failure_code": error.error_code})
+        if result.status in {401, 403}:
+            return self._remember_robot(origin, "disallowed", None,
+                                 {"robots_scope": "origin", "robots_origin": origin,
+                                  "robots_failure_stage": "http", "upstream_status": result.status})
+        if result.status >= 500:
+            return self._remember_robot(origin, "unavailable", None,
+                                 {"robots_scope": "origin", "robots_origin": origin,
+                                  "robots_failure_stage": "http", "upstream_status": result.status})
+        parser = RobotFileParser()
+        parser.parse([] if result.status == 404 else
+                     result.body.decode("utf-8", "replace").splitlines())
+        return self._remember_robot(origin, "ready", parser)
+
+    def _remember_robot(self, origin, state, parser, details=None):
+        entry = (time.monotonic(), state, parser, details or {})
+        self.robots[origin] = entry
         while len(self.robots) > 256:
             self.robots.popitem(last=False)
+        return entry
 
 
 _client = None

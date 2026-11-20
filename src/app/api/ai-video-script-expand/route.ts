@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const getConfig = () => {
-  const apiUrl = process.env.LLM_API_URL || process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
-  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-  const model = process.env.LLM_MODEL || 'gpt-3.5-turbo';
-
-  if (!apiKey) {
-    throw new Error('API key not configured. Please set LLM_API_KEY or OPENAI_API_KEY in environment variables.');
-  }
-
-  return { apiUrl, apiKey, model };
-};
+import { streamLlmChat } from '@/lib/llm/streamLlmChat';
+import { resolveScriptConfig, ScriptLlmError, scriptFailure } from '@/lib/llm/scriptConfig';
 
 interface OtherSegment {
   index: number;
@@ -108,56 +99,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
 
-    const config = getConfig();
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(55_000)]);
+    const config = await resolveScriptConfig(signal);
 
     console.log(`[AI Script Expand API] ${new Date().toISOString()} - Expanding scene ${segmentIndex + 1} for task: ${taskId}${expandGoal ? ` with goal: "${expandGoal}"` : ''}`);
 
-    const response = await fetch(`${config.apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert AI video script writer. You expand brief scene notes into vivid, detailed visual descriptions optimized for AI video generation. Always respond with ONLY the expanded description text. CRITICAL: You MUST output in the same language as the input text.'
-          },
-          {
-            role: 'user',
-            content: buildExpandPrompt(segmentIndex, segmentTitle, segmentText, otherSegments || [], expandGoal || '')
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[AI Script Expand API] LLM API error: ${response.status} - ${errorText}`);
-      return NextResponse.json({ error: `LLM API error: ${response.status}` }, { status: response.status });
+    let content = '';
+    for await (const event of streamLlmChat({
+      config, signal, temperature: 0.7, maxTokens: 500,
+      messages: [
+        { role: 'system', content: 'Expand scene notes into visual descriptions. Output only the description, in the same language as the input.' },
+        { role: 'user', content: buildExpandPrompt(segmentIndex, segmentTitle, segmentText, otherSegments || [], expandGoal || '') },
+      ],
+    })) {
+      if (event.kind === 'error') throw new ScriptLlmError(event.code ?? 'LLM_UPSTREAM_ERROR', event.status >= 400 && event.status <= 599 ? event.status : 502);
+      if (event.kind === 'content') content += event.text;
     }
-
-    const result = await response.json();
-    const content = result.choices?.[0]?.message?.content;
-
-    if (!content) {
-      return NextResponse.json({ error: 'No content received from LLM' }, { status: 500 });
-    }
+    if (!content.trim()) throw new ScriptLlmError('LLM_EMPTY_OUTPUT', 502);
 
     const expandedText = content.trim();
 
-    console.log(`[AI Script Expand API] Expanded scene ${segmentIndex + 1} for task: ${taskId} (${segmentText.length} → ${expandedText.length} chars)`);
+    console.log(`[AI Script Expand API] Expanded scene ${segmentIndex + 1} for task: ${taskId} (${(segmentText ?? "").length} → ${expandedText.length} chars)`);
 
     return NextResponse.json({
       success: true,
       expandedText,
     });
   } catch (error) {
-    console.error('[AI Script Expand API] Request processing error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(scriptFailure(error), { status: error instanceof ScriptLlmError ? error.status : 502 });
   }
 }

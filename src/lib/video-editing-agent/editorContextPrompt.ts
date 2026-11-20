@@ -13,6 +13,21 @@ import type { ScriptSegment } from '@/types';
 export type ScriptSegmentSnapshot = Pick<ScriptSegment,
   'id' | 'title' | 'narrationText' | 'sentences' | 'voiceId' | 'voiceSpeed'>;
 
+/** 内容版本只用于乐观并发控制；身份、旁白和音色设置都属于基线。 */
+export function scriptHash(segments: readonly ScriptSegmentSnapshot[] = []): string {
+  const text = JSON.stringify(segments.map(s => [s.id, s.title, s.sentences.map(x => [x.id, x.text]), s.narrationText ?? null, s.voiceId ?? null, s.voiceSpeed ?? null]));
+  let a = 2166136261, b = 5381;
+  for (let i = 0; i < text.length; i++) {
+    a = Math.imul(a ^ text.charCodeAt(i), 16777619);
+    b = Math.imul(b, 33) ^ text.charCodeAt(i);
+  }
+  return [a, b].map(v => (v >>> 0).toString(16).padStart(8, '0')).join('');
+}
+
+export function scriptWriteSegments(segments: readonly ScriptSegmentSnapshot[] = []) {
+  return segments.map(s => ({ ...s, scriptText: s.sentences.map(x => x.text).join(' '), narrationText: s.narrationText ?? s.sentences.map(x => x.text).join(' ') }));
+}
+
 export function readScriptSegments(raw: unknown): ScriptSegmentSnapshot[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();

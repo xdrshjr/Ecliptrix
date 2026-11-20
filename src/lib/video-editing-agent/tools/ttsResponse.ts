@@ -17,11 +17,11 @@ export function prepareSegmentVoice(context: ToolContext, id: string | undefined
   if (id === undefined) return {};
   const segment = typeof id === 'string' && id.trim()
     ? context.scriptSegments?.find(s => s.id === id) : undefined;
-  if (!segment) return { failure: { ...invalidTtsRequest(), error: '脚本段落不存在，请使用当前脚本返回的 segment_id。' } };
+  if (!segment) return { failure: { ...invalidTtsRequest(), error: '脚本段落不存在，请调用 get_video_script 获取真实 segment_id 及完整旁白后修正请求。' } };
   const expected = convertScriptSegmentToSentenceRequest(segment, '').sentences.map(s => s.text).join(' ');
   const normalize = (value: string) => value.trim().replace(/(?<=[。！？.!?])\s+/g, '').replace(/\s+/g, ' ');
   if (normalize(text) !== normalize(expected)) {
-    return { failure: { ...invalidTtsRequest(), error: '配音文本与该脚本段落不一致，请使用该段完整解说文本。' } };
+    return { failure: { ...invalidTtsRequest(), error: '配音文本与该脚本段落不一致，请调用 get_video_script，使用该段完整 narrationText 修正请求。' } };
   }
   return { segment, hash: segmentTextHash(segment) };
 }

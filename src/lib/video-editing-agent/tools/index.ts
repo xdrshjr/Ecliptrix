@@ -1,3 +1,4 @@
+import { createScriptTools } from './scriptTools';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import type { TimelineState, Track, TimelineItem, MaterialItem, AgentMaterialData } from '@/types';
 import { isInlineMediaUrl } from '@/lib/inlineUrl';
@@ -23,7 +24,7 @@ import { createSearchImageTool } from './searchImage';
 import { createSearchAudioTool } from './searchAudio';
 import { createAddMaterialToLibraryTool } from './addMaterialToLibrary';
 import { createRemoveMaterialTool } from './removeMaterial';
-import { createGenerateTtsTool } from './generateTts';
+import { createGenerateTtsTool, createListTtsVoicesTool } from './generateTts';
 import { createBatchGenerateTtsTool } from './batchGenerateTts';
 import { createGenerateVideoScriptTool } from './generateVideoScript';
 import { createExpandVideoScriptTool } from './expandVideoScript';
@@ -448,12 +449,14 @@ export function createToolRegistry(context: ToolContext): ToolRegistry {
 
   // Populate tts_tools category
   registry.registerToolsForCategory(CATEGORY_IDS.TTS_TOOLS, [
+    createListTtsVoicesTool(context),
     createGenerateTtsTool(context),
     createBatchGenerateTtsTool(context),
   ]);
 
   // Populate script_tools category
   registry.registerToolsForCategory(CATEGORY_IDS.SCRIPT_TOOLS, [
+    ...createScriptTools(context),
     createGenerateVideoScriptTool(context),
     createExpandVideoScriptTool(context),
     createUnderstandVideoScriptTool(context),

@@ -190,7 +190,7 @@ function CheckedRules({ rules, failed }: {
 export function QualityReportCard({
   toolCall, onOpenSettings,
 }: QualityCardProps): React.JSX.Element {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const copy = t.agentVision;
   const payload = agentVisionEnvelope(toolCall.result);
   if (payload.success === false) {
@@ -230,6 +230,12 @@ export function QualityReportCard({
             ⌄
           </span>
         </summary>
+        {payload.scope === 'export_readiness' && (
+          <p className="mt-2 text-muted-foreground">
+            {locale === 'zh-CN' ? '导出就绪情况。仅文案或素材收集按对应回执验收；此检查不代表配乐、口音或导出已完成。'
+              : 'Export readiness. Script and material tasks use their own receipts; this check does not confirm music, accent, or a completed export.'}
+          </p>
+        )}
         {allPassed && (
           <p className="mt-1 flex items-center gap-1 text-green-600
             dark:text-green-400">

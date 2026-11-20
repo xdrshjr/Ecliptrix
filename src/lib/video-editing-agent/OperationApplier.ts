@@ -29,6 +29,7 @@ import type {
   OperationRejectReason,
   TimelineItem,
   Track,
+  VideoEditingTaskContent,
 } from '@/types';
 import type { AgentOperation, EffectsOperation, MaterialOperation, ScriptOperation, StoryboardOperation, AsyncTaskOperation } from './types';
 import type { StoryboardItem } from '@/stores/slices/storyboardSlice';
@@ -38,6 +39,9 @@ import { computeTimelineEnd, diffTimelineTracks, revertTrackPatches } from './tr
 import { findLockedTrackId, touchedTrackIds, validateOperationTargets, type OperationValidation } from './operationGuards';
 import { createDefaultAgentTimelineState } from './defaultTimeline';
 import { applySubtitleClipsToState } from './subtitleClips';
+import { scriptHash } from './editorContextPrompt';
+
+export type ScriptProjectState = Pick<VideoEditingTaskContent, 'scriptSegments' | 'aiVideoScriptSegments'>;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,6 +88,9 @@ export interface NonTimelineUndoRecord {
 }
 
 export interface OperationApplierConfig {
+  isScriptProjectCurrent?: () => boolean;
+  getScriptState?: () => ScriptProjectState;
+  setScriptState?: (state: ScriptProjectState) => void;
   /** Read current timeline state. */
   getTimelineState: () => TimelineState | null;
   /** Write updated timeline state (triggers React re-render). */
@@ -118,9 +125,36 @@ export class OperationApplier {
   private readonly config: OperationApplierConfig;
   private operations: OperationRecord[] = [];
   private nonTimelineRecords: NonTimelineUndoRecord[] = [];
+  private appliedScriptCalls = new Set<string>();
 
   constructor(config: OperationApplierConfig) {
     this.config = config;
+  }
+
+  /** 在同一同步调用内校验版本、记录真实旧稿并发布新稿，避免 React 临时 store 的消费窗口。 */
+  applyStructuredScript(operation: Extract<ScriptOperation, { type: 'set_script_with_narration' }>, toolCallId: string): 'applied' | 'duplicate' | 'conflict' | 'legacy' {
+    if (this.config.isScriptProjectCurrent?.() === false) return 'conflict';
+    if (this.appliedScriptCalls.has(toolCallId)) return 'duplicate';
+    if (!this.config.getScriptState || !this.config.setScriptState) return 'legacy';
+    const before = this.config.getScriptState();
+    if (operation.baselineHash && scriptHash(before.scriptSegments) !== operation.baselineHash) return 'conflict';
+    const segments = operation.segments.map(s => {
+      const id = s.id || `agent-segment-${crypto.randomUUID()}`;
+      const previous = before.scriptSegments?.find(old => old.id === id);
+      return { ...previous, id, title: s.title, narrationText: s.narrationText,
+        sentences: s.sentences ?? s.scriptText.split(/(?<=[。！？.!?])\s*/).filter(x => x.trim()).map((text, i) => ({ id: `${id}-s-${i}`, text: text.trim() })),
+        ...(s.voiceId ? { voiceId: s.voiceId } : {}), ...(s.voiceSpeed !== undefined ? { voiceSpeed: s.voiceSpeed } : {}),
+      };
+    });
+    const after: ScriptProjectState = { scriptSegments: segments,
+      aiVideoScriptSegments: operation.scriptType === 'ai_generated'
+        ? operation.segments.map((s, i) => ({ id: segments[i].id, title: s.title, scriptText: s.scriptText, narrationText: s.narrationText }))
+        : before.aiVideoScriptSegments };
+    this.nonTimelineRecords.push({ toolCallId, operation, undoable: true,
+      undoData: { projectScriptBefore: deepClone(before), projectScriptAfter: deepClone(after) } });
+    this.config.setScriptState(after);
+    this.appliedScriptCalls.add(toolCallId);
+    return 'applied';
   }
 
   /** Register an already committed transaction; never execute it a second time. */
@@ -275,6 +309,11 @@ export class OperationApplier {
    * the operation, nothing is written and `conflict` is returned.
    */
   undoOperation(toolCallId: string): AgentUndoResult {
+    const script = this.nonTimelineRecords.find(r => r.toolCallId === toolCallId
+      && r.operation.type === 'set_script_with_narration'
+      && (r.undoData as Record<string, unknown>)?.projectScriptBefore);
+    if (script) return this.undoNonTimelineOperation(toolCallId)
+      ? { ok: true } : { ok: false, reason: 'conflict' };
     const records = this.recordsFor(toolCallId);
     const current = this.config.getTimelineState();
     if (records.length === 0 || !current) {
@@ -472,6 +511,13 @@ export class OperationApplier {
 
     const store = useVideoEditingStore.getState();
     const data = record.undoData as Record<string, unknown>;
+    if (data.projectScriptBefore && this.config.getScriptState && this.config.setScriptState) {
+      if (this.config.isScriptProjectCurrent?.() === false) return false;
+      if (JSON.stringify(this.config.getScriptState()) !== JSON.stringify(data.projectScriptAfter)) return false;
+      this.config.setScriptState(deepClone(data.projectScriptBefore as ScriptProjectState));
+      this.nonTimelineRecords.splice(idx, 1);
+      return true;
+    }
 
     switch (record.operation.type) {
       case 'update_material':
