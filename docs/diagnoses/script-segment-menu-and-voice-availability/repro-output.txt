@@ -1,0 +1,218 @@
+
+ RUN  v4.1.5 M:/takoAI/Ecliptrix
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 更多按钮位于底部操作行，未放在时长右侧
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:44.186Z' }
+[VideoSearchModal] 官方视频库选择状态变化 {
+  taskId: 'unknown',
+  selectionCount: 0,
+  selectedVideoIds: [],
+  totalResults: 0,
+  selectionRatio: 0,
+  timestamp: '2026-11-21T03:22:44.195Z'
+}
+[useVideoSearch] 开始加载YouTube配置 { taskId: 'unknown', timestamp: '2026-11-21T03:22:44.198Z' }
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:44.223Z' }
+更多按钮所在区域=segment-card__actions；卡头包含更多按钮=false
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 更多按钮位于底部操作行，未放在时长右侧
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:44.890Z'
+}
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:44.891Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 更多按钮位于底部操作行，未放在时长右侧
+[useVideoSearch] YouTube配置加载成功 {
+  taskId: 'unknown',
+  maxConcurrentDownloads: 3,
+  timestamp: '2026-11-21T03:22:44.892Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 真实菜单按右边缘对齐而向左展开，并导出浏览器取证页面
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:44.936Z' }
+[VideoSearchModal] 官方视频库选择状态变化 {
+  taskId: 'unknown',
+  selectionCount: 0,
+  selectedVideoIds: [],
+  totalResults: 0,
+  selectionRatio: 0,
+  timestamp: '2026-11-21T03:22:44.938Z'
+}
+[useVideoSearch] 开始加载YouTube配置 { taskId: 'unknown', timestamp: '2026-11-21T03:22:44.939Z' }
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:44.951Z' }
+按钮=[188,220]；菜单宽=232；菜单left=8；Portal=editor-workbench
+
+ ✓ docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 更多按钮位于底部操作行，未放在时长右侧 855ms
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 真实菜单按右边缘对齐而向左展开，并导出浏览器取证页面
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:45.355Z'
+}
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:45.356Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 真实菜单按右边缘对齐而向左展开，并导出浏览器取证页面
+[useVideoSearch] YouTube配置加载成功 {
+  taskId: 'unknown',
+  maxConcurrentDownloads: 3,
+  timestamp: '2026-11-21T03:22:45.357Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 尚无配音时禁用提示成立（负向对照）
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:45.391Z' }
+[VideoSearchModal] 官方视频库选择状态变化 {
+  taskId: 'unknown',
+  selectionCount: 0,
+  selectedVideoIds: [],
+  totalResults: 0,
+  selectionRatio: 0,
+  timestamp: '2026-11-21T03:22:45.392Z'
+}
+[useVideoSearch] 开始加载YouTube配置 { taskId: 'unknown', timestamp: '2026-11-21T03:22:45.393Z' }
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:45.403Z' }
+
+ ✓ docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 真实菜单按右边缘对齐而向左展开，并导出浏览器取证页面 463ms
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 尚无配音时禁用提示成立（负向对照）
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:45.574Z'
+}
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:45.574Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 尚无配音时禁用提示成立（负向对照）
+[useVideoSearch] YouTube配置加载成功 {
+  taskId: 'unknown',
+  maxConcurrentDownloads: 3,
+  timestamp: '2026-11-21T03:22:45.575Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > Agent真实工具→事件路由→素材仓库→真实面板：配音已生成仍禁用
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:45.607Z' }
+[VideoSearchModal] 官方视频库选择状态变化 {
+  taskId: 'unknown',
+  selectionCount: 0,
+  selectedVideoIds: [],
+  totalResults: 0,
+  selectionRatio: 0,
+  timestamp: '2026-11-21T03:22:45.608Z'
+}
+[useVideoSearch] 开始加载YouTube配置 { taskId: 'unknown', timestamp: '2026-11-21T03:22:45.609Z' }
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:45.625Z' }
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > Agent真实工具→事件路由→素材仓库→真实面板：配音已生成仍禁用
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:45.634Z'
+}
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:45.635Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > Agent真实工具→事件路由→素材仓库→真实面板：配音已生成仍禁用
+[useVideoSearch] YouTube配置加载成功 {
+  taskId: 'unknown',
+  maxConcurrentDownloads: 3,
+  timestamp: '2026-11-21T03:22:45.636Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > Agent真实工具→事件路由→素材仓库→真实面板：配音已生成仍禁用
+配音状态=已生成；更换画面=禁用；AI匹配=禁用；提示=请先完成语音转换
+
+ ✓ docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 尚无配音时禁用提示成立（负向对照） 218ms
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 面板重新挂载后，即使保留已关联配音也仍被禁用
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:45.903Z' }
+[VideoSearchModal] 官方视频库选择状态变化 {
+  taskId: 'unknown',
+  selectionCount: 0,
+  selectedVideoIds: [],
+  totalResults: 0,
+  selectionRatio: 0,
+  timestamp: '2026-11-21T03:22:45.904Z'
+}
+[useVideoSearch] 开始加载YouTube配置 { taskId: 'unknown', timestamp: '2026-11-21T03:22:45.904Z' }
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:45.915Z' }
+配音状态=已生成；更换画面=禁用；AI匹配=禁用；提示=请先完成语音转换
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:46.083Z' }
+[VideoSearchModal] 官方视频库选择状态变化 {
+  taskId: 'unknown',
+  selectionCount: 0,
+  selectedVideoIds: [],
+  totalResults: 0,
+  selectionRatio: 0,
+  timestamp: '2026-11-21T03:22:46.084Z'
+}
+[useVideoSearch] 开始加载YouTube配置 { taskId: 'unknown', timestamp: '2026-11-21T03:22:46.084Z' }
+[VoiceSelector] 加载音色列表 { taskId: 'global', timestamp: '2026-11-21T03:22:46.098Z' }
+配音状态=已生成；更换画面=禁用；AI匹配=禁用；提示=请先完成语音转换
+
+ ✓ docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > Agent真实工具→事件路由→素材仓库→真实面板：配音已生成仍禁用 290ms
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 面板重新挂载后，即使保留已关联配音也仍被禁用
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:46.224Z'
+}
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:46.225Z'
+}
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:46.225Z'
+}
+[VoiceSelector] 音色列表加载成功 {
+  taskId: 'global',
+  count: 0,
+  categories: [],
+  timestamp: '2026-11-21T03:22:46.226Z'
+}
+
+stdout | docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 面板重新挂载后，即使保留已关联配音也仍被禁用
+[useVideoSearch] YouTube配置加载成功 {
+  taskId: 'unknown',
+  maxConcurrentDownloads: 3,
+  timestamp: '2026-11-21T03:22:46.227Z'
+}
+[useVideoSearch] YouTube配置加载成功 {
+  taskId: 'unknown',
+  maxConcurrentDownloads: 3,
+  timestamp: '2026-11-21T03:22:46.227Z'
+}
+
+ ✓ docs/diagnoses/script-segment-menu-and-voice-availability/repro.test.tsx > 脚本卡菜单与语音可用性：当前缺陷取证 > 面板重新挂载后，即使保留已关联配音也仍被禁用 361ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  22:22:26
+   Duration  19.84s (transform 4.96s, setup 664ms, import 12.50s, tests 2.20s, environment 3.97s)

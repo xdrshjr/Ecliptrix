@@ -1167,8 +1167,14 @@ body.ws-resizing[data-ws-axis='y'] * { cursor: row-resize !important; }
 .segment-card__head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   padding: 8px 8px 0 6px;
+}
+.segment-card__head > .ws-icon-btn { flex-shrink: 0; }
+.segment-card__head > .ws-chip {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .segment-card__header {
   display: flex;

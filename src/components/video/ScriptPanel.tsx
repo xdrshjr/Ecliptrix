@@ -36,6 +36,7 @@ import { VideoEditingLogger } from './utils';
 import { stampMaterialForSegment } from './lib/segments/stampMaterialForSegment';
 import localAudioManager from '@/lib/utils/localAudioManager';
 import { useSegmentCommandsValue, useSegmentLinksValue } from './lib/segments/SegmentLinksContext';
+import { resolveSegmentDuration } from './lib/segments/segmentLinks';
 import { useSegmentVoiceGeneration } from './hooks/useSegmentVoiceGeneration';
 import { useScriptVoiceFlows } from './components/SegmentDialogs/useScriptVoiceFlows';
 import SegmentVoiceOverride from './components/SegmentCard/SegmentVoiceOverride';
@@ -183,7 +184,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
   const [expandedScriptSegments, setExpandedScriptSegments] = useState<Set<string>>(new Set());
 
   // TTS相关状态
-  const [completedSegments, setCompletedSegments] = useState<Set<string>>(new Set());
   const [keywordGeneratingSegments, setKeywordGeneratingSegments] = useState<Set<string>>(new Set());
   const keywordGenerationPromisesRef = useRef<Map<string, Promise<string[] | undefined>>>(new Map());
   
@@ -964,7 +964,12 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     try {
       // 执行AI匹配（使用可用的素材）
-      const matches = await videoAIMatch.matchVideos(scriptText, availableMaterials, getVideoAnalysisResult, segment.duration);
+      const duration = resolveSegmentDuration(
+        segment,
+        segmentLinks.segmentRanges.get(segmentId) ?? null,
+        segmentLinks.latestVoiceById.get(segmentId) ?? null,
+      );
+      const matches = await videoAIMatch.matchVideos(scriptText, availableMaterials, getVideoAnalysisResult, duration ?? undefined);
       
       if (matches.length === 0) {
         logger.info('AI匹配完成但无匹配结果', {
@@ -1047,13 +1052,15 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     getSegmentNumber, 
     logger, 
     showSuccess, 
-    showError
+    showError,
+    segmentLinks.segmentRanges,
+    segmentLinks.latestVoiceById,
   ]);
 
   // 打开视频搜索模态框
   const handleOpenVideoSearch = useCallback(async (segmentId: string) => {
     // 检查语音转换是否完成
-    if (!completedSegments.has(segmentId)) {
+    if (!segmentLinks.latestVoiceById.get(segmentId)) {
       logger.warn('尝试打开视频搜索但语音转换未完成', { segmentId });
       return;
     }
@@ -1152,7 +1159,7 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
 
     showError('Search keywords could not be generated. Opening search without keywords.');
     videoSearch.openSearchModal();
-  }, [completedSegments, logger, onUpdateSegments, showError, taskId, videoSearch]);
+  }, [segmentLinks.latestVoiceById, logger, onUpdateSegments, showError, taskId, videoSearch]);
 
   // 切换视频预览
   const handleVideoNavigation = useCallback((segmentId: string, direction: 'prev' | 'next') => {
@@ -1369,7 +1376,6 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     taskId, segmentsRef, defaultVoiceId, logger, onAddMaterial, onUpdateSegments, getSegmentNumber,
     onVoiceGenerated: (segmentId, results) => {
       setSentenceTimingInfo(prev => ({ ...prev, [segmentId]: results }));
-      setCompletedSegments(prev => new Set([...Array.from(prev), segmentId]));
     },
     onVoiceReady: (segmentId) => { void autoGeneratePromptsForSegment(segmentId); },
   });
@@ -1542,11 +1548,11 @@ const ScriptPanel: React.FC<ScriptPanelProps> = ({
     isVoiceBusy: (segmentId) => convertingSegments.has(segmentId) || isBatchConverting,
     replaceVisualBlockReason: (segmentId) => {
       if (keywordGeneratingSegments.has(segmentId)) return 'Generating search keywords...';
-      if (!completedSegments.has(segmentId)) return t.workbench.segmentCard.replaceVisualDisabled;
+      if (!segmentLinks.latestVoiceById.get(segmentId)) return t.workbench.segmentCard.replaceVisualDisabled;
       return null;
     },
     aiMatchBlockReason: (segmentId) => {
-      if (!completedSegments.has(segmentId)) return t.scriptPanel.actions.completeConversionFirst;
+      if (!segmentLinks.latestVoiceById.get(segmentId)) return t.scriptPanel.actions.completeConversionFirst;
       if (!getVideoAnalysisResult) return t.scriptPanel.actions.aiMatchNotConfigured;
       if (!hasAvailableAnalyzedVideos(segmentId)) return t.scriptPanel.actions.noAvailableAnalyzedVideos;
       if (videoAIMatch.matchState.isMatching) return t.scriptPanel.actions.aiMatching;

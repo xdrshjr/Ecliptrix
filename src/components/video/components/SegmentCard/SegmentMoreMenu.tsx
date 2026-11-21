@@ -23,6 +23,8 @@ interface SegmentMoreMenuProps {
 interface MenuPosition {
   top: number;
   left: number;
+  maxWidth: number;
+  maxHeight: number;
 }
 
 const MENU_GAP = 4;
@@ -35,15 +37,23 @@ function resolvePortalRoot(trigger: HTMLElement | null): HTMLElement | null {
   return scoped instanceof HTMLElement ? scoped : document.body;
 }
 
-/** Right-align under the trigger; flip above when the menu would leave the viewport. */
-function placeMenu(trigger: DOMRect, menu: DOMRect | null): MenuPosition {
-  const width = menu?.width ?? 0;
-  const height = menu?.height ?? 0;
-  const left = Math.max(VIEWPORT_MARGIN, trigger.right - width);
+/** Prefer the trigger's right side, within the visible workbench and viewport. */
+function placeMenu(trigger: DOMRect, menu: DOMRect | null, root: DOMRect | null): MenuPosition {
+  const minLeft = Math.max(0, root?.left ?? 0) + VIEWPORT_MARGIN;
+  const maxRight = Math.min(window.innerWidth, root?.right ?? window.innerWidth) - VIEWPORT_MARGIN;
+  const minTop = Math.max(0, root?.top ?? 0) + VIEWPORT_MARGIN;
+  const maxBottom = Math.min(window.innerHeight, root?.bottom ?? window.innerHeight) - VIEWPORT_MARGIN;
+  const maxWidth = Math.max(1, maxRight - minLeft);
+  const maxHeight = Math.max(1, maxBottom - minTop);
+  const width = Math.min(menu?.width ?? 232, maxWidth);
+  const height = Math.min(menu?.height ?? 0, maxHeight);
+  const right = trigger.right + MENU_GAP;
+  const preferredLeft = right + width <= maxRight ? right : trigger.left - MENU_GAP - width;
+  const left = Math.max(minLeft, Math.min(preferredLeft, maxRight - width));
   const below = trigger.bottom + MENU_GAP;
-  const fitsBelow = below + height <= window.innerHeight - VIEWPORT_MARGIN;
-  const top = fitsBelow ? below : Math.max(VIEWPORT_MARGIN, trigger.top - MENU_GAP - height);
-  return { top, left };
+  const preferredTop = below + height <= maxBottom ? below : trigger.top - MENU_GAP - height;
+  const top = Math.max(minTop, Math.min(preferredTop, maxBottom - height));
+  return { top, left, maxWidth, maxHeight };
 }
 
 function enabledIndexes(items: SegmentMenuItem[]): number[] {
@@ -61,6 +71,7 @@ const SegmentMoreMenu: React.FC<SegmentMoreMenuProps> = ({ items, label }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<MenuPosition | null>(null);
   const itemsRef = useRef(items);
+  const focusedKeyRef = useRef<string | null>(null);
   itemsRef.current = items;
 
   const close = useCallback((returnFocus: boolean) => {
@@ -75,19 +86,50 @@ const SegmentMoreMenu: React.FC<SegmentMoreMenuProps> = ({ items, label }) => {
 
   useLayoutEffect(() => {
     if (!isOpen) return;
+    const anchor = triggerRef.current;
+    const root = resolvePortalRoot(anchor);
     const reposition = () => {
-      const trigger = triggerRef.current?.getBoundingClientRect();
-      if (!trigger) return;
-      setPosition(placeMenu(trigger, menuRef.current?.getBoundingClientRect() ?? null));
+      if (!anchor?.isConnected || anchor.checkVisibility?.({ visibilityProperty: true }) === false) {
+        close(false);
+        return;
+      }
+      const trigger = anchor.getBoundingClientRect();
+      // A scrolled-out anchor must not leave an actionable floating menu behind.
+      for (let parent = anchor.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        if (!/(auto|scroll|hidden|clip)/.test(style.overflow + style.overflowY + style.overflowX)) continue;
+        const clip = parent.getBoundingClientRect();
+        if (trigger.bottom <= clip.top || trigger.top >= clip.bottom || trigger.right <= clip.left || trigger.left >= clip.right) {
+          close(false);
+          return;
+        }
+      }
+      const bounds = root === document.body ? null : root?.getBoundingClientRect() ?? null;
+      const next = placeMenu(trigger, menuRef.current?.getBoundingClientRect() ?? null, bounds);
+      setPosition(prev => prev && prev.top === next.top && prev.left === next.left
+        && prev.maxWidth === next.maxWidth && prev.maxHeight === next.maxHeight ? prev : next);
     };
     reposition();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reposition);
+    if (menuRef.current) observer?.observe(menuRef.current);
+    if (anchor) observer?.observe(anchor);
+    if (root) observer?.observe(root);
+    // A divider drag can move a fixed-size anchor without resizing it.
+    let frame = 0;
+    const trackAnchor = () => {
+      reposition();
+      frame = requestAnimationFrame(trackAnchor);
+    };
+    frame = requestAnimationFrame(trackAnchor);
     window.addEventListener('resize', reposition);
     window.addEventListener('scroll', reposition, true);
     return () => {
       window.removeEventListener('resize', reposition);
       window.removeEventListener('scroll', reposition, true);
+      observer?.disconnect();
+      cancelAnimationFrame(frame);
     };
-  }, [isOpen]);
+  }, [isOpen, close]);
 
   // Focus the first enabled item once the menu is positioned (a hidden menu
   // cannot take focus).
@@ -96,6 +138,16 @@ const SegmentMoreMenu: React.FC<SegmentMoreMenuProps> = ({ items, label }) => {
     if (!isOpen || !isPositioned) return;
     focusItem(enabledIndexes(itemsRef.current)[0]);
   }, [isOpen, isPositioned, focusItem]);
+
+  useLayoutEffect(() => {
+    if (!isOpen || !focusedKeyRef.current) return;
+    const index = items.findIndex(item => item.key === focusedKeyRef.current);
+    if (index >= 0 && !items[index].disabled) return;
+    if (document.activeElement !== document.body && !menuRef.current?.contains(document.activeElement)) return;
+    const first = enabledIndexes(items)[0];
+    if (first === undefined) menuRef.current?.focus();
+    else focusItem(first);
+  }, [items, isOpen, focusItem]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -115,6 +167,7 @@ const SegmentMoreMenu: React.FC<SegmentMoreMenuProps> = ({ items, label }) => {
     if (step === 'first') return focusItem(enabled[0]);
     if (step === 'last') return focusItem(enabled[enabled.length - 1]);
     const current = enabled.indexOf(itemRefs.current.findIndex((el) => el === document.activeElement));
+    if (current === -1) return focusItem(step === 1 ? enabled[0] : enabled[enabled.length - 1]);
     focusItem(enabled[(current + step + enabled.length) % enabled.length]);
   };
 
@@ -158,8 +211,12 @@ const SegmentMoreMenu: React.FC<SegmentMoreMenuProps> = ({ items, label }) => {
         <div
           ref={menuRef}
           role="menu"
+          tabIndex={-1}
           aria-label={label}
           className="ws-menu"
+          onFocus={(event) => {
+            focusedKeyRef.current = (event.target as HTMLElement).dataset.menuKey ?? null;
+          }}
           onKeyDown={handleMenuKeyDown}
           style={{
             position: 'fixed',
@@ -167,6 +224,10 @@ const SegmentMoreMenu: React.FC<SegmentMoreMenuProps> = ({ items, label }) => {
             left: position?.left ?? 0,
             visibility: position ? 'visible' : 'hidden',
             width: 232,
+            minWidth: 0,
+            maxWidth: position?.maxWidth,
+            maxHeight: position?.maxHeight,
+            overflowY: 'auto',
           }}
         >
           {items.map((item, index) => (

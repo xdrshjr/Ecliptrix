@@ -165,11 +165,12 @@ const SegmentCardHeader: React.FC<SegmentCardProps & { bodyId: string; onEnter()
           {t.workbench.segmentCard.duration.replace('{value}', durationSeconds.toFixed(1))}
         </span>
       )}
+      <SegmentMoreMenu items={props.menuItems} label={t.workbench.segmentCard.more} />
     </div>
   );
 };
 
-const SegmentCardActionsRow: React.FC<SegmentCardProps> = ({ status, state, actions, menuItems }) => {
+const SegmentCardActionsRow: React.FC<SegmentCardProps> = ({ status, state, actions }) => {
   const { t } = useLocale();
   const copy = t.workbench.segmentCard;
   const auditionLabel = state.isAuditioning ? copy.stopAudition : copy.audition;
@@ -211,7 +212,6 @@ const SegmentCardActionsRow: React.FC<SegmentCardProps> = ({ status, state, acti
         <ArrowLeftRight size={16} strokeWidth={1.75} aria-hidden="true" />
         {copy.replaceVisual}
       </button>
-      <SegmentMoreMenu items={menuItems} label={copy.more} />
     </div>
   );
 };

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>脚本卡修复验收</title>
+<style>html,body,#root{height:100%;margin:0}.diagnosis-shell{display:flex;height:100%}.diagnosis-shell>.vertical-taskbar{position:relative;width:48px;flex-shrink:0}#center{padding:24px}#tools{display:flex;gap:4px;padding:4px;flex-wrap:wrap}</style>
+<body><div id="root"></div><script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import '/src/styles/globals.css';
+import '/src/styles/editor-workbench.css';
+import {LocaleProvider,useLocale} from '/src/contexts/LocaleContext';
+import {NotificationProvider} from '/src/contexts/NotificationContext';
+import ScriptPanel from '/src/components/video/ScriptPanel';
+import EditorWorkbench from '/src/components/video/workbench/EditorWorkbench';
+import {useWorkbenchLayout} from '/src/components/video/workbench/useWorkbenchLayout';
+import {useSegmentLinks} from '/src/components/video/hooks/useSegmentLinks';
+import {SegmentLinksContext,PlayingSegmentContext} from '/src/components/video/lib/segments/SegmentLinksContext';
+import SegmentMoreMenu from '/src/components/video/components/SegmentCard/SegmentMoreMenu';
+import {useMaterialManagement} from '/src/components/video/hooks/useMaterialManagement';
+import {useVideoEditingStore} from '/src/stores/videoEditingStore';
+import {segmentTextHash} from '/src/components/video/lib/aiMix/segmentTextHash';
+
+// 仅模拟外部 HTTP；使用真实面板、派生状态、素材桥接与工作台布局。
+const requests=[];
+window.fetch=async (url,init)=>{
+ requests.push({url:String(url),body:init?.body});
+ return new Response(JSON.stringify({success:true,voices:[],data:[],matches:[],totalAnalyzed:1}),{headers:{'Content-Type':'application/json'}});
+};
+localStorage.setItem('ecliptrix-locale','zh-CN');
+const e=React.createElement;
+const initial={id:'verify-segment',title:'很长的脚本标题用于检查省略与时长右侧按钮 Long segment heading',
+ narrationText:'清晨的阳光照亮山谷。',keywords:['valley'],sentences:[{id:'verify-sentence',text:'清晨的阳光照亮山谷。'}]};
+function App(){
+ const [segments,setSegments]=React.useState([initial]);
+ const [playing,setPlaying]=React.useState(false);
+ const [longCount,setLongCount]=React.useState(30);
+ const segment=segments[0];
+ const layout=useWorkbenchLayout();
+ const {locale,setLocale}=useLocale();
+ const management=useMaterialManagement('verify-task');
+ const materials=management.allMaterials;
+ const {links}=useSegmentLinks({segments,materials,isPlaceholderScript:false,currentTime:0});
+ const addVoice=()=>{
+  const now=Date.now();
+  useVideoEditingStore.getState().addMaterial({id:'voice-'+now,type:'audio',name:'验收配音',format:'mp3',size:0,duration:3,url:'/voice.mp3',createdAt:new Date(),metadata:{segment_id:segment.id,segment_assigned_at:now,segment_text_hash:segmentTextHash(segment)}});
+ };
+ const controls=e('div',{id:'tools'},
+  e('button',{onClick:()=>layout.setSize('left',280)},'宽度280'),
+  e('button',{onClick:()=>layout.setSize('left',320)},'宽度320'),
+  e('button',{onClick:addVoice},'模拟Agent音频入库'),
+  e('button',{onClick:()=>setSegments([{...segment,narrationText:segment.narrationText+'新文案'}])},'使配音过期'),
+  e('button',{onClick:()=>management.handleMaterialDelete(materials.filter(m=>m.type==='audio').map(m=>m.id))},'移除配音'),
+  management.confirmationDialog.isOpen && e('button',{onClick:management.confirmationDialog.onConfirm},'确认删除'),
+  e('button',{onClick:()=>setLocale(locale==='zh-CN'?'en':'zh-CN')},'切换语言'),
+  e('button',{onClick:()=>setPlaying(value=>!value)},'播放标记'),
+  e(SegmentMoreMenu,{label:'长菜单',items:Array.from({length:longCount},(_,index)=>({key:String(index),label:'验收菜单项 '+index,onSelect(){}}))})
+ );
+ window.verification={requests,layout,addVoice,management,setLongCount};
+ return e('div',{className:'diagnosis-shell'},
+  e('aside',{className:'vertical-taskbar'},'应用侧栏'),
+  e(SegmentLinksContext.Provider,{value:links},e(EditorWorkbench,{
+   layout,isTimelineLocked:false,topBar:controls,
+   left:e(PlayingSegmentContext.Provider,{value:playing?segment.id:null},e(ScriptPanel,{segments,materials,onUpdateSegments:setSegments,onAddMaterial:management.addOrReplaceMaterial,
+    getVideoAnalysisResult:()=>({success:true,frame_analyses:[{frame_number:1,timestamp:0,analysis:'山谷'}]})})),
+   center:e('div',{id:'center'},'真实工作台与素材桥接验收'),right:e('div',null,'素材区'),timeline:e('div',null,'时间轴区'),assistant:null
+  }))
+ );
+}
+createRoot(document.getElementById('root')).render(e(LocaleProvider,null,e(NotificationProvider,null,e(App))));
+</script></body></html>
