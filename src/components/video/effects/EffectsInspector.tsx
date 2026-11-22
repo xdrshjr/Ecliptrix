@@ -3,10 +3,15 @@ import { useLocale } from '@/contexts/LocaleContext';
 import type { EffectDocument } from '@/types/effects';
 import { getEffectTemplate } from '@/lib/effects/catalog';
 import { getRenderedEffectFields } from '@/lib/effects/textLayout';
-import { getEffectRenderability } from '@/lib/effects/validation';
+import { effectParameterValidator, getEffectRenderability } from '@/lib/effects/validation';
 import type { EffectsController } from './useEffectsController';
 import type { MaterialItem } from '@/types';
 import { EffectsSourcePicker } from './EffectsSourcePicker';
+
+const counterFields: Partial<Record<string, string[]>> = {
+  'counter-bars': ['bars'],
+  'counter-up': ['value', 'suffix'],
+};
 
 export function EffectsInspector(options: {
   controller: EffectsController; materials: MaterialItem[]; lockSource: boolean;
@@ -15,6 +20,11 @@ export function EffectsInspector(options: {
   const { controller } = options;
   const document = controller.draft.document;
   const template = getEffectTemplate(document.templateId);
+  const fields = Object.entries(template.parameterSchema);
+  const visibleKeys = counterFields[template.id];
+  const visibleFields = visibleKeys ? fields.filter(([key]) => visibleKeys.includes(key)) : fields;
+  const invalidHiddenFields = visibleKeys ? fields.filter(([key, schema]) =>
+    !visibleKeys.includes(key) && !effectParameterValidator(schema).safeParse(document.params[key]).success) : [];
   const change = (next: EffectDocument) => controller.draft.edit({
     name: controller.draft.name, document: next });
   const renderability = getEffectRenderability(document);
@@ -79,7 +89,7 @@ export function EffectsInspector(options: {
         min={key === 'speed' ? 0.5 : 0} max={key === 'speed' ? 2 : 1}
         onChange={value => change({ ...document,
           motion: { ...document.motion, [key]: value } })} />)}
-      {Object.entries(template.parameterSchema).map(([key, schema]) =>
+      {visibleFields.map(([key, schema]) =>
         schema.type === 'string' ? <label key={key} className="block text-xs">
           {t.effects.parameters[key]}
           {schema.enum ? <select value={String(document.params[key])}
@@ -103,6 +113,14 @@ export function EffectsInspector(options: {
             max={schema.maximum!} step={schema.type === 'integer' ? 1 : 0.01}
             onChange={value => change({ ...document,
               params: { ...document.params, [key]: value } })} />)}
+      {invalidHiddenFields.map(([key]) => <div key={key} className="space-y-1 text-xs">
+        <p role="status">{labels.invalidHiddenParameter.replace('{field}', t.effects.parameters[key])}</p>
+        <button type="button" className="underline disabled:opacity-50"
+          onClick={() => change({ ...document, params: { ...document.params,
+            [key]: structuredClone(template.defaults[key]) } })}>
+          {labels.resetParameter.replace('{field}', t.effects.parameters[key])}
+        </button>
+      </div>)}
     </section>
     <section className="space-y-2">
       <h3 className="font-medium">{labels.canvas}</h3>

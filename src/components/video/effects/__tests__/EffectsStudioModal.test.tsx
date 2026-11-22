@@ -138,6 +138,83 @@ it('同值草稿、模板与时长锁切换时清除未提交输入，数组项�
   expect(duration()).toHaveValue(5);
 });
 
+it('柱形草稿只展示三列数值，编辑和撤销模板切换后保留旧参数', async () => {
+  const document = createEffectDocument('counter-bars');
+  document.params = { value: 777, suffix: 'kg', bars: [30, 60, 90] };
+  const record = saved(document);
+  api.getEffectDraft.mockResolvedValue(record);
+  const hook = renderHook(() => useEffectsController({ projectId: record.projectId,
+    materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open({ draftId: record.id }); });
+  const inspector = () => <LocaleProvider><EffectsInspector controller={hook.result.current}
+    materials={[]} lockSource={false} /></LocaleProvider>;
+  const view = render(inspector());
+  const finalValue = () => screen.queryByRole('spinbutton', { name: 'Final value' });
+  const suffix = () => screen.queryByRole('textbox', { name: 'Suffix' });
+  const bars = () => screen.queryAllByRole('spinbutton', { name: /Bar values/ });
+  expect(finalValue()).toBeNull();
+  expect(suffix()).toBeNull();
+  expect(bars()).toHaveLength(3);
+  fireEvent.change(bars()[0], { target: { value: '75' } });
+  fireEvent.blur(bars()[0]);
+  await act(async () => { await hook.result.current.draft.flush(); });
+  const edited = { ...document.params, bars: [75, 60, 90] };
+  expect(api.saveEffectDraft.mock.lastCall?.[0].write.document.params).toEqual(edited);
+  act(() => hook.result.current.selectTemplate('counter-up'));
+  view.rerender(inspector());
+  expect(bars()).toHaveLength(0);
+  expect(finalValue()).toHaveValue(100);
+  expect(suffix()).toHaveValue('');
+  act(() => hook.result.current.draft.undo());
+  view.rerender(inspector());
+  expect(finalValue()).toBeNull();
+  expect(suffix()).toBeNull();
+  expect(bars()[0]).toHaveValue(75);
+  expect(hook.result.current.draft.document.params).toEqual(edited);
+});
+
+it.each([
+  ['counter-bars', 'value', -1, 'Final value', 100],
+  ['counter-bars', 'suffix', '123456789', 'Suffix', ''],
+  ['counter-up', 'bars', [10, 20], 'Bar values', [30, 60, 90]],
+] as const)('旧草稿 %s 的隐藏参数 %s 允许显式修正和撤销', async (id, key, invalid, label, expected) => {
+  const document = createEffectDocument(id);
+  document.params = { value: 777, suffix: 'kg', bars: [75, 60, 90] };
+  const record = saved(document);
+  const working = structuredClone(document);
+  working.params[key] = typeof invalid === 'object' ? [...invalid] : invalid;
+  await writePending(record.projectId, 'save', { schemaVersion: 1, projectId: record.projectId,
+    draftId: record.id, recordRevision: 1, baseVersion: record.version,
+    working: { name: record.name, document: working }, createdAt: new Date().toISOString(),
+  }, { kind: 'absent' });
+  api.getEffectDraft.mockResolvedValueOnce(record);
+  const hook = renderHook(() => useEffectsController({ projectId: record.projectId,
+    materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open(); });
+  const inspector = (editable: boolean) => <LocaleProvider><EffectsInspector
+    controller={{ ...hook.result.current, isEditor: editable }} materials={[]} lockSource={false} /></LocaleProvider>;
+  const view = render(inspector(false));
+  const recovery = () => screen.queryByRole('button', { name: `Restore the default for “${label}”` });
+  expect(screen.getByRole('status')).toHaveTextContent(label);
+  expect(recovery()).toBeDisabled();
+  expect(hook.result.current.draft.document.params).toEqual(working.params);
+  view.rerender(inspector(true));
+  fireEvent.click(recovery()!);
+  view.rerender(inspector(true));
+  expect(recovery()).toBeNull();
+  const repaired = { ...working.params, [key]: expected };
+  expect(hook.result.current.draft.document.params).toEqual(repaired);
+  act(() => hook.result.current.draft.undo());
+  view.rerender(inspector(true));
+  expect(recovery()).toBeEnabled();
+  expect(hook.result.current.draft.document.params[key]).toEqual(invalid);
+  fireEvent.click(recovery()!);
+  await act(async () => { await hook.result.current.draft.flush(); });
+  expect(api.saveEffectDraft.mock.lastCall?.[0].write).toMatchObject({
+    draftId: record.id, expectedVersion: record.version, document: { params: repaired },
+  });
+});
+
 it('does_not_wait_for_directory_to_open_explicit_draft', async () => {
   api.listEffectDraftPage.mockReturnValue(new Promise(() => {}));
   const document = createEffectDocument(); document.content.title = 'Explicit';

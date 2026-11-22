@@ -36,7 +36,7 @@ const baseDocument = z.object({
   params: z.record(z.string(), z.unknown()), inputs: z.array(input).max(9),
 }).strict();
 
-function parseParameter(schema: EffectParameterSchema): z.ZodType {
+export function effectParameterValidator(schema: EffectParameterSchema): z.ZodType {
   if (schema.type === 'string') {
     const value = codePoints(schema.maxLength ?? 300);
     return schema.enum ? value.refine(item => schema.enum!.includes(item))
@@ -59,7 +59,7 @@ export function validateEffectDocument(value: unknown): EffectDocument {
     throw new EffectError('EFFECT_TEMPLATE_INCOMPATIBLE');
   }
   const fields = Object.fromEntries(Object.entries(template.parameterSchema)
-    .map(([key, schema]) => [key, parseParameter(schema)]));
+    .map(([key, schema]) => [key, effectParameterValidator(schema)]));
   z.object(fields).strict().parse(document.params);
   validateBindings(document as EffectDocument);
   return document as EffectDocument;
