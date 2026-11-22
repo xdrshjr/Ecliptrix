@@ -453,26 +453,56 @@ describe('工作台草稿的串行保存与关闭', () => {
       .toEqual(slot === 'images' ? ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'] : ['22222222-2222-4222-8222-222222222222']);
   });
 
-  it('切换模板再切回时不接收旧模板迟到的素材', async () => {
+  it('重选当前模板保留已保存的参数、版本和撤销历史', async () => {
+    const document = createEffectDocument('countdown-ring');
+    document.params.from = 12;
+    const record = saved(document, 6);
+    api.getEffectDraft.mockResolvedValueOnce(record);
+    const hook = renderHook(() => useEffectsController({ projectId: 'p',
+      materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+    await act(async () => { await hook.result.current.open({ draftId: record.id }); });
+    act(() => hook.result.current.selectTemplate('countdown-ring'));
+    expect(hook.result.current.draft.document.params.from).toBe(12);
+    expect(hook.result.current.draft.canUndo).toBe(false);
+    await act(async () => { await hook.result.current.draft.flush(); });
+    expect(api.saveEffectDraft).not.toHaveBeenCalled();
+    expect(hook.result.current.draft.getBaseVersion()).toBe(6);
+  });
+
+  it.each([
+    { switchAway: false, fails: false },
+    { switchAway: false, fails: true },
+    { switchAway: true, fails: false },
+    { switchAway: true, fails: true },
+  ])('素材回包只在原模板仍有效时生效：切走再切回=$switchAway，绑定失败=$fails', async ({ switchAway, fails }) => {
     const hook = renderHook(() => useEffectsController({ projectId: 'p',
       materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
     await act(async () => { await hook.result.current.open({ newDraft: true }); });
-    let release!: (asset: EffectAsset) => void;
-    api.attachEffectInput.mockImplementationOnce(() => new Promise(done => { release = done; }));
+    const assetId = '11111111-1111-4111-8111-111111111111';
+    const failure = new Error('素材绑定失败');
+    let finish!: () => void;
+    api.attachEffectInput.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      finish = () => {
+        if (fails) reject(failure);
+        else resolve({ id: assetId, kind: 'input-image' });
+      };
+    }));
     let attaching!: Promise<void>;
     await act(async () => {
-      attaching = hook.result.current.attach('base', { id: '11111111-1111-4111-8111-111111111111', type: 'image',
+      attaching = hook.result.current.attach('base', { id: assetId, type: 'image',
         url: '/api/storage/files/a.png' } as MaterialItem);
       await Promise.resolve();
     });
     act(() => {
-      hook.result.current.selectTemplate('image-zoom');
+      if (switchAway) hook.result.current.selectTemplate('image-zoom');
       hook.result.current.selectTemplate('title-rise');
     });
     await act(async () => {
-      release({ id: '11111111-1111-4111-8111-111111111111', kind: 'input-image' } as EffectAsset); await attaching;
+      finish(); await attaching;
     });
-    expect(hook.result.current.draft.document.inputs).toEqual([]);
+    expect(hook.result.current.draft.document.inputs.map(input => input.assetId))
+      .toEqual(switchAway || fails ? [] : [assetId]);
+    expect(hook.result.current.error).toBe(!switchAway && fails ? failure : undefined);
   });
 
   it('一次绑定失败不会阻断后续选择', async () => {

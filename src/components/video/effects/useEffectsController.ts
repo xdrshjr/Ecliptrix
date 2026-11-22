@@ -282,8 +282,9 @@ export function useEffectsController(options: ControllerOptions) {
     }, isCurrent);
   };
   const selectTemplate = (id: string) => {
-    attachmentRevision.current++;
     const current = draft.getCurrent();
+    if (current.document.templateId === id) return;
+    attachmentRevision.current++;
     const template = getEffectTemplate(id);
     const next = { ...current.document, templateId: id,
       templateVersion: template.version, params: structuredClone(template.defaults),

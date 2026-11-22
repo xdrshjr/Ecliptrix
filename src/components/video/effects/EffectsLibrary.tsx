@@ -36,8 +36,8 @@ export function EffectsLibrary(options: {
         ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted'}`}>
         {active === template.id && !reduced
           ? <video src={template.demoPreview} poster={template.thumbnail}
-            autoPlay muted loop playsInline className="aspect-video w-full object-cover" />
-          : <img src={template.thumbnail} alt="" className="aspect-video w-full object-cover" />}
+            autoPlay muted loop playsInline className="pointer-events-none aspect-video w-full object-cover" />
+          : <img src={template.thumbnail} alt="" className="pointer-events-none aspect-video w-full object-cover" />}
         <span className="block px-3 py-2 text-sm">{t.effects.templates[template.id]}</span>
       </button>)}
     <p className="text-xs leading-relaxed text-muted-foreground">
