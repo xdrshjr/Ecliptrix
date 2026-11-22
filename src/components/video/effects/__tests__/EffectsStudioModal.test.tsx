@@ -9,6 +9,7 @@ import { LocaleProvider } from '@/contexts/LocaleContext';
 import { useEffectsDraft } from '../useEffectsDraft';
 import { useEffectsController } from '../useEffectsController';
 import { EffectsStudioModal } from '../EffectsStudioModal';
+import { EffectsInspector } from '../EffectsInspector';
 import { effectsFixture } from './effectsFixture';
 import { planEffectsTimelineChange } from '../effectsTimeline';
 import { useTimelineStore } from '../../timeline/store/useTimelineStore';
@@ -51,6 +52,91 @@ beforeEach(() => {
     'EFFECT_NOT_FOUND', 'missing'));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+it('逐键编辑只提交一次，保存新时长失败时不生成旧版本', async () => {
+  const record = saved(createEffectDocument('countdown-ring'));
+  api.getEffectDraft.mockResolvedValue(record);
+  const hook = renderHook(() => useEffectsController({ projectId: 'p',
+    materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open({ draftId: record.id }); });
+  const modal = () => <LocaleProvider><EffectsStudioModal controller={hook.result.current}
+    materials={[]} /></LocaleProvider>;
+  const view = render(modal());
+  const duration = screen.getByRole('spinbutton', { name: 'Duration (seconds)' });
+  fireEvent.change(duration, { target: { value: '0' } });
+  expect(hook.result.current.draft.dirty).toBe(false);
+  view.rerender(modal());
+  expect(duration).toHaveValue(0);
+  fireEvent.change(duration, { target: { value: '0.8' } });
+  fireEvent.keyDown(duration, { key: 'Enter' });
+  view.rerender(modal());
+  fireEvent.blur(duration);
+  expect(hook.result.current.draft.document.durationFrames).toBe(24);
+  api.saveEffectDraft.mockRejectedValueOnce(new ApiError(422, 'EFFECT_INVALID_ARGUMENT', '保存失败'));
+  await act(async () => { await hook.result.current.render(); });
+  expect(api.submitEffectJob).not.toHaveBeenCalled();
+  expect(hook.result.current.draft.status).toBe('error');
+  act(() => hook.result.current.draft.undo());
+  expect(hook.result.current.draft.document.durationFrames).toBe(150);
+  expect(hook.result.current.draft.canUndo).toBe(false);
+});
+
+it('编辑时长时按 Esc 仍可在关闭前保存最后输入的值', async () => {
+  const record = saved(createEffectDocument('countdown-ring'));
+  api.getEffectDraft.mockResolvedValue(record);
+  const hook = renderHook(() => useEffectsController({ projectId: 'p',
+    materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open({ draftId: record.id }); });
+  render(<LocaleProvider><EffectsStudioModal controller={hook.result.current}
+    materials={[]} /></LocaleProvider>);
+  const duration = screen.getByRole('spinbutton', { name: 'Duration (seconds)' });
+  duration.focus();
+  fireEvent.change(duration, { target: { value: '0.8' } });
+  await act(async () => { fireEvent.keyDown(duration, { key: 'Escape' }); });
+  expect(screen.queryByRole('alertdialog')).toBeInTheDocument();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Save and close' }));
+  });
+  expect(api.saveEffectDraft).toHaveBeenCalledTimes(1);
+  expect(api.saveEffectDraft.mock.calls[0][0].write.document.durationFrames).toBe(24);
+  expect(hook.result.current.isOpen).toBe(false);
+});
+
+it('同值草稿、模板与时长锁切换时清除未提交输入，数组项按失焦提交', async () => {
+  const record = saved(createEffectDocument('countdown-ring'));
+  api.getEffectDraft.mockResolvedValue(record);
+  const hook = renderHook(() => useEffectsController({ projectId: 'p',
+    materials: [], registerMaterial: vi.fn() }), { wrapper: LocaleProvider });
+  await act(async () => { await hook.result.current.open({ draftId: record.id }); });
+  const inspector = (lockSource = false) => <LocaleProvider><EffectsInspector
+    controller={hook.result.current} materials={[]} lockSource={lockSource} /></LocaleProvider>;
+  const view = render(inspector());
+  const duration = () => screen.getByRole('spinbutton', { name: 'Duration (seconds)' });
+  const typeZero = () => fireEvent.change(duration(), { target: { value: '0' } });
+  typeZero();
+  const next = { ...record, id: crypto.randomUUID() };
+  act(() => hook.result.current.draft.load(next, next));
+  view.rerender(inspector());
+  expect(duration()).toHaveValue(5);
+  typeZero();
+  act(() => hook.result.current.selectTemplate('counter-bars'));
+  view.rerender(inspector());
+  expect(duration()).toHaveValue(5);
+  const bar = screen.getByRole('spinbutton', { name: 'Bar values 1' });
+  fireEvent.change(bar, { target: { value: '19.5' } });
+  fireEvent.blur(bar);
+  expect(hook.result.current.draft.document.params.bars).toEqual([19.5, 60, 90]);
+  typeZero();
+  view.rerender(inspector(true));
+  expect(duration()).toBeDisabled();
+  expect(duration()).toHaveValue(5);
+  view.rerender(inspector());
+  typeZero();
+  act(() => hook.result.current.draft.load(next, { ...next, readOnly: true }));
+  view.rerender(inspector());
+  expect(duration()).toBeDisabled();
+  expect(duration()).toHaveValue(5);
+});
 
 it('does_not_wait_for_directory_to_open_explicit_draft', async () => {
   api.listEffectDraftPage.mockReturnValue(new Promise(() => {}));

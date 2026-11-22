@@ -53,7 +53,7 @@ export function EffectsStudioModal(options: {
       asset.id === input.assetId));
   const close = () => {
     if (confirmClose) { setConfirmClose(false); return; }
-    if (draft.dirty || draft.status === 'saving') setConfirmClose(true);
+    if (draft.isDirty() || draft.status === 'saving') setConfirmClose(true);
     else void controller.run(() => controller.close());
   };
   const error = controller.error ?? draft.error ?? controller.submission.error

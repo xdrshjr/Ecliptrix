@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId, useLayoutEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import type { EffectDocument } from '@/types/effects';
 import { getEffectTemplate } from '@/lib/effects/catalog';
@@ -19,7 +19,8 @@ export function EffectsInspector(options: {
     name: controller.draft.name, document: next });
   const renderability = getEffectRenderability(document);
   const labels = t.effects.labels;
-  return <fieldset disabled={controller.draft.draft?.readOnly}
+  const editable = controller.isEditor && !controller.draft.draft?.readOnly;
+  return <fieldset key={`${controller.draft.getId()}:${template.id}:${editable}`} disabled={!editable}
     className="h-full overflow-y-auto p-4 space-y-5 text-sm">
     <section className="space-y-2">
       <h3 className="font-medium">{labels.content}</h3>
@@ -117,27 +118,74 @@ export function EffectsInspector(options: {
         {[[1920, 1080], [1080, 1920], [1080, 1080], [1280, 720], [720, 1280], [720, 720]]
           .map(([w, h]) => <option key={`${w}:${h}`} value={`${w}:${h}`}>{w} × {h}</option>)}
       </select>
-      <NumberField label={labels.duration} disabled={options.lockSource}
+      <NumberField key={String(options.lockSource)} label={labels.duration} disabled={options.lockSource}
         value={document.durationFrames / 30} min={0.5} max={60} step={1 / 30}
-        onChange={seconds => change({ ...document,
-          durationFrames: Math.round(seconds * 30) })} />
+        stepValue={(seconds, direction) => (Math.round(seconds * 30) + direction) / 30}
+        onChange={seconds => {
+          const durationFrames = Math.round(seconds * 30);
+          if (durationFrames !== document.durationFrames) change({ ...document, durationFrames });
+        }} />
     </section>
   </fieldset>;
 }
 
+const formatNumber = (value: number) => String(Number(value.toFixed(3)));
+
 function NumberField(options: { label: string; value: number;
   min: number; max: number; step?: number; disabled?: boolean;
+  stepValue?: (value: number, direction: number) => number;
   onChange: (value: number) => void }) {
-  return <label className="flex items-center justify-between gap-2 text-xs">
-    <span>{options.label}</span>
-    <input type="number" value={Number(options.value.toFixed(3))}
-      min={options.min} max={options.max} step={options.step ?? 0.05}
-      disabled={options.disabled}
-      className="w-20 rounded border border-border bg-background p-1.5 tabular-nums"
-      onChange={event => {
-        const value = event.target.valueAsNumber;
-        if (Number.isFinite(value)) options.onChange(
-          Math.min(options.max, Math.max(options.min, value)));
-      }} />
-  </label>;
+  const { t } = useLocale();
+  const input = useRef<HTMLInputElement>(null);
+  const messageId = useId();
+  const [message, setMessage] = useState('');
+  const displayed = formatNumber(options.value);
+  // 浏览器保留输入中的小数点。只有已提交的字段值改变时才同步回显。
+  useLayoutEffect(() => {
+    if (input.current) input.current.value = displayed;
+    setMessage('');
+  }, [options.value, displayed]);
+  const clamp = (value: number) => Math.min(options.max, Math.max(options.min, value));
+  const commit = (field: HTMLInputElement) => {
+    if (field.matches(':disabled') || field.value === displayed) return;
+    const value = field.valueAsNumber;
+    field.value = displayed;
+    if (!Number.isFinite(value) || (options.step === 1 && !Number.isInteger(value))) {
+      setMessage(options.step === 1 ? t.effects.labels.integerRequired : t.effects.labels.numberRequired);
+      return;
+    }
+    const next = clamp(value);
+    if (next !== options.value) options.onChange(next);
+  };
+  return <div className="text-xs">
+    <label className="flex items-center justify-between gap-2">
+      <span>{options.label}</span>
+      <input ref={input} type="number" defaultValue={displayed}
+        min={options.min} max={options.max} step={options.step ?? 0.05}
+        disabled={options.disabled} aria-describedby={message ? messageId : undefined}
+        className="w-20 rounded border border-border bg-background p-1.5 tabular-nums"
+        onChange={() => setMessage('')}
+        onBlur={event => commit(event.currentTarget)}
+        onKeyDown={event => {
+          const field = event.currentTarget;
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit(field);
+          } else if (event.key === 'Escape') {
+            // 关闭工作台的快捷键会在输入框失焦前检查草稿。
+            commit(field);
+          } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+            field.value = displayed;
+            setMessage('');
+          } else if (options.stepValue && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+            event.preventDefault();
+            const value = Number.isFinite(field.valueAsNumber) ? field.valueAsNumber : options.value;
+            const stepped = options.stepValue(value, event.key === 'ArrowUp' ? 1 : -1);
+            field.value = formatNumber(clamp(stepped));
+            setMessage('');
+          }
+        }} />
+    </label>
+    {message && <p role="status" id={messageId} className="mt-1 text-muted-foreground">{message}</p>}
+  </div>;
 }
