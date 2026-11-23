@@ -5,7 +5,7 @@ annotated-types==0.7.0
 anyio==3.7.1
 async-timeout==5.0.1
 attrs==25.3.0
-certifi==2025.8.3
+certifi==2026.10.23
 charset-normalizer==3.4.2
 click==8.2.1
 colorama==0.4.6
@@ -36,7 +36,7 @@ pytest-asyncio==0.21.1
 python-dotenv==1.0.0
 python-multipart==0.0.6
 PyYAML==6.0.2
-requests==2.31.0
+requests==2.32.5
 sniffio==1.3.1
 starlette==0.27.0
 tomli==2.2.1
@@ -49,6 +49,12 @@ websockets==15.0.1
 yarl==1.20.1
 openai
 Pillow>=10.3.0
+# 这里的 [default] extra 会连带引入 certifi / requests / urllib3 / websockets 的下限
+# （yt-dlp 2026.10.26 起：certifi>=2026.10.19、requests<3,>=2.32.2、urllib3>=2.0.2）。
+# 本文件对 certifi、requests 用的是精确 pin，上游每次抬高下限都会让打包期的
+# `pip install -r` 以 ResolutionImpossible 失败（2026-11 就这样炸过一次）——
+# 正确修法是同步抬高那两个 pin，不要删 [default]：prepare-backend.js 的
+# YouTube 自检（dispatch require_ejs）依赖它带入的 yt-dlp-ejs。
 yt-dlp[default]>=2024.9.27
 sqlalchemy[asyncio]>=2.0.0
 aiofiles>=23.0.0
