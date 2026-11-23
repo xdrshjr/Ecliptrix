@@ -5,6 +5,7 @@ Every public result is zero-secret: the key only ever appears as ``keyHint``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any, Dict, List, Optional
@@ -33,10 +34,18 @@ from app.services.skillrouter.validation import validate_api_key, validate_base_
 VERIFY_MIN_INTERVAL_SECONDS = 2.0
 _last_verify_at = 0.0
 
+#: Silent re-verification backoff: 30 s doubling up to 30 min (spec R2-05).
+REVALIDATE_BASE_DELAY_SECONDS = 30.0
+REVALIDATE_MAX_DELAY_SECONDS = 1800.0
+_revalidate_task: Optional["asyncio.Task"] = None
+_revalidate_not_before = 0.0
+_revalidate_failures = 0
+
 
 def reset() -> None:
-    global _last_verify_at
+    global _last_verify_at, _revalidate_task, _revalidate_not_before, _revalidate_failures
     _last_verify_at = 0.0
+    _revalidate_task, _revalidate_not_before, _revalidate_failures = None, 0.0, 0
     catalog.reset()
 
 
@@ -60,6 +69,47 @@ def build_status() -> SkillRouterStatus:
         slotModels=dict(snapshot.slot_models), defaults=_defaults(snapshot),
         lastVerified=catalog.last_verified(), revision=snapshot.revision,
     )
+
+
+def _may_revalidate_silently() -> bool:
+    """Silent re-verification is allowed ONLY in router mode with a saved key and
+    the emergency valve open; anything else must send the gateway zero requests."""
+    snapshot = get_snapshot()
+    return is_enabled() and snapshot.mode == "router" and snapshot.has_key
+
+
+async def _revalidate() -> None:
+    global _revalidate_not_before, _revalidate_failures
+    try:
+        await catalog.get_capabilities(force=True, wait=10.0)
+    except Exception:  # noqa: BLE001 - a background probe must never raise
+        pass
+    verified = catalog.last_verified()
+    if verified and verified["ok"] and not verified["stale"]:
+        _revalidate_failures, _revalidate_not_before = 0, 0.0
+        return
+    delay = min(REVALIDATE_BASE_DELAY_SECONDS * (2 ** _revalidate_failures),
+                REVALIDATE_MAX_DELAY_SECONDS)
+    _revalidate_failures += 1
+    _revalidate_not_before = time.monotonic() + delay
+
+
+def schedule_revalidation() -> bool:
+    """Start a background re-verification when the status capsule has no fresh
+    record. Never blocks the caller, single-flight, exponential backoff; returns
+    whether a probe was started. Must be called from a running event loop."""
+    global _revalidate_task
+    if not _may_revalidate_silently():
+        return False
+    verified = catalog.last_verified()
+    if verified and verified["ok"] and not verified["stale"]:
+        return False
+    if _revalidate_task is not None and not _revalidate_task.done():
+        return False
+    if time.monotonic() < _revalidate_not_before:
+        return False
+    _revalidate_task = asyncio.ensure_future(_revalidate())
+    return True
 
 
 def _slot_patch(request: SkillRouterUpdateRequest, current: RouterSnapshot,
@@ -145,7 +195,8 @@ async def apply_update(request: SkillRouterUpdateRequest) -> SkillRouterStatus:
 
 async def clear_key() -> SkillRouterStatus:
     """Remove the key and fall back to manual; every other field is kept."""
-    await integration_credentials.save(INTEGRATION_ID, {"api_key": None, "mode": "manual"})
+    await integration_credentials.save(
+        INTEGRATION_ID, {"api_key": None, "mode": "manual", "last_verified": None})
     catalog.reset()
     return build_status()
 
@@ -190,6 +241,7 @@ async def verify(request: SkillRouterVerifyRequest) -> Dict[str, Any]:
     if snapshot is None:
         raise RouterError("router_key_missing", 409, "No SkillRouter key to verify.")
     saved_check = not request.api_key and not request.base_url
+    saved_snapshot = get_snapshot()
     started = time.monotonic()
     outcome, entries = "ok", []
     try:
@@ -199,7 +251,7 @@ async def verify(request: SkillRouterVerifyRequest) -> Dict[str, Any]:
         outcome = _classify(error)
     latency = int((time.monotonic() - started) * 1000)
     if saved_check:
-        catalog.record_verification(outcome)
+        await catalog.record_verification(outcome, saved_snapshot)
     return {
         "outcome": outcome, "latencyMs": latency,
         "capabilities": [
@@ -216,9 +268,13 @@ async def catalog_view(refresh: bool) -> Dict[str, Any]:
     models = await catalog.get_models(force=refresh)
     caps = await catalog.get_capabilities(force=refresh)
     snapshot = get_snapshot()
+    fetched_at = caps.fetched_at or models.fetched_at
     return {
         "models": models.data, "capabilities": caps.data, "defaults": _defaults(snapshot),
-        "stale": models.stale or caps.stale, "fetchedAt": caps.fetched_at or models.fetched_at,
+        "stale": models.stale or caps.stale, "fetchedAt": fetched_at,
+        # Additive (R2-08): epoch milliseconds like every other timestamp here;
+        # ``fetchedAt`` (seconds) stays for older clients.
+        "fetchedAtMs": int(fetched_at * 1000) if fetched_at else None,
         "error": models.error or caps.error,
     }
 

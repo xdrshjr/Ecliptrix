@@ -247,6 +247,39 @@ describe('router path', () => {
       .toEqual(expect.arrayContaining(['web_search', 'asr', 'voice_clone']));
   });
 
+  it('an unsaved key counts as a draft: closing asks first, an empty field closes at once', async () => {
+    installBackend({ modeState: 'unset', keyConfigured: false });
+    const onClose = renderWizard();
+    click(START);
+    await heading(copy.sourceStep.title);
+    click(copy.next);
+    await heading(copy.routerStep.title);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledWith('later');
+    onClose.mockClear();
+
+    fireEvent.change(await screen.findByLabelText(router.connect.keyLabel), { target: { value: KEY } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(await screen.findByText(copy.discardPrompt)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('going back from the key step drops its draft flag', async () => {
+    installBackend({ modeState: 'unset', keyConfigured: false });
+    const onClose = renderWizard();
+    click(START);
+    await heading(copy.sourceStep.title);
+    click(copy.next);
+    await heading(copy.routerStep.title);
+    fireEvent.change(await screen.findByLabelText(router.connect.keyLabel), { target: { value: KEY } });
+    click(copy.back);
+    await heading(copy.sourceStep.title);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledWith('later');
+  });
+
   it('an already saved active key may be kept without typing', async () => {
     installBackend({ modeState: 'router', keyConfigured: true });
     renderWizard({ sourceMode: 'router', capabilities: matrix((id) => (id === 'tts' ? 'invalid' : 'ready'), 'router') });

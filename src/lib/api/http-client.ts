@@ -153,8 +153,12 @@ function makeRateLimitError(
   };
   // SkillRouter quota / busy answers are rendered by the feature itself with
   // an actionable message; the generic countdown toast would only mislead.
+  // `resets_at` is the fallback marker for a quota 429 whose `error_code` was
+  // dropped on the way (BFF re-wrap); the per-IP media-proxy limiter never sets it.
+  const resetsAt = (parsed.details as { resets_at?: unknown } | undefined)?.resets_at;
   const isGatewayLimit =
-    typeof parsed.errorCode === 'string' && parsed.errorCode.startsWith('router_');
+    (typeof parsed.errorCode === 'string' && parsed.errorCode.startsWith('router_')) ||
+    (typeof resetsAt === 'number' && Number.isFinite(resetsAt) && resetsAt > 0);
   try {
     if (!isGatewayLimit) window.dispatchEvent(
       new CustomEvent('ecliptrix:rate-limited', {

@@ -44,6 +44,8 @@ class LastVerified(BaseModel):
     ok: bool
     at: int
     outcome: str
+    #: Older than 24 h: shown, but a background re-verification is under way.
+    stale: bool = False
 
 
 class SkillRouterStatus(BaseModel):
@@ -97,6 +99,7 @@ class SkillRouterCatalogData(BaseModel):
     defaults: Dict[str, str]
     stale: bool
     fetchedAt: Optional[float] = None
+    fetchedAtMs: Optional[int] = None
     error: Optional[str] = None
 
 

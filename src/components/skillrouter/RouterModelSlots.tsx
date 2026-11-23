@@ -15,6 +15,7 @@ import {
   type SkillRouterStatus,
 } from '@/lib/api/skillrouter';
 import type { LoadState, SaveResult } from './useSkillRouter';
+import { buildSlotModelOptions } from './visionModelOptions';
 
 export interface RouterModelSlotsProps {
   status: SkillRouterStatus;
@@ -81,6 +82,8 @@ const SlotRow: React.FC<SlotRowProps> = ({
   const selectId = useId();
   const name = t.setupWizard.cap[slot].name;
   const known = models.some((model) => model.id === selected);
+  const { options, selectedIncompatible } = buildSlotModelOptions(slot, models, selected);
+  const warningId = `${selectId}-warning`;
   return (
     <li className="py-3" style={{ borderTop: '1px solid var(--sr-border)' }}>
       <div className="flex flex-wrap items-center gap-3">
@@ -93,6 +96,7 @@ const SlotRow: React.FC<SlotRowProps> = ({
           value={selected}
           disabled={saving}
           aria-busy={saving || undefined}
+          aria-describedby={selectedIncompatible ? warningId : undefined}
           onChange={(event) => {
             const model = models.find((candidate) => candidate.id === event.target.value);
             if (model) onSelect(slot, model);
@@ -100,10 +104,11 @@ const SlotRow: React.FC<SlotRowProps> = ({
         >
           {!known && selected && <option value={selected}>{selected}</option>}
           {!selected && <option value="">{copy.choose}</option>}
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>
+          {options.map(({ model, disabled }) => (
+            <option key={model.id} value={model.id} disabled={disabled}>
               {model.label}
               {model.id === recommended ? ` · ${copy.recommended}` : ''}
+              {disabled ? ` · ${copy.chatOnly}` : ''}
             </option>
           ))}
         </select>
@@ -120,6 +125,11 @@ const SlotRow: React.FC<SlotRowProps> = ({
           {test?.state === 'running' ? copy.testing : copy.test}
         </button>
       </div>
+      {selectedIncompatible && (
+        <p id={warningId} className="sr-text-xs mt-2" style={{ color: 'var(--sr-warn)' }}>
+          ▲ {copy.visionIncompatible}
+        </p>
+      )}
       <SlotTestResult test={test} fallbackModel={selected} />
     </li>
   );

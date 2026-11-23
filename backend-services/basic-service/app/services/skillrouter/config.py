@@ -35,6 +35,10 @@ class RouterSnapshot:
     slot_models: Dict[str, str] = field(default_factory=dict)
     slot_protocols: Dict[str, str] = field(default_factory=dict)
     revision: str = ""
+    #: Identity of (base_url, key) only: a verification stays valid across
+    #: mode / override changes, and is void the moment either credential changes.
+    credential_revision: str = ""
+    last_verified_raw: str = field(default="", repr=False)
 
     @property
     def has_key(self) -> bool:
@@ -72,6 +76,11 @@ def _compute_revision(mode: str, base_url: str, api_key: str, manual: Tuple[str,
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
+def _compute_credential_revision(base_url: str, api_key: str) -> str:
+    material = f"{base_url.rstrip('/')}|{api_key}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
 def get_snapshot() -> RouterSnapshot:
     """Read the current configuration from the credential cache (no I/O)."""
     resolved = integration_credentials.resolve(INTEGRATION_ID)
@@ -87,6 +96,8 @@ def get_snapshot() -> RouterSnapshot:
         manual_capabilities=manual, slot_models=slot_models,
         slot_protocols=_parse_protocols(_read("slot_protocols")),
         revision=_compute_revision(mode, base_url, api_key, manual),
+        credential_revision=_compute_credential_revision(base_url, api_key),
+        last_verified_raw=_read("last_verified"),
     )
 
 

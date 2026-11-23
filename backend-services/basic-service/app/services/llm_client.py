@@ -15,6 +15,7 @@ from typing import Any, AsyncIterator, Dict, List, Literal, Optional
 import httpx
 
 from app.logger import get_logger
+from app.services.net_env import loopback_env_kwargs
 
 logger = get_logger(__name__)
 
@@ -129,7 +130,7 @@ async def _call_openai(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, **loopback_env_kwargs(url)) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         body = resp.json()
@@ -171,7 +172,7 @@ async def _call_anthropic(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, **loopback_env_kwargs(url)) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         body = resp.json()
@@ -259,7 +260,7 @@ async def _stream_openai(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, **loopback_env_kwargs(url)) as client:
         async with client.stream("POST", url, json=payload, headers=headers) as resp:
             if resp.status_code != 200:
                 err = (await resp.aread()).decode("utf-8", errors="replace")
@@ -318,7 +319,7 @@ async def _stream_anthropic(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, **loopback_env_kwargs(url)) as client:
         async with client.stream("POST", url, json=payload, headers=headers) as resp:
             if resp.status_code != 200:
                 err = (await resp.aread()).decode("utf-8", errors="replace")

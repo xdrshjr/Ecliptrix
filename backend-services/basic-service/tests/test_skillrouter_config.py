@@ -271,6 +271,8 @@ async def test_catalog_normalises_models_and_picks_defaults(fake_gateway, gw_cli
     assert by_id["claude-sonnet-4"]["protocol"] == "anthropic"
     assert by_id["ecliptrix-chat"]["isRoute"] is True
     assert data["defaults"]["chat"] == "ecliptrix-chat"  # operator convention wins
+    # R2-08: additive millisecond twin of the legacy seconds field
+    assert data["fetchedAtMs"] == int(data["fetchedAt"] * 1000)
     assert data["defaults"]["fast"] == "gpt-4o-mini"
 
 

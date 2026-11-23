@@ -14,8 +14,9 @@ import RouterVerifyResult from './RouterVerifyResult';
 export type ConnectionState = 'connected' | 'unverified' | 'invalid' | 'unreachable';
 
 /**
- * The pill is derived from the last in-memory verification only: a key that
- * was never (or no longer) checked is "unverified", never "connected".
+ * The pill is derived from the last verification the backend remembers (it
+ * survives restarts, and is void after a key / base URL change): a key that was
+ * never checked is "unverified", never "connected".
  */
 export function deriveConnectionState(status: SkillRouterStatus): ConnectionState {
   switch (status.lastVerified?.outcome) {
@@ -37,6 +38,21 @@ const PILL: Record<ConnectionState, { tone: string; icon: string }> = {
   invalid: { tone: 'danger', icon: '✕' },
   unreachable: { tone: 'warn', icon: '▲' },
 };
+
+const HOUR_MS = 3_600_000;
+
+/** "Verified 14:02", or "Last verified N h ago" for a record the backend is re-checking. */
+export function describeCheckedAt(
+  status: SkillRouterStatus,
+  copy: { checkedAt: string; checkedAtStale: string },
+  now: number = Date.now(),
+): string | null {
+  const verified = status.lastVerified;
+  if (!verified) return null;
+  if (!verified.stale) return fillTemplate(copy.checkedAt, { time: formatLocalClock(verified.at) });
+  const hours = Math.max(1, Math.floor((now - verified.at) / HOUR_MS));
+  return fillTemplate(copy.checkedAtStale, { hours: String(hours) });
+}
 
 export interface RouterConnectionCardProps {
   status: SkillRouterStatus;
@@ -61,6 +77,7 @@ const RouterConnectionCard: React.FC<RouterConnectionCardProps> = ({
   const state = deriveConnectionState(status);
   const pill = PILL[state];
   const checkedAt = status.lastVerified?.at;
+  const checkedLabel = describeCheckedAt(status, copy);
   return (
     <section className="sr-card" aria-label={copy.connectionTitle}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -76,10 +93,8 @@ const RouterConnectionCard: React.FC<RouterConnectionCardProps> = ({
             <span aria-hidden="true">{pill.icon}</span>
             {copy.state[state]}
           </p>
-          {checkedAt && (
-            <p className="sr-text-xs sr-muted mt-1">
-              {fillTemplate(copy.checkedAt, { time: formatLocalClock(checkedAt) })}
-            </p>
+          {checkedAt && checkedLabel && (
+            <p className="sr-text-xs sr-muted mt-1">{checkedLabel}</p>
           )}
         </div>
       </div>

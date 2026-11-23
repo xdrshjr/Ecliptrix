@@ -9,14 +9,18 @@ reads the cache only and never waits on the network for longer than a bound.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from app.logger import get_logger
+from app.services.integration_credentials_service import (
+    CredentialValidationError, IntegrationSaveFailed, integration_credentials,
+)
 from app.services.skillrouter.client import AsyncRouterClient
 from app.services.skillrouter.config import RouterSnapshot, get_snapshot
-from app.services.skillrouter.constants import ROUTER_CAPABILITY_MAP
+from app.services.skillrouter.constants import INTEGRATION_ID, ROUTER_CAPABILITY_MAP
 from app.services.skillrouter.errors import RouterError
 
 logger = get_logger(__name__)
@@ -61,14 +65,77 @@ def reset() -> None:
     _last_verified = None
 
 
-def record_verification(outcome: str) -> None:
-    """Remember the latest verification outcome (in memory, zero secrets)."""
+#: A verification older than this is still shown, but flagged ``stale``.
+VERIFIED_STALE_SECONDS = 24 * 3600.0
+#: The same outcome is not rewritten to the database more often than this.
+PERSIST_MIN_INTERVAL_SECONDS = 600.0
+
+
+def _entry_for(outcome: str, revision: str) -> Dict[str, Any]:
+    return {"ok": outcome == "ok", "outcome": outcome,
+            "at": int(time.time() * 1000), "revision": revision}
+
+
+def _persisted_verification(snapshot: RouterSnapshot) -> Optional[Dict[str, Any]]:
+    try:
+        parsed = json.loads(snapshot.last_verified_raw) if snapshot.last_verified_raw else None
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _is_duplicate(previous: Optional[Dict[str, Any]], entry: Dict[str, Any]) -> bool:
+    """Same revision + outcome written recently: skip the database round trip."""
+    if not previous or previous.get("revision") != entry["revision"]:
+        return False
+    if previous.get("outcome") != entry["outcome"]:
+        return False
+    age = (entry["at"] - int(previous.get("at") or 0)) / 1000.0
+    return age < PERSIST_MIN_INTERVAL_SECONDS
+
+
+async def record_verification(outcome: str, snapshot: Optional[RouterSnapshot] = None) -> None:
+    """Remember the latest verification (memory first, then the database).
+
+    The record is bound to ``credential_revision`` so a different key / base URL
+    never inherits it. A flight that finishes after the credentials changed
+    records nothing. Persistence is best effort: a failed write only means the
+    capsule reads "not verified" after the next restart.
+    """
     global _last_verified
-    _last_verified = {"ok": outcome == "ok", "outcome": outcome, "at": int(time.time() * 1000)}
+    current = get_snapshot()
+    snapshot = snapshot or current
+    if snapshot.credential_revision != current.credential_revision or not current.has_key:
+        return
+    entry = _entry_for(outcome, current.credential_revision)
+    previous = _last_verified or _persisted_verification(current)
+    _last_verified = entry
+    if _is_duplicate(previous, entry):
+        return
+    try:
+        await integration_credentials.save(INTEGRATION_ID, {
+            "last_verified": json.dumps(entry, sort_keys=True, separators=(",", ":"))})
+    except (IntegrationSaveFailed, CredentialValidationError) as error:
+        logger.warning("skillrouter verification not persisted: %s", type(error).__name__)
 
 
 def last_verified() -> Optional[Dict[str, Any]]:
-    return dict(_last_verified) if _last_verified else None
+    """Newest verification that belongs to the CURRENT key and base URL.
+
+    Display-only: it never feeds readiness or routing. ``stale`` marks a record
+    older than 24 h so the caller can re-verify in the background.
+    """
+    snapshot = get_snapshot()
+    if not snapshot.has_key:
+        return None
+    candidates = [c for c in (_last_verified, _persisted_verification(snapshot))
+                  if c and c.get("revision") == snapshot.credential_revision]
+    if not candidates:
+        return None
+    newest = max(candidates, key=lambda c: int(c.get("at") or 0))
+    age = time.time() - int(newest["at"]) / 1000.0
+    return {"ok": bool(newest["ok"]), "outcome": str(newest["outcome"]),
+            "at": int(newest["at"]), "stale": age > VERIFIED_STALE_SECONDS}
 
 
 def normalize_capabilities(raw: Any) -> List[Dict[str, Any]]:
@@ -113,7 +180,7 @@ async def _refresh(kind: str, snapshot: RouterSnapshot) -> None:
             entry.data = None
         entry.revision, entry.stale, entry.error = snapshot.revision, True, error.code
         if error.code == "authentication_error" and kind == "capabilities":
-            record_verification("invalid_credentials")
+            await record_verification("invalid_credentials", snapshot)
         return
     except Exception as error:  # noqa: BLE001 - a refresh must never raise out of the task
         logger.warning("skillrouter %s refresh failed: %s", kind, type(error).__name__)
@@ -122,7 +189,7 @@ async def _refresh(kind: str, snapshot: RouterSnapshot) -> None:
     entry.revision, entry.data, entry.fetched_at = snapshot.revision, data, time.monotonic()
     entry.stale, entry.error = False, None
     if kind == "capabilities":
-        record_verification("ok")
+        await record_verification("ok", snapshot)
 
 
 def _start_flight(kind: str, snapshot: RouterSnapshot) -> "asyncio.Future":

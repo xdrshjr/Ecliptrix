@@ -81,6 +81,8 @@ export interface SkillRouterLastVerified {
   ok: boolean;
   at: number;
   outcome: string;
+  /** Older than 24 h: still shown, while the backend re-verifies in the background. */
+  stale: boolean;
 }
 
 export interface SkillRouterStatus {
@@ -249,7 +251,12 @@ function normalizeStatus(raw: Record<string, unknown>): SkillRouterStatus {
     defaults: normalizeSlotMap(raw.defaults),
     lastVerified:
       verified && typeof verified.at === 'number'
-        ? { ok: verified.ok === true, at: verified.at, outcome: String(verified.outcome ?? '') }
+        ? {
+            ok: verified.ok === true,
+            at: verified.at,
+            outcome: String(verified.outcome ?? ''),
+            stale: verified.stale === true,
+          }
         : null,
     revision: typeof raw.revision === 'string' ? raw.revision : '',
   };
@@ -366,7 +373,8 @@ export async function getSkillRouterCatalog(refresh = false): Promise<SkillRoute
     capabilities: normalizeCapabilities(data.capabilities),
     defaults: normalizeSlotMap(data.defaults),
     stale: data.stale === true,
-    fetchedAt: secondsToMs(asNumberOrNull(data.fetchedAt)),
+    // `fetchedAtMs` is authoritative; `fetchedAt` (seconds) serves an older backend.
+    fetchedAt: asNumberOrNull(data.fetchedAtMs) ?? secondsToMs(asNumberOrNull(data.fetchedAt)),
     error: asStringOrNull(data.error),
   };
 }
@@ -481,8 +489,11 @@ function positiveNumber(value: unknown): number | undefined {
 export function routerErrorCodeOf(error: unknown): string | null {
   if (error instanceof RateLimitError) {
     const details = error.details ?? {};
+    const tagged = details.errorCode;
+    if (typeof tagged === 'string' && tagged.startsWith('router_')) return tagged;
     if (positiveNumber(details.resets_at)) return 'router_quota_exceeded';
-    return 'router_busy';
+    // No gateway marker: e.g. the media-proxy per-IP limiter, not the relay.
+    return null;
   }
   if (!(error instanceof ApiError)) return null;
   return Object.prototype.hasOwnProperty.call(ROUTER_ERROR_ACTIONS, error.code) ? error.code : null;

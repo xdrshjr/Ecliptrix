@@ -232,6 +232,34 @@ describe('http-client', () => {
     expect(eventSpy).toHaveBeenCalledTimes(1);
   });
 
+  // SkillRouter answers carry their own wording; only the per-IP media-proxy
+  // 429 may raise the global countdown toast.
+  it('T24b: a router_* 429 is not broadcast and keeps its errorCode', async () => {
+    asMockFetch().mockResolvedValue(
+      makeJsonResponse(429, { error_code: 'router_busy', message: 'busy' }),
+    );
+    const eventSpy = vi.fn();
+    window.addEventListener('ecliptrix:rate-limited', eventSpy);
+    const thrown = await http.get('/api/x').catch((e: unknown) => e);
+    window.removeEventListener('ecliptrix:rate-limited', eventSpy);
+
+    expect(thrown).toBeInstanceOf(RateLimitError);
+    expect((thrown as RateLimitError).details).toMatchObject({ errorCode: 'router_busy' });
+    expect(eventSpy).not.toHaveBeenCalled();
+  });
+
+  it('T24c: a 429 with only resets_at (code dropped upstream) is not broadcast', async () => {
+    asMockFetch().mockResolvedValue(
+      makeJsonResponse(429, { message: 'quota', error_details: { resets_at: 1790000000000 } }),
+    );
+    const eventSpy = vi.fn();
+    window.addEventListener('ecliptrix:rate-limited', eventSpy);
+    await expect(http.get('/api/x')).rejects.toBeInstanceOf(RateLimitError);
+    window.removeEventListener('ecliptrix:rate-limited', eventSpy);
+
+    expect(eventSpy).not.toHaveBeenCalled();
+  });
+
   // -------------------------------------------------------------------------
   // T10 — 500 with full error envelope → ApiError with all fields populated
   // -------------------------------------------------------------------------

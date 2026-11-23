@@ -173,6 +173,38 @@ describe('RouterModelSlots', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ slotModels: { chat: 'ecliptrix-chat' } }));
   });
 
+  describe('vision slot (R2-07)', () => {
+    const option = (slot: Parameters<typeof select>[0], id: string) =>
+      Array.from(select(slot).options).find((item) => item.value === id) as HTMLOptionElement;
+
+    it('does not offer an Anthropic-protocol model as a new vision choice', () => {
+      renderSlots();
+      expect(option('vision', 'claude-sonnet').disabled).toBe(true);
+      expect(option('vision', 'claude-sonnet').textContent).toContain(t.skillrouter.slots.chatOnly);
+      expect(option('vision', 'gpt-mini').disabled).toBe(false);
+      expect(option('vision', 'ecliptrix-chat').disabled).toBe(false);
+      expect(option('chat', 'claude-sonnet').disabled).toBe(false);
+    });
+
+    it('keeps an already saved incompatible model visible, selected and flagged', () => {
+      renderSlots({
+        status: makeStatus({ defaults: catalog.defaults, slotModels: { vision: 'claude-sonnet' } }),
+      });
+      expect(select('vision').value).toBe('claude-sonnet');
+      expect(option('vision', 'claude-sonnet').disabled).toBe(false);
+      const row = select('vision').closest('li') as HTMLElement;
+      expect(within(row).getByText(new RegExp(t.skillrouter.slots.visionIncompatible))).toBeTruthy();
+      expect(select('vision').getAttribute('aria-describedby')).toBeTruthy();
+    });
+
+    it('shows no warning for a compatible vision model', () => {
+      renderSlots({
+        status: makeStatus({ defaults: catalog.defaults, slotModels: { vision: 'gpt-mini' } }),
+      });
+      expect(screen.queryByText(new RegExp(t.skillrouter.slots.visionIncompatible))).toBeNull();
+    });
+  });
+
   it('tests one slot and reports success in the live region', async () => {
     renderSlots();
     vi.spyOn(client, 'testSkillRouterSlot').mockResolvedValue({

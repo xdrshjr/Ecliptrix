@@ -127,7 +127,7 @@ describe('SkillRouterSettingsPanel', () => {
       makeStatus({
         keyConfigured: true,
         keyHint: 'ar-…****abcd',
-        lastVerified: { ok: true, at: Date.now(), outcome: 'ok' },
+        lastVerified: { ok: true, at: Date.now(), outcome: 'ok', stale: false },
       }),
     );
     render(<SkillRouterSettingsPanel />);

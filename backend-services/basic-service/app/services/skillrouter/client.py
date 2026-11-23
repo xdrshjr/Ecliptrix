@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.logger import get_logger
+from app.services.net_env import loopback_env_kwargs
 from app.services.skillrouter.config import RouterSnapshot, require_ready
 from app.services.skillrouter.errors import RouterError, from_gateway
 
@@ -54,15 +55,10 @@ def _sync_client_factory(timeout: float, trust_env: bool = True) -> httpx.Client
     return httpx.Client(timeout=timeout, follow_redirects=False, trust_env=trust_env)
 
 
-_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
-
-
 def env_kwargs(base_url: str) -> Dict[str, Any]:
-    """Loopback gateways (local dev instance) must never go through a system proxy:
-    on Windows a proxy such as Clash would otherwise answer 502 for 127.0.0.1.
-    Returns ``{}`` for real hosts so tests can still substitute the factory."""
-    host = (urlsplit(base_url).hostname or "").lower()
-    return {"trust_env": False} if host in _LOOPBACK_HOSTS else {}
+    """Loopback gateways must never go through a system proxy (see ``net_env``);
+    kept as the import-compatible name used by the adapters."""
+    return loopback_env_kwargs(base_url)
 
 
 def origin_of(url: str) -> str:

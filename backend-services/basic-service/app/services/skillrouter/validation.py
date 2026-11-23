@@ -110,6 +110,27 @@ def validate_slot_protocols(raw: Any) -> str:
     return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
 
 
+VERIFY_OUTCOMES = frozenset({"ok", "invalid_credentials", "unreachable", "upstream_error", "unverifiable"})
+_REVISION = re.compile(r"^[0-9a-f]{8,32}$")
+
+
+def validate_last_verified(raw: Any) -> str:
+    """JSON ``{ok, outcome, at, revision}`` written by the server only (no secrets)."""
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except (TypeError, ValueError):
+        _reject("credential_malformed", "last_verified")
+    if not isinstance(parsed, dict):
+        _reject("credential_malformed", "last_verified")
+    at, revision = parsed.get("at"), parsed.get("revision")
+    if (parsed.get("outcome") not in VERIFY_OUTCOMES or not isinstance(parsed.get("ok"), bool)
+            or isinstance(at, bool) or not isinstance(at, int) or at <= 0
+            or not isinstance(revision, str) or not _REVISION.match(revision)):
+        _reject("credential_malformed", "last_verified")
+    clean = {"ok": parsed["ok"], "outcome": parsed["outcome"], "at": at, "revision": revision}
+    return json.dumps(clean, sort_keys=True, separators=(",", ":"))
+
+
 def validate_text_field(field_name: str, raw: Any) -> str:
     """Dispatch for the ``text`` fields of the skillrouter row."""
     if field_name == "base_url":
@@ -118,4 +139,6 @@ def validate_text_field(field_name: str, raw: Any) -> str:
         return validate_manual_capabilities(raw)
     if field_name == "slot_protocols":
         return validate_slot_protocols(raw)
+    if field_name == "last_verified":
+        return validate_last_verified(raw)
     return validate_model_id(raw, field_name)

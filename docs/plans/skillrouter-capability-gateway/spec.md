@@ -1,6 +1,6 @@
 # SkillRouter 能力中转站接入（统一能力调用机制）设计文档
 
-- 状态：设计 **v2**（已评审，**已实现**，待桌面端真机走查与对 aragon-router 的联调）；v1→v2 变更见「评审记录」
+- 状态：设计 **v4**（= 第 2 轮「收口与联调」设计 v3 经评审后的 **评审版 v2**；v1→v2 已实现提交 16599d90；第 2 轮见文末「第 2 轮：收口与联调」）；两轮评审记录见「评审记录」
 - 目录：`docs/plans/skillrouter-capability-gateway/`
 - 中转站：<https://www.skillrouter.net/>（代码参考 `F:\TMP-PROJECTS\aragon-router`，下称「中转站」）
 - 适用范围：Ecliptrix 桌面应用（Electron + FastAPI + Next.js 本地三件套）
@@ -29,6 +29,24 @@
 | RV-13 | P2 | 一致性 | 向导新增步骤须保证 `deriveWizardSteps` 对 manual 既有输出逐项不变。 | 已在 §9 与 AC-01 体现，无需改正文。 |
 
 结论：无遗留 P0；P1（RV-01~06）均已在正文修复；P2 已处理。
+
+### 第 2 轮评审（对象：「第 2 轮：收口与联调」v3 → 评审版 v2）
+
+> 方法：把 R2-01~10 的“现状”逐条对回代码（`http-client.ts`、`skillrouter.ts`、`catalog.py`、`settings_service.py`、`llm_client.py`、`desktop/scripts/smoke-test.js`、`ModelSettingsPanel.tsx`、`IntegrationCard.tsx`、`RoutedNotice.tsx`、`F:\TMP-PROJECTS\aragon-router`）。已核实成立：R2-03（`llm_client` 四处 `httpx.AsyncClient(timeout=…)` 仍走系统代理）、R2-05（`_last_verified` 仍是模块级内存变量）、R2-08（`fetched_at` 为秒、`last_verified.at` 为毫秒）、R2-06（`IntegrationCard` 已有 `onDraftChange`，`reportIntegrationDraft` 已存在，缺的只是 `RouterConnectCard` 的接线）。
+
+| # | 级别 | 维度 | 问题 | 处理 |
+| --- | --- | --- | --- | --- |
+| R2-RV-01 | **P1** | 一致性 | R2-04 的“现状”与代码不符：`http-client.ts::makeRateLimitError` **已经**对 `errorCode` 以 `router_` 开头的 429 跳过全局广播（`isGatewayLimit`），且 `details` 已保留 `errorCode`（**camelCase**，非 spec 写的 `error_code`）。真正未解的缺口是：①`routerErrorCodeOf` 不读 `details.errorCode`，只凭 `resets_at` 推断，且对**任何** `RateLimitError` 兜底返回 `router_busy`——`media_proxy_service` 的每 IP 限流 429 会被误标成“中转站繁忙”；②BFF 若丢掉 `error_code`，仅靠前缀判断会漏掉额度类 429；③缺“router 429 不广播”的回归测试（现有 T24 只测普通 429 广播）。照原文实施会重复造轮子并写错字段名。 | 已修（§R2.1 R2-04、§R2.5）：改为“补缺口”——`routerErrorCodeOf` 先读 `details.errorCode`，无则看 `resets_at`，**两者皆无返回 `null`**；广播豁免追加 `resets_at` 判据；新增两条 vitest。 |
+| R2-RV-02 | **P1** | 一致性/可行性 | R2.3 把新分组加进 `desktop/scripts/smoke-test.js`，该文件**已 1750 行**，违反 CLAUDE.md「文件 ≤800 行」与本轮 AC-23；同时未处理冒烟既有的向导守卫（`createSetupWizardGuard`/`dismissSetupWizardPass` 会在流程早期关掉向导，第 5 项“向导 `source` 步 DOM 可见”因此无从断言）、`PUT /api/skillrouter` 受 `validate_ui_origin` 保护（须带同源 `Origin`）、以及写入必须落在冒烟独立的 `userDataDir`（不得污染真实用户配置）。 | 已修（§R2.3）：新建独立模块 `desktop/scripts/skillrouter-smoke.js`（假中转站 + 断言，纯函数可单测），`smoke-test.js` 只加一处调用；明确执行时机在向导守卫之前/通过 `openSetupWizard` 事件重开；写入带 `Origin`，仅作用于冒烟 `userDataDir`，结束时 `DELETE` 清理。 |
+| R2-RV-03 | **P1** | 可行性 | R2.2 假定“本地 aragon-router 桩上游可把所有非付费项跑通”，但核对中转站仓库：`tests/integration/gateway-stub.integration.test.ts` 与 `seed-credential-demo.mjs`（只灌 `stub-*` 假 Key）说明桩只存在于**进程内测试**，**没有**可独立启动的桩上游服务；创建 `ar-` Key、吊销 Key、耗尽额度都需要管理员会话，脚本无法无人值守完成。另外脚本路径写成了 `F:\TMP-PROJECTSragon-router\…`（缺 `\a`，指向不存在的目录）。 | 已修（§R2.2）：联调分两档——**档 A（无上游依赖，必跑）**：capabilities/models 解析、Key 无效、`manual` 往返 0 请求；**档 B（需上游，默认 SKIP 并写明原因）**：LLM/TTS/图片/视频/检索，仅当提供 `SKILLROUTER_LIVE_UPSTREAM=1` 且中转站侧已配置可用上游时执行；吊销/耗尽两项改为需 `SKILLROUTER_LIVE_REVOKED_KEY` / 手工步骤，其余由既有假中转站契约测试覆盖并在 `acceptance.md` 标明“证据来源 = 契约测试”。路径更正。AC-16 同步改写。 |
+| R2-RV-04 | **P1** | 完整性/安全 | R2.6 的持久化设计有三处漏洞：①“启动后首个状态读取触发后台静默复验”会让 **manual 模式用户**（或 `SKILLROUTER_ENABLED=0`、无 Key）也向中转站发请求，破坏 §9.1 不变量与 AC-22「manual 模式假中转站收到 0 请求」；②“Key/`base_url` 变更后清空”只靠写路径清空，崩溃/并发/手改 `.env` 可留下与当前 Key 不匹配的陈旧“已连接”；③未规定持久值是否影响能力就绪判定——若被误用，会把过期的 `ok` 当成就绪。 | 已修（§R2.6）：静默复验仅在 `mode=router` 且有 Key 且未被紧急阀关闭时才允许，其余一律不发请求（加测试）；持久值带 `revision`（= `RouterSnapshot.revision`），读取时与当前快照不一致即视为无记录，不依赖写路径清空；明确 `last_verified` **只用于胶囊展示**，不参与 `setup_status`/`is_routed`；复验放后台任务，不阻塞 `GET /api/skillrouter`，单飞 + 退避。 |
+| R2-RV-05 | P2 | 完整性 | R2-03：§R2.4 未说明回环判定对 `localhost`/`::1`/`127.0.0.0/8` 的覆盖；AC-18 的测试须在**构造 client 前**设置代理环境变量（httpx 在构造时读取）。 | 已修（§R2.4）：复用 `env_kwargs` 既有判定并加三种回环写法的参数化断言；测试用 `monkeypatch.setenv` 在构造前设置。 |
+| R2-RV-06 | P2 | 一致性 | R2-07：`ModelSettingsPanel.tsx` 已 1583 行，直接再加逻辑违反行数约定；且“默认不可选 anthropic”若实现为过滤，会让**已保存**的 anthropic 视觉模型从列表消失，用户看到空选。 | 已修（§R2.7）：过滤/标注逻辑放入新文件 `visionModelOptions.ts`；已保存值始终保留并显示“与视觉槽位不兼容”警告。 |
+| R2-RV-07 | P2 | 适当规模 | R2-08 单位统一与 R2-09 功能入口额度提示收益小、改动面分散；R2-09 没有指明“功能入口”具体是哪些组件。 | 已修（§R2.1、§R2.7）：R2-08 仅**加性**增加 `fetchedAtMs`，不删旧字段、不改既有客户端换算；R2-09 限定为 TTS/图片/视频**生成按钮旁**复用 `RoutedNotice`（模块级缓存，不新增请求、不轮询），≤10% 才显示；时间不足时 R2-08/09 可整体延后，不影响验收。 |
+| R2-RV-08 | P2 | 完整性 | AC-22 引用“227+183 项后端测试”“21 项 `node:` 内置模块环境失败”两个基线数字，spec 内无出处，实施时无法判定“未新增失败”。 | 已修（§R2.9）：实施第一步先跑基线并写入 `acceptance.md`，之后以该实测数字为准；本文数字仅作参考。 |
+| R2-RV-09 | P2 | 适当规模 | 本文件已 800+ 行，继续追加违反 AC-23 的精神。 | 已修（§R2.8）：第 2 轮实施记录一律写入 `acceptance.md`，本文件不再追加实施日志。 |
+
+结论（第 2 轮）：无遗留 P0；P1（R2-RV-01~04）均已在正文修复；P2 已处理或明确延后条件。
 
 ---
 
@@ -706,3 +724,135 @@ overview → source ─┬─ router → routerModels → manualOnly(仅缺口) 
 | WZ-08 | 环境 | 本机 shell 设置了 `NODE_ENV=production`，`npm ci` 默认跳过 devDependencies，仓库根目录原本没有 `node_modules`，vitest/tsc/eslint 均不可用 | 用 `NODE_ENV=development npm ci --include=dev --ignore-scripts` 安装；测试以 `NODE_ENV=test npx vitest run` 运行 |
 
 - **VL-07 决议（lead）**：采用方案 (a)——`pick_default_model("vision")` 优先非 anthropic 协议模型；视觉调用点仍用 OpenAI SDK，若用户手动把 vision 槽位设为 anthropic 模型只记录警告。方案 (b)（VL 调用迁到 llm_client）留待后续。VL-08 已修：`resolve_config` 对 `RouterError` 原样抛出，由 main.py 处理器返回结构化信封。
+
+---
+
+## 第 2 轮：收口与联调（v3）
+
+> 范围：第 1 轮已交付全部功能（16599d90）。第 2 轮**不新增能力面**，只关闭 v2 遗留项、补齐「顶级产品」所需的联调证据与发行验证。依据：对仓库的逐项核对（`storyboard_service.py` 已接入路由、`model_settings_router` 已透传 `RouterError`、`catalog.py` 的 `_last_verified` 仍仅在内存、`llm_client.py` 仍是默认 `trust_env`、`http-client.ts` 仍把所有 429 折叠为 `RateLimitError`）。
+
+### R2.1 遗留项核对表
+
+| # | 来源 | 现状（已核对代码） | 第 2 轮处理 | 优先级 |
+| --- | --- | --- | --- | --- |
+| R2-01 | §8.1 端到端联调 | 仅假中转站契约测试；**从未对真实 `aragon-router` 实例跑通** | 新增可重复的联调脚本 + `acceptance.md`（§R2.2） | P0 |
+| R2-02 | §10 P4 桌面冒烟 | 未对打包版验证「Next 服务端能访问中转站」「向导 source 步可见」 | 新建独立模块 `desktop/scripts/skillrouter-smoke.js`，`smoke-test.js`（已 1750 行）只加一处调用（§R2.3） | P0 |
+| R2-03 | VL-09 | `llm_client` 四处 `httpx.AsyncClient(timeout=…)` 走系统代理，开发者用 Clash 时本地 `aragon-router` 回环返回 502 | 抽 `client.env_kwargs(url)` 为共用函数，`llm_client` 对回环主机 `trust_env=False`（§R2.4） | P1 |
+| R2-04 | FC-01 | **已部分实现**：`makeRateLimitError` 已对 `errorCode` 以 `router_` 开头者不广播，`details` 已含 `errorCode`（camelCase）；缺口 = `routerErrorCodeOf` 不读它且对任意 429 兜底 `router_busy`，无 `resets_at` 兜底豁免、无回归测试 | 补缺口而非重做（§R2.5） | P1 |
+| R2-05 | FC-03 | `lastVerified` 仅内存，重启后所有 Key 显示「未验证」 | 验证结果（`ok/outcome/at/revision`，无密钥）写入 `skillrouter` 内部行；**仅 router 模式**且有 Key 时才后台静默复验；只用于胶囊展示（§R2.6） | P1 |
+| R2-06 | WZ-07 | 向导无法感知 `RouterConnectCard` 的未保存 Key 草稿，关闭向导会静默丢弃 | `RouterConnectCard` 暴露 `onDraftChange`，接入既有 `reportIntegrationDraft`（§R2.7） | P2 |
+| R2-07 | VL-07 | 视觉槽位可被手选 anthropic 协议模型，运行时 404 | 模型选择器对 `vision` 槽位标注 anthropic 协议模型、新选默认不可选；**已保存值不隐藏**；逻辑放新文件（§R2.7） | P2 |
+| R2-08 | FC-02 | `catalog.fetchedAt` 为秒、其余为毫秒，仅在前端客户端换算 | **加性**新增 `fetchedAtMs`，不删旧字段，客户端优先读新字段；可延后 | P2 |
+| R2-09 | §7.5 | 「额度 ≤10% 时功能入口轻提示」只做了设置页额度条 | 仅在 TTS / 图片 / 视频**生成按钮旁**复用 `RoutedNotice`（模块级缓存，不新增请求、不轮询）；可延后 | P2 |
+| R2-10 | 文档 | `CLAUDE.md` 已含三不变量；缺用户向说明与故障排查 | 新增 `docs/plans/skillrouter-capability-gateway/acceptance.md` 与 README 小节（§R2.8） | P2 |
+
+### R2.2 联调脚本与验收（R2-01）
+
+- 新增 `backend-services/basic-service/scripts/skillrouter_live_check.py`（独立脚本，不进 pytest 默认集合）：读取 `SKILLROUTER_LIVE_BASE_URL`（默认 `http://localhost:3000`）与 `SKILLROUTER_LIVE_KEY`；缺任一项则退出码 2 并打印如何用 `F:\TMP-PROJECTS\aragon-router\scripts\start-dev.ps1` 启动、如何在其控制台创建 `ar-` Key，**绝不**把 Key 写入输出（只打印末四位）。每项一行 `PASS/FAIL/SKIP` + 耗时 + 请求 id。
+- **事实约束（评审核实）**：aragon-router 的“桩上游”仅存在于其进程内集成测试（`tests/integration/gateway-stub.integration.test.ts`），`seed-credential-demo.mjs` 只灌 `stub-*` 假 Key，**没有可独立启动的桩上游服务**；创建/吊销 Key、耗尽额度均需管理员会话。故联调分两档：
+  - **档 A（不依赖上游，必跑）**：`capabilities` 6 项解析 → `models` 非空或明确 `models_unavailable` → 错误 Key 得 `router_key_invalid` → `manual` 往返后中转站收到 0 请求（以请求计数端点或本地反向代理计数判定）。
+  - **档 B（依赖中转站已配置真实/可用上游，默认 SKIP 并写明原因）**：LLM openai 与 anthropic 各 1 次流式 → TTS 短文本 + 超 `limits.maxChars` 分块合并（真实 ffmpeg）→ 图片文生图（`count=1`）→ 视频**仅提交并取消/不等待完成** → 三类检索各 1 页。仅当 `SKILLROUTER_LIVE_UPSTREAM=1` 时执行；付费项（TTS/图片/视频）另需显式 `--paid`，每项执行前打印预计计费单位。
+  - **需外部条件的两项**：Key 吊销 → `router_key_invalid` 需 `SKILLROUTER_LIVE_REVOKED_KEY`；额度耗尽 → `router_quota_exceeded`+`resets_at` 需管理员手工把额度置零。两者缺条件时 SKIP，**证据来源改为既有假中转站契约测试**（`test_skillrouter_client.py` 等），`acceptance.md` 必须注明“证据来源 = 契约测试，未对真实中转站验证”。
+- 联调结果表（日期、aragon-router 提交号、PASS/SKIP 项及原因）写入 `acceptance.md`；**未执行即写“未执行”**，不得省略。
+- 失败即缺陷：联调发现的契约差异回写 §2 事实表与对应适配器测试夹具（`skillrouter_fake.py` 同步更新），不允许只改代码不改夹具。
+
+### R2.3 桌面端打包冒烟（R2-02）
+
+新建 `desktop/scripts/skillrouter-smoke.js`（导出 `runSkillRouterSmoke({ports, userDataDir, cdp, …})` 与进程内假中转站 `startFakeRouter()`，风格同 `auth-smoke.js`，纯函数部分有单测 `skillrouter-smoke.test.js`）；`smoke-test.js` 仅新增一次调用，**不得**把分组逻辑内联进该文件（已 1750 行，超 800 行约定）。不要求真实 Key。
+
+1. 打包版启动后 `GET /api/skillrouter`（经 Next BFF）返回 `mode=manual` 且响应不含 `ar-`。
+2. 经 BFF `PUT /api/skillrouter`（须带同源 `Origin`，否则 `validate_ui_origin` 拒绝）配置 `base_url=http://127.0.0.1:<fakePort>` + 假 Key → `capability-status` 中 11 项 `ready/source=router`，3 项仍 `manual`。
+3. 经打包版 Next 服务端发一次 `/api/chat`，假中转站（须能返回 OpenAI 协议 SSE）收到的 `x-api-key` 与路径 `/api/v1/…` 正确——证明 **Next 服务端**而非仅 Python 后端可达中转站（打包版常见断点）。
+4. 切回 `manual`，假中转站再收到 0 请求；`DELETE` 后 `keyHint` 为空。
+5. 向导 `source` 步以 DOM 可见断言（不用像素）：既有冒烟会用 `createSetupWizardGuard`/`dismissSetupWizardPass` 关掉向导，故该断言须在守卫关闭向导**之前**执行，或经 `openSetupWizard` 事件重开后断言；窗口截图判据沿用 4f3b2d02 之后「遮挡不判红」的约定。
+
+- 隔离：全部写入仅作用于冒烟独立 `userDataDir`；结束（含失败路径的 `finally`）必须 `DELETE /api/skillrouter` 并关闭假中转站，失败信息指向分组名。
+
+### R2.4 LLM 回环直连（R2-03）
+
+- 把 `skillrouter/client.py::env_kwargs(url)` 提升为 `app/services/net_env.py::loopback_env_kwargs(url)`（`client.py` 原函数改为转发，保持 import 兼容），`llm_client` 四处构造 `httpx.AsyncClient(timeout=timeout, **loopback_env_kwargs(api_url))`。
+- 前端侧 `streamLlmChat.ts` 在 Node 服务端使用全局 fetch，不读系统代理，无需改动；加一条注释说明为何不对称。
+- 测试：`test_skillrouter_contract_llm.py` 去掉 `NO_PROXY` 绕过，改为用 `monkeypatch.setenv('HTTP_PROXY', 'http://127.0.0.1:9')`（不可达，**须在构造 client 之前**设置，httpx 构造时读取环境）后仍能对回环假中转站成功；回环判定复用 `env_kwargs` 既有逻辑，参数化覆盖 `127.0.0.1`、`localhost`、`[::1]`；非回环主机行为不变（有断言）。
+
+### R2.5 429 语义分离（R2-04）
+
+**现状（评审核实）**：`makeRateLimitError` 已把 `errorCode`（camelCase）放进 `details`，并对 `errorCode` 以 `router_` 开头者跳过 `ecliptrix:rate-limited` 广播。本节只补缺口：
+
+- `routerErrorCodeOf` 改为：先读 `details.errorCode`（以 `router_` 开头则直接返回），其次 `positiveNumber(details.resets_at)` → `router_quota_exceeded`，**两者皆无返回 `null`**（不再对任意 `RateLimitError` 兜底 `router_busy`，否则 `media_proxy_service` 的每 IP 限流会被误标为“中转站繁忙”）。
+- 广播豁免追加判据：`details.resets_at` 为正数（BFF 丢失 `error_code` 时的兜底）。
+- 额度用完的展示：设置页与功能入口显示「今日额度已用完，将于 HH:mm 重置」，并提供「改用自己的配置」入口，**不出现倒计时 toast**。
+- 回归：`media_proxy_service` 的每 IP 限流 429 仍广播（CLAUDE.md 明确要求保留）；vitest 新增三条：router 429（`errorCode=router_busy`）不广播、仅带 `resets_at` 的 429 不广播、普通 429 仍广播（既有 T24 保留）；`routerErrorCodeOf` 对无标记 429 返回 `null`。
+
+### R2.6 验证结果持久化（R2-05）
+
+- `skillrouter` 内部行新增 `last_verified: {ok, outcome, at, revision}`，由 `catalog.record_verification()` 写入（经 `integration_credentials_service.save` 的校验器白名单放行，不含密钥）；`revision` = 写入时 `RouterSnapshot.revision`。
+- **读取时校验**：`GET /api/skillrouter` 取持久值，若 `revision` 与当前快照不一致（换 Key / 改 `base_url` / 手改 `.env`）则视为无记录——不依赖写路径清空；清除 Key 同时清空。超过 24 h 带 `stale=true`。
+- **只用于胶囊展示**：`last_verified` 不参与 `setup_status` 就绪判定与 `is_routed`（fail-open，过期的 `ok` 绝不能被当成就绪依据）。
+- 状态胶囊规则：持久值 `ok` 且未过期 → 「已连接」；过期 → 「已连接 · 上次验证于 N 小时前」并触发**后台静默复验**；无记录 → 「未验证」（仍不把未知当成已连接）。
+- **静默复验的前置条件（不变量，破坏即缺陷）**：仅当 `mode=router` **且**已保存 Key **且** `SKILLROUTER_ENABLED` 未关闭时才可发请求；manual 模式、无 Key、紧急阀关闭一律 **0 请求**。复验作为后台任务启动，不阻塞 `GET /api/skillrouter` 响应，单飞 + 指数退避，失败只更新胶囊，不弹窗、不影响任何功能路径。
+- 测试：重启（重置内存缓存）后胶囊不回到「未验证」；换 Key / 改 `base_url` 后因 `revision` 不一致而无记录；manual 模式 GET 后假中转站 0 请求；`last_verified` 不影响 `build_status` 就绪结果；响应零密钥扫描覆盖新字段。
+
+### R2.7 向导草稿保护与视觉槽位提示（R2-06、R2-07）
+
+- `RouterConnectCard` 增加可选 `onDraftChange(hasDraft: boolean)`，当输入框非空且未保存时为 true；`SetupWizard` 复用既有 `reportIntegrationDraft('skillrouter', …)`，使关闭/跳过向导前出现与其他卡片一致的确认。
+- `vision` 槽位模型列表对 `provider=anthropic` 项显示「仅支持对话类槽位」的次级说明且**新选时**不可选（`route` 与 `openai` 可选）；**已保存的值始终保留在列表中**并显示「与视觉槽位不兼容」警告，不得因过滤变成空选；其他槽位不变。`ModelSettingsPanel.tsx` 已 1583 行，过滤/标注逻辑放入新文件 `src/components/settings/visionModelOptions.ts`（纯函数 + 单测），面板只做一处调用。仍不读取 `api_key`（FC-05 的源码扫描测试继续有效）。
+- R2-09（功能入口额度提示）限定为 TTS / 图片 / 视频**生成按钮旁**复用 `RoutedNotice`，仅 `remaining/limit ≤ 10%` 时显示，数据取自模块级缓存，不新增请求、不轮询；若时间不足，R2-08/R2-09 整体延后，不影响第 2 轮验收。
+
+### R2.8 文档与可运维性（R2-10）
+
+- `acceptance.md`（**第 2 轮所有实施记录写在这里，本文件不再追加实施日志**）：AC-01…AC-15 逐条证据（测试名/截图/脚本输出），未执行项明示「未执行」及原因，沿用 `remotion-effects-studio/acceptance.md` 的写法。
+- 用户向排障小节（放进设置页「能力来源」的 `?` 弹出与 README）：Key 无效、无法连接（代理/防火墙）、额度用完、中转站未覆盖的 3 项、如何切回手动、`SKILLROUTER_ENABLED=0` 紧急阀的位置（仅文档，不在 UI 暴露）。
+
+### R2.9 第 2 轮验收标准
+
+| # | 标准 |
+| --- | --- |
+| AC-16 | `skillrouter_live_check.py` 档 A（capabilities/models/错误 Key/manual 0 请求）对本地 aragon-router 全部 PASS；档 B 与吊销/额度两项按条件 PASS 或带原因 SKIP，并在 `acceptance.md` 标明证据来源（真实中转站 / 契约测试 / 未执行）；缺环境变量时退出码 2 且不泄露 Key |
+| AC-17 | 打包版冒烟 `skillrouter` 分组 5 项通过（逻辑位于独立模块，`smoke-test.js` 仅一处调用）；其中第 3 项证明 Next 服务端直达中转站；结束后冒烟 `userDataDir` 无残留 Key |
+| AC-18 | 设置 `HTTP_PROXY` 为不可达地址时，回环中转站的 LLM 契约测试仍通过；非回环行为不变 |
+| AC-19 | `router_*` 或带 `resets_at` 的 429 不触发全局倒计时 toast；普通 429（含 `media_proxy_service` 限流）仍触发且 `routerErrorCodeOf` 返回 `null`；均有 vitest 断言 |
+| AC-20 | 应用重启后 Key 有效的用户不再看到「未验证」；`revision` 不一致（换 Key / 改 `base_url`）或清除 Key 后无记录；manual 模式 / 无 Key / 紧急阀关闭时静默复验 0 请求；`last_verified` 不影响就绪判定；新增字段零密钥 |
+| AC-21 | 向导中存在未保存的 `ar-` 草稿时关闭会确认；`vision` 槽位新选时不可选 anthropic 协议模型，已保存值保留并告警 |
+| AC-22 | `manual` 模式回归（假中转站 0 请求）与既有后端测试、vitest 既有用例全部保持通过；**实施第一步先跑基线并把实测数字写入 `acceptance.md`**（旧文中的 227+183 项、21 项 `node:` 内置模块环境失败仅供参考），之后既不新增也不掩盖失败 |
+| AC-23 | 新增/修改文件满足 Clean Code 阈值（文件 ≤800 行，函数 ≤50 行）；本文件已超 700 行，后续记录写入 `acceptance.md` 而非继续追加 |
+
+### R2.10 风险与对策（第 2 轮）
+
+| 风险 | 对策 |
+| --- | --- |
+| 真实上游联调会产生计费 | 付费项默认 SKIP，`--paid` 显式开启，执行前打印计费单位；视频只提交并取消 |
+| 全局 429 逻辑变更误伤既有限流提示 | 仅对带 `router_` 码或 `resets_at` 的响应豁免；保留 `media_proxy_service` 的回归测试 |
+| 后台静默复验在离线时反复失败，或误向 manual 用户发请求 | 单飞 + 指数退避，失败只更新胶囊；仅 router 模式 + 有 Key + 紧急阀未关才发请求（有 0 请求测试）；fail-open |
+| 联调环境缺可用上游导致大面积无法验证 | 分档执行，缺条件项 SKIP 并如实标注证据来源，绝不把契约测试写成真实联调 |
+| 提升 `env_kwargs` 到共用模块引入循环依赖 | 新模块只依赖标准库与 `httpx`，`client.py` 与 `llm_client.py` 单向引用；加导入顺序测试 |
+| 冒烟新增分组拖慢发行门禁 / 污染用户配置 | 假中转站进程内启动，目标 < 15 s；独立模块、独立 `userDataDir`、`finally` 清理；失败信息指向具体分组，不扩大既有红线 |
+
+### R2.11 第 2 轮实施顺序
+
+0. 先跑并记录测试基线（后端 skillrouter/回归/守卫、vitest、`type-check`、`lint`）到 `acceptance.md`。
+1. R2-03（回环直连）→ R2-04（补缺口，见 §R2.5）→ R2-05（验证持久化）：均为小改动，各自带测试，先落地。
+2. R2-06/07：前端收口（P2）；R2-08/09 视时间，可整体延后。
+3. R2-01：联调脚本与 `acceptance.md`（需要本地 aragon-router；不可用时记录为「未执行」而非跳过不提）。
+4. R2-02：打包版冒烟（最后做，依赖前面全部完成后重新 `build:dir`）。
+5. 全量门禁：`type-check`、`lint`、后端 skillrouter/回归/守卫测试、vitest；结果与已知基线红测试分别列出。
+
+---
+
+## 评审结论（第 2 轮，评审版 v2 / 文档 v4）
+
+**有条件通过**。
+
+第 2 轮设计方向正确：不新增能力面，只关闭遗留项并补联调与发行证据，与 `CLAUDE.md` 的三条 SkillRouter 不变量一致。评审把 R2-01~10 的“现状”逐条对回代码，发现 4 项 P1（R2-RV-01~04），均已在正文修复，无遗留 P0/P1：
+
+1. **R2-04 前提不实**：429 豁免与 `errorCode` 保留已存在，改为补缺口（`routerErrorCodeOf` 不再对任意 429 兜底 `router_busy`），避免重复实现与误标限流（R2-RV-01）。
+2. **冒烟分组独立成模块**：`smoke-test.js` 已 1750 行，新增逻辑放 `skillrouter-smoke.js`；处理向导守卫、`Origin` 与 `userDataDir` 隔离（R2-RV-02）。
+3. **联调分档并如实标注证据**：中转站没有可独立启动的桩上游，上游依赖项默认 SKIP，不把契约测试冒充真实联调；路径笔误已更正（R2-RV-03）。
+4. **验证持久化的安全边界**：静默复验仅限 router 模式 + 有 Key + 紧急阀未关，`revision` 绑定读取校验，持久值只用于展示、不影响就绪判定（R2-RV-04）。
+
+通过条件（实施阶段必须满足，均已写入正文/AC-16~23）：
+
+1. 实施第一步记录测试基线到 `acceptance.md`，之后不新增失败（AC-22）。
+2. manual 模式 / 无 Key / `SKILLROUTER_ENABLED=0` 下，中转站收到 0 请求，含后台静默复验（AC-20、AC-22）。
+3. 联调与冒烟的任何“未执行 / SKIP / 契约测试代证”必须在 `acceptance.md` 如实标注（AC-16、AC-17）。
+4. 新增/修改文件满足行数阈值：不向 `smoke-test.js`、`ModelSettingsPanel.tsx` 内联新逻辑（AC-23）。
+5. R2-08 / R2-09 为可延后项，延后须在 `acceptance.md` 记录，不阻塞第 2 轮验收。

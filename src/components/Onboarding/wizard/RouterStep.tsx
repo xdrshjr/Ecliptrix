@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import RouterConnectCard from '@/components/skillrouter/RouterConnectCard';
 import { useSkillRouter } from '@/components/skillrouter/useSkillRouter';
@@ -23,6 +23,15 @@ const RouterStep: React.FC<RouterStepProps> = ({ wizard }) => {
   const copy = useLocale().t.setupWizard;
   const { status, loadState, reload } = useSkillRouter();
   const isConnected = status !== null && status.keyConfigured && status.mode === 'router';
+  const { reportIntegrationDraft } = wizard;
+
+  // An unsaved `ar-` key counts as a draft, so closing the wizard asks first
+  // (same guard as every integration card). Leaving the step drops the flag.
+  const reportDraft = useCallback(
+    (hasDraft: boolean) => reportIntegrationDraft('skillrouter', hasDraft),
+    [reportIntegrationDraft],
+  );
+  useEffect(() => () => reportIntegrationDraft('skillrouter', false), [reportIntegrationDraft]);
 
   return (
     <div>
@@ -42,7 +51,9 @@ const RouterStep: React.FC<RouterStepProps> = ({ wizard }) => {
             </button>
           </div>
         )}
-        {status && <RouterConnectCard status={status} onSaved={wizard.goNext} />}
+        {status && (
+          <RouterConnectCard status={status} onSaved={wizard.goNext} onDraftChange={reportDraft} />
+        )}
       </div>
 
       {!isConnected && status && (

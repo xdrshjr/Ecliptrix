@@ -75,8 +75,11 @@ def _rejected(error: CredentialValidationError) -> JSONResponse:
 
 @router.get("", response_model=SkillRouterStatusResponse)
 async def get_status() -> SkillRouterStatusResponse:
-    """Public routing state (no secrets)."""
-    return SkillRouterStatusResponse(success=True, data=settings_service.build_status())
+    """Public routing state (no secrets). May start a silent background
+    re-verification (router mode + saved key only); the response never waits."""
+    status = settings_service.build_status()
+    settings_service.schedule_revalidation()
+    return SkillRouterStatusResponse(success=True, data=status)
 
 
 @router.put("", response_model=SkillRouterStatusResponse)

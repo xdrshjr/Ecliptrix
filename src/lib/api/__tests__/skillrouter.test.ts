@@ -47,7 +47,7 @@ const wireStatus = {
   manualCapabilities: ['tts', 'not_a_capability'],
   slotModels: { chat: 'ecliptrix-chat', bogus: 'x' },
   defaults: { chat: 'ecliptrix-chat' },
-  lastVerified: { ok: true, at: 1700000000000, outcome: 'ok' },
+  lastVerified: { ok: true, at: 1700000000000, outcome: 'ok', stale: false },
   revision: 'abc',
 };
 
@@ -117,9 +117,14 @@ describe('routerErrorCodeOf', () => {
     expect(routerErrorCodeOf(new RateLimitError(5, 'x', { resets_at: 1790000000000 }))).toBe(
       'router_quota_exceeded',
     );
-    expect(routerErrorCodeOf(new RateLimitError(5, 'x', { retry_after_seconds: 3 }))).toBe(
+    expect(routerErrorCodeOf(new RateLimitError(5, 'x', { errorCode: 'router_busy' }))).toBe(
       'router_busy',
     );
+  });
+
+  it('does not label an unmarked 429 (media-proxy per-IP limiter) as a gateway failure', () => {
+    expect(routerErrorCodeOf(new RateLimitError(5, 'x', { retry_after_seconds: 3 }))).toBeNull();
+    expect(routerErrorCodeOf(new RateLimitError(5, 'x'))).toBeNull();
   });
 
   it('describes a non-gateway failure as the generic one', () => {
@@ -165,7 +170,15 @@ describe('client', () => {
     const result = await getSkillRouter();
     expect(result.manualCapabilities).toEqual(['tts']);
     expect(result.slotModels).toEqual({ chat: 'ecliptrix-chat' });
-    expect(result.lastVerified).toEqual({ ok: true, at: 1700000000000, outcome: 'ok' });
+    expect(result.lastVerified).toEqual({ ok: true, at: 1700000000000, outcome: 'ok', stale: false });
+  });
+
+  it('carries the stale flag of an old verification', async () => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({
+      success: true,
+      data: { ...wireStatus, lastVerified: { ok: true, at: 5, outcome: 'ok', stale: true } },
+    } as never);
+    expect((await getSkillRouter()).lastVerified?.stale).toBe(true);
   });
 
   it('rejects an envelope that is not a success', async () => {
@@ -244,6 +257,14 @@ describe('client', () => {
     expect(catalog.models).toHaveLength(1);
     expect(catalog.fetchedAt).toBe(1700000000500);
     expect(catalog.capabilities[0].quota?.dailyLimit).toBe(10);
+  });
+
+  it('prefers the millisecond catalogue timestamp when the backend sends it', async () => {
+    vi.spyOn(httpModule.http, 'get').mockResolvedValue({
+      success: true,
+      data: { models: [], capabilities: [], defaults: {}, stale: false, fetchedAt: 5, fetchedAtMs: 1700000000500 },
+    } as never);
+    expect((await getSkillRouterCatalog()).fetchedAt).toBe(1700000000500);
   });
 });
 

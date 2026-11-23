@@ -42,11 +42,14 @@ async def save_slots(slots=SLOTS):
 
 
 @pytest.fixture(autouse=True)
-def _loopback_bypasses_system_proxy(monkeypatch):
-    """``llm_client`` builds a default httpx client (trust_env on). On a machine with
-    a system proxy (e.g. Clash) 127.0.0.1 would be answered 502 by the proxy."""
-    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
-    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+def _unreachable_system_proxy(monkeypatch):
+    """A dead system proxy: the loopback fake gateway only answers when ``llm_client``
+    itself opts out of ``trust_env`` (R2-03). httpx reads the environment when the
+    client is constructed, so this must be set before any call."""
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    for name in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")
 
 
 def env_settings(**overrides):

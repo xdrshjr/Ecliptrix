@@ -212,6 +212,7 @@ REGISTRY: Tuple[IntegrationSpec, ...] = (
             FieldSpec("model_vision", "text"),
             FieldSpec("model_research", "text"),
             FieldSpec("slot_protocols", "text"),
+            FieldSpec("last_verified", "text"),  # server-written, zero secrets
         ),
         capabilities=(),
         verify_level="free",

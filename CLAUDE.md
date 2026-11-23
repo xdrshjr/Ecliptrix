@@ -338,9 +338,10 @@ The frontend reads `local_url` from `/api/material/{ingest,lookup}` responses; t
 This project has a pre-generated index for quick codebase understanding.
 
 - **Location:** `.claude-index/index.md`
-- **Last Updated:** 2026-10-27
+- **Last Updated:** 2026-11-22
 - **Contents:** Project overview, feature map, file index, exported symbols, module dependencies
-- **Machine-readable graph:** `.claude-index/graph.json` — modules, components and relations, rendered as an interactive architecture view
+- **Machine-readable graph:** `.claude-index/graph.json` — modules, components and relations, rendered by the desktop app as an interactive architecture / UML view
+- **Freshness:** a snapshot of disk at the date above (2,605 source files, 140 Next.js API routes, 43 `*.py` files in `app/routers/`, 22 ORM tables, 212 backend tests, 650 frontend tests). Regenerate after structural change instead of trusting a stale count.
 
 **Usage:** Read `.claude-index/index.md` to quickly understand the project structure before making changes. The index provides a navigation map of the codebase without needing to explore every file.
 
@@ -349,7 +350,7 @@ This project has a pre-generated index for quick codebase understanding.
 ## Clean Code Guidelines
 
 <!-- project-indexer:cleancode:begin v1.2.0 -->
-> Maintained by `project-indexer` from `.claude-index/config.md` (preset `strict`, intersected with this repo's primary languages). Google-style thresholds, not lint config — exceed one only with a comment saying why. Do not hand-edit between the markers: say "regenerate index" to refresh.
+> Maintained by `project-indexer` from `.claude-index/config.md` — last refreshed 2026-11-22 against disk. Preset `strict`, intersected with this repo's primary languages (TypeScript + Python), so the block is never looser than the language baseline: files ≤ **800**, methods ≤ **50**, params ≤ **5**, cyclomatic ≤ **10**, lines ≤ **80** columns, nesting ≤ **4**. Google-style thresholds, not lint config — exceed one only with a comment saying why. Do not hand-edit between the markers: say "regenerate index" to refresh.
 
 ### 1. Overview
 
@@ -421,7 +422,7 @@ Before calling work done, all 8 must hold:
 
 ### 9. Language notes
 
-Primary languages: **TypeScript, Python**.
+Primary languages: **TypeScript, Python** (76% / 19.5% of 2,605 source files). JavaScript/ESM is 4% — below the 10% threshold, so it contributes no override; the `desktop/` and build scripts still follow the same rules.
 
 - TypeScript: Prefer `interface` over `type` for public APIs.
 - Python: PEP 8 + Google docstrings.
