@@ -80,17 +80,39 @@ function Write-Section {
     Write-Host "=== $Title ===" -ForegroundColor Cyan
 }
 
+function Resolve-NativeExe {
+    # 只给 native 可执行文件用:把裸命令名固定成 .cmd / .exe 路径,绕开 .ps1 shim。
+    #
+    # 为什么必须显式解析:Windows 上 npm / npx 同时提供 npm.ps1 与 npm.cmd,而
+    # PowerShell 的解析顺序把 ExternalScript(.ps1)排在 Application 之前,于是
+    # `& npm` 命中的是 %ProgramFiles%\nodejs\npm.ps1。那个 shim 为 -Command 场景
+    # 服务,内部要读 $MyInvocation.Statement;Windows PowerShell 5.1 的 InvocationInfo
+    # 上没有该属性,而本脚本开着 Set-StrictMode -Version 2.0(见文件头部),
+    # 访问不存在的属性会直接抛「在此对象上找不到属性"Statement"」—— npm 一个字都
+    # 还没输出就失败,install 阶段被误判成退出码 3。
+    # 实测:StrictMode 2.0 + `& npm` 抛错;+ `& npm.cmd` 正常;StrictMode Off 下
+    # `& npm` 也能跑(说明与 npm 安装、registry、hoisting 均无关)。
+    param([string]$Name)
+    foreach ($suffix in @('.cmd', '.exe')) {
+        $candidate = Get-Command "$Name$suffix" -ErrorAction SilentlyContinue
+        if ($null -ne $candidate) { return $candidate.Source }
+    }
+    return $Name
+}
+
 function Assert-CommandAvailable {
     param([string]$Name, [string]$Hint)
     $command = Get-Command $Name -ErrorAction SilentlyContinue
     if ($null -eq $command) {
         throw "未在 PATH 中找到命令「$Name」。$Hint"
     }
-    Write-Host "  ${Name}: $($command.Source) — ok"
+    # 报告实际会被执行的路径(而非 .ps1 shim),让失败定位不再被误导。
+    Write-Host "  ${Name}: $(Resolve-NativeExe $Name) — ok"
 }
 
 function Assert-NodeVersion {
-    $raw = (& node --version)
+    $nodeExe = Resolve-NativeExe 'node'
+    $raw = (& $nodeExe --version)
     if ($LASTEXITCODE -ne 0) {
         throw "执行「node --version」失败(退出码 $LASTEXITCODE)"
     }
@@ -116,6 +138,8 @@ function Invoke-Native {
     # 不重定向 stderr:PS 5.1 下 2>&1 会把 native stderr(如 npm 进度行)
     # 包装成 ErrorRecord 触发 NativeCommandError 误报;成败仅看 $LASTEXITCODE。
     param([string]$Exe, [string[]]$Argv, [string]$Cwd)
+    # 裸名 `npm` 会解析到 npm.ps1 shim,与 Set-StrictMode 冲突(见 Resolve-NativeExe)。
+    $Exe = Resolve-NativeExe $Exe
     $commandLine = "$Exe $($Argv -join ' ')"
     Write-Host "  > $commandLine"
     Write-Host "    (cwd: $Cwd)"
