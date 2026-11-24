@@ -764,6 +764,9 @@ export const useVideoSearch = (
     setPreviewVideo(null);
     setYoutubePreviewVideo(null);
     setValidationError(null);
+    // 页码是两个库共用的一份状态：切库时必须回到第 1 页，否则 currentPage 可能超出
+    // 新库的页数，列表切片为空、分页块又整块不渲染（结果存在却看不见，也无页码可点回）。
+    setCurrentPage(1);
   }, [activeLibrary, logger]);
 
   // 分页相关方法
