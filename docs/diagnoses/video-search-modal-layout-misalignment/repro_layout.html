@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>搜索在线视频弹窗 · 布局错位最小复现（不依赖后端）</title>
+<!--
+  ============================================================================
+  这是什么
+  ============================================================================
+  「搜索在线视频」弹窗（VideoSearchModal）三栏布局错位的**最小复现件**。
+
+  它不连后端、不连 Pexels/YouTube、不需要 React：把本文件用浏览器打开即可。
+  左侧（现状）逐块复刻了 src/components/video/components/VideoSearchModal/
+  VideoSearchModal.tsx 中三栏主体的**真实嵌套与尺寸约束**（同一套 padding /
+  max-height / overflow / flex 组合），每个块都在 HTML 注释里标了对应的 JSX 行号。
+  右侧（目标）只是修复后的**语法示意**，用于对比，不是产品代码。
+
+  ============================================================================
+  怎么读
+  ============================================================================
+  1. 默认「现状」：注意三栏的**第一行内容不在同一水平线**上——
+     左栏的标题栏吃掉 64px，中栏的统计栏吃掉 44px，右栏头部因为用了 px-6 是 49px，
+     于是三栏正文分别从 y=337 / 317 / 278 开始（与真实截图实测一致）。
+  2. 勾选「对齐参考线」：横向虚线标出三栏各自的正文起点与滚动区底边，
+     纵向虚线标出三栏标题的左内边距（16 / 16 / 24px），一眼可见没有公共网格。
+  3. 左栏预览：媒体盒被 max-height:320px 钉死，栏高 596px 里有约 244px 永久空白；
+     灰盒（#F0F0F0）与画面比例无关，画面在盒内被 letterbox，灰边 ≠ 画面边 → 「错位」观感。
+  4. 中栏：分页条在 overflow:auto 容器**内部**，因此它既跟着列表滚动、
+     又把列表视口吃掉 58px，导致中栏底边比左右两栏高出一截（灰色块只挂在中间）。
+  5. 点「切换：目标语法」：三栏共用一套行语法（44px 头部 / 24px 内边距 / 底部固定条），
+     参考线全部重合；分页移到滚动区外的固定底条；预览盒改为撑满该栏。
+
+  ============================================================================
+  另可复核
+  ============================================================================
+  同目录 measure_screenshot.py 可对真实截图重算报告里的每个数字。
+  ============================================================================
+-->
+<style>
+  :root {
+    /* 与 src/styles/globals.css 亮色主题一致 */
+    --card: #FFFFFF;
+    --muted: #F0F0F0;
+    --muted-foreground: #999999;
+    --border: #E0E0E0;
+    --foreground: #333333;
+    --primary: #0C8CE9;
+    --primary-foreground: #FFFFFF;
+    --radius: 6px;
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #BABABA; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--foreground); }
+  body { display: flex; justify-content: center; padding: 0 0 24px; }
+  .stage { position: relative; width: 1288px; }
+
+  .toolbar { display: flex; gap: 16px; align-items: center; padding: 8px 6px; font-size: 13px; color: #222; background: #C9C9C9; }
+  .toolbar label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .toolbar button { font: inherit; padding: 4px 10px; border: 1px solid #888; background: #f4f4f4; border-radius: 4px; cursor: pointer; }
+
+  /* 弹窗外框：VideoSearchModal.tsx:315-316 —— fixed inset-0 + w-full max-w-7xl(1280) + h-5/6 + overflow-hidden */
+  .modal {
+    position: relative; width: 1280px; height: 1007px; margin: 0 auto;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* 头部：318 —— px-6 py-4 + 两行文字 → 80px */
+  .m-head { background: var(--muted); border-bottom: 1px solid var(--border); padding: var(--space-4) var(--space-6); display: flex; align-items: center; justify-content: space-between; flex: none; }
+  .m-head h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+  .m-head p { margin: 0; font-size: 14px; line-height: 20px; color: var(--muted-foreground); }
+
+  /* 视频库页签：341 —— px-6 py-3 + p-1 + py-2 → 68px */
+  .m-tabs { background: var(--card); border-bottom: 1px solid var(--border); padding: var(--space-3) var(--space-6); flex: none; }
+  .m-tabs .track { background: var(--muted); border-radius: var(--radius); padding: var(--space-1); display: flex; }
+  .m-tabs .track > div { flex: 1; text-align: center; padding: var(--space-2) var(--space-4); font-size: 14px; line-height: 20px; border-radius: var(--radius); }
+  .m-tabs .active { background: var(--card); color: var(--primary); font-weight: 500; }
+  .m-tabs .idle { color: var(--muted-foreground); }
+
+  /* 搜索控制行：367-488 —— px-6 py-4 + 输入框 py-3 → 76px */
+  .m-search { background: var(--card); border-bottom: 1px solid var(--border); padding: var(--space-4) var(--space-6); flex: none; display: flex; align-items: center; gap: var(--space-4); }
+  .m-search .field { flex: 1; background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3) var(--space-4); font-size: 14px; line-height: 20px; color: var(--muted-foreground); }
+  .m-search .orient { display: flex; align-items: center; gap: var(--space-3); font-size: 14px; }
+  .m-search select { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); font: inherit; color: var(--foreground); }
+  .m-search .go { background: var(--primary); color: var(--primary-foreground); border: 0; border-radius: var(--radius); padding: var(--space-3) var(--space-6); font: inherit; font-weight: 500; opacity: .5; }
+
+  /* 三栏主体：491 —— flex-1 flex overflow-hidden */
+  .m-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+  .pane { width: 33.3333%; display: flex; flex-direction: column; background: var(--card); }
+  .pane + .pane { border-left: 1px solid var(--border); }
+
+  /* 栏头：494 / 665 / 907（前两栏 px-4，右栏 px-6 —— 内边距不成体系） */
+  .p-head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); background: var(--muted); flex: none; display: flex; align-items: center; justify-content: space-between; }
+  .p-head h4 { margin: 0; font-size: 16px; line-height: 20px; font-weight: 500; }
+  .p-head.right { padding: var(--space-3) var(--space-6); }
+  .p-head .badge { font-size: 12px; line-height: 18px; padding: 2px 8px; border-radius: 999px; background: rgba(12,140,233,.1); color: var(--primary); }
+
+  /* 左栏：视频标题栏 501 —— px-4 py-3 + 两行 → 64px */
+  .p-title { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); background: var(--muted); flex: none; }
+  .p-title h5 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 500; }
+  .p-title span { display: block; margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+
+  /* 左栏预览滚动区：513 —— flex-1 p-4 max-h-96(384px) overflow-y-auto */
+  .p-preview { flex: 1; min-height: 0; padding: var(--space-4); max-height: 384px; overflow-y: auto; }
+  /* 媒体盒：514 —— w-full h-full min-h-[200px] max-h-[320px] bg-muted overflow-hidden flex */
+  .media-box { width: 100%; min-height: 200px; max-height: 320px; height: 320px; background: var(--muted); border-radius: var(--radius); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .media { width: 100%; height: 203px; background: linear-gradient(135deg, #2b3442, #4b3a52 60%, #7a5a48); display: flex; align-items: center; justify-content: center; color: #ffffffcc; font-size: 12px; }
+
+  /* 中栏统计栏：671 —— px-4 py-3 → 44px（结果出现时才渲染，会让整栏下移 44px） */
+  .p-stats { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); background: var(--muted); flex: none; display: flex; align-items: center; justify-content: space-between; font-size: 14px; line-height: 20px; color: var(--muted-foreground); }
+  .p-stats b { color: var(--primary); }
+
+  /* 中栏列表：684 —— flex-1 overflow-y-auto（分页条在它内部！846-899） */
+  .p-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+  .cards { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+  .card { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+  .card .thumb { width: 64px; height: 48px; flex: none; border-radius: var(--radius); background: linear-gradient(135deg, #3a4a5a, #6b5a4a); }
+  .card .meta { flex: 1; min-width: 0; }
+  .card .meta i { display: block; font-style: normal; font-size: 14px; line-height: 18px; font-weight: 500; }
+  .card .meta u { display: block; text-decoration: none; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+  .card button { flex: none; font: inherit; font-size: 12px; padding: 6px 12px; border-radius: var(--radius); border: 1px solid rgba(12,140,233,.2); background: rgba(12,140,233,.1); color: var(--primary); }
+
+  /* 分页：846-899 —— px-4 py-3 → 58px，但它在 .p-list 里面 */
+  .pager { margin-top: auto; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); background: var(--muted); display: flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; }
+  .pager button { font: inherit; font-size: 14px; padding: 6px 12px; border: 1px solid var(--border); background: var(--card); border-radius: var(--radius); }
+  .pager .on { width: 32px; height: 32px; padding: 0; background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .pager .num { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; }
+
+  /* 右栏：904-905 —— bg-muted 外套 + bg-card h-full；列表 921 + p-3 */
+  .p-selected { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+  .sel { display: flex; gap: var(--space-3); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); }
+  .sel .thumb { width: 64px; height: 40px; flex: none; border-radius: var(--radius); background: linear-gradient(135deg, #3a4a5a, #6b5a4a); }
+  .sel .meta { flex: 1; min-width: 0; font-size: 12px; line-height: 16px; }
+
+  /* 底部操作栏：988 —— px-6 py-4 + 按钮 40 → 74px */
+  .m-foot { flex: none; border-top: 1px solid var(--border); background: var(--muted); padding: var(--space-4) var(--space-6); display: flex; justify-content: flex-end; gap: var(--space-3); }
+  .m-foot button { font: inherit; font-size: 14px; font-weight: 500; padding: 10px 24px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--card); }
+  .m-foot .primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+
+  /* ---------------- 参考线（诊断用） ---------------- */
+  .guides { position: absolute; inset: 0; pointer-events: none; display: none; }
+  body.guides .guides { display: block; }
+  .guides .h { position: absolute; left: 0; right: 0; border-top: 1px dashed #E5484D; font-size: 10px; color: #E5484D; }
+  .guides .h span { position: absolute; right: 4px; top: -12px; background: #fff; padding: 0 4px; }
+  .guides .v { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(12,140,233,.75); }
+
+  /* ==========================================================================
+     目标语法（示意）：三栏共用一套行高与内边距，参考线重合
+     ========================================================================== */
+  body.target .pane { background: var(--card); }
+  body.target .p-head,
+  body.target .p-head.right { padding: 0 var(--space-6); height: 44px; display: flex; align-items: center; }
+  body.target .p-head h4 { font-size: 14px; }
+  body.target .pane { display: flex; flex-direction: column; min-height: 0; }
+  /* 统计信息降级为栏头里的 chip，不再独占一行 */
+  body.target .p-stats { display: none; }
+  body.target .p-head .chip { font-size: 12px; color: var(--muted-foreground); }
+  /* 三栏底部都有一条等高的固定条，滚动视口底边因此对齐 */
+  body.target .pane::after {
+    content: ""; display: block; flex: none; height: 0;
+  }
+  body.target .pane-footer {
+    display: flex !important;
+  }
+  body.target .p-list,
+  body.target .p-selected { padding: var(--space-3) var(--space-6); }
+  body.target .cards { padding: 0; }
+  /* 分页移出滚动容器：固定在栏底 */
+  body.target .pager { display: none; }
+  /* 预览撑满整栏：去掉 max-height 链 */
+  body.target .p-preview { max-height: none; padding: var(--space-4) var(--space-6); display: flex; }
+  body.target .media-box { height: 100%; max-height: none; min-height: 0; background: transparent; align-items: stretch; }
+  body.target .media { height: 100%; border-radius: var(--radius); }
+  /* 预览标题不再独占一行：降级进该栏的固定底条，三栏正文起点才能真正对齐 */
+  body.target .p-title { display: none; }
+
+  .pane-footer { display: none; flex: none; height: 52px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 var(--space-6); border-top: 1px solid var(--border); background: var(--muted); font-size: 12px; color: var(--muted-foreground); }
+  .pane-footer .mini { font: inherit; font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); background: var(--card); border-radius: var(--radius); }
+  .pane-footer .mini.on { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+</style>
+</head>
+<body class="guides">
+<div class="stage">
+  <div class="toolbar">
+    <button id="mode">切换：目标语法</button>
+    <label><input type="checkbox" id="guide" checked> 对齐参考线</label>
+    <span id="hint">现状：三栏正文起点 337 / 317 / 278，左栏预览盒封顶 320px，分页在滚动区内</span>
+  </div>
+
+  <div class="modal">
+    <!-- 318: 头部 -->
+    <div class="m-head">
+      <div>
+        <h2>搜索在线视频</h2>
+        <p>发现高质量的免费视频素材</p>
+      </div>
+      <div style="width:32px;height:32px;border-radius:6px;background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--muted-foreground)">×</div>
+    </div>
+
+    <!-- 341: 页签 -->
+    <div class="m-tabs">
+      <div class="track">
+        <div class="active">官方视频库</div>
+        <div class="idle">Youtube视频库</div>
+      </div>
+    </div>
+
+    <!-- 367: 搜索控制行 -->
+    <div class="m-search">
+      <div class="field">data center servers computer code on screen artificial intelligence</div>
+      <div class="orient"><span>方向:</span><select><option>横屏</option></select></div>
+      <button class="go">搜索</button>
+    </div>
+
+    <!-- 491: 三栏主体 -->
+    <div class="m-body">
+
+      <!-- ============ 左栏 ============ -->
+      <div class="pane" data-pane="left">
+        <div class="p-head"><h4>视频预览</h4><span class="chip"></span></div>
+
+        <!-- 501: 视频标题栏（44+20=64px，只有左栏有） -->
+        <div class="p-title">
+          <h5>Video by João Adão</h5>
+          <span>作者: João Adão</span>
+        </div>
+
+        <!-- 513: 预览滚动区（max-h-96） -->
+        <div class="p-preview">
+          <!-- 514: 媒体盒（min 200 / max 320，与栏高无关） -->
+          <div class="media-box"><div class="media">1280 × 720 预览画面</div></div>
+        </div>
+
+        <div class="pane-footer"><span>Video by João Adão · 1280 × 720 · 0:09</span><button class="mini">预览中</button></div>
+      </div>
+
+      <!-- ============ 中栏 ============ -->
+      <div class="pane" data-pane="mid">
+        <div class="p-head"><h4>搜索结果</h4><span class="chip">找到 60 个 · 已选 1</span></div>
+
+        <!-- 671: 统计栏（仅结果存在时渲染 → 同栏下移 44px） -->
+        <div class="p-stats"><span>找到 <b>60</b> 个视频，已选择 <b>1</b></span><span>1 / 3</span></div>
+
+        <!-- 684: 列表滚动区（分页条在内部） -->
+        <div class="p-list">
+          <div class="cards">
+            <div class="card"><div class="thumb"></div><div class="meta"><i>Video by João Adão</i><u>1280 × 720 · 0:09</u></div><button>+ 添加合成</button></div>
+            <div class="card"><div class="thumb"></div><div class="meta"><i>Video by Michael Lamberti</i><u>1920 × 1080 · 0:14</u></div><button>+ 添加合成</button></div>
+            <div class="card"><div class="thumb"></div><div class="meta"><i>Video by Pressmaster</i><u>1920 × 1080 · 0:21</u></div><button>+ 添加合成</button></div>
+            <div class="card"><div class="thumb"></div><div class="meta"><i>Video by Roma Khan</i><u>1080 × 1920 · 0:07</u></div><button>+ 添加合成</button></div>
+          </div>
+          <!-- 提示：真实场景每页 20 条（useVideoSearch.ts:91 pageSize=20）时，这条分页会被推到
+               折叠线以下，必须先把列表滚到底才能翻页——这正是“分页放在滚动容器内”的后果。
+               这里放 4 条，是为了让分页停在滚动盒底部，和用户截图里的状态一致。 -->
+          <!-- 846-899: 分页（在 .p-list 内部 → 跟着滚动、吃掉列表视口） -->
+          <div class="pager">
+            <button>上一页</button><button class="on">1</button><button class="num">2</button><button class="num">3</button><button>下一页</button>
+          </div>
+        </div>
+
+        <div class="pane-footer"><button class="mini">上一页</button><span>第 1 / 3 页</span><button class="mini on">下一页</button></div>
+      </div>
+
+      <!-- ============ 右栏 ============ -->
+      <div class="pane" data-pane="right">
+        <!-- 907: 右栏头部用 px-6（与左/中栏的 px-4 不同体系） -->
+        <div class="p-head right"><h4>已选择的视频</h4><span class="badge">1 个</span></div>
+
+        <!-- 921: 已选列表（p-3，比头部的 24px 内边距少 12px → 卡片与标题不对齐） -->
+        <div class="p-selected">
+          <div class="sel"><div class="thumb"></div><div class="meta"><div>Video by João Adão</div><div style="color:var(--muted-foreground)">1280 × 720 · 0:09</div></div></div>
+        </div>
+
+        <div class="pane-footer"><span>已选 1 个 · 共 0:09</span><button class="mini">清空</button></div>
+      </div>
+    </div>
+
+    <!-- 988: 底部操作栏 -->
+    <div class="m-foot">
+      <button>重新选择</button>
+      <button class="primary">+ 确认添加 (1)</button>
+    </div>
+
+    <!-- 诊断参考线：数值 = 真实截图实测（见 measure_screenshot.py） -->
+    <div class="guides">
+      <!-- 弹窗内坐标：y 值相对 .modal 顶边 -->
+      <div class="h" style="top:337px"><span>左栏正文起点 337</span></div>
+      <div class="h" style="top:317px"><span>中栏正文起点 317</span></div>
+      <div class="h" style="top:278px"><span>右栏正文起点 278</span></div>
+      <div class="h" style="top:672px"><span>左栏预览盒下沿 672（以下 244px 永久空白）</span></div>
+      <div class="h" style="top:932px"><span>中栏滚动区底边 932（被 58px 分页条占掉）</span></div>
+      <div class="v" style="left:22px"></div>
+      <div class="v" style="left:448px"></div>
+      <div class="v" style="left:881px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 供 measure_screenshot.py 用：?noguides=1 关掉参考线再拍照，避免 1px 虚线干扰色带测量
+  if (location.search.includes('noguides')) document.body.classList.remove('guides');
+  // ?target=1 直接进入「目标语法」，方便无头浏览器一次拍出两态对比图
+  if (location.search.includes('target')) document.body.classList.add('target');
+
+  const modeBtn = document.getElementById('mode');
+  const guide = document.getElementById('guide');
+  const hint = document.getElementById('hint');
+  modeBtn.addEventListener('click', () => {
+    const target = document.body.classList.toggle('target');
+    modeBtn.textContent = target ? '切换：现状（HEAD）' : '切换：目标语法';
+    hint.textContent = target
+      ? '目标：三栏行语法统一（44px 头部 / 24px 内边距 / 底部固定条），分页移出滚动区，预览盒撑满整栏'
+      : '现状：三栏正文起点 337 / 317 / 278，左栏预览盒封顶 320px，分页在滚动区内';
+  });
+  guide.addEventListener('change', () => document.body.classList.toggle('guides', guide.checked));
+</script>
+</body>
+</html>
