@@ -425,4 +425,73 @@ describe('useRemoteMaterialPrefetch', () => {
     unmount();
     expect(aborted).toEqual([true]);
   });
+
+  // Fix A — docs/diagnoses/youtube-desktop-add-material-download-failed.
+  // YouTube media is localised by the dedicated yt-dlp → storage pipeline. The
+  // generic cache pipeline hands the url to `ffmpeg -i`, which has no YouTube
+  // extractor: it always fails and writes a permanent `failed` row that paints
+  // the card's red cache badge and persists the raw stderr into project_data.
+  it('never hands a YouTube watch page to the generic cache pipeline', () => {
+    const adapter = makeAdapter({
+      source: 'url',
+      source_id: '73b0fcdb',
+      material_id: '',
+      status: 'failed',
+    });
+    const spy = vi.spyOn(adapter, 'pollUntilReady');
+    const onPatch = vi.fn();
+    renderHook(() =>
+      useRemoteMaterialPrefetch(
+        [makeMaterial({
+          id: 'youtube-Rsh8TmczwrM',
+          url: 'https://www.youtube.com/watch?v=Rsh8TmczwrM',
+          downloadStatus: 'downloading',
+          metadata: { source: 'youtube', youtubeId: 'Rsh8TmczwrM' },
+        })],
+        onPatch,
+        { adapter },
+      ),
+    );
+    expect(spy).not.toHaveBeenCalled();
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps blocking YouTube materials after a download error (url still the watch page)', () => {
+    const adapter = makeAdapter({
+      source: 'url',
+      source_id: 'hashed',
+      material_id: '',
+      status: 'failed',
+    });
+    const spy = vi.spyOn(adapter, 'pollUntilReady');
+    const onPatch = vi.fn();
+    renderHook(() =>
+      useRemoteMaterialPrefetch(
+        [makeMaterial({
+          id: 'youtube-Rsh8TmczwrM',
+          url: 'https://www.youtube.com/watch?v=Rsh8TmczwrM',
+          downloadStatus: 'error',
+          downloadError: 'HTTP 500: yt-dlp failed',
+          metadata: { isYoutubeVideo: true },
+        })],
+        onPatch,
+        { adapter },
+      ),
+    );
+    expect(spy).not.toHaveBeenCalled();
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('still prefetches non-YouTube remote sources (guard not written too wide)', async () => {
+    const adapter = makeAdapter({
+      source: 'pexels',
+      source_id: '12345',
+      material_id: '',
+      status: 'pending',
+    });
+    const spy = vi.spyOn(adapter, 'pollUntilReady');
+    const onPatch = vi.fn();
+    renderHook(() => useRemoteMaterialPrefetch([makeMaterial()], onPatch, { adapter }));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+  });
 });

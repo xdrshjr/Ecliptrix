@@ -1,0 +1,19 @@
+﻿== target URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+== running: ffmpeg -y -i <url> -c copy <tempfile>
+
+== ffmpeg exit code: -1094995529  (non-zero => _download_to_path records a failure)
+== output file created: False
+
+== last 300 chars of stderr (= cached_materials.error_message) ==========
+     9.  0.100 /  9.  0.100
+  libswresample   6.  0.100 /  6.  0.100
+[in#0 @ 0000020c7fb28700] Error opening input: Invalid data found when processing input
+Error opening input file https://www.youtube.com/watch?v=Rsh8TmczwrM.
+Error opening input files: Invalid data found when processing input
+
+========================================================================
+
+RESULT: ffmpeg cannot treat a YouTube watch page as media input.
+        When this command is triggered by POST /api/material/ingest, the
+        cached_materials row is permanently written as status='failed' and
+        the material card shows the stderr above as a cache error.

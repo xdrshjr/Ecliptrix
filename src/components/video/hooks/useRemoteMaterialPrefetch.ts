@@ -247,6 +247,33 @@ function keyFor(material: MaterialItem): RemoteMaterialKey {
   return { source, source_id, url };
 }
 
+/**
+ * A source whose media is localised by a **dedicated extractor**: YouTube,
+ * where `yt-dlp` fetches and normalises the file and storage hosts it. The
+ * generic `cached_materials` pipeline fetches with `ffmpeg -i <url> -c copy`,
+ * which has no YouTube extractor, so a watch-page URL can only ever produce a
+ * permanent `failed` row (plus an ffmpeg stderr in `project_data`).
+ *
+ * Invariant: this guard belongs to `shouldPrefetch` alone. Do NOT lift it into
+ * a shared helper or `_previewProxyEligible` — YouTube assets larger than
+ * 50 MB still need the 480p preview-proxy branch once their url is the
+ * same-origin storage file.
+ * See docs/diagnoses/youtube-desktop-add-material-download-failed/analysis.md.
+ */
+function needsDedicatedExtractor(material: MaterialItem): boolean {
+  const meta = (material.metadata ?? {}) as Record<string, unknown>;
+  const hasText = (value: unknown): boolean =>
+    typeof value === 'string' && value.length > 0;
+  if (typeof meta.source === 'string'
+    && meta.source.toLowerCase() === 'youtube') return true;
+  if (meta.isYoutubeVideo === true) return true;
+  if (hasText(meta.youtubeId) || hasText(meta.youtubeUrl)) return true;
+  // `useVideoSearch.handleAddSelectedYoutubeVideos` stamps the watch URL on the
+  // item itself, and it survives the download-error path where `url` still is
+  // that watch page.
+  return hasText(material.youtubeUrl);
+}
+
 function shouldPrefetch(material: MaterialItem, isRemote: (u: string) => boolean): boolean {
   if (canPreviewDirectLocalMaterial(material)) return false;
   // Rendering routed candidates must never create paid gateway assets.
@@ -255,6 +282,11 @@ function shouldPrefetch(material: MaterialItem, isRemote: (u: string) => boolean
     && material.metadata?.downloadMode !== 'manual') return false;
   if (material.type !== 'video' && material.type !== 'audio') return false;
   if (!material.url) return false;
+  // Dedicated-extractor sources (YouTube) never enter the generic cache
+  // pipeline — `ffmpeg -i <watch page>` can only produce a permanent failure.
+  // Metadata-based on purpose: after a download error `url` is still the watch
+  // page, so a `downloadStatus`-based guard would not survive it.
+  if (needsDedicatedExtractor(material)) return false;
   // Already finished / in-flight on a previous render — skip.
   if (material.cacheStatus === 'ready' && material.cacheUrl) return false;
   if (material.cacheStatus === 'downloading' || material.cacheStatus === 'pending') {

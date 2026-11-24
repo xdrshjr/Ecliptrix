@@ -1,0 +1,79 @@
+2026-11-24 02:48:40 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: GET http://127.0.0.1:18321/api/youtube/preview/stream?video_id=Rsh8TmczwrM&session=d1c3ef87279647c79245d3adadd3eb02
+2026-11-24 02:48:41 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 206 - 0.897s
+2026-11-24 02:48:47 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: POST http://127.0.0.1:18321/api/youtube/download-and-upload
+2026-11-24 02:48:47 - [32mapp.routers.youtube_router[0m - [32mINFO[0m - download_and_upload_youtube_video:312 - YouTube视频下载并上传请求 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 任务ID: task-1790169051088-3sao0c82f
+2026-11-24 02:48:47 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:709 - YouTube视频下载请求 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 并发控制状态: 可用槽位=20, 等待队列=0
+2026-11-24 02:48:47 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:715 - 🚀 获得下载槽位 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 当前并发数: 1/20, 剩余槽位: 19
+2026-11-24 02:48:47 - [32mapp.services.youtube_service[0m - [32mINFO[0m - retry_with_exponential_backoff:88 - 执行尝试 1/4
+2026-11-24 02:48:47 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:767 - 开始内部下载流程 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:48:47 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:779 - 步骤1: 开始下载YouTube视频 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:48:47 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: DELETE http://127.0.0.1:18321/api/youtube/preview/prepare?session=d1c3ef87279647c79245d3adadd3eb02
+2026-11-24 02:48:47 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 204 - 0.001s
+2026-11-24 02:48:47 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: POST http://127.0.0.1:18321/api/material/ingest
+2026-11-24 02:48:47 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.018s
+2026-11-24 02:48:47 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: PUT http://127.0.0.1:18321/api/video-projects/4b0c81dc-d16d-4d80-99cc-be216140acb6
+2026-11-24 02:48:47 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.017s
+2026-11-24 02:48:48 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: GET http://127.0.0.1:18321/api/material/lookup?source=url&source_id=73b0fcdb&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DRsh8TmczwrM
+2026-11-24 02:48:48 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.014s
+2026-11-24 02:48:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: PUT http://127.0.0.1:18321/api/video-projects/4b0c81dc-d16d-4d80-99cc-be216140acb6
+2026-11-24 02:48:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.015s
+2026-11-24 02:48:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: GET http://127.0.0.1:18321/api/material/lookup?source=url&source_id=73b0fcdb&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DRsh8TmczwrM
+2026-11-24 02:48:49 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.003s
+2026-11-24 02:48:51 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: GET http://127.0.0.1:18321/api/material/lookup?source=url&source_id=73b0fcdb&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DRsh8TmczwrM
+2026-11-24 02:48:51 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.004s
+2026-11-24 02:48:54 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: GET http://127.0.0.1:18321/api/material/lookup?source=url&source_id=73b0fcdb&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DRsh8TmczwrM
+2026-11-24 02:48:54 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.007s
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:782 - 步骤1: 视频下载完成，耗时: 10.14秒
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:794 - YouTube视频下载成功: C:\Users\<user>\AppData\Roaming\ecliptrix-desktop\youtube-runtime\downloads\2014dbca297e48a78fbbdecff8363e69\media.mp4, 文件大小: 2552552 bytes
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:799 - 步骤2: 开始获取视频元数据 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:843 - 成功获取视频元数据 - 时长: 25.008s, 分辨率: 1280x720
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:854 - 步骤2: 视频元数据获取完成，耗时: 0.03秒
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:858 - 步骤3: 开始上传视频到存储服务 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:48:57 - [32mapp.services.storage_service[0m - [32mINFO[0m - upload_file:451 - File uploaded successfully
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:888 - 步骤3: 视频成功上传到存储服务，耗时: 0.01秒, URL: /api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:896 - 步骤4: 开始生成并上传缩略图 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:48:57 - [33mapp.services.material_download_service[0m - [33mWARNING[0m - _do_download:823 - Cached material download failed: source=url id=73b0fcdb err=cale      9.  5.101 /  9.  5.101
+2026-11-24 02:48:57 - [33mapp.services.youtube_service[0m - [33mWARNING[0m - _download_and_upload_internal:933 - 缩略图上传失败: File type 'image/jpeg' is not allowed for folder 'video'
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:952 - 已清理任务下载目录: C:\Users\<user>\AppData\Roaming\ecliptrix-desktop\youtube-runtime\downloads\2014dbca297e48a78fbbdecff8363e69
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:956 - 已清理临时缩略图文件: C:\Users\<user>\AppData\Roaming\ecliptrix-desktop\temp\tmptxwxe1yz.jpg
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:963 - YouTube视频下载并上传完成 - 总耗时: 10.56秒, 文件大小: 2552552 bytes, 分辨率: 1280x720, 时长: 25.008s
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:731 - YouTube视频下载并上传成功 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 视频URL: /api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4
+2026-11-24 02:48:57 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:745 - 🔓 释放下载槽位 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 释放后可用槽位: 20
+2026-11-24 02:48:57 - [32mapp.routers.youtube_router[0m - [32mINFO[0m - download_and_upload_youtube_video:335 - YouTube视频下载并上传完成 - 成功: True
+2026-11-24 02:48:57 - [32mapp.routers.youtube_router[0m - [32mINFO[0m - download_and_upload_youtube_video:341 - 成功下载并上传YouTube视频 - URL: /api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4
+2026-11-24 02:48:57 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 10.561s
+2026-11-24 02:48:58 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: PUT http://127.0.0.1:18321/api/video-projects/4b0c81dc-d16d-4d80-99cc-be216140acb6
+2026-11-24 02:48:58 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.012s
+2026-11-24 02:48:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: GET http://127.0.0.1:18321/api/material/lookup?source=url&source_id=73b0fcdb&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DRsh8TmczwrM
+2026-11-24 02:48:59 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.005s
+2026-11-24 02:49:00 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: PUT http://127.0.0.1:18321/api/video-projects/4b0c81dc-d16d-4d80-99cc-be216140acb6
+2026-11-24 02:49:00 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.014s
+2026-11-24 02:49:02 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: POST http://127.0.0.1:18321/api/youtube/download-and-upload
+2026-11-24 02:49:02 - [32mapp.routers.youtube_router[0m - [32mINFO[0m - download_and_upload_youtube_video:312 - YouTube视频下载并上传请求 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 任务ID: task-1790169051088-3sao0c82f
+2026-11-24 02:49:02 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:709 - YouTube视频下载请求 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 并发控制状态: 可用槽位=20, 等待队列=0
+2026-11-24 02:49:02 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:715 - 🚀 获得下载槽位 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 当前并发数: 1/20, 剩余槽位: 19
+2026-11-24 02:49:02 - [32mapp.services.youtube_service[0m - [32mINFO[0m - retry_with_exponential_backoff:88 - 执行尝试 1/4
+2026-11-24 02:49:02 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:767 - 开始内部下载流程 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:49:02 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:779 - 步骤1: 开始下载YouTube视频 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:49:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: PUT http://127.0.0.1:18321/api/video-projects/4b0c81dc-d16d-4d80-99cc-be216140acb6
+2026-11-24 02:49:03 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.018s
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:782 - 步骤1: 视频下载完成，耗时: 10.56秒
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:794 - YouTube视频下载成功: C:\Users\<user>\AppData\Roaming\ecliptrix-desktop\youtube-runtime\downloads\c832baccc33d4a45966098ab00393293\media.mp4, 文件大小: 2552552 bytes
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:799 - 步骤2: 开始获取视频元数据 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:843 - 成功获取视频元数据 - 时长: 25.008s, 分辨率: 1280x720
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:854 - 步骤2: 视频元数据获取完成，耗时: 0.04秒
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:858 - 步骤3: 开始上传视频到存储服务 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:49:12 - [32mapp.services.storage_service[0m - [32mINFO[0m - upload_file:451 - File uploaded successfully
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:888 - 步骤3: 视频成功上传到存储服务，耗时: 0.01秒, URL: /api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4
+2026-11-24 02:49:12 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:896 - 步骤4: 开始生成并上传缩略图 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM
+2026-11-24 02:49:13 - [33mapp.services.youtube_service[0m - [33mWARNING[0m - _download_and_upload_internal:933 - 缩略图上传失败: File type 'image/jpeg' is not allowed for folder 'video'
+2026-11-24 02:49:13 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:952 - 已清理任务下载目录: C:\Users\<user>\AppData\Roaming\ecliptrix-desktop\youtube-runtime\downloads\c832baccc33d4a45966098ab00393293
+2026-11-24 02:49:13 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:956 - 已清理临时缩略图文件: C:\Users\<user>\AppData\Roaming\ecliptrix-desktop\temp\tmpyrabib36.jpg
+2026-11-24 02:49:13 - [32mapp.services.youtube_service[0m - [32mINFO[0m - _download_and_upload_internal:963 - YouTube视频下载并上传完成 - 总耗时: 11.03秒, 文件大小: 2552552 bytes, 分辨率: 1280x720, 时长: 25.008s
+2026-11-24 02:49:13 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:731 - YouTube视频下载并上传成功 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 视频URL: /api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4
+2026-11-24 02:49:13 - [32mapp.services.youtube_service[0m - [32mINFO[0m - download_and_upload_video:745 - 🔓 释放下载槽位 - URL: https://www.youtube.com/watch?v=Rsh8TmczwrM, 释放后可用槽位: 20
+2026-11-24 02:49:13 - [32mapp.routers.youtube_router[0m - [32mINFO[0m - download_and_upload_youtube_video:335 - YouTube视频下载并上传完成 - 成功: True
+2026-11-24 02:49:13 - [32mapp.routers.youtube_router[0m - [32mINFO[0m - download_and_upload_youtube_video:341 - 成功下载并上传YouTube视频 - URL: /api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4
+2026-11-24 02:49:13 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 11.033s
+2026-11-24 02:49:13 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:361 - Request: PUT http://127.0.0.1:18321/api/video-projects/4b0c81dc-d16d-4d80-99cc-be216140acb6
+2026-11-24 02:49:13 - [32mapp.main[0m - [32mINFO[0m - logging_middleware:372 - Response: 200 - 0.016s

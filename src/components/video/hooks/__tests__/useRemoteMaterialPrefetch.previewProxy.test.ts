@@ -396,4 +396,42 @@ describe('useRemoteMaterialPrefetch — preview-proxy branch', () => {
   // S4: the v2-flag-gated `preloadSequenceWindow` canvas-cache window prefetch
   // was removed with v1 (the compositor's VideoSourcePool owns A/B prewarm),
   // so the corresponding test was dropped here.
+
+  // Fix A blocks YouTube materials from the GENERIC CACHE pipeline inside
+  // `shouldPrefetch` only. The 480p preview-proxy branch is a separate
+  // judgement and must keep firing for them, otherwise a large YouTube
+  // download silently loses its proxy (analysis §7.5).
+  it('still proxies a large YouTube asset once its url is the storage file', async () => {
+    const onPatchCache = vi.fn();
+    const onPatchPP = vi.fn();
+    const requestSpy = vi.spyOn(client, 'requestPreviewProxy');
+    const id = 'youtube-Rsh8TmczwrM';
+    const { rerender } = renderHook(
+      ({ refs }: { refs: Set<string> }) =>
+        useRemoteMaterialPrefetch(
+          [
+            makeMaterial({
+              id,
+              bytes: 100 * 1024 * 1024,
+              youtubeUrl: 'https://www.youtube.com/watch?v=Rsh8TmczwrM',
+              metadata: { source: 'youtube', youtubeId: 'Rsh8TmczwrM' },
+            }),
+          ],
+          onPatchCache,
+          {
+            mediaProxyClient: client,
+            onPatchPreviewProxy: onPatchPP,
+            timelineReferencedMaterialIds: refs,
+          },
+        ),
+      { initialProps: { refs: new Set<string>() } },
+    );
+    rerender({ refs: new Set<string>([id]) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(requestSpy).toHaveBeenCalledWith(id, {
+      sourceUrl: '/api/storage/files/video/v.mp4',
+    });
+    // Same material, other branch: the cache pipeline stays out of it.
+    expect(onPatchCache).not.toHaveBeenCalled();
+  });
 });

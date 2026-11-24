@@ -1,0 +1,25 @@
+id | source | source_id | status | file_size | created_at | source_url
+----------------------------------------------------------------------------------------------------
+8b2612f948764a4dbf1e40c5166657bc | url | 73b0fcdb | failed | None | 2026-11-24 07:48:47 | https://www.youtube.com/watch?v=Rsh8TmczwrM
+  error_message:
+    cale      9.  5.101 /  9.  5.101
+      libswresample   6.  3.101 /  6.  3.101
+    [in#0 @ 0000022857044340] Error opening input: Invalid data found when processing input
+    Error opening input file https://www.youtube.com/watch?v=Rsh8TmczwrM.
+    Error opening input files: Invalid data found when processing input
+
+d1fd567ecbe545fa8a19f5024f5406ba | url | e2643bae | failed | None | 2026-11-20 11:39:29 | https://www.youtube.com/watch?v=FfHDxu0SRao
+  error_message:
+    cale      9.  5.101 /  9.  5.101
+      libswresample   6.  3.101 /  6.  3.101
+    [in#0 @ 000001d0c3a844c0] Error opening input: Invalid data found when processing input
+    Error opening input file https://www.youtube.com/watch?v=FfHDxu0SRao.
+    Error opening input files: Invalid data found when processing input
+
+bad9c26c07014cabaf900606d34c5143 | url | c4a29188 | failed | None | 2026-07-02 14:20:36 | https://www.youtube.com/watch?v=g35UG6VTDbU
+  error_message:
+    cale      9.  5.101 /  9.  5.101
+      libswresample   6.  3.101 /  6.  3.101
+    [in#0 @ 0000021e3efb6940] Error opening input: Invalid data found when processing input
+    Error opening input file https://www.youtube.com/watch?v=g35UG6VTDbU.
+    Error opening input files: Invalid data found when processing input

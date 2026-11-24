@@ -5,12 +5,20 @@ import type { MaterialItem } from '@/types';
 
 const mocks = vi.hoisted(() => ({
   searchVideos: vi.fn(), convertToMaterials: vi.fn(), materializeVideo: vi.fn(), showError: vi.fn(),
+  post: vi.fn(),
 }));
 vi.mock('../../services', () => ({ createVideoSearchService: () => mocks, createYoutubeVideoSearchService: () => ({}) }));
 vi.mock('../../utils', () => ({ VideoEditingLogger: class {
   debug() {} info() {} warn() {} error() {} userAction() {}
 } }));
 vi.mock('@/lib/api/config', () => ({ getMaxConcurrentDownloads: async () => 3 }));
+vi.mock('@/lib/api/http-client', () => ({
+  http: { post: mocks.post },
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(status: number, message: string) { super(message); this.status = status; }
+  },
+}));
 vi.mock('@/contexts/NotificationContext', () => ({ useNotification: () => ({ showError: mocks.showError }) }));
 vi.mock('@/contexts/LocaleContext', () => ({ useLocale: () => ({ t: { videoSearch: {
   selectVideoFirst: 'Select a video', networkError: 'Download failed', enterKeyword: 'Enter query',
@@ -84,5 +92,52 @@ describe('explicit video library selection', () => {
     expect(add).not.toHaveBeenCalled();
     expect(mocks.materializeVideo).toHaveBeenCalledTimes(1);
     expect(mocks.showError).toHaveBeenCalledWith('Gateway quota unavailable');
+  });
+});
+
+// Fix A — docs/diagnoses/youtube-desktop-add-material-download-failed.
+// YouTube media is localised by yt-dlp + storage; the generic cache pipeline
+// used to leave cacheStatus='failed' + the raw ffmpeg stderr on the material,
+// which then hydrated back into every reopened project.
+describe('YouTube download success backfill', () => {
+  it('clears a stale failed cache state and never invents a cacheUrl', async () => {
+    mocks.post.mockResolvedValue({
+      success: true,
+      video_url: '/api/storage/files/video/2026/11/24/user_anonymous/task-1/youtube_media.mp4',
+      thumbnail_url: null,
+      file_size: 2552552,
+      duration: 25.008,
+      width: 1280,
+      height: 720,
+    });
+    const add = vi.fn(() => true);
+    const { result } = renderHook(() => useVideoSearch('task-1', add));
+    const stale: MaterialItem = {
+      id: 'youtube-Rsh8TmczwrM',
+      name: 'data center servers',
+      type: 'video',
+      format: 'mp4',
+      size: 0,
+      url: 'https://www.youtube.com/watch?v=Rsh8TmczwrM',
+      youtubeUrl: 'https://www.youtube.com/watch?v=Rsh8TmczwrM',
+      createdAt: new Date(),
+      downloadStatus: 'error',
+      downloadError: 'HTTP 500: yt-dlp failed',
+      cacheStatus: 'failed',
+      cacheError: 'Error opening input file https://www.youtube.com/watch?v=Rsh8TmczwrM',
+      metadata: { source: 'youtube', youtubeId: 'Rsh8TmczwrM' },
+    };
+
+    await act(async () => { await result.current.retryVideoDownload(stale); });
+
+    const calls = add.mock.calls as unknown as Array<[MaterialItem[]]>;
+    const published = calls[calls.length - 1][0][0];
+    expect(published.downloadStatus).toBe('completed');
+    expect(published.url).toBe(
+      '/api/storage/files/video/2026/11/24/user_anonymous/task-1/youtube_media.mp4',
+    );
+    expect(published.cacheStatus).toBeUndefined();
+    expect(published.cacheError).toBeUndefined();
+    expect(published.cacheUrl).toBeUndefined();
   });
 });

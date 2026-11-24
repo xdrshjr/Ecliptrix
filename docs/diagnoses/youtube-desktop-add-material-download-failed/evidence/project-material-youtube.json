@@ -1,0 +1,50 @@
+[
+  {
+    "id": "youtube-Rsh8TmczwrM",
+    "name": "段落1 - ambient subatomic particle collisions 3d",
+    "type": "video",
+    "format": "mp4",
+    "size": 2552552,
+    "duration": 25.008,
+    "width": 1280,
+    "height": 720,
+    "thumbnailUrl": "",
+    "url": "/api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4",
+    "createdAt": "2026-11-24T07:48:47.254Z",
+    "tags": [
+      "YOUTUBE",
+      "在线素材",
+      "asamiile"
+    ],
+    "description": "段落1 \"解说段落 1\" - 来自Youtube的视频素材，频道：asamiile，观看次数：54",
+    "metadata": {
+      "source": "youtube",
+      "youtubeId": "Rsh8TmczwrM",
+      "originalUrl": "https://www.youtube.com/watch?v=Rsh8TmczwrM",
+      "channelTitle": "asamiile",
+      "viewCount": 54,
+      "storageUrl": "/api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4",
+      "thumbnailUrl": null,
+      "videoMetadata": {
+        "duration": 25.008,
+        "width": 1280,
+        "height": 720,
+        "fileSize": 2552552
+      },
+      "uploadTime": "2026-11-24T07:49:13.200Z",
+      "isYoutubeVideo": true,
+      "segment_id": "seg-35d7b881-8ac2-499a-89b4-461aa6c3ae64",
+      "segment_number": 1,
+      "segment_title": "解说段落 1",
+      "video_index_in_segment": 1,
+      "segment_assigned_at": 1795506537826
+    },
+    "downloadStatus": "completed",
+    "downloadProgress": 100,
+    "youtubeUrl": "https://www.youtube.com/watch?v=Rsh8TmczwrM",
+    "serverUrl": "/api/storage/files/video/2026/11/24/user_anonymous/task-1790169051088-3sao0c82f/youtube_media.mp4",
+    "cacheStatus": "failed",
+    "cacheError": "cale      9.  5.101 /  9.  5.101\n  libswresample   6.  3.101 /  6.  3.101\n[in#0 @ 0000022857044340] Error opening input: Invalid data found when processing input\nError opening input file https://www.youtube.com/watch?v=Rsh8TmczwrM.\nError opening input files: Invalid data found when processing input\n",
+    "previewProxyStatus": "absent"
+  }
+]

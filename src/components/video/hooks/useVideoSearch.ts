@@ -573,6 +573,15 @@ export const useVideoSearch = (
           ...material,
           downloadStatus: 'completed' as const,
           downloadProgress: 100,
+          // YouTube 素材的本地化只由专用管线（yt-dlp + storage）负责，通用缓存
+          // 管线对它永远是错配（详见
+          // docs/diagnoses/youtube-desktop-add-material-download-failed/analysis.md）：
+          // 下载成功即证明本地文件可用，因此在这里显式清掉可能已持久化的
+          // cacheStatus:'failed' / cacheError（project_data 会把 cacheError 原样存盘）。
+          // 刻意不写 cacheUrl —— 它只表示 cached_materials/ 下的共享缓存文件，
+          // 把 storage 路径塞进去会让 selectPlaybackUrl / 预览代理判据错配。
+          cacheStatus: undefined,
+          cacheError: undefined,
           url: result.video_url,
           serverUrl: result.video_url,
           size: result.file_size || material.size,
