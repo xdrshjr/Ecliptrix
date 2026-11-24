@@ -8,6 +8,31 @@ import { useLocale } from '@/contexts/LocaleContext';
 interface VideoSearchModalProps extends UseVideoSearchReturn {
 }
 
+/**
+ * 中栏栏头的统计文案（统计行已降级为栏头 chip）。
+ *
+ * 库名为空时模板会在 `{count}` 与 `videos` 之间留下双空格，所以统一收拢空白。
+ * `selectedCount` 必须与右栏栏头徽章同源（当前库中可见的已选条数），否则两栏
+ * 会报出两个不同的「已选择」数字——重搜后结果被清空、选中集合却仍保留时就会这样。
+ *
+ * @param template 已本地化的 `videoSearchModal.resultsInfo`
+ * @param resultCount 当前库的全部结果条数
+ * @param selectedCount 当前库中可见的已选条数
+ * @param isYoutubeLibrary 是否 YouTube 库（决定 `{libraryType}` 占位符）
+ * @returns 单行统计文案
+ */
+const formatResultsSummary = (
+  template: string,
+  resultCount: number,
+  selectedCount: number,
+  isYoutubeLibrary: boolean
+) => template
+  .replace('{count}', String(resultCount))
+  .replace('{libraryType}', isYoutubeLibrary ? ' Youtube' : '')
+  .replace('{selected}', String(selectedCount))
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   isModalOpen,
   searchQuery,
@@ -310,6 +335,22 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
   const currentSelectedResults = getCurrentSelectedResults();
   const currentPreviewVideo = getCurrentPreviewVideo();
   const currentSearching = getCurrentSearching();
+  const totalSelectedDurationText = formatDuration(selectedVideos.reduce((total, video) => total + (video.duration || 0), 0)) || '0:00';
+  // 规格只在真的存在时拼接，避免把 "undefined × undefined" 写进底条。
+  const previewSpecText = currentPreviewVideo
+    ? [
+        currentPreviewVideo.width && currentPreviewVideo.height
+          ? `${currentPreviewVideo.width} × ${currentPreviewVideo.height}`
+          : null,
+        currentPreviewVideo.duration ? formatDuration(currentPreviewVideo.duration) : null
+      ].filter(Boolean).join(' • ')
+    : '';
+  const resultsSummaryText = formatResultsSummary(
+    t.videoSearchModal.resultsInfo,
+    allCurrentResults.length,
+    selectedVideos.length,
+    activeLibrary !== 'official'
+  );
 
   return (
       <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-modal">
@@ -365,9 +406,14 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
 
         {/* 搜索控制区 - Apple风格 */}
         <div className="px-6 py-4 border-b border-border bg-card">
-          {activeLibrary === 'youtube' && <p role="note" className="mb-3 text-xs text-muted-foreground">{t.videoSearchModal.youtubeNetworkHint}</p>}
-          <div className="flex items-center space-x-4">
-            <div className="flex-1">
+          {/* 网络提示占一行固定高度：切库时搜索行高度不变，三栏正文起点因此不位移 */}
+          <div className="mb-2 h-4 flex items-center">
+            {activeLibrary === 'youtube' && (
+              <p role="note" className="w-full truncate text-xs text-muted-foreground">{t.videoSearchModal.youtubeNetworkHint}</p>
+            )}
+          </div>
+          <div className="flex items-center space-x-4 flex-wrap gap-y-2">
+            <div className="flex-1 min-w-0">
               <input
                 type="text"
                 placeholder={activeLibrary === 'official'
@@ -490,59 +536,51 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
         {/* 主内容区域 - 左中右三栏布局 */}
         <div className="flex-1 flex overflow-hidden">
           {/* 左栏 - 视频预览区域 */}
-          <div className="w-1/3 border-r border-border flex flex-col bg-muted">
-            <div className="px-4 py-3 border-b border-border bg-muted">
-              <h4 className="font-medium text-foreground">{t.videoSearchModal.videoPreview}</h4>
+          <div data-pane="preview" className="w-1/3 min-w-0 border-r border-border flex flex-col bg-muted">
+            <div data-pane-head className="shrink-0 h-11 px-6 border-b border-border bg-muted flex items-center justify-between gap-3">
+              <h4 className="text-sm font-medium text-foreground truncate">{t.videoSearchModal.videoPreview}</h4>
             </div>
-            <div className="flex-1 flex flex-col bg-card">
+            <div className="flex-1 min-h-0 flex flex-col bg-card">
               {currentPreviewVideo ? (
                 <>
-                  {/* 预览视频标题栏 */}
-                  <div className="px-4 py-3 border-b border-border bg-muted">
-                    <h5 className="font-medium text-foreground truncate text-sm">{currentPreviewVideo.title}</h5>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {activeLibrary === 'official' ? (
-                        <span>{t.videoSearchModal.author} {currentPreviewVideo.author}</span>
-                      ) : (
-                        <span>{t.videoSearchModal.channel} {currentPreviewVideo.channelTitle}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 预览视频内容 */}
-                  <div className="flex-1 p-4 max-h-96 overflow-y-auto">
-                    <div className="w-full h-full min-h-[200px] max-h-[320px] bg-muted rounded-md overflow-hidden flex items-center justify-center">
+                  {/* 预览视频内容：撑满本栏（去掉 max-h 双封顶，只保留软下限，本栏可滚动） */}
+                  <div data-pane-scroll className="flex-1 min-h-0 p-4 px-6 overflow-y-auto">
+                    <div className={`w-full h-full min-h-[140px] rounded-md overflow-hidden flex items-center justify-center ${(currentPreviewVideo.video_url || currentPreviewVideo.videoUrl) ? '' : 'bg-muted'}`}>
                       {(currentPreviewVideo.video_url || currentPreviewVideo.videoUrl) ? (
                         activeLibrary === 'youtube' ? (
                           // YouTube视频：改走后端渐进式流端点（同源 <video>），规避 iframe 内嵌
                           // 播放器触发的反机器人「请登录…」挑战；解析/上游失败时降级。
                           (youtubePreviewError || (preparedPreview?.id === currentPreviewVideo.id && preparedPreview?.attempt === previewAttempt && preparedPreview?.status === 'error')) ? (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
-                              {(currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl) ? (
-                                <img
-                                  src={currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl}
-                                  alt={currentPreviewVideo.title}
-                                  className="max-w-full max-h-[220px] object-contain rounded-md mb-3"
-                                />
-                              ) : (
-                                <svg className="w-12 h-12 mb-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              )}
-                              <p className="text-sm font-medium text-foreground">{t.videoSearchModal.previewUnavailable}</p>
-                              <p className="text-xs text-muted-foreground mt-1">{t.videoSearchModal.previewErrors[preparedPreview?.code || 'NETWORK_ERROR'] || t.videoSearchModal.previewUnavailableHint}</p>
-                              <button type="button" className="mt-3 text-sm text-primary hover:underline" onClick={() => { setYoutubePreviewError(false); setPreviewAttempt(value => value + 1); }}>{t.videoSearchModal.retryPreview}</button>
-                              <a
-                                href={currentPreviewVideo.videoUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-3 inline-flex items-center space-x-1 text-xs font-medium text-destructive hover:underline"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                                <span>{t.videoSearchModal.openInBrowser}</span>
-                              </a>
+                            // 失败态内容（缩略图 + 文案 + 重试 + 外链）可能高于本栏，本态自带滚动：
+                            // flex + m-auto 让它在放得下时居中，放不下时从中间滚出来，而不是被裁掉。
+                            <div className="flex w-full h-full overflow-y-auto">
+                              <div className="m-auto w-full flex flex-col items-center p-4 text-center">
+                                {(currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl) ? (
+                                  <img
+                                    src={currentPreviewVideo.thumbnail || currentPreviewVideo.thumbnailUrl}
+                                    alt={currentPreviewVideo.title}
+                                    className="max-w-full max-h-full object-contain rounded-md mb-3"
+                                  />
+                                ) : (
+                                  <svg className="w-12 h-12 mb-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                )}
+                                <p className="text-sm font-medium text-foreground">{t.videoSearchModal.previewUnavailable}</p>
+                                <p className="text-xs text-muted-foreground mt-1">{t.videoSearchModal.previewErrors[preparedPreview?.code || 'NETWORK_ERROR'] || t.videoSearchModal.previewUnavailableHint}</p>
+                                <button type="button" className="mt-3 text-sm text-primary hover:underline" onClick={() => { setYoutubePreviewError(false); setPreviewAttempt(value => value + 1); }}>{t.videoSearchModal.retryPreview}</button>
+                                <a
+                                  href={currentPreviewVideo.videoUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-3 inline-flex items-center space-x-1 text-xs font-medium text-destructive hover:underline"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                  <span>{t.videoSearchModal.openInBrowser}</span>
+                                </a>
+                              </div>
                             </div>
                           ) : preparedPreview?.id !== currentPreviewVideo.id || preparedPreview?.attempt !== previewAttempt || preparedPreview?.status !== 'ready' ? (
                             <p role="status" className="p-4 text-sm text-muted-foreground">{t.videoSearchModal.preparingPreview}</p>
@@ -550,8 +588,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                             <video
                               key={`${currentPreviewVideo.id}:${previewAttempt}`}
                               src={preparedPreview.stream_url}
-                              className="w-full h-full max-h-[320px] object-contain"
-                              style={{ maxWidth: '100%', maxHeight: '320px' }}
+                              className="w-full h-full object-contain"
                               controls
                               preload="metadata"
                               onLoadedData={() => {
@@ -563,8 +600,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                   activeLibrary,
                                   videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
                                   videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
-                                  previewContainerMaxHeight: '320px',
-                                  layoutType: 'constrained_height_preview'
+                                  layoutType: 'pane_filling_preview'
                                 });
                               }}
                               onError={() => {
@@ -592,8 +628,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                           <video
                             ref={videoRef}
                             src={currentPreviewVideo.video_url || currentPreviewVideo.videoUrl}
-                            className="w-full h-full max-h-[320px] object-contain"
-                            style={{ maxWidth: '100%', maxHeight: '320px' }}
+                            className="w-full h-full object-contain"
                             controls
                             preload="metadata"
                             onLoadStart={() => {
@@ -611,8 +646,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                                 videoDimensions: `${currentPreviewVideo.width}x${currentPreviewVideo.height}`,
                                 videoOrientation: currentPreviewVideo.width > currentPreviewVideo.height ? 'landscape' : 'portrait',
                                 actualVideoSize: videoElement ? `${videoElement.videoWidth}x${videoElement.videoHeight}` : 'unknown',
-                                previewContainerMaxHeight: '320px',
-                                layoutType: 'constrained_height_preview'
+                                layoutType: 'pane_filling_preview'
                               });
                             }}
                             onError={(e) => {
@@ -657,31 +691,43 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 左栏固定底条：预览标题/作者/规格，与中右栏等高（52px） */}
+            <div data-pane-foot className="shrink-0 h-[52px] px-6 border-t border-border bg-muted flex items-center justify-between gap-3">
+              {currentPreviewVideo ? (
+                <>
+                  <div className="min-w-0">
+                    <h5 className="text-sm font-medium text-foreground truncate">{currentPreviewVideo.title}</h5>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {activeLibrary === 'official' ? (
+                        <span>{t.videoSearchModal.author} {currentPreviewVideo.author}</span>
+                      ) : (
+                        <span>{t.videoSearchModal.channel} {currentPreviewVideo.channelTitle}</span>
+                      )}
+                    </p>
+                  </div>
+                  {previewSpecText && (
+                    <span className="shrink-0 text-xs text-muted-foreground whitespace-nowrap tabular-nums">{previewSpecText}</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-xs text-muted-foreground truncate">{t.videoSearchModal.clickToPreview}</span>
+              )}
+            </div>
           </div>
 
           {/* 中栏 - 搜索结果展示区域 */}
-          <div className="w-1/3 border-r border-border flex flex-col">
-            {/* 标题栏 */}
-            <div className="px-4 py-3 border-b border-border bg-muted">
-              <h4 className="font-medium text-foreground">{t.videoSearchModal.searchResults}</h4>
+          <div data-pane="results" className="w-1/3 min-w-0 border-r border-border flex flex-col">
+            {/* 栏头：统计信息降级为右侧 chip，不再独占一行（栏头高度恒定） */}
+            <div data-pane-head className="shrink-0 h-11 px-6 border-b border-border bg-muted flex items-center justify-between gap-3">
+              <h4 className="shrink-0 text-sm font-medium text-foreground">{t.videoSearchModal.searchResults}</h4>
+              {allCurrentResults.length > 0 && (
+                <span className="min-w-0 truncate text-xs text-muted-foreground">{resultsSummaryText}</span>
+              )}
             </div>
-            
-            {/* 结果统计栏 */}
-            {allCurrentResults.length > 0 && (
-              <div className="px-4 py-3 border-b border-border bg-muted flex items-center justify-between">
-                <div className="text-sm text-muted-foreground">
-                  {t.videoSearchModal.foundVideos} <span className="font-semibold text-foreground">{allCurrentResults.length}</span> {activeLibrary === 'official' ? '' : 'Youtube'}{t.videoSearchModal.items} <span className={`font-semibold ${activeLibrary === 'official' ? 'text-primary' : 'text-destructive'}`}>{currentSelectedResults.size}</span> {t.videoSearchModal.selected}
-                </div>
-                {totalPages > 1 && (
-                  <div className="text-sm text-muted-foreground">
-                    {currentPage} / {totalPages}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* 搜索结果内容 */}
-            <div className="flex-1 overflow-y-auto">
+            <div data-pane-scroll className="flex-1 min-h-0 overflow-y-auto">
               {currentSearching ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
@@ -693,7 +739,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                   </div>
                 </div>
               ) : currentResults.length > 0 ? (
-                <div className="p-3 space-y-3">
+                <div className="p-3 px-6 space-y-3">
                   {currentResults.map((video) => {
                     const isSelected = currentSelectedResults.has(video.id);
                     const isPreviewActive = currentPreviewVideo?.id === video.id;
@@ -831,7 +877,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                   })}
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center p-8">
+                <div className="min-h-full flex items-center justify-center p-8">
                   <div className="text-center text-muted-foreground">
                     <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -841,10 +887,17 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                   </div>
                 </div>
               )}
-              
-              {/* 分页控件 */}
+            </div>
+
+            {/* 中栏固定底条：分页在此（无条件渲染、高度恒定 → 三栏滚动视口底边对齐） */}
+            <div data-pane-foot className="shrink-0 h-[52px] px-6 border-t border-border bg-muted flex items-center justify-center gap-2 overflow-hidden">
+              {allCurrentResults.length > 0 && totalPages <= 1 && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {t.videoSearchModal.pageInfo.replace('{current}', String(currentPage)).replace('{total}', String(totalPages))}
+                </span>
+              )}
               {totalPages > 1 && allCurrentResults.length > 0 && (
-                <div className="px-4 py-3 border-t border-border bg-muted">
+                <div className="flex h-full w-full items-center justify-center">
                   <div className="flex items-center justify-center space-x-2">
                     <button
                       onClick={goToPreviousPage}
@@ -901,26 +954,24 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
           </div>
 
           {/* 右栏 - 已选择的视频列表区域 */}
-          <div className="w-1/3 flex flex-col bg-muted">
+          <div data-pane="selected" className="w-1/3 min-w-0 flex flex-col bg-muted">
             <div className="flex flex-col bg-card h-full">
               {/* 已选择标题栏 */}
-              <div className="px-6 py-3 border-b border-border bg-muted">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-foreground">{t.videoSearchModal.selectedVideos}</h4>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    activeLibrary === 'official' 
-                      ? 'text-primary bg-primary/10' 
-                      : 'text-destructive bg-destructive/10'
-                  }`}>
-                    {selectedVideos.length} {t.videoSearchModal.itemsUnit}
-                  </span>
-                </div>
+              <div data-pane-head className="shrink-0 h-11 px-6 border-b border-border bg-muted flex items-center justify-between gap-3">
+                <h4 className="shrink-0 text-sm font-medium text-foreground">{t.videoSearchModal.selectedVideos}</h4>
+                <span className={`shrink-0 text-xs px-2 py-1 rounded-full ${
+                  activeLibrary === 'official' 
+                    ? 'text-primary bg-primary/10' 
+                    : 'text-destructive bg-destructive/10'
+                }`}>
+                  {selectedVideos.length} {t.videoSearchModal.itemsUnit}
+                </span>
               </div>
 
               {/* 已选择视频内容 */}
-              <div className="flex-1 overflow-y-auto">
+              <div data-pane-scroll className="flex-1 min-h-0 overflow-y-auto">
                 {selectedVideos.length > 0 ? (
-                  <div className="p-3 space-y-2">
+                  <div className="p-3 px-6 space-y-2">
                     {selectedVideos.map((video) => (
                       <div
                         key={video.id}
@@ -969,7 +1020,7 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                     ))}
                   </div>
                 ) : (
-                  <div className="flex-1 flex items-center justify-center p-4">
+                  <div className="min-h-full flex items-center justify-center p-4">
                     <div className="text-center text-muted-foreground">
                       <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -980,15 +1031,22 @@ const VideoSearchModal: React.FC<VideoSearchModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* 右栏固定底条：已选数量 + 合计时长，与左中栏等高 */}
+              <div data-pane-foot className="shrink-0 h-[52px] px-6 border-t border-border bg-muted flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span className="truncate">{t.videoSearchModal.totalDuration}</span>
+                <span className="shrink-0 whitespace-nowrap tabular-nums">{totalSelectedDurationText}</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* 底部操作栏 */}
-        <div className="px-6 py-4 border-t border-border bg-muted">
-          {/* 错误信息显示区域 */}
+        <div className="relative shrink-0 px-6 py-4 border-t border-border bg-muted">
+          {/* 错误信息显示区域：浮层，不改变弹窗纵向预算（三栏不再被压扁）；
+              宽度收在本栏内宽，避免 36rem 横跨到中栏底条，压住「上一页 / 下一页」 */}
           {validationError && (
-            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md flex items-start space-x-3">
+            <div role="alert" className="absolute bottom-full right-6 mb-2 w-[min(24rem,calc(33.333%_-_3rem))] p-3 bg-card border border-destructive rounded-md flex items-start space-x-3 shadow-lg">
               <div className="flex-shrink-0">
                 <svg className="w-5 h-5 text-destructive mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />

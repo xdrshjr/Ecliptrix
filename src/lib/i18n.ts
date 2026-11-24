@@ -1879,9 +1879,6 @@ export interface Translations {
     searchingVideos: string;
     enterKeywordPrompt: string;
     searchHighQualityPrompt: string;
-    foundVideos: string;
-    selected: string;
-    items: string;
     clickToPreview: string;
     clickToPreviewDesc: string;
     previewUnavailable: string;
@@ -1917,6 +1914,7 @@ export interface Translations {
     channel: string;
     searchResults: string;
     resultsInfo: string;
+    totalDuration: string;
     pageInfo: string;
     searchingLibrary: string;
     startSearchLibrary: string;
@@ -6383,9 +6381,6 @@ export const translations: Record<string, Translations> = {
       searchingVideos: 'Searching for videos...',
       enterKeywordPrompt: 'Enter keywords to start searching',
       searchHighQualityPrompt: 'Search for high-quality free video materials',
-      foundVideos: 'Found',
-      selected: 'selected',
-      items: 'videos,',
       clickToPreview: 'Click video to preview',
       clickToPreviewDesc: 'Select a video from the left to view details',
       previewUnavailable: 'Preview unavailable',
@@ -6421,6 +6416,7 @@ export const translations: Record<string, Translations> = {
       channel: 'Channel:',
       searchResults: 'Search Results',
       resultsInfo: 'Found {count} {libraryType} videos, {selected} selected',
+      totalDuration: 'Total',
       pageInfo: 'Page {current} / {total}',
       searchingLibrary: 'Searching {libraryType} videos...',
       startSearchLibrary: 'Start searching {libraryType} videos',
@@ -11077,9 +11073,6 @@ export const translations: Record<string, Translations> = {
       searchingVideos: '正在搜索视频...',
       enterKeywordPrompt: '输入关键词开始搜索',
       searchHighQualityPrompt: '搜索高质量的免费视频素材',
-      foundVideos: '找到',
-      selected: '已选择',
-      items: '个视频，',
       clickToPreview: '点击视频进行预览',
       clickToPreviewDesc: '在左侧选择一个视频来查看详情',
       previewUnavailable: '预览不可用',
@@ -11115,6 +11108,7 @@ export const translations: Record<string, Translations> = {
       channel: '频道:',
       searchResults: '搜索结果',
       resultsInfo: '找到 {count} 个{libraryType}视频，已选择 {selected} 个',
+      totalDuration: '合计时长',
       pageInfo: '第 {current} / {total} 页',
       searchingLibrary: '正在搜索{libraryType}视频...',
       startSearchLibrary: '开始搜索{libraryType}视频',
