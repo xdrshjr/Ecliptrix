@@ -96,9 +96,22 @@ export interface ResearchProxyEgress {
   target: string;
 }
 
+/** `/capabilities` 的工作台段（agent-browser-workspace spec §4.3.2），只含非敏感字段。 */
+export interface WorkspaceBrowserCapability {
+  available: boolean;
+  enabled?: boolean;
+  agent_enabled?: boolean;
+  consent_granted?: boolean;
+  profile?: { id: string; name: string } | null;
+  mode?: 'workspace' | 'isolated';
+  error_code?: string;
+}
+
 export interface WebResearchCapabilities {
   search: ResearchCapability;
   browser: ResearchCapability;
+  /** 旧后端不返回该段；缺省 = 不声明工作台。 */
+  workspace_browser?: WorkspaceBrowserCapability;
   downloads: ResearchCapability;
   research_model: ResearchCapability;
   proxy?: ResearchProxyEgress;

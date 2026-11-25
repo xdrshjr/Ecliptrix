@@ -18,6 +18,7 @@ directories:
   buildResources: resources
 
 files:
+  # main/** includes main/browserWorkspace/** (Agent browser workspace, app-shell source).
   - main/**
   - preload/**
   - assets/**

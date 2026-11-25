@@ -208,6 +208,46 @@ def agent_host_settings():
     return load()
 
 
+# 浏览器工作台（docs/plans/agent-browser-workspace/spec.md §4.7）。
+# 这些是**用户偏好**，不是对抗性边界：授权/审批/恒确认档/端口封禁在主进程，
+# 后端设置对本机无鉴权，`bash` 理论上可改写（R2-11）。授权**不在**这里（R1-4）。
+BROWSER_WORKSPACE_DEFAULTS = {
+    "enabled": True,
+    "agent_enabled": True,
+    "agent_profile_mode": "shared",
+    "follow_agent": True,
+    "confirm_risky_actions": True,
+    "agent_deny_hosts": [],
+    "agent_allow_private_network": False,
+    "session_cookie_ttl_days": 30,
+    "max_tabs": 8,
+    "agent_max_tabs": 3,
+    "max_elements": 60,
+    "max_actions_per_run": 150,
+    "idle_release_seconds": 45,
+    "search_engine": "bing",
+}
+
+BROWSER_WORKSPACE_CLAMPS = {
+    "session_cookie_ttl_days": (0, 90),
+    "max_tabs": (2, 12),
+    "agent_max_tabs": (1, 5),
+    "max_elements": (20, 120),
+    "max_actions_per_run": (10, 500),
+    "idle_release_seconds": (15, 300),
+}
+
+
+def browser_workspace_settings():
+    """未保存键用出厂值；读路径二次夹取（库里的旧行可能是手改的）。"""
+    values = dict(BROWSER_WORKSPACE_DEFAULTS)
+    values.update(system_settings_service.get_category("browser_workspace") or {})
+    values = _clamped(values, BROWSER_WORKSPACE_DEFAULTS,
+                      BROWSER_WORKSPACE_CLAMPS)
+    values["agent_deny_hosts"] = list(values.get("agent_deny_hosts") or [])[:100]
+    return values
+
+
 def _clamped(values, defaults, clamps):
     """读取时把库里残留的越界值夹回区间（写入由校验器拒绝）。"""
     for key, (low, high) in clamps.items():
@@ -246,6 +286,11 @@ YAML_TO_DB_MAPPING: List[Dict[str, Any]] = [
                    "db_key": key, "is_nested": True, "scalar": True,
                    "value_type": "scalar", "description": key}
                   for key in AGENT_HOST_DEFAULTS]},
+    {"file": "browser-workspace-config.yaml", "root_key": "browser_workspace",
+     "mappings": [{"yaml_keys": [key], "category": "browser_workspace",
+                   "db_key": key, "is_nested": True, "scalar": True,
+                   "value_type": "scalar", "description": key}
+                  for key in BROWSER_WORKSPACE_DEFAULTS]},
     {"file": "web-research-config.yaml", "root_key": "web_research",
      "mappings": [{"yaml_keys": [key], "category": "web_research",
                    "db_key": key, "is_nested": True, "scalar": True,

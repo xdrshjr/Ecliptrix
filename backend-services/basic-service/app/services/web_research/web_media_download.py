@@ -13,10 +13,10 @@ from .safe_http_client import (
 from .provenance import display_url, source_record
 
 
-async def download_material(request, run, source=None, client=None):
+async def download_material(request, run, source=None, client=None,
+                            fetched=None):
     if not research_settings()["downloads_enabled"]:
         raise WebResearchError("downloads_disabled", status_code=403)
-    client = client or get_safe_http_client()
     kind, url = request.kind, request.url
     declared_page = getattr(request, "source_page_url", None)
     if declared_page:
@@ -24,7 +24,16 @@ async def download_material(request, run, source=None, client=None):
     maximum = (10 if kind == "image" else 100) * 1024 * 1024
     policy = FetchPolicy(maximum, 30 if kind == "image" else 180,
                          research_settings()["respect_robots"])
-    response = await client.fetch(policy, RequestSpec(url))
+    if fetched is not None:
+        response = fetched
+    elif source and source.get("via") == "workspace_tab":
+        # 登录态/防盗链图片：字节由浏览器分区会话带 Cookie+Referer 取回，
+        # 校验与入库仍走下面同一条严格路径（spec §4.4.1）。
+        from app.services.browser_workspace.resources import fetch_via_tab
+        response = await fetch_via_tab(run, source, url, kind, maximum)
+    else:
+        response = await (client or get_safe_http_client()).fetch(
+            policy, RequestSpec(url))
     if response.status != 200:
         raise WebResearchError("download_failed", status_code=502)
     if kind == "media" and not media_signature(response.body):
@@ -72,12 +81,14 @@ def media_signature(body):
 async def _commit(request, run, path, metadata, source):
     from app.services.material_download_service import get_material_download_service
     from .run_registry import run_registry
-    run_registry.ensure_active(run)
+    if run is not None:  # 用户右键「保存到素材库」没有 run
+        run_registry.ensure_active(run)
     digest = await asyncio.to_thread(file_digest, path)
     service = get_material_download_service()
     stored = await service.store_research_download_async(
         path, digest, metadata["format"], source["final_url"])
-    run_registry.ensure_active(run)
+    if run is not None:
+        run_registry.ensure_active(run)
     identifier = "web-" + digest[:24]
     name = re.sub(r"[\x00-\x1f<>:\"/\\|?*]", "", request.name or "网络素材")[:120]
     provenance = {"source_page_url": source["url"], "final_url": source["final_url"],
@@ -87,6 +98,10 @@ async def _commit(request, run, path, metadata, source):
                   "retrieved_at": source["retrieved_at"], "sha256": digest,
                   "artifact_id": None}
     provenance["source_page_verified"] = source.get("source_page_verified", False)
+    if source.get("via"):
+        provenance.update(via=source["via"], source_kind="browser",
+                          page_url=source["url"],
+                          captured_at=source["retrieved_at"])
     material = {"id": identifier, "name": name or "网络素材", **metadata,
                 "size": stored["size"], "local_url": stored["local_url"],
                 "url": stored["local_url"], "cacheUrl": stored["local_url"],

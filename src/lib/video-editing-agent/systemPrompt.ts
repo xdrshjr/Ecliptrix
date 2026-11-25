@@ -13,6 +13,8 @@ import {
   GENERAL_RESIDENT_TOOL_NAMES,
   YOLO_DIRECTIVE,
   YOLO_TOOLKIT_GUIDANCE,
+  BROWSER_RULE,
+  BROWSER_RULE_YOLO,
 } from './promptParts';
 import { formatSkillIndex, skillAvailability } from './skillContext';
 import {
@@ -99,10 +101,13 @@ export function formatToolOverview(
 export interface CategoryAvailability {
   available: boolean;
   reason?: string;
+  /** browser_tools only: `workspace` (visible, logged-in) or `isolated` (hidden sandbox). */
+  mode?: 'workspace' | 'isolated';
 }
 
 function availabilitySuffix(state?: CategoryAvailability): string {
   if (!state) return '';
+  if (state.available && state.mode) return ` [${state.mode}]`;
   if (state.available) return ' [available]';
   return ` [unavailable${state.reason ? `: ${state.reason}` : ''}]`;
 }
@@ -129,9 +134,15 @@ export function categoryAvailability(
       available: snapshot.search.available && snapshot.downloads.available,
       reason: snapshot.search.error_code ?? snapshot.downloads.error_code,
     };
+    const workspace = snapshot.workspace_browser;
+    const workspaceOn = !!workspace && workspace.available && workspace.enabled !== false;
+    const isolatedOn = snapshot.browser.available && snapshot.browser.enabled !== false;
     availability.browser_tools = {
-      available: snapshot.browser.available && snapshot.browser.enabled !== false,
+      available: isolatedOn || workspaceOn,
       reason: snapshot.browser.error_code,
+      // Only claim a mode when the backend actually reported the workspace segment.
+      ...(workspace && (isolatedOn || workspaceOn) ? {
+        mode: workspaceOn && workspace.mode !== 'isolated' ? 'workspace' : 'isolated' } : {}),
     };
     availability.research_tools = {
       available: snapshot.search.available,
@@ -689,19 +700,22 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 
   const role = `你是一个全能视频编辑助手。分析用户需求，选择正确的工具，逐步执行编辑操作。`;
 
+  const browserRule = isYolo ? BROWSER_RULE_YOLO : BROWSER_RULE;
+
   const rules = `## 规则
 - 你必须调用工具来执行任何操作。仅在文字中描述操作不会产生任何效果。
 - 复合任务请自动拆解为多个步骤顺序执行。
 - 搜索入库仍是 candidate；web_search/web_research/extract_web_images 只产资料/候选。远端候选需 materialized 下载回执；用返回链接，不猜 URL。生成排队不是可用素材。
 - 视频封面用 cover_tools（先 explore_tools）；默认 applyWhenReady=true，用户只要方案/不要应用时设 false。queued 只能说“已开始制作”；仅客户端状态 applied 才能称已应用。
-- **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 工具返回的真实 id（如 "pexels-12345"、"unsplash-abcd"）。**绝不要**使用 "system-default-*"、"default-video-*"、"default-subtitle-*" 等占位 ID。如果素材库为空或没有合适素材，先调用 search_video / search_image / generate_ai_image 等工具获取。
+- **严禁编造素材 ID**：add_to_track 的 materialId 必须来自前序 search_* / generate_* 返回的真实 id（如 "pexels-12345"），不得用 "system-default-*" 等占位 ID；素材库为空或不合适时，先 search_video / search_image / generate_ai_image。
 - **图片先成片再上轨**：图片作为画面镜头时不要直接 add_to_track；先 explore_tools(still_tools)，用 image_to_video / batch_image_to_video 转成视频素材，再把返回的 materialId 交给 add_to_track。Logo、贴纸、水印等叠加图才用 add_to_track 的 as_still:true。**字幕不需要素材**：用 add_subtitles（cues 或 SRT），改时长用 resize_clip，加完 check_timeline 复验。
 - **停止依赖失败结果的分支**：遵守 error_details/next_step；policy/配置拒绝不重试，换 prompt/model 不解禁。暂时性读取最多重试一次，生成受理不明不重发。独立编辑继续，5 次真实异常熔断。
-- 先抽帧核主体再上轨，相似外形不等于确认犬种。BGM 有限换源，失败保留 blocked 并说明纯旁白降级。
+- 先抽帧核主体再上轨。BGM 有限换源，失败保留 blocked 并说明纯旁白降级。
 - 无本项目当前编辑版本的导出回执，只能说“已编辑、未导出”；旧 ID、taskId、0 blocker 不算交付。credits 只整理来源，授权 unknown 是未核验。
-- **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，必须明显低于人声，不可盖过主音频。
+- **音频音量约定**：主音频/解说轨道音量 100%；背景配乐（BGM）轨道默认音量 10%-20%，须明显低于人声。
+${browserRule}
 - 未覆盖的高级工具先 explore_tools；下方"核心工作流工具"无需 explore。
-- 历史中内容为 {"omitted": "..."} 的工具结果表示较早轮次的状态快照已省略；需要当前状态时重新调用 get_timeline / list_materials 等工具获取，不要依据旧快照操作。`;
+- 历史中 {"omitted": "..."} 的工具结果是已省略的旧快照；需要当前状态时重新调用 get_timeline / list_materials，勿依据旧快照操作。`;
 
   const overview = formatToolOverview(categorySummaries,
     categoryAvailability(input.capabilities, input.hostCapabilities));

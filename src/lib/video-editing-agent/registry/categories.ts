@@ -174,7 +174,7 @@ export function createDefaultCategories(): ToolCategory[] {
       description: 'Search, read, research public sources; download local media. Requires Network & Research settings.',
       alwaysAvailable: false, tools: [] },
     { id: CATEGORY_IDS.BROWSER_TOOLS, name: '网页浏览',
-      description: 'Browse public dynamic pages, read, click, search, scroll and capture. Requires bundled Chromium.',
+      description: 'Live browser (keeps user logins): read pages, click, fill, scroll; real-time news, real images.',
       alwaysAvailable: false, tools: [] },
     { id: CATEGORY_IDS.RESEARCH_TOOLS, name: '研究资料',
       description: 'Read research artifacts by ID and byte offset; delegate_research: parallel read-only crew. No editor changes.',

@@ -23,6 +23,8 @@ export type ImportMode = false | 'record' | 'collect';
 interface WebCall {
   path: string; body?: unknown; method?: 'GET' | 'POST' | 'DELETE';
   timeout?: number; importMaterial?: ImportMode;
+  /** Extra request headers (e.g. `x-browser-mode`); never carry secrets. */
+  headers?: Record<string, string>;
   /** Fields merged into a successful result (e.g. a point-of-use `next_step`). */
   successFields?: Record<string, unknown>;
   /** `'collect'` only: receives the normalised material and whether it already existed. */
@@ -170,6 +172,14 @@ export function localMaterial(input: ResearchMaterial): MaterialItem {
       storageKind: 'cached_remote', provenance: input.provenance } };
 }
 
+/** Browser routing hints (spec §4.4.1) for `/browser/*` calls only. */
+function browserHeaders(context: ToolContext, call: WebCall): Record<string, string> {
+  const extra = call.headers ?? {};
+  if (!call.path.startsWith('/browser')) return extra;
+  return { ...(context.browserMode ? { 'x-browser-mode': context.browserMode } : {}),
+    'x-agent-autonomy': context.autonomy ?? 'interactive', ...extra };
+}
+
 /** One non-replayed HTTP call, one possible editor operation, no late publish. */
 export async function executeWebTool(context: ToolContext, callId: string, call: WebCall) {
   // Wired here so no caller has to remember it; both steps are no-ops after
@@ -196,7 +206,7 @@ export async function executeWebTool(context: ToolContext, callId: string, call:
     // One new backend call id per executed call; members of a research crew
     // share this counter by reference (crew spec R-03).
     context.callBudget.used += 1;
-    const headers = await run.headers(callId);
+    const headers = { ...(await run.headers(callId)), ...browserHeaders(context, call) };
     const response = await toolFetch(context, `/api/web-research${call.path}`, {
       method: call.method ?? 'POST', headers, retry: false,
       timeout: call.timeout ?? 25000, signal: run.controller.signal,

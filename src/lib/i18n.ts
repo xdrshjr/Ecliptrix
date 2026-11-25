@@ -1,4 +1,5 @@
 import type { TtsErrorCode } from './ttsErrors';
+import { browserWorkspaceCopy, type BrowserWorkspaceCopy } from './browserWorkspaceCopy';
 
 // 沿用项目集中式中英文翻译表；文件超过 1000 行，本次只补助手相关键。
 
@@ -3752,6 +3753,7 @@ export interface Translations {
     splitFooterHint: string;
     defaultSegmentTitle: string;
   };
+  browserWorkspace: BrowserWorkspaceCopy;
   workbench: {
     regions: {
       topBar: string;
@@ -8424,6 +8426,7 @@ export const translations: Record<string, Translations> = {
       splitFooterHint: 'Edit, add or delete sentences, then Append below or Replace the existing narration.',
       defaultSegmentTitle: 'Narration segment',
     },
+    browserWorkspace: browserWorkspaceCopy.en,
     workbench: {
       regions: {
         topBar: 'Editor toolbar',
@@ -13121,6 +13124,7 @@ export const translations: Record<string, Translations> = {
       splitFooterHint: '可编辑 / 新增 / 删除句子，然后「追加」到下方，或「替换」现有解说文案。',
       defaultSegmentTitle: '解说段落',
     },
+    browserWorkspace: browserWorkspaceCopy['zh-CN'],
     workbench: {
       regions: {
         topBar: '编辑器顶栏',

@@ -98,9 +98,20 @@ const BUILD_PAYLOADS = [
 // they must be checked against DESKTOP_ROOT. Regression: asserting
 // main/agentBrowserHost.js against build/ failed every build from commit
 // 3b7b6ac6 ("feat: 为剪辑 Agent 补齐通用网络能力") onwards.
+// main/browserWorkspace/** is the Agent browser workspace (spec agent-browser-workspace
+// §5.1): the same trap as agentBrowserHost.js — app-shell source, never in build/. Every
+// runtime module is listed so a forgotten file fails the build, not the user's first launch.
+const BROWSER_WORKSPACE_MODULES = [
+  'index', 'profiles', 'tabs', 'viewHost', 'hardening', 'navigationGuard', 'cookiePersister', 'cdpEngine',
+  'actions', 'inputEvents', 'approvalGate', 'risk', 'approvals', 'control', 'stateStore', 'settings',
+  'controlServer', 'resourceFetch', 'bridge', 'workspaceApi', 'viewShortcuts', 'contextMenu',
+  'pageScripts/index', 'pageScripts/snapshot', 'pageScripts/act', 'pageScripts/overlay', 'pageScripts/sentinel',
+].map((name) => `main/browserWorkspace/${name}.js`)
+
 const APP_PAYLOADS = [
   'main/effectsService.js',
   'main/agentBrowserHost.js',
+  ...BROWSER_WORKSPACE_MODULES,
   'preload/preload.js',
   'assets/icon.ico',
 ]

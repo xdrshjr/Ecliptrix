@@ -760,10 +760,11 @@ app.add_exception_handler(EffectError, effects_router.effect_error_handler)
 from app.routers import web_research_router
 
 app.include_router(web_research_router.router, prefix="/api")
-from app.routers import research_run_router, research_browser_router
+from app.routers import research_run_router, research_browser_router, browser_workspace_router
 from app.models.web_research_models import WebResearchError
 app.include_router(research_run_router.router, prefix="/api")
 app.include_router(research_browser_router.router, prefix="/api")
+app.include_router(browser_workspace_router.router, prefix="/api")
 
 
 @app.exception_handler(WebResearchError)

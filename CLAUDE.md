@@ -115,6 +115,28 @@ Egress decisions live in exactly one place:
 the settings panel silently 404. Blueprint:
 `docs/plans/agent-general-assistant/spec.md`.
 
+### Agent browser workspace (`desktop/main/browserWorkspace/`)
+
+A real, visible, login-persistent browser for the Agent: the Electron main process hosts `WebContentsView` tabs (partition `persist:wb-<profileId>`, one per user profile) and drives them over in-process CDP. The Dock lives in the editor (footer's first button "浏览器"). Chain: Next Agent loop → FastAPI `app/services/browser_workspace/` → main-process loopback control server (Bearer token). The model keeps ONE tool set (`browser_open/read/act/close` + `browser_request_user`); `dispatch.pick_mode` routes to `workspace` or falls back to the hidden `isolated` browser (dev, disabled, no consent, YOLO without consent, gate locked, crew members). Blueprint: `docs/plans/agent-browser-workspace/spec.md` (v2) — read its 「实施过程发现的方案缺陷」 before changing behaviour; acceptance record in `acceptance.md`.
+
+Invariants — breaking one is a defect:
+
+1. **Authorization lives only in the main process, per user** (`profiles.json` → `agentConsentAt`). Never persist it in `system_settings`/backend/renderer: the local backend is unauthenticated and an Agent with `bash` could self-grant. `confirm_risky_actions` / `agent_deny_hosts` / `agent_allow_private_network` are user preferences, not security boundaries.
+2. **The control token never leaves the main process → backend env.** Not in Next, renderer, logs, audit, any response; `shell_runner` strips `BROWSER_WORKSPACE_CONTROL_TOKEN` from `bash` children; `browserWorkspaceEnv` is spread AFTER `...userEnv`.
+3. **Native views sit above the DOM.** Any new portal overlay over the Dock MUST carry `role="dialog|menu|listbox|tooltip"` or `data-native-occluder` (in-flow bars use `data-native-inflow`); occlusion is decided by geometry (`computeOcclusion`), the view is swapped for a frozen frame. The ratchet test in `src/components/browser/__tests__` lists known offenders — do not grow it.
+4. **Hidden-state execution:** commands never run on a 0×0 or invisible view; the main process parks agent views inside the window (1 px) — `x=-32000` does NOT work for `WebContentsView`. Page scripts must not wait on rAF.
+5. **Identity gate:** `authController` not "passed" ⇒ `setLocked(true)` (views detached, approvals cancelled, control server answers 423 `workspace_locked`).
+6. **Timeout chain:** `browser_open/act/request_user` backend 135 s / Next `140000` ms (they may wait on a human); `read`/`close` unchanged. Change both ends together.
+7. `hardening.js` registers each `webRequest` event once per session (Electron keeps one listener); `navigationGuard.js` mirrors `egress_policy` and both consume `__fixtures__/url-guard-vectors.json`.
+8. `browser_workspace` settings category has FIVE registration points (YAML, `system_settings_service`, `system_settings_models`, `CATEGORY_METADATA`, frontend panel/sidebar) — missing `CATEGORY_METADATA` silently 404s the panel. Workspace-sourced artifacts use `retention_days=1`.
+
+```bash
+# from desktop/
+npm run test:browser     # 10 suites / 83 checks, pure node (fake Electron + jsdom)
+npm run spike:browser    # real Electron (unset ELECTRON_RUN_AS_NODE first)
+# backend:  pytest tests -k "browser or workspace" --ignore=data
+```
+
 ### Multi-LLM Configuration
 
 The backend uses multiple independent LLM configurations, all using OpenAI-compatible API format:

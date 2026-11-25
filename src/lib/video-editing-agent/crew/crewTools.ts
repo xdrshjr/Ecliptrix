@@ -73,6 +73,8 @@ export function deriveMemberContext(parent: ToolContext, memberSignal: AbortSign
     emit: undefined,
     loadTools: undefined,
     crewRuntime: undefined,
+    // Members run in parallel and read-only: never share the visible browser.
+    browserMode: 'isolated',
   };
 }
 

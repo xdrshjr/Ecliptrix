@@ -11,6 +11,7 @@
 import React, { useEffect } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import PanelSplitter from './PanelSplitter';
+import BrowserDock from '@/components/browser/BrowserDock';
 import {
   LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, SPLITTER_SIZE, TIMELINE_MIN, UPPER_MIN,
   presetSizeFor, timelineMaxFor,
@@ -118,6 +119,9 @@ const EditorWorkbench: React.FC<EditorWorkbenchProps> = ({
               aria-label={regions.side} {...sideAttrs(layout, 'right')}>
               {right}
             </section>
+            {/* Browser Dock: overlays the area above the timeline (spec §4.6.3);
+                renders nothing without the desktop bridge. */}
+            <BrowserDock />
           </div>
           <PanelSplitter id="timeline" orientation="horizontal" direction={-1}
             value={layout.resolved.timelineHeight} min={TIMELINE_MIN} max={timelineMax}

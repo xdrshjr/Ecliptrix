@@ -463,3 +463,52 @@ document_sha256（JSON.stringify）、output_sha256 和 files 数组
 不携带账号凭据。验收核对所有字节，复制到本次证据目录后才启动；
 缺夹具时该场景 blocked。真实安装、完整视觉/音频、导出和真实 LLM
 仍需最终提交后重建并执行，不能因上述源码测试通过而宣布可发行。
+
+## 浏览器工作台（Agent browser workspace）
+
+设计依据：`docs/plans/agent-browser-workspace/spec.md`（v2）。主进程模块在 `main/browserWorkspace/`，
+是 **app 外壳源码**（打进 asar，不在 `build/`；`scripts/build.js` 的 `APP_PAYLOADS` 逐个断言）。
+
+**数据位置**（`userData/`）：`browser-workspace/profiles.json`（用户列表与每用户的 Agent 授权 `agentConsentAt`）、
+`browser-workspace/tabs-<profileId>.json`（休眠页签）、`Partitions/wb-<profileId>/`（Chromium 的 Cookie/缓存，
+Windows 上 Cookie 由 OS 加密）。**卸载应用不会自动清除**这些数据，要彻底清除请在「浏览器 → 用户 → 清除数据」里操作。
+
+**令牌与控制服务**：主进程每次启动生成 32 字节随机令牌，监听 `127.0.0.1:<随机端口>`，只通过
+`BROWSER_WORKSPACE_CONTROL_URL/TOKEN` 注入**后端子进程**的环境（展开在 `...userEnv` 之后，`.env` 覆盖不了）。
+令牌不进渲染进程、不进 Next、不落盘、不进日志与任何接口响应；控制服务校验 `Authorization: Bearer`、`Host`，
+并拒绝任何带 `Origin` 的请求。授权（consent）只存在于主进程的 `profiles.json`，后端设置库里没有。
+
+**隐藏态停车（已实测，偏离 spec §4.2.3 的原写法）**：Agent 在用户看不到页面（Dock 关闭 / 窗口最小化 /
+该页签非激活）时仍要能执行，所以执行中的 Agent 视图会被“停车”。spec 原写“停到 x=-32000”，**在 Electron 33 的
+`WebContentsView` 上不成立**：完全落在窗口之外的视图 `innerWidth=0`、`visibilityState=hidden`、rAF 停摆。
+实测（`scripts/browser-workspace-parking-spike.js`）与窗口哪怕只有 1 px 相交的视图保持完整视口、`visible`、rAF 正常，
+窗口最小化后同样成立，所以现实现把视图停在窗口内容区右下角最后一个像素（`viewHost.computeLayout`）。
+另外 `app.commandLine` 在 `app.ready` 之前追加 `disable-backgrounding-occluded-windows` 与
+`disable-renderer-backgrounding`（`applyEarlySwitches`）。
+
+**测试命令**
+
+```bash
+npm run test:browser          # 纯 node：83 项（导航守卫向量、Cookie 续期、hardening、CDP、控制服务、
+                              # jsdom 页面脚本、带假 Electron 的整条装配链）
+npm run spike:browser         # 需桌面会话：真实 Electron 里 13 项（含窗口最小化后点击/填写/滚动、
+                              # 自家端口封禁、会话 Cookie 续期）。ELECTRON_RUN_AS_NODE 必须未设置
+npx electron scripts/browser-workspace-parking-spike.js   # 停车位置对比表
+npm run smoke-test            # 打包态：browserWorkspaceSmoke（spec §8.3 ①②③④⑦⑨⑩）
+```
+
+后端共享 URL 向量：`main/browserWorkspace/__fixtures__/url-guard-vectors.json`
+（格式 `[{input, actor, allowPrivate, ownPorts?, denyHosts?, expect:{ok, code?}}]`，`ownPorts`/`denyHosts` 省略即空）。
+
+**人工走查清单（打包后必须逐项签字，自动化覆盖不到的部分）**
+
+1. 打开 Dock → 登录一个真实站点（短信/扫码/Passkey 任选）→ **完全退出应用再启动** → 仍保持登录（含只有会话 Cookie 的站点，§8.3 ⑤）。
+2. 让 Agent 打开该站点：弹 consent；「仅本次」「总是允许」「拒绝」三条路径；切到另一个用户后再次弹 consent（AC-C10）。
+3. Agent 执行期间 **关闭 Dock、再最小化窗口**，Agent 仍能点击/填写/滚动，结束后还原窗口，页签内容完整（§8.3 ⑨，真实桌面最终门）。
+   最小化时 `Page.captureScreenshot` 在某些显卡/远程桌面环境下可能失败，此时应得到 `screenshot_unavailable` 而不是挂起。
+4. Agent 动作进行中**亲手**操作页面 → 工具栏进入「你在控制」，Agent 下一步收到 `user_in_control`；点「交还 Agent」后恢复（§8.3 ⑧）。
+5. 让 Agent 点击「发布/删除/支付」类按钮：交互模式弹确认条（`Esc`=拒绝）；YOLO 模式直接 `risky_action_blocked_autonomous`。
+6. Dock 里的下拉（用户菜单、登录站点面板）、应用的对话框/菜单/toast 打开时，页面被冻结帧替换且无闪白（AC-D8）。
+7. 登录闸门：手动让会话失效（或用破窗账号退出登录）→ 所有页面视图立即消失、Agent 落回隔离浏览器；重新登录后 Dock 恢复（AC-F8）。
+8. 右键页面图片 →「保存到素材库」成功入库并有反馈（AC-D14）；页面里的下载被拦截并提示。
+9. 8 个页签常驻后记录内存增量（spec R-9，不作硬门）。

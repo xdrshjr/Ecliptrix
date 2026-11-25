@@ -24,6 +24,7 @@ const { createAccountClient } = require('./authHttp')
 const { createAuthController } = require('./authController')
 const { registerAuthIpc, EVENT_CHANNEL: AUTH_CHANGED_CHANNEL } = require('./authBridge')
 const windows = require('./window')
+const { createBrowserWorkspace, applyEarlySwitches } = require('./browserWorkspace')
 
 // `npm run dev` — attach to manually started dev servers instead of spawning
 // packaged children (spec §4.1).
@@ -68,6 +69,9 @@ const state = {
   browserHost: null,
   browserHostRestarts: 0,
   researchBrowserEnv: null,
+  // Agent browser workspace (spec agent-browser-workspace): facade + env injected into the backend.
+  browserWorkspace: null,
+  browserWorkspaceEnv: null,
   // 端口只在首次挑选后固定：后端在 spawn 时已锁定 CDP/控制端口的 env，
   // 宿主崩溃重启若换端口，后端会继续拨号死端口（能力永远不会恢复）。
   researchBrowserPorts: null,
@@ -89,6 +93,7 @@ if (process.argv.includes('--agent-browser-host')) {
 } else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  applyEarlySwitches(app) // before app.ready: keep occluded/minimised views painting (spec §4.2.3)
   app.on('second-instance', () => {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       if (state.mainWindow.isMinimized()) state.mainWindow.restore()
@@ -107,7 +112,7 @@ if (process.argv.includes('--agent-browser-host')) {
     // The gate owns a timer and an IPC surface: neither may outlive the app.
     // This project has no `will-quit` handler (P2-6), so it belongs here.
     disposeAuthGate()
-    stopChildren().finally(() => {
+    Promise.resolve(state.browserWorkspace && state.browserWorkspace.stop()).catch(() => {}).then(stopChildren).finally(() => {
       state.cleanupDone = true
       if (state.logger) state.logger.close()
       app.quit()
@@ -169,6 +174,7 @@ async function main() {
 
   if (isDev) {
     state.logger.info('main', `dev mode — attaching to ${DEV_FRONTEND_URL}`)
+    await startBrowserWorkspace()
     createMainWindow(DEV_FRONTEND_URL)
     openDevToolsIfRequested()
     watchDevFrontend()
@@ -202,6 +208,7 @@ async function main() {
   try {
     await resolvePorts()
     await startResearchBrowserHost()
+    await startBrowserWorkspace()
     await startServices()
     createMainWindow(`http://127.0.0.1:${state.frontendPort}`)
   } catch (err) {
@@ -538,6 +545,7 @@ async function startServices() {
       frontendPort: state.frontendPort,
       userEnv: state.userEnv,
       researchBrowserEnv: state.researchBrowserEnv,
+      browserWorkspaceEnv: state.browserWorkspaceEnv,
       effectsRuntimeEnv: state.effects.env,
     }),
     { logger: state.logger, onUnexpectedExit: handleUnexpectedExit }
@@ -560,6 +568,12 @@ async function startServices() {
   await tagServiceError('界面服务 (frontend)', () => state.frontend.waitHealthy())
 
   windows.setSplashStatus(state.splash, '即将完成…')
+}
+
+/** Start the browser workspace; failure only degrades the Agent to the isolated browser. */
+async function startBrowserWorkspace() {
+  state.browserWorkspace = createBrowserWorkspace({ electron: require('electron'), state, isDev })
+  state.browserWorkspaceEnv = (await state.browserWorkspace.start()).env
 }
 
 async function tagServiceError(serviceName, fn) {
@@ -586,6 +600,7 @@ function createMainWindow(url) {
     isQuitting: () => state.quitting,
   })
   state.logger.info('main', `main window created (bounds=${JSON.stringify(state.mainWindow.getBounds())})`)
+  if (state.browserWorkspace) state.browserWorkspace.attachWindow(state.mainWindow)
   state.mainWindow.once('show', () => {
     state.logger.info('main', `main window shown (bounds=${JSON.stringify(state.mainWindow.getBounds())})`)
     closeSplash()

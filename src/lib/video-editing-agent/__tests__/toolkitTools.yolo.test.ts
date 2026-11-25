@@ -47,13 +47,15 @@ describe('YOLO 注册表', () => {
       .toEqual(['update_plan', 'check_timeline', 'use_skill']);
   });
 
-  it('drops exactly one tool compared with the interactive registry', () => {
+  it('drops exactly the two human-question tools compared with the interactive registry', () => {
     const interactive = createToolRegistry(makeContext());
     const yolo = createToolRegistry(makeContext('yolo'));
     const interactiveNames = interactive.getAllTools().map(tool => tool.name);
     const yoloNames = yolo.getAllTools().map(tool => tool.name);
     expect(interactiveNames).toContain('ask_user');
-    expect(interactiveNames.length - yoloNames.length).toBe(1);
+    // ask_user and (agent-browser-workspace D-BW2-7) browser_request_user: nobody to ask.
+    expect(interactiveNames.filter(name => !yoloNames.includes(name)).sort())
+      .toEqual(['ask_user', 'browser_request_user']);
     expect(yoloNames.every(name => name !== 'ask_user')).toBe(true);
   });
 

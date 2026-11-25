@@ -4,7 +4,8 @@ from fastapi import APIRouter, Request, Body
 from app.models import BaseResponse
 from app.models.web_research_models import (
     BrowserOpenRequest, BrowserReadRequest, BrowserActRequest,
-    WebResearchError)
+    BrowserRequestUserRequest, WebResearchError)
+from app.services.browser_workspace.dispatch import dispatch
 from app.services.system_settings_service import research_settings
 from app.services.web_research.safe_http_client import (
     egress_summary, public_proxy_target)
@@ -53,6 +54,7 @@ async def capabilities(request: Request):
                       "downloads_disabled"},
         "research_model": research,
         "proxy": resolved_proxy_summary(),
+        "workspace_browser": await dispatch.capabilities(),
         # tier-2 出口摘要（agent-general-assistant §4.9 / AC-G17）：档位与
         # tier2 是否可用必须在这里可见，否则用户不知道"为什么同一个地址在
         # 别的工具里能下、在这里不能"。
@@ -67,27 +69,50 @@ def _public_limits(config):
     return limits
 
 
+def _context(request):
+    """x-browser-mode / x-agent-autonomy 由 Next 的 executeWebTool 注入（§4.4.1）。"""
+    return (request.headers.get("x-browser-mode"),
+            "yolo" if request.headers.get("x-agent-autonomy") == "yolo"
+            else "interactive")
+
+
+# 可能阻塞等人的调用（consent/risky/handoff ≤125 s）：后端 135 s、Next 140000 ms，
+# 两端必须大于等待上限，否则用户还没点就被 upstream_timeout 掐断（R1-1 / AC-A13）。
+HUMAN_WAIT_TIMEOUT_S = 135
+
+
 @router.post("/browser/open")
 async def open_browser(body: BrowserOpenRequest, request: Request):
+    mode, autonomy = _context(request)
     return await tool_action(request, "browser_open", body.model_dump(),
-        lambda run: browser_service().open(run, body.url), 20)
+        lambda run: dispatch.open(run, body.url, body.new_tab, mode, autonomy),
+        HUMAN_WAIT_TIMEOUT_S)
 
 
 @router.post("/browser/read")
 async def read_browser(body: BrowserReadRequest, request: Request):
     return await tool_action(request, "browser_read", body.model_dump(mode="json"),
-        lambda run: browser_service().read(run, str(body.session_id),
-                                          body.max_bytes, body.screenshot), 10)
+        lambda run: dispatch.read(run, str(body.session_id), body.max_bytes,
+                                  body.screenshot, body.elements_max), 10)
 
 
 @router.post("/browser/act")
 async def act_browser(request: Request,
                       body: BrowserActRequest = Body(discriminator="action")):
-    return await tool_action(request, "browser_act", body.model_dump(mode="json"),
-        lambda run: browser_service().act(run, body.model_dump(mode="json")), 20)
+    _, autonomy = _context(request)
+    payload = body.model_dump(mode="json", exclude_none=True)
+    return await tool_action(request, "browser_act", payload,
+        lambda run: dispatch.act(run, payload, autonomy), HUMAN_WAIT_TIMEOUT_S)
+
+
+@router.post("/browser/request-user")
+async def request_user_browser(body: BrowserRequestUserRequest, request: Request):
+    payload = body.model_dump(mode="json")
+    return await tool_action(request, "browser_request_user", payload,
+        lambda run: dispatch.request_user(run, payload), HUMAN_WAIT_TIMEOUT_S)
 
 
 @router.delete("/browser/{identifier}")
 async def close_browser(identifier: UUID, request: Request):
     return await tool_action(request, "browser_close", {"session_id": str(identifier)},
-        lambda run: browser_service().close(run, str(identifier)), 2)
+        lambda run: dispatch.close(run, str(identifier)), 2)

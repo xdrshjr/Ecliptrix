@@ -76,7 +76,10 @@ def _environment(project_id):
         if value is not None:
             environment[key] = value
     for key in list(environment):
-        if key.upper().endswith(SECRET_SUFFIXES):
+        # 控制令牌：纵深防御，防它经 `env` 被模型读出后绕过后端策略直驱浏览器
+        # （bash 本就是全权限，不是沙箱；浏览器工作台 spec §4.3.5）。
+        if (key.upper().endswith(SECRET_SUFFIXES)
+                or key.upper().startswith("BROWSER_WORKSPACE_CONTROL")):
             environment.pop(key, None)
     environment["PYTHONUTF8"] = "1"
     environment["PYTHONIOENCODING"] = "utf-8"

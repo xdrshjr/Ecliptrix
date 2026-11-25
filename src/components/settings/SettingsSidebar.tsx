@@ -8,6 +8,7 @@ export type SettingsMenuItem =
   | 'skillrouter'
   | 'model'
   | 'webResearch'
+  | 'browser'
   | 'agentToolkit'
   | 'agentHost'
   | 'agentSkills'
@@ -81,6 +82,12 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
           label: t.webResearch.title,
           description: t.webResearch.description,
           icon: <span aria-hidden="true">◎</span>,
+        },
+        {
+          id: 'browser',
+          label: t.browserWorkspace.settings.title,
+          description: t.browserWorkspace.settings.description,
+          icon: <span aria-hidden="true">⌬</span>,
         },
         {
           id: 'agentToolkit',

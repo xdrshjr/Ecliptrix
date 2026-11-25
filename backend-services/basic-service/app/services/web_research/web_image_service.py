@@ -8,13 +8,23 @@ from .web_media_download import download_material
 class WebImageService:
     async def discover_images(self, url=None, max_images=8, min_width=0,
                               run=None, session_id=None):
+        via_tab = None
         if session_id:
-            from .browser_service import get_browser_service
-            page = await get_browser_service().images(run, str(session_id))
+            from app.services.browser_workspace.dispatch import (
+                get_workspace_service)
+            workspace = get_workspace_service()
+            if workspace.owns(session_id):
+                via_tab = str(session_id)
+                page = await workspace.images(run, via_tab)
+            else:
+                from .browser_service import get_browser_service
+                page = await get_browser_service().images(run, str(session_id))
         else:
             page = await get_web_fetch_service().page(url)
         source = source_record(url or page["final_url"], page["title"], page["final_url"])
         source["source_page_verified"] = True
+        if via_tab:
+            source.update(via="workspace_tab", tab_id=via_tab)
         images = []
         for image in page["images"]:
             if image.get("width") and image["width"] < min_width:

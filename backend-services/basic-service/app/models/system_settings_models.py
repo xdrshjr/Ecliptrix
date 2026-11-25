@@ -323,6 +323,57 @@ def _validate_absolute_paths(value, maximum):
             raise ValueError("setting_out_of_range")
 
 
+BROWSER_WORKSPACE_BOOLEANS = frozenset({
+    "enabled", "agent_enabled", "follow_agent", "confirm_risky_actions",
+    "agent_allow_private_network"})
+BROWSER_WORKSPACE_INT_RANGES = {
+    "session_cookie_ttl_days": (0, 90), "max_tabs": (2, 12),
+    "agent_max_tabs": (1, 5), "max_elements": (20, 120),
+    "max_actions_per_run": (10, 500), "idle_release_seconds": (15, 300),
+}
+BROWSER_WORKSPACE_ENUMS = {
+    "agent_profile_mode": {"shared", "anonymous"},
+    "search_engine": {"bing", "google", "baidu", "duckduckgo"},
+}
+
+
+def _validate_browser_workspace_setting(key: str, value: Any) -> None:
+    """浏览器工作台设置的逐键校验（agent-browser-workspace §4.7）。
+
+    `consent_granted_at` 刻意**不在**白名单：授权只存主进程 profiles.json（R1-4），
+    任何经 system_settings 写授权的尝试都落到 unknown_browser_workspace_setting。
+    """
+    from pydantic import StrictBool, StrictInt, TypeAdapter
+
+    if key in BROWSER_WORKSPACE_BOOLEANS:
+        TypeAdapter(StrictBool).validate_python(value)
+        return
+    if key in BROWSER_WORKSPACE_INT_RANGES:
+        low, high = BROWSER_WORKSPACE_INT_RANGES[key]
+        _check_range(value, low, high, TypeAdapter(StrictInt))
+        return
+    if key in BROWSER_WORKSPACE_ENUMS:
+        if value not in BROWSER_WORKSPACE_ENUMS[key]:
+            raise ValueError("setting_out_of_range")
+        return
+    if key == "agent_deny_hosts":
+        _validate_deny_hosts(value)
+        return
+    raise ValueError("unknown_browser_workspace_setting")
+
+
+def _validate_deny_hosts(value):
+    """后缀匹配的主机名：小写字母数字/点/连字符，≤100 条。"""
+    import re
+
+    if not isinstance(value, list) or len(value) > 100:
+        raise ValueError("setting_out_of_range")
+    allowed = re.compile(r"^[a-z0-9][a-z0-9.-]{0,252}$")
+    for item in value:
+        if not isinstance(item, str) or not allowed.match(item):
+            raise ValueError("setting_out_of_range")
+
+
 def validate_setting_payload(
     category: str, key: str, value: Any,
 ) -> None:
@@ -371,6 +422,9 @@ def validate_setting_payload(
                 raise ValueError("setting_out_of_range")
         else:
             raise ValueError("unknown_toolkit_setting")
+        return
+    if category == "browser_workspace":
+        _validate_browser_workspace_setting(key, value)
         return
     if category == "agent_host":
         # 与 agent_toolkit / web_research 分支同构：布尔 StrictBool、区间

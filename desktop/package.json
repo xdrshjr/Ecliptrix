@@ -14,6 +14,8 @@
     "verify:research": "node scripts/verify-research-release.js",
     "test:logger": "node scripts/test-logger.js",
     "test:auth": "node scripts/test-auth.js",
+    "test:browser": "node scripts/test-browser-workspace.js",
+    "spike:browser": "electron scripts/browser-workspace-spike.js",
     "clean": "node scripts/build.js --clean"
   },
   "devDependencies": {

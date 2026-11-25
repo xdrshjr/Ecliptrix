@@ -55,6 +55,18 @@ def record_egress(project_id, url, status, reason=None):
                   status=status, reason=reason)
 
 
+def record_browser(run_id, tool, host, action, outcome, error_code,
+                   duration_ms):
+    """`agent_host.browser`：浏览器工作台动作（spec §6.4）。
+
+    `host` 只是主机名（无 query/path）；**不写**输入文本、页面文本、令牌——调用方
+    也不应传，这里再按固定字段构造一次，避免未来有人顺手多塞一个键。
+    """
+    return record("browser", run_id=run_id, tool=tool, host=host,
+                  action=action, outcome=outcome, error_code=error_code,
+                  duration_ms=duration_ms)
+
+
 def recent(limit=50):
     """最近 N 条（新的在前）；`limit` 已由路由层校验范围。"""
     items = list(entries)[-limit:]
@@ -81,5 +93,6 @@ async def purge_expired(days=None):
     return {"retention_days": days, "window": len(entries)}
 
 
-__all__ = ["command_digest", "record", "record_egress", "record_shell",
+__all__ = ["command_digest", "record", "record_browser", "record_egress",
+           "record_shell",
            "recent", "clear", "purge_expired", "AUDIT_WINDOW"]

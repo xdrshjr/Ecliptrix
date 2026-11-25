@@ -17,6 +17,7 @@ const { describeFocusFailure, evaluateFocusSamples } =
 const { validateReleaseEvidence, verifyPackageManifest } =
   require('./lib/research-release-evidence')
 const { captureEvidence } = require('./lib/cdp-screenshot')
+const { browserWorkspaceSmoke } = require('./lib/browser-workspace-smoke')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
 const DEFAULT_UNPACKED = path.join(DESKTOP_ROOT, 'release', 'win-unpacked')
@@ -1030,6 +1031,8 @@ async function coverSmoke({ ports, debugPort, userDataDir, unpackedDir }) {
     }
     if (gate.securityWarning !== 'gate-disabled') fail('a closed gate must report securityWarning=gate-disabled')
     if (/accessToken|refreshToken/.test(gateStatus)) fail('auth:status leaked a token to the renderer (AC-05)')
+    // Agent browser workspace (spec agent-browser-workspace §8.3): human gates via the preload bridge, Agent tools via the backend.
+    await browserWorkspaceSmoke({ backend, cdp, fail, backendPort: ports.backend, frontendPort: ports.frontend })
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: artifacts, eventsEnabled: true })
     cdp.on('Browser.downloadWillBegin', () => { nativeDownloads++ })
     cdp.on('Page.loadEventFired', () => { pageLoads++ })

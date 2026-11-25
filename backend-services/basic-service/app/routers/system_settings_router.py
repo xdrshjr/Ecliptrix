@@ -55,6 +55,11 @@ CATEGORY_METADATA: list[SettingsCategoryInfo] = [
         label="本机能力",
         description="本机命令、文件工具与通用联网出口（不是沙箱）",
     ),
+    SettingsCategoryInfo(
+        name="browser_workspace",
+        label="浏览器",
+        description="浏览器工作台、Agent 授权偏好与登录状态保留",
+    ),
     SettingsCategoryInfo(name="web_research", label="网络与研究", description="搜索、浏览、下载与资料整理"),
     SettingsCategoryInfo(
         name="tts",

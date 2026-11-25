@@ -76,12 +76,24 @@ async def request_run(request, allow_closed=False):
         request.headers.get("x-research-token", ""), allow_closed)
 
 
+def browser_gate_open(settings):
+    """隔离沙盒需 `browser_enabled`；工作台需 `browser_workspace.agent_enabled`。
+
+    两条路都关才在入口拦截；落到沙盒的那一支由 dispatch 自己补查开关，
+    所以关掉 `browser_enabled` 不会让回落的沙盒偷偷放行。
+    """
+    from app.services.system_settings_service import browser_workspace_settings
+    workspace = browser_workspace_settings()
+    return bool(settings["browser_enabled"] or
+                (workspace["enabled"] and workspace["agent_enabled"]))
+
+
 async def tool_action(request, action, params, function, timeout):
     run = await request_run(request)
     settings = research_settings()
     if not settings["enabled"]:
         raise WebResearchError("research_disabled", status_code=403)
-    if action.startswith("browser") and not settings["browser_enabled"]:
+    if action.startswith("browser") and not browser_gate_open(settings):
         raise WebResearchError("browser_disabled", status_code=403)
     if action == "download" and not settings["downloads_enabled"]:
         raise WebResearchError("downloads_disabled", status_code=403)

@@ -49,3 +49,19 @@ test('researchBrowserEnv 注入覆盖用户 env 并透传系统代理', () => {
   assert.equal(descriptor.env.WEB_RESEARCH_SYSTEM_PROXY,
     'http://127.0.0.1:7890')
 })
+
+test('browserWorkspaceEnv 注入覆盖 userData/.env 中的同名键（令牌不可被覆盖）', () => {
+  const resourcesPath = path.resolve('package with spaces/resources')
+  const userDataPath = path.resolve('.agentmesh/research-r2/test user')
+  const descriptor = createBackendDescriptor({ resourcesPath, userDataPath,
+    backendPort: 18001, frontendPort: 18002, userEnv: {
+      BROWSER_WORKSPACE_CONTROL_TOKEN: 'from-dotenv',
+      BROWSER_WORKSPACE_CONTROL_URL: 'http://evil.example',
+    },
+    browserWorkspaceEnv: {
+      BROWSER_WORKSPACE_CONTROL_URL: 'http://127.0.0.1:18787',
+      BROWSER_WORKSPACE_CONTROL_TOKEN: 'a'.repeat(64),
+    } })
+  assert.equal(descriptor.env.BROWSER_WORKSPACE_CONTROL_URL, 'http://127.0.0.1:18787')
+  assert.equal(descriptor.env.BROWSER_WORKSPACE_CONTROL_TOKEN, 'a'.repeat(64))
+})

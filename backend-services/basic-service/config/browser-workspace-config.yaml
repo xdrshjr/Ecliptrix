@@ -1,0 +1,21 @@
+# 浏览器工作台出厂值。设计基线：docs/plans/agent-browser-workspace/spec.md §4.7。
+#
+# 这些是**用户偏好**，不是安全边界：本地后端无鉴权，拥有 bash 的 Agent 理论上能改写
+# 本文件对应的设置。真正的边界（Agent 授权、审批决议、恒确认档风险分类、自家端口封禁、
+# 控制令牌）在 Electron 主进程；授权按用户存放于 userData/browser-workspace/profiles.json，
+# **不是**这里（所以没有 consent_granted_at）。
+browser_workspace:
+  enabled: true                       # 总开关；关闭则按钮禁用、Agent 落 isolated
+  agent_enabled: true                 # 允许 Agent 使用工作台
+  agent_profile_mode: shared          # shared | anonymous（anonymous=Agent 始终用隐藏沙盒浏览器）
+  follow_agent: true                  # Agent 导航时标签页跟随
+  confirm_risky_actions: true         # 已登录站点确认档（恒确认档不可关）
+  agent_deny_hosts: []                # 用户自定义 Agent 禁访主机（后缀匹配，≤100 条）
+  agent_allow_private_network: false  # 允许 Agent 访问私网（默认关）
+  session_cookie_ttl_days: 30         # 0-90，0=不续期会话 Cookie
+  max_tabs: 8                         # 2-12
+  agent_max_tabs: 3                   # 1-5
+  max_elements: 60                    # 20-120，快照元素上限
+  max_actions_per_run: 150            # 10-500
+  idle_release_seconds: 45            # 15-300
+  search_engine: bing                 # bing | google | baidu | duckduckgo

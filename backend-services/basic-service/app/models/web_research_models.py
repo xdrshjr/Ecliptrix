@@ -13,7 +13,6 @@ STATUS = {
     "no_sources": 422, "media_validation_failed": 422,
     "unsupported_content_type": 422, "unsupported_media_type": 415,
     "redirect_unsupported": 422, "configuration_invalid": 422,
-    "screenshot_unavailable": 422,
     # 策略 / 归属
     "url_forbidden": 403, "robots_disallowed": 403,
     "robots_unavailable": 503, "browser_action_blocked": 403,
@@ -44,6 +43,20 @@ STATUS = {
     "provider_response_too_large": 502, "provider_response_invalid": 502,
     # 浏览器宿主
     "browser_unavailable": 503,
+    # 浏览器工作台（agent-browser-workspace §6.3）
+    "workspace_unavailable": 503, "workspace_disabled": 403,
+    "workspace_locked": 423, "file_chooser_blocked": 403,
+    "screenshot_unavailable": 503, "consent_required": 403,
+    "consent_denied": 403, "user_in_control": 409, "user_took_over": 409,
+    "browser_busy": 429, "tab_crashed": 410, "tab_closed": 410,
+    "stale_snapshot": 409, "stale_ref": 409, "element_not_found": 409,
+    "element_obscured": 409, "sensitive_field": 422,
+    "sensitive_site_blocked": 403, "private_network_blocked": 403,
+    "navigation_blocked": 403, "risky_action_denied": 403,
+    "risky_action_blocked_autonomous": 403, "handoff_timeout": 408,
+    "handoff_cancelled": 409, "tab_limit_reached": 409,
+    "action_unsupported_in_isolated": 422, "resource_not_image": 422,
+    "resource_too_large": 422,
     # 研究模型
     "research_model_rejected": 503,
     "research_model_rate_limited": 429,
@@ -68,6 +81,7 @@ FAILURE_CLASS = {
         "research_model_rejected", "research_disabled",
         "browser_disabled", "downloads_disabled", "network_disabled",
         "proxy_config_invalid",
+        "workspace_unavailable", "workspace_disabled", "workspace_locked",
     }),
     "policy": frozenset({
         "url_forbidden", "robots_disallowed", "robots_unavailable",
@@ -80,7 +94,13 @@ FAILURE_CLASS = {
         "response_too_large", "screenshot_too_large",
         "browser_budget_exceeded", "context_budget_exceeded",
         "redirect_unsupported", "stale_element", "idempotency_conflict",
-        "screenshot_unavailable",
+        # 工作台策略类（§6.3）：sticky 者见 NON_STICKY_CODES 之外的子集。
+        "file_chooser_blocked", "consent_required", "consent_denied",
+        "sensitive_field", "sensitive_site_blocked",
+        "private_network_blocked", "navigation_blocked",
+        "risky_action_denied", "risky_action_blocked_autonomous",
+        "tab_limit_reached", "action_unsupported_in_isolated",
+        "resource_not_image", "resource_too_large",
         # DNS 答复被档位拒绝 / 端口未放行：策略失败，但**不**永久封禁（sticky=false）。
         "dns_no_answer", "dns_answer_non_global", "port_not_allowed",
     }),
@@ -91,6 +111,10 @@ FAILURE_CLASS = {
         "upstream_error", "source_unavailable", "download_failed",
         "browser_unavailable", "browser_session_lost",
         "cache_integrity_error",
+        "screenshot_unavailable", "user_in_control", "user_took_over",
+        "browser_busy", "tab_crashed", "tab_closed", "stale_snapshot",
+        "stale_ref", "element_not_found", "element_obscured",
+        "handoff_timeout", "handoff_cancelled",
     }),
     "cancelled": frozenset({"run_closed", "call_cancelled"}),
     "internal": frozenset({
@@ -115,6 +139,18 @@ def failure_class_for(code, status_code=None):
     """
     return FAILURE_CLASS_BY_CODE.get(code, "policy")
 
+# 工作台新码里 sticky=false 的全部码（§6.3 sticky 列）；老码保持
+# `sticky=True` 默认不变。sticky 的只有 consent_*、站点/私网/导航拦截、risky_action_denied。
+NON_STICKY_CODES = frozenset({
+    "file_chooser_blocked", "sensitive_field",
+    "risky_action_blocked_autonomous", "tab_limit_reached",
+    "action_unsupported_in_isolated", "resource_not_image",
+    "resource_too_large", "workspace_unavailable", "workspace_disabled",
+    "workspace_locked", "screenshot_unavailable", "user_in_control",
+    "user_took_over", "browser_busy", "tab_crashed", "tab_closed",
+    "stale_snapshot", "stale_ref", "element_not_found", "element_obscured",
+    "handoff_timeout", "handoff_cancelled"})
+
 MODEL_ERRORS = frozenset(
     key for key in STATUS if key.startswith('research_model_')
 ) | {'configuration_invalid', 'provider_not_configured'}
@@ -122,14 +158,15 @@ MODEL_ERRORS = frozenset(
 
 class WebResearchError(Exception):
     def __init__(self, error_code, message=None, status_code=None,
-                 failure_class=None, reason=None, layer=None, sticky=True,
+                 failure_class=None, reason=None, layer=None, sticky=None,
                  remediation=None, details=None):
         self.error_code = error_code
         self.message = message or error_code
         self.status_code = status_code or STATUS.get(error_code, 422)
         self.failure_class = (failure_class or
                               failure_class_for(error_code, self.status_code))
-        self.sticky = bool(sticky)
+        self.sticky = (error_code not in NON_STICKY_CODES
+                       if sticky is None else bool(sticky))
         self.reason = reason
         self.layer = layer
         self.remediation = remediation
@@ -222,12 +259,14 @@ class CredentialsRequest(StrictRequest):
 
 class BrowserOpenRequest(StrictRequest):
     url: str = Field(min_length=1, max_length=4096)
+    new_tab: bool = False
 
 
 class BrowserReadRequest(StrictRequest):
     session_id: UUID
     max_bytes: int = Field(default=4000, ge=500, le=8000)
     screenshot: bool = False
+    elements_max: int | None = Field(default=None, ge=20, le=120)
 
 
 class BrowserAction(StrictRequest):
@@ -243,13 +282,18 @@ class ClickAction(BrowserAction):
 class FillAction(BrowserAction):
     action: Literal["fill"]
     element_ref: str = Field(min_length=1, max_length=64)
-    text: str = Field(max_length=256)
+    text: str = Field(max_length=512)
+
+
+PRESS_KEYS = Literal["Enter", "Tab", "Escape", "ArrowUp", "ArrowDown",
+                     "ArrowLeft", "ArrowRight", "PageUp", "PageDown",
+                     "Home", "End", "Space"]
 
 
 class PressAction(BrowserAction):
     action: Literal["press"]
-    element_ref: str = Field(min_length=1, max_length=64)
-    key: Literal["Enter"]
+    element_ref: str | None = Field(default=None, min_length=1, max_length=64)
+    key: PRESS_KEYS
 
 
 class ScrollAction(BrowserAction):
@@ -257,7 +301,71 @@ class ScrollAction(BrowserAction):
     delta_y: int = Field(ge=-1440, le=1440)
 
 
-BrowserActRequest = ClickAction | FillAction | PressAction | ScrollAction
+class SelectAction(BrowserAction):
+    action: Literal["select"]
+    element_ref: str = Field(min_length=1, max_length=64)
+    option_text: str | None = Field(default=None, max_length=256)
+    value: str | None = Field(default=None, max_length=256)
+
+    @model_validator(mode="after")
+    def one_choice(self):
+        if bool(self.option_text) == bool(self.value):
+            raise ValueError("exactly_one_of_option_text_or_value")
+        return self
+
+
+class HoverAction(BrowserAction):
+    action: Literal["hover"]
+    element_ref: str = Field(min_length=1, max_length=64)
+
+
+class BrowserSessionAction(StrictRequest):
+    """back/forward/reload/wait 不依赖元素引用，snapshot_version 可省略。"""
+    session_id: UUID
+    snapshot_version: int | None = Field(default=None, ge=0)
+
+
+class BackAction(BrowserSessionAction):
+    action: Literal["back"]
+
+
+class ForwardAction(BrowserSessionAction):
+    action: Literal["forward"]
+
+
+class ReloadAction(BrowserSessionAction):
+    action: Literal["reload"]
+
+
+class WaitAction(BrowserSessionAction):
+    action: Literal["wait"]
+    ms: int | None = Field(default=None, ge=0, le=5000)
+    until_text: str | None = Field(default=None, min_length=1, max_length=80)
+    until_gone_text: str | None = Field(default=None, min_length=1,
+                                        max_length=80)
+    timeout_ms: int = Field(default=10000, ge=0, le=15000)
+
+    @model_validator(mode="after")
+    def one_condition(self):
+        chosen = [v is not None for v in
+                  (self.ms, self.until_text, self.until_gone_text)]
+        if sum(chosen) != 1:
+            raise ValueError("exactly_one_wait_condition_required")
+        return self
+
+
+BrowserActRequest = (ClickAction | FillAction | PressAction | ScrollAction |
+                     SelectAction | HoverAction | BackAction | ForwardAction |
+                     ReloadAction | WaitAction)
+# isolated 沙盒浏览器只认老四件；其余动作 → action_unsupported_in_isolated。
+ISOLATED_ACTIONS = frozenset({"click", "fill", "press", "scroll"})
+
+
+class BrowserRequestUserRequest(StrictRequest):
+    reason: str = Field(min_length=1, max_length=200)
+    kind: Literal["login", "captcha", "confirm", "other"]
+    handoff_id: UUID | None = None
+    timeout_s: int = Field(default=120, ge=10, le=120)
 
 
 # 保留草稿的公开响应类名，服务内部使用相同 JSON 数据。

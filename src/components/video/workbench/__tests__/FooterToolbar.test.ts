@@ -20,6 +20,9 @@ beforeAll(() => {
   const shared = { ...reactModules(), ...localeContextModule(() => 'zh-CN') };
   FooterToolbar = compileComponent<FooterToolbarProps>(toolbarSource, {
     ...shared, './icons': compileComponentModule(iconsSource, reactModules()),
+    // The browser workspace button renders nothing without the desktop bridge;
+    // it has its own suite (components/browser/__tests__).
+    '@/components/browser/BrowserFooterButton': { __esModule: true, default: () => null },
   });
 });
 

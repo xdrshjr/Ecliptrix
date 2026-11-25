@@ -5,6 +5,7 @@ import SettingsSidebar, { SettingsMenuItem } from './SettingsSidebar';
 import GeneralSettingsPanel from './GeneralSettingsPanel';
 import ModelSettingsPanel from './ModelSettingsPanel';
 import WebResearchSettingsPanel from './WebResearchSettingsPanel';
+import BrowserWorkspaceSettingsPanel from './BrowserWorkspaceSettingsPanel';
 import AgentToolkitSettingsPanel from './AgentToolkitSettingsPanel';
 import AgentHostSettingsPanel from './AgentHostSettingsPanel';
 import AgentSkillsSettingsPanel from './AgentSkillsSettingsPanel';
@@ -84,6 +85,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         return <ModelSettingsPanel />;
       case 'webResearch':
         return <WebResearchSettingsPanel onOpenModels={() => setActiveItem('model')} />;
+      case 'browser':
+        return <BrowserWorkspaceSettingsPanel />;
       case 'agentToolkit':
         return <AgentToolkitSettingsPanel onOpenModels={() => setActiveItem('model')} />;
       case 'agentHost':

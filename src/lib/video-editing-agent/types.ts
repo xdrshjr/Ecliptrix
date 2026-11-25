@@ -165,6 +165,11 @@ export interface ToolContext {
   /** 本请求的自主模式快照；缺省 `'interactive'`。YOLO 下 `ask_user` 不注册。 */
   autonomy?: AgentAutonomy;
   /**
+   * 浏览器模式提示（agent-browser-workspace spec §4.4.1）：`'isolated'` 强制
+   * 隐藏沙盒浏览器（研究小队成员并行只读，不得抢同一个可见窗口）；缺省 = 自动。
+   */
+  browserMode?: 'isolated';
+  /**
    * 本机能力快照（`/api/agent-host/capabilities`，spec §7.2）。
    *
    * 与 `webCapabilities` 同源注入：`host_tools` / `egress_tools` 据此自证可用性，
@@ -507,9 +512,22 @@ export interface WebCapabilitySegment {
   error_code?: string;
 }
 
+/** `/capabilities` 的 `workspace_browser` 段：只含非敏感字段。 */
+export interface WorkspaceBrowserSegment {
+  available: boolean;
+  enabled?: boolean;
+  agent_enabled?: boolean;
+  consent_granted?: boolean;
+  profile?: { id: string; name: string } | null;
+  mode?: 'workspace' | 'isolated';
+  error_code?: string;
+}
+
 export interface WebCapabilitySnapshot {
   search: WebCapabilitySegment;
   browser: WebCapabilitySegment;
+  /** 工作台浏览器段（spec §4.3.2）；旧后端不返回，缺省 = 不声明。 */
+  workspace_browser?: WorkspaceBrowserSegment;
   downloads: WebCapabilitySegment;
   limits?: { global_concurrency?: number; max_sources?: number };
 }

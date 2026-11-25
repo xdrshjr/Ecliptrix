@@ -6,13 +6,14 @@
  * the vertical tool-window rail, which stacked a second vertical strip next
  * to the app taskbar. Only exposes capabilities that already exist: the
  * script panel, the materials / properties tabs, the AI assistant and the
- * layout presets.
+ * layout presets — plus, first in line, the browser workspace toggle.
  */
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bot, FileText, FolderOpen, LayoutTemplate, SlidersHorizontal } from './icons';
 import { useLocale } from '@/contexts/LocaleContext';
+import BrowserFooterButton from '@/components/browser/BrowserFooterButton';
 import type { LayoutPresetId } from './layoutPrefs';
 
 export interface FooterToolbarProps {
@@ -210,6 +211,9 @@ const FooterToolbar: React.FC<FooterToolbarProps> = (props) => {
       data-compact={compact ? 'true' : undefined}
       onKeyDown={onKeyDown}
     >
+      {/* Browser workspace: always the FIRST button (spec §4.6.1); renders
+          nothing when the desktop bridge is absent. */}
+      <BrowserFooterButton />
       <FooterButton label={copy.script} title={copy.scriptTitle} pressed={props.isScriptOpen}
         icon={<FileText {...ICON} />} onClick={props.onToggleScript} />
       <FooterButton label={copy.materials} title={copy.materialsTitle} pressed={props.isMaterialsOpen}

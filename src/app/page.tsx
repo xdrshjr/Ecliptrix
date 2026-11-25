@@ -8,6 +8,7 @@ import Container from '@/components/Container';
 import SettingsPage from '@/components/settings/SettingsPage';
 import { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
 import SetupWizardHost from '@/components/Onboarding/SetupWizardHost';
+import { BrowserWorkspaceProvider } from '@/contexts/BrowserWorkspaceContext';
 import CredentialMissingListener from '@/components/integrations/CredentialMissingListener';
 import {
   settingsAttentionItems,
@@ -143,6 +144,7 @@ export default function HomePage() {
   };
 
   return (
+    <BrowserWorkspaceProvider>
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <AppTitleBar
         onSettingsClick={() => setIsSettingsOpen(true)}
@@ -203,5 +205,6 @@ export default function HomePage() {
         />
       )}
     </div>
+    </BrowserWorkspaceProvider>
   );
 }

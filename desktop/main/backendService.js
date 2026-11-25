@@ -30,6 +30,7 @@ function createBackendDescriptor({
   frontendPort,
   userEnv,
   researchBrowserEnv,
+  browserWorkspaceEnv,
   effectsRuntimeEnv,
 }) {
   const pythonExe = path.join(resourcesPath, 'python', 'python.exe')
@@ -52,6 +53,9 @@ function createBackendDescriptor({
     // CDP 浏览器宿主端点与系统代理由主进程在启动后端前探测注入
     // （spec §3.6）；缺失时后端把浏览器能力降级，静态研究不受影响。
     ...(researchBrowserEnv || {}),
+    // Loopback control URL + Bearer token of the browser workspace (spec agent-browser-workspace
+    // §4.3.5). Spread AFTER `...userEnv` so userData/.env can never override the token.
+    ...(browserWorkspaceEnv || {}),
     ...(effectsRuntimeEnv || {}),
     DEBUG: 'false',
     // Chinese-locale Windows defaults to GBK; backend logs/paths are UTF-8.

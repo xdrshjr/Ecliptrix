@@ -12,6 +12,15 @@ from uuid import uuid4
 from app.models.web_research_models import WebResearchError
 
 
+async def release_workspace(run):
+    """工作台控制权/审批随 run 释放；失败不得阻塞 run 关闭（spec §4.3.3）。"""
+    try:
+        from app.services.browser_workspace.dispatch import release_run
+        await release_run(run.run_id)
+    except Exception:  # noqa: BLE001 - 清理是尽力而为
+        pass
+
+
 @dataclass
 class ResearchRun:
     run_id: str
@@ -174,6 +183,7 @@ class RunRegistry:
         await asyncio.gather(*tasks, return_exceptions=True)
         if self.close_browser:
             await self.close_browser(run)
+        await release_workspace(run)
         async with run.lock:
             run.candidates.clear()
             run.state, run.closed_at = "closed", time.monotonic()

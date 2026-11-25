@@ -10,7 +10,6 @@ abort 并按 redirect_unsupported 失败关闭——浏览器模式绝不承载�
 重定向目标正文；需要跟随重定向时用 web_fetch（SafeHttpClient 逐跳校验）。
 """
 import asyncio
-import json
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -20,8 +19,9 @@ import aiohttp
 
 from app.models.web_research_models import WebResearchError
 from .browser_network import BrowserNetwork
+from .browser_result import assemble, fit_result
 from .browser_snapshot import BrowserSnapshot
-from .provenance import clip_bytes, display_url, source_record
+from .provenance import display_url, source_record
 from .safe_http_client import USER_AGENT, get_safe_http_client, normalize_url
 
 PAGE_ATTACH_TIMEOUT = 10
@@ -292,10 +292,8 @@ class BrowserService:
         artifact = await store.write('browser_snapshot',
             captured.pop('full_text').encode(), context,
             retention_days=self._settings(session.run).get('artifact_retention_days', 7))
-        result = {**captured, 'text': captured.pop('content'),
-                  'session_id': session.identifier, 'final_url': display_url(url),
-                  'snapshot_artifact_id': artifact.id, 'artifact_id': artifact.id,
-                  'source_id': session.source['id'], 'sources': [session.source]}
+        result = assemble(captured, session.identifier, display_url(url),
+                          session.source, artifact.id)
         if image is not None:
             try:
                 row = await store.write('screenshot', image, context,
@@ -305,15 +303,7 @@ class BrowserService:
                 screenshot_error = error.error_code
         if screenshot_error:
             result['screenshot_error'] = screenshot_error
-        result.pop('content', None)
-        while len(json.dumps(result, ensure_ascii=False).encode()) > 11500:
-            result['truncated'] = True
-            if result['elements']:
-                result['elements'].pop()
-            else:
-                result['text'] = clip_bytes(result['text'],
-                    max(0, len(result['text'].encode()) - 512))
-        return result
+        return fit_result(result)
 
     @staticmethod
     def _reduce_screenshot(image):

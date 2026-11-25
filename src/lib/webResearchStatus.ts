@@ -25,6 +25,11 @@ const CODES: Record<string, CopyKey> = {
   browser_unavailable: 'offline', research_unavailable: 'offline',
   url_forbidden: 'blocked', robots_disallowed: 'blocked',
   browser_action_blocked: 'blocked',
+  // Browser workspace (spec §6.3): refusals are policy, an absent/locked workspace is offline.
+  workspace_unavailable: 'offline', workspace_locked: 'offline',
+  navigation_blocked: 'blocked', private_network_blocked: 'blocked',
+  sensitive_site_blocked: 'blocked', risky_action_denied: 'blocked',
+  risky_action_blocked_autonomous: 'blocked',
   // 后端重启导致的 run 丢失与用户主动停止是两件事（AC-41）。
   run_closed: 'runLost',
 };

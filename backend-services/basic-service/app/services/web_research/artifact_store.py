@@ -100,7 +100,9 @@ class ArtifactStore:
                 run_id=context["run_id"], kind=kind, relative_path=identifier,
                 mime_type="image/png" if kind == "screenshot" else "text/plain; charset=utf-8",
                 byte_length=len(body), sha256=hashlib.sha256(body).hexdigest(),
-                provenance={"schema_version": 1, "sources": context.get("sources", [])},
+                provenance={"schema_version": 1, "sources": context.get("sources", []),
+                            **({"source": context["source"]}
+                               if context.get("source") else {})},
                 created_at=now, expires_at=now + timedelta(days=retention_days),
                 state="ready")
             async with self.lock:
