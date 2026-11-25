@@ -315,7 +315,14 @@ export function publicMeta(): {
     version: process.env.npm_package_version ?? '0.1.0',
     // Both gates live in `app_settings`, so an operator can flip them without a
     // redeploy — that is the whole point of having a console.
-    minClientVersion: getString('client.minVersion'),
+    //
+    // `minClientVersion` is the EFFECTIVE gate, not the stored row: a stored value
+    // above the served build is a lockout with no download behind it, so the read
+    // side clamps it (analysis A1-1). The desktop renderer reads this field from
+    // `/meta` and refuses to render the login form before any API call happens
+    // (`LoginScreen.isClientOutdated`), so publishing a different number here than
+    // the login gate enforces would leave the API open and the UI still locked.
+    minClientVersion: releaseService.effectiveMinVersion(getString('client.minVersion')),
     latestClientVersion: releaseService.latestPublishedVersion(),
     downloadUrl: releaseService.downloadPageUrl(),
     maintenanceMessage: getString('app.maintenanceMessage'),

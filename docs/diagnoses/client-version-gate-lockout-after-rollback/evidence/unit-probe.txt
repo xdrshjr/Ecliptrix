@@ -1,0 +1,39 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mM:/takoAI/Ecliptrix/webserver[39m
+
+[90mstdout[2m | tests/integration/zz-probe-client-release-gaps.test.ts[2m > [22m[2mprobe 1: gate armed above the version the channel actually serves[2m > [22m[2mbricks the fleet after a rollback or a retract, and the download page cannot release it
+[22m[39m[probe1] served=1.0.2 gate=1.0.3
+
+[90mstdout[2m | tests/integration/zz-probe-client-release-gaps.test.ts[2m > [22m[2mprobe 1: gate armed above the version the channel actually serves[2m > [22m[2mbricks the fleet after a rollback or a retract, and the download page cannot release it
+[22m[39m[probe1] download page offers=1.0.2 url=http://127.0.0.1:8787/download
+
+[90mstdout[2m | tests/integration/zz-probe-client-release-gaps.test.ts[2m > [22m[2mprobe 1: gate armed above the version the channel actually serves[2m > [22m[2mdoes the same when the bad build is retracted instead of rolled back
+[22m[39m[probe2] retract+republish: served=1.0.2 gate=1.0.3
+
+[90mstdout[2m | tests/integration/zz-probe-client-release-gaps.test.ts[2m > [22m[2mprobe 3: beta-only builds are visible and downloadable on the public page[2m > [22m[2mlists a beta-only build in the public history and serves its bytes through the stable URL
+[22m[39m[probe3] public history versions=2.0.0,1.0.2
+[probe3] GET /api/v1/downloads/stable/win?release=<beta 2.0.0> → 200
+
+[90mstdout[2m | tests/integration/zz-probe-client-release-gaps.test.ts[2m > [22m[2mprobe 4: the download counter counts requests, not downloads[2m > [22m[2mcounts a resumed download as three downloads
+[22m[39m[probe4] after one 200: 1, after the same transfer resumed twice: 3
+
+[90mstdout[2m | tests/integration/zz-probe-client-release-gaps.test.ts[2m > [22m[2mprobe 4: the download counter counts requests, not downloads[2m > [22m[2mdoes not count a HEAD probe, so the number is not even "requests"
+[22m[39m[probe4b] HEAD → 200, downloads=0
+
+[90mstdout[2m | tests/integration/zz-probe-client-release-gaps.test.ts[2m > [22m[2mprobe 5: retracting the current build empties the page while an older build is publishable[2m > [22m[2mleaves the channel with no pointer even though an older published build exists
+[22m[39m[probe5] latestPublished=null apiRelease=null
+
+ [32m✓[39m tests/integration/zz-probe-client-release-gaps.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 2197[2mms[22m[39m
+   [33m[2m✓[22m[39m probe 1: gate armed above the version the channel actually serves[2m > [22mbricks the fleet after a rollback or a retract, and the download page cannot release it [33m384[2mms[22m[39m
+   [33m[2m✓[22m[39m probe 1: gate armed above the version the channel actually serves[2m > [22mdoes the same when the bad build is retracted instead of rolled back [33m349[2mms[22m[39m
+   [33m[2m✓[22m[39m probe 3: beta-only builds are visible and downloadable on the public page[2m > [22mlists a beta-only build in the public history and serves its bytes through the stable URL [33m355[2mms[22m[39m
+   [33m[2m✓[22m[39m probe 4: the download counter counts requests, not downloads[2m > [22mcounts a resumed download as three downloads [33m398[2mms[22m[39m
+   [33m[2m✓[22m[39m probe 4: the download counter counts requests, not downloads[2m > [22mdoes not count a HEAD probe, so the number is not even "requests" [33m363[2mms[22m[39m
+   [33m[2m✓[22m[39m probe 5: retracting the current build empties the page while an older build is publishable[2m > [22mleaves the channel with no pointer even though an older published build exists [33m346[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m6 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 08:41:20
+[2m   Duration [22m 4.08s[2m (transform 471ms, setup 17ms, collect 915ms, tests 2.20s, environment 0ms, prepare 116ms)[22m
+

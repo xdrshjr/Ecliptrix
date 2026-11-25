@@ -303,7 +303,7 @@ DELETE /me/sessions/{id}
 | 能力 | 端点/设置 | 说明 |
 |---|---|---|
 | `/meta` 三字段 | `GET /meta` | `minClientVersion` / `maintenanceMessage` / `maxActiveSessions`，60 秒缓存即可 |
-| 版本闸门 | `client.minVersion` | 只拦 login/register；不消耗失败次数、不锁号 |
+| 版本闸门 | `client.minVersion` | 只拦 login/register；不消耗失败次数、不锁号。**生效值 = `min(存量值, stable 在服版本)`**：`/meta` 的 `minClientVersion` 与 426 的 `details.minVersion` 报的都是这个钳制后的值，渠道无版本时为空（不设闸门） |
 | 维护模式 | `app.maintenanceMessage` | 只拦 login/register；心跳/续期/登出照常 |
 | 会话上限 | `security.maxActiveSessions`（1–50，默认 10） | 调小不批量踢人，下次登录按 LRU 收敛，被挤掉记 `session_limit` |
 | 设备顶号 | `device.deviceKey` | 同 `(user, deviceKey)` 登录时在同一事务内替换；审计 `auth.session_relogin` |

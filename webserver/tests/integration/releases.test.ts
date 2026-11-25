@@ -15,6 +15,7 @@ import { uploadRelease } from '@/server/services/releaseUpload'
 import { usersRepo } from '../setup/repos'
 
 import { GET as latestRoute } from '@/app/api/v1/releases/latest/route'
+import { GET as metaRoute } from '@/app/api/v1/meta/route'
 import { GET as downloadRoute, HEAD as downloadHead } from '@/app/api/v1/downloads/[channel]/[platform]/route'
 import { GET as adminListRoute, POST as adminUploadRoute } from '@/app/api/v1/admin/releases/route'
 import { PATCH as adminPatchRoute } from '@/app/api/v1/admin/releases/[id]/route'
@@ -408,13 +409,9 @@ describe('client.minVersion guard (C10)', () => {
   it('adds the download page to the 426 body', async () => {
     const release = await upload('1.0.2')
     releaseService.publishRelease(release.id, ACTOR)
-    // `settingsService.patch` now refuses 9.9.9 (> the newest published build), so
-    // the row is written directly: that reproduces a deployment which armed the
-    // gate before this build existed, i.e. exactly the population that used to be
-    // locked onto a 404. It must still receive a usable address.
-    getDb()
-      .prepare("UPDATE app_settings SET value = ? WHERE key = 'client.minVersion'")
-      .run(JSON.stringify('9.9.9'))
+    // Armed at the build the channel serves — the only value the write side
+    // accepts, because a gate above it has no download behind it.
+    settingsService.patch({ 'client.minVersion': '1.0.2' }, ownerId)
 
     await expect(
       authService.login({
@@ -430,7 +427,7 @@ describe('client.minVersion guard (C10)', () => {
     ).rejects.toMatchObject({
       code: 'client_outdated',
       status: 426,
-      details: { minVersion: '9.9.9', downloadUrl: `${harness.config.publicBaseUrl}/download` },
+      details: { minVersion: '1.0.2', downloadUrl: `${harness.config.publicBaseUrl}/download` },
     })
   })
 
@@ -450,6 +447,116 @@ describe('client.minVersion guard (C10)', () => {
         requestId: 'req-web',
       }),
     ).resolves.toBeTruthy()
+  })
+})
+
+describe('effective gate clamp (A1-1)', () => {
+  /**
+   * The gate the login path enforces — read through the same function it calls, so
+   * a change of policy has to change this helper too.
+   */
+  function effectiveGate(): string {
+    return releaseService.effectiveMinVersion(settingsService.getString('client.minVersion'))
+  }
+
+  /** `/meta` is a second, independent read point: the renderer gates on THIS. */
+  async function metaMinClientVersion(): Promise<string> {
+    const response = await metaRoute(new Request(`${ADMIN}/api/v1/meta`))
+    const body = (await response.json()) as { data: { minClientVersion: string } }
+    return body.data.minClientVersion
+  }
+
+  /** A desktop login exactly as the app sends it, gate input included. */
+  function desktopLogin(clientVersion: string, requestId: string) {
+    return authService.login({
+      identifier: 'member@example.com',
+      password: 'quiet river stone meadow',
+      client: 'desktop',
+      clientVersion,
+      device: {
+        name: 'workstation',
+        platform: 'win32',
+        appVersion: clientVersion,
+        deviceKey: `gate-device-${clientVersion}`,
+      },
+      ip: '10.31.0.1',
+      userAgent: 'vitest',
+      requestId,
+    })
+  }
+
+  it('rolls the gate back with the build, and restores it when the build returns', async () => {
+    const older = await upload('1.0.2')
+    releaseService.publishRelease(older.id, ACTOR)
+    settingsService.patch({ 'client.minVersion': '1.0.2' }, ownerId)
+
+    const newer = await upload('1.0.3')
+    releaseService.publishRelease(newer.id, ACTOR)
+    settingsService.patch({ 'client.minVersion': '1.0.3' }, ownerId)
+
+    // Emergency: 1.0.3 turns out broken, so the operator rolls back. Nothing moves
+    // the gate, and before the clamp this was a fleet-wide lockout whose 426 pointed
+    // at 1.0.2 — the build the user already had.
+    releaseService.rollbackRelease(older.id, ACTOR)
+
+    expect(releaseService.latestPublishedVersion()).toBe('1.0.2')
+    // The operator's intent is preserved on disk …
+    expect(settingsService.getString('client.minVersion')).toBe('1.0.3')
+    // … while both read points agree on the gate that actually applies.
+    expect(effectiveGate()).toBe('1.0.2')
+    expect(await metaMinClientVersion()).toBe('1.0.2')
+
+    // A client on the served build gets in again.
+    await expect(desktopLogin('1.0.2', 'req-gate-after-rollback')).resolves.toBeTruthy()
+    // An older one is still refused — and the 426 names a version it can install.
+    await expect(desktopLogin('1.0.1', 'req-gate-still-old')).rejects.toMatchObject({
+      code: 'client_outdated',
+      status: 426,
+      details: { minVersion: '1.0.2' },
+    })
+
+    // Fixing and re-publishing 1.0.3 restores the gate with nobody having to
+    // remember: exactly the property a write-side auto-lower would have destroyed.
+    releaseService.publishRelease(newer.id, ACTOR)
+    expect(effectiveGate()).toBe('1.0.3')
+    expect(await metaMinClientVersion()).toBe('1.0.3')
+    await expect(desktopLogin('1.0.2', 'req-gate-republished')).rejects.toMatchObject({
+      code: 'client_outdated',
+    })
+  })
+
+  it('lifts the gate when the last published build is retracted (A1c)', async () => {
+    const only = await upload('1.0.2')
+    releaseService.publishRelease(only.id, ACTOR)
+    settingsService.patch({ 'client.minVersion': '1.0.2' }, ownerId)
+
+    releaseService.retractRelease(only.id, ACTOR)
+
+    // The channel serves nothing, so a non-empty gate has no download behind it —
+    // the write-side rule ("no published build, no gate") has a second exit here.
+    expect(releaseService.latestPublishedVersion()).toBeNull()
+    expect(settingsService.getString('client.minVersion')).toBe('1.0.2')
+    expect(effectiveGate()).toBe('')
+    expect(await metaMinClientVersion()).toBe('')
+    await expect(desktopLogin('1.0.1', 'req-gate-after-retract')).resolves.toBeTruthy()
+  })
+
+  it('clamps numerically, leaves unorderable values to the caller and never widens', async () => {
+    const release = await upload('1.0.9')
+    releaseService.publishRelease(release.id, ACTOR)
+
+    expect(releaseService.effectiveMinVersion('')).toBe('')
+    expect(releaseService.effectiveMinVersion('   ')).toBe('')
+    // Below the served build: nothing to clamp.
+    expect(releaseService.effectiveMinVersion('1.0.2')).toBe('1.0.2')
+    expect(releaseService.effectiveMinVersion('1.0.9')).toBe('1.0.9')
+    // Lexicographically "1.0.10" < "1.0.9", numerically it is newer: must clamp down.
+    expect(releaseService.effectiveMinVersion('1.0.10')).toBe('1.0.9')
+    // An unorderable build tag is returned untouched — the caller keeps its own
+    // documented "not comparable, step aside" path instead of a second rule.
+    expect(releaseService.effectiveMinVersion('1.0.9-beta.1')).toBe('1.0.9-beta.1')
+    // A channel with nothing published has no gate at all.
+    expect(releaseService.effectiveMinVersion('1.0.2', 'beta')).toBe('')
   })
 })
 

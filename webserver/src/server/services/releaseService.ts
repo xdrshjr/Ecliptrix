@@ -98,6 +98,46 @@ export function latestPublishedVersion(channel: string = DEFAULT_RELEASE_CHANNEL
 }
 
 /**
+ * The gate that actually applies: `min(stored, what the channel serves)`.
+ *
+ * `assertMinVersionAllowed` below guards ONE entry point, and it runs before the
+ * statement that stores the value — so it cannot be the guarantee. Rollback and
+ * retract move the pointer afterwards without ever reading the gate, and a CLI or
+ * a hand-edited row never passes through the console at all. When the stored value
+ * ends up above the served build, every desktop client is refused with a 426 whose
+ * `minVersion` no one can install: the fleet upgrades to the build it already has
+ * and stays locked out.
+ *
+ * Clamping on the READ side turns that from "a rule someone must remember" into a
+ * structural property: whatever wrote the value, the gate never points past the
+ * build the download page can hand out.
+ *
+ * Deliberately fail-open, matching every other unorderable-value path here:
+ *  - empty stored value → `''` (no gate);
+ *  - channel serves nothing → `''` (retracting the last build must not brick the
+ *    fleet — analysis A1c);
+ *  - value cannot be compared → returned unchanged, so the caller keeps its own
+ *    "not comparable, step aside" path instead of a second, silently different rule.
+ *
+ * The stored value is NEVER rewritten: only the current answer is clamped, so
+ * re-publishing the newer build restores the operator's intent with nobody having
+ * to remember to re-arm it (analysis R-2).
+ *
+ * @param stored the raw `client.minVersion` value, passed in by the caller:
+ *   `settingsService` already imports this module and importing it back would
+ *   create a cycle.
+ */
+export function effectiveMinVersion(stored: string, channel: string = DEFAULT_RELEASE_CHANNEL): string {
+  const trimmed = stored.trim()
+  if (trimmed === '') return ''
+  const served = latestPublishedVersion(channel)
+  if (served === null) return ''
+  const comparison = compareVersions(trimmed, served)
+  if (comparison === null) return trimmed
+  return comparison > 0 ? served : trimmed
+}
+
+/**
  * Refuse a `client.minVersion` that cannot be satisfied.
  *
  * Three rules (analysis C10):

@@ -55,7 +55,7 @@ Content-Type：`application/json; charset=utf-8`
 | `forbidden` | 403 | 权限不足 |
 | `account_suspended` | 403 | 账号停用 |
 | `account_locked` | 423 | 失败次数过多（`details.retryAfterSeconds`） |
-| `client_outdated` | 426 | 桌面端版本低于 `client.minVersion`（`details.minVersion`）；**只**由 login/register 返回 |
+| `client_outdated` | 426 | 桌面端版本低于**生效闸门**（`details.minVersion` 即该值，永远是可下载的版本）；**只**由 login/register 返回 |
 | `registration_disabled` | 403 | 注册关闭 |
 | `invite_required` / `invite_invalid` / `invite_exhausted` | 403 / 403 / 409 | 邀请码 |
 | `email_taken` / `username_taken` | 409 | 唯一冲突 |
@@ -135,7 +135,7 @@ curl -s http://127.0.0.1:8787/api/v1/health
 
 | 字段 | 含义 | 默认 |
 |---|---|---|
-| `minClientVersion` | 最低桌面客户端版本，语义化比较（`1.0.10` > `1.0.9`）。空串 = 不限制 | `''` |
+| `minClientVersion` | **生效**的最低桌面客户端版本：`client.minVersion` 存量值与 stable 渠道在服版本取小（读取时钳制，详见 `PATCH /admin/settings`），语义化比较（`1.0.10` > `1.0.9`）。空串 = 不限制；渠道无版本时恒为空串，因此**可能**与 `/admin/settings` 里的存量值不同 | `''` |
 | `maintenanceMessage` | 非空即维护模式：`/auth/login`、`/auth/register` 返回 `503 service_unavailable` + `details.reason='maintenance'`；**心跳与续期不受影响** | `''` |
 | `maxActiveSessions` | 每用户并发会话上限（1–50）。调小不批量踢人，下次登录按 LRU 收敛 | `10` |
 
@@ -180,7 +180,7 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/auth/login \
 
 **同设备顶号**：`device.deviceKey` 是「这台机器 + 这个 profile」的稳定指纹（8–64 位 `[A-Za-z0-9_-]`）。同一 `(user, deviceKey)` 再次登录时，服务端在**同一事务**内先撤销旧会话（`revoked_reason='same_device_relogin'`，旧访问令牌随后心跳得到 `401 session_revoked`），再建新会话，并写审计 `auth.session_relogin`。不传 `deviceKey`（浏览器、旧客户端）时行为与以前完全一致。
 
-**版本闸门**：仅当 `client=desktop` 且 `clientVersion` 非空时生效；`clientVersion < client.minVersion` → `426 client_outdated` + `details.minVersion`，并写审计 `auth.login_blocked_outdated_client`。`heartbeat`/`refresh`/`logout` **永不**返回 426——旧客户端必须还能登出。
+**版本闸门**：仅当 `client=desktop` 且 `clientVersion` 非空时生效；`clientVersion < 生效闸门` → `426 client_outdated` + `details.minVersion`，并写审计 `auth.login_blocked_outdated_client`。生效闸门 = `min(client.minVersion 存量值, stable 渠道在服版本)`（读取侧钳制，见 `PATCH /admin/settings`），因此 `details.minVersion` 永远是用户**真的能下载到**的版本；渠道无版本时视为不设闸门。`heartbeat`/`refresh`/`logout` **永不**返回 426——旧客户端必须还能登出。
 
 **维护模式**：`app.maintenanceMessage` 非空时，login/register → `503 service_unavailable` + `details.reason='maintenance'`，`message` 就是公告原文；已存在的会话心跳与续期照常。
 
@@ -485,6 +485,15 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/admin/users \
 2. 一个已发布版本都没有时，非空值一律 `422`（否则就是全员锁定且无处下载）；
 3. 高于最新已发布版本的值 `422`，`details.fields[0].message` 会说出当前最新版本号；
 4. 其它情况允许（含无法排序的字符串，此时版本闸门本身按既有规则 fail-open 并记日志）。
+
+> **生效值 = `min(存量值, stable 渠道在服版本)`（读取侧钳制）**。上面四条只守「保存」这一个入口，
+> 而且校验与写库不在同一事务；回滚、撤回、CLI 发布、手改库都从别的门进来。所以**读取**时才最终裁决：
+> 渠道无版本 → 生效值 `''`（fail-open），存量值高于在服版本 → 生效值取在服版本，并打一条
+> `client.minVersion clamped to the version the channel serves` 的 warn。存量值**永不被改写**，
+> 重新发布更高版本后闸门自动恢复。两个读点用的是同一个函数（`releaseService.effectiveMinVersion`）：
+> `POST /auth/login` 的 426 判定与 `GET /meta` 的 `minClientVersion`——二者必须相等，否则会出现
+> 「API 放行、桌面端界面仍然锁死」。因此 `GET /admin/settings` 里的字段值是**存量值**，可能与当前
+> 生效值不同（这是有意为之）。
 
 `client.minVersion` / `app.maintenanceMessage` / `security.maxActiveSessions` 是桌面端闸门：
 

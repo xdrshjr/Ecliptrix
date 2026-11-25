@@ -1,0 +1,11 @@
+channel serves: 1.0.342 (release listed)
+retracting 1.0.342 (6caf646b-12e8-443f-953f-260032ac472d) — the ONLY pointer the channel has
+PATCH retract → 200
+/releases/latest now: null
+stored client.minVersion: "1.0.343"
+/meta.minClientVersion: ""
+/meta.latestClientVersion: null
+POST /auth/login (clientVersion=1.0.100, an ancient build) → 200
+error_code: none
+
+A1c FIXED: no pointer, stored gate kept, effective gate empty, old client gets in.

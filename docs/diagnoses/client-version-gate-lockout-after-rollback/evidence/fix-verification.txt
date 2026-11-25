@@ -1,0 +1,98 @@
+修复节点（Subtask #2）实测记录 — A1-1 闸门读取侧钳制
+================================================================
+
+修复内容（只做评审结论第二节那一条，其余 A1b/A2/A3/A4/A5/A6 明确未并入）：
+
+1. `webserver/src/server/services/releaseService.ts`
+   新增纯函数 `effectiveMinVersion(stored, channel = 'stable'): string`
+   = `min(存量值, 渠道当前服务的版本)`；渠道无版本 → `''`；无法排序的值原样返回。
+2. `webserver/src/server/services/authService.ts`（读点 1）
+   `assertClientSupported` 用钳制后的值做比较、写审计、生成 426 的 `details.minVersion`；
+   钳制发生时打一条 warn。
+3. `webserver/src/server/services/settingsService.ts`（读点 2）
+   `publicMeta().minClientVersion` 用同一个函数。
+
+下面每一节都是真跑出来的输出（一次性数据库 `M:/takoAI/Ecliptrix/.agentmesh/repro-run/repro.db`，
+`NODE_ENV=development`，`DATABASE_PATH`/`RELEASES_DIR` 显式指向一次性目录）。
+
+
+1) 实时复现脚本反转：退出码 0（缺陷）→ 1（未复现）
+------------------------------------------------------
+`node docs/diagnoses/client-version-gate-lockout-after-rollback/repro/live-repro.mjs`
+完整 stdout：`evidence/live-repro-after-fix.txt`
+
+关键行：
+
+    PATCH rollback to 1.0.342 → 200
+    channel now serves: 1.0.342
+    stored client.minVersion: 1.0.343
+    POST /api/v1/auth/login (clientVersion=1.0.342) → 200     ← 修复前是 426
+    POST /api/v1/auth/login (clientVersion=1.0.343) → 200
+
+    NOT REPRODUCED.
+
+退出码 1（脚本约定：0 = 缺陷复现，1 = 未复现）。
+
+
+2) 两个读点相等（`/meta` 与登录闸门）
+-------------------------------------
+回滚之后、撤回之前：
+
+    GET /api/v1/meta  minClientVersion="1.0.342"  latestClientVersion="1.0.342"
+    GET /api/v1/releases/latest  served="1.0.342"
+    存量 client.minVersion 仍是 "1.0.343"
+
+即 `/meta` 不再出现「前者更高」；桌面渲染进程在表单之前拦截所用的值，与服务端登录判定一致。
+
+
+3) A1c：撤回最后一个已发布版本 → fail-open
+-------------------------------------------
+`node .agentmesh/probe-a1c.mjs`，完整 stdout：`evidence/a1c-after-fix.txt`
+
+    channel serves: 1.0.342
+    retracting 1.0.342 — the ONLY pointer the channel has
+    PATCH retract → 200
+    /releases/latest now: null
+    stored client.minVersion: "1.0.343"        ← 存量值未被改写
+    /meta.minClientVersion: ""                 ← 生效闸门为空
+    /meta.latestClientVersion: null
+    POST /auth/login (clientVersion=1.0.100, an ancient build) → 200
+
+    A1c FIXED: no pointer, stored gate kept, effective gate empty, old client gets in.
+
+
+4) 钳制留痕（服务端日志原文）
+------------------------------
+三次，分别是「回滚后两次登录」与「撤回后一次登录」：
+
+    {"ts":"2026-11-25T14:04:06.927Z","level":"warn","msg":"client.minVersion clamped to the version the channel serves","stored":"1.0.343","effective":"1.0.342"}
+    {"ts":"2026-11-25T14:04:07.127Z","level":"warn","msg":"client.minVersion clamped to the version the channel serves","stored":"1.0.343","effective":"1.0.342"}
+    {"ts":"2026-11-25T14:04:15.544Z","level":"warn","msg":"client.minVersion clamped to the version the channel serves","stored":"1.0.343","effective":""}
+
+
+5) 回归用例（永久留在 `webserver/tests/integration/releases.test.ts`）
+---------------------------------------------------------------------
+新增 `describe('effective gate clamp (A1-1)')`，三条：
+
+- 回滚后闸门跟着在服版本下降、被服务版本可登录、更旧版本仍 426 且 `details.minVersion`
+  是可下载的那个；重新发布 1.0.3 后生效闸门自动回到 1.0.3（存量值从未被改写，没人需要记得改回来）；
+- 撤回最后一个已发布版本 → `effectiveMinVersion()===''`、`/meta.minClientVersion===''`、旧客户端 200；
+- 纯函数边界：空值/空白/低于在服/等于在服/数值比较（`1.0.10` vs 在服 `1.0.9` 必须往下钳）/
+  无法排序原样返回/空的 beta 渠道返回 `''`。
+
+另将 C10 的 `adds the download page to the 426 body` 改成「在服版本上武装」的正规路径（原来是手写
+`9.9.9` 绕过写侧规则），因为 426 现在报告的是**能下载到**的版本。
+
+
+6) 全量校验
+-----------
+    npx vitest run --reporter=verbose    → Test Files 30 passed (30) / Tests 336 passed (336)  [基线 333 + 新增 3]
+    npm run type-check                   → tsc --noEmit，零输出，exit 0
+    npm run lint                         → eslint . --max-warnings 0，零输出，exit 0
+    next dev 启动                         → GET /api/v1/ready 200 {"status":"ready","database":"ok","migrations":"current"}
+
+
+7) 已知不在本次改动范围内（评审结论第四节原文列出）
+-----------------------------------------------------
+A1b（目录版本 vs 包内自述版本对账）、A2（beta channel 泄漏）、A3（撤回后无继任者）、
+A4（下载计数口径）、A5（设置页文案）、A6（历史表「当前可用」）。本次一个都没有碰。

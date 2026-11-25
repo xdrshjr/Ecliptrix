@@ -134,6 +134,10 @@ Base：`{PUBLIC_BASE_URL}/api/v1`。Web 用 `ecs_session` Cookie，桌面端用 
   `RELEASE_PLATFORMS` 条目，不是放宽架构列表；
 - `client.minVersion` 与 **stable 渠道当前服务的版本**联动：高于它、或该渠道一个版本都没有
   时设置非空值，都会被服务端拒绝；未变更的值不重新校验，所以无关的设置项照常保存。
+- **读取侧钳制**才是真正的保证：生效闸门 = `min(存量值, 渠道在服版本)`，渠道无版本时视为不设闸门
+  （`releaseService.effectiveMinVersion`）。写侧只守「保存」这一个入口，回滚 / 撤回 / CLI / 手改库
+  都绕过它，所以登录判定（426 的 `details.minVersion`）与 `/meta` 的 `minClientVersion` 都在读取
+  时用同一个函数取值；存量值不被改写，重新发布更高版本后闸门自动恢复。
 
 ## 安全模型
 
@@ -222,7 +226,7 @@ sudo systemctl enable --now webserver
 服务端为桌面端额外提供三条能力（都可在 `/admin/settings` 热改，不必发版）：
 
 - **设备顶号**：桌面端带上稳定的 `device.deviceKey`（这台机器 + 这个 profile 的指纹，不是随机数）。同一设备再次登录时，服务端在**一个事务**内撤掉该设备的旧会话（`revoked_reason='same_device_relogin'`）再建新会话，因此重装或反复登录不会把每用户会话名额吃光；旧令牌随后的心跳得到 `401 session_revoked`。
-- **版本闸门**：`client.minVersion` 非空时，低于它的桌面构建登录/注册直接 `426 client_outdated`（`details.minVersion` 给出目标版本），且**不消耗登录失败次数、不锁号**。`heartbeat` / `refresh` / `logout` 永不返回 426——旧客户端必须还能体面登出。
+- **版本闸门**：**生效闸门 = `min(client.minVersion 存量值, stable 渠道在服版本)`**（读取侧钳制；渠道无版本时视为不设闸门），低于它的桌面构建登录/注册直接 `426 client_outdated`（`details.minVersion` 给出**真能下载到**的目标版本），且**不消耗登录失败次数、不锁号**。`heartbeat` / `refresh` / `logout` 永不返回 426——旧客户端必须还能体面登出。
 - **会话上限**：`security.maxActiveSessions`（1–50，默认 10）取代了硬编码常量。调小不会批量踢人，下一次登录按 LRU 收敛，被挤掉的会话记 `session_limit`。
 
 维护模式（`app.maintenanceMessage` 非空）只拦**新的**登录/注册（`503 service_unavailable` + `details.reason='maintenance'`）：已经在工作的用户不会因为一条公告被踢出应用。

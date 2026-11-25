@@ -122,8 +122,10 @@ they are ordered by "how bad is it if you skip it".
       not downloadable from `/download`.
 - [ ] If this deployment armed `client.minVersion` before this release existed, the
       stored value is left untouched (only a *changed* value is validated, so the
-      settings form keeps working). Clear it on the next save if it is above the
-      build published now.
+      settings form keeps working) and the gate is **clamped on read** to the build
+      now published: `/meta.minClientVersion` and the 426 body both report that
+      build, so nobody is sent to an installer that does not exist. Re-arm the field
+      at the intended version once that build is published.
 - [ ] After publishing a new build, `/download` and the landing page show it **without
       a rebuild** (both are `force-dynamic`; a statically prerendered landing page was
       the reason a publish used to be invisible on the website).

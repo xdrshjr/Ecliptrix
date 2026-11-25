@@ -1,0 +1,35 @@
+  server ready: 200 ready
+  this run uses 1.0.342 (kept) and 1.0.343 (withdrawn)
+
+— operator signs in to the console
+  web login: 200, cookie session established
+
+— publish 1.0.342 on the stable channel
+  served version: 1.0.342
+
+— arm the version gate at 1.0.342 (allowed: it is what the channel serves)
+  PATCH settings client.minVersion=1.0.342 → 200
+
+— publish 1.0.343 and arm the gate at 1.0.343 (still allowed)
+  PATCH settings client.minVersion=1.0.343 → 200
+
+— 1.0.343 turns out broken: the operator rolls back (the documented remedy)
+  PATCH rollback to 1.0.342 → 200
+  channel now serves: 1.0.342
+  stored client.minVersion: 1.0.343
+  download page: http://127.0.0.1:8787/download
+
+— a desktop client on 1.0.342 — the build the page now hands out — tries to sign in
+  POST /api/v1/auth/login (clientVersion=1.0.342) → 200
+  error_code: undefined
+  details: undefined
+
+— … and a client on the withdrawn 1.0.343 gets in, which is the only way back inside
+  POST /api/v1/auth/login (clientVersion=1.0.343) → 200
+
+NOT REPRODUCED.
+
+— after the rollback, the two read points must agree
+  GET /api/v1/meta  minClientVersion="1.0.342"  latestClientVersion="1.0.342"
+  GET /api/v1/releases/latest  served="1.0.342"
+  stored client.minVersion is still 1.0.343 (see the repro transcript): min === latest, so the renderer gate and the login gate cannot disagree

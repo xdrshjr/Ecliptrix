@@ -192,11 +192,29 @@ function assertNotInMaintenance(input: GateInput, source: 'login' | 'register'):
  * never to heartbeat/refresh/logout — an old client still has to be able to sign
  * out of an existing session. Nothing is written to `login_attempts`, so a
  * misconfigured gate cannot lock an account out.
+ *
+ * The minimum compared here is the EFFECTIVE one (`releaseService.effectiveMinVersion`),
+ * never the raw stored value: a gate armed above the build the channel serves is a
+ * lockout whose 426 names an installer nobody can download (analysis A1/A1c).
  */
 function assertClientSupported(input: GateInput): void {
   const clientVersion = (input.clientVersion ?? '').trim()
   if (input.client !== 'desktop' || clientVersion === '') return
-  const minVersion = settingsService.getString('client.minVersion').trim()
+  const storedMinVersion = settingsService.getString('client.minVersion').trim()
+  // Read-side clamp (analysis A1-1): the gate may never demand a build the channel
+  // cannot hand out, whatever wrote the stored value. This is the only place that
+  // can guarantee it — the write side validates one entry point, before its own
+  // transaction, and rollback/retract/CLI never pass through it.
+  const minVersion = releaseService.effectiveMinVersion(storedMinVersion)
+  if (minVersion !== storedMinVersion) {
+    // Clamping must leave a trace: a console field that keeps showing the stored
+    // value while a different one is enforced is otherwise indistinguishable from
+    // "the operator edited the wrong row".
+    log('warn', 'client.minVersion clamped to the version the channel serves', {
+      stored: storedMinVersion,
+      effective: minVersion,
+    })
+  }
   if (minVersion === '') return
   if (parseVersion(minVersion) === null) {
     // A minimum nobody can parse would either block everyone or nobody. Both are

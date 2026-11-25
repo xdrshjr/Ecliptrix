@@ -1,0 +1,16 @@
+
+— upload 9.9.563 and publish it ONLY to the beta channel
+  PATCH publish channel=beta → 200
+
+— what the STABLE channel says it serves (correct: the beta build is not current)
+  stable current = 1.0.534
+  beta current   = 9.9.563
+
+— what the public /download page renders for a signed-out visitor
+  GET /download → 200
+  page mentions 9.9.563: true
+
+— GET /api/v1/downloads/stable/win?release=<beta build>, signed in as a plain user
+  status = 200, bytes = 4096, sha256 in header = c9ac7b0624824f844f6c7f3d50fab9741a8914e878467e8daaedca143a34d90b
+
+REPRODUCED: an unreleased beta build is advertised on the public download page and served through the stable byte endpoint.
