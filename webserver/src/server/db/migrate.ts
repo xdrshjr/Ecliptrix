@@ -80,12 +80,52 @@ export function appliedVersions(db: Db): number[] {
 /** Migrations that still need to run, in order. */
 export function pendingMigrations(db: Db, dir?: string): Migration[] {
   const applied = new Set(appliedVersions(db))
-  return discoverMigrations(dir).filter((migration) => !applied.has(migration.version))
+  const migrations = discoverMigrations(dir)
+  // Same collision check as `runMigrations`: with AUTO_MIGRATE off this is the
+  // function that decides whether the server may start at all.
+  assertNoVersionCollision(db, migrations)
+  return migrations.filter((migration) => !applied.has(migration.version))
 }
 
 export interface MigrationResult {
   applied: number[]
   skipped: number[]
+}
+
+/** Applied rows as `version → name`, for the collision check below. */
+export function appliedRecords(db: Db): { version: number; name: string }[] {
+  appliedVersions(db)
+  return db.prepare('SELECT version, name FROM schema_migrations ORDER BY version').all() as {
+    version: number
+    name: string
+  }[]
+}
+
+/**
+ * Refuse to run when a version number on disk is already applied under a
+ * different file name.
+ *
+ * The runner keys purely on the version integer, so a collision makes the new
+ * migration look "already applied" and silently skips it — the code then queries a
+ * table that was never created and answers 500 at the first click. That is exactly
+ * how a development database can quietly disagree with the source tree (a database
+ * left behind by another branch or another checkout), so it fails here with both
+ * names in the message instead of hours later.
+ *
+ * @throws {Error} naming the file, its version and the recorded name.
+ */
+export function assertNoVersionCollision(db: Db, migrations: readonly Migration[]): void {
+  const recorded = new Map(appliedRecords(db).map((row) => [row.version, row.name]))
+  for (const migration of migrations) {
+    const previous = recorded.get(migration.version)
+    if (previous === undefined || previous === migration.name) continue
+    throw new Error(
+      `migration version ${migration.version} is already applied as "${previous}" but this ` +
+        `tree has "${migration.name}" (${migration.path}). The database was built by a ` +
+        'different migration lineage; point DATABASE_PATH at a fresh file, or reconcile ' +
+        'schema_migrations before starting the server.',
+    )
+  }
 }
 
 /**
@@ -97,6 +137,7 @@ export interface MigrationResult {
 export function runMigrations(db: Db, dir?: string): MigrationResult {
   const applied = new Set(appliedVersions(db))
   const migrations = discoverMigrations(dir)
+  assertNoVersionCollision(db, migrations)
   const result: MigrationResult = { applied: [], skipped: [] }
   const record = db.prepare(
     'INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)',

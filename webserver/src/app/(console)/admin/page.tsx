@@ -43,6 +43,11 @@ export default async function AdminOverviewPage({ searchParams }: PageProps) {
     { label: tt('admin.overview.suspended'), value: metrics.suspendedUsers },
     { label: tt('admin.overview.locked'), value: metrics.lockedUsers },
     { label: tt('admin.overview.pendingDeletions'), value: metrics.pendingDeletions },
+    {
+      label: tt('admin.releases.downloads'),
+      value: metrics.releaseDownloads,
+      href: '/admin/releases',
+    },
   ]
 
   return (

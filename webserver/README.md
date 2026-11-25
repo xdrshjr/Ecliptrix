@@ -54,6 +54,7 @@ npm run user:reset  -- --email a@b.c --password '…'    # 破窗重置（含解
 npm run user:verify -- --email a@b.c                   # 管理员强制标记已验证
 npm run user:verify -- --all-unverified [--dry-run]    # 开启验证策略前的批量放行
 npm run account:confirm-deletion -- --email a@b.c [--force]   # 破窗代确认注销
+npm run release:publish -- --file setup.exe --version 1.0.2 [--publish]   # 上传客户端安装包
 npm run db:prune     -- [--dry-run]                    # 保留清理（审计/邮件/令牌）
 npm run accounts:sweep -- [--dry-run]                  # 执行到期注销
 ```
@@ -75,6 +76,8 @@ CLI 直连数据库与服务层，**不起 HTTP**，输出只打印邮箱与角�
 | `roles.write` | ✓ | | | |
 | `sessions.revoke` | ✓ | ✓ | ✓ | |
 | `invites.read` / `invites.write` | ✓ | ✓ | | |
+| `releases.read` | ✓ | ✓ | ✓ | |
+| `releases.write` | ✓ | ✓ | | |
 | `audit.read` | ✓ | ✓ | ✓ | |
 | `settings.read` | ✓ | ✓ | | |
 | `settings.write` | ✓ | | | |
@@ -102,11 +105,35 @@ Base：`{PUBLIC_BASE_URL}/api/v1`。Web 用 `ecs_session` Cookie，桌面端用 
   "error": { "code": "invalid_credentials", "message": "…", "details": { } } }
 ```
 
-主要端点：`/health`、`/ready`、`/meta`、`/auth/{login,register,logout,refresh,heartbeat,session,password/*}`、`/me`、`/me/sessions`、`/me/activity`、`/admin/{metrics,users,users/bulk,users/{id}/*,sessions/{id},roles,invites,audit,settings}`。
+主要端点：`/health`、`/ready`、`/meta`、`/releases/latest`、`/downloads/{channel}/{platform}`、`/auth/{login,register,logout,refresh,heartbeat,session,password/*}`、`/me`、`/me/sessions`、`/me/activity`、`/admin/{metrics,users,users/bulk,users/{id}/*,sessions/{id},roles,invites,audit,settings,releases}`。
 
 完整说明（含请求体、错误码、限流数值与 curl 示例）见 [`docs/api.md`](docs/api.md)。
 
 ---
+
+## 客户端分发
+
+桌面端没有自动更新，**`/download` 是唯一升级路径**。这条链路因此是产品可用性的一部分，
+不是一个营销页面：
+
+- 用户登录后在 `/download` 看到当前版本、平台、大小、SHA-256 与发布说明；历史版本也在此列出，
+  且每个仍在发布的旧版本都能直接下载（`?release=<id>`）——装过它的人正是需要它的人；
+- 管理员在 `/admin/releases` 上传安装包（浏览器表单带进度条，或 `npm run release:publish`
+  走命令行走同一套服务）、发布、回溯、撤回；发布说明在草稿建好之后单独保存，不塞进上传的
+  查询串（2000 字符的说明会让请求在 nginx 上 414）；
+- 制品存放在 `RELEASES_DIR`（默认与数据库同级，**不在** `public/` 下——`next start` 不会服务
+  构建后新增的 `public/` 文件）；落盘名是内容寻址的 `<version>/<platform>/<sha256><ext>`，
+  上传的 `file_name` 只用于展示；
+- 下载端点是鉴权的、流式的、支持 `Range`（206/416/304 全家桶），`ETag` 就是 SHA-256，
+  与页面上展示的校验和是同一个值；
+- 「当前是哪一版」是一行指针（`client_release_channels`，主键 `(channel, platform)`）。发布、
+  回溯、撤回都是移动这一行——历史是行、永不删除，所以回溯天然可逆；`rollback` 只能向后，
+  回到更新的版本用 `publish`（同一个指针动作）；
+- 平台表只有 `win / x64`（桌面端只产这一个安装包），因为指针按平台唯一、下载 URL 不带架构：
+  给同一平台两个架构会让 arm64 的上传静默顶掉 x64 用户的指针。加第二个平台是一个
+  `RELEASE_PLATFORMS` 条目，不是放宽架构列表；
+- `client.minVersion` 与 **stable 渠道当前服务的版本**联动：高于它、或该渠道一个版本都没有
+  时设置非空值，都会被服务端拒绝；未变更的值不重新校验，所以无关的设置项照常保存。
 
 ## 安全模型
 
@@ -249,9 +276,9 @@ webserver/
 ```bash
 npm run type-check     # 0 error
 npm run lint           # 0 warning（--max-warnings 0）
-npm test               # 280 tests green / 28 files（单元 + 集成 + RBAC 矩阵，真实 SQLite）
-npm run build          # standalone 产物（含 /admin/sessions、/admin/mail、/verify-email、
-                       # /confirm-deletion 与 8 个新 API 路由）
+npm test               # 328 tests green / 30 files（单元 + 集成 + RBAC 矩阵 + 客户端发布，真实 SQLite）
+npm run build          # standalone 产物（含 /download、/admin/releases 与
+                       # /api/v1/{releases/latest,downloads/*,admin/releases/*}）
 npm run db:migrate     # 连跑两次，第二次输出 "nothing to do"
 
 # 对运行中的服务做端到端冒烟（109 项断言）

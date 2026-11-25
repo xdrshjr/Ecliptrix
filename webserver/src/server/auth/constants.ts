@@ -80,6 +80,8 @@ export const ERROR_CODE = {
   rateLimited: 'rate_limited',
   csrfFailed: 'csrf_failed',
   payloadTooLarge: 'payload_too_large',
+  /** A `Range` header asked for bytes outside the artifact (HTTP 416). */
+  rangeNotSatisfiable: 'range_not_satisfiable',
   serviceUnavailable: 'service_unavailable',
   internalError: 'internal_error',
   /**

@@ -9,6 +9,33 @@ import { buildRequestContext } from '@/server/http/requestContext'
 import { toSessionDto } from '@/server/db/types'
 import { resetAll } from '@/server/auth/rateLimit'
 import { sessionsRepo, usersRepo } from '../setup/repos'
+import { Readable } from 'node:stream'
+import { uploadRelease } from '@/server/services/releaseUpload'
+import * as releaseService from '@/server/services/releaseService'
+import * as auditService from '@/server/services/auditService'
+
+/**
+ * Publish one client build so the version gate has something to point at.
+ *
+ * Since migration 0006 a non-empty `client.minVersion` is refused unless a build
+ * at least that new is published (analysis C10) — a gate with nothing behind it is
+ * a fleet-wide lockout. These cases are about the gate itself, so they publish the
+ * floor they are about to arm.
+ */
+async function publishClientBuild(version: string): Promise<void> {
+  const actor: auditService.AuditContext = {
+    actorUserId: null,
+    actorLabel: 'vitest',
+    ip: '127.0.0.1',
+    requestId: 'req-publish',
+  }
+  const release = await uploadRelease(
+    { version, platform: 'win', arch: 'x64', fileName: `Ecliptrix-Setup-${version}.exe` },
+    Readable.toWeb(Readable.from([Buffer.from('installer')])) as ReadableStream<Uint8Array>,
+    actor,
+  )
+  releaseService.publishRelease(release.id, actor)
+}
 
 import { POST as loginRoute } from '@/app/api/v1/auth/login/route'
 import { POST as registerRoute } from '@/app/api/v1/auth/register/route'
@@ -55,6 +82,8 @@ beforeEach(async () => {
   harness = await createHarness()
   failNextCreate.enabled = false
   resetAll()
+  // The gate may not be armed above the newest published build.
+  await publishClientBuild('99.0.0')
 })
 
 afterEach(() => {
@@ -181,7 +210,9 @@ describe('version gate', () => {
     expect(error).toMatchObject({
       code: 'client_outdated',
       status: 426,
-      details: { minVersion: '1.4.0' },
+      // `downloadUrl` is part of the contract now: a 426 that names a version but
+      // no address is the dead end this feature exists to remove (analysis R12).
+      details: { minVersion: '1.4.0', downloadUrl: `${harness.config.publicBaseUrl}/download` },
     })
   })
 

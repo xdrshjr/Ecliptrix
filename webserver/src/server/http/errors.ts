@@ -62,6 +62,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   rate_limited: 429,
   csrf_failed: 403,
   payload_too_large: 413,
+  range_not_satisfiable: 416,
   service_unavailable: 503,
   internal_error: 500,
   email_not_verified: 403,
@@ -92,9 +93,18 @@ export const errors = {
    * instead of "update", and so support can tell a real gate from a network
    * failure. Never raised by heartbeat/refresh/logout — see `authService.login`.
    */
-  clientOutdated: (minVersion: string) =>
+  clientOutdated: (minVersion: string, downloadUrl: string | null = null) =>
     new AppError(ERROR_CODE.clientOutdated, `客户端版本过低，请升级到 ${minVersion} 或更高版本`, {
-      details: { minVersion },
+      // `downloadUrl` is the other half of the message: the gate shipped long
+      // before the distribution surface did, so a 426 without an address was a
+      // dead end (analysis D3 / R12). Built from `PUBLIC_BASE_URL` by the caller,
+      // never from a request header.
+      details: { minVersion, downloadUrl },
+    }),
+  /** The requested byte range lies outside the artifact (HTTP 416). */
+  rangeNotSatisfiable: (size: number) =>
+    new AppError(ERROR_CODE.rangeNotSatisfiable, '请求的文件区间超出范围', {
+      details: { size },
     }),
   /**
    * A mailed link that cannot be honoured. One code for unknown/expired/used/

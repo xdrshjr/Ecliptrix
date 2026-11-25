@@ -7,6 +7,7 @@ import {
   authReasonCopyKey,
   clientDownloadUrl,
   compareSemver,
+  downloadFailureCopyKey,
   type AuthReason,
   type AuthStatus,
 } from '@/lib/api/authBridge';
@@ -27,6 +28,9 @@ const SECONDARY_BUTTON =
   'inline-flex items-center justify-center h-11 px-4 rounded-lg border border-border bg-muted ' +
   'text-sm text-foreground transition-colors duration-150 ease-out hover:bg-accent ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none';
+/** The download button dims when the account origin is unknown (Rule 3). */
+const DOWNLOAD_BUTTON =
+  `${SECONDARY_BUTTON} disabled:opacity-60 disabled:cursor-not-allowed`;
 
 function fill(template: string, values: Record<string, string | number>): string {
   return Object.entries(values).reduce(
@@ -110,11 +114,15 @@ function NoticePanel({ body, children }: NoticePanelProps) {
  */
 export default function LoginScreen({ reason = null }: LoginScreenProps) {
   const { t } = useLocale();
-  const { status, retry, openExternal } = useSession();
+  const { status, retry, openExternal, pending } = useSession();
   const [view, setView] = useState<AuthView>('login');
+  const [downloadHint, setDownloadHint] = useState<string | null>(null);
   const meta = status.server;
   const maintenanceMessage = meta?.maintenanceMessage ?? '';
   const outdated = isClientOutdated(status);
+  // `null` means "origin unknown": disable the button rather than navigate to a
+  // domain that may not be the user's (Rule 3, spec §3.7 / P1-8).
+  const downloadUrl = clientDownloadUrl(status.server?.baseUrl);
 
   const reasonKey = authReasonCopyKey(reason);
   const reasonText = reasonKey ? t.auth.error[reasonKey] : null;
@@ -129,9 +137,25 @@ export default function LoginScreen({ reason = null }: LoginScreenProps) {
           ? t.auth.forgot
           : t.auth.title;
 
-  const openDownload = () => {
-    openExternal(clientDownloadUrl()).catch(() => {});
+  const openDownload = async () => {
+    if (!downloadUrl || pending) return;
+    setDownloadHint(null);
+    try {
+      await openExternal(downloadUrl);
+    } catch (error) {
+      // The bridge rejects with the plain `{ ok:false, code }` envelope, so
+      // `instanceof Error` would miss every refusal — the classifier is the
+      // only correct test and it picks the `url_not_allowed` sentence.
+      // `null` means the click was skipped (another auth action was running),
+      // not that opening failed, so nothing is reported.
+      const key = downloadFailureCopyKey(error);
+      if (key) setDownloadHint(t.auth.outdated[key]);
+    }
   };
+  // No address means nothing to open, so the hint stands in for the click: a
+  // disabled button with no explanation reads as "broken" (Rule 3, §3.7/P1-8).
+  const downloadHintText =
+    downloadHint ?? (downloadUrl ? null : t.auth.outdated.noUrl);
 
   const canRegister = !!meta && meta.registrationEnabled;
   const form = (() => {
@@ -157,9 +181,25 @@ export default function LoginScreen({ reason = null }: LoginScreenProps) {
             fill(t.auth.outdated.minimum, { version: meta.minClientVersion }),
           ].join('\n')}
         >
-          <button type="button" onClick={openDownload} className={SECONDARY_BUTTON}>
+          <button
+            type="button"
+            onClick={openDownload}
+            disabled={!downloadUrl || pending}
+            className={DOWNLOAD_BUTTON}
+          >
             {t.auth.maintenance.download}
           </button>
+          {downloadHintText && (
+            <div
+              role="status"
+              className="text-[11px] leading-relaxed text-amber-500"
+            >
+              <p>{downloadHintText}</p>
+              {downloadUrl && (
+                <p className="select-text break-all">{downloadUrl}</p>
+              )}
+            </div>
+          )}
         </NoticePanel>
       );
     }

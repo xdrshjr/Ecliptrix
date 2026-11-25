@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs'
 import { getConfig } from '@/server/config'
 import { closeDatabase, getDb } from '@/server/db/client'
 import { pendingMigrations, runMigrations } from '@/server/db/migrate'
@@ -44,6 +45,12 @@ async function boot(): Promise<void> {
   }
 
   await runSeed()
+
+  // The release directory must exist before the first upload. Creating it here (not
+  // inside a service) means every entry point — boot, CLI, migrate — inherits it,
+  // and an operator who restored the database but not the artifacts gets an empty
+  // "/download" instead of a 500 on the first publish.
+  mkdirSync(config.releasesDir, { recursive: true })
 
   log('info', 'webserver ready', {
     nodeEnv: config.nodeEnv,

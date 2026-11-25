@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path'
 import { z } from 'zod'
 
 /**
@@ -44,11 +45,27 @@ const optionalString = z
   .optional()
   .transform((value) => (value === undefined || value.trim() === '' ? undefined : value.trim()))
 
+/**
+ * Where uploaded installers live.
+ *
+ * An explicit `RELEASES_DIR` always wins. Otherwise the directory sits next to
+ * the database file: `DATABASE_PATH` is the one path a deployment must already
+ * have correct, and `deploy/webserver.service` grants writes to its directory
+ * only — a default somewhere else would fail with EACCES at upload time, long
+ * after "the service started fine" was reported.
+ */
+function resolveReleasesDir(explicit: string | undefined, databasePath: string): string {
+  if (explicit) return explicit
+  if (databasePath === ':memory:') return join(process.cwd(), 'data', 'releases')
+  return join(dirname(databasePath), 'releases')
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: intInRange(1, 65535),
   HOST: z.string().default('0.0.0.0'),
   DATABASE_PATH: z.string().min(1, 'DATABASE_PATH is required (e.g. ./data/webserver.db)'),
+  RELEASES_DIR: optionalString,
   PUBLIC_BASE_URL: z
     .string()
     .min(1, 'PUBLIC_BASE_URL is required (e.g. https://id.example.com)')
@@ -90,6 +107,16 @@ export interface ServerConfig {
   readonly port: number
   readonly host: string
   readonly databasePath: string
+  /**
+   * Directory holding uploaded desktop installers — deliberately NOT under
+   * `public/`: a standalone `next start` never serves files added to `public/`
+   * after the build, so an installer copied there would be uploaded successfully
+   * and then 404 for every user (analysis §6.4 trap 1).
+   *
+   * Defaults to `releases/` next to the database file, which keeps it inside the
+   * data directory that `deploy/webserver.service` already allows writes to.
+   */
+  readonly releasesDir: string
   readonly publicBaseUrl: string
   readonly sessionSecret: string
   readonly rootAdminEmail: string
@@ -165,6 +192,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     port: value.PORT ?? 8787,
     host: value.HOST,
     databasePath: value.DATABASE_PATH,
+    releasesDir: resolveReleasesDir(value.RELEASES_DIR, value.DATABASE_PATH),
     publicBaseUrl: value.PUBLIC_BASE_URL,
     sessionSecret: value.SESSION_SECRET,
     rootAdminEmail: value.ROOT_ADMIN_EMAIL.trim().toLowerCase(),

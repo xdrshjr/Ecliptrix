@@ -8,7 +8,12 @@ import type { Translator } from '@/lib/i18n'
  * cleanly, follows the theme, and never depends on a binary asset that a fresh
  * clone might not have.
  */
-export function Hero({ tt }: { tt: Translator }) {
+/**
+ * @param hasDownload whether any installer is published. The primary button
+ *        points at `/download` either way — that page explains the empty state —
+ *        but the copy only promises a download when one exists.
+ */
+export function Hero({ tt, hasDownload }: { tt: Translator; hasDownload: boolean }) {
   return (
     <section className="relative overflow-hidden border-b border-[var(--border)]">
       <div className="absolute inset-0 bg-grid opacity-60" aria-hidden />
@@ -27,17 +32,20 @@ export function Hero({ tt }: { tt: Translator }) {
         <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--muted)]">{tt('hero.subtitle')}</p>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">
+          {/* Was `/register`: the landing page's most important button sent
+              people who wanted an installer into a sign-up form, and there was
+              no installer behind it (analysis D4). */}
           <Link
-            href="/register"
+            href="/download"
             className="inline-flex h-10 items-center rounded-sm bg-[var(--accent)] px-5 text-sm font-medium text-[var(--accent-fg)] transition-[filter] hover:brightness-110"
           >
-            {tt('hero.ctaPrimary')}
+            {hasDownload ? tt('hero.ctaPrimary') : tt('download.title')}
           </Link>
           <Link
-            href="/login"
+            href="/account"
             className="inline-flex h-10 items-center rounded-sm border border-[var(--border-strong)] px-5 text-sm font-medium transition-colors hover:bg-[var(--surface-2)]"
           >
-            {tt('hero.ctaSecondary')}
+            {tt('nav.console')}
           </Link>
           <span className="text-xs text-[var(--muted)]">{tt('hero.note')}</span>
         </div>

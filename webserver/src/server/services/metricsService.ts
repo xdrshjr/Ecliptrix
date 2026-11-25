@@ -4,6 +4,7 @@ import * as sessionsRepo from '@/server/db/repositories/sessionsRepo'
 import * as attemptsRepo from '@/server/db/repositories/loginAttemptsRepo'
 import * as rolesRepo from '@/server/db/repositories/rolesRepo'
 import * as deletionRepo from '@/server/db/repositories/deletionRequestsRepo'
+import * as releasesRepo from '@/server/db/repositories/releasesRepo'
 
 /**
  * Operational metrics for the console overview.
@@ -51,6 +52,14 @@ export interface OverviewMetricsV2 extends OverviewMetrics {
   clientBreakdown: { platform: string; appVersion: string; sessions: number }[]
   /** Echoed back so the chart can label its own x-axis without guessing. */
   rangeDays: number
+  /**
+   * Client-release counters (R9). Reuses the existing overview rather than adding
+   * a second metrics surface: "did the new build actually get downloaded?" is the
+   * question an operator asks right after publishing.
+   */
+  releaseDownloads: number
+  releaseStatus: { draft: number; published: number; retracted: number }
+  releaseBreakdown: { version: string; platform: string; downloads: number }[]
 }
 
 /**
@@ -216,6 +225,9 @@ export function overview(now = Date.now(), days = 14): OverviewMetricsV2 {
     pendingDeletions: deletionRepo.countLive(db),
     clientBreakdown: clientBreakdown(now),
     rangeDays: range,
+    releaseDownloads: releasesRepo.sumDownloads(db),
+    releaseStatus: releasesRepo.countByStatus(db),
+    releaseBreakdown: releasesRepo.topDownloads(db, 5),
     generatedAt: new Date(now).toISOString(),
   }
 }

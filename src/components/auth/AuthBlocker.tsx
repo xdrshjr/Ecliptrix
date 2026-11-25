@@ -1,9 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useSession } from '@/contexts/SessionContext';
-import { authReasonCopyKey, clientDownloadUrl, type AuthReason } from '@/lib/api/authBridge';
+import {
+  authReasonCopyKey,
+  clientDownloadUrl,
+  downloadFailureCopyKey,
+  type AuthReason,
+} from '@/lib/api/authBridge';
 import LocalAdminForm from './LocalAdminForm';
 
 const PRIMARY_BUTTON =
@@ -14,6 +19,10 @@ const SECONDARY_BUTTON =
   'inline-flex items-center justify-center h-11 px-4 rounded-lg border border-border bg-muted ' +
   'text-sm text-foreground transition-colors duration-150 ease-out hover:bg-accent ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none';
+
+/** The download button dims when the account origin is unknown (Rule 3). */
+const DOWNLOAD_BUTTON =
+  `${SECONDARY_BUTTON} disabled:opacity-60 disabled:cursor-not-allowed`;
 
 function fill(template: string, values: Record<string, string | number>): string {
   return Object.entries(values).reduce(
@@ -45,14 +54,39 @@ const WINDOWS_LOG_FALLBACK = '%APPDATA%\\Ecliptrix\\logs';
  */
 export default function AuthBlocker() {
   const { t } = useLocale();
-  const { status, retry, openExternal } = useSession();
+  const { status, retry, openExternal, pending } = useSession();
+  const [downloadHint, setDownloadHint] = useState<string | null>(null);
   const reason: AuthReason = status.reason ?? 'network';
   const meta = status.server;
   const path = logsPath();
+  // `null` means "origin unknown": disable the button instead of navigating to
+  // a domain that may not be the user's (Rule 3, spec §3.7 / P1-8).
+  const downloadUrl = clientDownloadUrl(status.server?.baseUrl);
+  // Only `client-outdated` offers a download button, so only that state may show
+  // a hint about it: rendered unconditionally, `noUrl` surfaced under a
+  // bridge-unavailable / local-admin / maintenance screen and read as if
+  // downloading were broken.
+  const canDownload = reason === 'client-outdated';
 
-  const openDownload = () => {
-    openExternal(clientDownloadUrl()).catch(() => {});
+  const openDownload = async () => {
+    if (!downloadUrl || !canDownload || pending) return;
+    setDownloadHint(null);
+    try {
+      await openExternal(downloadUrl);
+    } catch (error) {
+      // The bridge rejects with the plain `{ ok:false, code }` envelope, so
+      // `instanceof Error` would miss every refusal — the classifier is the
+      // only correct test and it picks the `url_not_allowed` sentence.
+      // `null` means the click was skipped (another auth action was running),
+      // not that opening failed, so nothing is reported.
+      const key = downloadFailureCopyKey(error);
+      if (key) setDownloadHint(t.auth.outdated[key]);
+    }
   };
+  // No address means nothing to open, so the hint stands in for the click: a
+  // disabled button with no explanation reads as "broken".
+  const downloadHintText =
+    canDownload ? downloadHint ?? (downloadUrl ? null : t.auth.outdated.noUrl) : null;
 
   const title =
     reason === 'maintenance'
@@ -88,11 +122,28 @@ export default function AuthBlocker() {
             {t.auth.retry}
           </button>
           {reason === 'client-outdated' && (
-            <button type="button" onClick={openDownload} className={SECONDARY_BUTTON}>
+            <button
+              type="button"
+              onClick={openDownload}
+              disabled={!downloadUrl || pending}
+              className={DOWNLOAD_BUTTON}
+            >
               {t.auth.maintenance.download}
             </button>
           )}
         </div>
+
+        {downloadHintText && (
+          <div
+            role="status"
+            className="mt-3 text-[11px] leading-relaxed text-amber-500"
+          >
+            <p>{downloadHintText}</p>
+            {downloadUrl && (
+              <p className="select-text break-all">{downloadUrl}</p>
+            )}
+          </div>
+        )}
 
         {reason === 'bridge-unavailable' && (
           <div className="mt-4 text-[11px] leading-relaxed text-muted-foreground">

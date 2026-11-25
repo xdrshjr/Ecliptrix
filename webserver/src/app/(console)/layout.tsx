@@ -44,6 +44,12 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
       section: 'admin',
       permission: 'invites.read',
     },
+    {
+      href: '/admin/releases',
+      label: tt('admin.releases.title'),
+      section: 'admin',
+      permission: 'releases.read',
+    },
     { href: '/admin/audit', label: tt('admin.audit.title'), section: 'admin', permission: 'audit.read' },
     {
       href: '/admin/mail',

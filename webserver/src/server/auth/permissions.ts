@@ -15,6 +15,9 @@ export const PERMISSION_GROUPS = {
   invites: ['invites.read', 'invites.write'],
   audit: ['audit.read'],
   settings: ['settings.read', 'settings.write'],
+  // The client release catalogue (`/admin/releases`): one place where an
+  // administrator uploads installers and moves the "current version" pointer.
+  releases: ['releases.read', 'releases.write'],
 } as const
 
 export type PermissionGroupKey = keyof typeof PERMISSION_GROUPS
@@ -79,8 +82,12 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleKey, readonly string[]> =
     'audit.read',
     'settings.read',
     'sessions.revoke',
+    'releases.read',
+    'releases.write',
   ],
-  support: ['users.read', 'sessions.revoke', 'audit.read'],
+  // Support can see what is published (they answer "which version do I install?"),
+  // but publishing is an administrator action.
+  support: ['users.read', 'sessions.revoke', 'audit.read', 'releases.read'],
   member: [],
 }
 

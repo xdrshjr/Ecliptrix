@@ -21,6 +21,7 @@ export const PERMISSION_GROUPS = {
   invites: ['invites.read', 'invites.write'],
   audit: ['audit.read'],
   settings: ['settings.read', 'settings.write'],
+  releases: ['releases.read', 'releases.write'],
 } as const
 
 export type PermissionGroupKey = keyof typeof PERMISSION_GROUPS

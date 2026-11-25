@@ -40,6 +40,9 @@ Content-Type：`application/json; charset=utf-8`
 
 ### 错误码（稳定枚举）
 
+> 与本特性相关的新增码：`range_not_satisfiable`（416，Range 越界）。`client_outdated`
+> （426）的 `details` 现在是 `{ minVersion, downloadUrl }`——版本闸门必须同时给出去处。
+
 | code | HTTP | 何时 |
 |---|---|---|
 | `invalid_request` | 400 | 无法解析的 body |
@@ -113,11 +116,17 @@ curl -s http://127.0.0.1:8787/api/v1/health
   "supportEmail": "",
   "version": "0.1.0",
   "minClientVersion": "",
+  "latestClientVersion": "1.0.2",
+  "downloadUrl": "https://id.example.com/download",
   "maintenanceMessage": "",
   "maxActiveSessions": 10,
   "emailVerificationRequired": false
 }
 ```
+
+`version` 是**账号服务器自身**的 npm 版本（`0.1.0`），不要拿它当客户端版本；
+客户端版本是 `latestClientVersion`（没有已发布版本时为 `null`），下载页地址是
+`downloadUrl`（由 `PUBLIC_BASE_URL` 拼出，**永不**取自请求 Host 头）。
 
 `emailVerificationRequired` 是「桌面端未验证邮箱不得登录」的开关（`mail.verificationRequired`，
 无 SMTP 时强制为 `false`）。网页端登录永不受它限制，注册也永不施加该闸门。
@@ -470,6 +479,13 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/admin/users \
 
 `GET /admin/settings` 返回 `{settings, available, mail}`：`mail` 是只读能力块（`mode` / `fromAddress` / `configured` / `sent24h` / `failed24h` / `sendTimeoutMs`），不是可写键。
 
+`client.minVersion` 现在与「已发布版本」联动（四条规则，服务端强制，控制台只是反映）：
+
+1. `''` 永远允许——这是「不限制」；
+2. 一个已发布版本都没有时，非空值一律 `422`（否则就是全员锁定且无处下载）；
+3. 高于最新已发布版本的值 `422`，`details.fields[0].message` 会说出当前最新版本号；
+4. 其它情况允许（含无法排序的字符串，此时版本闸门本身按既有规则 fail-open 并记日志）。
+
 `client.minVersion` / `app.maintenanceMessage` / `security.maxActiveSessions` 是桌面端闸门：
 
 ```bash
@@ -489,6 +505,101 @@ curl -s -X PATCH http://127.0.0.1:8787/api/v1/admin/settings \
 `GET /admin/settings` 返回 `{ settings, available, mail }`，`settings` 是上述 19 个键的完整快照（缺失行回落默认值），`mail` 是只读能力块（见 `PATCH /admin/settings` 一节）。
 
 ---
+
+### 客户端发布（`/releases`、`/downloads`、`/admin/releases`）
+
+桌面端没有自动更新，`/download` 是**唯一**升级路径，所以这条链路是产品可用性的一部分。
+
+#### `GET /releases/latest?channel=stable`（公开）
+
+```bash
+curl -s http://127.0.0.1:8787/api/v1/releases/latest
+# → { "channel": "stable",
+#     "release": { "version": "1.0.2", "publishedAt": "…", "channel": "stable",
+#       "platforms": [ { "platform": "win", "arch": "x64", "fileName": "Ecliptrix-Setup-1.0.2.exe",
+#                        "byteSize": 307200, "sha256": "08bd…", "downloads": 3,
+#                        "downloadPath": "/api/v1/downloads/stable/win" } ] },
+#     "downloadUrl": "https://id.example.com/download" }
+```
+
+没有已发布版本时 `release` 为 `null`（**不是** 404、更不是 500）。渠道未知 → `404`。
+`release.version` 是该渠道各平台中**最新**的那个；每个平台条目自带自己的 `version` 与 `sha256`。
+
+#### `GET /downloads/{channel}/{platform}`（需会话）
+
+安装包字节流，`runtime='nodejs'`，逐段读取，不整体缓冲。
+`?release=<id>` 服务**指定的那一版**（`/download` 的「历史版本」列表就用它），而不是渠道当前
+指向的那版：一个被撤回的构建对已经装了它的人仍然是必需的。指定行必须 `status='published'`
+且平台匹配，否则 `404`。
+
+| 请求 | 响应 |
+|---|---|
+| 无 `Range` | `200` + `Accept-Ranges: bytes` + `ETag: "<sha256>"` + `Cache-Control: private, max-age=0, must-revalidate` |
+| `Range: bytes=0-1023` | `206` + `Content-Range: bytes 0-1023/N`，`Content-Length` 是**切片**长度 |
+| `Range: bytes=<N-1024>-` | `206` 到文件尾 |
+| `Range: bytes=-500` | `206`，最后 500 字节 |
+| 起点 ≥ 文件大小 | `416` + `Content-Range: bytes */N` |
+| `Range: bytes=0-1,5-6` 或非法 Range | 忽略 Range，`200` |
+| `If-None-Match: "<sha256>"` | `304`，无 body |
+| `HEAD` | 与 GET 同头，无 body |
+
+失败：`401`（无会话）、`404`（该平台当前没有已发布版本，或文件已丢失）、`416`（越界）。
+成功计数一次 `downloads`。认证产物不得被共享缓存保存，所以是 `private`。
+
+#### `GET /admin/releases`（`releases.read`）
+
+返回 `{ items, channels, platforms, counts, latestVersion, latest }`。`items` 含草稿、已撤回
+与上传人；`pointedBy` 指出哪些渠道正指向该版本（`stable` 即「用户当前拿到的」）。
+
+#### `POST /admin/releases?...`（`releases.write`）
+
+**元数据走查询串，body 是裸文件字节**（不用 multipart：`request.formData()` 会把整个安装包
+读进内存）。查询串里**只有短字段**：`version` / `platform` / `arch` / `fileName` / 可选 `sha256`。
+**发布说明不走这里**——2000 字符的说明在 URL 编码后（中文每字 9 字节）远超 nginx 8 KB 的头部
+缓冲，上传会在开始前就 `414`；草稿建好之后用 `PATCH {action:'notes'}` 写，控制台也是这么做的。
+
+```bash
+curl -s -X POST "http://127.0.0.1:8787/api/v1/admin/releases?version=1.0.2&platform=win&arch=x64&fileName=Ecliptrix-Setup-1.0.2.exe" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/octet-stream' \
+  --data-binary @desktop/release/Ecliptrix-Setup-1.0.2.exe
+# → 201 { "release": { "id": "…", "status": "draft", "sha256": "…", "byteSize": … } }
+
+curl -s -X PATCH "http://127.0.0.1:8787/api/v1/admin/releases/<id>" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"action":"notes","notes":"首版：修复导出崩溃"}'
+```
+
+- 落盘：`RELEASES_DIR/.incoming/<uuid>.part` → 边写边算 SHA-256 与字节数（超过 1 GiB 立刻
+  中止）→ fsync → 原子改名到 `<version>/<platform>/<sha256><ext>` → **最后**才 INSERT 行；
+  任何一步失败都删临时文件、不写行。
+- `fileName` 只用展示，先 `basename()` 再拒绝 `/ \ ..`；真实路径由内容决定，因此重复上传
+  同一版本不会覆盖已发布的包。
+- 校验和：可选 `sha256=` 参数，给了就必须与上传字节一致，否则 `422`。
+- 冲突：`(version, platform, arch)` 已存在 → `409`；空文件 → `422`；超限 → `413`。
+- 大文件没有浏览器的场合用 `npm run release:publish -- --file … --version … --publish`。
+
+#### `PATCH /admin/releases/{id}`（`releases.write`）
+
+```bash
+-d '{"action":"publish"}'                       # 标记已发布并把该平台指针指过来
+-d '{"action":"rollback","channel":"stable"}'   # 指针回到**更早且已发布**的版本
+-d '{"action":"retract"}'                       # 撤回：同事务清空所有指向它的指针，文件保留
+-d '{"action":"notes","notes":"修复 …"}'        # 只改发布说明
+```
+
+不变式：**历史是行，「当前」是指针**（`client_release_channels` 每 `(channel, platform)` 一行）。
+回溯不删除任何东西；指向已撤回版本的状态无法构造；撤回命中当前指针时同事务清空。四条动作
+都写 `audit_events`（`releases.upload` / `publish` / `rollback` / `retract`），`publish` 与
+`rollback` 记录 before/after 的 `release_id`。
+
+`rollback` 只能**向后**移动。把指针指回更新的版本用 `publish`（同一个指针动作）：回溯之后
+那个更新的版本仍然是 `published` 行，控制台因此按版本号而不是按状态决定显示「发布」还是
+「回溯」。
+
+版本闸门（`client.minVersion`）比对的是 **stable 渠道当前服务的版本**，不是"任意已发布行"：
+只发到 `beta` 的构建拿不到下载页，用它可以把自己锁死。另外，只有**变更过**的值才会校验——
+控制台每次保存都提交整份设置，重新校验已存的那个值会让「改个登录次数上限」在一个早于本
+特性就设过闸门的部署上失败。
 
 ### `GET /admin/sessions` / `POST /admin/sessions/revoke`
 

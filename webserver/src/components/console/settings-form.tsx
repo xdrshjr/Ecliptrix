@@ -7,6 +7,7 @@ import { Checkbox, Field, Input, Textarea } from '@/components/ui/field'
 import { api, ApiError } from '@/lib/api/client'
 import { toast } from '@/components/shell/toaster'
 import { errorMessage, translator, type Locale } from '@/lib/i18n'
+import { compareVersions } from '@/lib/releases'
 
 /**
  * Settings form.
@@ -18,6 +19,34 @@ import { errorMessage, translator, type Locale } from '@/lib/i18n'
 
 /** `x.y.z` (1–4 numeric segments). Mirrors the server's semver comparison. */
 const VERSION_PATTERN = /^\d+(\.\d+){0,3}$/
+
+/**
+ * Newest published client version, or `null` when nothing is published.
+ *
+ * `undefined` means "could not ask". A failed read is NOT treated as a conflict:
+ * the server re-checks the rule on save, and refusing to save because a GET failed
+ * would be worse than letting the authoritative answer arrive as a 422.
+ */
+async function fetchLatestClientVersion(): Promise<string | null | undefined> {
+  try {
+    const result = await api.get<{ release: { version: string } | null }>('/api/v1/releases/latest')
+    return result.release?.version ?? null
+  } catch {
+    return undefined
+  }
+}
+
+/** Message to show under the field, or `null` when the value is acceptable. */
+async function gateConflict(minVersion: string, locale: Locale): Promise<string | null> {
+  const tt = translator(locale)
+  const latest = await fetchLatestClientVersion()
+  if (latest === undefined) return null
+  if (latest === null) return tt('admin.settings.minVersion.unpublished')
+  const comparison = compareVersions(minVersion, latest)
+  return comparison !== null && comparison > 0
+    ? tt('admin.releases.latestHint', { version: latest })
+    : null
+}
 
 export interface MailCapabilitiesView {
   mode: 'smtp' | 'outbox'
@@ -59,6 +88,15 @@ export function SettingsForm({
     const minVersion = String(form['client.minVersion'] ?? '').trim()
     if (minVersion !== '' && !VERSION_PATTERN.test(minVersion)) {
       setErrors({ 'client.minVersion': tt('admin.settings.minVersion.invalid') })
+      return
+    }
+    // R11: the gate may not exceed the newest build that is actually published, and
+    // may not be armed at all when nothing is published — either combination locks
+    // every desktop out with nothing to download. The server enforces the same
+    // rule; checking here turns it into a sentence instead of a round trip.
+    const gateIssue = minVersion === '' ? null : await gateConflict(minVersion, locale)
+    if (gateIssue) {
+      setErrors({ 'client.minVersion': gateIssue })
       return
     }
 

@@ -10,7 +10,7 @@ export function Footer({ tt }: { tt: Translator }) {
       links: [
         { label: tt('nav.features'), href: '#features' },
         { label: tt('nav.pricing'), href: '#pricing' },
-        { label: tt('nav.download'), href: '#download' },
+        { label: tt('nav.download'), href: '/download' },
       ],
     },
     {

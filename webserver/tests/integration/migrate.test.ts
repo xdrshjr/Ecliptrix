@@ -58,6 +58,80 @@ describe('migrations', () => {
     expect(row).toBe(1)
   })
 
+  it('creates the client release catalogue with the pointer table', async () => {
+    harness = await createHarness()
+    const db = getDb()
+    const tables = (
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
+    ).map((row) => row.name)
+    expect(tables).toContain('client_releases')
+    expect(tables).toContain('client_release_channels')
+
+    // The pointer's primary key is (channel, platform): one answer per platform,
+    // not one per channel (a single-column key would make a second platform
+    // impossible without a table rebuild).
+    const columns = db.pragma('table_info(client_release_channels)') as {
+      name: string
+      pk: number
+    }[]
+    expect(columns.filter((column) => column.pk > 0).map((column) => column.name).sort()).toEqual([
+      'channel',
+      'platform',
+    ])
+
+    // Uniqueness is per (version, platform, arch), never per version alone — that
+    // is what lets one version ship for two platforms.
+    const indexes = db
+      .prepare("SELECT name, " + '"unique"' + " AS is_unique FROM pragma_index_list('client_releases')")
+      .all() as { name: string; is_unique: number }[]
+    expect(indexes.find((index) => index.name === 'idx_client_releases_unique')?.is_unique).toBe(1)
+  })
+
+  it('grants the new permissions to roles that already existed (upgrade path)', async () => {
+    // A real upgrade: build a database at schema version 5, create the system
+    // roles, strip the permissions 0006 introduces — then apply 0006 and assert
+    // the existing roles gain them. Without the idempotent INSERT in the
+    // migration, `seedRoles()` would leave them alone and the deployment's own
+    // administrator would answer 403 while a fresh install works.
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { tmpdir } = await import('node:os')
+    const { openDatabase, setDbForTests } = await import('@/server/db/client')
+    const { discoverMigrations, runMigrations } = await import('@/server/db/migrate')
+    const { seedRoles } = await import('@/server/db/seed')
+
+    const scratch = mkdtempSync(join(tmpdir(), 'ws-upgrade-'))
+    const all = discoverMigrations()
+    for (const migration of all.filter((entry) => entry.version < 6)) {
+      writeFileSync(join(scratch, `${String(migration.version).padStart(4, '0')}_${migration.name}.sql`), migration.sql)
+    }
+
+    const db = openDatabase(':memory:')
+    setDbForTests(db)
+    runMigrations(db, scratch)
+    seedRoles()
+    db.prepare("DELETE FROM role_permissions WHERE permission LIKE 'releases.%'").run()
+
+    runMigrations(db)
+
+    const granted = db
+      .prepare(
+        `SELECT r.key AS role_key, p.permission
+           FROM role_permissions p JOIN roles r ON r.id = p.role_id
+          WHERE p.permission LIKE 'releases.%'
+          ORDER BY r.key, p.permission`,
+      )
+      .all() as { role_key: string; permission: string }[]
+    expect(granted).toEqual([
+      { role_key: 'admin', permission: 'releases.read' },
+      { role_key: 'admin', permission: 'releases.write' },
+      { role_key: 'support', permission: 'releases.read' },
+    ])
+
+    db.close()
+    rmSync(scratch, { recursive: true, force: true })
+  })
+
   it('applies 0005 once and is idempotent afterwards', async () => {
     harness = await createHarness()
     const versions = appliedVersions(getDb())
@@ -135,6 +209,23 @@ describe('migrations', () => {
     ]) {
       expect(indexes).toContain(index)
     }
+  })
+
+  it('refuses to run when a version number is already applied under another name', async () => {
+    // A database built by a different migration lineage (another branch, another
+    // checkout) records version 6 under a name this tree does not have. Keying on
+    // the integer alone would skip this tree's 0006 and leave the code querying a
+    // table that was never created — a 500 at the first click, hours later.
+    harness = await createHarness()
+    const db = getDb()
+    db.prepare('DELETE FROM schema_migrations WHERE version = 6').run()
+    db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (6, ?, ?)').run(
+      'api_gateway',
+      Date.now(),
+    )
+
+    expect(() => runMigrations(db)).toThrowError(/already applied as "api_gateway"/)
+    expect(() => pendingMigrations(db)).toThrowError(/different migration lineage/)
   })
 
   it('rolls back an entire migration file when one statement fails', async () => {

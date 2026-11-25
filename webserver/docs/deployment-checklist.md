@@ -35,6 +35,16 @@ they are ordered by "how bad is it if you skip it".
 - [ ] `MIGRATIONS_DIR` points at the migrations shipped with the build
       (`.next/standalone` does not include them unless traced — see `Dockerfile`).
 - [ ] `GET /api/v1/ready` returns `200` with `migrations: "current"`.
+- [ ] The boot did **not** fail with `migration version N is already applied as "…" but
+      this tree has "…"`. That message means the database was built by a different
+      migration lineage (another branch, another checkout) and this build is refusing
+      to run against a schema it does not own — point `DATABASE_PATH` at a fresh file
+      or reconcile `schema_migrations` deliberately. Starting anyway would leave code
+      querying tables that were never created.
+- [ ] `RELEASES_DIR` exists (boot creates it) and is **outside** `public/` and outside
+      `.next/standalone`. It defaults to `releases/` next to `DATABASE_PATH`; the
+      systemd unit sets it explicitly to `/opt/webserver/data/releases` because the
+      service may only write under `/opt/webserver/data`.
 
 ## 3. Process
 
@@ -53,7 +63,13 @@ they are ordered by "how bad is it if you skip it".
 
 - [ ] Nginx (or equivalent) terminates TLS, forwards `X-Forwarded-For` and
       `X-Forwarded-Proto`; `TRUST_PROXY=true` only when it does.
-- [ ] `client_max_body_size 1m`; the app enforces 64 KB itself and answers 413.
+- [ ] `client_max_body_size 1m` globally — **plus** the two raised locations from
+      `deploy/nginx.conf.example`: `^/api/v1/admin/releases` (`1024m`,
+      `client_body_timeout 120s`, `proxy_request_buffering off`) and
+      `^/api/v1/downloads/` (`proxy_read_timeout 300s`). Without them every installer
+      upload answers `413` and a slow 188 MB download dies mid-transfer. Keep the
+      default at `1m`: raising it globally hands `/login` and `/register` a 1 GiB
+      denial-of-service surface.
 - [ ] Do **not** add a second CSP header in Nginx: two CSPs intersect, and the
       console's inline styles break with no error message.
 - [ ] Static `/_next/static/*` cached with `immutable`; everything else `no-store`
@@ -89,16 +105,52 @@ they are ordered by "how bad is it if you skip it".
       it is documented in the repository, so it is public.
 - [ ] Offline grace (7 days) is understood by support: an unreachable server is not
       a lockout, and only a `403 account_suspended` is.
+- [ ] One client release is published before anything is gated: open `/download`
+      signed **out** (it must render, with a sign-in prompt — a 404 here is the whole
+      fleet having nowhere to go) and signed **in** (it must offer the Windows button
+      and show the version, size and SHA-256).
+      Check the byte endpoint too:
+      `curl -sI -H "Authorization: Bearer $TOKEN" https://…/api/v1/downloads/stable/win`
+      → `200` with `ETag` and `Accept-Ranges: bytes`.
 - [ ] Desktop gate settings are deliberate: `GET /api/v1/meta` returns
-      `minClientVersion` / `maintenanceMessage` / `maxActiveSessions`, and
-      `client.minVersion` is **empty or equal to the released build**. A minimum
-      above the shipped version answers `426` to every older client — the fastest
-      way to lock out the entire fleet by accident.
+      `minClientVersion` / `latestClientVersion` / `downloadUrl` /
+      `maintenanceMessage` / `maxActiveSessions`, and `client.minVersion` is **empty
+      or equal to `latestClientVersion`**. The server refuses a minimum above the
+      version the **stable** channel serves, and refuses any non-empty minimum when
+      that channel serves nothing — both combinations lock every older client out
+      with nowhere to download. A build that is only on `beta` does not count: it is
+      not downloadable from `/download`.
+- [ ] If this deployment armed `client.minVersion` before this release existed, the
+      stored value is left untouched (only a *changed* value is validated, so the
+      settings form keeps working). Clear it on the next save if it is above the
+      build published now.
+- [ ] After publishing a new build, `/download` and the landing page show it **without
+      a rebuild** (both are `force-dynamic`; a statically prerendered landing page was
+      the reason a publish used to be invisible on the website).
 - [ ] `app.maintenanceMessage` is **empty** on go-live (a leftover announcement
       blocks all new sign-ins), and `security.maxActiveSessions` matches the real
       device count you are willing to keep alive per user.
 
-## 7. Operations
+## 7. Releases and rollback
+
+- [ ] Publishing is a pointer move, not a copy: `POST /admin/releases` uploads a draft,
+      `PATCH … {action:'publish'}` makes it current, `{action:'rollback'}` points the
+      channel back at an older **published** build, `{action:'retract'}` withdraws it
+      and clears the pointer. Nothing is deleted — the users who already installed a
+      build are exactly the people who need it again.
+- [ ] Before publishing, compare the uploaded SHA-256 with the build machine's value:
+      `/admin/releases` shows it (copy button) and `/download` publishes it to users.
+      An installer is unsigned in v1, so this is the only integrity check available.
+- [ ] After a rollback, confirm `GET /api/v1/releases/latest` reports the older
+      version and that the newer build is still listed and can be made current again
+      (its row offers "Publish", since a rollback may only move backwards).
+- [ ] A previous build is still fetchable: open `/download` signed in and follow the
+      "Download" link in the history table (`/api/v1/downloads/stable/win?release=<id>`).
+      A withdrawn build is deliberately not offered there.
+- [ ] Rollback drill done once: retract the current build on staging, confirm
+      `/download` shows the empty state instead of a 500, then publish it again.
+
+## 8. Operations
 
 - [ ] `npm run db:backup` scheduled (daily), backups restored once to prove they work.
 - [ ] Log retention configured; logs are single-line JSON with `requestId`.

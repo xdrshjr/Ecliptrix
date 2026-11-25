@@ -22,6 +22,10 @@ Environment=HOST=127.0.0.1
 # `.next/standalone/data` — outside ReadWritePaths — and SQLite would fail to
 # open it, producing an exit(1) + Restart=always loop that reads like a crash.
 Environment=DATABASE_PATH=/opt/webserver/data/webserver.db
+# Uploaded installers. Absolute for the same reason as DATABASE_PATH, and inside
+# ReadWritePaths below; the default (next to the database) would resolve under the
+# standalone build directory, which is read-only here.
+Environment=RELEASES_DIR=/opt/webserver/data/releases
 Environment=MIGRATIONS_DIR=/opt/webserver/.next/standalone/migrations
 # Apply the schema at boot: the runtime tree carries no TypeScript toolchain, so
 # `npm run db:migrate` cannot run there. The runner is idempotent and wraps each

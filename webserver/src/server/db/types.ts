@@ -125,6 +125,92 @@ export interface SettingRow {
   updated_at: number
 }
 
+/** One publishable desktop installer (migration 0006). */
+export type ClientReleaseStatus = 'draft' | 'published' | 'retracted'
+
+export interface ClientReleaseRow {
+  id: string
+  version: string
+  platform: string
+  arch: string
+  /** Display name only; the bytes live at `storage_key`. */
+  file_name: string
+  /** Path relative to `RELEASES_DIR`, content-addressed. */
+  storage_key: string
+  byte_size: number
+  sha256: string
+  notes: string
+  status: ClientReleaseStatus
+  downloads: number
+  created_by: string | null
+  created_at: number
+  published_at: number | null
+  retracted_at: number | null
+}
+
+/** The same row with the uploader's address resolved for the console table. */
+export interface ClientReleaseWithAuthorRow extends ClientReleaseRow {
+  created_by_label: string | null
+}
+
+/** "Which release is current for this platform" — one row per (channel, platform). */
+export interface ClientReleaseChannelRow {
+  channel: string
+  platform: string
+  release_id: string | null
+  updated_at: number
+  updated_by: string | null
+}
+
+export interface ClientReleaseDto {
+  id: string
+  version: string
+  platform: string
+  arch: string
+  fileName: string
+  byteSize: number
+  sha256: string
+  notes: string
+  status: ClientReleaseStatus
+  downloads: number
+  createdBy: string | null
+  createdAt: string
+  publishedAt: string | null
+  retractedAt: string | null
+}
+
+export function toClientReleaseDto(row: ClientReleaseRow): ClientReleaseDto {
+  return {
+    id: row.id,
+    version: row.version,
+    platform: row.platform,
+    arch: row.arch,
+    fileName: row.file_name,
+    byteSize: row.byte_size,
+    sha256: row.sha256,
+    notes: row.notes,
+    status: row.status,
+    downloads: row.downloads,
+    createdBy: row.created_by,
+    createdAt: toIso(row.created_at),
+    publishedAt: iso(row.published_at),
+    retractedAt: iso(row.retracted_at),
+  }
+}
+
+/** What `/api/v1/releases/latest` exposes per platform. */
+export interface PublishedReleaseDto {
+  platform: string
+  arch: string
+  version: string
+  fileName: string
+  byteSize: number
+  sha256: string
+  notes: string
+  publishedAt: string
+  downloads: number
+}
+
 export interface PageMeta {
   page: number
   pageSize: number

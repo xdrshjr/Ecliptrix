@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { Readable } from 'node:stream'
 import { getDb } from '@/server/db/client'
 import * as settingsService from '@/server/services/settingsService'
+import * as releaseService from '@/server/services/releaseService'
+import { uploadRelease } from '@/server/services/releaseUpload'
 import { usersRepo } from '../setup/repos'
 
 /**
@@ -19,7 +22,20 @@ let actorId: string
 beforeEach(async () => {
   harness = await createHarness()
   actorId = usersRepo.findByEmailOrUsername(getDb(), 'owner@example.com', 'owner')?.id ?? ''
+  // A non-empty `client.minVersion` is only accepted when a published build at
+  // least that new exists (analysis C10), so these cases need one on record.
+  await publishClientBuild('1.0.0')
 })
+
+async function publishClientBuild(version: string): Promise<void> {
+  const actor = { actorUserId: actorId, actorLabel: 'owner@example.com', ip: '', requestId: 'req' }
+  const release = await uploadRelease(
+    { version, platform: 'win', arch: 'x64', fileName: `Ecliptrix-Setup-${version}.exe` },
+    Readable.toWeb(Readable.from([Buffer.from('installer')])) as ReadableStream<Uint8Array>,
+    actor,
+  )
+  releaseService.publishRelease(release.id, actor)
+}
 
 afterEach(() => {
   harness.teardown()

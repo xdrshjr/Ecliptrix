@@ -52,7 +52,11 @@ interface Harness {
   bridge: AuthBridge;
 }
 
-function createBridge(initial: AuthStatus, login?: AuthBridge['login']): Harness {
+function createBridge(
+  initial: AuthStatus,
+  login?: AuthBridge['login'],
+  openExternal?: AuthBridge['openExternal'],
+): Harness {
   const resolve = () => Promise.resolve(initial);
   const bridge: AuthBridge = {
     status: vi.fn(async () => initial),
@@ -64,7 +68,7 @@ function createBridge(initial: AuthStatus, login?: AuthBridge['login']): Harness
     requestPasswordReset: vi.fn(async () => ({ ok: true as const })),
     listSessions: vi.fn(async () => ({ ok: true as const, items: [], currentId: '' })),
     revokeSession: vi.fn(async () => ({ ok: true as const })),
-    openExternal: vi.fn(async () => ({ ok: true as const })),
+    openExternal: openExternal ?? vi.fn(async () => ({ ok: true as const })),
     onChanged: vi.fn(() => () => {}),
   };
   (window as unknown as { ecliptrixDesktop?: unknown }).ecliptrixDesktop = {
@@ -74,8 +78,12 @@ function createBridge(initial: AuthStatus, login?: AuthBridge['login']): Harness
   return { bridge };
 }
 
-function renderScreen(current: AuthStatus, login?: AuthBridge['login']) {
-  const harness = createBridge(current, login);
+function renderScreen(
+  current: AuthStatus,
+  login?: AuthBridge['login'],
+  openExternal?: AuthBridge['openExternal'],
+) {
+  const harness = createBridge(current, login, openExternal);
   const view = render(
     <SessionProvider>
       <LoginScreen reason={current.reason} />
@@ -322,5 +330,44 @@ describe('LoginScreen', () => {
     );
     expect(screen.getByText(/Minimum version 99\.0\.0/)).toBeInTheDocument();
     expect(screen.queryByLabelText(copy.identifier.label)).toBeNull();
+  });
+
+  it('disables download and explains itself when the origin is unknown', async () => {
+    // C1/C2: with no runtime origin the escape hatch has nowhere legitimate to
+    // go, so the button is disabled and the hint stands in for the click — a
+    // disabled button never dispatches one. The removed hardcoded fallback used
+    // to send a self-hosted user to the vendor's domain instead.
+    const { bridge } = renderScreen(
+      signedOut({ server: meta({ minClientVersion: '99.0.0', baseUrl: '' }) }),
+    );
+    const button = await screen.findByRole('button', {
+      name: copy.maintenance.download,
+    });
+    expect(button).toBeDisabled();
+
+    const hint = await screen.findByText(copy.outdated.noUrl);
+    expect(hint.closest('[role="status"]')).not.toBeNull();
+    expect(bridge.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('shows the refused address as selectable text when openExternal fails', async () => {
+    // The bridge rejects with a plain `{ ok:false, code }` envelope, which the old
+    // `.catch(() => {})` swallowed: the button looked dead. The generic sentence
+    // is the fallback; `url_not_allowed` gets its own copy.
+    const openExternal = vi.fn(() =>
+      Promise.reject({ ok: false, code: 'url_not_allowed', message: 'blocked' }),
+    ) as unknown as AuthBridge['openExternal'];
+    renderScreen(signedOut({ server: meta({ minClientVersion: '99.0.0' }) }), undefined, openExternal);
+
+    const button = await screen.findByRole('button', {
+      name: copy.maintenance.download,
+    });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+
+    const url = 'https://id.ecliptrix.app/download';
+    await waitFor(() => expect(openExternal).toHaveBeenCalledWith(url));
+    expect(await screen.findByText(copy.outdated.openBlocked)).toBeInTheDocument();
+    expect(screen.getByText(url)).toBeInTheDocument();
   });
 });

@@ -23,7 +23,8 @@
     "user:create": "tsx scripts/create-user.ts",
     "user:reset": "tsx scripts/reset-password.ts",
     "user:verify": "tsx scripts/user-verify.ts",
-    "account:confirm-deletion": "tsx scripts/confirm-deletion.ts"
+    "account:confirm-deletion": "tsx scripts/confirm-deletion.ts",
+    "release:publish": "tsx scripts/release-publish.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

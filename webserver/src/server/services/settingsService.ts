@@ -1,5 +1,6 @@
 import { getDb } from '@/server/db/client'
 import * as settingsRepo from '@/server/db/repositories/settingsRepo'
+import * as releaseService from '@/server/services/releaseService'
 import { getConfig } from '@/server/config'
 import { AppError } from '@/server/http/errors'
 import { DEFAULT_MAX_ACTIVE_SESSIONS, ERROR_CODE } from '@/server/auth/constants'
@@ -162,6 +163,15 @@ export function getString(key: SettingKey): string {
   return typeof value === 'string' ? value : String(defaultFor(key))
 }
 
+/** First `details.fields[].message` of an AppError, or `null` for anything else. */
+function appErrorFieldMessage(error: unknown): string | null {
+  if (!(error instanceof AppError)) return null
+  const fields = error.details?.fields
+  if (!Array.isArray(fields)) return error.message
+  const first = fields[0] as { message?: unknown } | undefined
+  return typeof first?.message === 'string' ? first.message : error.message
+}
+
 export interface SettingsPatchResult {
   changed: Record<string, { before: unknown; after: unknown }>
 }
@@ -219,6 +229,28 @@ export function patch(
         failures.push({ path: key, message: `最多 ${spec.maxLength} 个字符` })
         continue
       }
+      // The version gate is the one setting that can lock every desktop user out
+      // of the product, so it is checked against an actual fact (the current
+      // release on the stable channel) instead of a shape. The console warning is
+      // only a reflection of this rule; the server is the enforcement (analysis
+      // C10).
+      //
+      // Only a CHANGED value is checked. The console posts the whole settings
+      // object on every save, so validating the value that is already stored would
+      // make an unrelated edit ("change the login attempt limit") fail on a
+      // deployment that armed the gate before any release existed — a lockout
+      // invented by the fix for a lockout. There is no new risk: an unchanged
+      // value is exactly the state the deployment is already in.
+      if (key === 'client.minVersion' && rawValue.trim() !== current[key]) {
+        try {
+          releaseService.assertMinVersionAllowed(rawValue)
+        } catch (error) {
+          const fieldMessage = appErrorFieldMessage(error)
+          if (fieldMessage === null) throw error
+          failures.push({ path: key, message: fieldMessage })
+          continue
+        }
+      }
     }
     accepted[key] = rawValue
   }
@@ -258,6 +290,16 @@ export function publicMeta(): {
   minClientVersion: string
   /** Empty string = not in maintenance mode. */
   maintenanceMessage: string
+  /**
+   * Newest *client* build that is actually published, or `null` when nothing is.
+   *
+   * Deliberately a different field from `version` below, which is this npm
+   * package's own version: rendering that one as "the client version" would show
+   * 0.1.0 next to a 1.0.2 installer (analysis R-3).
+   */
+  latestClientVersion: string | null
+  /** Absolute address of the download page, built from `PUBLIC_BASE_URL`. */
+  downloadUrl: string
   maxActiveSessions: number
   /** True when this deployment would refuse an unverified desktop login. */
   emailVerificationRequired: boolean
@@ -274,6 +316,8 @@ export function publicMeta(): {
     // Both gates live in `app_settings`, so an operator can flip them without a
     // redeploy — that is the whole point of having a console.
     minClientVersion: getString('client.minVersion'),
+    latestClientVersion: releaseService.latestPublishedVersion(),
+    downloadUrl: releaseService.downloadPageUrl(),
     maintenanceMessage: getString('app.maintenanceMessage'),
     maxActiveSessions: getNumber('security.maxActiveSessions'),
     // Already clamped by `all()`: false whenever SMTP is not configured.

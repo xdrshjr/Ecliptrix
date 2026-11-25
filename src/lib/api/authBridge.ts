@@ -684,8 +684,50 @@ export function accountCenterUrl(runtimeBaseUrl?: string | null): string | null 
   return origin ? `${origin}/account` : null;
 }
 
-/** `/download` on the account service — the "client too old" escape hatch. */
-export function clientDownloadUrl(): string {
-  const origin = accountServiceOrigin(null);
-  return origin ? `${origin}/download` : 'https://ecliptrix.app/download';
+/**
+ * `/download` on the account service — the "client too old" escape hatch.
+ *
+ * Same origin rule as `accountCenterUrl` (see "Order of preference
+ * (spec §3.7 / P1-8)" above): the runtime address wins, and Rule 3 applies here
+ * too — a hardcoded `https://ecliptrix.app/download` fallback would send a
+ * self-hosted user to a domain that is not theirs, which is a phishing-shaped
+ * bug, not a convenience. The deleted hardcoded `https://ecliptrix.app/download`
+ * was exactly that, so it is gone rather than narrowed — while the build-time
+ * `NEXT_PUBLIC_ACCOUNT_SERVER_URL` fallback survives, because an operator set that
+ * one deliberately for their own deployment.
+ *
+ * @param runtimeBaseUrl `AuthStatus['server']?.baseUrl` (may be absent).
+ * @returns the URL, or `null` when the origin is unknown — the caller then
+ *   disables the button and says why instead of navigating anywhere.
+ */
+export function clientDownloadUrl(runtimeBaseUrl?: string | null): string | null {
+  const origin = accountServiceOrigin(runtimeBaseUrl);
+  return origin ? `${origin}/download` : null;
+}
+
+/** Which `auth.outdated` hint belongs to a failed "open the download page". */
+export type DownloadFailureCopyKey = 'openBlocked' | 'openFailed';
+
+/**
+ * Classify a rejected `openExternal(...)`.
+ *
+ * The bridge REJECTS with the plain `{ ok:false, code }` envelope, so
+ * `error instanceof Error` misses every real refusal — `isAuthFailure` is the
+ * only correct test. `url_not_allowed` is the main-process allowlist refusing
+ * the host (a distinct remedy from "the browser would not open"), everything
+ * else is the generic sentence.
+ *
+ * `auth_busy` is reported separately because it is not a failure at all: another
+ * auth action was still running, so nothing was even attempted. Showing "could not
+ * open the update page" there would teach the user that the button is broken.
+ *
+ * @param error whatever the `openExternal` promise rejected with.
+ * @returns the `auth.outdated` copy key to show next to the URL, or `null` when
+ *   the click was skipped rather than failed.
+ */
+export function downloadFailureCopyKey(error: unknown): DownloadFailureCopyKey | null {
+  if (error instanceof AuthBusyError) return null;
+  return isAuthFailure(error) && error.code === 'url_not_allowed'
+    ? 'openBlocked'
+    : 'openFailed';
 }

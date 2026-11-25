@@ -20,6 +20,37 @@ export interface NavbarProps {
   consoleHref: string
 }
 
+/**
+ * One navigation item.
+ *
+ * A `#section` anchor stays a plain `<a>`; `/download` is a real route and must
+ * be a `Link` so it is prefetched and does not reload the page.
+ */
+function NavLink({
+  href,
+  className,
+  children,
+  onNavigate,
+}: {
+  href: string
+  className?: string
+  children: React.ReactNode
+  onNavigate?: () => void
+}) {
+  if (href.startsWith('#')) {
+    return (
+      <a href={href} className={className} onClick={onNavigate}>
+        {children}
+      </a>
+    )
+  }
+  return (
+    <Link href={href} className={className} onClick={onNavigate}>
+      {children}
+    </Link>
+  )
+}
+
 export function Navbar({ locale, signedIn, consoleHref }: NavbarProps) {
   const tt = translator(locale)
   const [scrolled, setScrolled] = useState(false)
@@ -37,6 +68,9 @@ export function Navbar({ locale, signedIn, consoleHref }: NavbarProps) {
     { href: '#showcase', label: tt('nav.product') },
     { href: '#pricing', label: tt('nav.pricing') },
     { href: '#faq', label: tt('nav.docs') },
+    // The download page is the one destination a visitor may be looking for and
+    // failing to find — it belongs in the navigation, not only in the footer.
+    { href: '/download', label: tt('nav.download') },
   ]
 
   return (
@@ -54,12 +88,12 @@ export function Navbar({ locale, signedIn, consoleHref }: NavbarProps) {
           <ul className="hidden items-center gap-6 md:flex">
             {links.map((link) => (
               <li key={link.href}>
-                <a
+                <NavLink
                   href={link.href}
                   className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                 >
                   {link.label}
-                </a>
+                </NavLink>
               </li>
             ))}
           </ul>
@@ -107,13 +141,13 @@ export function Navbar({ locale, signedIn, consoleHref }: NavbarProps) {
           <ul className="flex flex-col gap-1">
             {links.map((link) => (
               <li key={link.href}>
-                <a
+                <NavLink
                   href={link.href}
-                  onClick={() => setOpen(false)}
+                  onNavigate={() => setOpen(false)}
                   className="block rounded-sm px-2 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
                 >
                   {link.label}
-                </a>
+                </NavLink>
               </li>
             ))}
             <li>

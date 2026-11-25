@@ -1,0 +1,26 @@
+200  POST /api/v1/auth/login (desktop, root admin)
+      previous client.minVersion = ''
+200  PATCH /api/v1/admin/settings client.minVersion=9.9.9
+
+426  POST /api/v1/auth/login (desktop 1.0.1) -> the lock-out
+{
+  "success": false,
+  "message": "客户端版本过低，请升级到 9.9.9 或更高版本",
+  "timestamp": "2026-11-25T12:10:37.285Z",
+  "error_code": "client_outdated",
+  "error_details": {
+    "minVersion": "9.9.9"
+  },
+  "error": {
+    "code": "client_outdated",
+    "message": "客户端版本过低，请升级到 9.9.9 或更高版本",
+    "details": {
+      "minVersion": "9.9.9"
+    }
+  }
+}
+
+404  GET /download  <- what AuthBlocker opens (clientDownloadUrl())
+<!DOCTYPE html><html lang="zh-CN" class="dark __variable_d8ebd1"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="/_next/static/css/app/layout.css?v=1795608637491" data-precedence="next_static/css/app/layout.css"/><link re
+
+200  PATCH /api/v1/admin/settings restored to ''

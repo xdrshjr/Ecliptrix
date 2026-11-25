@@ -8,13 +8,22 @@ import { PermissionsSection } from '@/components/marketing/permissions-section'
 import { PricingCards } from '@/components/marketing/pricing-cards'
 import { Faq } from '@/components/marketing/faq'
 import { DownloadCta } from '@/components/marketing/download-cta'
+import * as releaseService from '@/server/services/releaseService'
 
 /**
  * Landing page.
  *
  * Nine blocks in a fixed order (spec §2.8): navbar (layout), hero, features,
  * showcase, permissions, pricing, FAQ, download CTA, footer (layout).
+ *
+ * `force-dynamic` is a correctness requirement, not tuning: the download block
+ * renders the platforms that actually have a published installer, and a
+ * statically prerendered page would freeze the platform list and the version at
+ * build time — "the administrator published a build and the website never
+ * changed" (analysis R-7).
  */
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Ecliptrix — AI 视频创作平台',
   description:
@@ -24,16 +33,18 @@ export const metadata: Metadata = {
 export default async function LandingPage() {
   const locale = await resolveLocale()
   const tt = translator(locale)
+  const latest = releaseService.latestPublished()
+  const platforms = latest?.platforms.map((release) => release.platform) ?? []
 
   return (
     <>
-      <Hero tt={tt} />
+      <Hero tt={tt} hasDownload={platforms.length > 0} />
       <FeatureGrid tt={tt} />
       <Showcase tt={tt} />
       <PermissionsSection tt={tt} />
       <PricingCards tt={tt} />
       <Faq tt={tt} />
-      <DownloadCta tt={tt} />
+      <DownloadCta tt={tt} platforms={platforms} version={latest?.version ?? null} />
     </>
   )
 }

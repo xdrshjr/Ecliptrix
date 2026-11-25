@@ -1,0 +1,33 @@
+200  GET /
+200  GET /#download
+404  GET /download  <- not found
+404  GET /download/windows  <- not found
+200  GET /api/v1/meta
+404  GET /api/v1/downloads  <- not found
+404  GET /api/v1/releases  <- not found
+404  GET /api/v1/admin/releases  <- not found
+200  GET /register
+200  GET /login
+
+200  GET /api/v1/meta payload:
+{
+  "success": true,
+  "message": null,
+  "timestamp": "2026-11-25T12:09:40.325Z",
+  "data": {
+    "registrationEnabled": true,
+    "inviteRequired": false,
+    "smtpEnabled": false,
+    "passwordPolicy": {
+      "minLength": 10,
+      "maxBytes": 128
+    },
+    "appName": "Ecliptrix",
+    "supportEmail": "",
+    "version": "0.1.0",
+    "minClientVersion": "",
+    "maintenanceMessage": "",
+    "maxActiveSessions": 10,
+    "emailVerificationRequired": false
+  }
+}

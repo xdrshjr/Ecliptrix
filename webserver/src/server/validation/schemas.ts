@@ -258,6 +258,49 @@ export const inviteCreateSchema = z.object({
   note: z.string().trim().max(200).optional(),
 })
 
+/**
+ * Upload metadata for `POST /api/v1/admin/releases`.
+ *
+ * It travels in the query string, not in a multipart body: `request.formData()`
+ * buffers the whole file in memory, and an installer is ~188 MB. The body is the
+ * raw bytes (streamed), the metadata is everything else.
+ *
+ * Every field here is short ON PURPOSE. Release notes are NOT accepted: they cap
+ * at 2000 characters, which URL-encoded (9 bytes per CJK character) is far past
+ * nginx's 8 KB header buffer — the upload would answer 414 before it started. Notes
+ * are set with `PATCH {action:'notes'}` once the draft exists, which is also where
+ * the console edits them anyway.
+ */
+export const releaseUploadQuerySchema = z.object({
+  version: z.string().trim().min(1, '请填写版本号').max(20),
+  platform: z.string().trim().min(1, '请选择平台').max(16),
+  arch: z.string().trim().min(1, '请选择架构').max(16),
+  fileName: z.string().trim().min(1, '请提供文件名').max(160),
+  /** Optional pre-computed checksum from the build script; verified when present. */
+  sha256: z
+    .string()
+    .trim()
+    .regex(/^[0-9a-fA-F]{64}$/, '校验和必须是 64 位十六进制 SHA-256')
+    .optional(),
+})
+
+/** One pointer action on an existing release. */
+export const releaseActionSchema = z
+  .object({
+    action: z.enum(['publish', 'rollback', 'retract', 'notes']),
+    /** Defaults to `stable`; the console only offers channels it knows. */
+    channel: z.string().trim().max(16).optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  .refine((value) => value.action !== 'notes' || value.notes !== undefined, {
+    message: '修改说明时必须提供 notes',
+    path: ['notes'],
+  })
+
+export const releaseListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+})
+
 export const localeCookieSchema = z.enum(['zh-CN', 'en-US'])
 
 /** Kept for the existing import sites; the invitation body gained two fields. */

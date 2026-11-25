@@ -19,6 +19,8 @@ import * as settingsService from '@/server/services/settingsService'
 import * as auditService from '@/server/services/auditService'
 import * as sessionService from '@/server/services/sessionService'
 import * as emailVerificationService from '@/server/services/emailVerificationService'
+import * as releaseService from '@/server/services/releaseService'
+import { isVersionOutdated, parseVersion } from '@/server/services/version'
 import * as sessionsRepo from '@/server/db/repositories/sessionsRepo'
 import { normalizeEmail, normalizeUsername } from '@/server/services/normalize'
 import { log } from '@/server/http/requestContext'
@@ -74,37 +76,10 @@ function lockDurationMs(lockCount: number): number {
   return Math.min(base * 2 ** Math.max(0, lockCount - 1), LOCK_MAX_MS)
 }
 
-/** `1.0.10` → `[1, 0, 10]`; `null` when the string is not dotted digits. */
-function parseVersion(value: string): number[] | null {
-  const trimmed = value.trim().replace(/^v/i, '')
-  if (!trimmed) return null
-  const numbers: number[] = []
-  for (const part of trimmed.split('.')) {
-    if (!/^\d+$/.test(part)) return null
-    numbers.push(Number(part))
-  }
-  return numbers
-}
-
-/**
- * Semver-style comparison, tolerant of unequal segment counts (`1.2` vs `1.2.0`).
- *
- * An unparseable value on EITHER side answers `false`: a typo in the setting must
- * never become a fleet-wide lockout. The console validates the format; this is
- * the belt to that braces.
- */
-export function isVersionOutdated(clientVersion: string, minVersion: string): boolean {
-  const client = parseVersion(clientVersion)
-  const minimum = parseVersion(minVersion)
-  if (!client || !minimum) return false
-  const length = Math.max(client.length, minimum.length)
-  for (let index = 0; index < length; index += 1) {
-    const left = client[index] ?? 0
-    const right = minimum[index] ?? 0
-    if (left !== right) return left < right
-  }
-  return false
-}
+// Version ordering now lives in `services/version.ts`: the release catalogue needs
+// the same comparison, and importing it from here would have created a cycle
+// (authService → settingsService → releaseService → authService).
+export { isVersionOutdated }
 
 function recordAttempt(
   identifierNormalized: string,
@@ -247,7 +222,9 @@ function assertClientSupported(input: GateInput): void {
       metadata: { clientVersion, minVersion },
     },
   )
-  throw errors.clientOutdated(minVersion)
+  // The address is part of the protocol: a 426 that only names a version left the
+  // user with nowhere to go (analysis R12). Built from `PUBLIC_BASE_URL`.
+  throw errors.clientOutdated(minVersion, releaseService.downloadPageUrl())
 }
 
 /**

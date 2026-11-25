@@ -4199,7 +4199,17 @@ export interface Translations {
      */
     deleted: { title: string; body: string; signInOther: string };
     reset: { sent: string; contactAdmin: string };
-    outdated: { title: string; current: string; minimum: string };
+    outdated: {
+      title: string;
+      current: string;
+      minimum: string;
+      /** Origin unknown — the download button is disabled instead of guessing. */
+      noUrl: string;
+      /** `openExternal` failed; the URL is shown as selectable text underneath. */
+      openFailed: string;
+      /** `url_not_allowed`: the main process allowlist refused the host. */
+      openBlocked: string;
+    };
     accountCenter: { unavailable: string };
     /**
      * Account centre (migration 0005): four tabs plus the copy used when the main
@@ -8894,6 +8904,12 @@ export const translations: Record<string, Translations> = {
         title: 'Update required',
         current: 'Current version {version}',
         minimum: 'Minimum version {version}',
+        noUrl:
+          'The update page address is unknown, so it cannot open automatically. ' +
+          'Ask your administrator for the installer.',
+        openFailed:
+          'Could not open the update page. Copy this address into your browser:',
+        openBlocked: 'This app cannot open that address. Copy it into your browser:',
       },
       accountCenter: {
         unavailable: 'Cannot open the account centre right now. Retry later or contact {email}.',
@@ -13585,6 +13601,9 @@ export const translations: Record<string, Translations> = {
         title: '需要更新客户端',
         current: '当前版本 {version}',
         minimum: '最低版本 {version}',
+        noUrl: '暂时无法确定下载页地址，请联系管理员获取安装包。',
+        openFailed: '无法自动打开下载页，请把下面的地址复制到浏览器：',
+        openBlocked: '该地址无法直接打开，请复制到浏览器访问：',
       },
       accountCenter: {
         unavailable: '暂时无法打开账号中心，请稍后重试或联系 {email}。',
