@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import { usersRepo } from '../setup/repos'
@@ -116,6 +117,7 @@ describe('mail pipeline', () => {
       client: 'web',
       device: DEVICE,
       ...CONTEXT,
+      ...issueCaptcha(),
     })
     expect(registered.user.email).toBe('mailed@example.com')
 

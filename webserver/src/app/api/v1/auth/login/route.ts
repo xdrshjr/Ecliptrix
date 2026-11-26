@@ -52,6 +52,8 @@ export const POST = withContext(async ({ request, context }) => {
     ip: context.ip,
     userAgent: context.userAgent,
     requestId: context.requestId,
+    captchaId: input.captchaId,
+    captchaAnswer: input.captchaAnswer,
   })
 
   const user = {

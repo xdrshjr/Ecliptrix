@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import { usersRepo } from '../setup/repos'
 import * as authService from '@/server/services/authService'
+import * as userService from '@/server/services/userService'
 import * as accountDeletionService from '@/server/services/accountDeletionService'
 import * as profileService from '@/server/services/profileService'
 import * as sessionService from '@/server/services/sessionService'
@@ -47,6 +49,7 @@ async function setUp(env: Record<string, string> = {}) {
     client: 'desktop',
     device: { ...DEVICE, deviceKey: 'deletion-device-key' },
     ...CONTEXT,
+    ...issueCaptcha(),
   })
   user = result.user
   actor = { actorUserId: user.id, actorLabel: user.email, ip: '127.0.0.1', requestId: 'req-del' }
@@ -219,9 +222,76 @@ describe('deletion with no smtp', () => {
   })
 
   it('refuses to schedule an account with no live request', () => {
+    // The caller must be a real administrator: `confirmByAdmin` applies INV-1
+    // before it looks for a live request, so the member acting on their own row
+    // would answer `insufficient_rank` and prove nothing about the conflict path.
+    const owner = usersRepo.findByEmailOrUsername(getDb(), 'owner@example.com', 'owner')
     expect(() =>
-      accountDeletionService.confirmByAdmin(user.id, 'no request', actor),
+      accountDeletionService.confirmByAdmin(user.id, 'no request', {
+        actorUserId: owner?.id ?? '',
+        actorLabel: 'owner@example.com',
+        ip: '127.0.0.1',
+        requestId: 'req-admin',
+      }),
     ).toThrowError(expect.objectContaining({ code: 'conflict' }))
+  })
+
+  it('refuses to confirm a peer administrator’s deletion (INV-1)', async () => {
+    // AC-16d / entry #4 (review R-V3-03). Closing somebody's account is the
+    // terminal weakening action, so an `admin` must not be able to do it to a peer
+    // — otherwise two administrators can remove each other and the "protect the
+    // owner" rule is the only rule left.
+    const owner = usersRepo.findByEmailOrUsername(getDb(), 'owner@example.com', 'owner')
+    const ownerActor: AuditContext = {
+      actorUserId: owner?.id ?? '',
+      actorLabel: 'owner@example.com',
+      ip: '127.0.0.1',
+      requestId: 'req-owner',
+    }
+    const adminA = await userService.createUser(
+      {
+        email: 'admin-a@example.com',
+        username: 'admin-a',
+        password: 'bright harbour lantern path',
+        status: 'active',
+        planTag: 'free',
+        note: '',
+        mustChangePassword: false,
+        roleKey: 'admin',
+      },
+      ownerActor,
+    )
+    const adminB = await userService.createUser(
+      {
+        email: 'admin-b@example.com',
+        username: 'admin-b',
+        password: 'copper kettle window frame',
+        status: 'active',
+        planTag: 'free',
+        note: '',
+        mustChangePassword: false,
+        roleKey: 'admin',
+      },
+      ownerActor,
+    )
+
+    // B asks to close its own account; A then tries to confirm that on B's behalf.
+    const b = usersRepo.findById(getDb(), adminB.user.id)
+    if (!b) throw new Error('admin B vanished')
+    accountDeletionService.request(b, { password: 'copper kettle window frame' }, {
+      ip: '127.0.0.1',
+      requestId: 'req-b',
+      audit: { actorUserId: b.id, actorLabel: b.email, ip: '127.0.0.1', requestId: 'req-b' },
+    })
+
+    expect(() =>
+      accountDeletionService.confirmByAdmin(adminB.user.id, 'peer action', {
+        actorUserId: adminA.user.id,
+        actorLabel: 'admin-a@example.com',
+        ip: '127.0.0.1',
+        requestId: 'req-a',
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'forbidden' }))
   })
 })
 

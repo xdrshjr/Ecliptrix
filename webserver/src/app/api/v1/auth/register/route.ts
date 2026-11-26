@@ -27,6 +27,8 @@ export const POST = withContext(async ({ request, context }) => {
     ip: context.ip,
     userAgent: context.userAgent,
     requestId: context.requestId,
+    captchaId: input.captchaId,
+    captchaAnswer: input.captchaAnswer,
   })
 
   // One user shape for both carriers. The desktop session file needs the same

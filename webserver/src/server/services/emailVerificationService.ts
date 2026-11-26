@@ -8,6 +8,7 @@ import { AppError, errors } from '@/server/http/errors'
 import { hashToken, newId, newToken } from '@/server/auth/tokens'
 import { verifyPassword } from '@/server/auth/password'
 import * as auditService from '@/server/services/auditService'
+import * as authorityService from '@/server/services/authorityService'
 import * as mailService from '@/server/services/mailService'
 import * as sessionService from '@/server/services/sessionService'
 import * as settingsService from '@/server/services/settingsService'
@@ -271,6 +272,11 @@ export function markVerifiedByAdmin(
   const db = getDb()
   const user = usersRepo.findById(db, userId)
   if (!user) throw errors.notFound('用户不存在')
+  // INV-1, entry #9 (review R-V4-01). Verifying an address on somebody's behalf is
+  // not a read: it completes the one step that lets an account receive resets and
+  // change notices, so a lower-ranked administrator must not be able to do it for a
+  // peer. The route only checked `users.write`, which every `admin` holds.
+  authorityService.assertRankAbove(actor.actorUserId, userId)
   if (user.email_verified_at !== null) {
     throw new AppError(ERROR_CODE.emailAlreadyVerified, '该邮箱已经验证通过')
   }

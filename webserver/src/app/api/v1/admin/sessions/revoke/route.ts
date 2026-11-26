@@ -18,13 +18,21 @@ export const POST = withContext(async ({ request, context }) => {
   const auth = requireAdminWrite(request, context, 'sessions.revoke')
   const input = await readJson(request, adminSessionsRevokeSchema)
 
-  const result = adminSessionService.revokeMany(input.ids, input.reason)
+  // The caller's id goes in so the service can apply INV-1 per session. It is
+  // passed explicitly rather than defaulted: `null` means "the system" and would
+  // skip the rank gate (review RV-7).
+  const result = adminSessionService.revokeMany(input.ids, input.reason, auth.audit.actorUserId)
 
   auditService.record(auth.audit, {
     action: 'admin.sessions_revoked',
     targetType: 'session',
-    metadata: { count: result.revoked, skipped: result.skipped, reason: result.reason },
+    metadata: {
+      count: result.revoked,
+      skipped: result.skipped,
+      denied: result.denied,
+      reason: result.reason,
+    },
   })
 
-  return ok({ revoked: result.revoked, skipped: result.skipped })
+  return ok({ revoked: result.revoked, skipped: result.skipped, denied: result.denied })
 })

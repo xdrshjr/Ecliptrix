@@ -22,6 +22,7 @@
     "seed:demo": "tsx scripts/seed-demo.ts",
     "user:create": "tsx scripts/create-user.ts",
     "user:reset": "tsx scripts/reset-password.ts",
+    "owner:transfer": "tsx scripts/owner-transfer.ts",
     "user:verify": "tsx scripts/user-verify.ts",
     "account:confirm-deletion": "tsx scripts/confirm-deletion.ts",
     "release:publish": "tsx scripts/release-publish.ts"

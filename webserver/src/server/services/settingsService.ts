@@ -38,6 +38,16 @@ export type SettingKey =
   | 'account.deletionGraceHours'
   | 'account.exportCooldownMinutes'
   | 'audit.retentionDays'
+  | 'captcha.ttlSeconds'
+  | 'captcha.maxAttempts'
+  | 'captcha.requiredOnLoginAfterFailures'
+  /**
+   * Depth: how many characters a challenge shows. Kept as a setting so an
+   * operator fighting an OCR wave can raise it without a redeploy, but its range
+   * is narrow (4–7): below four the answer space is 32^4 ≈ 1 M, which a script
+   * can guess, and above seven it stops being readable for a human.
+   */
+  | 'captcha.length'
 
 interface SettingSpec {
   type: 'boolean' | 'int' | 'string'
@@ -113,6 +123,22 @@ const SPECS: Record<SettingKey, SettingSpec> = {
   'account.deletionGraceHours': { type: 'int', min: 1, max: 720, default: () => 72 },
   'account.exportCooldownMinutes': { type: 'int', min: 1, max: 1440, default: () => 60 },
   'audit.retentionDays': { type: 'int', min: 30, max: 3650, default: () => 180 },
+  /**
+   * Human verification (migration 0007).
+   *
+   * There is deliberately NO `captcha.enabled` switch: the first switch an
+   * operator turns off in an incident is the safety switch, and a deployment that
+   * can disable the registration gate from the console can be walked past by
+   * anybody who steals one admin session. Turning it off is a version rollback
+   * (spec §10 回滚).
+   *
+   * `requiredOnLoginAfterFailures = 0` disables the LOGIN escalation only; login
+   * is not gated unconditionally in the first place (spec §3.2.4).
+   */
+  'captcha.ttlSeconds': { type: 'int', min: 60, max: 900, default: () => 300 },
+  'captcha.maxAttempts': { type: 'int', min: 3, max: 10, default: () => 5 },
+  'captcha.requiredOnLoginAfterFailures': { type: 'int', min: 0, max: 20, default: () => 3 },
+  'captcha.length': { type: 'int', min: 4, max: 7, default: () => 5 },
 }
 
 export const SETTING_KEYS = Object.keys(SPECS) as SettingKey[]
@@ -303,6 +329,16 @@ export function publicMeta(): {
   maxActiveSessions: number
   /** True when this deployment would refuse an unverified desktop login. */
   emailVerificationRequired: boolean
+  /**
+   * True when a sign-up must present a challenge (spec §5.8).
+   *
+   * Registration is gated unconditionally and there is deliberately no switch to
+   * turn it off (`captchaService` module note), so this is a constant `true`. It
+   * exists so the client can render the control on first paint instead of
+   * discovering the requirement by burning a 400 — and so a future version can
+   * relax it without every consumer learning through an error code.
+   */
+  captchaRequired: boolean
 } {
   const config = getConfig()
   return {
@@ -329,5 +365,7 @@ export function publicMeta(): {
     maxActiveSessions: getNumber('security.maxActiveSessions'),
     // Already clamped by `all()`: false whenever SMTP is not configured.
     emailVerificationRequired: getBoolean('mail.verificationRequired'),
+    // Registration always needs a challenge — see the type note above.
+    captchaRequired: true,
   }
 }

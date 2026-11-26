@@ -12,6 +12,7 @@ import { AppError, errors } from '@/server/http/errors'
 import { hashToken, newId, newToken } from '@/server/auth/tokens'
 import { verifyPassword } from '@/server/auth/password'
 import * as auditService from '@/server/services/auditService'
+import * as authorityService from '@/server/services/authorityService'
 import * as mailService from '@/server/services/mailService'
 import * as settingsService from '@/server/services/settingsService'
 import * as emailVerificationService from '@/server/services/emailVerificationService'
@@ -259,6 +260,12 @@ export function confirmByAdmin(
   const user = usersRepo.findById(db, userId)
   if (!user) throw errors.notFound('用户不存在')
   assertDeletable(user)
+  // INV-1, entry #4 (review R-V3-03). `assertDeletable` only refuses the owner and
+  // the last manageable account; it compares nothing about the caller. Closing
+  // somebody's account is the terminal weakening action, so an `admin` must not be
+  // able to do it to a peer — otherwise the "protect the owner" rule is the only
+  // rule, and two administrators can remove each other.
+  authorityService.assertRankAbove(actor.actorUserId, userId)
 
   const live = deletionRepo.findLiveByUser(db, userId)
   if (!live) {

@@ -107,6 +107,17 @@ export const ERROR_CODE = {
    * administrator-issued password reset.
    */
   mailDisabled: 'mail_disabled',
+  /**
+   * Human verification (migration 0007). Three codes, not one, because the client
+   * behaves differently for each: `required` renders a challenge, `invalid` says
+   * "try again" and carries the remaining attempts, `expired` reloads the image.
+   *
+   * They must never be folded into `invalid_credentials`: a user who typed the
+   * right password but the wrong glyphs would conclude the password was wrong.
+   */
+  captchaRequired: 'captcha_required',
+  captchaInvalid: 'captcha_invalid',
+  captchaExpired: 'captcha_expired',
 } as const
 
 export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE]

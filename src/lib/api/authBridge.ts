@@ -482,6 +482,10 @@ export type AuthErrorCopyKey =
   | 'inviteRequired'
   | 'inviteInvalid'
   | 'registrationDisabled'
+  // Human verification (account-server 0007). A desktop build released before the
+  // gate cannot solve a challenge, so these must explain themselves rather than
+  // collapsing to 'unknown': the user's next step is "update the app".
+  | 'captchaRequired'
   // Account lifecycle (migration 0005).
   | 'emailUnverified'
   | 'accountDeleted'
@@ -525,6 +529,11 @@ const ERROR_COPY_KEYS: Record<string, AuthErrorCopyKey> = {
   deletion_pending: 'deletionPending',
   mail_disabled: 'mailDisabled',
   token_invalid: 'unknown',
+  // A build released before the captcha channel lands here. "Update the app" is
+  // the honest answer: upgrading is the only thing the user can do from this screen.
+  captcha_required: 'captchaRequired',
+  captcha_invalid: 'captchaRequired',
+  captcha_expired: 'captchaRequired',
 };
 
 /** Map a failure code to the `auth.error.*` copy key. Unknown codes are generic. */

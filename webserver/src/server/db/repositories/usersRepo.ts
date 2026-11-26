@@ -24,6 +24,12 @@ export interface CreateUserInput {
   timezone?: string
   now: number
   emailVerifiedAt?: number | null
+  /**
+   * Who granted the initial role (migration 0007). Omitted for the seeded root
+   * administrator and for self-service registration, where the answer is
+   * "the system" and is stored as NULL.
+   */
+  roleGrantedBy?: string | null
 }
 
 export interface UserListFilter {
@@ -42,18 +48,29 @@ export interface UserListRow extends UserRow {
   role_key: string
   role_name: string
   sessions_active: number
+  /**
+   * The granting administrator's normalised address, joined for the detail page.
+   *
+   * Present only on rows produced by `SELECT_WITH_ROLE` (detail, list); a plain
+   * `findById` row does not carry it. Null when the role came from the seed.
+   */
+  role_granted_by_label?: string | null
 }
 
 const COLUMNS = `u.id, u.email, u.email_normalized, u.username, u.username_normalized,
   u.display_name, u.password_hash, u.password_updated_at, u.role_id, u.status,
   u.plan_tag, u.must_change_password, u.email_verified_at, u.avatar_url, u.locale,
   u.timezone, u.note, u.last_login_at, u.failed_login_count, u.lock_count,
-  u.locked_until, u.created_at, u.updated_at, u.deleted_at, u.last_exported_at`
+  u.locked_until, u.created_at, u.updated_at, u.deleted_at, u.last_exported_at,
+  u.role_granted_by, u.role_granted_at`
 
 const SELECT_WITH_ROLE = `SELECT ${COLUMNS}, r.key AS role_key, r.name AS role_name,
   (SELECT COUNT(*) FROM sessions s
-     WHERE s.user_id = u.id AND s.revoked_at IS NULL AND s.access_expires_at > @now) AS sessions_active
-  FROM users u JOIN roles r ON r.id = u.role_id`
+     WHERE s.user_id = u.id AND s.revoked_at IS NULL AND s.access_expires_at > @now) AS sessions_active,
+  g.email_normalized AS role_granted_by_label
+  FROM users u
+  JOIN roles r ON r.id = u.role_id
+  LEFT JOIN users g ON g.id = u.role_granted_by`
 
 /** Lookup used by login: one statement, one round trip, index-backed. */
 export function findByEmailOrUsername(
@@ -104,12 +121,12 @@ export function create(db: Db, input: CreateUserInput): UserRow {
        id, email, email_normalized, username, username_normalized, display_name,
        password_hash, password_updated_at, role_id, status, plan_tag,
        must_change_password, email_verified_at, locale, timezone, note,
-       created_at, updated_at
+       role_granted_by, role_granted_at, created_at, updated_at
      ) VALUES (
        @id, @email, @emailNormalized, @username, @usernameNormalized, @displayName,
        @passwordHash, @now, @roleId, @status, @planTag,
        @mustChangePassword, @emailVerifiedAt, @locale, @timezone, @note,
-       @now, @now
+       @roleGrantedBy, @roleGrantedAt, @now, @now
      )`,
   ).run({
     id: input.id,
@@ -127,11 +144,31 @@ export function create(db: Db, input: CreateUserInput): UserRow {
     locale: input.locale ?? 'zh-CN',
     timezone: input.timezone ?? 'Asia/Shanghai',
     note: input.note ?? '',
+    // A grant with no named actor (seeding, self-service registration) leaves the
+    // pair NULL, which the console renders as "created by the system".
+    roleGrantedBy: input.roleGrantedBy ?? null,
+    roleGrantedAt: input.roleGrantedBy ? input.now : null,
     now: input.now,
   })
   const created = findById(db, input.id)
   if (!created) throw new Error(`user ${input.id} vanished immediately after insert`)
   return created
+}
+
+/**
+ * Change a role and stamp the grant ledger in one statement.
+ *
+ * Separate from `update` because the two columns and `role_id` are one fact:
+ * writing a role without its provenance is exactly the hole migration 0007
+ * closes, and a generic partial patch makes that omission a one-line mistake.
+ */
+export function grantRole(db: Db, id: string, roleId: string, grantedBy: string | null, now: number): void {
+  db.prepare(
+    `UPDATE users
+        SET role_id = @roleId, role_granted_by = @grantedBy,
+            role_granted_at = @now, updated_at = @now
+      WHERE id = @id`,
+  ).run({ id, roleId, grantedBy, now })
 }
 
 /**

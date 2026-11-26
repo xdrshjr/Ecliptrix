@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import * as authService from '@/server/services/authService'
 import * as userService from '@/server/services/userService'
 import * as settingsService from '@/server/services/settingsService'
@@ -67,7 +68,13 @@ describe('login', () => {
   it('locks the account after the configured number of failures and reports retry-after', async () => {
     const attempts = 5
     for (let index = 0; index < attempts; index += 1) {
-      await authService.login(loginInput('owner@example.com', 'bad-password-1')).catch(() => null)
+      // From the third failure on, the escalation demands a challenge. A browser
+      // user sees the captcha field and solves it, so this loop does the same:
+      // omitting it would only assert the escalation, never the lockout that the
+      // escalation sits in front of.
+      await authService
+        .login({ ...loginInput('owner@example.com', 'bad-password-1'), ...issueCaptcha('login') })
+        .catch(() => null)
     }
     const error = await authService
       .login(loginInput('owner@example.com', 'owner-password-123'))
@@ -75,6 +82,35 @@ describe('login', () => {
 
     expect(error).toMatchObject({ code: 'account_locked' })
     expect((error as { retryAfterSeconds?: number }).retryAfterSeconds).toBeGreaterThan(0)
+  })
+
+  it('demands a challenge before the lockout threshold and answers the lockout after it', async () => {
+    // Three failures put this identifier into the escalation band: the account is
+    // not locked yet (threshold 5), but the fourth attempt must present a
+    // challenge. This pins the order the two gates answer in.
+    for (let index = 0; index < 3; index += 1) {
+      await authService
+        .login(loginInput('owner@example.com', 'bad-password-1'))
+        .catch(() => null)
+    }
+    await expect(authService.login(loginInput('owner@example.com', 'bad-password-1'))).rejects.toMatchObject(
+      { code: 'captcha_required' },
+    )
+    // Solving it does not grant a pass: the password is still checked, and the
+    // two further failures reach the lockout.
+    await authService
+      .login({ ...loginInput('owner@example.com', 'bad-password-1'), ...issueCaptcha('login') })
+      .catch(() => null)
+    await authService
+      .login({ ...loginInput('owner@example.com', 'bad-password-1'), ...issueCaptcha('login') })
+      .catch(() => null)
+    // A locked account answers the lockout, not another puzzle: asking a user who
+    // cannot sign in regardless to solve one more puzzle would be noise.
+    await expect(
+      authService.login({
+        ...loginInput('owner@example.com', 'owner-password-123'),
+      }),
+    ).rejects.toMatchObject({ code: 'account_locked' })
   })
 
   it('clears the failure counter after a successful sign-in', async () => {
@@ -130,7 +166,7 @@ describe('register', () => {
   }
 
   it('creates an active member account and signs it in', async () => {
-    const result = await authService.register(input)
+    const result = await authService.register({ ...input, ...issueCaptcha() })
     expect(result.user.status).toBe('active')
     expect(result.role.key).toBe('member')
     expect(result.permissions).toEqual([])
@@ -147,21 +183,21 @@ describe('register', () => {
     setSetting({ 'invite.required': true })
     await expect(authService.register(input)).rejects.toMatchObject({ code: 'invite_required' })
     await expect(
-      authService.register({ ...input, inviteCode: 'ECL-AAAA-BBBB-CCCC' }),
+      authService.register({ ...input, inviteCode: 'ECL-AAAA-BBBB-CCCC', ...issueCaptcha() }),
     ).rejects.toMatchObject({ code: 'invite_invalid' })
   })
 
   it('rejects a duplicate email with email_taken', async () => {
     setSetting({ 'registration.enabled': true })
-    await authService.register(input)
+    await authService.register({ ...input, ...issueCaptcha() })
     await expect(
-      authService.register({ ...input, username: 'other-name' }),
+      authService.register({ ...input, username: 'other-name', ...issueCaptcha() }),
     ).rejects.toMatchObject({ code: 'email_taken' })
   })
 
   it('rejects a weak password with the policy reasons', async () => {
     const error = await authService
-      .register({ ...input, password: 'password123' })
+      .register({ ...input, password: 'password123', ...issueCaptcha() })
       .catch((thrown: { code: string; details?: { reasons?: string[] } }) => thrown)
     expect(error).toMatchObject({ code: 'weak_password' })
     expect((error as { details?: { reasons?: string[] } }).details?.reasons).toContain('too_weak')

@@ -30,6 +30,24 @@ export function countFailuresSince(db: Db, identifierNormalized: string, sinceMs
   return row.count
 }
 
+/**
+ * Failures from one source address since `sinceMs`.
+ *
+ * The second dimension of the captcha escalation (spec §3.2.4): the identifier
+ * counter catches a targeted brute force, this one catches one machine walking a
+ * list of accounts. `idx_attempts_ip` already exists, so the cost is an index
+ * range scan on a table that only holds recent attempts.
+ */
+export function countFailuresByIpSince(db: Db, ip: string, sinceMs: number): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM login_attempts
+        WHERE ip = ? AND success = 0 AND created_at >= ?`,
+    )
+    .get(ip, sinceMs) as { count: number }
+  return row.count
+}
+
 export interface TopFailure {
   identifier: string
   failures: number

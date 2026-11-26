@@ -9,9 +9,19 @@ import type { UserListRow } from '@/server/db/repositories/usersRepo'
  * route config is a build error.
  */
 
-export function toAdminUserDto(row: UserListRow | (UserRow & { role_key?: string; role_name?: string; sessions_active?: number })): Record<string, unknown> {
+export function toAdminUserDto(
+  row:
+    | UserListRow
+    | (UserRow & {
+        role_key?: string
+        role_name?: string
+        sessions_active?: number
+        role_granted_by_label?: string | null
+      }),
+): Record<string, unknown> {
   const roleKey = 'role_key' in row ? row.role_key : undefined
   const roleName = 'role_name' in row ? row.role_name : undefined
+  const grantedByLabel = 'role_granted_by_label' in row ? row.role_granted_by_label : undefined
   return {
     id: row.id,
     email: row.email,
@@ -33,6 +43,12 @@ export function toAdminUserDto(row: UserListRow | (UserRow & { role_key?: string
     deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
     activeSessions: 'sessions_active' in row ? (row.sessions_active ?? 0) : 0,
     locked: row.locked_until !== null && row.locked_until > Date.now(),
+    // Grant ledger (migration 0007). A null author is the seed, which the console
+    // words as "created by the system" — an empty cell would read as "unknown".
+    roleGrantedBy: row.role_granted_by
+      ? { id: row.role_granted_by, label: grantedByLabel ?? row.role_granted_by }
+      : null,
+    roleGrantedAt: row.role_granted_at ? new Date(row.role_granted_at).toISOString() : null,
   }
 }
 

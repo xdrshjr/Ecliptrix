@@ -78,7 +78,7 @@ const envSchema = z.object({
   ROOT_ADMIN_PASSWORD: z
     .string()
     .min(10, 'ROOT_ADMIN_PASSWORD must be at least 10 characters'),
-  ROOT_ADMIN_USERNAME: z.string().default('owner'),
+  ROOT_ADMIN_USERNAME: z.string().default('xdrshjr'),
   RESET_ROOT_ADMIN_PASSWORD: booleanish,
   REGISTRATION_ENABLED: booleanish,
   INVITE_REQUIRED: booleanish,
@@ -197,7 +197,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     sessionSecret: value.SESSION_SECRET,
     rootAdminEmail: value.ROOT_ADMIN_EMAIL.trim().toLowerCase(),
     rootAdminPassword: value.ROOT_ADMIN_PASSWORD,
-    rootAdminUsername: value.ROOT_ADMIN_USERNAME.trim() || 'owner',
+    rootAdminUsername: value.ROOT_ADMIN_USERNAME.trim() || 'xdrshjr',
     resetRootAdminPassword: value.RESET_ROOT_ADMIN_PASSWORD === true,
     registrationEnabled: value.REGISTRATION_ENABLED ?? true,
     inviteRequired: value.INVITE_REQUIRED === true,

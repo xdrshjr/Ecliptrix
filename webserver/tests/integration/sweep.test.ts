@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import * as authService from '@/server/services/authService'
@@ -36,6 +37,7 @@ beforeEach(async () => {
     client: 'web',
     device: DEVICE,
     ...CONTEXT,
+    ...issueCaptcha(),
   })
   user = result.user
   accountDeletionService.request(

@@ -6,6 +6,7 @@ import { codeHint, hashToken, newId, newInviteCode } from '@/server/auth/tokens'
 import { ERROR_CODE } from '@/server/auth/constants'
 import { AppError, errors } from '@/server/http/errors'
 import * as auditService from '@/server/services/auditService'
+import * as authorityService from '@/server/services/authorityService'
 import * as mailService from '@/server/services/mailService'
 import { maskEmail } from '@/server/services/privacy'
 import { buildInviteUrl } from '@/server/mail/links'
@@ -66,6 +67,17 @@ export async function createInvite(
     throw new AppError(ERROR_CODE.forbidden, '不能创建可注册为超级管理员的邀请码')
   }
   if (!actor.actorUserId) throw errors.unauthorized()
+  /**
+   * An invite is a pre-granted role: whoever redeems it becomes that role without
+   * a second check. So the same two invariants the role editor enforces apply here
+   * — otherwise "invite somebody as admin" is the allocation gate with one extra
+   * indirection (spec §3.4.2 INV-2 落点三, G-3).
+   */
+  authorityService.assertCanGrantRole(
+    actor.actorUserId,
+    role,
+    rolesRepo.permissionsFor(db, role.id),
+  )
 
   const code = newInviteCode()
   const id = newId()

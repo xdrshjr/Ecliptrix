@@ -38,6 +38,7 @@ export default async function AdminRolesPage() {
         roles={roles}
         permissions={[...permissionCatalogue().all]}
         canWrite={can(session, 'roles.write')}
+        heldPermissions={session.permissions}
       />
     </div>
   )

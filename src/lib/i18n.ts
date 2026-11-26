@@ -4164,6 +4164,7 @@ export interface Translations {
       inviteRequired: string;
       inviteInvalid: string;
       registrationDisabled: string;
+      captchaRequired: string;
       passwordMismatch: string;
       termsRequired: string;
       required: string;
@@ -8839,6 +8840,8 @@ export const translations: Record<string, Translations> = {
         inviteRequired: 'Registration on this server needs an invite code.',
         inviteInvalid: 'That invite code is not valid or has been used up.',
         registrationDisabled: 'This server is not accepting new sign-ups. Ask an administrator for an account.',
+        captchaRequired:
+          'This build cannot complete the sign-up check the server now requires. Update Ecliptrix to the latest version, or register on the website.',
         emailUnverified: 'Verify your email address before signing in. Open the link we mailed you, then try again.',
         accountDeleted: 'This account was deleted and can no longer sign in.',
         deletionPending: 'A deletion request is already in progress for this account.',
@@ -13537,6 +13540,8 @@ export const translations: Record<string, Translations> = {
         inviteRequired: '本服务器需要邀请码才能注册。',
         inviteInvalid: '邀请码无效或已被用完。',
         registrationDisabled: '本服务器当前不接受新注册，请联系管理员开通账号。',
+        captchaRequired:
+          '当前版本无法完成服务器新增的人机校验。请升级到最新版客户端，或前往网站在线注册。',
         emailUnverified: '请先验证邮箱再登录：打开我们发送的邮件里的链接，然后重试。',
         accountDeleted: '该账号已注销，无法再登录。',
         deletionPending: '该账号已有进行中的注销申请。',

@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Eye, EyeOff, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/field'
 import { api, ApiError } from '@/lib/api/client'
 import { toast } from '@/components/shell/toaster'
 import { errorMessage, translator, type Locale } from '@/lib/i18n'
+import { CaptchaField, type CaptchaValue } from '@/components/auth/captcha-field'
 
 /**
  * Sign-in form.
@@ -17,6 +18,15 @@ import { errorMessage, translator, type Locale } from '@/lib/i18n'
  * message the server returns, because the server already collapsed the cases. The
  * only extra signal is the lockout hint, which carries a retry-after value the
  * copy would be useless without.
+ *
+ * ## Escalating human verification
+ *
+ * Login is NOT challenged unconditionally (spec §3.2.4): the per-account lockout
+ * already handles a targeted brute force, and a puzzle in front of every sign-in
+ * would tax the 99% who never fail. The control appears only after the server
+ * answers `captcha_required`, which it does once this identifier or this caller
+ * has failed enough times — and it stays visible from then on, because the next
+ * submit needs it too.
  */
 export interface LoginFormProps {
   locale: Locale
@@ -37,6 +47,13 @@ export function LoginForm({ locale, next }: LoginFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [retryAfter, setRetryAfter] = useState<number | null>(null)
+  // `null` = not challenged. Set once the server demands a challenge, and never
+  // cleared except on success — a state that flickered away would let a caller
+  // retry without solving anything.
+  const [captcha, setCaptcha] = useState<CaptchaValue | null>(null)
+  const [captchaError, setCaptchaError] = useState<string | undefined>(undefined)
+  const [captchaRefresh, setCaptchaRefresh] = useState(0)
+  const onCaptchaChange = useCallback((value: CaptchaValue) => setCaptcha(value), [])
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -48,6 +65,9 @@ export function LoginForm({ locale, next }: LoginFormProps) {
         identifier: identifier.trim(),
         password,
         client: 'web',
+        ...(captcha?.captchaId && captcha.captchaAnswer.trim()
+          ? { captchaId: captcha.captchaId, captchaAnswer: captcha.captchaAnswer.trim() }
+          : {}),
       })
 
       const target =
@@ -64,9 +84,22 @@ export function LoginForm({ locale, next }: LoginFormProps) {
       router.refresh()
     } catch (thrown) {
       if (thrown instanceof ApiError) {
-        const seconds = (thrown.details?.retryAfterSeconds as number | undefined) ?? null
-        setRetryAfter(seconds)
-        setError(errorMessage(thrown.code, locale))
+        if (thrown.code === 'captcha_required') {
+          // Reveal the control: this caller has failed enough times that the
+          // server now refuses to look at the password until one is solved.
+          setCaptchaError(undefined)
+          setCaptcha((current) => current ?? { captchaId: '', captchaAnswer: '' })
+          setError(null)
+        } else if (thrown.code.startsWith('captcha_')) {
+          // A wrong answer spends the challenge, so the next attempt needs a new one.
+          setCaptchaError(errorMessage(thrown.code, locale))
+          setCaptchaRefresh((value) => value + 1)
+          setError(null)
+        } else {
+          const seconds = (thrown.details?.retryAfterSeconds as number | undefined) ?? null
+          setRetryAfter(seconds)
+          setError(errorMessage(thrown.code, locale))
+        }
       } else {
         setError(tt('errors.network'))
       }
@@ -115,6 +148,19 @@ export function LoginForm({ locale, next }: LoginFormProps) {
           <p className="mt-1 text-xs text-[var(--warning)]">{tt('auth.login.capsLock')}</p>
         ) : null}
       </Field>
+
+      {captcha !== null ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs text-[var(--warning)]">{tt('captcha.loginNotice')}</p>
+          <CaptchaField
+            locale={locale}
+            purpose="login"
+            onChange={onCaptchaChange}
+            error={captchaError}
+            refreshKey={captchaRefresh}
+          />
+        </div>
+      ) : null}
 
       {error ? (
         <p

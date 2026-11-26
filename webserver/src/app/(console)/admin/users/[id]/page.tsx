@@ -7,6 +7,7 @@ import { list as listAudit } from '@/server/db/repositories/auditRepo'
 import { toSessionDto } from '@/server/db/types'
 import { toAdminUserDto } from '@/server/http/dto'
 import { listRoles, permissionsOf } from '@/server/services/roleService'
+import * as authorityService from '@/server/services/authorityService'
 import { getUserDetail } from '@/server/services/userService'
 import { listForUser } from '@/server/services/sessionService'
 import { AppError } from '@/server/http/errors'
@@ -38,11 +39,21 @@ export default async function AdminUserDetailPage({ params }: PageProps) {
   if (!detail) notFound()
 
   const sessions: SessionDto[] = listForUser(id).map((row) => toSessionDto(row))
-  const roles: RoleOption[] = listRoles().map((role) => ({
-    id: role.id,
-    key: role.key,
-    name: role.name,
-  }))
+  // Same filter as the list page (AC-22): the detail page opens the same dialog,
+  // and a dropdown that offers a role the server will refuse teaches
+  // administrators to distrust the console. Filtering is UX, not the boundary —
+  // `updateUser` re-checks INV-2/INV-3 on submit.
+  const roles: RoleOption[] = authorityService
+    .grantableRoles(
+      session.user.id,
+      listRoles().map((role) => ({
+        id: role.id,
+        key: role.key,
+        name: role.name,
+        rank: role.rank,
+      })),
+    )
+    .map(({ id: roleId, key, name }) => ({ id: roleId, key, name }))
 
   const { rows: auditRows } = listAudit(
     getDb(),

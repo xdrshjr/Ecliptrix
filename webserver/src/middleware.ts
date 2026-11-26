@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE } from '@/server/auth/constants'
+import { NOINDEX_PREFIXES } from '@/server/auth/publicSurface'
 
 /**
  * Edge middleware.
@@ -84,6 +85,12 @@ function applySecurityHeaders(response: NextResponse, isDev: boolean, pathname =
   }
   if (TOKEN_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
     response.headers.set('Referrer-Policy', 'no-referrer')
+  }
+  // Account and console pages must never be indexed, and the list comes from
+  // `publicSurface.ts` so the header, `robots.ts` and the guest-surface test
+  // cannot drift apart (review R-V3-04: this module was written but never wired).
+  if (NOINDEX_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow')
   }
   response.headers.set('Content-Security-Policy', contentSecurityPolicy(isDev))
   if (!isDev) {

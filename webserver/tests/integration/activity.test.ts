@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import { usersRepo } from '../setup/repos'
@@ -41,6 +42,7 @@ beforeEach(async () => {
     client: 'desktop',
     device: { ...DEVICE, deviceKey: 'activity-device-key' },
     ...CONTEXT,
+    ...issueCaptcha(),
   })
   user = result.user
   actor = { actorUserId: user.id, actorLabel: user.email, ip: '1.2.3.4', requestId: 'req-act' }

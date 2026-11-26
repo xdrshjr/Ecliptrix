@@ -22,6 +22,10 @@ export const PERMISSION_GROUPS = {
   audit: ['audit.read'],
   settings: ['settings.read', 'settings.write'],
   releases: ['releases.read', 'releases.write'],
+  // Security posture (`/admin/security`). Granted only together with
+  // `users.read`, never alone: the `/admin` layout requires `users.read` for
+  // every page, so an isolated grant renders as the 403 page (spec §3.6).
+  security: ['security.read'],
 } as const
 
 export type PermissionGroupKey = keyof typeof PERMISSION_GROUPS

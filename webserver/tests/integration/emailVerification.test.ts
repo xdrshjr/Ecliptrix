@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import { usersRepo } from '../setup/repos'
@@ -61,6 +62,7 @@ async function registerMember(email = 'member@example.com'): Promise<UserRow> {
     client: 'web',
     device: DEVICE,
     ...CONTEXT,
+    ...issueCaptcha(),
   })
   return result.user
 }
@@ -222,6 +224,7 @@ describe('email verification', () => {
       clientVersion: '1.0.0',
       device: { ...DEVICE, deviceKey: 'device-key-newcomer' },
       ...CONTEXT,
+      ...issueCaptcha(),
     })
     expect(result.user.email_verified_at).toBeNull()
   })

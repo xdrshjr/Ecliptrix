@@ -11,6 +11,7 @@ import { ERROR_CODE } from '@/server/auth/constants'
 import { AppError, errors } from '@/server/http/errors'
 import { newId } from '@/server/auth/tokens'
 import * as auditService from '@/server/services/auditService'
+import * as authorityService from '@/server/services/authorityService'
 import type { AuditContext } from '@/server/services/auditService'
 import type { RoleWithPermissions } from '@/server/db/repositories/rolesRepo'
 
@@ -79,6 +80,10 @@ export function createRole(
   }
   const permissions = input.permissions ?? []
   assertPermissionsKnown(permissions)
+  // INV-2: a new role starts empty in the console, but the API accepts a set, so
+  // the subset gate has to run here too — otherwise "create a role with
+  // users.delete" is the escalation path with an extra step.
+  authorityService.assertCanGrantPermissions(actor.actorUserId, permissions)
 
   const id = newId()
   const create = db.transaction(() => {
@@ -160,8 +165,15 @@ function assertPermissionsKnown(permissions: readonly string[]): void {
 /**
  * Replace a role's permission set.
  *
+ * This was the widest escalation hole in the service: the only filter was `'*'`,
+ * so a custom role holding `roles.write` could grant its own role `users.delete`,
+ * `settings.write`, `releases.write` — "manage users" became "manage everything"
+ * in one PUT. INV-2 now refuses any permission the caller does not itself hold,
+ * which includes the self-escalation case (`settings.write` on your own role).
+ *
  * @throws AppError `system_role_protected` when the target is `owner` — that set
  *         is generated, not stored, so an edit would be silently ignored.
+ * @throws AppError `forbidden` (`permission_exceeds_actor`) for a superset grant.
  */
 export function replacePermissions(
   id: string,
@@ -175,6 +187,9 @@ export function replacePermissions(
     throw new AppError(ERROR_CODE.systemRoleProtected, '超级管理员的权限集合固定为 *，不可修改')
   }
   assertPermissionsKnown(permissions)
+  // Subset gate BEFORE anything is written: the audit row and the journal entry
+  // must not describe a change that was then refused.
+  authorityService.assertCanGrantPermissions(actor.actorUserId, permissions)
 
   const unique = sortPermissions([...new Set(permissions)].filter((p) => p !== '*'))
   const before = rolesRepo.permissionsFor(db, id)

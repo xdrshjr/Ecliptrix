@@ -217,3 +217,55 @@ export function countForAction(db: Db, action: string, sinceMs: number): number 
     [action, sinceMs],
   )
 }
+
+/**
+ * Top refused permission keys in a window, for the posture panel.
+ *
+ * `authz.denied` rows carry the permission in `target_id` (see `guards.ts`), which
+ * is what makes "which permission are people probing" answerable without parsing
+ * metadata — that column is JSON written by several call sites.
+ */
+export function topDeniedPermissions(
+  db: Db,
+  sinceMs: number,
+  limit = 5,
+): { permission: string; count: number }[] {
+  return db
+    .prepare(
+      `SELECT target_id AS permission, COUNT(*) AS count
+         FROM audit_events
+        WHERE action = 'authz.denied' AND created_at >= ?
+        GROUP BY target_id
+        ORDER BY count DESC
+        LIMIT ?`,
+    )
+    .all(sinceMs, limit) as { permission: string; count: number }[]
+}
+
+/**
+ * Recent role-affecting events, newest first, for the posture panel.
+ *
+ * The `metadata LIKE '%role%'` filter is deliberately coarse: the three actions
+ * here write their role key under different names (`roleKey`, `to`), and a
+ * per-action JSON query would need three statements for a five-row summary. A
+ * false positive would show an unrelated `user.update` row, which is visible in
+ * the action column rather than silently wrong.
+ */
+export function recentRoleEvents(
+  db: Db,
+  limit = 5,
+): Pick<AuditRow, 'actor_label' | 'target_id' | 'metadata' | 'action' | 'created_at'>[] {
+  return db
+    .prepare(
+      `SELECT actor_label, target_id, metadata, action, created_at
+         FROM audit_events
+        WHERE action IN ('user.role_granted', 'user.update', 'invite.create')
+          AND metadata LIKE '%role%'
+        ORDER BY created_at DESC
+        LIMIT ?`,
+    )
+    .all(limit) as Pick<
+    AuditRow,
+    'actor_label' | 'target_id' | 'metadata' | 'action' | 'created_at'
+  >[]
+}

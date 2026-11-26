@@ -134,4 +134,15 @@ export const LIMITS = {
   emailVerifyConsume: { limit: 60, windowMs: HOUR },
   /** Data export is expensive and is meant to be occasional. */
   accountExport: { limit: 10, windowMs: HOUR },
+  /**
+   * Challenge issuing. Also the table-growth ceiling: one insert per issue, and
+   * the hourly retention sweep assumes the issue rate is bounded.
+   *
+   * ⚠ In a deployment with no trusted forwarder `clientIpFrom` returns the
+   * constant `0.0.0.0`, so every visitor shares this bucket. Sixty per hour for a
+   * whole site is a registration denial of service rather than a flood guard,
+   * which is why `captchaService.issue` adds a second, body-derived dimension
+   * when the address is not trustworthy (spec §3.2.2, review R-02).
+   */
+  captchaIssue: { limit: 60, windowMs: HOUR },
 } as const

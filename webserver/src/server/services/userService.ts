@@ -8,6 +8,7 @@ import { ERROR_CODE, REVOKE_REASON } from '@/server/auth/constants'
 import { AppError, errors } from '@/server/http/errors'
 import * as sessionService from '@/server/services/sessionService'
 import * as auditService from '@/server/services/auditService'
+import * as authorityService from '@/server/services/authorityService'
 import * as emailVerificationService from '@/server/services/emailVerificationService'
 import { displayEmail, displayUsername, normalizeEmail, normalizeUsername } from '@/server/services/normalize'
 import type { AuditContext } from '@/server/services/auditService'
@@ -167,6 +168,17 @@ export async function createUser(
   if (role.key === OWNER_ROLE_KEY) {
     throw new AppError(ERROR_CODE.systemRoleProtected, '不能通过接口创建超级管理员，请使用 CLI')
   }
+  /**
+   * INV-2 + INV-3 — this was the *live* escalation path (G-3, review R-12).
+   *
+   * `POST /admin/users` only requires `users.write`, and `createUserSchema` accepts
+   * `roleKey`, so a plain `admin` could mint another `admin` here without ever
+   * touching `roles.write`. The handler's `requirePermission('roles.write')` is
+   * not enough either: a custom role with both keys would still pass. The
+   * allocation gate refuses `admin` from anybody but the owner, and the subset gate
+   * refuses a custom role carrying permissions the caller lacks.
+   */
+  authorityService.assertCanGrantRole(actor.actorUserId, role, rolesRepo.permissionsFor(db, role.id))
 
   const temporaryPassword = input.password ? null : newTempPassword()
   const plaintext = input.password ?? temporaryPassword ?? ''
@@ -237,10 +249,22 @@ export function updateUser(
   const now = Date.now()
   let before = getUser(targetId)
   const patch: Partial<UserRow> = {}
+  /**
+   * A role change is applied through `usersRepo.grantRole`, not as a field of
+   * `patch`, because the role and its grant ledger (`role_granted_by/at`) are one
+   * fact (DM-4). Putting `role_id` in the generic patch makes "wrote the role but
+   * forgot the provenance" a one-line mistake.
+   */
+  let roleChange: { roleId: string; roleKey: string } | null = null
 
   if (input.status !== undefined && input.status !== before.status) {
     assertNotOwner(before, '停用或修改状态')
-    if (input.status !== 'active') assertNotSelf(actorId, targetId, '停用或删除')
+    if (input.status !== 'active') {
+      assertNotSelf(actorId, targetId, '停用或删除')
+      // INV-1: weakening somebody at or above the caller's own rank is a coup,
+      // not governance — an `admin` may handle `support`/`member`, never a peer.
+      authorityService.assertRankAbove(actorId, targetId)
+    }
     // Delete and restore are lifecycle transitions with their own audit action
     // and their own tombstone bookkeeping. Running them through the generic
     // patch wrote `user.update` instead of `user.delete`, so the original
@@ -268,10 +292,31 @@ export function updateUser(
     if (role.key === OWNER_ROLE_KEY) {
       throw new AppError(ERROR_CODE.forbidden, '不能把其他用户提升为超级管理员')
     }
-    patch.role_id = role.id
+    // INV-2 + INV-3. The role's own permission set is what will be conferred, so
+    // the subset gate is evaluated against it rather than against a caller-supplied
+    // list an attacker could trim.
+    authorityService.assertCanGrantRole(
+      actorId,
+      role,
+      rolesRepo.permissionsFor(db, role.id),
+    )
+    // Demoting somebody is also a weakening action, so the rank gate applies to
+    // the target as well as the grant gate applies to the role.
+    authorityService.assertRankAbove(actorId, targetId)
+    // Recorded separately from the generic patch so the ledger pair and the
+    // dashboard-facing action always travel together (DM-4).
+    roleChange = { roleId: role.id, roleKey: role.key }
   }
 
   if (input.email !== undefined) {
+    // INV-1, entry #8 (review R-V4-01). Changing an address looks like editing a
+    // contact detail, but "an address that receives mail" is "an address that
+    // receives password resets": an `admin` who rewrites a peer's — or the
+    // owner's — email to their own inbox takes over the account through the
+    // forgot-password flow, which walks straight past the gate on
+    // `resetUserPassword`. `assertNotOwner` never ran on this branch either.
+    // The gate must sit before the write, inside this branch.
+    authorityService.assertRankAbove(actorId, targetId)
     const normalized = normalizeEmail(input.email)
     if (usersRepo.emailExists(db, normalized, targetId)) {
       throw new AppError(ERROR_CODE.emailTaken, '该邮箱已被注册')
@@ -294,10 +339,15 @@ export function updateUser(
   if (input.note !== undefined) patch.note = input.note
   if (input.avatarUrl !== undefined) patch.avatar_url = input.avatarUrl
 
-  if (Object.keys(patch).length === 0) return before
+  if (Object.keys(patch).length === 0 && roleChange === null) return before
 
   const apply = db.transaction(() => {
-    usersRepo.update(db, targetId, patch, now)
+    if (Object.keys(patch).length > 0) usersRepo.update(db, targetId, patch, now)
+    if (roleChange !== null) {
+      // `actorId` is the human who made the grant; it is what the console renders
+      // as "role granted by …". A system caller (CLI) leaves it NULL.
+      usersRepo.grantRole(db, targetId, roleChange.roleId, actor.actorUserId ?? null, now)
+    }
     if (patch.status === 'suspended' || patch.status === 'deleted') {
       sessionService.revokeAllForUser(targetId, REVOKE_REASON.suspended)
     }
@@ -321,12 +371,27 @@ export function updateUser(
         email: patch.email_normalized,
         username: patch.username_normalized,
         displayName: patch.display_name,
-        roleId: patch.role_id,
+        roleId: roleChange?.roleId,
         status: patch.status,
         planTag: patch.plan_tag,
       },
     ),
   })
+
+  if (roleChange !== null) {
+    // Its own action because "who became what" is the question an incident
+    // responder asks, and `user.update` buries it among plan-tag edits (§11).
+    auditService.record(actor, {
+      action: 'user.role_granted',
+      targetType: 'user',
+      targetId,
+      metadata: {
+        from: roleKeyOf(before.role_id),
+        to: roleChange.roleKey,
+        grantedBy: actor.actorUserId,
+      },
+    })
+  }
 
   return getUser(targetId)
 }
@@ -343,6 +408,9 @@ export function deleteUser(
   const user = getUser(targetId)
   assertNotOwner(user, '删除')
   assertNotSelf(actorId, targetId, '删除')
+  // INV-1. `deleteUser` is reachable from three places (DELETE, bulk, and the
+  // PATCH status forward above), so the gate lives here rather than in a route.
+  authorityService.assertRankAbove(actorId, targetId)
 
   // One transaction for revoke + tombstone + audit. The audit row is the ONLY
   // place the original email and username survive a soft delete (`restoreUser`
@@ -390,6 +458,10 @@ export function restoreUser(targetId: string, actor: AuditContext): UserRow {
   if (user.status !== 'deleted') {
     throw new AppError(ERROR_CODE.conflict, '该用户未被删除')
   }
+  // Invariant 1 covers restore as well: bringing a higher-ranked account back is a
+  // weakening-adjacent action, and it is one of the seven entries review R-01
+  // enumerated as previously ungated.
+  authorityService.assertRankAbove(actor.actorUserId, targetId)
 
   const metadata = auditRepo.lastMetadataFor(db, 'user', targetId, 'user.delete')
   const email = typeof metadata?.email === 'string' ? metadata.email : ''
@@ -419,6 +491,9 @@ export function unlockUser(targetId: string, actor: AuditContext): void {
   const db = getDb()
   const now = Date.now()
   const user = getUser(targetId)
+  // Entry 6 of review R-01's list: clearing a lockout is a credential control
+  // (it erases the exponential back-off), so the rank gate applies here too.
+  authorityService.assertRankAbove(actor.actorUserId, targetId)
   usersRepo.clearFailedLogin(db, targetId, now)
   auditService.record(actor, {
     action: 'user.unlock',
@@ -442,6 +517,14 @@ export async function resetUserPassword(
   const now = Date.now()
   const user = getUser(targetId)
   assertNotOwner(user, '重置口令')
+  /**
+   * INV-1 — the single most direct account-takeover path before this feature.
+   *
+   * `resetUserPassword` guarded only against the owner, so an `admin` could issue a
+   * temporary password for another `admin`, hand it over, and be that person —
+   * no audit trail distinguishes it from routine support. Entry 3 of review R-01.
+   */
+  authorityService.assertRankAbove(actor.actorUserId, targetId)
 
   const temporaryPassword = newTempPassword()
   const passwordHash = await hashPassword(temporaryPassword)
@@ -474,6 +557,19 @@ export async function resetUserPassword(
 }
 
 export type BulkAction = 'suspend' | 'activate' | 'delete' | 'restore' | 'setRole'
+
+/**
+ * Why one row of a bulk run was skipped.
+ *
+ * A refusal from an authority gate carries `details.reason`, which is more precise
+ * than the shared `forbidden` code and is what the console groups by. Anything else
+ * falls back to its error code so an unexpected failure is still visible.
+ */
+function skipReason(error: unknown): string {
+  if (!(error instanceof AppError)) return 'internal_error'
+  const reason = error.details?.reason
+  return typeof reason === 'string' && reason !== '' ? reason : error.code
+}
 
 export interface BulkResult {
   requested: number
@@ -526,7 +622,11 @@ export function bulk(
     } catch (error) {
       result.skipped.push({
         id,
-        reason: error instanceof AppError ? error.code : 'internal_error',
+        // `details.reason` first: the authority gates answer `forbidden` with a
+        // precise reason (`insufficient_rank`, `admin_allocation_reserved`), and
+        // "forbidden" alone would make every refusal in a bulk run look identical
+        // in the console's summary (AC-16c).
+        reason: skipReason(error),
       })
     }
   }

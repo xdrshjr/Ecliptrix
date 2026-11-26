@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { NextResponse } from 'next/server'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import { usersRepo } from '../setup/repos'
@@ -39,6 +40,7 @@ beforeEach(async () => {
     client: 'desktop',
     device: { ...DEVICE, deviceKey: 'export-device-key-1' },
     ...CONTEXT,
+    ...issueCaptcha(),
   })
   userId = result.user.id
   token = result.tokens.accessToken

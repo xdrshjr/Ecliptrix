@@ -17,6 +17,7 @@ import { ERROR_CODE, REVOKE_REASON } from '@/server/auth/constants'
 import { AppError, errors } from '@/server/http/errors'
 import * as settingsService from '@/server/services/settingsService'
 import * as auditService from '@/server/services/auditService'
+import * as captchaService from '@/server/services/captchaService'
 import * as sessionService from '@/server/services/sessionService'
 import * as emailVerificationService from '@/server/services/emailVerificationService'
 import * as releaseService from '@/server/services/releaseService'
@@ -54,6 +55,9 @@ export interface LoginInput {
   ip: string
   userAgent: string
   requestId: string
+  /** Human verification, only required once this caller has failed enough. */
+  captchaId?: string
+  captchaAnswer?: string
 }
 
 export interface LoginSuccess {
@@ -84,17 +88,42 @@ export { isVersionOutdated }
 function recordAttempt(
   identifierNormalized: string,
   ip: string,
+  userAgent: string,
   success: boolean,
   reason: string,
 ): void {
   attemptsRepo.insert(getDb(), {
     id: newId(),
     identifierNormalized,
-    ip,
+    // Stored through the SAME key `loginRequiresCaptcha` reads (review R-V4-03).
+    //
+    // When the address is trustworthy this is the address itself, so forensics
+    // lose nothing. It only differs when `clientIpFrom` fell back to `0.0.0.0`,
+    // i.e. when the raw value carried no information anyway — writing that
+    // constant is what would collapse every visitor into one counter bucket.
+    // Writing and reading must agree or the IP dimension of the escalation can
+    // never reach its threshold (review RV-8).
+    ip: captchaService.rateKeyFor(ip, userAgent),
     success,
     reason,
     now: Date.now(),
   })
+}
+
+/**
+ * Is this identifier already inside an active lockout window?
+ *
+ * The captcha escalation must not answer before the lockout does. Both are
+ * pre-credential gates, but a locked account is a decided outcome: asking that
+ * user to solve a puzzle and then telling them "still locked" both wastes a
+ * challenge and hides the real reason (an unknown identifier has no lockout, so
+ * this check costs one indexed lookup and only runs when a challenge may be
+ * required).
+ */
+function isInsideLockout(identifier: string): boolean {
+  const user = findUserByIdentifier(identifier)
+  if (!user || user.locked_until === null) return false
+  return user.locked_until > Date.now()
 }
 
 /**
@@ -292,16 +321,17 @@ function assertEmailVerifiedForLogin(user: UserRow, input: LoginInput): void {
 export async function verifyCredentials(
   identifier: string,
   password: string,
-  context: { ip: string; reasonPrefix?: string },
+  context: { ip: string; userAgent?: string; reasonPrefix?: string },
 ): Promise<AuthenticateResult> {
   const now = Date.now()
   const normalized = normalizeEmail(identifier)
   const user = findUserByIdentifier(identifier)
+  const userAgent = context.userAgent ?? ''
 
   if (!user) {
     // Same CPU cost as a real verification so timing cannot be used to probe.
     await burnPasswordWork(password)
-    recordAttempt(normalized, context.ip, false, 'unknown_identifier')
+    recordAttempt(normalized, context.ip, userAgent, false, 'unknown_identifier')
     throw errors.invalidCredentials()
   }
 
@@ -309,7 +339,7 @@ export async function verifyCredentials(
 
   const matches = await verifyPassword(password, user.password_hash)
   if (!matches) {
-    recordAttempt(user.email_normalized, context.ip, false, 'bad_password')
+    recordAttempt(user.email_normalized, context.ip, userAgent, false, 'bad_password')
     applyLockout(user, now)
     throw errors.invalidCredentials()
   }
@@ -320,7 +350,7 @@ export async function verifyCredentials(
   }
 
   usersRepo.clearFailedLogin(getDb(), user.id, now)
-  recordAttempt(user.email_normalized, context.ip, true, 'ok')
+  recordAttempt(user.email_normalized, context.ip, userAgent, true, 'ok')
 
   const role = rolesRepo.findById(getDb(), user.role_id)
   if (!role) throw new AppError(ERROR_CODE.internalError, '用户角色数据缺失')
@@ -334,13 +364,38 @@ export async function verifyCredentials(
 /** Full login: verify, mark the user, mint a session, audit. */
 export async function login(input: LoginInput): Promise<LoginSuccess> {
   // Order is fixed (spec §2.11): rate limit in the route → maintenance →
-  // version gate → credential check. The two gates run before the password, so
-  // they must never write `login_attempts` nor count towards the lockout.
+  // version gate → human verification → credential check. The two gates run before
+  // the password, so they must never write `login_attempts` nor count towards the
+  // lockout.
   assertNotInMaintenance(input, 'login')
   assertClientSupported(input)
 
+  /**
+   * Human verification — AFTER the maintenance and version gates, BEFORE the
+   * password.
+   *
+   * Sitting after those two gates matches `assertNotInMaintenance` /
+   * `assertClientSupported` above: a maintenance-period user must not solve a
+   * puzzle and only then be told the site is down, burning a challenge for
+   * nothing, and the two error orders must not flicker with request timing
+   * (review R-07).
+   *
+   * Sitting before the password is the existing rule from the pre-credential
+   * gates: a stale challenge must not cost a scrypt hash.
+   */
+  if (
+    !isInsideLockout(input.identifier) &&
+    captchaService.loginRequiresCaptcha(normalizeEmail(input.identifier), input.ip, input.userAgent)
+  ) {
+    captchaService.consumeOrThrow(
+      { captchaId: input.captchaId, captchaAnswer: input.captchaAnswer },
+      { purpose: 'login', ip: input.ip, requestId: input.requestId },
+    )
+  }
+
   const authenticated = await verifyCredentials(input.identifier, input.password, {
     ip: input.ip,
+    userAgent: input.userAgent,
   })
 
   /**
@@ -451,6 +506,9 @@ export interface RegisterInput {
   ip: string
   userAgent: string
   requestId: string
+  /** Human verification — mandatory for registration (spec §3.7). */
+  captchaId?: string
+  captchaAnswer?: string
 }
 
 export type RegisterSuccess = LoginSuccess
@@ -463,9 +521,20 @@ function usernameFromEmail(email: string): string {
 /**
  * Self-service registration.
  *
- * Order matters: the registration switch, then the invite gate, then the policy,
- * then uniqueness. Checking uniqueness first would leak which addresses exist
- * even when registration is closed.
+ * Order matters. The pre-credential gates come first (maintenance, version,
+ * registration switch, invite presence), then human verification, then the policy
+ * and uniqueness checks.
+ *
+ * ## Why the challenge is consumed before the business checks
+ *
+ * The challenge is spent in its own committed statement, ahead of every check that
+ * could fail (spec §3.2.2 / §3.7, review R-03). The tempting alternative — one
+ * transaction that consumes the challenge and creates the user, rolling both back
+ * together — reopens an enumeration hole: a sign-up that fails because the address
+ * is taken would un-consume the challenge, so the same `captchaId` could be
+ * resubmitted indefinitely, one probe per attempt, to learn which addresses exist.
+ * The cost of this order is that a wrong password policy burns an image; the form
+ * checks the same policy before submitting, so a human rarely pays it.
  */
 export async function register(input: RegisterInput): Promise<RegisterSuccess> {
   const db = getDb()
@@ -486,6 +555,12 @@ export async function register(input: RegisterInput): Promise<RegisterSuccess> {
   if (inviteRequired && !inviteCode) {
     throw new AppError(ERROR_CODE.inviteRequired, '注册需要邀请码')
   }
+
+  // Consumed first, so a failed sign-up still costs the image — see the note above.
+  captchaService.consumeOrThrow(
+    { captchaId: input.captchaId, captchaAnswer: input.captchaAnswer },
+    { purpose: 'register', ip: input.ip, requestId: input.requestId },
+  )
 
   const emailNormalized = normalizeEmail(input.email)
   const desiredUsername = input.username?.trim() || usernameFromEmail(input.email)

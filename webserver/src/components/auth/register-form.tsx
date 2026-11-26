@@ -1,13 +1,14 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox, Field, Input } from '@/components/ui/field'
 import { api, ApiError } from '@/lib/api/client'
 import { toast } from '@/components/shell/toaster'
 import { errorMessage, translator, type Locale } from '@/lib/i18n'
 import { PasswordStrength } from '@/components/auth/password-strength'
+import { CaptchaField, type CaptchaValue } from '@/components/auth/captcha-field'
 import { isEmailShaped, isUsernameShaped, passwordLengthIssue } from '@/lib/validators'
 
 /**
@@ -17,6 +18,11 @@ import { isEmailShaped, isUsernameShaped, passwordLengthIssue } from '@/lib/vali
  * password policy, the invite gate and uniqueness. The client never blocks submit
  * for a policy reason — it would drift from the server the first time the policy
  * is tuned.
+ *
+ * The human-verification challenge is mandatory, and the server consumes it
+ * before it validates anything else (spec §3.7). That order means every rejected
+ * submit costs the image, so the form issues a fresh one after each failure rather
+ * than leaving the user to retry with a spent id.
  */
 export interface RegisterFormProps {
   locale: Locale
@@ -37,6 +43,13 @@ export function RegisterForm({ locale, inviteRequired }: RegisterFormProps) {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const [captcha, setCaptcha] = useState<CaptchaValue>({ captchaId: '', captchaAnswer: '' })
+  const [captchaError, setCaptchaError] = useState<string | undefined>(undefined)
+  // Bumped after a rejected challenge so the control fetches a new image.
+  const [captchaRefresh, setCaptchaRefresh] = useState(0)
+  // `CaptchaField` reports on every keystroke; a stable callback keeps its
+  // reporting effect from re-firing on every parent render.
+  const onCaptchaChange = useCallback((value: CaptchaValue) => setCaptcha(value), [])
 
   const update = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value
@@ -66,6 +79,9 @@ export function RegisterForm({ locale, inviteRequired }: RegisterFormProps) {
     if (inviteRequired && !form.inviteCode.trim()) {
       nextErrors.inviteCode = tt('auth.register.inviteHint')
     }
+    if (!captcha.captchaId || !captcha.captchaAnswer.trim()) {
+      nextErrors.captcha = tt('captcha.required')
+    }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       return
@@ -79,6 +95,8 @@ export function RegisterForm({ locale, inviteRequired }: RegisterFormProps) {
         displayName: form.displayName.trim() || undefined,
         password: form.password,
         inviteCode: form.inviteCode.trim() || undefined,
+        captchaId: captcha.captchaId,
+        captchaAnswer: captcha.captchaAnswer.trim(),
         client: 'web',
       })
       toast.success(tt('auth.register.submit'))
@@ -88,7 +106,12 @@ export function RegisterForm({ locale, inviteRequired }: RegisterFormProps) {
       if (thrown instanceof ApiError) {
         const fieldErrors = thrown.fieldErrors()
         if (Object.keys(fieldErrors).length > 0) setErrors(fieldErrors)
-        else setErrors({ form: errorMessage(thrown.code, locale) })
+        else if (thrown.code.startsWith('captcha_')) {
+          // The challenge is spent either way — the server consumes it before it
+          // checks anything else — so a retry must carry a new image.
+          setCaptchaError(errorMessage(thrown.code, locale))
+          setCaptchaRefresh((value) => value + 1)
+        } else setErrors({ form: errorMessage(thrown.code, locale) })
       } else {
         setErrors({ form: tt('errors.network') })
       }
@@ -188,6 +211,21 @@ export function RegisterForm({ locale, inviteRequired }: RegisterFormProps) {
           />
         </Field>
       ) : null}
+
+      <Field
+        label={tt('captcha.label')}
+        htmlFor="captchaAnswer"
+        required
+        error={errors.captcha}
+      >
+        <CaptchaField
+          locale={locale}
+          purpose="register"
+          onChange={onCaptchaChange}
+          error={captchaError}
+          refreshKey={captchaRefresh}
+        />
+      </Field>
 
       <div>
         <Checkbox

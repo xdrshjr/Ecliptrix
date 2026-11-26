@@ -48,6 +48,10 @@ async function call(path, { method = 'GET', body, csrf = false, bearer } = {}) {
   if (cookies.size > 0) headers.Cookie = cookieHeader()
   if (csrf && cookies.get('ecs_csrf')) headers['X-CSRF-Token'] = cookies.get('ecs_csrf')
   if (bearer) headers.Authorization = `Bearer ${bearer}`
+  // A deterministic source address, as a real forwarder would provide. Without it
+  // `clientIpFrom` answers the shared `0.0.0.0` constant and every per-IP budget
+  // here — captcha issue, register, login — becomes one site-wide bucket.
+  headers['X-Forwarded-For'] = '127.0.0.1'
 
   const response = await fetch(`${BASE}${path}`, {
     method,
@@ -63,6 +67,34 @@ async function call(path, { method = 'GET', body, csrf = false, bearer } = {}) {
     json = null
   }
   return { status: response.status, json, text, headers: response.headers }
+}
+
+/**
+ * Obtain a challenge and the answer a human would type.
+ *
+ * Registration is gated unconditionally, so every account this script creates has
+ * to present one. The server returns `debugAnswer` only when it runs with
+ * `ECLIPTRIX_E2E=true` (or `NODE_ENV=test`) AND the caller looks loopback — a
+ * production deployment can never satisfy both, because `config.ts` forces
+ * `e2eMode` false there.
+ *
+ * A missing `debugAnswer` therefore means "the server was started without the e2e
+ * switch", not a bug in the gate. Failing loudly with that instruction beats a
+ * wall of unexplained 400s three sections later.
+ */
+async function solveCaptcha(purpose = 'register') {
+  const issued = await call(`/api/v1/auth/captcha?purpose=${purpose}`)
+  const captcha = issued.json?.data?.captcha
+  if (!captcha?.id) {
+    throw new Error(`captcha issue failed (${issued.status}): ${issued.text.slice(0, 200)}`)
+  }
+  if (!captcha.debugAnswer) {
+    throw new Error(
+      'the server did not return debugAnswer — start it with ECLIPTRIX_E2E=true ' +
+        '(and no NODE_ENV=production) so the smoke run can solve its own challenges',
+    )
+  }
+  return { captchaId: captcha.id, captchaAnswer: captcha.debugAnswer }
 }
 
 async function main() {
@@ -98,10 +130,64 @@ async function main() {
     `got ${guarded.status}`,
   )
 
+  // ---- guest surface: may read, may not download ---------------------------
+  // Spec §3.5. These are the four promises the requirement makes, each pinned so
+  // a later refactor cannot quietly open the installer to the world or lock the
+  // marketing page behind a session.
+  const downloadPage = await fetch(`${BASE}/download`, { redirect: 'manual' })
+  const downloadHtml = await downloadPage.text()
+  check('guest GET /download → 200', downloadPage.status === 200, `got ${downloadPage.status}`)
+  check(
+    'the download page carries no installer link for a guest',
+    !downloadHtml.includes('/api/v1/downloads/'),
+    'the page links the installer endpoint, which requires a session',
+  )
+
+  const guestDownload = await call('/api/v1/downloads/stable/win')
+  check(
+    'guest GET /api/v1/downloads/stable/win → 401',
+    guestDownload.status === 401,
+    `got ${guestDownload.status}`,
+  )
+
+  const guestAccount = await fetch(`${BASE}/account`, { redirect: 'manual' })
+  check(
+    'guest GET /account redirects to /login',
+    guestAccount.status === 307 || guestAccount.status === 302,
+    `got ${guestAccount.status}`,
+  )
+  check(
+    '/account is marked noindex',
+    (guestAccount.headers.get('x-robots-tag') ?? '').includes('noindex'),
+    `got ${guestAccount.headers.get('x-robots-tag') ?? 'no header'}`,
+  )
+
+  const robots = await call('/robots.txt')
+  check('/robots.txt disallows /admin', robots.text.includes('Disallow: /admin'), robots.text.slice(0, 200))
+
   // ---- registration -------------------------------------------------------
+  // A registration without a challenge must be refused, and must not create the
+  // account. This is asserted BEFORE the successful sign-up so the check cannot be
+  // satisfied by leftover state.
+  const withoutCaptcha = await call('/api/v1/auth/register', {
+    method: 'POST',
+    body: { email: `captcha-probe-${Date.now()}@example.com`, password, client: 'web' },
+  })
+  check(
+    'POST /auth/register without a captcha → 400 captcha_required',
+    withoutCaptcha.status === 400 && withoutCaptcha.json?.error_code === 'captcha_required',
+    `got ${withoutCaptcha.status} ${withoutCaptcha.json?.error_code ?? ''}`,
+  )
+
   const registered = await call('/api/v1/auth/register', {
     method: 'POST',
-    body: { email, password, username: `smoke${Date.now() % 100000}`, client: 'web' },
+    body: {
+      email,
+      password,
+      username: `smoke${Date.now() % 100000}`,
+      client: 'web',
+      ...(await solveCaptcha('register')),
+    },
   })
   check('POST /auth/register → 201', registered.status === 201, JSON.stringify(registered.json))
   check('registration set the session cookie', cookies.has('ecs_session'))
@@ -332,6 +418,7 @@ async function main() {
       client: 'desktop',
       clientVersion: '1.0.1',
       device: device(gateDeviceA),
+      ...(await solveCaptcha('register')),
     },
   })
   const gateFirst = await gateLogin('1.0.1')
@@ -486,7 +573,12 @@ async function main() {
   cookies.clear()
   const lockRegister = await call('/api/v1/auth/register', {
     method: 'POST',
-    body: { email: lockEmail, password: lockPassword, client: 'web' },
+    body: {
+      email: lockEmail,
+      password: lockPassword,
+      client: 'web',
+      ...(await solveCaptcha('register')),
+    },
   })
   check('throwaway account registered for the lockout test', lockRegister.status === 201)
 
@@ -570,7 +662,7 @@ async function main() {
   cookies.clear()
   const lifeRegistered = await call('/api/v1/auth/register', {
     method: 'POST',
-    body: { email: lifeEmail, password, client: 'web' },
+    body: { email: lifeEmail, password, client: 'web', ...(await solveCaptcha('register')) },
   })
   const lifeJar = new Map(cookies)
   check(
@@ -758,7 +850,7 @@ async function main() {
   cookies.clear()
   await call('/api/v1/auth/register', {
     method: 'POST',
-    body: { email: probeEmail, password, client: 'web' },
+    body: { email: probeEmail, password, client: 'web', ...(await solveCaptcha('register')) },
   })
   const deletionNoPassword = await call('/api/v1/me/deletion-request', {
     method: 'POST',

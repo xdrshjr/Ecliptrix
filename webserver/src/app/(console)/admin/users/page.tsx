@@ -3,6 +3,7 @@ import { resolveLocale } from '@/lib/locale'
 import { currentSession } from '@/lib/session'
 import { can } from '@/server/auth/guards'
 import { listRoles } from '@/server/services/roleService'
+import * as authorityService from '@/server/services/authorityService'
 import { listUsers } from '@/server/services/userService'
 import { parseSort } from '@/server/http/pagination'
 import { USER_SORT_COLUMNS } from '@/server/db/repositories/usersRepo'
@@ -47,7 +48,19 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
     page: { page, pageSize, offset: (page - 1) * pageSize },
   })
 
-  const roles = listRoles().map((role) => ({ id: role.id, key: role.key, name: role.name }))
+  // AC-22: only roles THIS caller may hand out are offered. `grantableRoles` is the
+  // same predicate the server applies on submit, so the dropdown cannot disagree
+  // with the answer the write path will give — a filter that is merely
+  // "approximately right" teaches administrators to distrust the console.
+  //
+  // The filtering is UX, not the boundary: `createUser` / `updateUser` re-check
+  // INV-2/INV-3 themselves (spec §3.4.2).
+  const roles = authorityService
+    .grantableRoles(
+      session.user.id,
+      listRoles().map((role) => ({ id: role.id, key: role.key, name: role.name, rank: role.rank })),
+    )
+    .map(({ id, key, name }) => ({ id, key, name }))
 
   return (
     <div className="mx-auto max-w-6xl">

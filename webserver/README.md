@@ -24,6 +24,7 @@ npm run dev                 # http://127.0.0.1:8787
 | `PUBLIC_BASE_URL` | 本站公开地址，用于 Cookie 作用域、重置邮件链接 |
 | `SESSION_SECRET` | ≥ 32 字节随机串；轮换它会作废全部会话（预期行为） |
 | `ROOT_ADMIN_EMAIL` / `ROOT_ADMIN_PASSWORD` | 首个超级管理员；口令只在建号或 `RESET_ROOT_ADMIN_PASSWORD=true` 时写入 |
+| `ROOT_ADMIN_USERNAME` | 根管理员账号名，默认 `xdrshjr`。**在 `.env` 里写了就会覆盖默认值**，按示例复制时务必确认 |
 
 生成密钥：
 
@@ -81,6 +82,7 @@ CLI 直连数据库与服务层，**不起 HTTP**，输出只打印邮箱与角�
 | `audit.read` | ✓ | ✓ | ✓ | |
 | `settings.read` | ✓ | ✓ | | |
 | `settings.write` | ✓ | | | |
+| `security.read` | ✓ | ✓ | | |
 
 `member` 不需要任何显式权限：`/me/*` 自助端点只要求「有会话」，不要求权限。
 

@@ -16,6 +16,11 @@ export interface RoleRow {
   name: string
   description: string
   is_system: number
+  /**
+   * Authority level (migration 0007). Higher outranks lower. Written only by the
+   * migration — no API path exposes it, so it cannot be edited into an escalation.
+   */
+  rank: number
   created_at: number
   updated_at: number
 }
@@ -47,6 +52,15 @@ export interface UserRow {
   deleted_at: number | null
   /** Last successful data export; drives the export cooldown (migration 0005). */
   last_exported_at: number | null
+  /**
+   * Who granted the current role and when (migration 0007). `NULL` for the seeded
+   * root administrator, meaning "created by the system".
+   *
+   * Duplicated in `audit_events` on purpose: audit rows are pruned after
+   * `audit.retentionDays`, and "who made this person an admin" must outlive that.
+   */
+  role_granted_by: string | null
+  role_granted_at: number | null
 }
 
 export interface SessionRow {
@@ -124,6 +138,24 @@ export interface SettingRow {
   updated_by: string | null
   updated_at: number
 }
+
+/** A pending human-verification challenge (migration 0007). */
+export interface CaptchaChallengeRow {
+  id: string
+  purpose: CaptchaPurpose
+  /** HMAC digest of `${id}.${normalisedAnswer}` — never the answer itself. */
+  answer_hash: string
+  ip: string
+  attempts: number
+  max_attempts: number
+  expires_at: number
+  consumed_at: number | null
+  created_at: number
+}
+
+export type CaptchaPurpose = 'register' | 'login'
+
+export const CAPTCHA_PURPOSES: readonly CaptchaPurpose[] = ['register', 'login']
 
 /** One publishable desktop installer (migration 0006). */
 export type ClientReleaseStatus = 'draft' | 'published' | 'retracted'
@@ -242,6 +274,8 @@ export interface RoleDto {
   name: string
   description: string
   isSystem: boolean
+  /** Authority level; higher outranks lower (see `authorityService`). */
+  rank: number
 }
 
 export function toRoleDto(row: RoleRow): RoleDto {
@@ -251,6 +285,7 @@ export function toRoleDto(row: RoleRow): RoleDto {
     name: row.name,
     description: row.description,
     isSystem: bool(row.is_system),
+    rank: row.rank,
   }
 }
 

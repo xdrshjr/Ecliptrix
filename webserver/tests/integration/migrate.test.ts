@@ -98,7 +98,9 @@ describe('migrations', () => {
     const { tmpdir } = await import('node:os')
     const { openDatabase, setDbForTests } = await import('@/server/db/client')
     const { discoverMigrations, runMigrations } = await import('@/server/db/migrate')
-    const { seedRoles } = await import('@/server/db/seed')
+    const { SYSTEM_ROLE_KEYS, SYSTEM_ROLE_NAMES, SYSTEM_ROLE_PERMISSIONS } = await import(
+      '@/server/auth/permissions'
+    )
 
     const scratch = mkdtempSync(join(tmpdir(), 'ws-upgrade-'))
     const all = discoverMigrations()
@@ -109,7 +111,27 @@ describe('migrations', () => {
     const db = openDatabase(':memory:')
     setDbForTests(db)
     runMigrations(db, scratch)
-    seedRoles()
+    // Seed the four system roles with raw SQL instead of `seedRoles()`.
+    //
+    // `rolesRepo.create` writes `rank` unconditionally, and `rank` only exists
+    // after migration 0007 — which this test deliberately has not applied yet.
+    // Calling the seed here would throw `no such column: rank` and mask the
+    // upgrade assertion it is supposed to protect (review R-V3-06). Inserting
+    // the rows the way the pre-0007 code did keeps the fixture faithful to the
+    // schema it claims to be.
+    const insertRole = db.prepare(
+      `INSERT INTO roles (id, key, name, description, is_system, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, 1, 1)`,
+    )
+    const insertPermission = db.prepare(
+      'INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)',
+    )
+    for (const key of SYSTEM_ROLE_KEYS) {
+      const meta = SYSTEM_ROLE_NAMES[key]
+      const roleId = `role-${key}`
+      insertRole.run(roleId, key, meta.name, meta.description)
+      for (const permission of SYSTEM_ROLE_PERMISSIONS[key]) insertPermission.run(roleId, permission)
+    }
     db.prepare("DELETE FROM role_permissions WHERE permission LIKE 'releases.%'").run()
 
     runMigrations(db)

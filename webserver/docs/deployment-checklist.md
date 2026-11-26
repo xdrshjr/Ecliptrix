@@ -13,6 +13,16 @@ they are ordered by "how bad is it if you skip it".
       after the first successful boot. The password is only written when the account
       has no hash yet, so leaving the env value in place is not automatically unsafe —
       but a stale plaintext in `.env` is still a credential lying around.
+- [ ] `ROOT_ADMIN_USERNAME` is `xdrshjr` (the account the requirement names) **and**
+      the root password was rotated after the first sign-in. `/admin/security`
+      reports "still on the bootstrap password" from
+      `password_updated_at <= created_at` until it is; a red card there after a
+      deploy means the rotation was skipped.
+- [ ] Ownership handover, if any, went through
+      `npm run owner:transfer -- --email next@example.com` (one transaction, leaves
+      exactly one owner). Do not promote a second account by hand: `/admin/security`
+      identifies the root administrator as the oldest owner row, and two owners make
+      that answer arbitrary.
 - [ ] `PUBLIC_BASE_URL` matches the real origin (`https://…`), no trailing slash.
       Behind TLS this is also what makes cookies `Secure`.
 - [ ] Database file is **outside** the release directory (`/opt/webserver/data`) and

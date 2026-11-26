@@ -70,6 +70,11 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   token_invalid: 400,
   deletion_pending: 409,
   mail_disabled: 503,
+  // 400, not 403: the caller is not forbidden, the request is incomplete or wrong.
+  // A 403 would tell the desktop's error switch "your account lacks a permission".
+  captcha_required: 400,
+  captcha_invalid: 400,
+  captcha_expired: 400,
 }
 
 /** Shorthands for the failures raised more than once. */
@@ -115,6 +120,24 @@ export const errors = {
   mailDisabled: () =>
     new AppError(ERROR_CODE.mailDisabled, '当前部署未配置邮件服务，无法发送邮件', {
       details: { reason: 'mail_disabled' },
+    }),
+  /** The operation requires human verification and the request carried none. */
+  captchaRequired: (purpose: 'register' | 'login') =>
+    new AppError(ERROR_CODE.captchaRequired, '请先完成图形验证码', {
+      details: { purpose },
+    }),
+  /**
+   * A wrong, unknown, already-used or exhausted challenge — one code for all four
+   * (the caller must not learn which; spec §5.2) plus the attempts left so the
+   * field can say "3 left" instead of "wrong".
+   */
+  captchaInvalid: (remainingAttempts = 0) =>
+    new AppError(ERROR_CODE.captchaInvalid, '验证码不正确，请重新输入', {
+      details: { remainingAttempts },
+    }),
+  captchaExpired: (expiresAt: string | null) =>
+    new AppError(ERROR_CODE.captchaExpired, '验证码已过期，请换一张', {
+      details: { expiresAt },
     }),
 } as const
 

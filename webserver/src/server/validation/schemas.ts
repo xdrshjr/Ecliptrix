@@ -63,12 +63,43 @@ export const deviceSchema = z
 /** Desktop build string, e.g. `1.0.1`. Empty for the browser. */
 export const clientVersionSchema = z.string().trim().max(40).default('')
 
+/* ------------------------------------------------------------------ *
+ * Human verification (migration 0007)
+ * ------------------------------------------------------------------ */
+
+/** Challenge id — a UUID, but validated as a bounded string so a future id
+ *  scheme does not need a second schema change. */
+export const captchaIdSchema = z.string().trim().min(8, '验证码标识无效').max(64)
+
+/** What the user typed. Length is generous: normalisation (whitespace, case)
+ *  happens in the service, and rejecting at the boundary would turn a
+ *  human typo ("K7 QX2") into a `validation_failed` instead of a retry hint. */
+export const captchaAnswerSchema = z.string().trim().min(1, '请输入验证码').max(32)
+
+export const captchaPurposeSchema = z.enum(['register', 'login'])
+
+export const captchaQuerySchema = z.object({
+  purpose: captchaPurposeSchema.default('register'),
+})
+
+
 export const loginSchema = z.object({
   identifier: identifierSchema,
   password: passwordSchema,
   client: clientSchema.default('web'),
   clientVersion: clientVersionSchema,
   device: deviceSchema,
+  /**
+   * Human verification, optional HERE on purpose.
+   *
+   * If these were required, a missing field would be a `ZodError` →
+   * `validation_failed` (422) before the service ever runs, and the contract
+   * `400 captcha_required` would be unreachable (spec §4.2 note, review R-04).
+   * The schema only says "if present, it is a string"; the service decides
+   * whether the operation needs one.
+   */
+  captchaId: captchaIdSchema.optional(),
+  captchaAnswer: captchaAnswerSchema.optional(),
 })
 
 export const registerSchema = z.object({
@@ -80,6 +111,9 @@ export const registerSchema = z.object({
   client: clientSchema.default('web'),
   clientVersion: clientVersionSchema,
   device: deviceSchema,
+  // Optional for the same reason as `loginSchema` — see the note there.
+  captchaId: captchaIdSchema.optional(),
+  captchaAnswer: captchaAnswerSchema.optional(),
 })
 
 export const changePasswordSchema = z.object({

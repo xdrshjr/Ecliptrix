@@ -124,6 +124,15 @@ export function SettingsForm({
         'account.deletionGraceHours': Number(form['account.deletionGraceHours']),
         'account.exportCooldownMinutes': Number(form['account.exportCooldownMinutes']),
         'audit.retentionDays': Number(form['audit.retentionDays']),
+        // Human verification (migration 0007). Difficulty knobs only — there is
+        // deliberately no `captcha.enabled` here, so the registration gate cannot
+        // be switched off from a stolen console session (`captchaService` note).
+        'captcha.length': Number(form['captcha.length']),
+        'captcha.ttlSeconds': Number(form['captcha.ttlSeconds']),
+        'captcha.maxAttempts': Number(form['captcha.maxAttempts']),
+        'captcha.requiredOnLoginAfterFailures': Number(
+          form['captcha.requiredOnLoginAfterFailures'],
+        ),
       })
       toast.success(tt('admin.settings.saved'))
       // R8: setting the floor above the shipped version blocks every older
@@ -246,6 +255,83 @@ export function SettingsForm({
               max={50}
               value={Number(form['security.maxActiveSessions'])}
               onChange={(event) => set('security.maxActiveSessions', Number(event.target.value))}
+            />
+          </Field>
+        </div>
+      </fieldset>
+
+      <fieldset
+        disabled={!canWrite}
+        className="flex flex-col gap-4 rounded-md border border-[var(--border)] bg-[var(--surface)] p-5"
+      >
+        <legend className="px-1 text-xs uppercase tracking-wider text-[var(--muted)]">
+          {tt('admin.settings.captcha.group')}
+        </legend>
+        {/* No on/off control: the registration gate is not operator-disableable —
+            see `captchaService`'s module note. The copy says so rather than
+            leaving an administrator hunting for a switch that is not there. */}
+        <p className="text-xs text-[var(--muted)]">{tt('admin.settings.captcha.note')}</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label={tt('admin.settings.captcha.length')}
+            htmlFor="captcha.length"
+            error={errors['captcha.length']}
+            hint={tt('admin.settings.captcha.length.hint')}
+          >
+            <Input
+              id="captcha.length"
+              type="number"
+              min={4}
+              max={7}
+              value={Number(form['captcha.length'])}
+              onChange={(event) => set('captcha.length', Number(event.target.value))}
+            />
+          </Field>
+          <Field
+            label={tt('admin.settings.captcha.ttl')}
+            htmlFor="captcha.ttlSeconds"
+            error={errors['captcha.ttlSeconds']}
+            hint={tt('admin.settings.captcha.ttl.hint')}
+          >
+            <Input
+              id="captcha.ttlSeconds"
+              type="number"
+              min={60}
+              max={900}
+              value={Number(form['captcha.ttlSeconds'])}
+              onChange={(event) => set('captcha.ttlSeconds', Number(event.target.value))}
+            />
+          </Field>
+          <Field
+            label={tt('admin.settings.captcha.maxAttempts')}
+            htmlFor="captcha.maxAttempts"
+            error={errors['captcha.maxAttempts']}
+            hint={tt('admin.settings.captcha.maxAttempts.hint')}
+          >
+            <Input
+              id="captcha.maxAttempts"
+              type="number"
+              min={3}
+              max={10}
+              value={Number(form['captcha.maxAttempts'])}
+              onChange={(event) => set('captcha.maxAttempts', Number(event.target.value))}
+            />
+          </Field>
+          <Field
+            label={tt('admin.settings.captcha.loginAfter')}
+            htmlFor="captcha.requiredOnLoginAfterFailures"
+            error={errors['captcha.requiredOnLoginAfterFailures']}
+            hint={tt('admin.settings.captcha.loginAfter.hint')}
+          >
+            <Input
+              id="captcha.requiredOnLoginAfterFailures"
+              type="number"
+              min={0}
+              max={20}
+              value={Number(form['captcha.requiredOnLoginAfterFailures'])}
+              onChange={(event) =>
+                set('captcha.requiredOnLoginAfterFailures', Number(event.target.value))
+              }
             />
           </Field>
         </div>

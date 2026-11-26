@@ -18,6 +18,11 @@ export const PERMISSION_GROUPS = {
   // The client release catalogue (`/admin/releases`): one place where an
   // administrator uploads installers and moves the "current version" pointer.
   releases: ['releases.read', 'releases.write'],
+  // Security posture (`/admin/security`). MUST be granted together with
+  // `users.read`: the `/admin` layout requires `users.read` for every page, so a
+  // role holding only this key would be rendered as the 403 page rather than the
+  // panel it was just given (spec §3.6, review R-09).
+  security: ['security.read'],
 } as const
 
 export type PermissionGroupKey = keyof typeof PERMISSION_GROUPS
@@ -70,6 +75,37 @@ export const SYSTEM_ROLE_KEYS = ['owner', 'admin', 'support', 'member'] as const
 
 export type SystemRoleKey = (typeof SYSTEM_ROLE_KEYS)[number]
 
+/**
+ * Authority levels (migration 0007).
+ *
+ * The seeded values also live in the migration as `UPDATE roles SET rank …`,
+ * because rank is a structural invariant: the boot seed must not rewrite it every
+ * start (that would silently undo an operator's manual tuning). This table is the
+ * code-side mirror used by tests and by `seedRoles` when it creates a role for the
+ * first time.
+ *
+ * A custom role gets 20 — below `support`. That is the safe direction to fail in:
+ * a brand-new role can never be born above the person who created it.
+ */
+export const SYSTEM_ROLE_RANK: Record<SystemRoleKey, number> = {
+  owner: 100,
+  admin: 80,
+  support: 40,
+  member: 10,
+}
+
+/** Rank given to a role created through the console. */
+export const DEFAULT_CUSTOM_ROLE_RANK = 20
+
+/**
+ * Rank at or above which a role may only be granted by the owner.
+ *
+ * The requirement "the rest of the administrators are assigned by the root
+ * administrator" is enforced against this constant, not against a role key: an
+ * installation that renames the `admin` role must not accidentally open the door.
+ */
+export const RESERVED_ALLOCATION_RANK = 80
+
 export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleKey, readonly string[]> = {
   owner: ['*'],
   admin: [
@@ -84,9 +120,13 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleKey, readonly string[]> =
     'sessions.revoke',
     'releases.read',
     'releases.write',
+    // Paired with `users.read` above on purpose — see the `security` group note.
+    'security.read',
   ],
   // Support can see what is published (they answer "which version do I install?"),
-  // but publishing is an administrator action.
+  // but publishing is an administrator action. `security.read` is deliberately NOT
+  // granted: the posture page shows the root administrator's account state and the
+  // escalation attempts against it (review R-16).
   support: ['users.read', 'sessions.revoke', 'audit.read', 'releases.read'],
   member: [],
 }

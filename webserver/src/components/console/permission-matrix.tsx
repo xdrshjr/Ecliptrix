@@ -35,17 +35,35 @@ export function PermissionMatrix({
   roles,
   permissions,
   canWrite,
+  heldPermissions,
 }: {
   locale: Locale
   roles: MatrixRole[]
   permissions: string[]
   canWrite: boolean
+  /**
+   * What the CALLER holds. A permission outside this set cannot be granted (INV-2),
+   * so its checkbox is disabled with an explanation instead of accepting a click
+   * that the server will refuse — a control that silently fails is worse than one
+   * that says why it is unavailable (spec §3.6, AC-24).
+   *
+   * `'*'` (the owner) satisfies everything.
+   */
+  heldPermissions: string[]
 }) {
   const tt = translator(locale)
   const router = useRouter()
   const [draft, setDraft] = useState<Record<string, string[]>>({})
   const [savingRole, setSavingRole] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+
+  /** INV-2, mirrored for the UI. The server re-checks; this only explains. */
+  const canGrant = (permission: string): boolean => {
+    if (heldPermissions.includes('*')) return true
+    if (heldPermissions.includes(permission)) return true
+    const dot = permission.indexOf('.')
+    return dot > 0 && heldPermissions.includes(`${permission.slice(0, dot)}.*`)
+  }
 
   const groups = useMemo(() => {
     // Groups, order and labels come from the shared catalogue; the server list is
@@ -153,7 +171,7 @@ export function PermissionMatrix({
                     </th>
                     {roles.map((role) => {
                       const held = role.key === 'owner' || current(role).includes(permission.key)
-                      const locked = role.key === 'owner' || !canWrite
+                      const locked = role.key === 'owner' || !canWrite || !canGrant(permission.key)
                       return (
                         <td key={role.id} className="px-3 py-2">
                           <button

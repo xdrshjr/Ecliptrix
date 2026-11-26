@@ -4,6 +4,8 @@ import { parsePage, parseSort, buildPageMeta } from '@/server/http/pagination'
 import { createUserSchema } from '@/server/validation/schemas'
 import { toAdminUserDto } from '@/server/http/dto'
 import * as userService from '@/server/services/userService'
+import * as roleService from '@/server/services/roleService'
+import * as authorityService from '@/server/services/authorityService'
 import { USER_SORT_COLUMNS } from '@/server/db/repositories/usersRepo'
 import type { UserStatus } from '@/server/db/types'
 
@@ -28,7 +30,7 @@ function parseDate(raw: string | null): number | undefined {
 }
 
 export const GET = withContext(async ({ request, context, searchParams }) => {
-  requireAdminRead(request, context, 'users.read')
+  const auth = requireAdminRead(request, context, 'users.read')
   const page = parsePage(searchParams)
   const sort = parseSort(searchParams.get('sort'), USER_SORT_COLUMNS, '-created_at')
 
@@ -46,6 +48,28 @@ export const GET = withContext(async ({ request, context, searchParams }) => {
   return ok({
     items: result.rows.map(toAdminUserDto),
     page: buildPageMeta(result.total, page),
+    // AC-21: the console's role dropdown needs to know what THIS caller may hand
+    // out, and why the rest is unavailable. Omitting the unreachable entries
+    // silently is what makes an administrator think the console is broken; each
+    // entry therefore carries `grantable` plus a machine-readable reason.
+    //
+    // This is UX, not a boundary — `createUser` / `updateUser` re-check the same
+    // invariants on submit (spec §3.4.2 INV-2/INV-3).
+    grantableRoles: roleService.listRoles().map((role) => {
+      const grantable = authorityService.canGrantRole(auth.user.id, role)
+      return {
+        id: role.id,
+        key: role.key,
+        name: role.name,
+        rank: role.rank,
+        grantable,
+        reason: grantable
+          ? null
+          : role.key === 'owner'
+            ? ('owner_reserved' as const)
+            : ('admin_allocation_reserved' as const),
+      }
+    }),
   })
 })
 

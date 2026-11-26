@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import * as authService from '@/server/services/authService'
@@ -35,6 +36,7 @@ beforeEach(async () => {
     ip: '10.5.5.5',
     userAgent: 'vitest',
     requestId: 'req-metrics',
+    ...issueCaptcha(),
   })
   const login = await authService.login({
     identifier: 'owner@example.com',

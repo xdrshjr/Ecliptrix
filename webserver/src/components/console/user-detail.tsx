@@ -360,6 +360,30 @@ function AccessTab({
         <RoleBadge roleKey={user.role.key} name={user.role.name || user.role.key} />
       </div>
 
+      {/*
+        Grant ledger (migration 0007, AC-23). Rendered from `users.role_granted_*`,
+        not from the audit log: audit rows are pruned after `audit.retentionDays`,
+        so "why is this person an administrator" would become unanswerable. A null
+        author reads as "created by the system" — an empty cell would look like
+        missing data rather than a deliberate answer.
+      */}
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+        <div className="flex justify-between gap-3">
+          <dt className="text-[var(--muted)]">{tt('admin.users.grantedBy')}</dt>
+          <dd className="mono truncate">
+            {user.roleGrantedBy
+              ? user.roleGrantedBy.label
+              : tt('admin.users.grantedBySystem')}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-[var(--muted)]">{tt('admin.users.grantedAt')}</dt>
+          <dd className="mono">
+            {user.roleGrantedAt ? absoluteTime(user.roleGrantedAt, locale) : '—'}
+          </dd>
+        </div>
+      </dl>
+
       <ul className="mt-4 flex flex-wrap gap-1.5">
         {wildcard ? (
           <li>

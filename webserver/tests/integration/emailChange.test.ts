@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import { resetAll } from '@/server/auth/rateLimit'
 import { usersRepo } from '../setup/repos'
@@ -40,6 +41,7 @@ beforeEach(async () => {
     client: 'web',
     device: DEVICE,
     ...CONTEXT,
+    ...issueCaptcha(),
   })
   user = result.user
   const owner = usersRepo.findByEmailOrUsername(getDb(), 'owner@example.com', 'owner')
@@ -135,6 +137,7 @@ describe('email change', () => {
       client: 'web',
       device: DEVICE,
       ...CONTEXT,
+      ...issueCaptcha(),
     })
     expect(other.user.id).not.toBe(user.id)
 

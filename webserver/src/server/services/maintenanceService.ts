@@ -3,6 +3,7 @@ import * as settingsRepo from '@/server/db/repositories/settingsRepo'
 import * as mailOutboxRepo from '@/server/db/repositories/mailOutboxRepo'
 import * as emailActionTokensRepo from '@/server/db/repositories/emailActionTokensRepo'
 import * as accountDeletionService from '@/server/services/accountDeletionService'
+import * as captchaService from '@/server/services/captchaService'
 import * as settingsService from '@/server/services/settingsService'
 import { log } from '@/server/http/requestContext'
 
@@ -54,15 +55,20 @@ export interface SweepIfDueResult {
   tokensPruned: number
   /** Outbox rows removed by this round. */
   mailsPruned: number
+  /** Challenges dead for an hour or more, removed by this round. */
+  captchasPruned: number
 }
 
 /**
- * Delete spent email-action tokens and outbox rows past retention.
+ * Delete spent email-action tokens, outbox rows past retention, and dead
+ * challenges.
  *
  * Its own try/catch: a retention failure (a locked table, a corrupt index) must
  * not skip the deletion sweep, which is the step with a correctness consequence.
  */
-function pruneRetained(now: number): { tokensPruned: number; mailsPruned: number } {
+function pruneRetained(
+  now: number,
+): { tokensPruned: number; mailsPruned: number; captchasPruned: number } {
   const db = getDb()
   try {
     const tokensPruned = emailActionTokensRepo.pruneBefore(db, now - TOKEN_GRACE_DAYS * DAY)
@@ -73,15 +79,19 @@ function pruneRetained(now: number): { tokensPruned: number; mailsPruned: number
       terminalBefore: now - mailDays * DAY,
       capturedBefore: now - MAIL_CAPTURED_DAYS * DAY,
     })
-    if (tokensPruned > 0 || mailsPruned > 0) {
-      log('info', 'retention sweep finished', { tokensPruned, mailsPruned })
+    // Challenges have no value after their TTL: a row exists to be solved once,
+    // and an abandoned one is dead weight from `expires_at`. Without this step the
+    // table grows with every page load of the sign-up form (spec R-4).
+    const captchasPruned = captchaService.pruneRetained(now)
+    if (tokensPruned > 0 || mailsPruned > 0 || captchasPruned > 0) {
+      log('info', 'retention sweep finished', { tokensPruned, mailsPruned, captchasPruned })
     }
-    return { tokensPruned, mailsPruned }
+    return { tokensPruned, mailsPruned, captchasPruned }
   } catch (error) {
     log('warn', 'retention sweep failed', {
       error: error instanceof Error ? error.message : String(error),
     })
-    return { tokensPruned: 0, mailsPruned: 0 }
+    return { tokensPruned: 0, mailsPruned: 0, captchasPruned: 0 }
   }
 }
 
@@ -98,6 +108,7 @@ export function sweepIfDue(now = Date.now(), force = false): SweepIfDueResult {
     failed: 0,
     tokensPruned: 0,
     mailsPruned: 0,
+    captchasPruned: 0,
   }
   try {
     if (!force && now - lastSweepAt() < SWEEP_INTERVAL_MS) return skipped

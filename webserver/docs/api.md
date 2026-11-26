@@ -68,6 +68,9 @@ Content-Type：`application/json; charset=utf-8`
 | `conflict` | 409 | 其他状态冲突 |
 | `rate_limited` | 429 | 限流（带 `Retry-After`） |
 | `csrf_failed` | 403 | CSRF 校验失败 |
+| `captcha_required` | 400 | 需要人机校验但请求未携带（`details.purpose`） |
+| `captcha_invalid` | 400 | 答案错误 / 挑战不存在 / 已消费 / 尝试超限（`details.remainingAttempts`） |
+| `captcha_expired` | 400 | 挑战过期（`details.expiresAt`） |
 | `payload_too_large` | 413 | body > 64 KB |
 | `service_unavailable` | 503 | 维护 / DB 不可用 |
 | `internal_error` | 500 | 未预期错误 |
@@ -183,6 +186,25 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/auth/login \
 **版本闸门**：仅当 `client=desktop` 且 `clientVersion` 非空时生效；`clientVersion < 生效闸门` → `426 client_outdated` + `details.minVersion`，并写审计 `auth.login_blocked_outdated_client`。生效闸门 = `min(client.minVersion 存量值, stable 渠道在服版本)`（读取侧钳制，见 `PATCH /admin/settings`），因此 `details.minVersion` 永远是用户**真的能下载到**的版本；渠道无版本时视为不设闸门。`heartbeat`/`refresh`/`logout` **永不**返回 426——旧客户端必须还能登出。
 
 **维护模式**：`app.maintenanceMessage` 非空时，login/register → `503 service_unavailable` + `details.reason='maintenance'`，`message` 就是公告原文；已存在的会话心跳与续期照常。
+
+### `GET /auth/captcha?purpose=register|login`
+
+签发一次人机校验挑战。无需登录。限流 `60 / h / IP`。
+
+```bash
+curl -s 'http://127.0.0.1:8787/api/v1/auth/captcha?purpose=register'
+```
+
+```jsonc
+// 200
+{ "success": true, "data": { "captcha": {
+    "id": "0f0c7e2e-…", "purpose": "register",
+    "svg": "<svg …>", "width": 200, "height": 64,
+    "expiresAt": "2026-11-26T08:05:00.000Z" } } }
+```
+
+`svg` 里只有 `<path>`，没有 `<text>`，也不含答案字符串——机器人必须做 OCR，而不是读 DOM。
+仅当服务端以 `ECLIPTRIX_E2E=true` 启动且调用方为回环地址时，响应额外带 `debugAnswer`（生产环境 `e2eMode` 恒为 false，两者不可能同时成立）。
 
 ### `POST /auth/register`
 
@@ -394,6 +416,7 @@ curl -s -D - -o account.json http://127.0.0.1:8787/api/v1/me/export \
 | GET | `/admin/users/export` | `users.read`（CSV 附件） |
 | POST | `/admin/users/{id}/email-verify` | `users.write` |
 | POST | `/admin/users/{id}/deletion` | `users.delete`（管理员代确认注销） |
+| GET | `/admin/security` | `security.read`（安全态势；仅 `admin`/`owner`） |
 
 ### `GET /admin/users`
 
@@ -671,6 +694,7 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/admin/sessions/revoke \
 | `login:ip` | 客户端 IP | 20 / 5 分钟 |
 | `login:identifier` | 归一化标识 | **12 / 5 分钟**（必须高于锁定阈值，否则 `423` 不可达） |
 | `register:ip` | IP | 10 / 小时 |
+| `captcha:issue` | IP（不可信地址时退化为 `UA` 指纹） | 60 / 小时 |
 | `reset:ip` | IP | 3 / 小时 |
 | `admin:write` | 用户 ID | 120 / 分钟 |
 | `heartbeat:session` | 会话 | 60 / 小时 |

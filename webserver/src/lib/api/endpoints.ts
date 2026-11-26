@@ -48,6 +48,15 @@ export interface AdminUserDto {
   deletedAt: string | null
   activeSessions: number
   locked: boolean
+  /**
+   * Grant ledger: who handed this account its current role, and when.
+   *
+   * Null means "the system created it" (the seeded root administrator), which the
+   * detail page renders as such rather than as a blank field. It survives audit
+   * pruning on purpose — `audit_events` is retention-bounded, this pair is not.
+   */
+  roleGrantedBy: { id: string; label: string } | null
+  roleGrantedAt: string | null
 }
 
 export interface RoleOption {
@@ -139,10 +148,13 @@ export const sessionsApi = {
     )
   },
   revokeMany: (ids: string[], reason: string) =>
-    api.post<{ revoked: number; skipped: number }>(`${BASE}/admin/sessions/revoke`, {
-      ids,
-      reason,
-    }),
+    // `denied` is separate from `skipped` on purpose: "the row was already gone"
+    // and "you are not allowed to kick that account" need different words, and
+    // collapsing them would tell an operator a refusal was a stale selection.
+    api.post<{ revoked: number; skipped: number; denied: number }>(
+      `${BASE}/admin/sessions/revoke`,
+      { ids, reason },
+    ),
 }
 
 export interface MailRow {
@@ -209,4 +221,21 @@ export const meApi = {
     api.post<{ sentAt: string; expiresAt: string }>(`${BASE}/auth/email/verify/resend`),
   /** Export is a download, so it is a navigation rather than an XHR. */
   exportUrl: () => `${BASE}/me/export`,
+}
+
+/** Human verification. Public: a visitor who cannot get an image cannot register. */
+export interface IssuedCaptchaDto {
+  id: string
+  purpose: 'register' | 'login'
+  svg: string
+  width: number
+  height: number
+  expiresAt: string
+  /** Present only under `e2eMode` from a loopback address — never in production. */
+  debugAnswer?: string
+}
+
+export const captchaApi = {
+  issue: (purpose: 'register' | 'login') =>
+    api.get<{ captcha: IssuedCaptchaDto }>(`${BASE}/auth/captcha?purpose=${purpose}`),
 }

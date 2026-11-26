@@ -134,6 +134,10 @@ export function SessionsTable({
       const result = await sessionsApi.revokeMany(selected, reason)
       toast.success(tt('admin.sessions.revoked', { count: result.revoked }))
       if (result.skipped > 0) toast.info(tt('admin.sessions.skipped', { count: result.skipped }))
+      // A refused row is NOT a stale row: it means the caller outranks nobody at
+      // that level. Saying so is the whole point of the per-row gate — silently
+      // dropping it would look like a bug in the button.
+      if (result.denied > 0) toast.warning(tt('admin.sessions.denied', { count: result.denied }))
       setSelected([])
       setConfirmOpen(false)
       router.refresh()

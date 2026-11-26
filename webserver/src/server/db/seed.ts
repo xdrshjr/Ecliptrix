@@ -2,11 +2,17 @@ import { getDb } from '@/server/db/client'
 import { getConfig } from '@/server/config'
 import * as rolesRepo from '@/server/db/repositories/rolesRepo'
 import * as usersRepo from '@/server/db/repositories/usersRepo'
-import { SYSTEM_ROLE_KEYS, SYSTEM_ROLE_NAMES, SYSTEM_ROLE_PERMISSIONS } from '@/server/auth/permissions'
+import {
+  SYSTEM_ROLE_KEYS,
+  SYSTEM_ROLE_NAMES,
+  SYSTEM_ROLE_PERMISSIONS,
+  SYSTEM_ROLE_RANK,
+} from '@/server/auth/permissions'
 import { hashPassword } from '@/server/auth/password'
 import { newId } from '@/server/auth/tokens'
 import { normalizeEmail, normalizeUsername } from '@/server/services/normalize'
 import * as settingsService from '@/server/services/settingsService'
+import * as auditService from '@/server/services/auditService'
 import { log } from '@/server/http/requestContext'
 
 /**
@@ -22,7 +28,9 @@ import { log } from '@/server/http/requestContext'
  *
  * Existing roles keep their permissions — an operator who stripped
  * `users.delete` from `admin` must not get it back because the service
- * restarted.
+ * restarted. The same rule covers `rank` (migration 0007): an existing row is
+ * left exactly as the migration set it, because a seed that rewrote it on every
+ * start would silently undo manual ranking.
  */
 export function seedRoles(now = Date.now()): void {
   const db = getDb()
@@ -38,6 +46,7 @@ export function seedRoles(now = Date.now()): void {
           description: meta.description,
           isSystem: true,
           permissions: SYSTEM_ROLE_PERMISSIONS[key],
+          rank: SYSTEM_ROLE_RANK[key],
           now,
         })
         continue
@@ -74,9 +83,10 @@ export async function ensureRootAdmin(now = Date.now()): Promise<void> {
 
   if (!existing) {
     const passwordHash = await hashPassword(config.rootAdminPassword)
-    const username = normalizeUsername(config.rootAdminUsername) || 'owner'
+    const username = normalizeUsername(config.rootAdminUsername) || 'xdrshjr'
+    const id = newId()
     usersRepo.create(db, {
-      id: newId(),
+      id,
       email: config.rootAdminEmail,
       emailNormalized,
       username: config.rootAdminUsername,
@@ -89,12 +99,28 @@ export async function ensureRootAdmin(now = Date.now()): Promise<void> {
       mustChangePassword: false,
       now,
     })
+    // The ledger records "granted by nobody", which reads as "created by the
+    // system" — accurate, and distinct from "an operator promoted this account".
+    // The role pair is already NULL from `create`.
+    //
+    // The audit row is the security-posture contract: `bootstrapPassword` in
+    // `/admin/security` is derived from `password_updated_at <= created_at`, and
+    // this row is what lets an incident responder confirm the account was seeded
+    // rather than smuggled in later (spec §3.3 point 3).
+    auditService.record(auditService.SYSTEM_ACTOR, {
+      action: 'security.bootstrap_credential_created',
+      targetType: 'user',
+      targetId: id,
+      metadata: { username: config.rootAdminUsername },
+    })
     log('info', 'root administrator created', { email: emailNormalized })
     return
   }
 
   if (existing.role_id !== ownerRole.id) {
-    usersRepo.update(db, existing.id, { role_id: ownerRole.id }, now)
+    // A promotion here is the seed correcting an installation whose owner account
+    // lost its role; attribute it to the system, not to an absent human.
+    usersRepo.grantRole(db, existing.id, ownerRole.id, null, now)
     log('info', 'existing account promoted to owner', { email: emailNormalized })
   }
 

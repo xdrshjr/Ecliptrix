@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHarness, type TestHarness } from '../setup/harness'
+import { issueCaptcha } from '../setup/captcha'
 import { getDb } from '@/server/db/client'
 import * as authService from '@/server/services/authService'
 import * as sessionService from '@/server/services/sessionService'
@@ -332,6 +333,7 @@ describe('maintenance mode', () => {
         clientVersion: '1.0.1',
         device: { name: 'dev', platform: 'win32-x64', appVersion: '1.0.1', deviceKey: DEVICE_KEY },
         ...CONTEXT,
+        ...issueCaptcha(),
       }),
     ).rejects.toMatchObject({ code: 'service_unavailable' })
 
@@ -418,6 +420,10 @@ describe('desktop login/register payload parity', () => {
         client: 'desktop',
         clientVersion: '1.0.1',
         device: { name: 'Workstation', platform: 'win32-x64', appVersion: '1.0.1', deviceKey: DEVICE_KEY },
+        // Registration is gated unconditionally; a desktop build that has not
+        // shipped the captcha channel yet gets `captcha_required` here (spec R-1),
+        // so the parity assertion below has to satisfy the gate like any client.
+        ...issueCaptcha(),
       }),
     )
     expect(registerResponse.status).toBe(201)

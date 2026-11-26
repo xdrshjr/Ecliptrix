@@ -19,7 +19,15 @@ export interface RequestContext {
   csrfCookie: string | null
 }
 
-const FALLBACK_IP = '0.0.0.0'
+
+/**
+ * Address reported when no trusted forwarder supplied one (see `clientIpFrom`).
+ *
+ * Exported because the captcha issue limiter has to recognise it: when every
+ * visitor shares this constant, a per-IP budget becomes a per-site budget
+ * (spec §3.2.2, review R-02).
+ */
+export const FALLBACK_IP = '0.0.0.0'
 
 /**
  * Client address from `X-Forwarded-For`, honouring TRUST_PROXY.
