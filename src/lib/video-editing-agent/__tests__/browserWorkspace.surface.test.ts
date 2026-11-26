@@ -98,9 +98,11 @@ describe('catalog and usage hints (AC-E3/E4)', () => {
     const details = (await explore.execute('e1', { category: 'browser_tools' })).details as
       { usage_hints: string; loaded: string[] };
     expect(details.usage_hints).toBe(BROWSER_WORKSPACE_GUIDANCE);
-    // explore_tools loads at most 4 tools per call: the 5th is named in the hint.
+    // explore_tools loads at most 4 tools per call; browser_save_image (5th)
+    // and browser_request_user (6th) are therefore named in the hint instead.
     expect(details.loaded).toHaveLength(4);
-    expect(details.usage_hints).toContain('tool_names:[browser_request_user]');
+    expect(details.usage_hints)
+      .toContain('tool_names:[browser_save_image,browser_request_user]');
     const second = (await explore.execute('e2', { category: 'browser_tools',
       tool_names: ['browser_request_user'] })).details as { loaded: string[] };
     expect(second.loaded).toContain('browser_request_user');

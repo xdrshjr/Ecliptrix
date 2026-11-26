@@ -231,3 +231,88 @@ node scripts/lib/assert-fresh-build.js
 | ⑩ | 焦点在页面内时 `Ctrl+L` 把键盘焦点交还主窗口地址栏 | 未执行: 缺桌面安装包；自动化已有 e2e 焦点断言（13/13），真实打字落点未验 | 2026-11-26 | node#2 |
 | ⑪ | 真实站点登录完成后弹出「登录完成」建议，验证码流程不误报 | 未执行: 缺真实站点账号与桌面安装包 | 2026-11-26 | node#2 |
 
+
+## I3 · 页面真实图片链路（`agent-browser-image-ingest`）
+
+> 日期 2026-11-26，起点 HEAD `abe65563`。本轮只做「页面图片候选 → 带会话凭据取回 →
+> 真实字节入库 → 可被时间线使用」这一条链路；未 `git commit`。
+> 本节只写**本机已实际跑过**的命令与结果。
+
+### 实测命令与输出
+
+| 范围 | 命令 | 结果 |
+|---|---|---|
+| 后端·新增 | `pytest tests/test_browser_workspace_images.py -q` | **18 passed**（候选归一化 / 保存入库 / 8 条错误码 / provenance / 裁剪收敛 / 超时链 / 沙盒拒保存 / **复审新增 2 例**：挂载后重裁、读预算） |
+| 后端·相邻回归 | `pytest tests -k "browser or workspace or web_image or web_research or line_budget" --ignore=data -q` | **314 passed, 1 skipped**（含 `web_image_service` 零回归，AC-I21） |
+| 后端·行数棘轮 | `pytest tests/test_line_budgets_bw.py -q` | 全绿：`service.py` 347/350、`dispatch.py` 200/200、`images.py` 114（新文件无预算项） |
+| 前端·提示词 | `vitest run systemPrompt.toolkit / subtitleDisclosure / promptBudgetRatchet / browserWorkspace.surface` | **4 文件 59 项全绿** |
+| 前端·工具 | `vitest run tools/__tests__/browserSaveImage.test.ts` | **13 passed**（schema 闭集 / 恰好一次 `add_materials` / 60 000 ms / YOLO 仍注册 / **复审新增 3 例**：body 不含 `session_id`、可选字段缺省不发、带图读 25 000 ms） |
+| 前端·BFF 白名单 | `vitest run src/app/api/web-research/__tests__/route.test.ts` | **6 passed**（`save-image` 可达；畸形路径仍 404） |
+| 前端·渲染层回归 | `vitest run src/components/browser src/contexts` | **10 文件 98 项全绿** |
+| 主进程回归 | `cd desktop; npm run test:browser` | **PASS，12 套 110 项**（pageScripts 9、integration 15、assertFreshBuild 7、checkWalkthroughTable 7 等） |
+| 类型 | `npx tsc --noEmit -p tsconfig.json` | **17 个错误，与改前完全一致，无一落在本次触碰文件**（全部来自 `docs/diagnoses/**/repro` 引用 `webserver/` 服务端路径与 `SkillRouterSettingsPanel.test.tsx` 的既有问题） |
+
+### AC 对照
+
+| AC | 状态 | 证据 |
+|---|---|---|
+| AC-I1 候选链路 | 通过 | `-k candidates`：`image_id` 形如 `i1`、含 `og:image`、逐项补 `page_url`/`snapshot_version` |
+| AC-I2 保存成功 | 通过 | 同源 `cached_materials` 本地 URL，`width/height` 由真实图片读出（64×48 夹具） |
+| AC-I3 内联图拒绝 | 通过 | `data:`/`blob:` → `400 inline_image_unsupported`（**刻意拒绝，非能力缺失**） |
+| AC-I4 两层各自可验证 | 通过 | 前端 `pattern` 拒 `http://…`、`i0`/`i100`/`e1`；后端未登记 id → `404 image_not_found` |
+| AC-I5 双表登记 | 通过 | `set(STATUS) - set(FAILURE_CLASS_BY_CODE) == []`；`browser_budget_exceeded` 为 **413**、`browser_busy` 为 429 |
+| AC-I6 非图片 | 通过 | HTML 错误页 → `422 resource_not_image` |
+| AC-I7 超限 | 通过 | 10 MiB + 32 字节 → `422 resource_too_large` |
+| AC-I8 provenance | 通过 | `source:'workspace'` / `via:'workspace_tab'` / `tab_id` / `source_page_url` / `sha256`；`material.metadata.source` 仍为 `'web'` |
+| AC-I9 恰好发布一次 | 通过 | `recordOperation` 调用 1 次，`cacheStatus:'ready'` 与 `storageKind:'cached_remote'` 由 `localMaterial()` 填 |
+| AC-I10 YOLO 仍注册 | 通过 | `browser_save_image` 在 YOLO 工具集内，`browser_request_user` 被移除 |
+| AC-I11 快照新鲜度 | 通过 | 页面 URL 变化与新 `snapshot_version` 各自 → `409 stale_snapshot`；`read → act → save` 仍可用 |
+| AC-I12 提示词自洽 | 通过 | 上述 4 个提示词套件全绿；L1 实测 **1 059 字节**（上限 1 200，改前 1 082，**净减 23**） |
+| AC-I13 描述上限 | 通过 | `browser_save_image` description **118 字节** ≤120；L1 ≤1 200 |
+| AC-I14 主进程页面脚本 | 通过 | `pageScripts` 套件 9 项（`collectImages` 的 `inline` 与 `og:image` 既有用例覆盖） |
+| AC-I15 无回归 | 通过 | 见上表三处回归命令 |
+| AC-I16 类型/lint | 通过 | 17 个错误与改前逐条一致，触碰文件 0 错误（未写死数字，按 spec P2-3 比对） |
+| AC-I17 打包新鲜性门禁 | 通过（脚本自身） | `assertFreshBuild` 7 项全绿；**真打包未执行**，见下方未验证项 |
+| AC-I18 走查表格式 | 通过（I2-8 由脚本校验，I3 表按同档位规矩人工记档） | `node desktop/scripts/check-walkthrough-table.js` PASS；该脚本契约是 I2-8 的 ①–⑪，本轮未改脚本，故 I3 的 12 条表不由它校验 |
+| AC-I19 裁剪收敛 | 通过 | 41 条候选 × 长正文 × 120 元素 → 函数返回且总字节 ≤11 500、图片 ≤6 000；三类皆空时 `break` |
+| AC-I20 超时链一致 | 通过 | 保存三处：60 000 ms / 55 s（`driver.FETCH_TIMEOUT_S`）/ 55 000 ms（`resourceFetch.js`）；读链路两处：带图读 25 000 ms（前端）与 `READ_IMAGES_TIMEOUT_S=25`（路由），普通读仍是 15 000 / 10。单测逐处断言 |
+| AC-I21 `web_image_service` 零回归 | 通过 | 候选**只增字段不改名**，`width`/`height` 保留，`web_image` 用例全绿 |
+| AC-I22 BFF 白名单可达 | 通过 | `ROUTES.POST` 加 `browser/<uuid>/save-image`；未登记与畸形路径仍 404 且不打后端 |
+
+### 复审修复的三处接缝级缺陷（spec D-7 / D-8 / D-9）
+
+共同点：**两侧各自的单测都绿，真实链路必炸**——因为没人测接缝。首版的「全绿」正是这么来的。
+
+| ID | 症状（实测） | 修复 | 回归用例 |
+|---|---|---|---|
+| **D-7** | 前端 `body: params` 把 `session_id` 塞进 body，后端 `BrowserSaveImageRequest` 是 `extra="forbid"` → **必然 422 `extra_forbidden`**，保存端点一次都不会成功 | 新增 `saveImageBody()`，只发 `image_id`/`name`/`snapshot_version`，session 只走路径 | `browserSaveImage.test.ts` 两条：body 不含 `session_id`；可选字段缺省时不出现 |
+| **D-8** | 候选在 `_finish_snapshot` 的 `fit_result` **之后**才挂载，首版没有再裁 → 100 条候选实测 **35 557 字节**，是 11 500 上限的三倍（沙盒分支同病，且它只裁增量） | `images.attach()` 挂载后补裁一次；沙盒走 `attach_isolated()` 在合并后统一裁；`fit_result` 真正落地独立图片预算 | `test_read_with_many_images_stays_within_max_result_bytes`：总字节 ≤ 11 500、`truncated` 为真、登记表仍是完整闭集 |
+| **D-9** | `read(images:true)` 串行跑两条主进程命令（各 10 s），而路由动作预算写死 10 s、前端 15 000 ms → 最坏情形被自己的链掐成 `upstream_timeout` | 新增 `READ_IMAGES_TIMEOUT_S = 25` 与 `BROWSER_READ_IMAGES_TIMEOUT_MS = 25_000`，不带 images 的两条链路数值不变 | 后端 `test_read_images_budget_exceeds_snapshot_chain`；前端「带图读比普通读更宽」 |
+
+### 本轮未执行项（如实记档，不用源码测试冒充）
+
+- **`npm run build:dir` + 打包态冒烟**：**未执行**，缺 = 单次工具调用上限内无法完成整包构建，且 `release/win-unpacked` 仍是旧产物。
+- 结论：**打包态通过与否仍无证据**；`assertFreshBuild` 只证明门禁脚本自身正确。
+
+### I3 人工走查表（图片链路，12 条）
+
+已执行 1 / 未执行 11 / 阻塞 0
+
+> 档位规矩与 I2-8 相同：`未执行:` 必须写缺什么；`阻塞:` 必须写缺陷 ID。
+> 其中 ⑫ 为**本机可执行**的一项：用仓库内回环夹具（不依赖公网与登录态）跑通了
+> 「候选 → 带 Cookie 取字节 → 入库 → provenance」全链路，故记为 `已执行`。
+
+| 步骤 | 预期 | 实测 | 日期 | 执行人 |
+|---|---|---|---|---|
+| ① | `browser_read {images:true}` 返回带 `image_id` 的候选，含 `og:image` 与大背景图 | 未执行: 缺桌面安装包（`build:dir` 未产出），无法在真实 Electron 窗口内取候选 | 2026-11-26 | node#3 |
+| ② | `browser_save_image {image_id}` 把该图取回并落到 `cached_materials` | 未执行: 缺真实站点账号，防盗链/登录态站点无法复现 | 2026-11-26 | node#3 |
+| ③ | 素材库即时出现该图，缩略图为本地文件而非远端 URL | 未执行: 缺真机 UI，`add_materials` 的 SSE 反馈需前台观察 | 2026-11-26 | node#3 |
+| ④ | 拖进时间线可正常预览播放（非黑帧、`size` 不为 0） | 未执行: 缺真机预览播放器与桌面安装包 | 2026-11-26 | node#3 |
+| ⑤ | 模型传裸 URL 给 `browser_save_image` 被 schema 拒绝，不产生任何请求 | 未执行: 缺真实 LLM 凭据，无法观察模型侧行为（自动化已覆盖 schema 层） | 2026-11-26 | node#3 |
+| ⑥ | 候选为 `data:`/`blob:` 时回 `inline_image_unsupported` 并提示换图 | 未执行: 需真实页面构造内联图候选 | 2026-11-26 | node#3 |
+| ⑦ | 保存前页面自行跳转 → `409 stale_snapshot` 并提示重新 `browser_read` | 未执行: 需真实站点自动跳转场景 | 2026-11-26 | node#3 |
+| ⑧ | 沙盒模式（`mode:"isolated"`）能列候选但保存明确回「不支持」 | 未执行: 缺真机沙盒窗口 | 2026-11-26 | node#3 |
+| ⑨ | 10 MiB 级大图在慢网下不被 30 s 掐断（三处 55 s 生效） | 未执行: 需限速网络环境与真实大图 | 2026-11-26 | node#3 |
+| ⑩ | 素材入库后不受工作台 artifact 的 1 天留存影响 | 未执行: 需真机跨日观察留存清理 | 2026-11-26 | node#3 |
+| ⑪ | 模型对浏览器图片不再误用 `add_material_to_library`（返回 `hint` 导流） | 未执行: 缺真实 LLM 凭据，导流效果须看模型实际选择 | 2026-11-26 | node#3 |
+| ⑫ | 回环夹具下：候选 → 取字节 → 入库 → provenance 全链路成立，且 `image_id` 闭集生效 | 已执行: `pytest tests/test_browser_workspace_images.py -q` 16/16 通过（`save_ok`/`error_codes`/`provenance`/`snapshot_stale`） | 2026-11-26 | node#3 |

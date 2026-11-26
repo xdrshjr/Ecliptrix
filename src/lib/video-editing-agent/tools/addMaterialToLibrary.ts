@@ -29,6 +29,15 @@ function generateMaterialId(): string {
   return `material-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Whether this add is really a picture taken from a web page — the case the
+ * browser image chain exists for. Narrow on purpose: only remote http(s) image
+ * adds are redirected; local paths and other material types are untouched.
+ */
+function isWebPageImage(url: string, type: string): boolean {
+  return type === 'image' && /^https?:\/\//i.test(url);
+}
+
 function inferFormat(url: string, type: string): string {
   try {
     const pathname = new URL(url).pathname;
@@ -74,10 +83,18 @@ export function createAddMaterialToLibraryTool(context: ToolContext): AgentTool<
       // Record operation for client-side store update via SSE
       context.recordOperation(toolCallId, { type: 'add_material', material: item });
 
+      // 不删除本工具（历史会话会重放它），只把「页面上的真实图片」导流到新链路：
+      // 本工具产出 `size:0`、无本地缓存、无 `cacheStatus`，放进时间线是黑帧。
       const result = {
         success: true,
         material: { id, name: item.name, type: item.type, url: item.url },
         message: `Material "${item.name}" added to library.`,
+        ...(isWebPageImage(params.url, params.type) ? {
+          hint: 'Added without a local copy. For a real image on a web page, call '
+            + 'browser_read(images:true) then browser_save_image, so it is fetched with '
+            + 'the session cookies and stored locally.',
+          warning: 'size_unknown_no_local_cache',
+        } : {}),
       };
 
       return {

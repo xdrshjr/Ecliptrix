@@ -12,6 +12,11 @@ from app.models.web_research_models import WebResearchError
 from .control_client import ControlClient
 
 HEALTH_TIMEOUT = 1.8
+# 10 MiB 图片在慢网取回可能远超 40 s；三处必须成对（spec P0-5 / AC-I20）：
+# 前端 browserTools 60 000 ms、这里 55 s、主进程 resourceFetch 55 000 ms。
+# 只改前端不改后端等于没改——链路会被最小的一处掐断，且错误码会伪装成
+# upstream_timeout。
+FETCH_TIMEOUT_S = 55
 HEALTH_CACHE_SECONDS = 30
 
 
@@ -115,6 +120,6 @@ class HttpWorkspaceDriver:
 
     async def fetch_resource(self, tab_id, url, kind, max_bytes):
         return await self.client.request(
-            "POST", "/v1/resources/fetch", timeout=40, binary=True,
+            "POST", "/v1/resources/fetch", timeout=FETCH_TIMEOUT_S, binary=True,
             json={"tab_id": tab_id, "url": url, "kind": kind,
                   "max_bytes": max_bytes})

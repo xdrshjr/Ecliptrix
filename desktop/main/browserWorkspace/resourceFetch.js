@@ -11,7 +11,10 @@ const { WorkspaceError } = require('./approvalGate')
 const scripts = require('./pageScripts')
 
 const MAX_HOPS = 5
-const FETCH_TIMEOUT_MS = 30_000
+// 10 MiB 图片在慢网取回可能远超 30 s；三处必须成对（spec P0-5 / AC-I20）：
+// 前端 browserTools 60 000 ms、backend driver.FETCH_TIMEOUT_S 55 s、这里 55 000 ms。
+// 链路会被最小的一处掐断，且错误码伪装成 upstream_timeout。
+const FETCH_TIMEOUT_MS = 55_000
 const KIND_PREFIXES = { image: ['image/'], media: ['image/', 'video/', 'audio/'] }
 
 function acceptable(kind, contentType) {

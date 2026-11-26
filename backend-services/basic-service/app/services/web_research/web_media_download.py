@@ -102,6 +102,13 @@ async def _commit(request, run, path, metadata, source):
         provenance.update(via=source["via"], source_kind="browser",
                           page_url=source["url"],
                           captured_at=source["retrieved_at"])
+    # 工作台标签页来源额外两个条件写入（spec P1-10）：`tab_id` 让审计能指回
+    # 是哪个页签取的字节，`source='workspace'` 区分于普通公网直取。
+    # 只增字段、不改既有名；`material.metadata.source` 仍是 `'web'`，
+    # 因为前端 `localMaterial()` 依赖它（spec P1-2）。
+    if source.get("tab_id"):
+        provenance["tab_id"] = source["tab_id"]
+        provenance["source"] = "workspace"
     material = {"id": identifier, "name": name or "网络素材", **metadata,
                 "size": stored["size"], "local_url": stored["local_url"],
                 "url": stored["local_url"], "cacheUrl": stored["local_url"],

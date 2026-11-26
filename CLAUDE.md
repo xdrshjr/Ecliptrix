@@ -130,8 +130,19 @@ Invariants — breaking one is a defect:
 7. `hardening.js` registers each `webRequest` event once per session (Electron keeps one listener); `navigationGuard.js` mirrors `egress_policy` and both consume `__fixtures__/url-guard-vectors.json`.
 8. `browser_workspace` settings category has FIVE registration points (YAML, `system_settings_service`, `system_settings_models`, `CATEGORY_METADATA`, frontend panel/sidebar) — missing `CATEGORY_METADATA` silently 404s the panel. Workspace-sourced artifacts use `retention_days=1`.
 9. **Cookie values never leave the main process.** The login-completion suggestion (`loginHeuristics.js`) reads only `name|domain|path` + flags, only while a `login:` handoff is pending, and only ever SUGGESTS (`approval.suggestComplete`) — it never completes an approval. `isLoginHandoff` (`reason.startsWith('login:')`) is the single parse point and is pinned from both ends (`loginHeuristics.test.js`, backend `test_handoff_reason_prefix_is_the_login_contract`).
-10. **The L0 prompt ceiling is derived, never typed.** `L0_PROMPT_CHAR_CEILING` (19 800) MUST equal `L0_NO_INDEX_CHAR_MAX` (18 500) + `SKILL_INDEX_TOTAL_MAX_CHARS` (1 300). `promptBudgetRatchet.test.ts` asserts that identity and ratchets 12 prompt segments plus 12 hard-constraint rule anchors, so a prompt edit either stays inside its own segment or fails by name. Do not hand-write a new ceiling.
-11. **Packaged evidence requires a fresh package.** `desktop/scripts/lib/assert-fresh-build.js` runs FIRST in `browser-workspace-smoke.js` and aborts on a stale or incomplete `win-unpacked` tree: main modules present inside `app.asar`, renderer newer than `src/`, payload list matching disk in both directions, no control-token literal. A smoke pass on an old package proves nothing.
+10. **The L0 prompt ceiling is derived, never typed.** `L0_PROMPT_CHAR_CEILING` (19 800) MUST equal `L0_NO_INDEX_CHAR_MAX` (18 500) + `SKILL_INDEX_TOTAL_MAX_CHARS` (1 300). `promptBudgetRatchet.test.ts` asserts that identity and ratchets 12 prompt segments plus 12 hard-constraint rule anchors, so a prompt edit either stays inside its own segment or fails by name. Do not hand-write a new ceiling. The same test caps `BROWSER_WORKSPACE_GUIDANCE` (L1) at 1 200 bytes; it sits at 1 059, so an L1 edit has ~141 bytes of room and must pay for itself by compressing existing wording.
+11. **Page images travel over `image_id`, never a URL.** `browser_read {images:true}`
+    returns candidates registered in `TabEntry.images` (`i1`…`i99`); `browser_save_image`
+    accepts only that closed set, and bytes are fetched through the tab's partition session
+    (`resourceFetch.js`) before the usual magic-number/size checks and the
+    `cached_materials` commit. A bare URL would turn the backend into an arbitrary-URL
+    fetch proxy, so schema `pattern`, the backend closed set and the main-process URL guard
+    are three independent layers - do not remove one because another exists. The three
+    fetch timeouts (frontend 60 000 ms, `driver.FETCH_TIMEOUT_S` 55 s, `resourceFetch.js`
+    55 000 ms) change together. Logic lives in `images.py`; `service.py`/`dispatch.py`
+    only delegate, because `tests/test_line_budgets_bw.py` caps them at 350/200 lines.
+
+12. **Packaged evidence requires a fresh package.** `desktop/scripts/lib/assert-fresh-build.js` runs FIRST in `browser-workspace-smoke.js` and aborts on a stale or incomplete `win-unpacked` tree: main modules present inside `app.asar`, renderer newer than `src/`, payload list matching disk in both directions, no control-token literal. A smoke pass on an old package proves nothing.
 
 ```bash
 # from desktop/

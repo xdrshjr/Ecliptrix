@@ -24,7 +24,7 @@ STATUS = {
     "research_disabled": 403, "browser_disabled": 403,
     "downloads_disabled": 403, "network_disabled": 403,
     # 生命周期
-    "artifact_not_found": 404,
+    "artifact_not_found": 404, "image_not_found": 404,
     "stale_element": 409, "idempotency_conflict": 409,
     "run_closed": 410, "artifact_expired": 410,
     "candidate_expired": 410, "call_cancelled": 410,
@@ -56,7 +56,7 @@ STATUS = {
     "risky_action_blocked_autonomous": 403, "handoff_timeout": 408,
     "handoff_cancelled": 409, "tab_limit_reached": 409,
     "action_unsupported_in_isolated": 422, "resource_not_image": 422,
-    "resource_too_large": 422,
+    "resource_too_large": 422, "inline_image_unsupported": 400,
     # 研究模型
     "research_model_rejected": 503,
     "research_model_rate_limited": 429,
@@ -90,6 +90,7 @@ FAILURE_CLASS = {
         "invalid_project_id", "invalid_call_id", "json_required",
         "unsupported_content_type", "unsupported_media_type",
         "no_sources", "media_validation_failed", "artifact_not_found",
+        "image_not_found", "inline_image_unsupported",
         "artifact_expired", "candidate_expired", "artifact_quota_exceeded",
         "response_too_large", "screenshot_too_large",
         "browser_budget_exceeded", "context_budget_exceeded",
@@ -267,6 +268,19 @@ class BrowserReadRequest(StrictRequest):
     max_bytes: int = Field(default=4000, ge=500, le=8000)
     screenshot: bool = False
     elements_max: int | None = Field(default=None, ge=20, le=120)
+    images: bool = False
+    images_max: int = Field(default=40, ge=20, le=100)
+
+
+class BrowserSaveImageRequest(StrictRequest):
+    """保存页面图片：只接受 `image_id` 闭集，绝不接受裸 URL（spec §2.2 第 3 条）。
+
+    schema 的 `pattern` 只挡形状（`i1`…`i99`），归属由后端 `TabEntry.images`
+    闭集校验。两层各自可验证，任何一层都不单独承担 SSRF 防护（spec AC-I4）。
+    """
+    image_id: str = Field(pattern=r"^i[1-9][0-9]?$")
+    name: str | None = Field(default=None, max_length=80)
+    snapshot_version: int | None = Field(default=None, ge=1)
 
 
 class BrowserAction(StrictRequest):

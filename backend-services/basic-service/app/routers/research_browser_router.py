@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Body
 from app.models import BaseResponse
 from app.models.web_research_models import (
     BrowserOpenRequest, BrowserReadRequest, BrowserActRequest,
-    BrowserRequestUserRequest, WebResearchError)
+    BrowserRequestUserRequest, BrowserSaveImageRequest, WebResearchError)
 from app.services.browser_workspace.dispatch import dispatch
 from app.services.system_settings_service import research_settings
 from app.services.web_research.safe_http_client import (
@@ -89,11 +89,34 @@ async def open_browser(body: BrowserOpenRequest, request: Request):
         HUMAN_WAIT_TIMEOUT_S)
 
 
+# `images:true` 让一次 read 串行跑两条主进程命令（snapshot + images，各 10 s），
+# 故动作预算必须大于两者之和，否则新参数一开就被自己的超时链掐成 upstream_timeout。
+# 不带 images 的 read 仍是 10 s，既有链路不变。前端对应 25 000 ms（browserTools）。
+READ_TIMEOUT_S = 10
+READ_IMAGES_TIMEOUT_S = 25
+
+
 @router.post("/browser/read")
 async def read_browser(body: BrowserReadRequest, request: Request):
     return await tool_action(request, "browser_read", body.model_dump(mode="json"),
         lambda run: dispatch.read(run, str(body.session_id), body.max_bytes,
-                                  body.screenshot, body.elements_max), 10)
+                                  body.screenshot, body.elements_max,
+                                  body.images, body.images_max),
+        READ_IMAGES_TIMEOUT_S if body.images else READ_TIMEOUT_S)
+
+
+# 取回字节可以慢（10 MiB 图在慢网）：与 driver.FETCH_TIMEOUT_S 55 s 成对，
+# 多留 5 s 让超时在自己的层里报，而不是被外层掐断（spec P0-5）。
+SAVE_IMAGE_TIMEOUT_S = 60
+
+
+@router.post("/browser/{session_id}/save-image")
+async def save_image_browser(session_id: UUID, body: BrowserSaveImageRequest,
+                             request: Request):
+    """把页面图片存进素材库（spec 4.2）。`image_id` 是闭集，不接受裸 URL。"""
+    payload = {"session_id": str(session_id), **body.model_dump(mode="json")}
+    return await tool_action(request, "browser_save_image", payload,
+        lambda run: dispatch.save_image(run, payload), SAVE_IMAGE_TIMEOUT_S)
 
 
 @router.post("/browser/act")

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from app.models.web_research_models import WebResearchError
 from app.services.web_research.provenance import display_url
-from . import policy, result as builder
+from . import images as image_candidates, policy, result as builder
 from .approvals import (CONSENT_WAIT_S, HANDOFF_WAIT_S, RISKY_WAIT_S,
                         ApprovalWaiter)
 
@@ -37,6 +37,10 @@ class TabEntry:
     source: dict | None = None
     has_cookies: bool = False
     url: str = ""
+    # `image_id -> candidate`（`i1`...`i99`），与 `elements` 的 `e1`... 同构。
+    # 只在 `read(images=True)` 时替换；`act` 不清空，故 `read -> act -> save` 仍可用
+    # （图 URL 与快照版本无关，spec 2.2 第 6 条）。随 TabEntry 一起释放。
+    images: dict = field(default_factory=dict)
 
 
 class BrowserWorkspaceService:
@@ -177,7 +181,7 @@ class BrowserWorkspaceService:
         return result
 
     async def read(self, run, session_id, max_bytes=4000, screenshot=False,
-                   elements_max=None):
+                   elements_max=None, images=False, images_max=None):
         entry = self._entry(run, session_id)
         snap = await self._run_command(
             run, "snapshot", {"max_bytes": max_bytes, "max_elements":
@@ -195,6 +199,9 @@ class BrowserWorkspaceService:
                 image = None
             await builder.attach_screenshot(run, result, image, entry.source,
                                             self._store())
+        if images:
+            await image_candidates.attach(self, run, session_id, entry,
+                                          result, images_max)
         return result
 
     async def act(self, run, request, autonomy="interactive"):
@@ -246,6 +253,15 @@ class BrowserWorkspaceService:
                   for item in raw.get("images", []) if item.get("image_url")]
         return {"images": images, "title": raw.get("title", ""),
                 "final_url": raw.get("final_url", "")}
+
+    async def save_image(self, run, session_id, image_id, name=None,
+                        snapshot_version=None):
+        """把候选图片经该标签页的会话取回并入库（spec 2.3 / 4.2）。
+
+        `image_id` 是闭集：只认 `read(images=True)` 登记过的候选（spec R-3）。
+        """
+        return await image_candidates.save(self, run, session_id, image_id,
+                                           name, snapshot_version)
 
     async def close(self, run, session_id=None):
         tab_id = str(session_id or "")

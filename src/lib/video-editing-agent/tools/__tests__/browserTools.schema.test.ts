@@ -64,9 +64,12 @@ describe('browser tool schemas (strict superset of the baseline)', () => {
     }
   });
 
-  it('exposes the four legacy names plus browser_request_user', () => {
+  it('exposes the four legacy names plus the save and hand-off tools', () => {
     const names = createBrowserTools(context()).map(tool => tool.name);
-    expect(names).toEqual(['browser_open', 'browser_read', 'browser_act', 'browser_close', 'browser_request_user']);
+    // `browser_save_image` sits BEFORE the YOLO early return (it never waits on a
+    // human), so it precedes `browser_request_user` in the interactive list.
+    expect(names).toEqual(['browser_open', 'browser_read', 'browser_act', 'browser_close',
+      'browser_save_image', 'browser_request_user']);
     expect(Object.keys(BASELINE).every(name => names.includes(name))).toBe(true);
   });
 

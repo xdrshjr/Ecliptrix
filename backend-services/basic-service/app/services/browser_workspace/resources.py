@@ -33,6 +33,29 @@ async def fetch_via_tab(run, source, url, kind, maximum):
     return _validated(payload, kind, min(maximum, LIMITS[kind]), url)
 
 
+async def save_agent_image(run, session_id, image_url, page_url, name=None):
+    """Agent 路径保存页面图片（spec 2.3 / 4.2）。
+
+    与用户右键 `save_resource` 的差别只在**有没有 run**：两者都以
+    `via='workspace_tab', tab_id=...` 交给 `download_material`，由它经该标签页
+    的分区会话带 Cookie/Referer 取字节，再走魔数/尺寸/入库同一严格路径。
+
+    `source_page_verified=False`：页面内容未经二次核对，故不宣称已验证。
+
+    留存：素材走 `material_download_service`，**不受**工作台 artifact 的
+    1 天留存（`result.WORKSPACE_RETENTION_DAYS` 只作用于 `store.write()`），
+    不要把用户素材按 1 天清理（spec 2.3 / AC-I8）。
+    """
+    from app.services.web_research.web_media_download import download_material
+
+    source = source_record(page_url or image_url)
+    source.update(via="workspace_tab", tab_id=str(session_id),
+                  source_page_verified=False)
+    request = SimpleNamespace(kind="image", url=image_url, name=name,
+                              source_page_url=display_url(page_url or ""))
+    return await download_material(request, run, source)
+
+
 async def save_resource(tab_id, url, kind, page_url=None, name=None):
     """用户右键「保存到素材库」：没有 run，标签页归属由主进程校验（用户页签）。"""
     from app.services.web_research.web_media_download import download_material

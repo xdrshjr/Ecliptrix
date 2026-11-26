@@ -8,6 +8,7 @@ import asyncio
 
 from app.models.web_research_models import (
     ISOLATED_ACTIONS, WebResearchError)
+from . import images as image_candidates
 
 # 这些回落原因要告诉模型（页面未登录、动作集更少，须如实转述用户）。
 NOTABLE_FALLBACKS = frozenset({"workspace_locked", "consent_denied",
@@ -116,15 +117,22 @@ class Dispatch:
         return result
 
     async def read(self, run, session_id, max_bytes=4000, screenshot=False,
-                   elements_max=None):
+                   elements_max=None, images=False, images_max=None):
         service = get_workspace_service()
         if service.owns(session_id):
             return await service.read(run, session_id, max_bytes, screenshot,
-                                      elements_max)
+                                      elements_max, images, images_max)
         result = await _bounded(
             _isolated().read(run, session_id, max_bytes, screenshot))
         result["mode"] = "isolated"
+        if images:  # 沙盒只读候选，不可保存（spec P2-5 / R-4）
+            await image_candidates.attach_isolated(run, session_id, result,
+                                                   images_max)
         return result
+
+    async def save_image(self, run, body):
+        """保存只在工作台成立（spec R-4）；模式判定在 images.py。"""
+        return await image_candidates.save_for_dispatch(run, body)
 
     async def act(self, run, request, autonomy="interactive"):
         service = get_workspace_service()

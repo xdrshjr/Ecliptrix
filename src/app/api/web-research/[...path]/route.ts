@@ -5,7 +5,10 @@ import { researchOriginAllowed, researchProxyError } from '@/lib/server/research
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const ROUTES: Record<string, RegExp> = {
   GET: new RegExp(`^(capabilities|artifacts/${UUID}(/image)?)$`),
-  POST: /^(search|fetch|extract-images|download|research|browser\/(open|read|act)|test-connection)$/,
+  // `save-image` 是唯一带 session 段的新增 POST（spec P0-1）：不加这一条，
+  // 请求会在 Next 层被 not_found 404 掉，后端端点根本到不了。
+  POST: new RegExp(`^(search|fetch|extract-images|download|research|`
+    + `browser\\/(open|read|act|${UUID}\\/save-image)|test-connection)$`),
   PUT: /^credentials$/,
   DELETE: new RegExp(`^browser/${UUID}$`),
 };

@@ -502,6 +502,18 @@ node scripts/lib/assert-fresh-build.js    # 只验产物新鲜性：四项检查
 node scripts/check-walkthrough-table.js   # 只验 acceptance.md 的 I2-8 表格：列名逐字、①–⑪ 齐全、三档前缀、档位统计一致
 ```
 
+**页面真实图片（`agent-browser-image-ingest`）**：Agent 取「网页上那张真实照片」走
+`browser_read {images:true}` → `browser_save_image {image_id}`。字节由**该页签的分区会话**
+带 Cookie 与 Referer 取回（`resourceFetch.js`，与用户右键「保存到素材库」同一条通道），
+再做魔数/大小/尺寸校验后入 `cached_materials`。三处超时是**成对**的：前端 60 000 ms /
+后端 `driver.FETCH_TIMEOUT_S` 55 s / `resourceFetch.js` 55 000 ms，改一处必须同改另两处。
+`image_id` 是闭集（`i1`…`i99`），**永不接受裸 URL** —— 否则后端就成了任意 URL 取字节代理。
+`data:`/`blob:` 候选本轮刻意拒绝（回 `inline_image_unsupported`）：前者没有来源页、
+provenance 不可信，后者依赖页面存活。
+
+走查清单新增一条：**保存网页图片 → 素材库出现 → 拖进时间线可播**
+（`docs/plans/agent-browser-workspace/acceptance.md` 的 I3 表 ④）。
+
 后端共享 URL 向量：`main/browserWorkspace/__fixtures__/url-guard-vectors.json`
 （格式 `[{input, actor, allowPrivate, ownPorts?, denyHosts?, expect:{ok, code?}}]`，`ownPorts`/`denyHosts` 省略即空）。
 

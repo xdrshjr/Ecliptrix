@@ -11,8 +11,36 @@ import { executeWebTool } from './webToolAdapter';
  */
 export const BROWSER_HUMAN_WAIT_TIMEOUT_MS = 140_000;
 
+/**
+ * Saving an image fetches bytes through the tab (10 MiB on a slow link), so it
+ * needs more than `browser_read` but never waits on a human, hence not on the
+ * 140 s chain. Three ends must agree: 60 000 ms here, 55 s in
+ * `driver.FETCH_TIMEOUT_S`, 55 000 ms in `resourceFetch.js` (spec P0-5).
+ */
+export const BROWSER_IMAGE_SAVE_TIMEOUT_MS = 60_000;
+
+/**
+ * `browser_read {images:true}` runs TWO main-process commands (snapshot then
+ * images, 10 s each), so the plain 15 s ceiling sits inside the backend's own
+ * worst case. A read without images keeps 15 000 ms unchanged.
+ */
+export const BROWSER_READ_IMAGES_TIMEOUT_MS = 25_000;
+
 const session_id = Type.String({ format: 'uuid' });
 const snapshot_version = Type.Integer({ minimum: 1 });
+
+/**
+ * Body of `POST /browser/{session_id}/save-image`: the session is a path
+ * parameter, so it must NOT be echoed into the body either. `BrowserSaveImageRequest`
+ * is `extra="forbid"`, which makes a duplicate key a 422 instead of a harmless
+ * extra. Absent optional fields stay absent (`undefined` keys are dropped).
+ */
+function saveImageBody(params: Record<string, unknown>): Record<string, unknown> {
+  const { image_id, name, snapshot_version: version } = params;
+  return { image_id, ...(name === undefined ? {} : { name }),
+    ...(version === undefined ? {} : { snapshot_version: version }) };
+}
+
 const element_ref = Type.String({ minLength: 1, maxLength: 64 });
 const KEYS = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'PageUp', 'PageDown', 'Home', 'End', 'Space'] as const;
@@ -53,11 +81,14 @@ export function createBrowserTools(context: ToolContext): AgentTool[] {
       execute: (id, params) => executeWebTool(context, id, {
         path: '/browser/open', body: params, timeout: BROWSER_HUMAN_WAIT_TIMEOUT_MS }) },
     { name: 'browser_read', label: 'browser_read',
-      description: 'Read current page text and fresh element references. Optional screenshot returns an artifact ID, never image bytes.',
+      description: 'Read page text, element refs and optional image candidates. Screenshot returns an artifact ID, never image bytes.',
       parameters: Type.Object({ session_id, max_bytes: Type.Optional(Type.Integer({ minimum: 500, maximum: 8000 })),
         elements_max: Type.Optional(Type.Integer({ minimum: 20, maximum: 120 })),
-        screenshot: Type.Optional(Type.Boolean()) }, strict),
-      execute: (id, params) => executeWebTool(context, id, { path: '/browser/read', body: params, timeout: 15000 }) },
+        screenshot: Type.Optional(Type.Boolean()),
+        images: Type.Optional(Type.Boolean({ description: 'Also return image candidates (real photos on the page).' })),
+        images_max: Type.Optional(Type.Integer({ minimum: 20, maximum: 100 })) }, strict),
+      execute: (id, params) => executeWebTool(context, id, { path: '/browser/read', body: params,
+        timeout: (params as { images?: boolean }).images ? BROWSER_READ_IMAGES_TIMEOUT_MS : 15000 }) },
     { name: 'browser_act', label: 'browser_act',
       description: 'Use the latest snapshot_version to click, fill, press a key, scroll, select, hover, go back/forward, reload or wait. Never fills password/payment/captcha fields. Stale refs require browser_read. Isolated mode supports click/fill/press Enter/scroll only.',
       parameters: act,
@@ -69,6 +100,24 @@ export function createBrowserTools(context: ToolContext): AgentTool[] {
       execute: (id, params) => executeWebTool(context, id, {
         path: `/browser/${(params as { session_id: string }).session_id}`, method: 'DELETE', timeout: 5000 }) },
   ];
+  // 保存页面图片：`image_id` 来自 browser_read images:true，是闭集，绝不接受 URL
+  // （spec R-3 三层防线中的第一层只挡形状）。不等人类，故 YOLO 下仍注册。
+  tools.push({ name: 'browser_save_image', label: 'browser_save_image',
+    description: 'Save one page image (image_id from browser_read images:true) into the library using session cookies. Never pass a URL.',
+    parameters: Type.Object({ session_id,
+      image_id: Type.String({ pattern: '^i[1-9][0-9]?$' }),
+      name: Type.Optional(Type.String({ maxLength: 80 })),
+      snapshot_version: Type.Optional(snapshot_version) }, strict),
+    execute: (id, params) => executeWebTool(context, id, {
+      path: `/browser/${(params as { session_id: string }).session_id}/save-image`,
+      // The session travels in the path. The backend body model is
+      // `extra="forbid"`, so echoing `session_id` into the body answers
+      // 422 `extra_forbidden` — send only the documented body fields.
+      body: saveImageBody(params as Record<string, unknown>),
+      timeout: BROWSER_IMAGE_SAVE_TIMEOUT_MS,
+      // 一次性发布 add_materials：cacheStatus/storageKind 由 localMaterial()
+      // 统一填，手写 recordOperation 会丢掉它们（spec P1-6 / AC-I9）。
+      importMaterial: 'record' }) });
   if (context.autonomy === 'yolo') return tools;
   tools.push({ name: 'browser_request_user', label: 'browser_request_user',
     description: 'Hand the browser to the user for a login, captcha or confirmation, then continue after they finish. Give a short reason. Never ask for or type passwords.',
