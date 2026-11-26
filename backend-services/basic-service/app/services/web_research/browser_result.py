@@ -11,6 +11,8 @@ MAX_RESULT_BYTES = 11500
 # 图片候选的独立预算（spec P0-2）：不与 elements/text 争夺同一个 11.5 KB 池，
 # 否则 40 条候选（约 8 KB）叠加正文与元素会稳定超限。
 IMAGES_MAX_BYTES = 6000
+# 正文块的独立预算（spec agent-browser-article-reading §4.4）。
+ARTICLE_MAX_BYTES = 6000
 
 
 def assemble(captured, session_id, url, source, artifact_id):
@@ -45,6 +47,17 @@ def fit_result(result, limit=MAX_RESULT_BYTES):
             images.pop()
         # 砍了候选就是丢了内容，`truncated` 必须为真；两个标记同义。
         result["images_truncated"] = result["truncated"] = True
+    article = result.get("article")
+    if article and not article.get("blocks"):
+        # 只剩元数据的正文块对模型毫无用处，且会让下面的 `while` 永远收敛不到它
+        # 这一支（块空即删，D-A7 / AC-A6）。
+        result.pop("article", None)
+    elif article and _size(article) > ARTICLE_MAX_BYTES:
+        # 独立预算：与 images 同口径，先在自己的池里收敛，再进共享池。
+        from app.services.browser_workspace.article import fit_article
+        if fit_article(article) is None:
+            result.pop("article", None)
+        result["article_truncated"] = result["truncated"] = True
     while _over(result, limit):
         result["truncated"] = True
         images = result.get("images")
@@ -58,6 +71,14 @@ def fit_result(result, limit=MAX_RESULT_BYTES):
             result["text"] = clip_bytes(result["text"], trimmed) if trimmed else ""
             if not trimmed:
                 continue  # 清空后下一轮必然落到 break
+        elif result.get("article", {}).get("blocks"):
+            # 正文是本次交付物，排在噪声 text 之后削；块空即整键删除，
+            # 否则只剩元数据的 dict 仍为真值，循环原地打转（D-A7 / AC-A6）。
+            result["article"]["blocks"].pop()
+            result["article"]["article_truncated"] = True
+            result["article"].setdefault("window", {})["window_truncated"] = True
+            if not result["article"]["blocks"]:
+                result.pop("article", None)
         else:
             break  # 三类皆空仍超限：只能接受超限，绝不能空转（P0-2）
     return result

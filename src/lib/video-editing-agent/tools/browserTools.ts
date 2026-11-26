@@ -22,7 +22,9 @@ export const BROWSER_IMAGE_SAVE_TIMEOUT_MS = 60_000;
 /**
  * `browser_read {images:true}` runs TWO main-process commands (snapshot then
  * images, 10 s each), so the plain 15 s ceiling sits inside the backend's own
- * worst case. A read without images keeps 15 000 ms unchanged.
+ * worst case. `article:true` rides the same snapshot command but adds page-script
+ * work, so it shares this ceiling rather than opening a fourth timeout tier
+ * (agent-browser-article-reading spec §4.7). A plain read stays at 15 000 ms.
  */
 export const BROWSER_READ_IMAGES_TIMEOUT_MS = 25_000;
 
@@ -39,6 +41,12 @@ function saveImageBody(params: Record<string, unknown>): Record<string, unknown>
   const { image_id, name, snapshot_version: version } = params;
   return { image_id, ...(name === undefined ? {} : { name }),
     ...(version === undefined ? {} : { snapshot_version: version }) };
+}
+
+/** `images`/`article` 都是第二条页面脚本通道：任一为真就用 25 000 ms 天花板。 */
+function readTimeout(params: unknown): number {
+  const body = params as { images?: boolean; article?: boolean };
+  return body.images || body.article ? BROWSER_READ_IMAGES_TIMEOUT_MS : 15000;
 }
 
 const element_ref = Type.String({ minLength: 1, maxLength: 64 });
@@ -81,14 +89,17 @@ export function createBrowserTools(context: ToolContext): AgentTool[] {
       execute: (id, params) => executeWebTool(context, id, {
         path: '/browser/open', body: params, timeout: BROWSER_HUMAN_WAIT_TIMEOUT_MS }) },
     { name: 'browser_read', label: 'browser_read',
-      description: 'Read page text, element refs and optional image candidates. Screenshot returns an artifact ID, never image bytes.',
+      description: 'Read page text, element refs and optional image candidates. article:true returns main content blocks with publication metadata; continue with article_from=next_from. Screenshot returns an artifact ID, never image bytes.',
       parameters: Type.Object({ session_id, max_bytes: Type.Optional(Type.Integer({ minimum: 500, maximum: 8000 })),
         elements_max: Type.Optional(Type.Integer({ minimum: 20, maximum: 120 })),
         screenshot: Type.Optional(Type.Boolean()),
         images: Type.Optional(Type.Boolean({ description: 'Also return image candidates (real photos on the page).' })),
-        images_max: Type.Optional(Type.Integer({ minimum: 20, maximum: 100 })) }, strict),
+        images_max: Type.Optional(Type.Integer({ minimum: 20, maximum: 100 })),
+        article: Type.Optional(Type.Boolean({ description: 'Also return extracted main-content blocks with publication metadata.' })),
+        article_from: Type.Optional(Type.Integer({ minimum: 0, maximum: 399 })),
+        article_blocks: Type.Optional(Type.Integer({ minimum: 1, maximum: 40 })) }, strict),
       execute: (id, params) => executeWebTool(context, id, { path: '/browser/read', body: params,
-        timeout: (params as { images?: boolean }).images ? BROWSER_READ_IMAGES_TIMEOUT_MS : 15000 }) },
+        timeout: readTimeout(params) }) },
     { name: 'browser_act', label: 'browser_act',
       description: 'Use the latest snapshot_version to click, fill, press a key, scroll, select, hover, go back/forward, reload or wait. Never fills password/payment/captcha fields. Stale refs require browser_read. Isolated mode supports click/fill/press Enter/scroll only.',
       parameters: act,

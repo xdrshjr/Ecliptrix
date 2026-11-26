@@ -6,6 +6,7 @@ const snapshot = require('./snapshot')
 const act = require('./act')
 const overlay = require('./overlay')
 const sentinel = require('./sentinel')
+const article = require('./article')
 
 /**
  * Serialise a self-contained function plus JSON args into an expression for
@@ -18,4 +19,4 @@ function buildCall(fn, arg) {
   return `(${fn.toString()})(${arg === undefined ? '' : JSON.stringify(arg)})`
 }
 
-module.exports = { buildCall, ...snapshot, ...act, ...overlay, ...sentinel }
+module.exports = { buildCall, ...snapshot, ...act, ...overlay, ...sentinel, ...article }

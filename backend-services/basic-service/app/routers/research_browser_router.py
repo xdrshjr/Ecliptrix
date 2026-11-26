@@ -98,11 +98,13 @@ READ_IMAGES_TIMEOUT_S = 25
 
 @router.post("/browser/read")
 async def read_browser(body: BrowserReadRequest, request: Request):
+    article = ({"article": True, "article_from": body.article_from,
+                "article_blocks": body.article_blocks} if body.article else None)
     return await tool_action(request, "browser_read", body.model_dump(mode="json"),
         lambda run: dispatch.read(run, str(body.session_id), body.max_bytes,
                                   body.screenshot, body.elements_max,
-                                  body.images, body.images_max),
-        READ_IMAGES_TIMEOUT_S if body.images else READ_TIMEOUT_S)
+                                  body.images, body.images_max, article),
+        READ_IMAGES_TIMEOUT_S if (body.images or body.article) else READ_TIMEOUT_S)
 
 
 # 取回字节可以慢（10 MiB 图在慢网）：与 driver.FETCH_TIMEOUT_S 55 s 成对，

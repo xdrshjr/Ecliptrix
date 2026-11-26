@@ -10,6 +10,7 @@ const LOADERS = {
   cookiePersister: () => require('../main/browserWorkspace/cookiePersister.test.js'),
   hardening: () => require('../main/browserWorkspace/hardening.test.js'),
   pageScripts: () => require('../main/browserWorkspace/pageScripts/pageScripts.test.js'),
+  article: () => require('../main/browserWorkspace/pageScripts/article.test.js'),
   cdpEngine: () => require('../main/browserWorkspace/cdpEngine.test.js'),
   control: () => require('../main/browserWorkspace/control.test.js'),
   controlServer: () => require('../main/browserWorkspace/controlServer.test.js'),

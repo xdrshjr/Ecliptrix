@@ -596,6 +596,16 @@
 .bw-activity-row[data-status='running'] .bw-activity-icon { color: var(--ws-agent); }
 .bw-activity-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bw-activity-time { color: var(--ws-text-secondary); font-size: 11px; font-feature-settings: 'tnum'; }
+/* Article rows (agent-browser-article-reading §4.8): two lines - title, then
+   site / publication time / size. A missing publication time keeps the same line
+   height so the rail never jumps when a source declares nothing. */
+.bw-activity-row[data-kind='article'] { align-items: flex-start; padding-top: 3px; padding-bottom: 3px; }
+.bw-activity-row[data-kind='article'] .bw-activity-icon { margin-top: 2px; }
+.bw-activity-row[data-kind='article'] .bw-activity-label { display: flex; flex-direction: column; gap: 1px; }
+.bw-activity-article-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bw-activity-article-meta { color: var(--ws-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bw-activity-row[data-kind='article'] .bw-icon-btn { width: 18px; height: 18px; }
+@media (prefers-reduced-motion: reduce) { .bw-activity-row[data-kind='article'] { transition: none; } }
 .bw-status-ok { display: inline-flex; color: var(--ws-secure); }
 .bw-status-err { display: inline-flex; color: var(--ws-danger); }
 

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from app.models.web_research_models import WebResearchError
 from app.services.web_research.provenance import display_url
-from . import images as image_candidates, policy, result as builder
+from . import article as article_mod, images as image_candidates, policy, result as builder
 from .approvals import (CONSENT_WAIT_S, HANDOFF_WAIT_S, RISKY_WAIT_S,
                         ApprovalWaiter)
 
@@ -181,12 +181,12 @@ class BrowserWorkspaceService:
         return result
 
     async def read(self, run, session_id, max_bytes=4000, screenshot=False,
-                   elements_max=None, images=False, images_max=None):
+                   elements_max=None, images=False, images_max=None, article=None):
         entry = self._entry(run, session_id)
-        snap = await self._run_command(
-            run, "snapshot", {"max_bytes": max_bytes, "max_elements":
-                              elements_max or self.settings()["max_elements"]},
-            session_id, 10)
+        base = {"max_bytes": max_bytes,
+                "max_elements": elements_max or self.settings()["max_elements"]}
+        snap = await article_mod.read_snapshot(self, run, session_id, entry, base,
+                                               article)
         result = await self._finish_snapshot(run, session_id, snap, entry)
         if screenshot:
             try:

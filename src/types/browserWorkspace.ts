@@ -75,6 +75,7 @@ export type BrowserActivityKind =
   | 'scroll'
   | 'wait'
   | 'save_image'
+  | 'article'
   | 'handoff'
   | 'close'
   | 'notice';
@@ -88,6 +89,20 @@ export interface BrowserActivityEntry {
   status: 'running' | 'ok' | 'error';
   durationMs?: number;
   errorCode?: string;
+  /** Tab the entry belongs to: clicking an article row calls `activateTab(tabId)`. */
+  tabId?: string;
+  /**
+   * Present on `kind: 'article'` rows only (agent-browser-article-reading §4.8).
+   * `publishedAt` is `null` when the page declared no publication time — the UI says
+   * so instead of hiding the row, because the user has a right to know it is missing.
+   */
+  articleMeta?: {
+    title: string;
+    site: string;
+    publishedAt: string | null;
+    totalBlocks: number;
+    chars: number;
+  };
 }
 
 export interface BrowserWorkspaceState {

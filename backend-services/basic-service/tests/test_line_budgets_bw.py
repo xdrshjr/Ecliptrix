@@ -18,6 +18,7 @@ NEW_BUDGETS = {
     "services/browser_workspace/settings.py": 80,
     "services/browser_workspace/dispatch.py": 200,   # spec 120；含 capabilities/隔离回落（见 spec 缺陷）
     "services/browser_workspace/approvals.py": 120,  # 从 service.py 拆出（spec 未列）
+    "services/browser_workspace/article.py": 150,   # 正文抽取（spec agent-browser-article-reading）
     "services/web_research/browser_result.py": 90,
     "routers/browser_workspace_router.py": 120,
     "routers/research_browser_router.py": 150,

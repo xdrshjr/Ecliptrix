@@ -9,6 +9,7 @@ import binascii
 from app.models.web_research_models import WebResearchError
 from app.services.web_research.browser_result import assemble, fit_result
 from app.services.web_research.provenance import display_url, source_record
+from . import article as article_mod
 
 WORKSPACE_RETENTION_DAYS = 1
 PASSTHROUGH = ("snapshot_version", "title", "elements", "viewport",
@@ -43,10 +44,15 @@ def decode_screenshot(payload):
 async def build_snapshot(run, tab_id, snap, previous_source, store, extras):
     """返回 `(result, source)`；`extras` 为 profile/control/mode 等固定字段。"""
     url = display_url(snap.get("url", ""))
-    title = snap.get("title", "")
+    payload = snap.get("article")          # 缺省时整键不存在 → 老响应键集合不变
+    meta = (payload or {}).get("article") or {}
+    title = snap.get("title", "") or meta.get("title", "")
     source = previous_source
     if not source or source["final_url"] != url:
-        source = source_record(snap.get("url", ""), title)
+        source = source_record(snap.get("url", ""), title,
+                               published_at=meta.get("published_at"),
+                               author=meta.get("byline"),
+                               canonical_url=meta.get("canonical_url"))
     full_text = snap.get("full_text") or snap.get("text") or ""
     artifact = await store.write(
         "browser_snapshot", full_text.encode(), artifact_context(run, source),
@@ -56,6 +62,10 @@ async def build_snapshot(run, tab_id, snap, previous_source, store, extras):
     captured["content"] = snap.get("text", "")
     result = assemble(captured, tab_id, url, source, artifact.id)
     result.update(extras)
+    if payload is not None:                # 显式要求过才可能失败：404 由 attach 抛
+        article_mod.attach(result, payload, source, {
+            "session_id": str(tab_id), "url": url,
+            "version": snap.get("snapshot_version", 0), "requested": True})
     return fit_result(result), source
 
 

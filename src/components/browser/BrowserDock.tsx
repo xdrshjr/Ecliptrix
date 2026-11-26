@@ -135,7 +135,8 @@ export default function BrowserDock() {
                 onBack={() => tab && void commands.back(tab.id)} />
             )}
           </div>
-          <AgentActivityRail entries={workspace?.activity ?? []} />
+          <AgentActivityRail entries={workspace?.activity ?? []}
+            onOpenTab={(id) => void commands.activateTab(id)} />
         </>
       )}
       {!snapshot.expanded && (

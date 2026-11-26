@@ -89,6 +89,10 @@ const zh = {
     expand: '展开',
     collapse: '收起',
     typed: '输入 {n} 个字符',
+    articleBlocks: '{n} 段 · {chars} 字',
+    published: '发布于 {time}',
+    publishedMissing: '未标注发布时间',
+    openTab: '在浏览器中查看这一页',
   },
   approval: {
     allowOnce: '允许一次',
@@ -293,6 +297,10 @@ const en: BrowserWorkspaceCopy = {
     expand: 'Expand',
     collapse: 'Collapse',
     typed: 'Typed {n} characters',
+    articleBlocks: '{n} blocks · {chars} chars',
+    published: 'Published {time}',
+    publishedMissing: 'No publication time stated',
+    openTab: 'Show this page in the browser',
   },
   approval: {
     allowOnce: 'Allow once',

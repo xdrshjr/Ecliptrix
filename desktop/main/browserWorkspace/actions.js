@@ -44,9 +44,39 @@ function createActions(deps) {
     }
   }
 
+  /**
+   * Main-content extraction rides on the SAME snapshot command (spec D-A3), so it inherits
+   * SNAPSHOT_TIMEOUT_MS instead of adding a timeout tier. Clamped here AND in the backend.
+   * A page-script failure returns a code, never an exception: the plain snapshot is mainline.
+   */
+  async function extractArticle(tab, args) {
+    const opts = { blocks_from: clampInt(args.article_from, 0, 399, 0),
+      blocks_max: clampInt(args.article_blocks, 1, 40, 12) }
+    let payload
+    try {
+      payload = await evalPage(tab, scripts.extractArticle, opts, SNAPSHOT_TIMEOUT_MS)
+    } catch {
+      return { ok: false, code: 'page_script_error' }
+    }
+    if (payload && payload.ok) recordArticle(tab, payload.article)
+    return payload
+  }
+
+  // The rail entry is pushed HERE, not from `runOnTab`: that maps `cmd.type` to an activity
+  // label at command start, when the extraction result does not exist yet (spec P1-6).
+  function recordArticle(tab, article) {
+    if (!article) return
+    stateStore.pushActivity({
+      kind: 'article', tabId: tab.id, label: String(article.title || '\u6b63\u6587').slice(0, 80),
+      articleMeta: { title: String(article.title || ''), site: String(article.site || ''),
+        publishedAt: article.published_at || null, totalBlocks: Number(article.total_blocks) || 0,
+        chars: Number(article.char_count) || 0 } })
+  }
+
   async function takeSnapshot(tab, args = {}) {
     tab.snapshotVersion = (tab.snapshotVersion || 0) + 1
     const snap = await evalPage(tab, scripts.snapshotPage, snapshotArgs(args, tab), SNAPSHOT_TIMEOUT_MS)
+    if (args.article === true) snap.article = await extractArticle(tab, args)
     tabs.touch(tab)
     return {
       tab_id: tab.id, snapshot_version: tab.snapshotVersion, ...snap, profile: { name: deps.profiles.active().name },

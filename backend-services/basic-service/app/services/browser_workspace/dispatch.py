@@ -8,9 +8,8 @@ import asyncio
 
 from app.models.web_research_models import (
     ISOLATED_ACTIONS, WebResearchError)
-from . import images as image_candidates
+from . import article as article_mod, images as image_candidates
 
-# 这些回落原因要告诉模型（页面未登录、动作集更少，须如实转述用户）。
 NOTABLE_FALLBACKS = frozenset({"workspace_locked", "consent_denied",
                                "consent_required"})
 _service = None
@@ -31,7 +30,7 @@ def set_workspace_service(service):
     _service = service
 
 
-ISOLATED_TIMEOUT_S = 20  # 路由层放大到 135 s 只为等人；沙盒卡死仍应 20 s 报错
+ISOLATED_TIMEOUT_S = 20  # 沙盒卡死仍应 20 s 报错（路由层放大到 135 s 只为等人）
 
 
 def _isolated():
@@ -117,15 +116,16 @@ class Dispatch:
         return result
 
     async def read(self, run, session_id, max_bytes=4000, screenshot=False,
-                   elements_max=None, images=False, images_max=None):
+                   elements_max=None, images=False, images_max=None, article=None):
         service = get_workspace_service()
         if service.owns(session_id):
             return await service.read(run, session_id, max_bytes, screenshot,
-                                      elements_max, images, images_max)
+                                      elements_max, images, images_max, article)
         result = await _bounded(
             _isolated().read(run, session_id, max_bytes, screenshot))
         result["mode"] = "isolated"
-        if images:  # 沙盒只读候选，不可保存（spec P2-5 / R-4）
+        if article: article_mod.unsupported(result)  # E22：沙盒无页面脚本通路
+        if images:
             await image_candidates.attach_isolated(run, session_id, result,
                                                    images_max)
         return result

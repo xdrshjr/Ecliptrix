@@ -107,6 +107,7 @@ const BROWSER_WORKSPACE_MODULES = [
   'loginHeuristics',
   'controlServer', 'resourceFetch', 'bridge', 'workspaceApi', 'viewShortcuts', 'contextMenu',
   'pageScripts/index', 'pageScripts/snapshot', 'pageScripts/act', 'pageScripts/overlay', 'pageScripts/sentinel',
+  'pageScripts/article',
 ].map((name) => `main/browserWorkspace/${name}.js`)
 
 const APP_PAYLOADS = [

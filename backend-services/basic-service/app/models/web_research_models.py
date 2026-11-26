@@ -25,6 +25,7 @@ STATUS = {
     "downloads_disabled": 403, "network_disabled": 403,
     # 生命周期
     "artifact_not_found": 404, "image_not_found": 404,
+    "article_not_found": 404,
     "stale_element": 409, "idempotency_conflict": 409,
     "run_closed": 410, "artifact_expired": 410,
     "candidate_expired": 410, "call_cancelled": 410,
@@ -91,6 +92,7 @@ FAILURE_CLASS = {
         "unsupported_content_type", "unsupported_media_type",
         "no_sources", "media_validation_failed", "artifact_not_found",
         "image_not_found", "inline_image_unsupported",
+        "article_not_found",
         "artifact_expired", "candidate_expired", "artifact_quota_exceeded",
         "response_too_large", "screenshot_too_large",
         "browser_budget_exceeded", "context_budget_exceeded",
@@ -150,7 +152,8 @@ NON_STICKY_CODES = frozenset({
     "workspace_locked", "screenshot_unavailable", "user_in_control",
     "user_took_over", "browser_busy", "tab_crashed", "tab_closed",
     "stale_snapshot", "stale_ref", "element_not_found", "element_obscured",
-    "handoff_timeout", "handoff_cancelled"})
+    "handoff_timeout", "handoff_cancelled",
+    "article_not_found"})
 
 MODEL_ERRORS = frozenset(
     key for key in STATUS if key.startswith('research_model_')
@@ -270,6 +273,9 @@ class BrowserReadRequest(StrictRequest):
     elements_max: int | None = Field(default=None, ge=20, le=120)
     images: bool = False
     images_max: int = Field(default=40, ge=20, le=100)
+    article: bool = False
+    article_from: int = Field(default=0, ge=0, le=399)
+    article_blocks: int = Field(default=12, ge=1, le=40)
 
 
 class BrowserSaveImageRequest(StrictRequest):
