@@ -129,11 +129,15 @@ Invariants — breaking one is a defect:
 6. **Timeout chain:** `browser_open/act/request_user` backend 135 s / Next `140000` ms (they may wait on a human); `read`/`close` unchanged. Change both ends together.
 7. `hardening.js` registers each `webRequest` event once per session (Electron keeps one listener); `navigationGuard.js` mirrors `egress_policy` and both consume `__fixtures__/url-guard-vectors.json`.
 8. `browser_workspace` settings category has FIVE registration points (YAML, `system_settings_service`, `system_settings_models`, `CATEGORY_METADATA`, frontend panel/sidebar) — missing `CATEGORY_METADATA` silently 404s the panel. Workspace-sourced artifacts use `retention_days=1`.
+9. **Cookie values never leave the main process.** The login-completion suggestion (`loginHeuristics.js`) reads only `name|domain|path` + flags, only while a `login:` handoff is pending, and only ever SUGGESTS (`approval.suggestComplete`) — it never completes an approval. `isLoginHandoff` (`reason.startsWith('login:')`) is the single parse point and is pinned from both ends (`loginHeuristics.test.js`, backend `test_handoff_reason_prefix_is_the_login_contract`).
+10. **The L0 prompt ceiling is derived, never typed.** `L0_PROMPT_CHAR_CEILING` (19 800) MUST equal `L0_NO_INDEX_CHAR_MAX` (18 500) + `SKILL_INDEX_TOTAL_MAX_CHARS` (1 300). `promptBudgetRatchet.test.ts` asserts that identity and ratchets 12 prompt segments plus 12 hard-constraint rule anchors, so a prompt edit either stays inside its own segment or fails by name. Do not hand-write a new ceiling.
+11. **Packaged evidence requires a fresh package.** `desktop/scripts/lib/assert-fresh-build.js` runs FIRST in `browser-workspace-smoke.js` and aborts on a stale or incomplete `win-unpacked` tree: main modules present inside `app.asar`, renderer newer than `src/`, payload list matching disk in both directions, no control-token literal. A smoke pass on an old package proves nothing.
 
 ```bash
 # from desktop/
-npm run test:browser     # 10 suites / 83 checks, pure node (fake Electron + jsdom)
+npm run test:browser     # 13 suites / 110 checks, pure node (fake Electron + jsdom)
 npm run spike:browser    # real Electron (unset ELECTRON_RUN_AS_NODE first)
+npm run test:browser:e2e # real Electron + real backend (isolated tmp userData/DB/STORAGE); not in test:browser
 # backend:  pytest tests -k "browser or workspace" --ignore=data
 ```
 

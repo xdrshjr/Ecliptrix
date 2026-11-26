@@ -175,6 +175,16 @@
   background: var(--ws-agent-soft);
   color: var(--ws-text);
 }
+.bw-btn[data-suggested='true'] {
+  border-color: var(--ws-agent);
+  background: var(--ws-agent-soft);
+  color: var(--ws-text);
+  animation: bw-suggest-pulse 1.6s ease-out 2;
+}
+@keyframes bw-suggest-pulse {
+  0% { box-shadow: 0 0 0 0 var(--ws-agent-line); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
 .bw-btn-danger { color: var(--ws-danger); border-color: color-mix(in srgb, var(--ws-danger) 40%, transparent); }
 .bw-icon-btn {
   display: inline-flex;
@@ -410,6 +420,20 @@
   animation: bw-breathe 2.4s ease-in-out infinite;
 }
 .bw-viewport { position: relative; flex: 1; min-width: 0; min-height: 0; background: var(--ws-bg); }
+.bw-frozen-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-border-subtle);
+  color: var(--ws-text-secondary);
+  font-size: 11px;
+  pointer-events: none;
+  white-space: nowrap;
+}
 .bw-frozen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
 .bw-state,
 .bw-unavailable {
@@ -628,7 +652,8 @@
   .bw-footer-btn[data-bw-state='agent-active'] .bw-footer-icon::before,
   .bw-dots,
   .bw-spinner,
-  .bw-approval-timer { animation: none; }
+  .bw-approval-timer,
+  .bw-btn[data-suggested='true'] { animation: none; }
   .bw-dots { width: 1.2em; }
   .bw-stage[data-agent]::after { opacity: 1; }
   .bw-footer-btn[data-bw-state='agent-active'] .bw-footer-icon::before {

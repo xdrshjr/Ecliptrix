@@ -15,6 +15,7 @@ import '@/styles/browser-workspace.css';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useBrowserDockActions, useBrowserWorkspace } from '@/contexts/BrowserWorkspaceContext';
 import { fillCopy } from '@/lib/browserWorkspaceCopy';
+import { openSettings } from '@/lib/setupEvents';
 import { selectActiveTab, selectDisabledReason } from '@/lib/browserWorkspaceStore';
 import AgentActivityRail from './AgentActivityRail';
 import ApprovalBanner from './ApprovalBanner';
@@ -96,7 +97,8 @@ export default function BrowserDock() {
       </header>
 
       {unavailable ? (
-        <BrowserUnavailable reason={unavailable} />
+        <BrowserUnavailable reason={unavailable}
+          onOpenSettings={unavailable === 'disabled' ? () => openSettings('browser') : undefined} />
       ) : (
         <>
           <BrowserTabStrip tabs={workspace?.tabs ?? []} activeTabId={workspace?.activeTabId ?? null}

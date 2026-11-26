@@ -489,12 +489,17 @@ Windows 上 Cookie 由 OS 加密）。**卸载应用不会自动清除**这些�
 **测试命令**
 
 ```bash
-npm run test:browser          # 纯 node：83 项（导航守卫向量、Cookie 续期、hardening、CDP、控制服务、
-                              # jsdom 页面脚本、带假 Electron 的整条装配链）
+npm run test:browser          # 纯 node：13 套 / 110 项（导航守卫向量、Cookie 续期、hardening、CDP、控制服务、
+                              # jsdom 页面脚本、登录完成建议、带假 Electron 的整条装配链、
+                              # 打包新鲜性门禁 assert-fresh-build、走查证据表校验 check-walkthrough-table）
+npm run test:browser:e2e      # 需桌面会话 + 能启动后端的 Python：真 FastAPI ↔ 真 Electron 控制服务联调 13 项
+                              # （临时 userData/DB/STORAGE；私网放行只在临时库且先跑关闭时被拒的反例；不含 Next BFF / LLM）
 npm run spike:browser         # 需桌面会话：真实 Electron 里 13 项（含窗口最小化后点击/填写/滚动、
                               # 自家端口封禁、会话 Cookie 续期）。ELECTRON_RUN_AS_NODE 必须未设置
 npx electron scripts/browser-workspace-parking-spike.js   # 停车位置对比表
-npm run smoke-test            # 打包态：browserWorkspaceSmoke（spec §8.3 ①②③④⑦⑨⑩）
+npm run smoke-test            # 打包态：先跑 assert-fresh-build（不新鲜即中止），再跑 browserWorkspaceSmoke（spec §8.3 ①②③④⑦⑨⑩）
+node scripts/lib/assert-fresh-build.js    # 只验产物新鲜性：四项检查，任一失败退 1；无产物退 2
+node scripts/check-walkthrough-table.js   # 只验 acceptance.md 的 I2-8 表格：列名逐字、①–⑪ 齐全、三档前缀、档位统计一致
 ```
 
 后端共享 URL 向量：`main/browserWorkspace/__fixtures__/url-guard-vectors.json`

@@ -31,7 +31,10 @@ export function sameRect(a: BrowserViewRect | null, b: BrowserViewRect | null): 
 export function useViewBounds(
   elementRef: RefObject<HTMLElement | null>,
   active: boolean,
+  onRect?: (rect: BrowserViewRect | null) => void,
 ): void {
+  const onRectRef = useRef(onRect);
+  onRectRef.current = onRect;
   const lastSent = useRef<BrowserViewRect | null>(null);
 
   useEffect(() => {
@@ -41,6 +44,7 @@ export function useViewBounds(
     const send = (rect: BrowserViewRect | null) => {
       if (sameRect(lastSent.current, rect)) return;
       lastSent.current = rect;
+      onRectRef.current?.(rect);
       void bridge.setBounds?.(rect);
     };
     if (!active || !element) {
@@ -76,6 +80,7 @@ export function useViewBounds(
   useEffect(() => () => {
     if (lastSent.current === null) return;
     lastSent.current = null;
+    onRectRef.current?.(null);
     void getBrowserBridge()?.setBounds?.(null);
   }, []);
 }

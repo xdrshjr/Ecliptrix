@@ -44,6 +44,8 @@ export interface FakeBridge {
   [key: string]: unknown;
   profiles: Record<string, Fn>;
   emitState(state: BrowserWorkspaceState): void;
+  /** Simulates the main process forwarding Ctrl+L / Ctrl+Alt+B from a native page view. */
+  emitShortcut(action: 'focus-address' | 'toggle-dock'): void;
 }
 
 const OK = () => Promise.resolve({ ok: true });
@@ -51,6 +53,12 @@ const OK = () => Promise.resolve({ ok: true });
 /** Installs `window.ecliptrixDesktop.browser`; returns the fake for assertions. */
 export function installBridge(state: BrowserWorkspaceState = makeState()): FakeBridge {
   const listeners = new Set<(s: BrowserWorkspaceState) => void>();
+  const shortcutListeners = new Set<(p: { action: string }) => void>();
+  const onAction = (action: string) => (cb: () => void) => {
+    const listener = (p: { action: string }) => { if (p.action === action) cb(); };
+    shortcutListeners.add(listener);
+    return () => { shortcutListeners.delete(listener); };
+  };
   const bridge: FakeBridge = {
     state: vi.fn(() => Promise.resolve(state)),
     onStateChanged: vi.fn((cb: (s: BrowserWorkspaceState) => void) => {
@@ -59,6 +67,8 @@ export function installBridge(state: BrowserWorkspaceState = makeState()): FakeB
     }),
     onActivity: vi.fn(() => () => {}),
     onSaveResourceRequest: vi.fn(() => () => {}),
+    onFocusAddress: vi.fn(onAction('focus-address')),
+    onToggleDock: vi.fn(onAction('toggle-dock')),
     openTab: vi.fn(() => Promise.resolve({ ok: true, tabId: 'new' })),
     closeTab: vi.fn(OK), activateTab: vi.fn(OK), reorderTabs: vi.fn(OK), navigate: vi.fn(OK),
     back: vi.fn(OK), forward: vi.fn(OK), reload: vi.fn(OK), stop: vi.fn(OK),
@@ -73,6 +83,7 @@ export function installBridge(state: BrowserWorkspaceState = makeState()): FakeB
       clearData: vi.fn(OK), remove: vi.fn(OK),
     },
     emitState: (next) => listeners.forEach((cb) => cb(next)),
+    emitShortcut: (action) => Array.from(shortcutListeners).forEach((cb) => cb({ action })),
   };
   (window as unknown as { ecliptrixDesktop: unknown }).ecliptrixDesktop = { browser: bridge };
   return bridge;

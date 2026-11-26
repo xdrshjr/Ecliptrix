@@ -58,6 +58,12 @@ export interface BrowserApproval {
   createdAt: number;
   expiresAt: number;
   status: BrowserApprovalStatus;
+  /**
+   * Login handoff only: the main process thinks the sign-in is done (new session cookie, off the
+   * login page, no password box). A suggestion — the user still presses "完成". Absent on an
+   * older main process = false.
+   */
+  suggestComplete?: boolean;
 }
 
 export type BrowserActivityKind =
@@ -130,6 +136,10 @@ export interface BrowserWorkspaceBridge {
   onStateChanged(cb: (state: BrowserWorkspaceState) => void): () => void;
   onActivity(cb: (entry: BrowserActivityEntry) => void): () => void;
   onSaveResourceRequest(cb: (req: BrowserSaveResourceRequest) => void): () => void;
+  /** Keys pressed while a native page view owns focus (main process `viewShortcuts`). Optional: older main processes lack them. */
+  onShortcut?(cb: (payload: { action: string }) => void): () => void;
+  onFocusAddress?(cb: () => void): () => void;
+  onToggleDock?(cb: () => void): () => void;
   openTab(args?: { url?: string; background?: boolean }): Promise<BrowserBridgeResult<{ tabId: string }>>;
   closeTab(id: string): Promise<BrowserBridgeResult>;
   activateTab(id: string): Promise<BrowserBridgeResult>;

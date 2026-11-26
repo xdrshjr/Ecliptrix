@@ -58,6 +58,7 @@ const PortalTooltip: React.FC<PortalTooltipProps> = ({ label, children, classNam
       {pos !== null && typeof document !== 'undefined' &&
         createPortal(
           <div
+            role="tooltip"
             className="fixed z-[9999] pointer-events-none -translate-x-1/2 -translate-y-full"
             style={{ left: pos.left, top: pos.top - TOOLTIP_GAP }}
           >

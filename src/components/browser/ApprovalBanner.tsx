@@ -30,6 +30,9 @@ interface Choice {
   primary?: boolean;
 }
 
+/** The backend builds a handoff reason as `${kind}:${reason}` (login: / captcha: …); the user reads only the reason. */
+const HANDOFF_KIND_PREFIX = /^(login|captcha|confirm|other):\s*/i;
+
 function useFocusRestore(rootRef: React.RefObject<HTMLElement | null>, key: string): void {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -54,10 +57,12 @@ export default function ApprovalBanner({ approval, profileName, onResolve }: App
       ? fillCopy(copy.risky.title, {
         action: approval.target?.label ?? approval.reason, host: approval.target?.host ?? '',
       })
-      : fillCopy(copy.handoff.title, { reason: approval.reason });
+      : fillCopy(copy.handoff.title, { reason: approval.reason.replace(HANDOFF_KIND_PREFIX, '') });
   const detail = approval.kind === 'consent'
     ? `${copy.consent.body} ${fillCopy(copy.consent.scope, { profile: profileName })}`
     : approval.kind === 'risky_action' ? approval.reason : '';
+  // Login handoff the main process thinks is finished: emphasise "done", never click it for the user.
+  const suggested = approval.kind === 'handoff' && approval.suggestComplete === true;
   const choices: Choice[] = approval.kind === 'consent'
     ? [
       { label: copy.approval.onlyThisRun, decision: 'approve', primary: true },
@@ -71,7 +76,7 @@ export default function ApprovalBanner({ approval, profileName, onResolve }: App
         { label: copy.approval.deny, decision: 'deny' },
       ]
       : [
-        { label: copy.approval.done, decision: 'approve', primary: true },
+        { label: suggested ? copy.approval.suggestDone : copy.approval.done, decision: 'approve', primary: true },
         { label: copy.approval.cancel, decision: 'deny' },
       ];
 
@@ -97,6 +102,9 @@ export default function ApprovalBanner({ approval, profileName, onResolve }: App
       aria-label={title}
       onKeyDown={onKeyDown}
     >
+      {suggested && (
+        <span className="bw-sr-only" role="status" aria-live="polite">{copy.approval.suggestDone}</span>
+      )}
       <div className="bw-approval-text">
         <p className="bw-approval-title">{title}</p>
         {detail && <p className="bw-approval-detail">{detail}</p>}
@@ -108,6 +116,7 @@ export default function ApprovalBanner({ approval, profileName, onResolve }: App
             type="button"
             className={choice.primary ? 'bw-btn bw-btn-primary' : 'bw-btn'}
             data-autofocus={index === 0 ? 'true' : undefined}
+            data-suggested={suggested && choice.primary ? 'true' : undefined}
             onClick={() => onResolve(approval.id, choice.decision)}
           >
             {choice.label}

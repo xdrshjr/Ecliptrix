@@ -56,6 +56,41 @@ describe('BrowserWorkspaceProvider', () => {
     expect(store.getSnapshot().dockOpen).toBe(false);
   });
 
+  it('a_toggle_dock_shortcut_from_a_native_page_view_toggles_the_same_dock', () => {
+    const bridge = installBridge();
+    const store = makeStore();
+    renderWithProviders(<Probe />, store);
+    act(() => bridge.emitShortcut('toggle-dock'));
+    expect(store.getSnapshot().dockOpen).toBe(true);
+    act(() => bridge.emitShortcut('toggle-dock'));
+    expect(store.getSnapshot().dockOpen).toBe(false);
+  });
+
+  it('a_focus_address_shortcut_opens_a_closed_dock_and_keeps_the_request_until_consumed', () => {
+    const bridge = installBridge();
+    const store = makeStore();
+    renderWithProviders(<Probe />, store);
+    act(() => bridge.emitShortcut('focus-address'));
+    expect(store.getSnapshot().dockOpen).toBe(true);
+    expect(store.getSnapshot().addressFocusToken).toBe(1);
+    expect(store.consumeAddressFocus()).toBe(true);
+    expect(store.consumeAddressFocus()).toBe(false);
+  });
+
+  it('an_older_bridge_without_the_shortcut_methods_does_not_throw_and_unsubscribes_on_unmount', () => {
+    const bridge = installBridge();
+    const off = vi.fn();
+    (bridge.onFocusAddress as ReturnType<typeof vi.fn>).mockImplementation(() => off);
+    const { unmount } = renderWithProviders(<Probe />, makeStore());
+    unmount();
+    expect(off).toHaveBeenCalledTimes(1);
+    cleanup();
+    const legacy = installBridge();
+    delete legacy.onFocusAddress;
+    delete legacy.onToggleDock;
+    expect(() => renderWithProviders(<Probe />, makeStore())).not.toThrow();
+  });
+
   it('the_shortcut_is_inert_in_a_plain_browser', () => {
     removeBridge();
     const store = makeStore(null, { hasBridge: false });

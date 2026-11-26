@@ -124,6 +124,19 @@ function createApprovals(deps = {}) {
     })
   }
 
+  /**
+   * Flag a pending login handoff as "looks done" (suggestion only; the user still decides).
+   * @param {string} id
+   * @returns {boolean} Whether the flag was newly set.
+   */
+  function markSuggest(id) {
+    const approval = items.get(id)
+    if (!approval || approval.kind !== 'handoff' || approval.status !== 'pending' || approval.suggestComplete) return false
+    approval.suggestComplete = true
+    notify(approval)
+    return true
+  }
+
   function cancelWhere(predicate) {
     for (const a of [...items.values()]) if (a.status === 'pending' && predicate(a)) finish(a, 'cancelled')
   }
@@ -131,6 +144,7 @@ function createApprovals(deps = {}) {
   return {
     create,
     resolve,
+    markSuggest,
     wait,
     get: (id) => items.get(id) || null,
     /** @returns {object[]} Pending approvals in the renderer-visible shape (no internal fields). */
@@ -145,7 +159,7 @@ function createApprovals(deps = {}) {
 /** @param {object} a @returns {object} BrowserApproval (src/types/browserWorkspace.ts) */
 function publicView(a) {
   const { id, kind, runId, reason, target, createdAt, expiresAt, status } = a
-  return { id, kind, runId, reason, target, createdAt, expiresAt, status }
+  return { id, kind, runId, reason, target, createdAt, expiresAt, status, suggestComplete: a.suggestComplete === true }
 }
 
 module.exports = { createApprovals, publicView, DEFAULT_TTL_MS }

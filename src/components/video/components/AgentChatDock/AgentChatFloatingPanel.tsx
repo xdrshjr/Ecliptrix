@@ -2,6 +2,8 @@
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { DEFAULT_FAB_POSITION, type FabPosition } from './useDraggableFab';
+import { avoidDockRect } from './fabAvoid';
+import { useBrowserWorkspaceStore } from '@/contexts/BrowserWorkspaceContext';
 import type { DockPresence } from './useDockPresence';
 
 interface AgentChatFloatingPanelProps {
@@ -57,6 +59,22 @@ function usePanelGeometry(props: AgentChatFloatingPanelProps) {
   const { panelRef, anchor, presence, onFabOcclusionChange } = props;
   const { isHidden, settle } = presence;
   const previousRef = useRef('');
+  // 记住「打开时 FAB 落在哪」：锚点之后变了，才说明用户拖动过，此后以用户为准
+  // （spec §2.4.2 / R-7）。不能用「避让过一次」当判据——ResizeObserver 会让
+  // recompute 反复运行，那样第二次就会退回原始锚点，避让等于没做。
+  const openedAnchorRef = useRef<{ right: number; bottom: number } | null>(null);
+  // 订阅而非一次性读取：Dock 视口会随窗口缩放与分隔条拖动变化，且它是
+  // 视口坐标（P0-2），换算需要父容器的实时视口原点。
+  const workspace = useBrowserWorkspaceStore();
+  const [dockRect, setDockRect] = useState(
+    () => workspace.getSnapshot().dockViewportRect,
+  );
+  useLayoutEffect(() => {
+    setDockRect(workspace.getSnapshot().dockViewportRect);
+    return workspace.subscribe(() => {
+      setDockRect(workspace.getSnapshot().dockViewportRect);
+    });
+  }, [workspace]);
   const [geometry, setGeometry] = useState<PanelGeometry>({
     right: DEFAULT_FAB_POSITION.right,
     bottom: DEFAULT_FAB_POSITION.bottom + FAB_HALF,
@@ -66,6 +84,7 @@ function usePanelGeometry(props: AgentChatFloatingPanelProps) {
     if (isHidden) {
       onFabOcclusionChange(false);
       previousRef.current = '';
+      openedAnchorRef.current = null;
       return;
     }
     const element = panelRef.current;
@@ -79,8 +98,28 @@ function usePanelGeometry(props: AgentChatFloatingPanelProps) {
       if (!width || !height || !panelWidth || !panelHeight) return;
       const fabRight = anchor?.right ?? DEFAULT_FAB_POSITION.right;
       const fabBottom = anchor?.bottom ?? DEFAULT_FAB_POSITION.bottom;
-      const right = clamp(fabRight, SAFE, width - panelWidth - SAFE);
-      const bottom = clamp(fabBottom + FAB_HALF,
+      // Dock 视口是视口坐标，面板几何是父容器坐标：换算交给纯函数，这里只提供
+      // 父容器的视口原点（P0-2）。不做换算直接比较会偏出几百像素，然后被 clamp
+      // 夹回边界——表现是「面板莫名贴边」或「该避让时不避让」。
+      if (!openedAnchorRef.current) {
+        openedAnchorRef.current = { right: fabRight, bottom: fabBottom };
+      }
+      const userMoved = openedAnchorRef.current.right !== fabRight
+        || openedAnchorRef.current.bottom !== fabBottom;
+      const avoided = userMoved ? { right: fabRight, bottom: fabBottom }
+        : avoidDockRect({
+          anchor: { right: fabRight, bottom: fabBottom },
+          panel: { width: panelWidth, height: panelHeight },
+          parent: { width, height },
+          dockRect,
+          dockRectOffset: {
+            x: (parent.getBoundingClientRect?.().left ?? 0),
+            y: (parent.getBoundingClientRect?.().top ?? 0),
+          },
+          fabHalf: FAB_HALF, safe: SAFE, gap: 12,
+        });
+      const right = clamp(avoided.right, SAFE, width - panelWidth - SAFE);
+      const bottom = clamp(avoided.bottom + FAB_HALF,
         SAFE, height - panelHeight - SAFE);
       const panelLeft = width - right - panelWidth;
       const panelTop = height - bottom - panelHeight;
@@ -108,7 +147,7 @@ function usePanelGeometry(props: AgentChatFloatingPanelProps) {
       observer?.disconnect();
       window.removeEventListener('resize', recompute);
     };
-  }, [anchor, isHidden, panelRef, settle, onFabOcclusionChange]);
+  }, [anchor, dockRect, isHidden, panelRef, settle, onFabOcclusionChange]);
   return geometry;
 }
 

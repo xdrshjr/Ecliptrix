@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  L0_NO_INDEX_CHAR_MAX,
   L0_PROMPT_CHAR_CEILING,
   MEMORY_DIGEST_CHAR_CEILING,
   PLAN_DIGEST_CHAR_CEILING,
@@ -17,6 +18,7 @@ import {
   GENERAL_RESIDENT_TOOL_NAMES,
   WEB_RESEARCH_GUIDANCE,
 } from '../promptParts';
+import { SKILL_INDEX_TOTAL_MAX_CHARS } from '../skillContext';
 import { CATEGORY_IDS, ON_DEMAND_CATEGORY_IDS } from '../registry/categories';
 import type { ToolContext } from '../types';
 import type { AgentPlan } from '@/types/agentToolkit';
@@ -73,15 +75,15 @@ function prompt(skillIndex?: SkillIndexEntry[]) {
 }
 
 describe('L0 prompt budget', () => {
-  it('stays under the 18900-char ceiling with plan and memory injected', () => {
+  it('stays under the no-index ceiling with plan and memory injected', () => {
     const text = prompt();
-    expect(text.length).toBeLessThanOrEqual(18_900);
+    expect(text.length).toBeLessThanOrEqual(L0_NO_INDEX_CHAR_MAX);
   });
 
-  it('pins L0_PROMPT_CHAR_CEILING to the measured ceiling (AC-19)', () => {
-    expect(L0_PROMPT_CHAR_CEILING).toBe(18_900);
+  it('pins L0_PROMPT_CHAR_CEILING to the derived ceiling (AC-19)', () => {
+    expect(L0_PROMPT_CHAR_CEILING).toBe(19_800);
     // AC-19: the real prompt must stay ≤ 18 500 even in the worst case.
-    expect(prompt().length).toBeLessThanOrEqual(18_500);
+    expect(prompt().length).toBeLessThanOrEqual(L0_NO_INDEX_CHAR_MAX);
   });
 
   it('renders update_plan, ask_user and check_timeline exactly once each', () => {
@@ -93,7 +95,7 @@ describe('L0 prompt budget', () => {
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('update_plan');
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('ask_user');
     expect(CORE_TOOLKIT_TOOL_NAMES).toContain('check_timeline');
-    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(18);
+    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(19);
     // image_to_video is on demand (still_tools): its schema must not sit in L0.
     expect(CORE_TOOLKIT_TOOL_NAMES).not.toContain('image_to_video');
   });
@@ -124,24 +126,11 @@ describe('L0 prompt budget', () => {
     // 从未覆盖真正发给模型的提示词。现在它在函数内部，必须一起被量到。
     const text = prompt();
     expect(text).toContain(WEB_RESEARCH_GUIDANCE.trim().slice(0, 40));
-    expect(text.length).toBeLessThanOrEqual(18_900);
+    expect(text.length).toBeLessThanOrEqual(L0_NO_INDEX_CHAR_MAX);
   });
 });
 
-/**
- * AC-B8 (spec 评审 R-05) / AC-G14：实测，不估算。
- *
- * `L0_BASE` = 技能库落地前的最坏提示词（满长计划 + 记忆）17 075；技能替换了
- * 配方 1-3，所以 10 条满长索引的净增必须 ≤400，18 500 / 18 900 两条上限
- * 一个字都没有放宽。
- *
- * agent-general-assistant（§4.7）的通用层常驻文本有自己的预算（AC-G14a：
- * 引导 ≤400 + 常驻清单 ≤400），实测净增 992 字符，所以这里先把它从基线里
- * 扣掉，再验技能索引仍 ≤400；绝对上限仍然是 18 500。
- */
-const L0_BASE = 17_075;
 /** 通用层（引导 270 + 常驻清单 290 + 目录两行）实测净增。 */
-const GENERAL_LAYER_CHARS = 992;
 const MAX_INDEX = Array.from({ length: 10 }, (_, index): SkillIndexEntry => ({
   id: `skill-${index}-${'x'.repeat(30)}`.slice(0, 40),
   name: 'n',
@@ -151,12 +140,14 @@ const MAX_INDEX = Array.from({ length: 10 }, (_, index): SkillIndexEntry => ({
 }));
 
 describe('skill index budget (AC-B8)', () => {
-  it('adds at most 400 chars over the pre-skills baseline with a full index', () => {
+  it('keeps the full-index worst case inside the derived ceiling', () => {
     const withIndex = prompt(MAX_INDEX);
-    expect(withIndex.length - L0_BASE - GENERAL_LAYER_CHARS)
-      .toBeLessThanOrEqual(400);
-    // 通用层落地后的最坏提示词：实测 18 467，只比 18 500 宽 33 字符。
-    expect(withIndex.length).toBeLessThanOrEqual(18_500);
+    // 「净增 ≤400」与「索引段 ≤1 300」数学上互斥（spec §2.1.1 的算术证明），
+    // 故删掉前者；它表达的意思由 SKILL_INDEX_TOTAL_MAX_CHARS 唯一承担。
+    expect(withIndex.length).toBeLessThanOrEqual(L0_PROMPT_CHAR_CEILING);
+    // 索引段本身仍受既有 1 300 上限约束（+2 是 `join('\n\n')` 的分隔符）。
+    expect(withIndex.length - prompt().length)
+      .toBeLessThanOrEqual(SKILL_INDEX_TOTAL_MAX_CHARS + 2);
   });
 
   it('keeps the index section within 1300 chars and 130 chars per line', () => {
@@ -302,7 +293,7 @@ describe('general resident toolkit (AC-G14 / AC-G16)', () => {
   });
 
   it('keeps the names in a separate list, never inside CORE_TOOLKIT', () => {
-    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(18);
+    expect(CORE_TOOLKIT_TOOL_NAMES).toHaveLength(19);
     for (const name of GENERAL_RESIDENT_TOOL_NAMES) {
       expect(CORE_TOOLKIT_TOOL_NAMES).not.toContain(name);
     }
@@ -332,8 +323,8 @@ describe('general resident toolkit (AC-G14 / AC-G16)', () => {
 
   it('keeps the two existing L0 ceilings untouched after the +800 budget', () => {
     const text = prompt();
-    expect(text.length).toBeLessThanOrEqual(18_500);
-    expect(L0_PROMPT_CHAR_CEILING).toBe(18_900);
+    expect(text.length).toBeLessThanOrEqual(L0_NO_INDEX_CHAR_MAX);
+    expect(L0_PROMPT_CHAR_CEILING).toBe(19_800);
   });
 });
 

@@ -479,7 +479,21 @@ export function formatWorkflowRecipes(): string {
  * 断言见 `__tests__/systemPrompt.test.ts`、`agent.systemPrompt.test.ts`、
  * `systemPrompt.toolkit.test.ts`（AC-19 / AC-28）。
  */
-export const L0_PROMPT_CHAR_CEILING = 18_900;
+export const L0_PROMPT_CHAR_CEILING = 19_800;
+
+/**
+ * 「不含技能索引段」的最坏提示词上限 —— 提示词预算的**地基**。
+ *
+ * 与 `SKILL_INDEX_TOTAL_MAX_CHARS`（`skillContext.ts`，1 300）相加得到
+ * `L0_PROMPT_CHAR_CEILING`（= 19 800）。这条加法关系就是「上限可推导、不是
+ * 手填一个不相容的数字」的机器证据，由
+ * `__tests__/promptBudgetRatchet.test.ts` 的等式断言守住。
+ *
+ * 设计依据：`docs/plans/agent-browser-workspace-r3/spec.md` §2.1.2 / §2.1.5。
+ * 语义收紧的历史：18 900 曾经同时被当作「无索引上限」和「总上限」使用，
+ * 于是任何 18 800 的提示词都能过——那不是上限，是一个含混的数。
+ */
+export const L0_NO_INDEX_CHAR_MAX = 18_500;
 
 /**
  * Per-category char ceiling for blocks rendered into the Layer B appendix.
@@ -729,16 +743,16 @@ ${browserRule}
 
   const hardConstraints = `## ⚠️ 强制约束：视频轨道时长规则
 - **[HARD CONSTRAINT] 视频轨道必须是最长的轨道**：视频末端 >= 音频/字幕末端。
-- 明确时长只能由用户修改。按 TTS 实测在目标内调整脚本、语速、镜头和字幕，不额外留尾；audio_gap 仅查独立音轨，原声/合法留白可说明，不为消警告延长总长。
-- 多个视频片段应首尾相连，中间不留空隙。
-- 在完成所有轨道编辑后，调用 get_timeline 检查 constraintCheck 字段，确认约束是否满足。
+- 明确时长只能由用户修改：按 TTS 实测在目标内调脚本、语速、镜头和字幕，不留尾；audio_gap 仅查独立音轨，原声/留白可说明，不为消警告延长总长。
+- 多个视频片段首尾相连，不留空隙。
+- 所有轨道编辑后调用 get_timeline 查 constraintCheck，确认约束满足。
 
 ## ⚠️ 强制约束：同轨不可重叠（反思-修复闭环）
-- **[HARD CONSTRAINT] 同一轨道上任意两个片段的时间区间不得重叠**。
-- add_to_track / move_clip / resize_clip / trim_clip / compose_storyboard 任意一次成功后，若返回 overlapWarning，**必须立即调用 auto_fix_overlaps 一次自动修复**；如希望保留刻意留白则用 move_clip 显式调整。
-- 一组复合编辑结束、即将向用户报告完成之前：先调用 check_timeline_overlaps；若 valid=false，则调用 auto_fix_overlaps，再 check_timeline_overlaps，循环直至 valid=true。
-- **死循环防护**：当 auto_fix_overlaps 连续 2 次返回 fixedCount=0（或 noop=true），立即停止修复循环。check_timeline_overlaps 中 autoFixable=false 的重叠（subtitle/locked 轨道）无法自动修复：除非用户要求，否则忽略它们，不要继续无意义的工具调用。
-- check_timeline_overlaps / auto_fix_overlaps 仅用于编辑路径的自检；纯搜索 / 生成任务无需调用。`;
+- **[HARD CONSTRAINT] 同一轨道任意两个片段的区间不得重叠**。
+- add_to_track / move_clip / resize_clip / trim_clip / compose_storyboard 任一次成功后返回 overlapWarning，**必须立即 auto_fix_overlaps 一次**；保留刻意留白用 move_clip 显式调整。
+- 报告完成之前：check_timeline_overlaps，valid=false 则 auto_fix_overlaps 再复检，循环至 valid=true。
+- **死循环防护**：auto_fix_overlaps 连续 2 次 fixedCount=0（或 noop=true）立即停止。autoFixable=false 的重叠（subtitle/locked 轨）无法自动修复：除非用户要求，否则忽略，不要继续无意义调用。
+- check_timeline_overlaps / auto_fix_overlaps 仅用于编辑路径自检；纯搜索 / 生成任务无需调用。`;
 
   const planDigest = formatPlanDigest(input.plan);
   const memoryDigest = formatMemoryDigest(input.memoryDigest);

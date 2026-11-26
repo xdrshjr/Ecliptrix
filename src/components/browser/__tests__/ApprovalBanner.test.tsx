@@ -53,6 +53,34 @@ describe('ApprovalBanner', () => {
     expect(screen.getByRole('button', { name: 'Allow similar actions on this site this run' })).toBeTruthy();
   });
 
+  it('a_login_handoff_the_main_process_thinks_is_done_emphasises_done_and_never_clicks_it', () => {
+    const { onResolve } = mount(makeApproval({ kind: 'handoff', reason: 'sign in', suggestComplete: true }));
+    const button = screen.getByRole('button', { name: 'Looks signed in — click to finish' });
+    expect(button.getAttribute('data-suggested')).toBe('true');
+    expect(screen.getByRole('status').textContent).toContain('Looks signed in');
+    expect(onResolve).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    expect(onResolve).toHaveBeenCalledWith('ap-1', 'approve');
+  });
+
+  it('without_suggestComplete_the_handoff_keeps_the_plain_done_button', () => {
+    mount(makeApproval({ kind: 'handoff', reason: 'sign in' }));
+    const button = screen.getByRole('button', { name: "I'm done" });
+    expect(button.getAttribute('data-suggested')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('suggestComplete_is_ignored_for_non_handoff_approvals', () => {
+    mount(makeApproval({ kind: 'consent', suggestComplete: true }));
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('a_handoff_title_shows_the_reason_without_the_backend_kind_prefix', () => {
+    mount(makeApproval({ kind: 'handoff', reason: 'login:sign in to Zhihu' }));
+    expect(screen.getByRole('alertdialog').getAttribute('aria-label'))
+      .toBe('The Agent needs you to: sign in to Zhihu');
+  });
+
   it('handoff_has_done_and_cancel', () => {
     const { onResolve } = mount(makeApproval({ kind: 'handoff', reason: 'sign in to Zhihu' }));
     expect(screen.getByRole('alertdialog').getAttribute('aria-label'))

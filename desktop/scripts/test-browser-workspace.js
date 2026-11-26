@@ -14,7 +14,15 @@ const LOADERS = {
   control: () => require('../main/browserWorkspace/control.test.js'),
   controlServer: () => require('../main/browserWorkspace/controlServer.test.js'),
   misc: () => require('../main/browserWorkspace/misc.test.js'),
+  loginHeuristics: () => require('../main/browserWorkspace/loginHeuristics.test.js'),
   integration: () => require('../main/browserWorkspace/integration.test.js'),
+  // Packaged-build freshness gate (spec agent-browser-workspace-r3 §3.2):
+  // proves the package under test is complete and newer than src/, so the
+  // smoke can never again report a pass on a stale win-unpacked tree.
+  assertFreshBuild: () => require('./lib/assert-fresh-build.test.js'),
+  // Walkthrough-evidence gate (spec agent-browser-workspace-r3 §3.3): validates
+  // the I2-8 table's column names, ①–⑪ rows, three-tier prefixes and tally.
+  checkWalkthroughTable: () => require('./check-walkthrough-table.test.js'),
 }
 
 async function main() {

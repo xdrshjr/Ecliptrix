@@ -26,10 +26,11 @@ const { createResourceFetcher } = require('./resourceFetch')
 const { registerBrowserIpc } = require('./bridge')
 const { createWorkspaceApi } = require('./workspaceApi')
 const { createSettingsReader } = require('./settings')
-const { attachShortcuts } = require('./viewShortcuts')
+const { attachShortcuts, forwardToRenderer } = require('./viewShortcuts')
 const { attachContextMenu } = require('./contextMenu')
 const { checkUrl: guardCheckUrl } = require('./navigationGuard')
 const { hideAgentOverlay, buildCall } = require('./pageScripts')
+const { createLoginWatchers } = require('./loginHeuristics')
 
 const STATE_CHANNEL = 'browser:state-changed'
 const ACTIVITY_CHANNEL = 'browser:activity'
@@ -141,7 +142,7 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
 
   const approvals = createApprovals({
     onChange: (approval) => {
-      if (approval.kind === 'handoff' && approval.status !== 'pending') control.returnControl()
+      if (approval.kind === 'handoff' && approval.status !== 'pending') { control.returnControl(); loginWatchers.stop(approval.id) }
       touch()
     },
     onResolved: (approval, decision) => {
@@ -164,6 +165,9 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
 
   const viewHost = createViewHost({ WebContentsView: electron.WebContentsView, getWin })
   const cdp = createCdpEngine({ logger })
+  const loginWatchers = createLoginWatchers({ onSuggest: (id) => approvals.markSuggest(id),
+    getCookies: () => getSession(partitionFor(tabs.profileId())).cookies.get({}),
+    evaluate: async (tab, js, timeoutMs) => { await cdp.ensure(tab.id, tab.wc); return cdp.evalIsolated(tab.id, js, { timeoutMs }) } })
 
   const control = createControl({
     getSettings: () => settings.get(), hasPendingApproval: () => approvals.hasPending(), onChange: touch,
@@ -203,7 +207,8 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
 
   function handleShortcut(action) {
     const tab = tabs.active()
-    if (action === 'new-tab') { tabs.open({}); send(SHORTCUT_CHANNEL, { action: 'focus-address' }); return }
+    const forward = (name) => forwardToRenderer({ getWin, send, channel: SHORTCUT_CHANNEL }, name)
+    if (action === 'new-tab') { tabs.open({}); forward('focus-address'); return }
     if (action === 'close-tab' && tab) { tabs.close(tab.id); return }
     if (action === 'reload' && tab) { api.reload(tab.id); return }
     if (action === 'back' && tab) { api.back(tab.id); return }
@@ -215,7 +220,7 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
       tabs.setActive(list[(index + step + list.length) % list.length].id)
       return
     }
-    send(SHORTCUT_CHANNEL, { action })
+    forward(action)
   }
 
   function onWebContents(tab, wc) {
@@ -277,7 +282,7 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
     if (body.kind === 'handoff') {
       control.takeOver()
       const handoffTab = (typeof body.tab_id === 'string' && tabs.get(body.tab_id)) || tabs.agentTabFor(body.run_id)
-      if (handoffTab) tabs.setActive(handoffTab.id)
+      if (handoffTab) { tabs.setActive(handoffTab.id); loginWatchers.start(approval, handoffTab) }
       stateStore.pushActivity({ kind: 'handoff', label: `请你完成：${String(body.reason || '').slice(0, 50)}` })
     }
     return { approval_id: approval.id }
@@ -315,6 +320,7 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
     locked = next
     viewHost.setLocked(next)
     if (next) {
+      loginWatchers.stopAll()
       approvals.cancelAll()
       server.abortAll()
     } else {
@@ -364,6 +370,7 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
     getState: stateStore.getState,
     async stop() {
       clearInterval(idleTimer)
+      loginWatchers.stopAll()
       if (unsubscribeAuth) unsubscribeAuth()
       try { tabs.persistNow() } catch { /* best effort at quit */ }
       for (const { persister } of sessions.values()) { await persister.flush(); persister.detach() }

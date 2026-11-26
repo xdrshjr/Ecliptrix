@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BrowserDock from '../BrowserDock';
 import { DOCK_ENTER_MS } from '../useDockLifecycle';
+import { collectOccluderRects } from '../occlusion';
 import {
   installBridge, makeApproval, makeState, makeStore, makeTab, removeBridge, renderWithProviders,
 } from './testUtils';
@@ -118,6 +119,33 @@ describe('BrowserDock', () => {
     expect(screen.getByText('The browser workspace is turned off in Settings')).toBeTruthy();
   });
 
+  it('offers_open_settings_only_when_the_workspace_is_turned_off_there', () => {
+    installBridge();
+    const opened = vi.fn();
+    window.addEventListener('ecliptrix-open-settings', opened);
+    renderWithProviders(<BrowserDock />, makeStore(makeState({ enabled: false }), { open: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ item: 'browser' });
+    window.removeEventListener('ecliptrix-open-settings', opened);
+    cleanup();
+    renderWithProviders(<BrowserDock />, makeStore(makeState({ available: false }), { open: true }));
+    expect(screen.queryByRole('button', { name: 'Open settings' })).toBeNull();
+  });
+
+  it('ctrl_l_from_a_page_view_opens_a_closed_dock_and_focuses_then_selects_the_address_bar', async () => {
+    const bridge = installBridge();
+    const store = makeStore(makeState());
+    renderWithProviders(<BrowserDock />, store);
+    expect(screen.queryByLabelText('Address')).toBeNull();
+    act(() => bridge.emitShortcut('focus-address'));
+    await settle();
+    const input = await screen.findByRole('textbox', { name: /address/i });
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect((input as HTMLInputElement).selectionEnd).toBe((input as HTMLInputElement).value.length);
+    // The request is consumed: closing and reopening the Dock does not steal focus again.
+    expect(store.consumeAddressFocus()).toBe(false);
+  });
+
   it('shows_the_privacy_note_once_and_remembers_the_acknowledgement', () => {
     installBridge();
     const store = makeStore(makeState(), { open: true });
@@ -146,9 +174,34 @@ describe('BrowserDock', () => {
     await waitFor(() => expect(bridge.captureFrozen).toHaveBeenCalled());
     await waitFor(() => expect(document.querySelector('.bw-frozen')).not.toBeNull());
     expect(bridge.setVisible).toHaveBeenLastCalledWith(false);
+    // The "paused" hint explains the still frame — and must itself never count as an occluder
+    // (otherwise the viewport could never leave the frozen state).
+    const hint = await screen.findByText('Covered by a floating layer · live view paused');
+    expect(hint.getAttribute('data-native-inflow')).toBe('true');
+    for (const attribute of ['role', 'data-overlay', 'data-native-occluder']) {
+      expect(hint.hasAttribute(attribute)).toBe(false);
+    }
+    expect(collectOccluderRects(document)).toHaveLength(1);
 
     act(() => { layer.remove(); });
     await waitFor(() => expect(bridge.setVisible).toHaveBeenLastCalledWith(true));
     await waitFor(() => expect(document.querySelector('.bw-frozen')).toBeNull());
+    expect(screen.queryByText('Covered by a floating layer · live view paused')).toBeNull();
+  });
+
+  it('publishes_the_viewport_rectangle_for_floating_assistants_and_clears_it_on_close', async () => {
+    installBridge();
+    const store = makeStore(makeState(), { open: true });
+    renderWithProviders(<BrowserDock />, store);
+    await settle();
+    const viewport = document.querySelector<HTMLElement>('[data-browser-viewport]')!;
+    viewport.getBoundingClientRect = () => ({
+      left: 10, top: 40, right: 610, bottom: 500, width: 600, height: 460, x: 10, y: 40, toJSON: () => ({}),
+    });
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    await waitFor(() => expect(store.getSnapshot().dockViewportRect)
+      .toEqual({ left: 10, top: 40, right: 610, bottom: 500 }));
+    act(() => store.closeDock());
+    await waitFor(() => expect(store.getSnapshot().dockViewportRect).toBeNull());
   });
 });

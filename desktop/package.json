@@ -16,6 +16,7 @@
     "test:auth": "node scripts/test-auth.js",
     "test:browser": "node scripts/test-browser-workspace.js",
     "spike:browser": "electron scripts/browser-workspace-spike.js",
+    "test:browser:e2e": "electron scripts/browser-workspace-e2e.js",
     "clean": "node scripts/build.js --clean"
   },
   "devDependencies": {

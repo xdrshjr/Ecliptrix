@@ -1,4 +1,5 @@
 import type { IntegrationId } from '@/lib/api/integrations';
+import type { SettingsMenuItem } from '@/components/settings/SettingsSidebar';
 
 /**
  * Event name kept from the pre-wizard setup guide so every existing listener
@@ -48,4 +49,16 @@ export function openSetupWizard(focus?: SetupWizardFocus): void {
   window.dispatchEvent(
     new CustomEvent<OpenSetupWizardDetail>(OPEN_SETUP_WIZARD_EVENT, { detail: { focus } }),
   );
+}
+
+/** Asks the page to open the settings centre on one item (e.g. the browser panel's "打开设置"). */
+export const OPEN_SETTINGS_EVENT = 'ecliptrix-open-settings';
+
+export interface OpenSettingsDetail {
+  item?: SettingsMenuItem;
+}
+
+export function openSettings(item?: SettingsMenuItem): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<OpenSettingsDetail>(OPEN_SETTINGS_EVENT, { detail: { item } }));
 }

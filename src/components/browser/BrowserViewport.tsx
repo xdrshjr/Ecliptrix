@@ -12,6 +12,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useBrowserWorkspaceStore } from '@/contexts/BrowserWorkspaceContext';
 import { getBrowserBridge } from '@/lib/api/browserBridge';
 import type { BrowserTabInfo } from '@/types/browserWorkspace';
 import { useNativeOcclusion } from './useNativeOcclusion';
@@ -83,7 +84,10 @@ const BrowserViewport: React.FC<BrowserViewportProps> = ({
   const ref = useRef<HTMLDivElement>(null);
   const overlay = viewportOverlayFor(tab, locked);
   const showNative = live && overlay === null;
-  useViewBounds(ref, showNative);
+  const store = useBrowserWorkspaceStore();
+  useViewBounds(ref, showNative, (rect) => store.setDockViewportRect(rect && {
+    left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height,
+  }));
   const occluded = useNativeOcclusion(ref, showNative);
   const frozen = useFrozenFrame(occluded, showNative);
 
@@ -93,6 +97,10 @@ const BrowserViewport: React.FC<BrowserViewportProps> = ({
       {frozen && (
         // eslint-disable-next-line @next/next/no-img-element
         <img className="bw-frozen" src={frozen} alt="" draggable={false} />
+      )}
+      {occluded && frozen && (
+        // In-flow marker: this hint must never count as an occluder, or the view would stay frozen.
+        <div className="bw-frozen-hint" data-native-inflow="true">{copy.frozenHint}</div>
       )}
       {overlay === 'crashed' && (
         <div className="bw-state" role="alert">

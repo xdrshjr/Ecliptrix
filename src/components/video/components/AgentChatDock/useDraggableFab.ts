@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useBrowserWorkspaceStore } from '@/contexts/BrowserWorkspaceContext';
+import { snapFabClearOf } from './fabAvoid';
 
 export type FabPosition = { right: number; bottom: number };
 
@@ -131,6 +133,7 @@ export function useDraggableFab(
   const positionRef = useRef<FabPosition | null>(null);
   positionRef.current = position;
   const ownRef = useRef<HTMLElement | null>(null);
+  const browserStore = useBrowserWorkspaceStore();
   // A stable ref even if the caller passes a fresh ref object each render, so
   // the mount-only effects below never re-run and loop on setPosition.
   const elRef = useRef(elementRef ?? ownRef).current;
@@ -195,11 +198,17 @@ export function useDraggableFab(
       }
       dragStartRef.current = null;
       if (movedRef.current && positionRef.current) {
-        writeStoredFabPosition(positionRef.current);
+        // 浏览器 Dock 的原生视图盖在 DOM 之上：落在其上方就吸附到视图外最近的一边。
+        const parent = (e.currentTarget.offsetParent as HTMLElement | null)?.getBoundingClientRect();
+        const snapped = parent
+          ? snapFabClearOf(positionRef.current, parent, browserStore.getSnapshot().dockViewportRect)
+          : positionRef.current;
+        if (snapped !== positionRef.current) { positionRef.current = snapped; setPosition(snapped); }
+        writeStoredFabPosition(snapped);
       }
       if (isDragging) setIsDragging(false);
     },
-    [isDragging],
+    [isDragging, browserStore],
   );
 
   return {

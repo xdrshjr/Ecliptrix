@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "measuredAt": "2026-11-26",
+  "noIndexTotal": 18455,
+  "fullIndexTotal": 19552,
+  "indexSection": 1095,
+  "segments": {
+    "rules": 1356,
+    "residentTools": 408,
+    "onDemandCatalog": 2339,
+    "coreWorkflowTools": 9446,
+    "projectState": 51,
+    "recipes": 224,
+    "skillIndex": 1095,
+    "trackDuration": 223,
+    "noOverlap": 515,
+    "generalResident": 3678,
+    "plan": 79,
+    "memory": 77
+  }
+}

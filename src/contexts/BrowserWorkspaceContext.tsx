@@ -79,7 +79,15 @@ export function BrowserWorkspaceProvider({ children, store: injected }: {
       .catch(() => { /* leaves workspace null → button shows "unavailable" */ });
     const offState = bridge.onStateChanged?.((state) => store.setWorkspace(state));
     const offActivity = bridge.onActivity?.((entry) => store.pushActivity(entry));
-    return () => { cancelled = true; offState?.(); offActivity?.(); };
+    // Keys pressed while a native page view owns focus (Ctrl+L / Ctrl+Alt+B): per-METHOD detection,
+    // an older main process lacks them. Both land on the same store actions as the renderer's own keys.
+    const offFocus = typeof bridge.onFocusAddress === 'function'
+      ? bridge.onFocusAddress(() => store.requestAddressFocus()) : undefined;
+    const offToggle = typeof bridge.onToggleDock === 'function'
+      ? bridge.onToggleDock(() => { if (!store.getSnapshot().workspace?.locked) store.toggleDock(); }) : undefined;
+    return () => {
+      cancelled = true; offState?.(); offActivity?.(); offFocus?.(); offToggle?.();
+    };
   }, [bridge, store]);
 
   useEffect(() => {

@@ -3,7 +3,11 @@ import type { TimelineState } from '@/types';
 import type { ToolContext } from '../types';
 import type { AgentPlan } from '@/types/agentToolkit';
 import type { SkillIndexEntry } from '@/types/agentSkills';
-import { buildSystemPrompt } from '../systemPrompt';
+import {
+  L0_NO_INDEX_CHAR_MAX,
+  L0_PROMPT_CHAR_CEILING,
+  buildSystemPrompt,
+} from '../systemPrompt';
 import { createToolRegistry } from '../tools/index';
 import { createAddSubtitlesTool } from '../tools/addSubtitles';
 import { LINT_ASPECT_RATIOS } from '../tools/qualityLint';
@@ -14,7 +18,7 @@ import { CATEGORY_IDS, createDefaultCategories } from '../registry/categories';
  *
  * 字幕工具必须被模型**在常驻层**看见（否则用户报障会在同一个点上重演），而
  * L0 常驻文本是产品预算：满技能索引时只剩几十字符余量，所以这里同时钉住
- * 「工具行在」与「提示词仍在 18 500 以内」。
+ * 「工具行在」与「无索引 ≤18 500、满索引 ≤19 800」。
  */
 
 function makeContext(): ToolContext {
@@ -108,9 +112,9 @@ describe('subtitle disclosure', () => {
     expect(editing?.description).toContain('add_subtitles');
   });
 
-  it('stays within the 18 500-char L0 budget in the worst case (D-18)', () => {
-    expect(prompt(MAX_INDEX).length).toBeLessThanOrEqual(18_500);
-    expect(prompt().length).toBeLessThanOrEqual(18_500);
+  it('stays within the derived L0 budget in the worst case (D-18)', () => {
+    expect(prompt(MAX_INDEX).length).toBeLessThanOrEqual(L0_PROMPT_CHAR_CEILING);
+    expect(prompt().length).toBeLessThanOrEqual(L0_NO_INDEX_CHAR_MAX);
   });
 
   it('keeps the resident schema well under the 48 KiB disclosure cap', () => {

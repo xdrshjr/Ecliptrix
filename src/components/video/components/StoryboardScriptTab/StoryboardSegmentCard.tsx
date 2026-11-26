@@ -487,6 +487,7 @@ const StoryboardSegmentCard: React.FC<StoryboardSegmentCardProps> = ({
         createPortal(
           <div
             id={`multi-menu-${segment.id}`}
+            data-native-occluder="true"
             ref={menuRef}
             className="fixed bg-popover border border-border rounded-md shadow-lg z-[9999] overflow-hidden"
             style={{

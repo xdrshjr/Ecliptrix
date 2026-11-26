@@ -6,8 +6,9 @@
  * switch (spec §4.5.2, §4.6.3). `role="toolbar"` with roving arrow keys.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useBrowserWorkspaceStore } from '@/contexts/BrowserWorkspaceContext';
 import type { BrowserControlHolder, BrowserTabInfo } from '@/types/browserWorkspace';
 import { resolveOmnibox, type SearchEngine } from './omnibox';
 import {
@@ -64,6 +65,20 @@ export default function BrowserToolbar(props: BrowserToolbarProps) {
   const [editing, setEditing] = useState(false);
   const onKeyDown = useToolbarKeys(rootRef);
   const url = tab && !isBlank(tab.url) ? tab.url : '';
+
+  // Ctrl+L from inside a page view: the main process has already returned keyboard focus to the
+  // window; focus on the next frame so it has taken effect, and only once per request.
+  const store = useBrowserWorkspaceStore();
+  const addressFocusToken = useSyncExternalStore(
+    store.subscribe, () => store.getSnapshot().addressFocusToken, () => 0);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (!store.consumeAddressFocus()) return;
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [addressFocusToken, store]);
 
   // The address bar mirrors the page until the user starts typing in it.
   useEffect(() => { if (!editing) setDraft(url); }, [url, editing]);

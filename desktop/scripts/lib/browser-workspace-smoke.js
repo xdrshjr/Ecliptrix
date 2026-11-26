@@ -40,6 +40,19 @@ function startFixture(backendPort) {
 async function browserWorkspaceSmoke(ctx) {
   const { backend, cdp, fail } = ctx
   const log = ctx.log || ((m) => console.log(`[smoke-test] ${m}`))
+  // Freshness gate FIRST (spec agent-browser-workspace-r3 §2.2): the repo has
+  // treated a stale win-unpacked tree as evidence before, and a smoke pass on an
+  // old package proves nothing. A failed gate aborts instead of "passing".
+  const freshness = require('./assert-fresh-build').assertFreshBuild(
+    ctx.appDir ? { appDir: ctx.appDir } : {},
+  )
+  if (!freshness.ok) {
+    const why = freshness.checks.filter((c) => !c.pass)
+      .map((c) => `${c.name}: ${c.detail}`).join('; ')
+    fail(`packaged build is not fresh — ${why}`)
+    return
+  }
+  log(`fresh package verified (${freshness.checks.length} checks)`)
   const fixture = await startFixture(ctx.backendPort)
   const callBase = { 'content-type': 'application/json' }
   let n = 0

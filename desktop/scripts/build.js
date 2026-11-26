@@ -104,6 +104,7 @@ const BUILD_PAYLOADS = [
 const BROWSER_WORKSPACE_MODULES = [
   'index', 'profiles', 'tabs', 'viewHost', 'hardening', 'navigationGuard', 'cookiePersister', 'cdpEngine',
   'actions', 'inputEvents', 'approvalGate', 'risk', 'approvals', 'control', 'stateStore', 'settings',
+  'loginHeuristics',
   'controlServer', 'resourceFetch', 'bridge', 'workspaceApi', 'viewShortcuts', 'contextMenu',
   'pageScripts/index', 'pageScripts/snapshot', 'pageScripts/act', 'pageScripts/overlay', 'pageScripts/sentinel',
 ].map((name) => `main/browserWorkspace/${name}.js`)
@@ -528,7 +529,11 @@ async function main() {
 // Exported so the secret gate can be exercised on a synthetic template without
 // running a packaging build (scripts/lib/secret-shape.test.js does exactly
 // that); `npm run build` still goes through the require.main branch below.
-module.exports = { assertEnvTemplateIsPublicSafe }
+module.exports = { assertEnvTemplateIsPublicSafe, APP_PAYLOADS }
+// APP_PAYLOADS is exported for scripts/lib/assert-fresh-build.js, which compares
+// the declared payload list against the files actually on disk (spec
+// agent-browser-workspace-r3 §2.2 check 3): a whitelist alone can only prove
+// "what is listed exists", never "what exists is listed".
 
 if (require.main === module) {
   main().catch((err) => {

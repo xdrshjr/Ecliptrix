@@ -17,6 +17,7 @@ import {
 import { useTasks } from '@/hooks/useTasks';
 import { useSetupStatus } from '@/hooks/useSetupStatus';
 import { useDesktopCloseGuard } from '@/hooks/useDesktopCloseGuard';
+import { useOpenSettingsEvent } from '@/hooks/useOpenSettingsEvent';
 import {
   OPEN_SETUP_WIZARD_EVENT,
   type OpenSetupWizardDetail,
@@ -136,6 +137,7 @@ export default function HomePage() {
     setSettingsItem(item);
     setIsSettingsOpen(true);
   };
+  useOpenSettingsEvent(openSettingsFromWizard);
 
   const rerunSetupWizard = () => {
     setIsSettingsOpen(false);

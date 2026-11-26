@@ -231,6 +231,20 @@ async def test_request_user_three_states_and_attempt_cap():
 
 
 @pytest.mark.asyncio
+async def test_handoff_reason_prefix_is_the_login_contract():
+    """W1 契约：主进程 loginHeuristics.isLoginHandoff 只认 `login:` 前缀。"""
+    service, driver, _ = make_service()
+    _, run, _ = await make_run()
+    await opened(service, run)
+    driver.next_decision = ("never", 0)
+    await service.request_user(run, "login", "请登录", None, 10)
+    await service.request_user(run, "captcha", "请过验证码", None, 10)
+    reasons = [r["reason"] for r in driver.approvals.values()]
+    assert reasons[0].startswith("login:")
+    assert reasons[1].startswith("captcha:") and not reasons[1].startswith("login:")
+
+
+@pytest.mark.asyncio
 async def test_navigation_precheck_blocks_before_any_command():
     service, driver, _ = make_service()
     _, run, _ = await make_run()

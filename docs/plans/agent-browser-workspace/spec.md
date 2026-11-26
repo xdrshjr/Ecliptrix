@@ -1,6 +1,7 @@
 # Agent 浏览器工作台（agent-browser-workspace）· 设计方案 v2
 
 > **版本**：v2（已吸收 §评审记录 中全部 P0/P1 修订；P2 项已就地修订或登记为实施注意）。v1→v2 的改动点在正文以「〔v2〕」标注，便于回溯。
+> **迭代 2 增补**（文末）已经设计评审，修订后标为 **v2.2**（§评审记录「迭代 2 增补评审」R3-1…R3-13，P1 全部修复）；正文主体仍为 v2。
 > 本文是**实施依据**：下游工程师照此即可逐行实现，不应再做架构层面的决定。
 > 所有「现状」条目都已对照当前分支 `feat/remotion-effects-studio`（HEAD `0c4744be`）核实，文件:行号可查。
 > 本节点只产出设计，不含实现代码；文中的代码块是**契约/示意**，不是可直接粘贴的成品。
@@ -44,6 +45,33 @@
 | R2-10 | 完整性 | 遮挡选择器漏了 toast / tooltip / combobox 弹层 | 〔v2〕`OCCLUDER_SELECTOR` 增加 `[role="status"][data-overlay],[role="tooltip"],[data-sonner-toaster],[data-radix-popper-content-wrapper]` |
 | R2-11 | 完整性 | R-3 未交代：设置里的护栏（`confirm_risky_actions`、`agent_deny_hosts`、`agent_allow_private_network`）同样可被 `bash` 改写 | 〔v2〕R-3 残余补一句并把**授权**与**风险确认的会话内允许范围**挪到主进程；设置项只作「用户偏好」，不作安全边界声明 |
 | R2-12 | 体量 | 范围偏大（≈70 个新文件、7 个里程碑） | 不裁剪主干；〔v2〕§2.3 增加「v1 可裁剪清单」（标签拖拽排序、`stop`、favicon 内联缓存、`LoginSitesPanel` 的逐站点移除可降级为「清除全部」），实施时若 M4 延期可按此砍，不影响 AC-A/F |
+
+### 迭代 2 增补评审（对象：文末「迭代 2 增补」，v2.1 → **v2.2**）
+
+> 评审方式：逐条对照源码与实测核实（含实际运行 `vitest --environment node` 量取提示词预算）。本轮 **P0：0；P1：6（全部已在增补正文修复，标「〔v2.2〕」）；P2：7（已处理或登记）**。迭代 1 的 R1-x / R2-x 记录保持不变。
+
+#### P1（已修复）
+
+| # | 维度 | 问题（含证据） | 影响 | 修订位置 |
+|---|---|---|---|---|
+| R3-1 | 一致性 / 可行性 | **W4 的前提被实测推翻。** 增补写「最坏 18 416 / 19 513，6 条红测试都是预算超限，只压文本、断言零改动即可转绿」。实测（`npx vitest run --environment node` 两个文件）：6 条失败里 **2 条是工具数断言**——`CORE_TOOLKIT_TOOL_NAMES.toHaveLength(18)` 而 `promptParts.ts:163-190` 现有 **19** 项（`use_skill` 入列后断言未同步，与浏览器无关，压文本不可能让它转绿）；其余 4 条是字符预算：无索引最坏 **18 576**（>18 500，超 76）、`subtitleDisclosure` 最坏 **19 673**（>18 500，超 1 173）、AC-B8「满索引净增 ≤400」实测 **1 606**（超 1 206，`L0_BASE=17075`、`GENERAL_LAYER_CHARS=992` 为测试内固定常量）。数字与增补所写相差 ~160 字符。且默认（jsdom）环境下这两个文件**连加载都失败**（`effectApplyReceipts.ts:2` 引 `node:crypto` → `No such built-in module: node:`），所谓「红」随运行环境而变 | AC-H4 按原文不可达；实施者要么违反「断言零改动」，要么盲压 1 200 字符无关规则 | 〔v2.2〕§H.2 D2-3、W4 整节改写、AC-H4 |
+| R3-2 | 可行性 | **W2 漏了「把键盘焦点还给渲染层」。** 页面视图持有焦点时按 `Ctrl+L`，主进程 `handleShortcut`（`browserWorkspace/index.js:204-219`）只 `send('browser:shortcut')`；全目录无任何 `.focus()` 调用（`grep "\.focus()" desktop/main/browserWorkspace` 为空）。渲染层 `inputRef.focus()` 只改渲染文档内的 `activeElement`，Chromium 的键盘焦点仍在原生视图的 `webContents`，用户随后键入的字符仍进网页 | W2 即使接线完成，Ctrl+L 仍「看似聚焦、实则打字进网页」，AC-H2 在真实 Electron 下必败（单元测试用假 bridge 发现不了） | 〔v2.2〕W2 增「焦点交还」、新增 `viewShortcuts.forwardToRenderer`、AC-H2、走查⑩ |
+| R3-3 | 可行性 | **W1 的 cookie 基线按「当前 URL」取，跨域 SSO 全部漏判。** 基线用 `session.cookies.get({ url: tab.url })`；典型登录流（Microsoft `login.live.com`→`outlook.live.com`、Google `accounts.google.com`→业务域）会话 cookie 落在**另一个域**，登录后 `tab.url` 已换域，基线与判定都看不到它 → `suggestComplete` 永不置位 | 功能在最需要的站点上静默失效（退化为迭代 1 行为，但 AC-H1 的「典型站点」不成立） | 〔v2.2〕W1 判定 A 改为整分区快照差集（仅 name+domain+path）、用**该页签所属 profile** 的 session |
+| R3-4 | 一致性 | **W1 对所有 handoff 都建议「看起来已登录」。** `browser_request_user` 的 `kind` 有 `login/captcha/confirm/…`（`browserTools.ts:76`），后端把它拼进审批原因 `f"{kind}:{reason}"`（`browser_workspace/service.py:309`）。captcha / confirm 型 handoff 没有「登录」语义，新增 `cf_clearance` 之类 cookie 也可能触发建议，按钮文案「看起来已登录」是错的 | 误导用户在验证码未过时点「完成」，Agent 带着未完成的页面继续 | 〔v2.2〕W1 仅对 `kind=login` 启动 watcher（由原因前缀 `login:` 判定，写成带两端契约测试的单点函数） |
+| R3-5 | 可行性 | **W7 按原文第一步就会失败。** fixture 站点在 `127.0.0.1`：主进程 `navigationGuard.js:162-163` 对私网/loopback 在 `allowPrivate=false` 时返回 `private_network_blocked`（控制服务自身端口 `OWN_HOSTS` 才豁免），后端 `browser_workspace/policy.py:110-121` 同理；默认 `agent_allow_private_network=false`（`browser-workspace-config.yaml:14`）。另有三处未交代：后端 `app/config.py` 缺 `LLM_API_URL/LLM_API_KEY` 不启动；主进程需隔离 `--user-data-dir`；「与 Next BFF 同路径」不实——e2e 直打后端 `/api/web-research/browser/*`，BFF 的 140000 ms 超时那一端并未被覆盖 | e2e 写出来也跑不通；若随手放开私网又会让「护栏有效」这一结论失真；文字上高估覆盖面 | 〔v2.2〕W7 重写（临时 userData/DB/STORAGE、占位 LLM 变量、显式开启私网仅限本 e2e + 一条关闭时必须被拒的反例、如实写覆盖边界）、AC-H6 |
+| R3-6 | 完整性 | **验收门槛未定义基线。** AC-H8 要求「触碰文件 / 回归全绿」，但默认 jsdom 环境下 `effectApplyReceipts.ts` 的 `node:crypto` 导入使一批 vitest 文件整体加载失败（迭代 1 提交记录已写：该文件来自既有提交 `5e663714`，非本分支引入）。「全绿」既不可达，也无法区分「新增回归」与「既有失败」 | 验收结论不可复现、不可签字 | 〔v2.2〕AC-H4 / AC-H8 改为「与记录在案的基线失败集相比无新增失败」，并规定两个提示词文件的运行命令 |
+
+#### P2（已处理 / 已登记）
+
+| # | 维度 | 问题 | 处置 |
+|---|---|---|---|
+| R3-7 | 可行性 | W1 过早建议：多步登录（先邮箱后密码）的首步没有密码框、站点常在加载时种下 httpOnly 的 CSRF cookie，A∧B∧C 会在登录前成立 | 〔v2.2〕A 剔除 `csrf/xsrf/_ga/consent/lang` 类名；要求**连续 2 次**轮询均为真才置位；AC-H1 时限由「≤3 s」放宽为「≤5 s」；仅建议、不自动完成的底线不变 |
+| R3-8 | 体量 | W1/W6 自相矛盾：W6 规定 `browserWorkspace/index.js` 不得新增逻辑行，W1 又要在其中 require、构造 watcher、创建时启动、`onChange` 停止、`setLocked`/`before-quit` 全停——至少 6 处，「≤4 行」不现实 | 〔v2.2〕上限改为 **≤8 行**，且装配闭包封进 `createLoginWatchers(deps)`，index 只留 1 行 require + 1 行构造 + 3 处单行调用 |
+| R3-9 | 一致性 | W3 的设置项 id 写成 `'browser_workspace'`；设置页真实 id 是 `'browser'`（`SettingsSidebar.tsx:87`，`SettingsMenuItem`）；且 `page.tsx:132` 已有 `openSettingsFromWizard(item: SettingsMenuItem)`，不必另造打开路径 | 〔v2.2〕W3 改用 `'browser'`、事件 detail 类型取 `SettingsMenuItem`，监听直接调用既有函数 |
+| R3-10 | 一致性 | W5 对 `DropHintBadge` 的处理是「几何断言替代标记」——测试里断言几何关系是弱证据（布局一变即失效），与 AC-D13 的「标记即证据」不一致；冻结帧提示条若误带 `data-overlay` 会被遮挡检测当成遮挡物，造成**永久冻结** | 〔v2.2〕五个文件一律加标记或在名单里写明豁免理由（不用几何断言）；提示条必须带 `data-native-inflow` 且不得带 `role=dialog/menu/listbox/tooltip`、`data-overlay`、`data-native-occluder` |
+| R3-11 | 可行性 | W8 的陷阱：`desktop/build/`、`desktop/release/win-unpacked/` 已存在且是旧产物（仓内已搜到旧 chunk）；直接对旧目录跑冒烟会把「旧包通过」当成结论 | 〔v2.2〕W8 要求先 `npm run build:dir`（经 `prepare-frontend`→…）并核对包内含 `loginHeuristics.js`、`page.js` 时间戳晚于本次改动，否则记「未执行」 |
+| R3-12 | 一致性 | H.8 称 W1/W2/W3/W5 文件集不相交；实际 W1、W2 都改 `src/types/browserWorkspace.ts`，W1、W2、W3 都动 `BrowserUnavailable`/`BrowserWorkspaceContext` 相邻区域 | 〔v2.2〕H.8 改为「可并行，但 `types/browserWorkspace.ts` 由 W1 先落、W2 在其后合入」 |
+| R3-13 | 一致性 | 增补的计数口径：CLAUDE.md 写「10 suites / 83 checks」，增补写「11 套」未说明含新增 | 〔v2.2〕AC-H8 明确「10→11 套」，并要求实施完成后同步 CLAUDE.md 该行 |
 
 ---
 
@@ -983,3 +1011,232 @@ browser_read 发现登录表单(password.sensitive) → browser_act(fill 口令)
 - 后端 `control_client` 与主进程 `controlServer` 的字段/端点已对齐：`full_text`、`image_b64`、`has_profile_cookies`、`DELETE /v1/approvals/{id}`（后端线提出、主进程线已实现）。
 - 风险确认双弹：主进程在 90 s 内消费一次后端已获批的同 run/host/label 审批；后端暂不传 `autonomy`，YOLO 仅由后端判定。
 - 前端待主进程补的三处（Ctrl+L 聚焦地址栏事件、审批 `suggestComplete`、从 Dock 打开设置页通道）均按「方法缺失即隐藏」降级，未实现的是 `suggestComplete`；其余两项不阻断主旅程。
+
+---
+
+## 迭代 2 增补（v2.2，评审后）· 收口与硬化方案
+
+> **v2.2**：已吸收文首「迭代 2 增补评审」的 R3-1…R3-6（P1）与 R3-7…R3-13（P2），修订处以「〔v2.2〕」标注；v2.1 原文凡与之冲突者以本版为准。
+> 本节由迭代 2 的架构节点撰写。迭代 1 已完成：spec v2 → 评审 → 实施 → 提交（`4e1ad78f`，159 文件；`desktop test:browser` 83 项、后端 `pytest -k "browser or workspace"` 230 passed/1 skipped）。**本节不重复已完成的设计**，只把「实施过程发现的方案缺陷」与 `acceptance.md`「未验证项」里仍然敞开的事项，写成可逐行实施的硬化方案（W1–W9）。目标是「顶级产品」口径下的最后一公里：功能链路已通，剩下的是**体验断点、真实环境证据与预算债**。
+
+### H.1 迭代 1 交付与迭代 2 范围
+
+| 项 | 迭代 1 现状（已核实于源码） | 迭代 2 处置 |
+|---|---|---|
+| 主进程工作台 | `desktop/main/browserWorkspace/` 26 个模块，真实 Electron 33 spike 13/13 | 不改架构；补 W1/W6 |
+| 后端适配层 | `app/services/browser_workspace/`，230 项测试 | 补 W7（真后端↔真 Electron 联调） |
+| 前端 footer 按钮 + Dock | 47 文件 379 项 vitest 通过 | 补 W2（快捷键事件接线）、W3（设置入口）、W5（遮挡复核） |
+| 提示词 | 规则 132 字符，净减 177 字符；6 条既有断言实测为红（2 条工具数陈旧 + 4 条字符预算，见 D2-3） | W4（W4a 修陈旧计数、W4b 收回预算） |
+| 打包态 | `browser-workspace-smoke.js` 已写并挂入 `smoke-test.js`，**从未在安装包上执行** | W8 |
+| 人工走查 | 清单在 `desktop/README.md`，未执行 | W9（形成可签字的证据表） |
+
+**非目标（迭代 2 仍不做）**：多窗口/多 Profile 同时可见、浏览器扩展、下载管理器 UI、favicon 内联缓存（§2.3 ③）、云端同步登录态。这些要么与「单用户本地」定位冲突，要么收益低于风险。
+
+### H.2 已发现但尚未闭环的缺陷（均来自源码核对）
+
+1. **D2-1（体验断点，P1）**：`desktop/preload/preload.js:71-73` 已暴露 `onShortcut / onFocusAddress / onToggleDock`，主进程 `index.js:206` 与 `viewShortcuts.js:17` 也会在**焦点位于原生页面视图内**时发 `browser:shortcut`，但渲染层 `src/` 里**没有任何订阅者**（全仓搜索 `onFocusAddress|onToggleDock|browser:shortcut` 仅命中 preload 与主进程）。结果：用户点进网页后按 `Ctrl+L`、`Ctrl+Alt+B` 无反应——这是浏览器类产品的基本肌肉记忆，必须修。
+2. **D2-2（登录体验，P1）**：`handoff` 审批只有「完成 / 取消」，`BrowserApproval`（`src/types/browserWorkspace.ts:52`）与主进程 `publicView`（`approvals.js` 末尾）都没有 `suggestComplete`，`approval.suggestDone` 文案（`browserWorkspaceCopy.ts:100/303`）是死键。用户登录后不知道「现在可以点完成了」，Agent 要干等到用户手动点或 300 s TTL 超时。
+3. **D2-3（预算债，P2）**〔v2.2 以实测改写〕：`npx vitest run --environment node` 对 `systemPrompt.toolkit.test.ts`（5 条）与 `subtitleDisclosure.test.ts`（1 条）共 **6 条失败**，成因分两类：**(a) 工具数断言 2 条**——`CORE_TOOLKIT_TOOL_NAMES` 现为 19 项（`use_skill` 入列后测试仍写 18），与浏览器无关；**(b) 字符预算 4 条**——无索引最坏 18 576（>18 500）、`subtitleDisclosure` 最坏 19 673（>18 500，超 1 173）、AC-B8「满索引净增 ≤400」实测 1 606（超 1 206）、`L0_PROMPT_CHAR_CEILING` 18 900 断言本身未破。这 6 条使「提示词不回归」护栏对所有后续改动失效。另：默认 jsdom 环境下这两个文件因 `effectApplyReceipts.ts` 的 `node:crypto` 导入连加载都失败，必须以 node 环境运行。
+4. **D2-4（遮挡盲区，P2）**：5 个 portal 文件在同文件内无遮挡标记（`portalOccluders.test.ts` 的 `KNOWN_UNMARKED`），其中 `AgentChatDock`、`EffectsStudioModal` 可能盖住 Dock 视口；悬浮助手 `AgentChatFloatingPanel`（`role="dialog"`）与 Dock 相交时视口被换成冻结帧，与「边聊边看 Agent 浏览」核心旅程冲突。
+5. **D2-5（入口缺口，P3）**：`BrowserUnavailable` 的「打开设置」按钮因 `page.tsx` 设置状态是本地 `useState` 而不渲染。
+6. **D2-6（证据缺口，P1）**：后端 `control_client` 只对本地 aiohttp 假服务验证，主进程只对假 Electron 验证；**真后端 ↔ 真 Electron 从未联调**，字段对齐仅靠文字核对。
+7. **D2-7（结构债，P3）**：`browserWorkspace/index.js` 380 行（预算 240）、`dispatch.py` 192 行（预算 120）、`desktop/main/index.js` 732 行（硬上限 800）；超预算但未破硬线，迭代 2 **不再新增行数**，新增逻辑一律进新模块。
+
+### H.3 方案
+
+#### W1 · 登录完成建议 `suggestComplete`（修 D2-2）
+
+**判定在主进程，纯函数 + 轮询，绝不自动完成。**
+
+- 新增 `desktop/main/browserWorkspace/loginHeuristics.js`（≤120 行，纯函数 + 一个工厂）：
+  - `createLoginWatchers(deps)`（工厂，返回 `{ start(approval, tab), stop(id), stopAll() }`，内部持有 `Map<id, watcher>`，闭包装配全在本文件）；`deps = { getSession, partitionFor, evaluate, now, setTimer, clearTimer, onSuggest }`。审批进入非 pending 即 `stop(id)`。
+  - 〔v2.2·R3-4〕**只对 `kind=login` 的 handoff 启动**：判定函数 `isLoginHandoff(reason)` 是**唯一**解析点，规则 `reason.startsWith('login:')`（后端 `browser_workspace/service.py` 把审批原因拼成 `f"{kind}:{reason}"`；`captcha:`/`confirm:` 等一律不启动，也就不会出现「看起来已登录」）。该函数配**两端契约测试**：`loginHeuristics.test.js` 用固定样例 `login:xxx`，后端 pytest 断言 `request_user(kind='login')` 产生的审批原因以 `login:` 开头；任一端改格式即红。
+  - 〔v2.2·R3-3〕启动时记录**基线**：用**该页签所属 profile 的 session**（`getSession(partitionFor(tab.profileId))`，不是「当前活动 profile」）取 `cookies.get({})` **整分区**快照，只存 `name|domain|path` 三元组集合（**只存名字，不读/不记 value**），并记 `isLoginPath(tab.url)`（路径匹配 `/login|signin|sign-in|sso|auth|passport|account\/login/i`）。取整分区而非 `{url}`，是因为 SSO 会把会话 cookie 种在另一个域（`login.live.com`→`outlook.live.com`），登录后 `tab.url` 已换域，按 URL 取会漏掉它。
+  - 每 1500 ms 一次（上限到审批 TTL）判定 `suggest = A && B && C`：A = 整分区快照相对基线出现**新** cookie，且（`httpOnly` 或名字匹配 `/sess|auth|token|sid|login|jwt|uid/i`），并**剔除**名字匹配 `/csrf|xsrf|_ga|_gid|consent|cookie|lang|locale|track/i` 的项（〔v2.2·R3-7〕登录前页面常种 httpOnly CSRF cookie）；B = 当前 URL 已离开登录路径；C = 页面内无可见 `input[type=password]`（经 `pageScripts` 已有的求值通道执行，3 s 超时，失败按 false 处理即不建议）。
+  - 〔v2.2·R3-7〕**连续 2 次**轮询均为真才置位（多步登录首步无密码框的瞬时假阳性）；一旦置位则**保持**（不抖动）；`onSuggest(id)` 调 `approvals.markSuggest(id)`。
+- `approvals.js`：新增 `markSuggest(id)`（仅对 `kind==='handoff' && status==='pending'` 生效，置 `approval.suggestComplete=true` 并 `notify`）；`publicView` 追加 `suggestComplete: a.suggestComplete === true`（旧字段形状不变，纯增量）。
+- `browserWorkspace/index.js`（〔v2.2·R3-8〕**净增 ≤8 行**：1 行 `require`、1 行构造 `createLoginWatchers({...})`、其余 3 处各 1 行调用；闭包装配与全部逻辑都在 `loginHeuristics.js`）：`approvalCreate` 创建 handoff 后 `loginWatchers.start(approval, handoffTab)`；`approvals` 的 `onChange`（约 142-144 行）里非 pending 时 `loginWatchers.stop(id)`；`setLocked(true)` 与 `before-quit` 时 `stopAll()`。
+- 前端：`BrowserApproval` 增加 `suggestComplete?: boolean`（可选，旧主进程缺省 = false，按字段存在性降级）。`ApprovalBanner.tsx`：当 `kind==='handoff' && suggestComplete` 时主按钮文案换成 `copy.approval.suggestDone`，按钮加 `data-suggested="true"`，样式为强调态（`--ws-agent` 描边 + 一次性轻脉冲，`prefers-reduced-motion` 下关闭脉冲），并以 `aria-live="polite"` 播报一次。**不自动点击、不自动完成**——完成与否永远是人的决定。
+- 隐私与安全：cookie value 永不进入日志/审计/渲染层；watcher 只在 handoff pending 期间运行；不对非 handoff 页签读 cookie。
+- 测试：`loginHeuristics.test.js`（纯函数 + 假 session/假时钟）：新 httpOnly cookie + 离开 `/login` + 无密码框、**连续两次**为真 ⇒ 建议；**只一次为真随即回落 ⇒ 不建议**；**cookie 种在另一个域且 tab 已换域 ⇒ 仍建议**（R3-3 回归）；仅有跟踪/CSRF 类 cookie ⇒ 不建议；仍在登录页 ⇒ 不建议；有可见密码框 ⇒ 不建议；`captcha:`/`confirm:` 原因 ⇒ 不启动 watcher（R3-4 回归）；审批已决后 watcher 不再触发；evaluate 抛错 ⇒ 不建议且不抛；`stopAll()` 后无定时器残留。前端：`ApprovalBanner` 在 `suggestComplete` 时渲染强调主按钮、缺字段时行为不变。
+
+#### W2 · 渲染层接线 `Ctrl+L` / `Ctrl+Alt+B`（修 D2-1）
+
+- `src/types/browserWorkspace.ts`：`BrowserWorkspaceBridge` 增加三个**可选**方法 `onShortcut?(cb: (p:{action:'focus-address'|'toggle-dock'|'new-tab'}) => void): () => void`、`onFocusAddress?(cb:()=>void): () => void`、`onToggleDock?(cb:()=>void): () => void`（与 preload 一致，返回取消订阅函数）。
+- `src/lib/api/browserBridge.ts`：透传三方法；`typeof bridge.onFocusAddress === 'function'` 逐方法检测，缺失即不订阅（旧主进程不抛）。
+- `src/contexts/BrowserWorkspaceContext.tsx`（已持有 `browserShortcut` 与 Dock 开合状态）：`useEffect` 订阅 `onToggleDock` → 调用与 `Ctrl+Alt+B` 相同的 toggle 函数（避免两套状态），订阅 `onFocusAddress` → 若 Dock 关闭先打开，再递增 `addressFocusToken: number`；上下文**不暴露 ref**。
+- `BrowserToolbar.tsx`：`useEffect` 监听 `addressFocusToken` 变化 → `inputRef.current?.focus(); select()`（该文件已有 `inputRef`，改动 ≤6 行）。
+- 两条路径（原生视图获焦由主进程 `viewShortcuts` 拦截；渲染层获焦由 `browserShortcut.ts` 处理）都落到同一个 context 动作，`token` 自增保证幂等。
+- 〔v2.2·R3-2〕**主进程必须先把键盘焦点交还渲染层，渲染层的 `focus()` 才有意义。** 页面视图持有焦点时，渲染文档里的 `inputRef.focus()` 不会让 Chromium 把键盘输入路由回主窗口 `webContents`，用户随后键入的字符仍会进网页。做法：
+  - `viewShortcuts.js` 新增纯函数 `forwardToRenderer({ getWin, send, channel }, action)`：对 `focus-address`、`toggle-dock` 两个会转发给渲染层的动作，先 `getWin()?.webContents.focus()`（主窗口不存在时静默跳过），再 `send(channel, { action })`；其余动作行为不变。
+  - `browserWorkspace/index.js` 的 `handleShortcut` 里原有两处 `send(SHORTCUT_CHANNEL, …)`（`new-tab` 分支与末行）改为调用它——**行数净增 0**，不违反 W6。
+  - 渲染层在收到 `focus-address` 后下一帧再 `inputRef.focus(); select()`（保证 `webContents.focus()` 已生效），并且 Dock 关闭时先 `openDock()` 再递增 token（地址栏尚未挂载，token 由挂载后的 effect 消费，不得丢失）。
+- 测试：`BrowserWorkspaceContext` 用假 bridge 触发 `onFocusAddress`/`onToggleDock`，断言 Dock 状态与地址栏获焦；Dock 关闭时触发 `onFocusAddress` ⇒ 先开 Dock、挂载后获焦（token 不丢）；缺方法的旧 bridge 不抛；卸载时取消订阅。主进程：`viewShortcuts` 新增用例——`focus-address`/`toggle-dock` 先调 `webContents.focus` 再 `send`，窗口已销毁时不抛。**真实焦点路由只能在真 Electron 里证明**：并入 W7 e2e（对页面视图派发 `Ctrl+L` 后，断言主窗口 `webContents.isFocused()` 为真），否则 AC-H2 只算「单元通过、真机未证」。
+
+#### W3 · 设置入口（修 D2-5）
+
+- 〔v2.2·R3-9〕`src/lib/setupEvents.ts` 增加 `OPEN_SETTINGS_EVENT = 'ecliptrix-open-settings'` 与 `openSettings(item?: SettingsMenuItem)`（`detail: { item }`，类型取 `SettingsSidebar` 导出的 `SettingsMenuItem`，不要用裸 `string`）；`page.tsx` 增加一个 `useEffect` 监听并**直接调用既有的 `openSettingsFromWizard(item ?? 'general')`**（`page.tsx:132` 已有，会同时收起向导并 `setSettingsItem` + `setIsSettingsOpen(true)`，无需另造打开路径）。净增 ≤3 行，守 `page.tsx` ≤215 行预算（现 210）；若会超，则把监听放进新 hook `useOpenSettingsEvent`，**不得**膨胀 `page.tsx`。
+- `BrowserUnavailable.tsx`：渲染「打开设置」按钮，点击 `openSettings('browser')`——**设置项 id 是 `'browser'`**（`SettingsSidebar.tsx:87`），不是 `browser_workspace`（后者是后端设置类别名，写进前端会得到类型错误或落到空白）。组件已有可选 `onOpenSettings` 回调（`BrowserUnavailable.tsx:13-14`），只需由 `BrowserDock` 传入 `() => openSettings('browser')`；按钮只在 `reason==='disabled'`（设置里关了）时传入——`'unavailable'`（主进程无应答）时设置无济于事，保持现状只显示 `copy.body`。
+- 测试：事件派发后设置被打开；按钮点击派发事件。
+
+#### W4 · 提示词护栏修复（修 D2-3）〔v2.2·R3-1 整节改写〕
+
+目标：让 `systemPrompt.toolkit.test.ts`（5 条）与 `subtitleDisclosure.test.ts`（1 条）在 **node 环境**下全绿，**不放宽任何字符预算断言**（18 500 / 18 900 / ≤400 一个数字都不动）。这是一项**与浏览器功能无关的既有债**（成因见 D2-3），独立成项、独立提交，不阻塞 W1/W2/W3/W5/W7；若走查时间紧，可整项后移并在 `acceptance.md` 如实记为「未做」，AC-H4 随之标「未执行」，不得用改断言冒充通过。
+
+运行命令（固定，写进 `acceptance.md`）：`npx vitest run --environment node src/lib/video-editing-agent/__tests__/systemPrompt.toolkit.test.ts src/lib/video-editing-agent/__tests__/subtitleDisclosure.test.ts`。默认 jsdom 环境下这两个文件加载即失败（`effectApplyReceipts.ts` 的 `node:crypto` 导入，既有提交 `5e663714`），那是另一件事：**不在本迭代修**，但 W4 完成后可在两个文件首部各加 `/** @vitest-environment node */` 文档块（只是环境声明，不是断言），使默认命令也能跑。
+
+**W4a · 工具数断言（2 条，非预算问题）**：`CORE_TOOLKIT_TOOL_NAMES` 现有 19 项（`promptParts.ts:163-190`，含 `use_skill`），测试写的是 18（`systemPrompt.toolkit.test.ts:96`、`:305`）。这是 `use_skill` 入列时漏同步的陈旧断言。处理：先 `git log -S"use_skill" -- src/lib/video-editing-agent/promptParts.ts` 确认来源，确属如此则**仅把这两处 `18` 改为 `19`**并在提交说明写明原因；若发现是误加了常驻工具，则改清单而非断言。这是本节唯一允许触碰断言字面量的地方，范围以这两行为限，且必须单独提交。
+
+**W4b · 字符预算（4 条）**：
+
+1. 先量：用既有测试 helper 打印三个数——无索引最坏 `W_noIndex`（现 18 576）、满索引最坏 `W_fullIndex`（现 19 673）、AC-B8 净增 `Δ_index = W_fullIndex − L0_BASE(17 075) − GENERAL_LAYER_CHARS(992)`（现 1 606，上限 400），以及各段长度表，记入 `acceptance.md`。本评审的数字以实施时实测为准，两者差异须在记录里解释（评审实测与迭代 1 记录相差约 160 字符，原因待查：疑为量取口径/技能索引渲染版本不同）。
+2. **先找根因而不是先砍规则**：`Δ_index` 超限 1 206 说明**技能索引的渲染**已偏离其 ≤400 字符的设计预算（`docs/plans/agent-steering-and-skills/spec.md` 的 AC-B8）。第一步检查索引行格式（每条 `id + 描述` 的描述是否被截断、是否带多余引导句、10 条上限是否仍成立），**优先在索引渲染处收回**——它只影响技能入口一行说明，不触碰安全/授权/浏览器规则；收回量须覆盖 `W_fullIndex − 18 500`（现 1 173）。该步若不够，再进第 3 步。
+3. 退而求其次才压 L0 既有文本，由大到小：① 已被 `explore_tools` 一级披露覆盖的重复用法示例；② 语义重叠的并列规则合并；③ 示例性举例句改为一句话原则；④ 仅特定任务才需要的长规则（如字幕披露细则）下沉到 L1 技能（`use_skill` 按需加载），L0 只留一行指针。**浏览器规则 132 字符与 YOLO 变体 119 字符、一切安全/授权/egress 相关规则不可被压**（它们是「实时资讯/真实图片必须走浏览器」与权限边界的落点）。
+4. 下沉到 L1 的内容必须有等价触发路径（技能 description 命中关键词）并补一条**新增**断言（新增不算放宽），防止规则丢失而无人知晓。
+5. 每步压缩后跑上述命令与 `browserWorkspace.surface.test.ts`。**停止条件**：若需要压掉的 L0 规则文本（不含索引渲染收回量）> 600 字符，**停止**并在 `acceptance.md` 登记「需单独立项」，不得为凑数删规则；W4a 仍可单独完成。
+
+#### W5 · 遮挡盲区复核与「边聊边看」优化（修 D2-4）
+
+- 逐一复核 5 个 `KNOWN_UNMARKED` 文件：凡会渲染到 Dock 视口之上的层，补 `role` 或 `data-native-occluder`，并从名单中**删除**（棘轮只许减不许增）。预期至少清掉 `AgentChatDock.tsx` 与 `EffectsStudioModal.tsx`；`PortalTooltip.tsx` 加 `role="tooltip"`；〔v2.2·R3-10〕`DropHintBadge.tsx` 同样加 `data-native-occluder`（它只是个小徽标，加标记的代价为零，而「几何上不会相交」的断言一旦布局变化就静默失效，不作为证据）。凡确有理由不加标记的文件，须在 `KNOWN_UNMARKED` 旁以注释写明豁免原因与可回退条件，不接受「几何断言」式豁免。
+- 悬浮助手默认停靠：`AgentChatFloatingPanel` 首次打开且 Dock 展开时，默认位置避开 Dock 视口矩形（取 `BrowserWorkspaceContext` 暴露的只读 `dockViewportRect`）；用户拖动后以用户位置为准并记忆（`localStorage`，try/catch）。冻结帧行为保持（遮挡判定是几何的，安全且正确），但在冻结帧上叠一条不抢焦点的提示「已被浮层遮挡 · 实时画面暂停」，避免用户误以为页面卡死。〔v2.2·R3-10〕该提示条**必须**带 `data-native-inflow="true"`，且**不得**带 `role="dialog|menu|listbox|tooltip"`、`data-overlay`、`data-native-occluder`（`OCCLUDER_SELECTOR` 还收 `[role="status"][data-overlay]`）：否则它自己会被遮挡检测当成遮挡物，使视口永久停在冻结帧、无法恢复。测试：渲染提示条后 `computeOcclusion` 仍判「未遮挡」（回归用例）。
+- 可拖动 FAB 被拖到 Dock 视口之上：拖动结束时若与 Dock 视口相交则吸附到视口外最近边。
+- 测试：`portalOccluders.test.ts` 缩减名单后仍绿；`computeOcclusion` 增加「助手面板与 Dock 相交 ⇒ 冻结；移开 ⇒ 恢复」用例。
+
+#### W6 · 结构债只减不增（修 D2-7）
+
+- 禁止在 `browserWorkspace/index.js`、`dispatch.py`、`desktop/main/index.js` 新增逻辑行（W1 的 4 行是唯一例外，其余逻辑全由 `loginHeuristics.js` 吸收）。
+- 可选：把 `index.js` 里 consent/handoff/锁定回调装配拆到 `assembly.js`，目标 `index.js` ≤300；仅在 W7 联调通过**之后**做，以现有 83 项主进程测试 + integration 作回归网。
+
+#### W7 · 真后端 ↔ 真 Electron 联调（修 D2-6，发布阻断）〔v2.2·R3-5 重写〕
+
+- 新增 `desktop/scripts/browser-workspace-e2e.js`（真实 Electron 33，需先 `unset ELECTRON_RUN_AS_NODE`，同 `spike:browser`）。**隔离与启动前提（原稿缺失，缺一则跑不起来）**：
+  1. 全部状态放临时目录 `os.tmpdir()/ecliptrix-bw-e2e-<pid>/`：Electron `--user-data-dir`（避免污染真实 `profiles.json`/登录态）、后端 `DATABASE_URL=sqlite+aiosqlite:///<tmp>/ecliptrix.db`、`STORAGE_ROOT=<tmp>/storage`；结束时整目录删除（`finally`，含异常路径）。
+  2. 后端以 `python run.py`（cwd=`backend-services/basic-service`，用 venv 解释器）启动，注入占位 `LLM_API_URL=http://127.0.0.1:9/v1`、`LLM_API_KEY=e2e-placeholder`（`app/config.py` 缺这两项不启动；e2e 不调用任何 LLM）；控制端点与令牌经 `browserWorkspaceEnv` 注入，展开顺序与生产一致（在 `...userEnv` **之后**）；等待 `/health` 就绪再继续。
+  3. 起本地 fixture 站点（`127.0.0.1` 随机端口：登录页、带 `og:image` 的文章页、含密码框与高风险按钮的页、登录成功后设 httpOnly cookie 并 302 到业务页的 SSO 式跳转）。
+  4. **私网放行只限本 e2e**：fixture 在 loopback，默认被主进程 `navigationGuard`（`private_network_blocked`）与后端 `policy.check_url` 同时拒绝（`agent_allow_private_network=false`）。e2e 在临时数据库里把 `browser_workspace.agent_allow_private_network=true`（经 `PUT /api/system-settings/browser_workspace/agent_allow_private_network`；主进程 `settings.js` 有 30 s 缓存（`CACHE_MS`），改后须等待缓存过期或在 e2e 装配里把它注入为 0），且**必须先跑一条反例**：开关为 `false` 时对 fixture 的 `browser_open` 必须得到 `private_network_blocked`——证明护栏在生效，也证明后面的通过不是因为护栏被绕开。
+- 链路：经后端研究浏览器路由（`research_browser_router.py` 现有：`POST /api/web-research/browser/{open,read,act,request-user}`、`DELETE /api/web-research/browser/{identifier}`；取图与入库走后端对应路由，**路由名以实施时 `grep` 到的为准**，不得凭本文猜）依次执行 `open → read → act(click/fill) → 取图 → 入库 → request_user(kind=login) → close`；审批由主进程的审批决议入口（与渲染层 IPC `browser:resolve-approval` 同一函数）程序化批准，命令随之继续。断言：字段形状与「后端线补充契约」一致（`full_text / image_b64 / has_profile_cookies`）、`tab_id` 为 UUID、135 s 超时链路不退化（审批在 >20 s 后批准仍成功）、**令牌不出现在任何后端响应/日志/artifact**（扫描临时目录 + 子进程输出）。
+- **覆盖边界（如实写，不夸大）**：该 e2e 直接打后端，**不经过 Next BFF**，因此 BFF 一侧的 `140000` ms 超时与 `executeWebTool` 适配仍只由 vitest 覆盖；Agent 回路与真实 LLM 亦不在内。「真后端↔真 Electron」指控制服务契约，不指整条用户链路——整条链路由 W9 走查负责。
+- 用 W1 的 SSO 式 fixture 验证：设 cookie（**种在另一个 host 名下**，例如以 `localhost` 与 `127.0.0.1` 区分两个域）+ 跳转后，`login:` 型 handoff 的 `suggestComplete` 置位；`captcha:` 型同流程**不**置位（R3-3/R3-4 的真机回归）。
+- 用 W2 验证焦点路由：对页面视图派发 `Ctrl+L` 的 `before-input-event` 后，断言主窗口 `webContents.isFocused()` 为真，且收到 `browser:shortcut {action:'focus-address'}`。
+- 挂入 `npm run test:browser:e2e`（不进默认 `test:browser`，因其需真实 Electron/Python），在 `acceptance.md` 记录一次通过的运行输出（含上述反例的拒绝记录）。
+- 任一契约不一致：**以主进程现行字段为准修后端 `control_client`**（后端是消费者），并补回 `test_browser_workspace_*` 单测。
+
+#### W8 · 打包态冒烟
+
+- 〔v2.2·R3-11〕**先确认测的是新包**：仓内已有旧的 `desktop/build/`、`desktop/release/win-unpacked/`（含迭代 1 之前的 chunk）。必须先 `npm run build:dir`（走完 `prepare-frontend → prepare-backend → prepare-ffmpeg → prepare-env → electron-builder`），再核对：①包内 `resources/**/main/browserWorkspace/` 含 `loginHeuristics.js` 与 `pageScripts/*.js`；②前端 `page.js` 的修改时间晚于本迭代最后一次源码改动。任一不满足，记「未执行」，**不得**拿旧目录的通过当结论（本仓有「过期 standalone 打包」的前科）。
+- 然后执行 `node scripts/smoke-test.js`，使 `browser-workspace-smoke.js`（§8.3 ①②③④⑦⑨⑩）真实跑一遍；失败项归因到「代码缺陷」或「冒烟脚本缺陷」并修复。
+- 另核对 `scripts/build.js` 的 `APP_PAYLOADS` 含 `main/browserWorkspace/**`（`pageScripts/*.js` 不得被排除），`verify-no-bundled-secrets` 不误报新模块。
+- 不能生成安装包的环境：如实记录「未执行」，**不得**用源码级测试通过替代打包态结论。
+
+#### W9 · 人工走查证据表
+
+`acceptance.md` 新增「迭代 2 走查」表，逐项「步骤 / 预期 / 实测 / 日期 / 执行人」：①首次启用授权披露 ②创建 Profile 并登录真实站点 ③**重启应用后登录仍在** ④Agent 搜新闻→读正文→取图入库，入库图 `source:'workspace'` ⑤用户接管/交还 ⑥风险动作确认（含 YOLO 拒绝）⑦悬浮助手遮挡与冻结帧提示（W5）⑧最小化后 Agent 继续动作 ⑨闸门锁定后恢复 ⑩页面获焦时 `Ctrl+L`/`Ctrl+Alt+B` 生效（W2）⑪handoff 登录后出现「点此完成」（W1）。未执行的行保持「未执行」，不得空白通过。
+
+### H.4 文件 / 模块改动表（迭代 2）
+
+| 文件 | 动作 | 意图 |
+|---|---|---|
+| `desktop/main/browserWorkspace/loginHeuristics.js` | 新建（≤120 行） | W1 登录完成判定（纯函数 + watcher） |
+| `desktop/main/browserWorkspace/loginHeuristics.test.js` | 新建 | W1 测试，并入 `test:browser` |
+| `desktop/main/browserWorkspace/approvals.js` | 改 | `markSuggest`、`publicView.suggestComplete` |
+| `desktop/main/browserWorkspace/index.js` | 改（〔v2.2〕W1 净增 ≤8 行；W2 的 `handleShortcut` 两处 `send` 改调 `forwardToRenderer`，净增 0） | handoff 创建/结束时启停 watcher；快捷键转发前交还焦点 |
+| `desktop/main/browserWorkspace/viewShortcuts.js`（+ 其测试） | 改 | 〔v2.2·R3-2〕`forwardToRenderer`：转发 `focus-address`/`toggle-dock` 前 `webContents.focus()` |
+| `backend-services/basic-service/tests/`（`test_browser_workspace_*`） | 改（仅加一条） | 〔v2.2·R3-4〕断言 `request_user(kind='login')` 的审批原因以 `login:` 开头（W1 契约的后端一端） |
+| `src/lib/video-editing-agent/__tests__/systemPrompt.toolkit.test.ts` | 改（**仅** `18→19` 两处，单独提交） | 〔v2.2〕W4a |
+| `desktop/scripts/test-browser-workspace.js` | 改 | 注册新套件（11 套） |
+| `desktop/scripts/browser-workspace-e2e.js` | 新建 | W7 真后端↔真 Electron 联调 |
+| `desktop/package.json` | 改 | `test:browser:e2e` 脚本 |
+| `src/types/browserWorkspace.ts` | 改 | `suggestComplete?`、三个可选桥方法 |
+| `src/lib/api/browserBridge.ts` | 改 | 透传可选方法，逐方法检测 |
+| `src/contexts/BrowserWorkspaceContext.tsx` | 改 | 订阅 `onToggleDock/onFocusAddress`，`addressFocusToken`、`dockViewportRect` |
+| `src/components/browser/BrowserToolbar.tsx` | 改（≤6 行） | 响应 `addressFocusToken` 聚焦地址栏 |
+| `src/components/browser/ApprovalBanner.tsx` | 改 | W1 强调态主按钮 + 播报 |
+| `src/components/browser/BrowserUnavailable.tsx` | 改 | W3 渲染「打开设置」 |
+| `src/lib/setupEvents.ts`、`src/app/page.tsx` | 改（≤3 行） | `OPEN_SETTINGS_EVENT`，监听直接调既有 `openSettingsFromWizard` |
+| 5 个 `KNOWN_UNMARKED` portal 文件 + `portalOccluders.test.ts` | 改 | W5 补标记并缩减名单 |
+| `AgentChatFloatingPanel` 相关文件 | 改 | W5 默认避让 Dock、拖动吸附、冻结帧提示 |
+| `src/lib/video-editing-agent/`（技能索引渲染、`systemPrompt*`、`promptParts.ts`） | 改（先收回索引渲染，再压 L0 文本；字符预算断言零改动） | W4b 预算收回 |
+| `src/lib/browserWorkspaceCopy.ts`、`src/lib/i18n.ts` | 改 | 冻结帧提示、设置入口文案（中英） |
+| `docs/plans/agent-browser-workspace/acceptance.md` | 改 | 迭代 2 实测记录与走查表 |
+
+### H.5 接口变更（均为向后兼容的纯增量）
+
+- 主进程 → 渲染层：`BrowserApproval` 新增 `suggestComplete?: boolean`；旧渲染层忽略未知字段，旧主进程缺省为 false。`browser:shortcut` 事件载荷不变（`{action}`）。
+- 渲染层桥：新增 3 个可选方法；缺失即隐藏对应能力，**不抛**。
+- 控制服务 HTTP（`/v1/*`）与 Next BFF 路由：**零改动**。后端与数据库：**零改动**（W7 若发现字段偏差，只改后端 `control_client` 适配，不改对外 API）。
+- 新增渲染层事件：`ecliptrix-open-settings`（仅渲染进程内）。
+
+### H.6 验收标准（迭代 2）
+
+| AC | 条件 | 证据 |
+|---|---|---|
+| AC-H1 | 〔v2.2〕`kind=login` 的 handoff 登录完成（整分区出现新会话类 cookie[含跨域] + 离开登录页 + 无密码框，**连续两次**轮询成立）后 ≤5 s 出现「点此完成」强调态；任一条件不满足、或为 `captcha`/`confirm` 型，均不出现；永不自动完成；cookie value 不出主进程 | `loginHeuristics.test.js`、ApprovalBanner 测试、后端 `login:` 前缀契约测试、W7 e2e |
+| AC-H2 | 〔v2.2〕焦点在原生页面内时 `Ctrl+L` 聚焦并全选地址栏（**主窗口 `webContents` 真正获得键盘焦点**，随后键入进地址栏而非网页）、`Ctrl+Alt+B` 开合 Dock；Dock 关闭时 `Ctrl+L` 先开 Dock 再获焦；旧 bridge 缺方法不抛 | Context 测试 + `viewShortcuts` 测试 + W7 e2e 的 `isFocused()` 断言 + 走查⑩ |
+| AC-H3 | 「打开设置」按钮在 `reason==='disabled'` 时可见，点击打开设置面板并定位到 `'browser'` 项；`page.tsx` 行数 ≤215 | 组件测试 + 行数断言 |
+| AC-H4 | 〔v2.2〕`systemPrompt.toolkit`（5）、`subtitleDisclosure`（1）在 `--environment node` 下全绿；**字符预算断言（18 500 / 18 900 / ≤400）零改动**，仅 W4a 的 `18→19` 两处计数允许改（单独提交、写明原因）；浏览器规则 132/119 字符及安全/授权规则原样保留；若触发 W4b 停止条件则本项标「未执行」并登记，不得改断言 | `git diff` 仅含 W4a 两行 + vitest 输出 |
+| AC-H5 | `KNOWN_UNMARKED` 比迭代 1 至少减少 2 项且不新增；悬浮助手默认不遮 Dock；冻结帧有提示条且**不会令视口卡在冻结态**（带 `data-native-inflow`、`computeOcclusion` 回归用例） | 测试 + 走查⑦ |
+| AC-H6 | 〔v2.2〕真后端↔真 Electron 控制服务链路通过（隔离 userData/DB/STORAGE）；私网关闭时 fixture 被拒的反例通过；令牌在任何后端响应/日志/artifact 中零出现；覆盖边界（不含 BFF、不含 LLM）如实写入记录 | `npm run test:browser:e2e` 输出入 `acceptance.md` |
+| AC-H7 | 打包态冒烟 `browser-workspace-smoke` 在 `build:dir` 产物上通过，或如实记录「未执行」及原因 | `acceptance.md` |
+| AC-H8 | 〔v2.2〕回归：`test:browser` 由 10 套 / 83 项增至 11 套且全绿（完成后同步 CLAUDE.md 该行计数）；`pytest -k "browser or workspace"` 230 passed 不退步；`test:auth` 134 项不退步；`type-check` 无**新增**错误；触碰文件 eslint 0 error；**vitest 以「与基线失败集相比无新增失败」为准**——开工前在 `acceptance.md` 记录一次基线（`effectApplyReceipts.ts` 的 `node:crypto` 使一批文件在默认 jsdom 下整体加载失败，属既有问题，不计入、也不在本迭代修），收尾对比；浏览器相关目录（`src/components/browser`、`src/contexts`、`desktop/main/browserWorkspace`）须全绿 | 命令输出 + 基线对照 |
+| AC-H9 | 走查表 ①–⑪ 每行均有结论（通过/失败/未执行+原因） | `acceptance.md` |
+
+### H.7 风险与缓解（迭代 2 新增）
+
+| 风险 | 缓解 |
+|---|---|
+| W1 启发式误判（建议过早/不建议） | 仅「建议」，完成权在用户；条件取交集偏保守；漏建议只退化为迭代 1 行为；表驱动测试覆盖典型站点形态 |
+| W1 读取 cookie 的隐私面 | 只读名字/标志位，value 不读；仅 handoff pending 期间；日志不含 cookie 信息；`setLocked` 时全部停止 |
+| W2 与 `browserShortcut.ts` 重复触发 | 两路汇入同一 context 动作，`addressFocusToken` 自增幂等；开合用 toggle 的单一函数 |
+| W4 压缩提示词导致模型行为回归 | 先收回技能索引渲染（根因），再压重复/示例/可下沉文本；规则下沉 L1 须有触发路径断言；浏览器与安全规则不动；超过 600 字符规则文本即停止并登记，不为凑数删规则；W4 可整项后移，不阻塞其余项 |
+| W5 助手避让改变既有交互习惯 | 仅「首次默认位置」避让，用户拖动后尊重用户；记忆位置 try/catch，缺失即默认 |
+| W7 e2e 在无显示环境不可跑 | 不进默认套件；带桌面的机器上作手动门；结果入 `acceptance.md`，不假装自动化 |
+| 〔v2.2〕W7 为跑通 fixture 放开私网而让护栏结论失真 | 开关只在临时库里打开，且必带「关闭时被拒」反例；e2e 结束整目录销毁 |
+| 〔v2.2〕W2 焦点交还在个别平台失效（`webContents.focus()` 受窗口是否激活影响） | 仅在主窗口存在且非最小化时调用；失败退化为迭代 1 行为；真机证据由 e2e `isFocused()` 与走查⑩给出 |
+| W8 无法出安装包 | 如实标记「未执行」；源码测试不顶替打包态结论 |
+| 行数预算（`index.js` 800 线） | W6 禁止新增；新逻辑全进新模块；棘轮断言保留 |
+
+### H.8 实施顺序与完成定义
+
+顺序：**W4 先量（只读，决定缺口；W4a 可立即单独提交）→ W1 → W2 → W3 → W5 → W7 → W8 → W9**；W6 在 W7 通过后可选。〔v2.2·R3-12〕W1/W2/W3/W5 **可并行但文件集并不完全不相交**：`src/types/browserWorkspace.ts` 由 W1（`suggestComplete`）与 W2（三个桥方法）共同修改、`BrowserDock`/`BrowserUnavailable` 由 W2/W3 相邻修改——约定 **W1 先落类型，W2 在其后合入**，W3 的 Dock 传参改动与 W2 同批合并以免冲突；其余（W1 主进程 + `ApprovalBanner`，W2 Context + Toolbar + `viewShortcuts`，W3 事件 + 页面，W5 portal 文件）互不相交。W7 依赖 W1 与 W2 的主进程契约，W8/W9 最后做。
+
+完成定义：AC-H1…H9 全部有结论（H7/H9 个别项允许以「未执行 + 原因」收口，但不得缺行）；`acceptance.md` 追加「迭代 2」记录与行数表；`CLAUDE.md`「Agent browser workspace」小节如有新增不变式（例如「cookie value 永不出主进程」）同步一行；提交遵循仓库风格（`[fix]`/`[add]` 前缀，`git add <path>` 精确暂存）。
+
+---
+
+## 评审结论（迭代 2 增补）
+
+**结论：有条件通过（v2.2）。**
+
+**评审范围**：「迭代 2 增补」全节（H.1–H.8，W1–W9、AC-H1…H9、风险与顺序），逐条对照源码与实测核实，含：渲染层订阅缺口（全仓检索 `onFocusAddress|onToggleDock|browser:shortcut`）、`viewShortcuts.js`/`handleShortcut` 的转发与焦点行为、`approvals.js` 与 `approvalCreate`、后端 `request_user` 的原因格式、`navigationGuard.js` 与 `policy.py` 的私网拦截、`SettingsSidebar`/`page.tsx` 的设置入口、`BrowserUnavailable` 属性、`portalOccluders.test.ts` 棘轮、`test-browser-workspace.js` 套件表，并**实际运行** `npx vitest run --environment node` 取得提示词预算与失败成因。
+
+**结果**：P0 共 0 条；P1 共 6 条（R3-1…R3-6），**已全部在增补正文修复并以「〔v2.2〕」标注**；P2 共 7 条（R3-7…R3-13）已处理。无遗留未决的 P0/P1。增补的主干判断（缺陷清单 D2-1/2/5/6、`suggestComplete` 只建议不自动完成、控制服务与对外接口零改动、结构债只减不增、证据优先于断言）经核实成立；体量适中——W1/W2/W3 是小而确定的收口，W5/W7/W8/W9 是证据与硬化，W4 已降级为可独立后移的既有债。
+
+**通过条件（实施阶段必须满足）：**
+
+1. **W2 焦点交还必须在真 Electron 里证明**（R3-2）：`viewShortcuts.forwardToRenderer` 先 `webContents.focus()` 再转发；`isFocused()` 断言并入 W7 e2e。仅有假 bridge 的单元测试不能签 AC-H2。
+2. **W1 以整分区 cookie 差集 + 仅 `login:` 型 handoff 为准**（R3-3/R3-4）；`login:` 前缀在 `loginHeuristics` 与后端 pytest 两端各有一条契约测试。**cookie value 永不出主进程**，实施完成时在 `CLAUDE.md`「Agent browser workspace」不变式里补一条。
+3. **W7 的私网放行仅限临时库，且必带「关闭时被拒」反例**（R3-5）；覆盖边界如实记录（不含 BFF、不含 LLM）。
+4. **W4 拆为 W4a（陈旧计数 `18→19`，单独提交）与 W4b（字符预算，先收回技能索引渲染再压文本）**（R3-1）；字符预算断言一字不改；超过 600 字符规则文本即停止并登记。W4 不阻塞其余项，可整项后移。
+5. **验收以基线对照为准**（R3-6）：开工前记录 vitest 基线失败集，收尾要求「无新增失败」，不得以「全绿」口径签字；两个提示词文件固定用 `--environment node` 运行。
+6. **W8 先重建再冒烟**（R3-11）；无法出包则记「未执行」，不得拿旧 `win-unpacked` 的通过当结论。W9 走查表每行必须有结论。
+
+**残余风险（接受）**：`webContents.focus()` 在个别窗口状态下可能不生效（退化为迭代 1 行为）；`suggestComplete` 启发式在极少数站点漏判/迟报（仅建议，完成权在用户）；W7/W8 依赖带桌面的机器，无法进入默认 CI；W4b 若超出停止条件将作为独立立项遗留。
+
+**版本**：v2.2（迭代 2 增补评审后；正文主体仍为 v2）。下一节点可直接按 H.8 顺序实施。
+
+---
+
+## 实施过程发现的方案缺陷（迭代 2）
+
+> 迭代 2 实施节点（W1–W9）对照源码与真机运行发现的偏差，按「设计 → 实际 → 处置」记录。迭代 1 的同名章节（上文）不变。
+
+1. **W4b 前提不成立，按停止条件收口。** 评审假设「先收回技能索引渲染即可让预算转绿」。实测（`--environment node`）：无索引最坏 **18 576**（超 76），满索引最坏 **19 673**（超 1 173）；满索引相对无索引净增 **1 097**，而索引段上限本身就是 1 300 / 每行 130（`SKILL_INDEX_*`，既有断言钉死）。即便把整个索引压到 0，仍超 76；要让满索引情形 ≤18 500，须从 L0 其余文本再压 ≥ 1 173 − 索引可收回量。索引可收回量最多是把单行上限降到约 70（~330 字符），余下 **>800 字符**的 L0 规则文本必须被删——超过 W4b「600 字符」停止线。**处置**：W4b 不做，不改任何预算断言、不删规则；仅完成 W4a（`toHaveLength(18)→19` 两处，`use_skill` 入列时漏同步）。各段长度见 `acceptance.md`「迭代 2 · W4 实测」。AC-B8「净增 ≤400」与「索引 ≤1 300 字符」两条既有断言本身互相矛盾（索引一满即净增 ~1 100），需单独立项取舍，不属于浏览器工作台。
+2. **W2 净增行数。** 评审要求 `index.js` 里 `handleShortcut` 两处 `send` 改调 `forwardToRenderer` 且「净增 0」。实际需要一行闭包 `const forward = (name) => forwardToRenderer({ getWin, send, channel }, name)`（两处调用共用），净增 **+1**；`require` 合并进既有的 `viewShortcuts` 导入行（净增 0）。合计 `index.js` 380 → 387（W1 +6、W2 +1），仍在「W1 ≤8 行」内，`desktop/main/index.js` 零改动（732）。
+3. **W1 `tab` 无 `profileId`。** 评审写「用该页签所属 profile 的 session」，但 `tabs.js` 的 tab 对象没有 `profileId`——同一时刻只挂载**当前 profile**（`tabs.mountProfile`）。**处置**：`getCookies` 取 `getSession(partitionFor(tabs.profileId()))`，即该页签所在（也是唯一挂载的）profile 的整分区；与「不是当前活动 profile」的评审意图一致，因为二者在此架构下恒等。
+4. **W1 判定 B 仅在「起始于登录路径」时有意义。** 若 handoff 从非登录路径页开始（例如站点首页弹登录框），「已离开登录路径」恒真，会把 B 退化成空条件。**处置**：记录 `startedOnLoginPage`，B 只在其为真时参与（与 spec 基线「并记 `isLoginPath(tab.url)`」一致）；A 与 C 不受影响。
+5. **W2 `addressFocusToken` 的消费语义。** 评审要求「token 由挂载后的 effect 消费，不得丢失」，但仅靠自增 token 在 Dock 关闭→打开的**之后每次**挂载都会重新聚焦。**处置**：store 额外持有一个「待消费」标志，`requestAddressFocus()` 置位并 `openDock`，地址栏在**下一帧**调用 `consumeAddressFocus()` 才聚焦——恰好一次，且 React StrictMode 的 effect 重放不会吞掉请求（消费放在 rAF 回调里而非 effect 体内）。
+6. **W3 设置入口监听放进新 hook。** `page.tsx` 现 212 行（预算 ≤215）。**处置**：监听写成 `hooks/useOpenSettingsEvent.ts`（用 ref 取最新回调），`page.tsx` 只增 import + 一行调用（+2）。
+7. **W5 的两处取舍。**（a）`AgentChatDock` / `EffectsStudioModal` 两个 portal 文件本身只承载共享的 `ConfirmationDialog` / `Modal`，而二者源码已带 `role="dialog"`；评审禁止「几何断言式豁免」，但这是**结构性**委托。**处置**：棘轮测试新增 `delegatesToMarkedDialog`（portal 文件 import 了带标记的 `@/components/ui/*` 组件即视为已覆盖），`KNOWN_UNMARKED` 由 5 项降到 **0**；另外 `PortalTooltip` 加 `role="tooltip"`、`DropHintBadge` 与 `StoryboardSegmentCard` 的浮层加 `data-native-occluder`。（b）悬浮助手**面板**的「首次默认位置避开 Dock」未做——面板位置由 FAB 锚点推导（`usePanelGeometry` 约 200 行的夹取/翻转逻辑），改默认位置牵动既有 12 个生命周期测试，收益低于风险。**处置**：只做了 FAB **拖动结束吸附**（`fabAvoid.ts`，纯函数 + 测试）、`dockViewportRect` 暴露、冻结帧提示条（`data-native-inflow`，带回归断言「提示条不被当成遮挡物」）；面板盖住 Dock 时仍走既有冻结帧并有提示，登记为走查⑦的人工确认项。
+8. **W7 的 `save-to-library` 不能用回环 fixture 走通正向路径。** 后端出口策略对私网/回环主机「任何模式下都不出口」（`host_literal_non_global`），与 `agent_allow_private_network`（只管导航）无关。**处置**：e2e 把这条改成**反例**——断言用户右键保存回环图片被硬规则拒绝（403 `host_literal_non_global`），证明规则在用户路径上仍然生效；正向路径（字节 → 入库，`source:'workspace'`、保留 1 天）仍由后端 `test_browser_workspace_resources` 覆盖，离线 e2e 无法用公网主机。另：保存路径只接受**用户页签**（主进程校验归属），e2e 因此另开一个 user 标签，不复用 Agent 标签。
+9. **W7 e2e 的两个环境事实。** `ELECTRON_RUN_AS_NODE=1` 常从 shell 泄入，使 `require('electron')` 只返回路径字符串——脚本检测到后**自重启**为真 Electron（不再要求调用者手动 unset）。Electron 运行中持有 `userData/Cache` 的文件锁，同进程 `rmSync` 临时目录必报 EPERM，故清理改为**脱离的子进程**在应用退出后删除。后端 `/health` 实际路径是 `/api/health`（spec 与脚本草稿曾误写 `/health`）。
+10. **`ApprovalBanner` handoff 标题带 `login:` 前缀（迭代 1 遗留展示缺陷，已顺带修复）。** 后端把原因拼成 `login:请登录`，主进程 `approvalCreate` 原样透传，渲染层 `copy.handoff.title` 直接插入 `approval.reason`，用户会看到「Agent 需要你：login:请登录」。W1 把这个前缀固化为契约，因此修复放在渲染层**展示处**剥离（`HANDOFF_KIND_PREFIX`，只剥 `login|captcha|confirm|other` 前缀），契约本身不动；已加回归测试。

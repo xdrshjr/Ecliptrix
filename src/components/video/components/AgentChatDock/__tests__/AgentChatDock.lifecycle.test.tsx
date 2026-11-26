@@ -37,6 +37,21 @@ import * as composerPicker from '../../VideoChatWindow/ComposerPicker';
 import * as useComposerModule from '../../VideoChatWindow/useComposer';
 import * as animations from '../../VideoChatWindow/timeline/animations';
 import * as draggable from '../useDraggableFab';
+import * as fabAvoidModule from '../fabAvoid';
+import * as browserWorkspaceContext from '@/contexts/BrowserWorkspaceContext';
+
+/** 可在用例内替换的 store（面板避让要喂不同的 dockViewportRect）。 */
+type StoreStub = {
+  getSnapshot: () => { dockViewportRect: { left: number; top: number; right: number; bottom: number } | null };
+  subscribe: (listener: () => void) => () => void;
+};
+let storeOverride: StoreStub | null = null;
+// 必须满足面板真正使用的整个契约（getSnapshot + subscribe 退订函数），
+// 否则 useLayoutEffect 里订阅会抛 'subscribe is not a function'。
+const browserWorkspaceStub = {
+  useBrowserWorkspaceStore: (): StoreStub => storeOverride
+    ?? (browserWorkspaceContext.useBrowserWorkspaceStore() as unknown as StoreStub),
+};
 import * as liveProgress from '@/components/video/hooks/agentLiveProgress';
 import * as crewProgress from '@/components/video/hooks/useCrewProgress';
 import type { VideoChatWindowProps } from '../../VideoChatWindow';
@@ -137,7 +152,10 @@ beforeAll(async () => {
       useNotification: () => ({ showConfirm: vi.fn() }),
     },
   });
-  const Panel = compileComponent(panelSource, { ...shared, './useDraggableFab': draggable });
+  const Panel = compileComponent(panelSource, { ...shared, './useDraggableFab': draggable,
+    // Panel 新增的两个导入（E4 面板避让）：编译式加载只认显式映射。
+    './fabAvoid': fabAvoidModule,
+    '@/contexts/BrowserWorkspaceContext': browserWorkspaceStub });
   const Fab = compileComponentModule(fabSource, shared);
   const presence = await import('../useDockPresence');
   Dock = compileComponent<DockProps>(dockSource, {
@@ -165,6 +183,7 @@ beforeEach(() => {
   forcedAnchor = null;
   forcedDragging = false;
   localStorage.clear();
+  storeOverride = null;
   vi.stubGlobal('matchMedia', () => ({
     matches: reducedMotion,
     addEventListener: vi.fn(), removeEventListener: vi.fn(),
@@ -486,6 +505,47 @@ describe('浮窗布局与 FAB 可达性', () => {
     forcedDragging = false;
     rerender(React.createElement(Harness));
     expect(fab.style.zIndex).toBe('');
+  });
+
+  it('首次打开且 Dock 展开时，面板矩形不与 dockViewportRect 相交', () => {
+    installGeometry();
+    // 工作区 800×600、面板 360×480：默认锚点右下角必然压在右侧视图上。
+    storeOverride = {
+      getSnapshot: () => ({ dockViewportRect: { left: 460, top: 0, right: 800, bottom: 600 } }),
+      subscribe: () => () => undefined,
+    };
+    render(React.createElement(Harness));
+    openDock();
+    const panel = screen.getByRole('dialog');
+    const right = Number.parseFloat(panel.style.right);
+    const bottom = Number.parseFloat(panel.style.bottom);
+    // 面板矩形（父容器坐标，与 usePanelGeometry 同口径）
+    const rect = { left: 800 - right - 360, top: 600 - bottom - 480, right: 800 - right, bottom: 600 - bottom };
+    const dock = { left: 460, top: 0, right: 800, bottom: 600 };
+    const overlaps = Math.min(rect.right, dock.right) - Math.max(rect.left, dock.left) > 0
+      && Math.min(rect.bottom, dock.bottom) - Math.max(rect.top, dock.top) > 0;
+    expect(overlaps).toBe(false);
+    expect(right).toBeGreaterThanOrEqual(8);
+    expect(bottom).toBeGreaterThanOrEqual(8);
+  });
+
+  it('用户拖动过之后不再自动避让', () => {
+    installGeometry();
+    storeOverride = {
+      getSnapshot: () => ({ dockViewportRect: { left: 460, top: 0, right: 800, bottom: 600 } }),
+      subscribe: () => () => undefined,
+    };
+    const { rerender } = render(React.createElement(Harness));
+    openDock();
+    // 用户把 FAB 拖到视图上方（右 8 / 下 8）：避让已在前一次完成，这里必须尊重用户。
+    forcedAnchor = { right: 8, bottom: 8 };
+    rerender(React.createElement(Harness));
+    const panel = screen.getByRole('dialog');
+    const right = Number.parseFloat(panel.style.right);
+    const bottom = Number.parseFloat(panel.style.bottom);
+    const clampedRight = Math.min(Math.max(8, 8), Math.max(8, 800 - 360 - 8));
+    expect(right).toBe(clampedRight);
+    expect(bottom).toBe(8 + 28);
   });
 
   it('真实拖拽阈值吞掉鼠标合成 click，随后键盘激活仍有效', () => {

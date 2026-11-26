@@ -4,7 +4,7 @@
 
 const assert = require('assert')
 const { EventEmitter } = require('events')
-const { matchShortcut } = require('./viewShortcuts')
+const { matchShortcut, forwardToRenderer } = require('./viewShortcuts')
 const { buildMenuTemplate } = require('./contextMenu')
 const { createResourceFetcher } = require('./resourceFetch')
 const { VALIDATORS, METHODS } = require('./bridge')
@@ -60,6 +60,25 @@ async function run() {
     assert.strictEqual(key('a'), null)
     assert.strictEqual(key('c', { control: true }), null)
     assert.strictEqual(matchShortcut({ type: 'keyUp', key: 'l', control: true }), null)
+  })
+
+  await t.test('forwardToRenderer: focus-address / toggle-dock return keyboard focus BEFORE the send (R3-2)', () => {
+    const order = []
+    const win = { isMinimized: () => false, webContents: { focus: () => order.push('focus') } }
+    const ctx = { getWin: () => win, send: (channel, payload) => order.push(`send:${channel}:${payload.action}`), channel: 'browser:shortcut' }
+    forwardToRenderer(ctx, 'focus-address')
+    forwardToRenderer(ctx, 'toggle-dock')
+    forwardToRenderer(ctx, 'reload')
+    assert.deepStrictEqual(order, ['focus', 'send:browser:shortcut:focus-address', 'focus', 'send:browser:shortcut:toggle-dock', 'send:browser:shortcut:reload'])
+  })
+
+  await t.test('forwardToRenderer: no window, minimised window or a throwing focus() never blocks the send', () => {
+    const sent = []
+    const send = (_c, p) => sent.push(p.action)
+    forwardToRenderer({ getWin: () => null, send, channel: 'c' }, 'focus-address')
+    forwardToRenderer({ getWin: () => ({ isMinimized: () => true, webContents: { focus: () => { throw new Error('no') } } }), send, channel: 'c' }, 'toggle-dock')
+    forwardToRenderer({ getWin: () => ({ webContents: { focus: () => { throw new Error('destroyed') } } }), send, channel: 'c' }, 'focus-address')
+    assert.deepStrictEqual(sent, ['focus-address', 'toggle-dock', 'focus-address'])
   })
 
   await t.test('context menu: image offers save-to-library which only emits a request', () => {

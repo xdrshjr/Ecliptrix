@@ -30,6 +30,10 @@ export interface BrowserWorkspaceSnapshot {
   /** Persisted drag width in px; null = the CSS default clamp(). */
   dockWidth: number | null;
   privacyAcked: boolean;
+  /** Bumped by every "focus the address bar" request (Ctrl+L from inside a page view). */
+  addressFocusToken: number;
+  /** Client-space rectangle the native page view currently covers; null while detached. */
+  dockViewportRect: { left: number; top: number; right: number; bottom: number } | null;
 }
 
 export type BrowserButtonState = 'idle' | 'open' | 'agent-active' | 'needs-user';
@@ -78,7 +82,12 @@ export interface BrowserWorkspaceStore {
   toggleDock(): void;
   setExpanded(expanded: boolean): void;
   setDockWidth(width: number | null): void;
+  setDockViewportRect(rect: BrowserWorkspaceSnapshot['dockViewportRect']): void;
   ackPrivacy(): void;
+  /** Opens the Dock if needed and asks the address bar to take focus once it is mounted. */
+  requestAddressFocus(): void;
+  /** Address bar side: true exactly once per request, so a later remount does not refocus. */
+  consumeAddressFocus(): boolean;
 }
 
 /** Keeps the newest `ACTIVITY_LIMIT` entries; an update to a known id replaces it. */
@@ -101,8 +110,11 @@ export function createBrowserWorkspaceStore(
     workspace: null,
     dockOpen: false,
     privacyAcked: readAck(storage),
+    addressFocusToken: 0,
+    dockViewportRect: null,
     ...readPrefs(storage),
   };
+  let addressFocusPending = false;
   const listeners = new Set<Listener>();
 
   const commit = (patch: Partial<BrowserWorkspaceSnapshot>) => {
@@ -142,6 +154,21 @@ export function createBrowserWorkspaceStore(
     setDockWidth(width) {
       commit({ dockWidth: width === null ? null : Math.max(DOCK_MIN_WIDTH, Math.round(width)) });
       persistPrefs();
+    },
+    setDockViewportRect(rect) {
+      const current = snapshot.dockViewportRect;
+      const same = current === rect || (current && rect && current.left === rect.left
+        && current.top === rect.top && current.right === rect.right && current.bottom === rect.bottom);
+      if (!same) commit({ dockViewportRect: rect });
+    },
+    requestAddressFocus() {
+      addressFocusPending = true;
+      commit({ dockOpen: true, addressFocusToken: snapshot.addressFocusToken + 1 });
+    },
+    consumeAddressFocus() {
+      const pending = addressFocusPending;
+      addressFocusPending = false;
+      return pending;
     },
     ackPrivacy() {
       commit({ privacyAcked: true });

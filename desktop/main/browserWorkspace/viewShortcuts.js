@@ -42,4 +42,23 @@ function attachShortcuts(wc, onAction) {
   })
 }
 
-module.exports = { matchShortcut, attachShortcuts }
+const FOCUS_RENDERER_ACTIONS = new Set(['focus-address', 'toggle-dock'])
+
+/**
+ * Hand an action to the renderer. For the two actions that end in a renderer input (address bar
+ * focus / Dock) the keyboard focus must come back to the main window's webContents FIRST: while a
+ * page view owns it, `input.focus()` in the renderer document would not route typing there.
+ * @param {{ getWin: () => object|null, send: (channel: string, payload: object) => void, channel: string }} ctx
+ * @param {string} action
+ */
+function forwardToRenderer({ getWin, send, channel }, action) {
+  if (FOCUS_RENDERER_ACTIONS.has(action)) {
+    const win = getWin()
+    try {
+      if (win && !(win.isMinimized && win.isMinimized())) win.webContents.focus()
+    } catch { /* focus is best effort: falls back to the pre-iteration-2 behaviour */ }
+  }
+  send(channel, { action })
+}
+
+module.exports = { matchShortcut, attachShortcuts, forwardToRenderer }

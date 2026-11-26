@@ -68,6 +68,7 @@ const zh = {
     certBody: '网站的证书无法验证，已阻止访问。你可以返回或换一个网址。',
     blocked: '此地址已被阻止',
     locked: '应用已锁定，浏览器已暂停',
+    frozenHint: '已被浮层遮挡 · 实时画面暂停',
   },
   start: {
     title: '浏览器',
@@ -271,6 +272,7 @@ const en: BrowserWorkspaceCopy = {
     certBody: "The site's certificate could not be verified, so access was blocked. Go back or try another address.",
     blocked: 'This address is blocked',
     locked: 'The app is locked; the browser is paused',
+    frozenHint: 'Covered by a floating layer · live view paused',
   },
   start: {
     title: 'Browser',

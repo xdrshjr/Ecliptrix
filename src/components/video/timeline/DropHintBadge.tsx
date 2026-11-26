@@ -39,6 +39,7 @@ const DropHintBadge: React.FC<{ hint: DropHint }> = ({ hint }) => {
       ref={badgeRef}
       className={`ws-drop-hint-badge${toneClass}`}
       data-testid="drop-hint-badge"
+      data-native-occluder="true"
       role="status"
       // Fixed + inert inline too: without its stylesheet a badge in <body>
       // would otherwise join the page flow and catch the drop.
