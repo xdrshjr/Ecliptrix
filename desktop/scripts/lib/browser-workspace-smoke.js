@@ -11,10 +11,14 @@
 //                                                   scripts/browser-workspace-spike.js
 //   ⑧ real user input flips control to `user`     — CDP-synthesised input is indistinguishable
 //   ⑥ saving a login-gated image into the library — needs the library UI
-// STATUS: written against the routes/shapes of the backend line at implementation time and NOT
-// executed in this change set (no packaged build was produced). Run it with `npm run smoke-test`.
+// STATUS: executed against a packaged build on 2026-11-26. Check ① failed that run with a
+// FALSE POSITIVE (it grepped the whole body for /token/i and hit limits.context_window_tokens);
+// the leak test is now lib/control-token-leak.js. Run it with `npm run smoke-test`.
 
 const http = require('http')
+
+// Leak predicate for check ① (NAME + SHAPE, never the bare word "token").
+const { findControlTokenLeak, describeLeak } = require('./control-token-leak')
 
 const FIXTURE_HTML = (backendPort) => `<!doctype html><html><head><title>Workspace fixture</title></head><body>
 <h1>Fixture</h1><input id="q" placeholder="search"><button id="go" onclick="document.getElementById('out').textContent='clicked'">Go</button>
@@ -64,11 +68,16 @@ async function browserWorkspaceSmoke(ctx) {
     return { status: res.status, body: await res.json().catch(() => ({})) }
   }
   try {
-    // ① capability visible, no secret in it
+    // ① capability visible, no secret in it.
+    // The leak test is the NAME + SHAPE predicate in lib/control-token-leak, not a
+    // `/token/i` grep: `/capabilities` legitimately echoes `limits.context_window_tokens`
+    // and `limits.research_context_window_tokens`, so a bare-word scan reds on a healthy
+    // package (that was this check's first red — see the module header).
     const caps = await json('GET', '/api/web-research/capabilities')
     const workspace = caps.body?.data?.workspace_browser
     if (!workspace || workspace.available !== true) fail(`workspace browser unavailable in the packaged app: ${JSON.stringify(workspace)}`)
-    if (/token|BROWSER_WORKSPACE/i.test(JSON.stringify(caps.body))) fail('capabilities leaked a control token')
+    const leak = findControlTokenLeak(caps.body)
+    if (leak.length) fail(`capabilities leaked the control token: ${describeLeak(leak)}`)
     log('workspace browser capability available (token not exposed)')
 
     // ⑩ writing system settings can never grant consent (R1-4)
@@ -122,12 +131,19 @@ async function browserWorkspaceSmoke(ctx) {
     const first = await runChecks('dock closed')
     if (!/own:blocked/.test(JSON.stringify(first))) fail('page reached the app backend port (own-port block failed, D-BW2-9)')
 
-    // ⑨ minimise the real window through the renderer's CDP session, then act again
-    const { windowId } = await cdp.send('Browser.getWindowForTarget')
-    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } })
+    // ⑨ minimise the REAL window through the title-bar IPC a user clicks, then act again.
+    // The renderer CDP session is PAGE-level: Browser.getWindowForTarget is a browser-domain
+    // method Electron webContents.debugger does not serve, so the old form failed with
+    // -32601 before it could test anything.
+    const winControls = 'window.ecliptrixDesktop.windowControls'
+    await cdp.evaluate(winControls + '.minimize().then(() => true)')
     await new Promise((r) => setTimeout(r, 1000))
+    const visibilityWhileMinimised = await cdp.evaluate('document.visibilityState')
     await runChecks('window minimised')
-    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } })
+    // The title bar only minimises, so restore through toggle-maximize: Electron
+    // restores a minimised window on maximise(), and the return value proves it moved.
+    const maximized = await cdp.evaluate(winControls + '.toggleMaximize().then((v) => v)')
+    log(`window minimised (visibility=${visibilityWhileMinimised}), restored (maximized=${maximized})`)
 
     await json('DELETE', `/api/web-research/runs/${run.run_id}`, undefined, {
       'x-research-run': run.run_id, 'x-research-token': run.run_token })

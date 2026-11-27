@@ -489,8 +489,9 @@ Windows 上 Cookie 由 OS 加密）。**卸载应用不会自动清除**这些�
 **测试命令**
 
 ```bash
-npm run test:browser          # 纯 node：13 套 / 110 项（导航守卫向量、Cookie 续期、hardening、CDP、控制服务、
+npm run test:browser          # 纯 node：16 套 / 130 项（导航守卫向量、Cookie 续期、hardening、CDP、控制服务、
                               # jsdom 页面脚本、登录完成建议、带假 Electron 的整条装配链、
+                              # open 前的设置刷新顺序 actionsRefresh、控制令牌泄漏判据 control-token-leak、
                               # 打包新鲜性门禁 assert-fresh-build、走查证据表校验 check-walkthrough-table）
 npm run test:browser:e2e      # 需桌面会话 + 能启动后端的 Python：真 FastAPI ↔ 真 Electron 控制服务联调 13 项
                               # （临时 userData/DB/STORAGE；私网放行只在临时库且先跑关闭时被拒的反例；不含 Next BFF / LLM）

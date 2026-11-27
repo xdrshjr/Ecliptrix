@@ -19,7 +19,7 @@ const clampInt = (value, lo, hi, fallback) => (Number.isFinite(Number(value)) ? 
 
 /**
  * @param {object} deps tabs, cdp, viewHost, control, riskGate, stateStore, profiles, getSettings,
- *   checkUrl, isConsentGranted(runId), logger
+ *   checkUrl, isConsentGranted(runId), logger, refreshSettings()
  */
 function createActions(deps) {
   const { tabs, cdp, viewHost, control, stateStore } = deps
@@ -241,6 +241,14 @@ function createActions(deps) {
 
   async function open(cmd, signal) {
     if (!deps.isConsentGranted(cmd.run_id)) throw new WorkspaceError('consent_required')
+    // Refresh the cached browser_workspace preferences BEFORE the guard decides.
+    // The backend re-reads them on every call (policy.precheck_url), so a cache up to
+    // CACHE_MS (30 s) stale here makes the two ends answer DIFFERENT questions for the
+    // same URL: the backend admits the navigation and the main process then refuses it
+    // with private_network_blocked (or the mirror image, admitting what the user just
+    // denied). One loopback GET per open is cheap; a split-brain is not. A failed fetch
+    // keeps the previous values, so this can only fall back to the old behaviour.
+    if (typeof deps.refreshSettings === 'function') await deps.refreshSettings().catch(() => {})
     const verdict = deps.checkUrl(cmd.args.url, 'agent')
     if (!verdict.ok) throw new WorkspaceError(verdict.code, { sticky: verdict.sticky })
     let tab = cmd.args.new_tab ? null : tabs.agentTabFor(cmd.run_id)

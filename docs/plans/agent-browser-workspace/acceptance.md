@@ -59,7 +59,7 @@
 
 ## 未验证项（如实）
 
-1. **未生成安装包、未跑打包态冒烟** `browser-workspace-smoke.js`（仅语法检查）；§8.3 ⑤⑥⑧ 与最后一道人工桌面走查（登录→重启保持→Agent 搜新闻取图入库→接管/交还→风险确认→遮挡场景→最小化后继续→闸门锁定后恢复）**待人工**，清单在 `desktop/README.md`。
+1. **打包态冒烟已执行（2026-11-26），见 I2-7**；§8.3 ⑤（重启后登录保持）⑥（登录态图片入库）⑧（真实用户输入）与最后一道人工桌面走查（登录→重启保持→Agent 搜新闻取图入库→接管/交还→风险确认→遮挡场景→最小化后继续→闸门锁定后恢复）**仍待人工**，清单在 `desktop/README.md`。
 2. 前端遮挡/冻结帧/边界同步只有 jsdom 测试；悬浮助手面板（`role=dialog`）盖住 Dock 视口、可拖动悬浮按钮被拖到视口上，需走查。
 3. AC-D13 遍历测试是棘轮：现有 5 个 portal 文件未带遮挡标记，登记在已知名单，需人工复核。
 4. `suggestComplete`（登录完成建议）未实现；favicon 内联缓存按 §2.3 裁剪。
@@ -192,11 +192,30 @@ node scripts/lib/assert-fresh-build.js
 
 `page-scripts-not-excluded` 断言成立，说明白名单缺口是**真实的**：`loginHeuristics.js`（迭代 2 的 W1 产物、`test:browser` 里有专属套件）此前根本不在发布载荷清单里。
 
-### 未执行：`build:dir` + 打包态冒烟
+### 已执行：`build:dir` + 打包态冒烟（2026-11-26）
 
-- `npm run build:dir`（cwd = desktop）：**未执行**，原因 = 本节点打包耗时远超单次工具调用上限，且 `release/win-unpacked` 是迭代 2 的旧产物。
-- `node scripts/smoke-test.js` 的 `browserWorkspaceSmoke`：**未执行**，原因同上（它现在会先跑新鲜性门禁，而旧包必然卡在 `packaged-renderer-fresh`）。
-- 结论：**打包态通过与否尚无证据**。按 spec §2.2 的规矩，这里只写「未执行 + 缺什么」，**不拿源码级测试替代**。
+首次拿到真实打包产物后跑 `node scripts/smoke-test.js`（cwd = desktop）。三项失败，按 spec 的规矩逐项归因到**冒烟脚本缺陷**或**代码缺陷**并修复，而不是调松断言：
+
+| 失败项 | 归因 | 处理 |
+| --- | --- | --- |
+| ① `capabilities leaked a control token` | **冒烟脚本缺陷**。判据是 `JSON.stringify(body)` 上 `/token|BROWSER_WORKSPACE/i`，而 `/capabilities` 合法回显 `limits.context_window_tokens`(128000) 与 `limits.research_context_window_tokens`(32768)——同一个词，不同的事。实测该健康响应里 32+ 位十六进制令牌字面量为 0 个 | 判据换成 `desktop/scripts/lib/control-token-leak.js`：只认环境变量名、32+ 位十六进制令牌形态、以及「密钥形键名持有长字符串」三种形态，且报告只回路径不回值；`control-token-leak.test.js` 7 例用真实响应体钉住不误红 |
+| ② `browser_open` → `private_network_blocked`（授权审批已通过） | **代码缺陷**。后端 `policy.precheck_url` 每次调用现读设置，主进程 `createSettingsReader` 缓存 30 s，两端对同一 URL 给出了相反答案：后端放行、主进程拒绝。用户改完开关后最长 30 s 内仍会被拒 | `actions.open` 在守卫之前 `await deps.refreshSettings()`（一次回环 GET，失败回落到旧值不 fail-open）；`actionsRefresh.test.js` 4 例钉住「刷新在守卫之前」「刷新失败仍要过守卫」「未授权时既不刷新也不守卫」 |
+| ⑨ `Browser.getWindowForTarget wasn't found`（-32601） | **冒烟脚本缺陷**。用页面级 CDP 会话调浏览器域方法，Electron `webContents.debugger` 不提供，于是在测到任何东西之前就炸了 | 改走用户真正点击的标题栏 IPC `window.ecliptrixDesktop.windowControls.minimize()`；恢复用 `toggleMaximize()`（Electron 对最小化窗口执行 maximise 即恢复），返回值证明窗口确实动了 |
+
+修复后以同一 `build:dir` 产物重跑（`main/**` 改动已进 `app.asar`，旧包不算证据）：
+
+```
+[smoke-test] fresh package verified (4 checks)
+[smoke-test] workspace browser capability available (token not exposed)
+[smoke-test] browser_open → mode=workspace after consent
+[smoke-test] [dock closed] click/fill/scroll/wait ok, password fill refused
+[smoke-test] [window minimised] click/fill/scroll/wait ok, password fill refused
+[smoke-test] window minimised (visibility=hidden), restored (maximized=true)
+[smoke-test] browser workspace smoke passed (① ② ③ ④ ⑦ ⑨ ⑩; ⑤ ⑥ ⑧ are walkthrough items)
+[smoke-test] PASS
+```
+
+`visibility=hidden` 是 ⑨ 的前提证据：窗口**确实**被最小化了，隐藏态下动作仍成立，不是「窗口没真最小化」的空测。整轮末尾 `no residual processes`，无残留进程。
 
 ### 门禁自身的证据（不依赖出包）
 

@@ -17,10 +17,18 @@ const LOADERS = {
   misc: () => require('../main/browserWorkspace/misc.test.js'),
   loginHeuristics: () => require('../main/browserWorkspace/loginHeuristics.test.js'),
   integration: () => require('../main/browserWorkspace/integration.test.js'),
+  // Settings-freshness pin for agent `open` (packaged smoke ②): the main-process
+  // guard must not decide on a 30 s stale cache while the backend reads live values.
+  actionsRefresh: () => require('../main/browserWorkspace/actionsRefresh.test.js'),
   // Packaged-build freshness gate (spec agent-browser-workspace-r3 §3.2):
   // proves the package under test is complete and newer than src/, so the
   // smoke can never again report a pass on a stale win-unpacked tree.
   assertFreshBuild: () => require('./lib/assert-fresh-build.test.js'),
+  // Leak predicate behind smoke check ① (spec agent-browser-workspace §8.3): pins
+  // that a HEALTHY `/capabilities` body — which legitimately echoes
+  // `limits.context_window_tokens` — is not a control-token leak, while the token's
+  // name/shape still fails. Without this, the gate's false positive comes back.
+  controlTokenLeak: () => require('./lib/control-token-leak.test.js'),
   // Walkthrough-evidence gate (spec agent-browser-workspace-r3 §3.3): validates
   // the I2-8 table's column names, ①–⑪ rows, three-tier prefixes and tally.
   checkWalkthroughTable: () => require('./check-walkthrough-table.test.js'),

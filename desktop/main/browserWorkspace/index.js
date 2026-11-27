@@ -251,6 +251,9 @@ function createBrowserWorkspace({ electron, state, isDev = false }) {
   const riskGate = createRiskGate({ approvals, scopeAllowed, recentApprovals, getSettings: () => settings.get(), hasProfileCookies })
   const actions = createActions({
     tabs, cdp, viewHost, control, stateStore, profiles, riskGate, checkUrl, getSettings: () => settings.get(),
+    // `open` awaits this before the guard: the guard reads a 30 s cache, the backend reads
+    // live settings, and the two must not disagree about the same URL (actions.js open()).
+    refreshSettings: () => settings.refresh(),
     isConsentGranted: consentGranted, hasProfileCookies, logger,
   })
   cdp.onUserInput(() => control.userInput())

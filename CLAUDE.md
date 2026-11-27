@@ -146,7 +146,7 @@ Invariants — breaking one is a defect:
 
 ```bash
 # from desktop/
-npm run test:browser     # 13 suites / 110 checks, pure node (fake Electron + jsdom)
+npm run test:browser     # 16 suites / 130 checks, pure node (fake Electron + jsdom)
 npm run spike:browser    # real Electron (unset ELECTRON_RUN_AS_NODE first)
 npm run test:browser:e2e # real Electron + real backend (isolated tmp userData/DB/STORAGE); not in test:browser
 # backend:  pytest tests -k "browser or workspace" --ignore=data

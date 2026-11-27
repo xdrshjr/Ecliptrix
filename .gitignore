@@ -127,3 +127,6 @@ coverage/
 # pytest workspace fixtures write per-case scratch trees into the repo root
 # (sqlite files, generated PNGs, manifests). That is test output, never source.
 /.pytest-workspace-import/
+
+# vitest's JSON reporter leaves this behind; it is a run artifact, never source.
+webserver/.tmp-vitest.json
